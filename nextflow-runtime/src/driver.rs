@@ -13,6 +13,7 @@ use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
+use nextflow_plugins::observer::Observer;
 use workflow_graph::{
     Delivery, DeliveryMode, Driver, DriverError, Files, Input, Inputs, Language, Launch, Note,
     Outcome, Task,
@@ -108,6 +109,8 @@ pub struct Nextflow {
     /// that the tasks that read them wait for it.
     made_by: HashMap<String, workflow_graph::TaskId>,
     acceptance: HashMap<(workflow_graph::TaskId, u32), bool>,
+    /// The run observers that the caller adds; a real run joins them to those of the plugins.
+    observers: Vec<Box<dyn Observer>>,
 }
 
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
@@ -148,7 +151,13 @@ impl Nextflow {
             files: None,
             made_by: HashMap::new(),
             acceptance: HashMap::new(),
+            observers: Vec::new(),
         })
+    }
+
+    /// Adds an observer that hears the events of a real run, besides those of the plugins.
+    pub fn observe(&mut self, observer: Box<dyn Observer>) {
+        self.observers.push(observer);
     }
 
     /// Loads the config of the project and the main script, once.
@@ -453,16 +462,22 @@ impl Driver for Nextflow {
         self.registry = config
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
+        let launch_dir = std::env::current_dir().unwrap_or_default();
         if !self.launch.simulated {
             for warning in nextflow_plugins::catalogue::warnings(config) {
                 self.settings.host.print(&format!("WARN: {warning}\n"));
             }
-            let launch_dir = std::env::current_dir().unwrap_or_default();
+            let observers = nextflow_plugins::catalogue::observers(config);
             let script = loaded.script.to_string_lossy();
-            let reports = Reports::of(config, &launch_dir, &script);
+            let mut reports = Reports::of(config, &launch_dir, &script);
+            reports.observe(observers.map_err(DriverError::new)?);
+            reports.observe(std::mem::take(&mut self.observers));
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
         }
         let options = self.options(&loaded, loaded.config.clone());
+        if let Some(reports) = &mut self.reports {
+            reports.run_started(&options, &launch_dir);
+        }
         let mut host = Noting {
             host: self.settings.host.as_mut(),
             notes: &mut self.notes,
@@ -525,6 +540,9 @@ impl Driver for Nextflow {
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
         run.finish(self.settings.host.as_mut()).map_err(error)?;
+        if let Some(reports) = &mut self.reports {
+            reports.run_ended(None);
+        }
         self.write_reports()
     }
 
@@ -545,6 +563,9 @@ impl Driver for Nextflow {
                 self.settings.host.as_mut(),
             )
             .map_err(error);
+        if let Some(reports) = &mut self.reports {
+            reports.run_ended(Some(&message));
+        }
         run.take_deliveries();
         let reports = self.write_reports();
         match (handled, reports) {
@@ -556,6 +577,17 @@ impl Driver for Nextflow {
 
     fn notes(&mut self) -> Vec<Note> {
         std::mem::take(&mut self.notes)
+    }
+
+    fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        // The reports are uwe's own files, which the workflow does not publish.
+        let written = self.folder().join("reports");
+        if let Some(reports) = &mut self.reports
+            && !Path::new(&delivery.location).starts_with(&written)
+        {
+            reports.published(delivery);
+        }
+        Ok(())
     }
 
     fn deliveries(&mut self) -> Vec<Delivery> {

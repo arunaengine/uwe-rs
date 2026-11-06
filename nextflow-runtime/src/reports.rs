@@ -1,4 +1,5 @@
-//! Writes configured trace, timeline, summary, and process graph reports after real runs.
+//! Writes configured trace, timeline, summary, and process graph reports after real runs, and
+//! tells run observers the events of the run with the trace records of its tasks.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -10,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nextflow_config::Config;
 use nextflow_evaluator::date;
 use nextflow_evaluator::value::Value;
+use nextflow_plugins::observer::{Counts, End, Event, Observer, Record, Start};
 use workflow_graph::render::{Format, Options, View, render};
 use workflow_graph::{
     Delivery, DeliveryMode, Edge, EdgeKind, ExecutionGraph, Language, Node, Outcome, Task, TaskId,
@@ -64,6 +66,13 @@ pub(crate) struct Reports {
     exits: HashMap<TaskId, i32>,
     /// The task that made each output, by its location.
     producers: HashMap<String, TaskId>,
+    /// The run observers of plugins and of the caller, which hear each event of the run.
+    observers: Vec<Box<dyn Observer>>,
+    counts: Counts,
+    /// How many attempts of each task the run asked for, for the observers.
+    attempts: HashMap<TaskId, u32>,
+    /// Whether the observers heard the end of the run, after which they hear nothing.
+    closed: bool,
 }
 
 /// One attempt of a task that ended.
@@ -128,11 +137,60 @@ impl Reports {
             order: Vec::new(),
             exits: HashMap::new(),
             producers: HashMap::new(),
+            observers: Vec::new(),
+            counts: Counts::default(),
+            attempts: HashMap::new(),
+            closed: false,
         }
     }
 
+    /// Adds run observers, which hear the events from now on.
+    pub fn observe(&mut self, observers: Vec<Box<dyn Observer>>) {
+        self.observers.extend(observers);
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.wanted.is_empty()
+        self.wanted.is_empty() && self.observers.is_empty()
+    }
+
+    /// Tells the observers that the run starts, with its options.
+    pub fn run_started(&mut self, options: &crate::Options, launch_dir: &Path) {
+        if self.observers.is_empty() {
+            return;
+        }
+        let start = Start {
+            run_name: options.run_name.clone(),
+            session_id: options.run_name.clone(),
+            launch_dir: launch_dir.to_string_lossy().into_owned(),
+            work_dir: launch_dir.join("work").to_string_lossy().into_owned(),
+            project_dir: options.project_dir.clone(),
+            script: options.script_file.clone(),
+            command_line: options.command_line.clone(),
+            profile: options.profile.clone(),
+            params: crate::inputs::to_json(&options.config.params()),
+            config: crate::inputs::to_json(&options.config.tree),
+            start: self.started,
+        };
+        self.notify(Event::RunStarted(start));
+    }
+
+    /// Tells the observers that a file went to where the workflow publishes it.
+    pub fn published(&mut self, delivery: &Delivery) {
+        self.notify(Event::FilePublished {
+            source: delivery.location.clone(),
+            target: delivery.target.clone(),
+        });
+    }
+
+    /// Tells the observers that the run ended, with the message of the error that failed it.
+    pub fn run_ended(&mut self, error: Option<&str>) {
+        self.notify(Event::RunEnded(End {
+            success: error.is_none(),
+            error: error.map(str::to_owned),
+            counts: self.counts,
+            end: now(),
+        }));
+        self.closed = true;
     }
 
     /// Notes that the run asked for a task, or for another attempt of it.
@@ -140,7 +198,27 @@ impl Reports {
         if !self.asked.contains_key(&task.id) {
             self.order.push(task.id);
         }
-        self.asked.insert(task.id, (task.clone(), now()));
+        let submit = now();
+        self.asked.insert(task.id, (task.clone(), submit));
+        if self.observers.is_empty() {
+            return;
+        }
+        let attempt = self.attempts.entry(task.id).or_default();
+        *attempt += 1;
+        let row = Row {
+            number: self.order.len(),
+            task: task.clone(),
+            exit: 0,
+            attempt: *attempt,
+            cached: false,
+            image: None,
+            submit,
+            start: None,
+            complete: None,
+            usage: None,
+        };
+        let record = unfinished(row.record(), "SUBMITTED");
+        self.notify(Event::TaskSubmitted(record));
     }
 
     /// Notes how an attempt of a task ended.
@@ -149,7 +227,7 @@ impl Reports {
             return;
         };
         let number = self.order.iter().position(|id| *id == outcome.id);
-        self.rows.push(Row {
+        let row = Row {
             number: number.map_or(0, |place| place + 1),
             task: task.clone(),
             exit: outcome.exit_code,
@@ -160,15 +238,56 @@ impl Reports {
             start: outcome.started.map(millis),
             complete: outcome.ended.map(millis),
             usage: outcome.usage,
-        });
+        };
+        if !self.observers.is_empty() {
+            self.tell(&row);
+        }
+        self.rows.push(row);
         self.exits.insert(outcome.id, outcome.exit_code);
         for file in &outcome.files {
             self.producers.insert(file.location.clone(), outcome.id);
         }
     }
 
+    /// Tells the observers how an attempt ended; one that ran started first.
+    fn tell(&mut self, row: &Row) {
+        let record = row.record();
+        let event = match row.status() {
+            "CACHED" => {
+                self.counts.cached += 1;
+                Event::TaskCached(record)
+            }
+            status => {
+                self.notify(Event::TaskStarted(unfinished(record.clone(), "RUNNING")));
+                match status {
+                    "COMPLETED" => {
+                        self.counts.succeeded += 1;
+                        Event::TaskCompleted(record)
+                    }
+                    _ => {
+                        self.counts.failed += 1;
+                        Event::TaskFailed(record)
+                    }
+                }
+            }
+        };
+        self.notify(event);
+    }
+
+    fn notify(&mut self, event: Event) {
+        if self.closed {
+            return;
+        }
+        for observer in &mut self.observers {
+            observer.notify(&event);
+        }
+    }
+
     /// Writes the reports into `folder`, and gives their deliveries to their files.
     pub fn write(&self, folder: &Path) -> std::io::Result<Vec<Delivery>> {
+        if self.wanted.is_empty() {
+            return Ok(Vec::new());
+        }
         std::fs::create_dir_all(folder)?;
         let mut deliveries = Vec::new();
         for (kind, target) in &self.wanted {
@@ -343,6 +462,44 @@ impl Row {
         Some(self.complete? - self.start?)
     }
 
+    /// The CPU time over the time of the task, as a share of one CPU in percent.
+    fn cpu_share(&self) -> Option<f64> {
+        let cpu = self.usage?.cpu_usec?;
+        let real = self.realtime().filter(|real| *real > 0)?;
+        Some(cpu as f64 / 10.0 / real as f64)
+    }
+
+    /// The trace record of the attempt for run observers, with the values unformatted.
+    fn record(&self) -> Record {
+        let resources = &self.task.resources;
+        let usage = self.usage.as_ref();
+        let record = serde_json::json!({
+            "task_id": self.number,
+            "name": self.task.name,
+            "process": self.task.step,
+            "status": self.status(),
+            "exit": self.exit,
+            "attempt": self.attempt,
+            "container": self.image.as_ref().or(self.task.image.as_ref()),
+            "submit": self.submit,
+            "start": self.start,
+            "complete": self.complete,
+            "duration": self.complete.map(|complete| complete - self.submit),
+            "realtime": self.realtime(),
+            "cpus": resources.cpus,
+            "memory": resources.memory_bytes,
+            "time": resources.time_seconds.map(|seconds| seconds.saturating_mul(1000)),
+            "%cpu": self.cpu_share(),
+            "peak_rss": usage.and_then(|usage| usage.memory_peak),
+            "read_bytes": usage.and_then(|usage| usage.read_bytes),
+            "write_bytes": usage.and_then(|usage| usage.write_bytes),
+        });
+        match record {
+            serde_json::Value::Object(record) => record,
+            _ => Record::new(),
+        }
+    }
+
     /// The value of a trace field, as Nextflow writes it.
     fn value(&self, field: &str) -> String {
         let resources = &self.task.resources;
@@ -365,13 +522,7 @@ impl Row {
             "time" => (resources.time_seconds).map_or(UNKNOWN.to_owned(), |seconds| {
                 duration(Some(seconds as i64 * 1000))
             }),
-            // The CPU time over the time of the task, as a share of one CPU.
-            "%cpu" => match (self.usage.and_then(|usage| usage.cpu_usec), self.realtime()) {
-                (Some(cpu), Some(real)) if real > 0 => {
-                    format!("{:.1}%", cpu as f64 / 10.0 / real as f64)
-                }
-                _ => UNKNOWN.to_owned(),
-            },
+            "%cpu" => (self.cpu_share()).map_or(UNKNOWN.to_owned(), |share| format!("{share:.1}%")),
             // The peak of the container's memory, page cache included.
             "peak_rss" => self.measured(|usage| usage.memory_peak),
             "read_bytes" => self.measured(|usage| usage.read_bytes),
@@ -379,6 +530,29 @@ impl Row {
             _ => UNKNOWN.to_owned(),
         }
     }
+}
+
+/// The record of an attempt that has not ended, with this status and without the values of
+/// its end.
+fn unfinished(mut record: Record, status: &str) -> Record {
+    record.insert("status".into(), status.into());
+    let ending = [
+        "exit",
+        "complete",
+        "duration",
+        "realtime",
+        "%cpu",
+        "peak_rss",
+        "read_bytes",
+        "write_bytes",
+    ];
+    for field in ending {
+        record.insert(field.into(), serde_json::Value::Null);
+    }
+    if status == "SUBMITTED" {
+        record.insert("start".into(), serde_json::Value::Null);
+    }
+    record
 }
 
 /// A duration as Nextflow writes it: `850ms`, `3.4s`, `1m 5s`, `2h 1m 3s`.

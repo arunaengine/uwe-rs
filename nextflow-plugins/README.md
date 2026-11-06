@@ -62,6 +62,22 @@ runs natively, like nf-boost's `scan`, stays a built-in operator.
 nf-gc and nf-boost's `boost.cleanup` turn on the cleanup of the runtime, whose contract is in
 the README of `nextflow-runtime`, section `src/cleanup.rs`.
 
+## src/nf_fairscape/mod.rs
+
+nf-fairscape 0.2.0 writes the EVI RO-Crate and `provenance-graph.json` of a successful run,
+with the plugin's ids, entities, inverse links, inputs and outputs. Where they differ:
+
+- The engine Software is uwe, with uwe's version, not Nextflow; the run Computation keeps
+  `nextflowVersion` 26.04.6, the Nextflow version whose language uwe follows.
+- Task results are in uwe's store, so a task output that is not published has the store path
+  as its `localPath`, and its id comes from that path. Task scripts have uwe's indentation.
+- Left out, with one warning that names them: the files that port `fairscape-cli`
+  (`ro-crate-datasheet.html`, `ai_ready_score.json`, `provenance-graph.html`,
+  `ro-crate-linkml.yaml`), and the root's `localEvidenceGraph`, which would name the viewer.
+  Also `schemas`, `containerProvenance` and `expandDirectories`, the per-process
+  `ext fairscape`, which the run events do not carry, and the grouping of many sibling
+  Datasets in the evidence graph.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

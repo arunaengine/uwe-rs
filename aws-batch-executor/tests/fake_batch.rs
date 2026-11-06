@@ -253,6 +253,55 @@ async fn runs_staged_jobs() {
     );
 }
 
+/// Stages a task through an S3 bucket with presigned requests, as on AWS, while the fake runs
+/// the job here.
+#[tokio::test]
+#[ignore = "needs an S3 bucket; set UWE_S3_BUCKET, UWE_S3_ENDPOINT and AWS credentials, or run \
+            `just s3-test`"]
+async fn stages_through_s3() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeBatch::start(&folder.path().join("fake"));
+    let mut backend = backend(folder.path(), &fake);
+    let options = content_store::S3Options {
+        bucket: std::env::var("UWE_S3_BUCKET").expect("UWE_S3_BUCKET is set"),
+        prefix: Some(format!("uwe-batch-{}", std::process::id())),
+        endpoint: std::env::var("UWE_S3_ENDPOINT").ok(),
+        region: Some(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into())),
+    };
+    backend.stage.objects = content_store::Store::s3(&options).expect("a store");
+    let source = folder.path().join("in.txt");
+    std::fs::write(&source, "hello s3\n").expect("writes the input");
+    let staging = Staging {
+        inputs: vec![Staged {
+            path: "in.txt".into(),
+            source,
+            ..Staged::default()
+        }],
+        ..Staging::default()
+    };
+    let spec = spec("tr a-z A-Z < in.txt > out.txt");
+    let placement = placement();
+    let job = Job {
+        name: "run-S3-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("the output");
+    assert_eq!(output, "HELLO S3\n");
+    let command = &fake.requests("submitjob")[0].body["containerOverrides"]["command"];
+    let plan = command[5].as_str().expect("the plan");
+    assert!(
+        plan.starts_with("http") && plan.contains("X-Amz-Signature"),
+        "{plan}"
+    );
+}
+
 /// A second run finds the definition of the first one by its digest instead of registering
 /// another.
 #[tokio::test]

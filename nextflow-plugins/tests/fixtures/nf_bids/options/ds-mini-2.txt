@@ -1,0 +1,8 @@
+opts: {"flatten_output": false}
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] <probe-dir>/work
+items: 1
+[["sub-01","NA"],{"data":{"T1w":{"json":"ds-mini/sub-01/anat/sub-01_T1w.json","nii":"ds-mini/sub-01/anat/sub-01_T1w.nii.gz"},"dwi":{"bval":"ds-mini/sub-01/dwi/sub-01_dwi.bval","json":"ds-mini/sub-01/dwi/sub-01_dwi.json","nii":"ds-mini/sub-01/dwi/sub-01_dwi.nii"},"mask":{"nii":"ds-mini/derivatives/pipe/sub-01/anat/sub-01_desc-brain_mask.nii.gz"}},"filePaths":["ds-mini/sub-01/anat/sub-01_T1w.json","ds-mini/sub-01/anat/sub-01_T1w.nii.gz","ds-mini/sub-01/dwi/sub-01_dwi.bval","ds-mini/sub-01/dwi/sub-01_dwi.json","ds-mini/sub-01/dwi/sub-01_dwi.nii","ds-mini/derivatives/pipe/sub-01/anat/sub-01_desc-brain_mask.nii.gz"],"bidsParentDir":"<probe-dir>/ds","subject":"sub-01","session":"NA"}]
+
+[SUCCESS] completed=0 failed=0 cached=0
+[exit code 0]

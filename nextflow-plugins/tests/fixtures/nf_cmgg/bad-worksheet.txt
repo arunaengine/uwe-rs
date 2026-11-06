@@ -1,0 +1,22 @@
+Worksheet bad-worksheet.yml is invalid:
+- Invalid worksheet input:
+- Invalid type 'number' for input field 'sample'. Expected one of: string, integer, float, boolean
+- Invalid worksheet output:
+- Invalid regex pattern '([unclosed' for output field 'bam': Unclosed character class near index 9
+([unclosed
+         ^
+- Invalid worksheet metrics:
+- Invalid filetype 'xml' for metric field 'm'. Expected one of: tsv, csv, yml, yaml, json
+- Metric field 'm' is missing the required 'id' field
+- Metric field 'm' is missing the required 'field' field
+- Invalid worksheet values:
+- Values field 'both' cannot define both 'value' and 'func'
+- Values field 'neither' must define either 'value' or 'func'
+- Values field 'oldstyle' references unknown data field 'data.sample'. Available data fields: 
+- Invalid Groovy expression in values field 'forbidden': startup failed:
+General error during semantic analysis: Expression [MethodCallExpression] is not allowed: data.sample.split(x)
+
+1 error
+
+- Invalid worksheet samplesheets:
+- No valid samplesheet entries remain after validation

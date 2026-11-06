@@ -12,6 +12,7 @@ use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{
     Error, Interpreter, RenderedOutput, RenderedPart, TaskDirective, TaskFrame,
 };
+use nextflow_evaluator::lower::AGENT_DIRECTIVES;
 use nextflow_evaluator::lowered::{Input, Module, Process};
 use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::{ChannelId, Key, ListKind, MapKind, PathValue, Value};
@@ -115,6 +116,8 @@ pub struct TaskRequest {
     /// The files that an `exec:` section made in its `task.workDir`, by their names there. Such
     /// a task ran in the interpreter already; the engine only records it.
     pub made: Option<Vec<(String, PathValue)>>,
+    /// The model call of an agent task, which the driver makes; the engine only records it.
+    pub agent: Option<Box<crate::agent::Call>>,
 }
 
 /// What a finished task produced.
@@ -259,10 +262,21 @@ impl Behaviour for ProcessNode {
         context: &mut Context,
         mut outcome: TaskOutcome,
     ) -> Result<State, Error> {
-        let Some(flight) = self.pending.remove(&outcome.id) else {
+        let Some(mut flight) = self.pending.remove(&outcome.id) else {
             return Ok(State::Running);
         };
         context.accept(outcome.id, false);
+        if outcome.failure.is_none()
+            && let Some(structured) =
+                (self.process.agent.as_ref()).and_then(|a| a.structured.as_ref())
+        {
+            let simulated = context.interpreter.host().simulated();
+            let staged = &flight.frame.staged;
+            match crate::agent::bind(structured, &outcome.stdout, staged, &self.name, simulated) {
+                Ok(value) => flight.outputs[0].parts = vec![RenderedPart::Value(value)],
+                Err(error) => outcome.failure = Some(error),
+            }
+        }
         if outcome.exit_status != 0 || outcome.failure.is_some() {
             let failure = if outcome.exit_status == 0 {
                 outcome.failure.take()
@@ -306,7 +320,6 @@ impl Behaviour for ProcessNode {
         )?;
         context.deliver(deliveries);
         // Typed outputs compute their values from their parts in the frame of the task.
-        let mut flight = flight;
         for (output, value) in flight.outputs.iter().zip(values.iter_mut()) {
             if let (Some(typed), Some(Value::List(parts))) = (&output.typed, value.as_ref()) {
                 let parts = parts.borrow().items.clone();
@@ -409,8 +422,17 @@ impl ProcessNode {
         base: &Value,
     ) -> Result<Vec<TaskDirective>, Error> {
         let mut directives = interpreter.directives(frame, &self.process, base)?;
+        // The directives of an agent's definition win over its config, as the agent docs say.
+        let agent = self.process.agent.is_some();
+        let own: Vec<Rc<str>> = match agent {
+            true => directives
+                .iter()
+                .map(|directive| directive.name.clone())
+                .collect(),
+            false => Vec::new(),
+        };
         for (name, value) in &self.settings.selected {
-            if &**name != "ext" {
+            if &**name != "ext" && !own.contains(name) {
                 let value = setting(interpreter, frame, name, value, base)?;
                 directives.retain(|directive| directive.name != *name);
                 directives.extend(value);
@@ -433,6 +455,7 @@ impl ProcessNode {
                 // nf-nomad's setting of the process config, which the Nomad executor reads.
                 ("nomadOptions", _) => false,
                 ("clusterOptions", _) if takes_cluster(&directives) => false,
+                (name, _) if agent && AGENT_DIRECTIVES.contains(&name) => false,
                 (name, _) if HINT_DIRECTIVES.contains(&name) => !scheduling_hint(directive),
                 (name, _) if REFUSED_DIRECTIVES.contains(&name) => {
                     directive.arguments.iter().any(Value::truth)
@@ -520,7 +543,8 @@ impl ProcessNode {
                 .find(|directive| &*directive.name == "maxForks")
                 .and_then(|directive| directive.arguments.last())
                 .and_then(|value| value.to_string().parse().ok())
-                .filter(|limit| *limit > 0);
+                .filter(|limit| *limit > 0)
+                .or(self.process.agent.as_ref().map(|_| crate::agent::FORKS));
             self.fair = (directives.iter())
                 .find(|directive| &*directive.name == "fair")
                 .and_then(|directive| directive.arguments.last())
@@ -564,12 +588,27 @@ impl ProcessNode {
             }
         };
         let id = id.unwrap_or_else(|| context.task_id());
+        let agent = match &self.process.agent {
+            Some(agent) => Some(Box::new(crate::agent::call(
+                &self.process,
+                agent,
+                &directives,
+                &values,
+                &frame.staged,
+                &rendered.script,
+            )?)),
+            None => None,
+        };
         let mut request = TaskRequest {
             id,
             attempt,
             process: self.name.clone(),
             name: display_name(&self.name, &directives, index, self.singleton),
-            script: rendered.script,
+            // The prompt of an agent goes to the model only, not into traces and reports.
+            script: match agent {
+                Some(_) => String::new(),
+                None => rendered.script,
+            },
             directives,
             staged: frame.staged.clone(),
             values: values.clone(),
@@ -589,6 +628,7 @@ impl ProcessNode {
                 })?),
                 None => None,
             },
+            agent,
         };
         for part in rendered.outputs.iter().flat_map(|output| &output.parts) {
             match part {

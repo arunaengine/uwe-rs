@@ -1,0 +1,1 @@
+{"type": "message", "card": "adaptive $runName success=$success version=$version", "facts": [<% out << summary.collect{ k,v -> "{\"title\": \"$k\", \"value\": \"$v\"}" }.join(",") %>], "commandLine": "$commandLine"}

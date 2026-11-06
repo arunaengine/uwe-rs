@@ -12,7 +12,7 @@ use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
 use nextflow_runtime::{Loader, Options, Run};
 
-use crate::servers::masked;
+use crate::servers::{Recorder, http, masked, smtp};
 
 /// The settings of the probe runs, `configs/common.config` of the recording.
 const COMMON: &str = "manifest {\n    name = 'nf-core/probe'\n    version = '1.0.0'\n    \
@@ -203,6 +203,32 @@ fn flat(text: &str) -> String {
 }
 
 #[test]
+fn probes_release_five() {
+    let launch = tempfile::tempdir().expect("a temporary directory");
+    let mail = Recorder::start(smtp);
+    let hooks = Recorder::start(http);
+    let servers = format!(
+        "mail {{\n    from = 'probe@example.org'\n    smtp.host = '127.0.0.1'\n    \
+         smtp.port = {}\n}}\nparams.email = 'someone@example.org'\n\
+         params.hook_url = 'http://127.0.0.1:{}'\n",
+        mail.address.port(),
+        hooks.address.port()
+    );
+    let script = fixtures().join("core.nf");
+    let (prints, result) = run(&script, "0.5.0", &servers, launch.path(), &[]);
+    let sessions = mail.finish();
+    let posts = hooks.finish();
+    result.expect("runs");
+    let mut wanted = Transcript::recorded(&expected("core-0.5.0.txt"));
+    let smtp = "0.5.0 piped the mail into the sendmail program; uwe sends it through SMTP";
+    wanted.answer("completionEmail", &["returned"], smtp);
+    wanted.answer("completionEmail plaintext", &["returned"], smtp);
+    assert_eq!(Transcript::heard(&prints), wanted);
+    assert_eq!(sessions.len(), 2, "the HTML mail and the plain text mail");
+    assert_eq!(posts.len(), 3, "the Slack, Teams and failing hooks");
+}
+
+#[test]
 fn probes_release_additions() {
     let launch = tempfile::tempdir().expect("a temporary directory");
     let script = fixtures().join("new07.nf");
@@ -261,6 +287,37 @@ fn checks_pinned_functions() {
          IllegalArgumentException: getReferencePath takes named arguments: references, genome, \
          igenomesIgnore, datasheetPath\n"
     );
+}
+
+#[test]
+fn reads_conda_channels() {
+    let home = tempfile::tempdir().expect("a temporary directory");
+    let bin = home.path().join("bin");
+    std::fs::create_dir(&bin).expect("creates");
+    std::fs::write(bin.join("conda"), "").expect("writes");
+    let user = home.path().join(".condarc");
+    let script = "include { checkCondaChannels } from 'plugin/nf-core-utils'\n\
+                  workflow {\n    println(checkCondaChannels())\n}\n";
+    let path = bin.to_string_lossy();
+    let home_text = home.path().to_string_lossy();
+    let environment = [("PATH", &*path), ("HOME", &*home_text)];
+    std::fs::write(
+        &user,
+        "channels:\n  - conda-forge\n  - defaults\n  - bioconda\n",
+    )
+    .expect("writes");
+    assert_eq!(own("0.7.0", script, &environment), ["true\n"]);
+    std::fs::write(&user, "channels: [bioconda, conda-forge]\n").expect("writes");
+    let prints = own("0.7.0", script, &environment);
+    assert_eq!(prints.last().map(String::as_str), Some("false\n"));
+    let warning = prints[0].clone();
+    assert!(
+        warning.contains("The observed channel order is\n    [bioconda, conda-forge]\n"),
+        "{warning}"
+    );
+    std::fs::remove_file(&user).expect("removes");
+    let prints = own("0.7.0", script, &environment);
+    assert!(prints[0].contains("[defaults]"), "conda's default channel");
 }
 
 #[test]

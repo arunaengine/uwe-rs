@@ -77,6 +77,8 @@ pub struct KubernetesBackend {
     pub unschedulable_time: Duration,
     /// The pod options of every Job, before those of its task.
     pub pod: crate::PodOptions,
+    /// The Common Workflow Scheduler that learns of each task before its Job, if any.
+    pub cws: Option<crate::cws::Client>,
     /// The label value of the Jobs of this backend.
     label: String,
     pub(crate) pods: Pods,
@@ -118,6 +120,7 @@ impl KubernetesBackend {
             start_grace: GRACE,
             unschedulable_time: UNSCHEDULABLE_TIME,
             pod: crate::PodOptions::default(),
+            cws: None,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
             warned: AtomicBool::new(false),
@@ -524,6 +527,11 @@ impl KubernetesBackend {
             options.add(list).map_err(ExecutorError::Unsupported)?;
         }
         (options.apply(&mut manifest, job.placement)).map_err(ExecutorError::Unsupported)?;
+        if let Some(cws) = &self.cws {
+            let (namespace, work) = (self.cluster.namespace(), root.join(executor::WORK));
+            let copied = self.remote.is_some();
+            (cws.task(job, &name, namespace, &work, copied).await).map_err(machine)?;
+        }
         let resources = manifest["spec"]["template"]["spec"]["resources"].clone();
         if !resources.is_null() {
             manifest["spec"]["suspend"] = serde_json::json!(true);

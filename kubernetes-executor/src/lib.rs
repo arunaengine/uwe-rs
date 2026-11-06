@@ -4,6 +4,7 @@
 
 mod backend;
 mod cluster;
+pub mod cws;
 mod daemons;
 mod manifest;
 mod options;

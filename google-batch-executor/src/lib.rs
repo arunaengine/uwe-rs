@@ -4,6 +4,7 @@
 
 mod client;
 pub mod job;
+pub mod outcome;
 mod settings;
 pub mod token;
 

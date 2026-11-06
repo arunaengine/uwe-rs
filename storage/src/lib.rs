@@ -15,6 +15,7 @@ mod ftp;
 pub mod irods;
 mod irods_protocol;
 mod journal;
+pub mod lakefs;
 mod objects;
 pub mod oci;
 pub mod oci_key;
@@ -226,6 +227,7 @@ impl Storage {
             Provider::new(Source::Synapse, prefixes(&["syn://"])),
             Provider::new(Source::Irods, prefixes(&["irods://"])),
             Provider::new(Source::Oci, prefixes(&["oci://"])),
+            Provider::new(Source::Lakefs, prefixes(&["lakefs://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

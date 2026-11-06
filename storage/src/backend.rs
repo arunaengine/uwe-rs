@@ -13,6 +13,7 @@ use crate::error::Problem;
 use crate::folder::Folder;
 use crate::ftp::Ftp;
 use crate::irods::{self, Irods};
+use crate::lakefs::{self, Lakefs};
 use crate::objects::{Objects, Service};
 use crate::oci::{self, Oci};
 use crate::public::PublicBuckets;
@@ -42,6 +43,8 @@ pub(crate) enum Source {
     Irods,
     /// `oci` addresses that no provider serves, with the `oci` scope of a Nextflow config.
     Oci,
+    /// `lakefs` addresses that no provider serves, with the `lakefs` scope of a Nextflow config.
+    Lakefs,
 }
 
 impl Source {
@@ -58,6 +61,7 @@ impl Source {
                     Source::Synapse => "synapse",
                     Source::Irods => "irods",
                     Source::Oci => "oci",
+                    Source::Lakefs => "lakefs",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -116,6 +120,11 @@ impl Source {
             Kind::Synapse(value) => {
                 vec!["synapse".into(), value.endpoint.clone().unwrap_or_default()]
             }
+            Kind::Lakefs(value) => vec![
+                "lakefs".into(),
+                value.endpoint.clone().unwrap_or_default(),
+                value.access_key.clone().unwrap_or_default(),
+            ],
             Kind::Oci(value) => vec![
                 "oci".into(),
                 value.profile.clone().unwrap_or_default(),
@@ -141,6 +150,7 @@ impl Source {
             Source::Synapse => "Synapse, with the token of the environment".to_owned(),
             Source::Irods => "an iRODS zone, with the account of the environment".to_owned(),
             Source::Oci => "OCI Object Storage, with the API key of the environment".to_owned(),
+            Source::Lakefs => "lakeFS, with the lakefs scope of the Nextflow config".to_owned(),
         }
     }
 }
@@ -156,6 +166,7 @@ pub(crate) enum Backend {
     Synapse(Synapse),
     Irods(Irods),
     Oci(Oci),
+    Lakefs(Lakefs),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -180,6 +191,7 @@ impl Connection {
             Source::Synapse => Backend::Synapse(Synapse::new(synapse::scope()).map_err(failed)?),
             Source::Irods => Backend::Irods(Irods::new(irods::scope()).map_err(failed)?),
             Source::Oci => Backend::Oci(Oci::new(oci::scope()).map_err(failed)?),
+            Source::Lakefs => Backend::Lakefs(Lakefs::new(lakefs::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -261,6 +273,17 @@ impl Connection {
                     };
                     Backend::Oci(Oci::new(options).map_err(failed)?)
                 }
+                Kind::Lakefs(settings) => {
+                    let options = lakefs::Options {
+                        endpoint: settings.endpoint.clone(),
+                        access_key: settings.access_key.clone(),
+                        secret_key: secrets.reveal(&settings.secret_key)?,
+                        create_branches: settings.create_branches,
+                        branch_source: settings.branch_source.clone(),
+                        timeout: None,
+                    };
+                    Backend::Lakefs(Lakefs::new(options).map_err(failed)?)
+                }
             },
         };
         // Credentials that a client found in the environment are secrets too.
@@ -269,6 +292,7 @@ impl Connection {
             Backend::Synapse(client) => secrets.0.extend(client.secrets()),
             Backend::Irods(client) => secrets.0.extend(client.secrets()),
             Backend::Oci(client) => secrets.0.extend(client.secrets()),
+            Backend::Lakefs(client) => secrets.0.extend(client.secrets()),
             _ => {}
         }
         Ok(Connection {
@@ -305,6 +329,7 @@ impl Connection {
             Backend::Synapse(synapse) => synapse.stat(target).await,
             Backend::Irods(irods) => irods.stat(target).await,
             Backend::Oci(oci) => oci.stat(target).await,
+            Backend::Lakefs(lakefs) => lakefs.stat(target).await,
         }
     }
 
@@ -321,6 +346,7 @@ impl Connection {
             Backend::Synapse(_) => Ok(Vec::new()),
             Backend::Irods(irods) => irods.list(target).await,
             Backend::Oci(oci) => oci.list(target).await,
+            Backend::Lakefs(lakefs) => lakefs.list(target).await,
         }
     }
 
@@ -342,6 +368,7 @@ impl Connection {
             Backend::Synapse(synapse) => synapse.download(target, file).await,
             Backend::Irods(irods) => irods.download(target, file).await,
             Backend::Oci(oci) => oci.download(target, file, offset).await,
+            Backend::Lakefs(lakefs) => lakefs.download(target, file).await,
         }
     }
 

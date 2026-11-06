@@ -197,6 +197,11 @@ run end waits a bounded time for the events that are left, then leaves the worke
 The sender uses the one HTTP client of the process, `storage::http_client()`, never a new
 client, and a timeout per request.
 
+`Background::ticking` starts the same worker with a tick: its handler gets `Some(event)` for
+each event and `None` whenever the tick passes without one, so it can send on a timer, like
+nf-tower's batched task records and heartbeats or nf-slack's delayed progress updates. A
+stream of events delays the ticks, so the handler checks its own deadlines on every call.
+
 ## src/validation.rs
 
 nf-validation 1.1.3, the plugin that nf-schema replaced: parameter validation, summaries

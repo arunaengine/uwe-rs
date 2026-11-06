@@ -1,5 +1,5 @@
-//! Runs task attempts as JARVICE batch jobs: places the files of the task on the vault, submits
-//! the job script, polls the job, ends a cancelled one, and collects results.
+//! Runs task attempts as JARVICE batch jobs: places the files of the task on the vault or in the
+//! staging root, submits the job script, polls the job, ends a cancelled one, and collects results.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -9,10 +9,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use base64::Engine;
+use executor::batch::{Helper, Source};
+use executor::binary::Binary;
+use executor::capture::{RECORDS, capture};
 use executor::process::Mount;
 use executor::registry::{self, ImageConfigs};
-use executor::wrapper::{MANIFEST, STDERR, TIMED_OUT, quote, timed};
-use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, place};
+use executor::remote::RemoteStage;
+use executor::wrapper::{Folders, MANIFEST, STDERR, TIMED_OUT, quote, timed, wrapper};
+use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job, place};
 use serde_json::json;
 use task_model::{Placement, TaskSpec};
 use tokio::io::AsyncWriteExt;
@@ -43,8 +47,13 @@ const OUTPUT_BYTES: usize = 4096;
 pub struct JarviceBackend {
     pub client: Client,
     pub settings: Settings,
-    /// Where each attempt gets its folder, on the vault, where the jobs see it at the same path.
+    /// Where each attempt gets its local folder: on the vault, where the jobs see it at the same
+    /// path, or where its results come back.
     pub scratch: PathBuf,
+    /// The staging root, which this machine and the jobs reach; `None` for the vault.
+    pub stage: Option<RemoteStage>,
+    /// The binary that uwe uploads for the jobs, when the settings name no helper.
+    pub upload: Option<Binary>,
     /// How much longer than its task a job may run: for its image pull and staging.
     pub staging_time: Duration,
     /// The entrypoints and default commands of images, for tasks without a command.
@@ -53,23 +62,36 @@ pub struct JarviceBackend {
 }
 
 impl JarviceBackend {
-    /// A backend whose jobs see the scratch folder on the vault.
+    /// A backend whose jobs see the scratch folder on the vault, or with `stage`, get their
+    /// files through the staging root and the helper as `settings` say, or else `upload`.
     pub fn new(
         client: Client,
         settings: Settings,
         scratch: PathBuf,
+        stage: Option<RemoteStage>,
+        upload: Option<Binary>,
     ) -> Result<JarviceBackend, String> {
-        if settings.vault.is_none() {
+        if stage.is_some() && settings.helper.is_none() && upload.is_none() {
             return Err(
-                "JARVICE jobs see the files of uwe only on a vault: set vault in \
-                        [executor.jarvice]"
+                "JARVICE jobs need the uwe helper for object-store staging: set \
+                        helper_path, helper_url or helper_file in [executor.jarvice]"
                     .into(),
             );
         }
-        if !scratch.starts_with(&settings.vault_path) {
+        if stage.as_ref().is_some_and(|stage| stage.credentials) {
+            return Err("JARVICE staging uses presigned requests; leave out staging_access".into());
+        }
+        if stage.is_none() && settings.vault.is_none() {
+            return Err(
+                "JARVICE jobs see the files of uwe only on a vault: set vault in \
+                        [executor.jarvice], or use object-store staging"
+                    .into(),
+            );
+        }
+        if stage.is_none() && !scratch.starts_with(&settings.vault_path) {
             return Err(format!(
                 "the scratch folder {} is not on the vault at {}; run uwe in JARVICE with its \
-                 cache on the vault",
+                 cache on the vault, or use object-store staging",
                 scratch.display(),
                 settings.vault_path
             ));
@@ -78,6 +100,8 @@ impl JarviceBackend {
             client,
             settings,
             scratch,
+            stage,
+            upload,
             staging_time: Duration::from_secs(30 * 60),
             configs: ImageConfigs::default(),
             held: AtomicBool::new(false),
@@ -103,7 +127,7 @@ impl Backend for JarviceBackend {
             return Err(ExecutorError::Cancelled);
         }
         let mut spec = job.spec.clone();
-        self.admit(&spec)?;
+        self.admit(job, &spec)?;
         let machine = self.machine_type(job.placement)?;
         let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         if spec.arguments.is_empty() {
@@ -116,13 +140,30 @@ impl Backend for JarviceBackend {
         }
         let local = self.scratch.join(job.name);
         tokio::fs::create_dir_all(&self.scratch).await?;
-        let mounts = {
-            let (root, staging) = (local.clone(), job.staging.clone());
-            tokio::task::spawn_blocking(move || place(&root, &staging))
-                .await
-                .map_err(|error| std::io::Error::other(error.to_string()))??
+        let result = match &self.stage {
+            Some(stage) => {
+                // Another attempt with this name owns its folder.
+                tokio::fs::create_dir(&local).await?;
+                let mut staged = None;
+                let result = self
+                    .remote(job, &spec, &machine, stage, &local, &mut staged, cancel)
+                    .await;
+                if let Some((prefix, plan)) = &staged {
+                    stage.clean(prefix, plan).await;
+                }
+                result
+            }
+            None => {
+                let mounts = {
+                    let (root, staging) = (local.clone(), job.staging.clone());
+                    tokio::task::spawn_blocking(move || place(&root, &staging))
+                        .await
+                        .map_err(|error| std::io::Error::other(error.to_string()))??
+                };
+                self.shared(job, &spec, &machine, &local, &mounts, cancel)
+                    .await
+            }
         };
-        let result = (self.shared(job, &spec, &machine, &local, &mounts, cancel)).await;
         if result.is_err() {
             let _ = tokio::fs::remove_dir_all(&local).await;
         }
@@ -132,13 +173,22 @@ impl Backend for JarviceBackend {
 
 impl JarviceBackend {
     /// Refuses what a JARVICE job cannot do, before anything is placed.
-    fn admit(&self, spec: &TaskSpec) -> Result<(), ExecutorError> {
+    fn admit(&self, job: Job<'_>, spec: &TaskSpec) -> Result<(), ExecutorError> {
         let refuse = |message: &str| Err(ExecutorError::Unsupported(message.to_owned()));
+        if job.placement.offline && self.stage.is_some() {
+            return refuse("JARVICE jobs need the network for object-store staging");
+        }
         if !spec.containers.is_empty() {
             return refuse("the JARVICE executor runs only tasks of one container");
         }
         if spec.run_as.is_some() {
             return refuse("the JARVICE executor runs a task as the user of its job");
+        }
+        let absolute = (job.staging.inputs.iter().map(|input| &input.path))
+            .chain(&job.staging.directories)
+            .any(|path| path.starts_with('/'));
+        if absolute && self.stage.is_some() {
+            return refuse("JARVICE object-store staging cannot place inputs at absolute paths");
         }
         Ok(())
     }
@@ -214,6 +264,91 @@ impl JarviceBackend {
         let mut finished = finished.await?;
         finished.collect_outputs(spec, job.staging)?;
         Ok(finished)
+    }
+
+    /// Runs an attempt through the staging root: the helper in the job stages the inputs in,
+    /// runs the wrapper and sends the outputs back, which come to `local`.
+    #[expect(clippy::too_many_arguments, reason = "the parts of one attempt")]
+    async fn remote(
+        &self,
+        job: Job<'_>,
+        spec: &TaskSpec,
+        machine: &str,
+        stage: &RemoteStage,
+        local: &Path,
+        staged: &mut Option<(String, String)>,
+        cancel: &CancellationToken,
+    ) -> Result<Finished, ExecutorError> {
+        let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
+        let root = Path::new(&self.settings.task_folder).join(job.name);
+        let access = Access::default();
+        let run = ContainerRun {
+            name: job.name,
+            image,
+            root: &root,
+            workdir: spec.workdir.as_deref(),
+            mounts: &[],
+            owner: (0, 0),
+            cpus: job.placement.cpus.max(1),
+            memory: job.placement.memory_bytes,
+            offline: false,
+            wrapper_path: None,
+            access: &access,
+        };
+        let (control, home) = (text(&root.join(CONTROL)), text(&root.join(HOME)));
+        let folders = Folders {
+            work: &run.inside(),
+            control: &control,
+            home: &home,
+            outbox: &text(&root.join("outbox")),
+            owner: "",
+        };
+        let transfer = text(&root.join(executor::helper::TRANSFER));
+        let script = capture(&wrapper(spec, &folders), &transfer)?;
+        let discovery = executor::helper::Discovery::of(spec, job.staging);
+        let extra = [("control/wrapper.sh", script)];
+        let planned = stage
+            .plan_discovery(job, &root, &extra, &[], RECORDS, false, discovery)
+            .await?;
+        *staged = Some((planned.prefix.clone(), planned.plan.clone()));
+        let download = match (&self.settings.helper, &self.upload) {
+            (None, Some(binary)) => Some(stage.binary(binary).await?),
+            _ => None,
+        };
+        let digest = (self.upload.as_ref()).map_or("", |binary| binary.digest.hex());
+        let source = match (&self.settings.helper, &download, &self.upload) {
+            (Some(Helper::Path(path)), _, _) => Source::Path(path),
+            (Some(Helper::Download { url, sha256 }), _, _) => Source::Download {
+                url,
+                sha256,
+                machine: None,
+            },
+            (None, Some(url), Some(binary)) => Source::Download {
+                url,
+                sha256: digest,
+                machine: Some(binary.machine.uname()),
+            },
+            _ => {
+                return Err(ExecutorError::Unsupported(
+                    "no uwe helper for the jobs".into(),
+                ));
+            }
+        };
+        let time = job.placement.time_seconds;
+        let words = executor::batch::command(&text(&root), &planned.location, source, time);
+        let words: Vec<String> = words.iter().map(|word| quote(word)).collect();
+        let script = format!("{}\n", words.join(" "));
+        let reference = &image.reference;
+        let (submitted, status) = (self.submit(job, reference, machine, &script, cancel)).await?;
+        let collected =
+            executor::remote::patiently(|| stage.collect(&planned.prefix, local, RECORDS)).await;
+        if let Err(error) = collected {
+            // The objects stay, as they are the only copy of the results.
+            *staged = None;
+            return Err(error);
+        }
+        self.finish(&submitted, &status, local.to_owned(), time, spec)
+            .await
     }
 
     /// Submits the job script of an attempt and waits for the end of its job, whose state it

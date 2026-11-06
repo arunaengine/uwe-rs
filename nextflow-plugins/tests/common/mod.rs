@@ -9,14 +9,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use nextflow_evaluator::interpreter::Host;
 use nextflow_evaluator::interpreter::glob::matches;
 use nextflow_runtime::driver::{Nextflow, Settings};
 use workflow_graph::{
     Attempt, Engine, Execution, Executor, Files, Launch, LocalFiles, Outcome, OutputFile, Running,
-    Task,
+    Task, Usage,
 };
 
 /// The fixture folder of a plugin.
@@ -28,6 +28,12 @@ pub fn fixtures(plugin: &str) -> PathBuf {
 
 /// A run of the pipeline in `folder`, named `run_name`, with what it printed.
 pub fn run(folder: &Path, run_name: &str) -> (Execution, String) {
+    run_timed(folder, run_name, None)
+}
+
+/// A run whose tasks report the given run time and CPU time, so that figures derived from
+/// them are fixed.
+pub fn run_timed(folder: &Path, run_name: &str, timing: Option<Timing>) -> (Execution, String) {
     let launch = Launch {
         target: folder.to_owned(),
         scratch: folder.join("scratch"),
@@ -43,6 +49,7 @@ pub fn run(folder: &Path, run_name: &str) -> (Execution, String) {
     let mut driver = Nextflow::new(&launch, settings).expect("a driver");
     let mut shell = Shell {
         root: folder.join("work"),
+        timing,
     };
     let execution = Engine::new(&mut shell).run("main.nf", &mut driver);
     let printed = printed.borrow().clone();
@@ -62,6 +69,14 @@ impl Host for Printed {
 /// linked there, and gives the files that match its output patterns.
 struct Shell {
     root: PathBuf,
+    timing: Option<Timing>,
+}
+
+/// The run time and CPU time that every task of a run reports.
+#[derive(Clone, Copy, Debug)]
+pub struct Timing {
+    pub realtime: Duration,
+    pub cpu: Duration,
 }
 
 impl Executor for Shell {
@@ -101,7 +116,15 @@ impl Shell {
             .current_dir(&folder)
             .output()
             .expect("runs bash");
-        let ended = SystemTime::now();
+        let mut ended = SystemTime::now();
+        let mut usage = None;
+        if let Some(timing) = self.timing {
+            ended = started + timing.realtime;
+            usage = Some(Usage {
+                cpu_usec: u64::try_from(timing.cpu.as_micros()).ok(),
+                ..Usage::default()
+            });
+        }
         let mut files = Vec::new();
         let mut names: Vec<String> = std::fs::read_dir(&folder)
             .expect("lists the task folder")
@@ -130,6 +153,7 @@ impl Shell {
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             started: Some(started),
             ended: Some(ended),
+            usage,
             ..Outcome::default()
         }
     }

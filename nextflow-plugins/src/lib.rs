@@ -11,6 +11,7 @@ mod nf_bids;
 mod nf_bigbrother;
 mod nf_boost;
 mod nf_cgroup_metrics;
+mod nf_cloudcache;
 mod nf_cmgg;
 mod nf_co2footprint;
 mod nf_core_utils;
@@ -114,6 +115,11 @@ const NF_VALIDATION_PLUGIN: Plugin = Plugin {
 /// Whether nf-cgroup-metrics fills the memory fields of the trace from the cgroup samples.
 pub fn cgroup_metrics(config: &Config) -> bool {
     nf_cgroup_metrics::enabled(config)
+}
+
+/// Where nf-cloudcache puts the cache store: see [`nf_cloudcache::location`].
+pub fn cloud_cache(config: &Config, variable: Option<&str>) -> Result<Option<String>, String> {
+    nf_cloudcache::location(config, variable)
 }
 
 /// Whether the plugins of the config free the intermediate files of the run while it runs:

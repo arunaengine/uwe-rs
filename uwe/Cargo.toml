@@ -25,6 +25,7 @@ jiff.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
+nextflow-plugins.workspace = true
 nextflow-runtime.workspace = true
 run-crate.workspace = true
 run-database.workspace = true

@@ -41,6 +41,8 @@ Inputs can come from S3 (and S3-compatible services), Google Cloud Storage, Azur
 
 `irods://` addresses read and write data objects in an iRODS zone over the iRODS protocol of iRODS 4.3 and later, with TLS when the server's policy and uwe's agree. `irods:///tempZone/home/rods/a.txt` and `irods://tempZone/home/rods/a.txt` name the same data object: the server comes from the settings, never from the address. Writing makes the missing collections. A `[storage.<name>]` table of type `irods` sets `host`, `port`, `user`, `zone`, `password`, `authentication` (`native`, or `pam_password` for a PAM password) and `negotiation` (`CS_NEG_REQUIRE`, `CS_NEG_DONT_CARE` or `CS_NEG_REFUSE`, the default). Unset values come from `IRODS_HOST`, `IRODS_PORT`, `IRODS_USER_NAME`, `IRODS_ZONE_NAME` and `IRODS_PASSWORD`, then from the iRODS environment file (`IRODS_ENVIRONMENT_FILE`, else `~/.irods/irods_environment.json`). uwe does not read the obfuscated password file `.irodsA` that `iinit` writes.
 
+A Nextflow config with `cloudcache.enabled = true` (nf-cloudcache) puts uwe's store at `cloudcache.path`, else at the address of the environment variable `NXF_CLOUDCACHE_PATH`, else at `workDir`, unless `-store` names a store. A place on this machine is refused. The address needs a storage provider that can write there. The store keeps uwe's own format, not Nextflow's cache files. `uwe clean` and other commands do not read the Nextflow config, so they need `-store` with the same address.
+
 ## Hosts
 
 uwe builds and runs on Linux and macOS, and on Windows through WSL 2. The static release build is for x86_64 Linux. Remote nodes that receive the uwe binary must run Linux.

@@ -241,3 +241,12 @@ maps when the schema's items have properties, else of lists, or of single values
 rows with one field. The text of CSV and TSV fields becomes numbers, booleans or null
 where it reads as such.
 
+## src/nf_cloudcache.rs
+
+nf-cloudcache 0.6.2 is a mapping onto uwe's store: a Nextflow run with `cloudcache.enabled =
+true` keeps its store at `cloudcache.path`, else `NXF_CLOUDCACHE_PATH`, else `workDir`, unless
+`-store` names one; uwe reads the config for it before the run opens the store. Only the
+boolean `true` turns it on, also without a `plugins` line. A local place fails the run with the
+plugin's message. The store keeps uwe's format, not Nextflow's `index.<run name>` and task
+entries. The warning for a path without `enabled` has a colon where the plugin has a long dash.
+`-with-cloudcache` is not an option of uwe.

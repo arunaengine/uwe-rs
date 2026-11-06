@@ -250,8 +250,14 @@ pub const PLUGINS: &[Plugin] = &[
     // metadata file; the shape of that file was not recorded.
     crate::nf_tencentcloud::PLUGIN,
     planned("nf-snowflake", Kind::Executor),
-    // The `agent` primitive.
-    planned("nf-agent", Kind::Other),
+    // nf-agent: the `agent` primitive of Nextflow 26.10, a preview; one chat completions
+    // request per task, for text or structured output, without tools or skills.
+    Plugin {
+        scopes: &["agent"],
+        ..Plugin::new("nf-agent", Kind::Other, State::Partial)
+    },
+    // nf-agent-pi: waits for the end of the preview; it runs the pi agent program in a
+    // container that talks gRPC with the driver.
     planned("nf-agent-pi", Kind::Other),
     // Not implementable.
     impossible(

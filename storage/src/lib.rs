@@ -16,6 +16,7 @@ mod journal;
 mod objects;
 mod public;
 pub mod settings;
+pub mod synapse;
 mod web;
 
 use std::collections::HashMap;
@@ -218,6 +219,7 @@ impl Storage {
             Provider::new(Source::Files, prefixes(&["file://"])),
             Provider::new(Source::Ftp, prefixes(&["ftp://"])),
             Provider::new(Source::Drs, prefixes(&["drs://"])),
+            Provider::new(Source::Synapse, prefixes(&["syn://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

@@ -15,6 +15,7 @@ use crate::ftp::Ftp;
 use crate::objects::{Objects, Service};
 use crate::public::PublicBuckets;
 use crate::settings::{self, Kind, ProviderSettings};
+use crate::synapse::{self, Synapse};
 use crate::web::Web;
 use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
@@ -33,6 +34,8 @@ pub(crate) enum Source {
     Ftp,
     /// `drs` addresses that no provider serves, with the `drs` scope of a Nextflow config.
     Drs,
+    /// `syn` addresses that no provider serves, with the `synapse` scope of a Nextflow config.
+    Synapse,
 }
 
 impl Source {
@@ -46,6 +49,7 @@ impl Source {
                     Source::Files => "files",
                     Source::Ftp => "ftp",
                     Source::Drs => "drs",
+                    Source::Synapse => "synapse",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -94,6 +98,9 @@ impl Source {
                 "drs".into(),
                 value.authentication.clone().unwrap_or_default(),
             ],
+            Kind::Synapse(value) => {
+                vec!["synapse".into(), value.endpoint.clone().unwrap_or_default()]
+            }
         });
         identity
     }
@@ -109,6 +116,7 @@ impl Source {
                 "an FTP server, as the user anonymous or the user of the address".to_owned()
             }
             Source::Drs => "a DRS server, with the credential of the environment".to_owned(),
+            Source::Synapse => "Synapse, with the token of the environment".to_owned(),
         }
     }
 }
@@ -121,6 +129,7 @@ pub(crate) enum Backend {
     Folder(Folder),
     Ftp(Ftp),
     Drs(Drs),
+    Synapse(Synapse),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -142,6 +151,7 @@ impl Connection {
             }),
             Source::Ftp => Backend::Ftp(Ftp::public()),
             Source::Drs => Backend::Drs(Drs::new(drs::scope()).map_err(failed)?),
+            Source::Synapse => Backend::Synapse(Synapse::new(synapse::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -192,11 +202,20 @@ impl Connection {
                     };
                     Backend::Drs(Drs::new(options).map_err(failed)?)
                 }
+                Kind::Synapse(settings) => {
+                    let options = synapse::Options {
+                        endpoint: settings.endpoint.clone(),
+                        token: secrets.reveal(&settings.token)?,
+                    };
+                    Backend::Synapse(Synapse::new(options).map_err(failed)?)
+                }
             },
         };
         // Credentials that a client found in the environment are secrets too.
-        if let Backend::Drs(client) = &backend {
-            secrets.0.extend(client.secrets());
+        match &backend {
+            Backend::Drs(client) => secrets.0.extend(client.secrets()),
+            Backend::Synapse(client) => secrets.0.extend(client.secrets()),
+            _ => {}
         }
         Ok(Connection {
             backend,
@@ -222,6 +241,7 @@ impl Connection {
             Backend::Folder(folder) => folder.stat(&folder.path(prefix, target)?).await,
             Backend::Ftp(ftp) => ftp.stat(target).await,
             Backend::Drs(drs) => drs.stat(target).await,
+            Backend::Synapse(synapse) => synapse.stat(target).await,
         }
     }
 
@@ -234,6 +254,8 @@ impl Connection {
             Backend::Ftp(ftp) => ftp.list(target).await,
             // DRS objects are single files, so a listing is empty.
             Backend::Drs(_) => Ok(Vec::new()),
+            // Synapse lists nothing, so that cleanups of `syn://` folders find nothing to do.
+            Backend::Synapse(_) => Ok(Vec::new()),
         }
     }
 
@@ -252,6 +274,7 @@ impl Connection {
             Backend::Folder(folder) => folder.download(&folder.path(prefix, target)?, file).await,
             Backend::Ftp(ftp) => ftp.download(target, file, offset).await,
             Backend::Drs(drs) => drs.download(target, file).await,
+            Backend::Synapse(synapse) => synapse.download(target, file).await,
         }
     }
 

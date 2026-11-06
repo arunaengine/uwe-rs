@@ -1,0 +1,8 @@
+
+[FAILED] completed=0 failed=0 cached=0
+[ERROR] ERROR ~ Configuration validation failed for bad/noset.yaml:
+ERRORS:
+  Suffix 'T1w': configuration is null or empty
+
+ -- Check script 'main.nf' at line: 22 or see '.nextflow.log' file for more details
+[exit code 1]

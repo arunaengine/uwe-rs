@@ -1,0 +1,2 @@
+Recorded with Nextflow 26.04.6 and nf-bids 0.3.0, offline, from the plugin's own test datasets (see the plugin spec).
+datasets/*.files.tsv list each dataset's files; the tests create them empty, with the ds-mini files stored here.

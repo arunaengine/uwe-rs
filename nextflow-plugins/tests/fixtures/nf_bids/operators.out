@@ -1,0 +1,18 @@
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] <probe-dir>/work
+combineBy => [[id:sub-01, age:25, session:ses-01], [id:sub-01, age:25, session:ses-02], [id:sub-02, age:30, session:ses-01]]
+joinBy => [[id:A, l:1, r:x], [id:B, l:2, r:y], [id:A, l:4, r:x]]
+combineBy two keys => [[a:1, x:l, b:1, y:r], [a:1, x:l, b:1, y:s]]
+groupTupleBy size 2 => [[sub-01, [[subject:sub-01, run:2, f:a], [subject:sub-01, run:1, f:b]]], [sub-02, [[subject:sub-02, run:1, f:c]]], [sub-01, [[subject:sub-01, run:3, f:d]]]]
+groupTupleBy sort closure => [[sub-01, [[subject:sub-01, run:1, f:b], [subject:sub-01, run:2, f:a], [subject:sub-01, run:3, f:d]]], [sub-02, [[subject:sub-02, run:1, f:c]]]]
+groupTupleBy tuples => [[x, [[x, 1], [x, 3]]], [y, [[y, 2]]]]
+groupTupleBy => [[sub-01, [[subject:sub-01, run:2, f:a], [subject:sub-01, run:1, f:b], [subject:sub-01, run:3, f:d]]], [sub-02, [[subject:sub-02, run:1, f:c]]]]
+joinBy remainder => [[id:A, l:1, r:x], [id:B, l:2, r:y], [id:A, l:4, r:x], [id:C, l:3], [id:D, r:z]]
+groupTupleBy composite => [[CompositeKey([sub-01, true]), [[subject:sub-01, run:2, f:a], [subject:sub-01, run:3, f:d]]], [CompositeKey([sub-02, false]), [[subject:sub-02, run:1, f:c]]], [CompositeKey([sub-01, false]), [[subject:sub-01, run:1, f:b]]]]
+joinBy two keys => [[sid:A, v:1, pid:A, w:2]]
+joinBy clash => [[id:A, v:2]]
+groupTupleBy size 2 no remainder => [[sub-01, [[subject:sub-01, run:2, f:a], [subject:sub-01, run:1, f:b]]]]
+joinBy tuples => [[A, 1, A, 2]]
+
+[SUCCESS] completed=0 failed=0 cached=0
+[exit code 0]

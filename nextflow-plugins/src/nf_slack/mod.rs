@@ -5,3 +5,4 @@
 mod api;
 mod blocks;
 mod settings;
+mod worker;

@@ -1690,6 +1690,7 @@ async fn finish(
 /// The exit code that the wrapper of a task recorded in a container that ended well. The node
 /// wrote it before the record of the container, but a shared file system may show it to this
 /// machine later, so it is looked for again for a while before the attempt counts as failed.
+pub(crate) async fn record(spec: &task_model::TaskSpec, control: &Path) -> Option<i32> {
     let since = Instant::now();
     let mut pause = Duration::from_millis(100);
     loop {
@@ -1707,6 +1708,7 @@ async fn finish(
 /// Syncs every file in a folder, and in its folders, but not the files that links point to: on
 /// a shared file system like CephFS, a file that one machine wrote and did not sync may show
 /// empty or short on another machine for a while.
+pub(crate) fn sync_files(folder: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(folder)? {
         let entry = entry?;
         let kind = entry.file_type()?;
@@ -1768,6 +1770,7 @@ fn too_long(time: Option<u64>) -> String {
 /// A failure of the machine with the end of the job's log, or a hint when the job left none.
 /// A job on a node without the `shared` folders keeps its log beside its folder on the node
 /// when it could not send it back.
+pub(crate) async fn explain(message: String, root: &Path, shared: bool) -> String {
     let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
     if log.is_err() && !shared {
         return format!(
@@ -1789,6 +1792,7 @@ fn too_long(time: Option<u64>) -> String {
     }
 }
 
+pub(crate) async fn read_number(path: &Path) -> Option<i32> {
     let text = tokio::fs::read_to_string(path).await.ok()?;
     text.trim().parse().ok()
 }

@@ -14,6 +14,7 @@ use crate::catalogue::{Kind, Plugin, State};
 use crate::nf_report::{FUNCTIONS, Finished, Flavour, activate_as, call};
 use crate::observer::Observer;
 use crate::report_format::Json;
+use crate::service::safe_url;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: FUNCTIONS,
@@ -286,26 +287,13 @@ fn java(value: f64) -> String {
     Value::Number(nextflow_evaluator::number::Number::Double(value)).to_string()
 }
 
-/// An address without the user and password it may hold, for log lines.
-fn shown(url: &str) -> String {
-    match url.split_once("://") {
-        Some((scheme, rest)) => {
-            match rest.split_once('@').filter(|(user, _)| !user.contains('/')) {
-                Some((_, host)) => format!("{scheme}://{host}"),
-                None => url.to_owned(),
-            }
-        }
-        None => url.to_owned(),
-    }
-}
-
 /// The prices of the price service.
 fn fetch(url: &str) -> Option<serde_json::Value> {
     let failed = |error: String| {
         tracing::warn!(
             "Pricing API at {} is not working or does not exist: {error}. Cost estimation will \
              default to configured/default rates.",
-            shown(url)
+            safe_url(url)
         );
         None
     };
@@ -322,8 +310,8 @@ fn fetch(url: &str) -> Option<serde_json::Value> {
     };
     let request = client.get(url).timeout(LIMIT).header("Accept", "*/*");
     let answer = runtime.block_on(async {
-        let response = request.send().await.map_err(|error| error.to_string())?;
-        response.text().await.map_err(|error| error.to_string())
+        let response = (request.send().await).map_err(|error| error.without_url().to_string())?;
+        (response.text().await).map_err(|error| error.without_url().to_string())
     });
     match answer {
         Err(error) => failed(error),
@@ -331,7 +319,7 @@ fn fetch(url: &str) -> Option<serde_json::Value> {
             tracing::warn!(
                 "Pricing API at {} returned an empty response. Cost estimation will default to \
                  configured/default rates.",
-                shown(url)
+                safe_url(url)
             );
             None
         }
@@ -474,10 +462,6 @@ mod tests {
         assert_eq!(
             prices.and_then(|prices| prices["kGBHr"].as_f64()),
             Some(1.08)
-        );
-        assert_eq!(
-            shown("https://user:secret@prices.example/fees"),
-            "https://prices.example/fees"
         );
     }
 }

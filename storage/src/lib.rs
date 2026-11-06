@@ -21,6 +21,8 @@ mod objects;
 pub mod oci;
 pub mod oci_key;
 mod public;
+pub mod quilt;
+pub mod quilt_package;
 pub mod settings;
 pub mod synapse;
 mod web;
@@ -230,6 +232,7 @@ impl Storage {
             Provider::new(Source::Oci, prefixes(&["oci://"])),
             Provider::new(Source::Lakefs, prefixes(&["lakefs://"])),
             Provider::new(Source::Lamin, prefixes(&["lamin://"])),
+            Provider::new(Source::Quilt, prefixes(&["quilt+s3://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

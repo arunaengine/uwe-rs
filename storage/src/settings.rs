@@ -48,6 +48,8 @@ pub enum Kind {
     Oci(Oci),
     Lakefs(Lakefs),
     Lamin(Lamin),
+    /// Quilt packages in S3 buckets, with the settings of an S3 provider.
+    Quilt(S3),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -193,7 +195,7 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 12] = [
+const TYPES: [&str; 13] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
@@ -206,6 +208,7 @@ const TYPES: [&str; 12] = [
     "oci",
     "lakefs",
     "lamin",
+    "quilt",
 ];
 
 impl Settings {
@@ -344,6 +347,19 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
             ],
             &["s3", "http", "https"],
             |table| Ok(Kind::S3(s3(table)?)),
+        ),
+        "quilt" => (
+            &[
+                "endpoint",
+                "region",
+                "path_style",
+                "access_key_id",
+                "secret_access_key",
+                "session_token",
+                "anonymous",
+            ],
+            &["quilt+s3"],
+            |table| Ok(Kind::Quilt(s3(table)?)),
         ),
         "google-cloud-storage" => (
             &["endpoint", "credential_file", "token", "anonymous"],

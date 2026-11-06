@@ -1,0 +1,4 @@
+fam1	kid	dad	mom	1	2
+fam1	dad	0	0	1	1
+fam1	mom	0	0	2	0
+fam2	solo	0	0	0	0	extra1	extra2

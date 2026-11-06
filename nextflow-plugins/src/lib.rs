@@ -5,6 +5,7 @@
 pub mod catalogue;
 pub mod everit;
 mod nf_anndata;
+mod nf_arts;
 mod nf_bactopia;
 mod nf_bids;
 mod nf_bigbrother;

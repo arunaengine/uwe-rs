@@ -54,6 +54,7 @@ mod staging;
 mod terminal;
 mod tes;
 mod tracked;
+mod wr;
 
 #[doc(hidden)]
 pub mod cli;

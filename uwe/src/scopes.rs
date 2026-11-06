@@ -1,5 +1,5 @@
 //! Fills executor settings that uwe's config file leaves unset from a Nextflow config: `nomad`,
-//! `k8s`, `slurm_no_memory`, `ospool`, `tes`, `tencentcloud` and nf-jarvice's process settings.
+//! `k8s`, `slurm_no_memory`, `ospool`, `tes`, `tencentcloud`, `wr` and nf-jarvice's settings.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -498,6 +498,33 @@ pub(crate) fn jarvice(config: &Config, jarvice: &mut crate::jarvice::Config) {
     if settings.api_key.is_none() {
         let key = scope.text(&["process", "user", "apikey"]);
         settings.api_key = key.map(|key| Secret::written(key, origin()));
+    }
+}
+
+/// Fills the wr settings from nf-wr's `executor.$wr` scope (or `executor.wr`): the deployment,
+/// the manager's address, and the files of its token and CA certificate.
+pub(crate) fn wr(config: &Config, wr: &mut crate::wr::Config) {
+    let scope = Scope(config);
+    let value = |name: &str| {
+        (scope.text(&["executor", "$wr", name])).or_else(|| scope.text(&["executor", "wr", name]))
+    };
+    let settings = &mut wr.settings;
+    if let Some(deployment) = value("deployment")
+        && settings.deployment == "production"
+    {
+        match wr_executor::deployment_name(&deployment) {
+            Ok(name) => settings.deployment = name,
+            Err(why) => tracing::warn!("uwe ignores executor.$wr.deployment, which {why}"),
+        }
+    }
+    settings.endpoint = settings.endpoint.take().or_else(|| value("endpoint"));
+    let file = |name: &str| value(name).map(PathBuf::from);
+    settings.token_file = settings.token_file.take().or_else(|| file("tokenpath"));
+    settings.ca_file = settings.ca_file.take().or_else(|| file("cacertpath"));
+    if value("disableRemoteBinDir").is_some() {
+        tracing::warn!(
+            "uwe ignores executor.$wr.disableRemoteBinDir: it stages the files of each job itself"
+        );
     }
 }
 

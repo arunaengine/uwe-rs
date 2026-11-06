@@ -31,6 +31,8 @@ pub struct Config {
     pub project: Option<String>,
     pub storage: Option<String>,
     pub disk_resource: Option<String>,
+    /// How often the scheduler is asked about the jobs, at most; else the runner's default.
+    pub poll: Option<std::time::Duration>,
 }
 
 impl Config {
@@ -65,6 +67,7 @@ impl Config {
             project: table.text("project")?,
             storage: table.text("storage")?,
             disk_resource: table.text("disk_resource")?,
+            poll: None,
         })
     }
 }
@@ -132,7 +135,7 @@ fn needs(missing: &[&str], executor: &str, place: &str) -> Result<(), String> {
 
 /// An executor that submits each task as a job of `scheduler`, with its attempts in `folder`.
 /// Tasks without an image get `default_image`.
-fn executor<S: Scheduler + std::fmt::Debug>(
+pub(crate) fn executor<S: Scheduler + std::fmt::Debug>(
     scheduler: S,
     config: &Config,
     store: Store,
@@ -152,6 +155,9 @@ fn executor<S: Scheduler + std::fmt::Debug>(
     let mut backend = GridBackend::new(scheduler, folder.to_owned(), container);
     backend.proxy = storage::config_proxy().map(str::to_owned);
     backend.staging_time = config.staging.margin();
+    if let Some(poll) = config.poll {
+        backend.poll = poll;
+    }
     if let Some(stage) = config.staging.stage(&setup.storage)? {
         let helper = match (&config.helper, &config.helper_file) {
             (Some(helper), _) => helper.clone(),

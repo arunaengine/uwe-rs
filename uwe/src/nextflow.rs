@@ -325,14 +325,14 @@ pub fn driver(
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
                 | Some("flyte" | "snowflake")
-                | Some("jarvice")
+                | Some("jarvice" | "wr")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
                 | Some("flyte" | "snowflake")
-                | Some("jarvice")
+                | Some("jarvice" | "wr")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),
@@ -389,6 +389,7 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("snowflake", "snowflake"),
     ("tencentcloud-omics", "tes"),
     ("tes", "tes"),
+    ("wr", "wr"),
 ];
 
 /// For a Nextflow run: the uwe executor that the pipeline's `process.executor` picks, when no
@@ -407,7 +408,7 @@ pub fn pipeline_executor(
         Some(
             "aws-batch" | "google-batch" | "azure-batch" | "kubernetes" | "nomad" | "slurm" | "tes"
         ) | Some("htcondor" | "pbs" | "flyte" | "snowflake")
-            | Some("jarvice")
+            | Some("jarvice" | "wr")
     );
     if language != Language::Nextflow {
         return Ok(None);
@@ -448,6 +449,9 @@ pub fn pipeline_executor(
     }
     if named == Some("jarvice") || picked.as_deref() == Some("jarvice") {
         crate::scopes::jarvice(&config, &mut setup.executors.jarvice);
+    }
+    if named == Some("wr") || picked.as_deref() == Some("wr") {
+        crate::scopes::wr(&config, &mut setup.executors.wr);
     }
     if named == Some("htcondor") || picked.as_deref() == Some("htcondor") {
         crate::scopes::ospool(&config);

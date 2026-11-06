@@ -37,6 +37,8 @@ pub struct Loader {
     plugins: HashMap<Rc<str>, Rc<Module>>,
     /// The scripts that port plugin functions, by plugin id.
     plugin_scripts: HashMap<Rc<str>, Rc<Module>>,
+    /// The plugins whose script is being loaded; that script may include their native functions.
+    porting: HashSet<Rc<str>>,
     loading: HashSet<PathBuf>,
     /// The scripts that could not be loaded, whose errors are already reported.
     failed: HashSet<PathBuf>,
@@ -220,7 +222,14 @@ impl Loader {
         if let Some(module) = self.plugin_scripts.get(plugin) {
             return Some(module.clone());
         }
-        let module = Rc::new(self.lower(source, Path::new(&format!("plugin/{plugin}.nf")))?);
+        if !self.porting.insert(plugin.into()) {
+            return None;
+        }
+        let path = PathBuf::from(format!("plugin/{plugin}.nf"));
+        let module = self.lower(source, &path);
+        self.porting.remove(plugin);
+        let module = Rc::new(module?);
+        self.link(&module, &path);
         self.plugin_scripts.insert(plugin.into(), module.clone());
         Some(module)
     }
@@ -356,6 +365,9 @@ impl Imports for Includes<'_> {
         if let Some(plugin) = source.strip_prefix("plugin/") {
             if let Some(script) = nextflow_plugins::script(plugin) {
                 self.loader.plugin_script(plugin, script);
+            }
+            if self.loader.porting.contains(plugin) {
+                return Ok(DefinitionKind::Function);
             }
             return match nextflow_plugins::functions(plugin) {
                 Some(functions) if functions.contains(&name) => Ok(DefinitionKind::Function),

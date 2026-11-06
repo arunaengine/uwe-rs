@@ -1,0 +1,60 @@
+
+---------------------------------------------
+  bactopia/bactopia v9.9.9
+  Probe workflow 
+---------------------------------------------
+Core Nextflow options
+  runName    : determined_austin
+  launchDir  : <probe-dir>
+  workDir    : <probe-dir>/work
+  projectDir : <probe-dir>
+  userName   : <user>
+  profile    : standard
+  configFiles: <probe-dir>/nextflow.config
+
+!! Only displaying parameters that differ from the defaults !!
+--------------------------------------------------------------------
+
+validate => data=is_fofn hasErrors=false
+validate logs =>
+
+inputs hasErrors=true
+inputs logs =>
+[0;31mInvalid runtype bogus found, please correct to continue. Expected: single-end, paired-end, hybrid, short_polish, merge-pe, hybrid-merge-pe, short_polish-merge-pe, merge-se, or assembly[0m
+sample => [meta:[id:A, name:A, runtype:paired-end, genome_size:0, species:UNKNOWN_SPECIES, single_end:false], r1:[/x/A_R1.fq.gz], r2:[/x/A_R2.fq.gz], se:[], lr:[], assembly:[]]
+sample => [meta:[id:B, name:B, runtype:merge-pe, genome_size:5, species:UNKNOWN_SPECIES, single_end:false], r1:[/x/B1.fq.gz, /x/B2.fq.gz], r2:[/x/B3.fq.gz, /x/B4.fq.gz], se:[], lr:[], assembly:[]]
+sample => null
+[PIPELINE] bactopia/bactopia 9.9.9 | profile=standard
+[WORKDIR] <probe-dir>/work
+
+[SUCCESS] completed=0 failed=0 cached=0
+
+--------------------------------------------------------------------
+
+Bactopia Execution Summary
+-------------------------------
+Workflow         : bactopia
+Bactopia Version : 9.9.9
+Nextflow Version : 26.04.6
+Command Line     : nextflow -q run main.nf -ansi-log false --samples data/fofn.tsv --mode is_fofn
+Launch Dir       : <probe-dir>
+Profile          : standard
+Completed At     : 2026-11-06T10:03:25.857718319+01:00
+Duration         : 511ms
+Resumed          : false
+Success          : true
+Merged Results   : bactopia/null
+
+
+Further analyze your samples using Bactopia Tools, with the following command:
+--------------------------------------------------------------------------------
+bactopia -profile standard --bactopia bactopia --wf <REPLACE_WITH_BACTOPIA_TOOL_NAME>
+
+Examples:
+bactopia -profile standard --bactopia bactopia --wf pangenome
+bactopia -profile standard --bactopia bactopia --wf merlin
+bactopia -profile standard --bactopia bactopia --wf sccmec
+
+See the full list of available Bactopia Tools: bactopia --list_wfs
+
+[exit code 0]

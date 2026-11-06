@@ -12,6 +12,7 @@ use crate::drs::{self, Drs};
 use crate::error::Problem;
 use crate::folder::Folder;
 use crate::ftp::Ftp;
+use crate::irods::{self, Irods};
 use crate::objects::{Objects, Service};
 use crate::public::PublicBuckets;
 use crate::settings::{self, Kind, ProviderSettings};
@@ -36,6 +37,8 @@ pub(crate) enum Source {
     Drs,
     /// `syn` addresses that no provider serves, with the `synapse` scope of a Nextflow config.
     Synapse,
+    /// `irods` addresses that no provider serves, with the `irods` scope of a Nextflow config.
+    Irods,
 }
 
 impl Source {
@@ -50,6 +53,7 @@ impl Source {
                     Source::Ftp => "ftp",
                     Source::Drs => "drs",
                     Source::Synapse => "synapse",
+                    Source::Irods => "irods",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -98,6 +102,13 @@ impl Source {
                 "drs".into(),
                 value.authentication.clone().unwrap_or_default(),
             ],
+            Kind::Irods(value) => vec![
+                "irods".into(),
+                value.host.clone().unwrap_or_default(),
+                value.port.map(|port| port.to_string()).unwrap_or_default(),
+                value.user.clone().unwrap_or_default(),
+                value.zone.clone().unwrap_or_default(),
+            ],
             Kind::Synapse(value) => {
                 vec!["synapse".into(), value.endpoint.clone().unwrap_or_default()]
             }
@@ -117,6 +128,7 @@ impl Source {
             }
             Source::Drs => "a DRS server, with the credential of the environment".to_owned(),
             Source::Synapse => "Synapse, with the token of the environment".to_owned(),
+            Source::Irods => "an iRODS zone, with the account of the environment".to_owned(),
         }
     }
 }
@@ -130,6 +142,7 @@ pub(crate) enum Backend {
     Ftp(Ftp),
     Drs(Drs),
     Synapse(Synapse),
+    Irods(Irods),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -152,6 +165,7 @@ impl Connection {
             Source::Ftp => Backend::Ftp(Ftp::public()),
             Source::Drs => Backend::Drs(Drs::new(drs::scope()).map_err(failed)?),
             Source::Synapse => Backend::Synapse(Synapse::new(synapse::scope()).map_err(failed)?),
+            Source::Irods => Backend::Irods(Irods::new(irods::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -209,12 +223,25 @@ impl Connection {
                     };
                     Backend::Synapse(Synapse::new(options).map_err(failed)?)
                 }
+                Kind::Irods(settings) => {
+                    let options = irods::Options {
+                        host: settings.host.clone(),
+                        port: settings.port,
+                        user: settings.user.clone(),
+                        zone: settings.zone.clone(),
+                        password: secrets.reveal(&settings.password)?,
+                        authentication: settings.authentication.clone(),
+                        negotiation: settings.negotiation.clone(),
+                    };
+                    Backend::Irods(Irods::new(options).map_err(failed)?)
+                }
             },
         };
         // Credentials that a client found in the environment are secrets too.
         match &backend {
             Backend::Drs(client) => secrets.0.extend(client.secrets()),
             Backend::Synapse(client) => secrets.0.extend(client.secrets()),
+            Backend::Irods(client) => secrets.0.extend(client.secrets()),
             _ => {}
         }
         Ok(Connection {
@@ -245,6 +272,7 @@ impl Connection {
             Backend::Ftp(ftp) => ftp.stat(target).await,
             Backend::Drs(drs) => drs.stat(target).await,
             Backend::Synapse(synapse) => synapse.stat(target).await,
+            Backend::Irods(irods) => irods.stat(target).await,
         }
     }
 
@@ -259,6 +287,7 @@ impl Connection {
             Backend::Drs(_) => Ok(Vec::new()),
             // Synapse lists nothing, so that cleanups of `syn://` folders find nothing to do.
             Backend::Synapse(_) => Ok(Vec::new()),
+            Backend::Irods(irods) => irods.list(target).await,
         }
     }
 
@@ -278,6 +307,7 @@ impl Connection {
             Backend::Ftp(ftp) => ftp.download(target, file, offset).await,
             Backend::Drs(drs) => drs.download(target, file).await,
             Backend::Synapse(synapse) => synapse.download(target, file).await,
+            Backend::Irods(irods) => irods.download(target, file).await,
         }
     }
 

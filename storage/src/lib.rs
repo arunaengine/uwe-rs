@@ -12,8 +12,7 @@ pub mod drs;
 mod error;
 mod folder;
 mod ftp;
-// The iRODS storage provider of the next change uses it.
-#[allow(dead_code)]
+pub mod irods;
 mod irods_protocol;
 mod journal;
 mod objects;
@@ -223,6 +222,7 @@ impl Storage {
             Provider::new(Source::Ftp, prefixes(&["ftp://"])),
             Provider::new(Source::Drs, prefixes(&["drs://"])),
             Provider::new(Source::Synapse, prefixes(&["syn://"])),
+            Provider::new(Source::Irods, prefixes(&["irods://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

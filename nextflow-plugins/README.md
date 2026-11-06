@@ -28,18 +28,25 @@ need none. The module defines its `Plugin` value, then two shared lines register
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &["exampleText"],          // functions that scripts include
     call: Some(call),                     // runs them by name
+    methods: Some(methods),               // runs the methods of the objects they give
     factories: &["fromExample"],          // channel factories, `Channel.fromExample`
     scopes: &["example"],                 // config scopes it reads
     observer: Some(activate),             // makes its run observer from the config
     ..Plugin::new("nf-example", Kind::Observer, State::Implemented)
 };
 fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error>;
+fn methods(object: &Value, name: &str, arguments: Vec<Value>, context: &mut Context)
+    -> Result<Option<Value>, Error>;
 fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String>;
 ```
 
 A config scope is read with `config.get(&["example", "enabled"])` in `activate` or `call`;
 `scopes` lists it for `capabilities()`. `activate` returns `None` when the config turns the
 plugin off, and an error, which stops the run before it starts, for a config it cannot use.
+
+A function may give an object of its own class: `crate::object(class, state)`, whose state
+implements `Native` (its text, and its equality). Scripts call its methods through `methods`,
+read a property `x` through `getX()` or `x()`, and set it through `setX(value)`.
 
 ## src/observer.rs
 

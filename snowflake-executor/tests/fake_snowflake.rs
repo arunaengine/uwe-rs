@@ -214,6 +214,35 @@ async fn runs_snowflake_jobs() {
     assert!(fake.statements("SELECT SYSTEM$GET_SERVICE_LOGS").is_empty());
 }
 
+/// A job service that Snowflake refuses at once, like one on a compute pool that does not
+/// exist, fails for good, without a retry.
+#[tokio::test]
+async fn refuses_unknown_pools() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeSnowflake::start(&folder.path().join("fake"), None);
+    let settings = Settings {
+        compute_pool: Some("MISSING".into()),
+        helper: Some(Helper::Path("/opt/uwe".into())),
+        ..settings(folder.path())
+    };
+    let backend = backend(folder.path(), &fake, key_pair(), settings);
+    let refused = run(
+        &backend,
+        "run-NOWHERE-1-1",
+        &spec("true"),
+        &Staging::default(),
+    )
+    .await;
+    let Err(ExecutorError::Unsupported(message)) = refused else {
+        panic!("a refusal: {refused:?}");
+    };
+    assert!(
+        message.contains("Compute pool 'MISSING' does not exist"),
+        "{message}"
+    );
+    assert_eq!(fake.statements("EXECUTE JOB SERVICE").len(), 1);
+}
+
 /// A job that cannot start the helper fails as a failure of the machine, with the end of the
 /// log of its main container; the access token signs the calls.
 #[tokio::test]

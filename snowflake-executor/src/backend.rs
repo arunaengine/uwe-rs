@@ -269,10 +269,12 @@ impl SnowflakeBackend {
                 failed: false,
                 message: String::new(),
             }),
-            Answer::Failed { message, .. } => Ok(Ended {
-                failed: true,
-                message,
-            }),
+            // The job runs after the answer, so an error now is Snowflake refusing it.
+            Answer::Failed { message, .. } => {
+                return Err(ExecutorError::Unsupported(format!(
+                    "Snowflake refused the job service {name}: {message}"
+                )));
+            }
         };
         let ended = match ended {
             Ok(ended) => ended,

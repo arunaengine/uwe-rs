@@ -3,12 +3,14 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod backend;
 mod client;
 pub mod job;
 pub mod options;
 pub mod outcome;
 mod settings;
 
+pub use backend::NomadBackend;
 pub use client::{Client, NomadError};
 pub use settings::{
     ADDRESS, Cleanup, CpuMode, Hidden, Settings, Volume, affinity, cleanup_mode, constraint,

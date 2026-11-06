@@ -4,10 +4,11 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_config::Config;
+use storage::StorageError;
 use storage::aws::{self, Credentials, Keys};
 
-/// Where AWS requests go and how they are signed.
-#[derive(Clone, Debug)]
+/// Where AWS requests go and how they are signed; no `Debug`, as it may hold keys.
+#[derive(Clone)]
 pub(crate) struct Access {
     pub region: Option<String>,
     pub credentials: Credentials,
@@ -101,8 +102,15 @@ pub(crate) fn secret(id: &str, region: Option<&str>, access: &Access) -> Result<
             .to_string()
             .into_bytes(),
     };
-    let answer =
-        aws::send(request, &access.credentials).map_err(|error| failed(&error.to_string()))?;
+    // Only the signer's own message is shown; a request error's text holds the address.
+    let answer = aws::send(request, &access.credentials).map_err(|error| match error {
+        StorageError::Failed {
+            action: "sign a request to",
+            message,
+            ..
+        } => failed(&message),
+        _ => failed("the request to Secrets Manager could not be completed"),
+    })?;
     let reply: serde_json::Value = serde_json::from_slice(&answer.body).unwrap_or_default();
     if answer.status >= 300 {
         let message = (reply.get("message").or_else(|| reply.get("Message")))

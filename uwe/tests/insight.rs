@@ -172,6 +172,15 @@ fn writes_comparison_report() {
         .filter_map(|field| field["field"].as_str())
         .collect();
     assert_eq!(fields, ["script"]);
+    for (file, start) in [
+        ("diff.md", "# Run comparison report"),
+        ("diff.html", "<!doctype html>"),
+    ] {
+        let (code, output) = uwe(path, &["compare", &first, &second, "-report", file]);
+        assert_eq!(code, 0, "{output}");
+        let text = std::fs::read_to_string(path.join(file)).expect("the report");
+        assert!(text.starts_with(start) && text.contains("COUNT"), "{text}");
+    }
     let same = ["compare", &first, &first, "-fail-on-change"];
     let (code, output) = uwe(path, &same);
     assert_eq!(code, 0, "{output}");

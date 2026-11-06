@@ -193,7 +193,9 @@ pub const PLUGINS: &[Plugin] = &[
     // nf-codecommit: Git over HTTPS with SigV4 passwords, keys from an https storage provider
     // or AWS's chain; no Nextflow SCM file and no CodeCommit API reads (uwe clones).
     Plugin::new("nf-codecommit", Kind::Other, State::Partial),
-    planned("nf-diff", Kind::Other),
+    // nf-diff: `uwe compare -report` over uwe's own run records; no log, DAG, published-file
+    // or configuration layers, and no archive.
+    Plugin::new("nf-diff", Kind::Other, State::Partial),
     // nf-kuberun: `uwe kuberun` runs uwe in a pod with its own service account; no `login`
     // shell, no Job instead of the pod, and only the run options that uwe has.
     Plugin::new("nf-kuberun", Kind::Executor, State::Partial),

@@ -540,14 +540,65 @@ pub(crate) fn flyte(config: &Config, flyte: &mut crate::flyte::Config) {
             tracing::warn!("uwe ignores flyte.{key}: {why}");
         }
     }
+    object_work(&scope, &mut flyte.staging);
+}
+
+/// Fills the Snowflake settings that `[executor.snowflake]` leaves unset from nf-snowflake's
+/// `snowflake` scope, where the variable `computePool` wins as in the plugin, and the staging
+/// root from an object-store work dir.
+pub(crate) fn snowflake(
+    config: &Config,
+    snowflake: &mut crate::snowflake::Config,
+) -> Result<(), String> {
+    let scope = Scope(config);
+    let settings = &mut snowflake.settings;
+    if settings.compute_pool.is_none() {
+        let variable = std::env::var("computePool")
+            .ok()
+            .filter(|pool| !pool.is_empty());
+        let pool = variable.or_else(|| scope.text(&["snowflake", "computePool"]));
+        if let Some(pool) = pool
+            .as_deref()
+            .filter(|pool| !snowflake_executor::identifier(pool))
+        {
+            return Err(format!(
+                "snowflake.computePool: `{pool}` is no Snowflake identifier"
+            ));
+        }
+        settings.compute_pool = pool;
+    }
+    if settings.mappings.is_empty()
+        && let Some(text) = scope.text(&["snowflake", "registryMappings"])
+    {
+        settings.mappings = snowflake_executor::mappings(&text)
+            .map_err(|message| format!("snowflake.registryMappings {message}"))?;
+    }
+    if settings.connection.is_none() {
+        settings.connection = scope.text(&["snowflake", "connectionName"]);
+    }
+    if scope
+        .text(&["workDir"])
+        .is_some_and(|work| work.starts_with("snowflake://"))
+    {
+        tracing::warn!(
+            "uwe does not use a snowflake:// work dir: its jobs stage through the staging root \
+             of [executor.snowflake], or an s3://, gs:// or az:// workDir"
+        );
+    }
+    object_work(&scope, &mut snowflake.staging);
+    Ok(())
+}
+
+/// Makes an object-store work dir the staging root of an executor whose config file sets none.
+fn object_work(scope: &Scope<'_>, staging: &mut crate::staging::Settings) {
     let objects = ["s3://", "gs://", "az://"];
     let work = scope.text(&["workDir"]);
     let work = work.filter(|work| objects.iter().any(|scheme| work.starts_with(scheme)));
-    if flyte.staging.root.is_none()
+    if staging.root.is_none()
         && let Some(work) = work
     {
-        flyte.staging.root = Some(work);
-        flyte.staging.mode = crate::staging::Mode::ObjectStore;
+        staging.root = Some(work);
+        staging.mode = crate::staging::Mode::ObjectStore;
     }
 }
 
@@ -739,5 +790,21 @@ mod tests {
         assert_eq!(settings.poll, Duration::from_secs(2));
         assert_eq!(flyte.staging.root.as_deref(), Some("s3://runs/work"));
         assert_eq!(flyte.staging.mode, crate::staging::Mode::ObjectStore);
+    }
+
+    #[test]
+    fn maps_snowflake_scope() {
+        let text = "workDir = 'gs://runs/work'\nsnowflake {\n computePool = 'TASKS'\n \
+                    registryMappings = 'docker.io:/lab/images/repo'\n connectionName = 'lab'\n}\n";
+        let mut snowflake = crate::snowflake::Config::default();
+        super::snowflake(&loaded(text), &mut snowflake).expect("a mapping");
+        let settings = &snowflake.settings;
+        assert_eq!(settings.compute_pool.as_deref(), Some("TASKS"));
+        assert_eq!(settings.mappings[0].1, "/lab/images/repo");
+        assert_eq!(settings.connection.as_deref(), Some("lab"));
+        assert_eq!(snowflake.staging.root.as_deref(), Some("gs://runs/work"));
+        let wrong = loaded("snowflake.computePool = 'a; drop'\n");
+        let error = super::snowflake(&wrong, &mut crate::snowflake::Config::default());
+        assert!(error.is_err_and(|message| message.contains("computePool")));
     }
 }

@@ -47,6 +47,7 @@ mod runs;
 mod scopes;
 pub mod setup;
 mod slurm;
+mod snowflake;
 mod sources;
 mod staging;
 mod terminal;

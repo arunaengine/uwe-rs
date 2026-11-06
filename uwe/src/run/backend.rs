@@ -5,7 +5,9 @@
 use crate::arguments::Arguments;
 use crate::repeat::Pinned;
 use crate::setup::Setup;
-use crate::{Failure, cache_directory, kubernetes, local, preview, resources, runs, slurm, tes};
+use crate::{
+    Failure, aws_batch, cache_directory, kubernetes, local, preview, resources, runs, slurm, tes,
+};
 use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
 
 /// Caps task requests and gives tasks without a time the default `time` in seconds, before
@@ -138,6 +140,7 @@ pub(crate) fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(
         Some("kubernetes") => {
             "the Kubernetes executor makes no network policy that cuts a task off the network"
         }
+        Some("aws-batch") => "AWS Batch has no setting that cuts a job off the network",
         Some("slurm") if named == "singularity" => {
             "Singularity cuts a task off the network only where the site allows it, which \
              uwe does not ask for (`-slurm-container apptainer`, `podman` or `docker` can)"
@@ -253,9 +256,16 @@ pub(crate) fn executor(
             .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
+        "aws-batch" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = aws_batch::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
         other => Err(Failure::usage(format!(
-            "uwe: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
-             `kubernetes`"
+            "uwe: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm`, \
+             `kubernetes` or `aws-batch`"
         ))),
     }
 }

@@ -7798,6 +7798,7 @@ name = "uwe"
 version = "0.1.0"
 dependencies = [
  "argo-runtime",
+ "aws-batch-executor",
  "conda-environment",
  "config-file",
  "content-store",

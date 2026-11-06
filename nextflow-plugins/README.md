@@ -188,6 +188,20 @@ In meta map mode the first entry of the meta map is the first in key order, as o
 inputs as JSON objects. nf-crg-report fetches its prices once a run, when the run starts, and
 writes its raw costs as JSON numbers like `4.35e-8` where the plugin writes `4.35E-8`.
 
+## src/nf_fl86/mod.rs
+
+nf-fl86 0.6.4 guards the output folder, prints its two lines and copies the sample sheet and the
+Benchling file when the run starts, writes `params.json` when the workflow begins and
+`workflow.json` and `<workDir>/pipeline.complete` after a successful run, as the plugin does. uwe
+does not tell plugins about a resumed run yet, so the guard stops any run into an existing
+folder. `getAWSSecret` and the Action's token call Secrets Manager's `GetSecretValue` with the
+shared AWS signer instead of the `aws` program, with the region of the call, `aws.region` or
+the environment, and the keys of the `aws` scope or AWS's default chain. Published S3 objects
+keep their tags through `GetObjectTagging` and `PutObjectTagging`; `aws.client.endpoint`
+selects a path-style endpoint. The Notion and Seqera requests run on a background worker.
+Not done: Fusion tags (uwe has no Fusion), the per-task `resourceLabels` (no plugin hook for
+process directives), tags of published S3 folders, and the Platform watch URL, which is empty.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

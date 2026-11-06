@@ -119,3 +119,84 @@ pub(crate) fn secret(id: &str, region: Option<&str>, access: &Access) -> Result<
         None => Err(failed("the secret has no SecretString")),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+
+    use super::*;
+
+    /// Answers one request with this status and body; the request it read.
+    fn serve(
+        status: &'static str,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let base = format!("http://{}", listener.local_addr().expect("an address"));
+        let handle = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("a request");
+            let mut reader = BufReader::new(&stream);
+            let mut head = String::new();
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                    break;
+                }
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+                head.push_str(&line);
+            }
+            let mut received = vec![0; length];
+            let _ = reader.read_exact(&mut received);
+            let answer = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = (&stream).write_all(answer.as_bytes());
+            head + &String::from_utf8_lossy(&received)
+        });
+        (base, handle)
+    }
+
+    fn access(base: &str) -> Access {
+        Access {
+            region: Some("eu-west-1".to_owned()),
+            credentials: Credentials::Keys(Keys {
+                id: "AKIDEXAMPLE".to_owned(),
+                secret: "example".to_owned(),
+                token: None,
+            }),
+            endpoints: vec![(
+                "AWS_ENDPOINT_URL_SECRETS_MANAGER".to_owned(),
+                base.to_owned(),
+            )],
+        }
+    }
+
+    #[test]
+    fn fetches_secret_value() {
+        let (base, request) = serve("200 OK", r#"{"Name":"seqera","SecretString":" tok \n"}"#);
+        assert_eq!(secret("seqera", None, &access(&base)).as_deref(), Ok("tok"));
+        let request = request.join().expect("the request");
+        assert!(
+            request.contains("x-amz-target: secretsmanager.GetSecretValue"),
+            "{request}"
+        );
+        assert!(request.ends_with(r#"{"SecretId":"seqera"}"#), "{request}");
+        assert!(
+            request.contains("/eu-west-1/secretsmanager/aws4_request"),
+            "{request}"
+        );
+        let body = r#"{"__type":"ResourceNotFoundException","message":"Secrets Manager can't find the specified secret."}"#;
+        let (base, _) = serve("400 Bad Request", body);
+        assert_eq!(
+            secret("gone", Some("us-east-1"), &access(&base)),
+            Err("Failed to fetch AWS secret 'gone': ResourceNotFoundException: Secrets Manager can't find the specified secret.".to_owned())
+        );
+        let blank = secret(" ", None, &access(&base));
+        assert_eq!(blank, Err("AWS secret ID must not be empty".to_owned()));
+    }
+}

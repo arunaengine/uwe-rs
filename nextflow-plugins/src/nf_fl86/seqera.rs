@@ -143,3 +143,90 @@ fn encode(text: &str) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    /// Serves the describe and launch calls; the request lines and bodies it heard.
+    fn platform() -> (String, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+        let base = format!("http://{}", listener.local_addr().expect("an address"));
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let log = heard.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(&stream);
+                let mut first = String::new();
+                let _ = reader.read_line(&mut first);
+                let mut length = 0;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                        break;
+                    }
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse().unwrap_or(0);
+                    }
+                    if line.to_ascii_lowercase().starts_with("authorization:") {
+                        log.lock().expect("the log").push(line.trim().to_owned());
+                    }
+                }
+                let mut body = vec![0; length];
+                let _ = reader.read_exact(&mut body);
+                log.lock().expect("the log").push(format!(
+                    "{} {}",
+                    first.trim(),
+                    String::from_utf8_lossy(&body)
+                ));
+                let reply = match first.starts_with("GET") {
+                    true => {
+                        r#"{"action":{"launch":{"id":"x","sessionId":"s","computeEnv":{"id":"ce1"},"pipeline":"p"}}}"#
+                    }
+                    false => r#"{"workflowId":"w1"}"#,
+                };
+                let answer = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                    reply.len()
+                );
+                let _ = (&stream).write_all(answer.as_bytes());
+            }
+        });
+        (base, heard)
+    }
+
+    #[test]
+    fn launches_action() {
+        let (base, heard) = platform();
+        let params = json!({ "input_dir": "/out" });
+        let answer = send_launch("tok", "next run", &params, "a 1", "42", &base);
+        assert_eq!(answer, Ok(json!({ "workflowId": "w1" })));
+        let heard = heard.lock().expect("the log").clone();
+        assert_eq!(heard[0], "authorization: Bearer tok");
+        assert_eq!(heard[1], "GET /actions/a%201?workspaceId=42 HTTP/1.1 ");
+        let body = heard[3].split_once(" HTTP/1.1 ").map(|(_, body)| body);
+        let sent: Json = serde_json::from_str(body.unwrap_or_default()).expect("a JSON body");
+        assert_eq!(
+            sent,
+            json!({ "launch": { "computeEnvId": "ce1", "pipeline": "p", "runName": "next run",
+                "paramsText": "{\"input_dir\":\"/out\"}" } })
+        );
+        let refused = launch_check("http://127.0.0.1:9");
+        assert_eq!(
+            refused,
+            Err("Seqera API base URL must be an HTTPS origin".to_owned())
+        );
+        assert_eq!(
+            launch("", "r", &params, "1", "2", "https://x"),
+            Err("Seqera token must not be empty".to_owned())
+        );
+    }
+
+    fn launch_check(base: &str) -> Result<Json, String> {
+        launch("tok", "r", &json!({}), "1", "2", base)
+    }
+}

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod catalogue;
+mod crg_lims;
 pub mod everit;
 mod nf_anndata;
 mod nf_arts;

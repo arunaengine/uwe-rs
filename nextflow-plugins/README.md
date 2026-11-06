@@ -395,6 +395,16 @@ not aborted. `getRunUid()` and `getTransformUid()` give null in the workflow bod
 before the run record exists, and the uids in process scripts and `workflow.onComplete`. The
 patterns of the rules find their match anywhere in the path.
 
+## src/crg_lims.rs
+
+nf-crg-genomics-lims 0.1.1, named `crg_lims` in uwe: with `lims.enabled` or the param
+`lims_enabled`, the end of the run sends the plugin's `PATCH` with the status of the run, then
+uploads `lims_upload_file` as a multipart form or as raw bytes, with the plugin's messages. Where
+it differs: the status body is JSON built properly, where the plugin pastes the values into the
+text; a failed run sends once, where Nextflow 26.04.6 runs the end twice; the media type of the
+file comes from a short table of extensions, else `application/octet-stream`. Logged addresses
+leave out user names, passwords and query strings.
+
 ## src/nf_crukci_support.rs
 
 nf-crukci-support 1.1.3 is partly implemented: `javaMemoryOptions`, `javaMemMB`, `sizeOf`,

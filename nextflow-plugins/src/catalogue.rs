@@ -147,7 +147,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_parquet::PLUGIN,
     crate::nf_python::PLUGIN,
     crate::nf_r_ipc::PLUGIN,
-    planned("nf-report", Kind::Functions),
+    crate::nf_report::PLUGIN,
     planned("nf-seqlab-progress", Kind::Functions),
     crate::nf_sqldb::PLUGIN,
     crate::nf_trino::PLUGIN,

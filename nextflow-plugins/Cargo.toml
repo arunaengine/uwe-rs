@@ -13,10 +13,15 @@ publish.workspace = true
 
 [dependencies]
 jsonschema.workspace = true
+lettre.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 serde_json.workspace = true
+storage.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+nextflow-runtime.workspace = true
 tempfile.workspace = true

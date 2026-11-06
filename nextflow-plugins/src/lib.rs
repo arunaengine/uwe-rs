@@ -18,6 +18,7 @@ mod nf_ped;
 mod nf_pregex;
 mod nf_prov;
 mod nf_schema;
+mod nf_snapshot;
 #[path = "validation.rs"]
 mod nf_validation;
 mod nf_versions;

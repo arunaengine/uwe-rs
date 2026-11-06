@@ -97,6 +97,16 @@ between processes and an open end for each input and output, all without labels,
 graph has no operator vertices. `hash` of an artifact is empty, as stored files are not in a
 Nextflow work directory. Trace fields that uwe does not measure are null.
 
+## src/nf_arts/mod.rs
+
+nf-arts 1.0.0 checks its `arts` settings with the plugin's messages, uses its palettes, blends
+and caption layout, and writes SVG or PNG. The pictures are uwe's own, not the plugin's:
+`radial`, `mondrian`, `phyllotaxis` and `ridgeline` are drawn from the tasks' process, start,
+time, peak memory and status; `hilbert`, `flowfield`, `tree` and `ginkgo` are drawn as
+`radial`, with a warning. The second caption line names uwe. A PNG is drawn by uwe's own small
+encoder, without the caption text, since uwe has no font. The file is written on this
+machine; the `render` command and cloud paths are not supported.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

@@ -110,6 +110,15 @@ kube = { version = "5.0.0", default-features = false, features = [
     "rustls-tls",
     "aws-lc-rs",
 ] }
+# Mail over SMTP with rustls, for the completion e-mail of nf-core-utils: no sendmail program.
+lettre = { version = "0.11.23", default-features = false, features = [
+    "aws-lc-rs",
+    "builder",
+    "hostname",
+    "rustls",
+    "rustls-platform-verifier",
+    "smtp-transport",
+] }
 md-5 = { version = "0.11.0", default-features = false }
 num-bigint = "0.5.1"
 num-traits = "0.2.19"

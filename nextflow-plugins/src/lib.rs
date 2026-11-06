@@ -14,6 +14,7 @@ mod nf_co2footprint;
 mod nf_core_utils;
 mod nf_dotenv;
 mod nf_fgbio;
+mod nf_logsaver;
 mod nf_ped;
 mod nf_pregex;
 mod nf_prov;

@@ -1,4 +1,4 @@
-//! PostgreSQL connections over sqlx, with JDBC's mapping of their values.
+//! PostgreSQL and MySQL or MariaDB connections over sqlx, with JDBC's mapping of their values.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -15,6 +15,7 @@ use sqlx_core::sql_str::{AssertSqlSafe, SqlSafeStr};
 use sqlx_core::statement::Statement;
 use sqlx_core::type_info::TypeInfo;
 use sqlx_core::value::ValueRef;
+use sqlx_mysql::{MySqlConnectOptions, MySqlConnection, MySqlRow, MySqlSslMode};
 use sqlx_postgres::{PgConnectOptions, PgConnection, PgRow, PgSslMode};
 
 use super::{Connection, Datum, Table};
@@ -22,6 +23,8 @@ use super::{Connection, Datum, Table};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Engine {
     Postgres,
+    /// MySQL and MariaDB, which share the protocol.
+    Mysql,
 }
 
 /// How a connection uses TLS, from the URL's parameters.
@@ -66,6 +69,7 @@ pub(crate) struct Open {
 
 enum Link {
     Postgres(PgConnection),
+    Mysql(MySqlConnection),
 }
 
 pub(crate) fn open(server: Server) -> Result<Open, String> {
@@ -95,6 +99,27 @@ pub(crate) fn open(server: Server) -> Result<Open, String> {
                     options = options.database(database);
                 }
                 options.connect().await.map(Link::Postgres)
+            }
+            Engine::Mysql => {
+                let mut options = MySqlConnectOptions::new()
+                    .host(&server.host)
+                    .port(server.port)
+                    .ssl_mode(match server.tls {
+                        Tls::Disable => MySqlSslMode::Disabled,
+                        Tls::Prefer => MySqlSslMode::Preferred,
+                        Tls::Require => MySqlSslMode::Required,
+                        Tls::Verify => MySqlSslMode::VerifyIdentity,
+                    });
+                if let Some(user) = &server.user {
+                    options = options.username(user);
+                }
+                if let Some(password) = &server.password {
+                    options = options.password(password);
+                }
+                if let Some(database) = &server.database {
+                    options = options.database(database);
+                }
+                options.connect().await.map(Link::Mysql)
             }
         }
     })?
@@ -132,6 +157,17 @@ impl Connection for Open {
                     let rows = rows.iter().map(postgres_row).collect();
                     Ok::<_, sqlx_core::Error>((columns, rows))
                 }
+                Link::Mysql(connection) => {
+                    let prepared = connection
+                        .prepare(AssertSqlSafe(sql).into_sql_str())
+                        .await?;
+                    let columns = (prepared.columns().iter())
+                        .map(|column| column.name().to_owned())
+                        .collect();
+                    let rows = prepared.query().fetch_all(&mut *connection).await?;
+                    let rows = rows.iter().map(mysql_row).collect();
+                    Ok((columns, rows))
+                }
             }
         })?;
         let (columns, rows): (Vec<String>, Vec<Result<Vec<Datum>, String>>) =
@@ -150,6 +186,12 @@ impl Connection for Open {
                         .await?;
                     Ok::<_, sqlx_core::Error>(done.rows_affected())
                 }
+                Link::Mysql(connection) => {
+                    let done = raw_sql(AssertSqlSafe(sql))
+                        .execute(&mut *connection)
+                        .await?;
+                    Ok(done.rows_affected())
+                }
             }
         })?;
         changed.map_err(message)
@@ -162,6 +204,13 @@ impl Connection for Open {
                 Link::Postgres(connection) => {
                     let sql = "SELECT column_name::text FROM information_schema.columns WHERE \
                                table_name = $1 AND table_schema = current_schema() ORDER BY \
+                               ordinal_position";
+                    let query = query_scalar::<_, String>(sql).bind(table);
+                    query.fetch_all(&mut *connection).await
+                }
+                Link::Mysql(connection) => {
+                    let sql = "SELECT CAST(column_name AS CHAR) FROM information_schema.columns \
+                               WHERE table_name = ? AND table_schema = DATABASE() ORDER BY \
                                ordinal_position";
                     let query = query_scalar::<_, String>(sql).bind(table);
                     query.fetch_all(&mut *connection).await
@@ -182,6 +231,28 @@ impl Connection for Open {
                         for value in row {
                             query = match value.clone() {
                                 Datum::Null | Datum::List(_) => query.bind(None::<i32>),
+                                Datum::Boolean(value) => query.bind(value),
+                                Datum::Integer(value) => query.bind(value),
+                                Datum::Long(value) => query.bind(value),
+                                Datum::Float(value) => query.bind(value),
+                                Datum::Double(value) => query.bind(value),
+                                Datum::Bytes(value) => query.bind(value),
+                                Datum::Decimal(text)
+                                | Datum::Text(text)
+                                | Datum::Typed(_, text) => query.bind(text),
+                            };
+                        }
+                        query.execute(&mut *transaction).await?;
+                    }
+                    transaction.commit().await
+                }
+                Link::Mysql(connection) => {
+                    let mut transaction = connection.begin().await?;
+                    for row in rows {
+                        let mut query = query(AssertSqlSafe(statement));
+                        for value in row {
+                            query = match value.clone() {
+                                Datum::Null | Datum::List(_) => query.bind(None::<String>),
                                 Datum::Boolean(value) => query.bind(value),
                                 Datum::Integer(value) => query.bind(value),
                                 Datum::Long(value) => query.bind(value),
@@ -314,6 +385,67 @@ fn postgres_row(row: &PgRow) -> Result<Vec<Datum>, String> {
             _ => Datum::Text(get_text().map_err(|_| {
                 format!(
                     "uwe cannot read the PostgreSQL type {kind} of column {}",
+                    column.name()
+                )
+            })?),
+        };
+        values.push(value);
+    }
+    Ok(values)
+}
+
+/// A MySQL or MariaDB row with the classes of MySQL Connector/J.
+fn mysql_row(row: &MySqlRow) -> Result<Vec<Datum>, String> {
+    let mut values = Vec::with_capacity(row.len());
+    for (index, column) in row.columns().iter().enumerate() {
+        let failed = |error: sqlx_core::Error| format!("column {}: {error}", column.name());
+        let raw = row.try_get_raw(index).map_err(failed)?;
+        if raw.is_null() {
+            values.push(Datum::Null);
+            continue;
+        }
+        let kind = column.type_info().name().to_owned();
+        let whole = |row: &MySqlRow| row.try_get::<i64, _>(index).map_err(failed);
+        let value = match kind.as_str() {
+            "BOOLEAN" => Datum::Boolean(row.try_get(index).map_err(failed)?),
+            "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "YEAR" => {
+                let value = whole(row)?;
+                i32::try_from(value).map_or(Datum::Long(value), Datum::Integer)
+            }
+            "TINYINT UNSIGNED" | "SMALLINT UNSIGNED" | "MEDIUMINT UNSIGNED" => Datum::Integer(
+                i32::try_from(row.try_get::<u32, _>(index).map_err(failed)?).unwrap_or(i32::MAX),
+            ),
+            "INT UNSIGNED" => Datum::Long(i64::from(row.try_get::<u32, _>(index).map_err(failed)?)),
+            "BIGINT" => Datum::Long(whole(row)?),
+            "BIGINT UNSIGNED" => {
+                let value = row.try_get::<u64, _>(index).map_err(failed)?;
+                i64::try_from(value).map_or(Datum::Decimal(value.to_string()), Datum::Long)
+            }
+            "FLOAT" => Datum::Float(row.try_get(index).map_err(failed)?),
+            "DOUBLE" => Datum::Double(row.try_get(index).map_err(failed)?),
+            "DECIMAL" => Datum::Decimal(row.try_get_unchecked(index).map_err(failed)?),
+            "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY" | "BIT" => {
+                Datum::Bytes(row.try_get_unchecked(index).map_err(failed)?)
+            }
+            "DATE" => {
+                let date: chrono::NaiveDate = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Date", date.format("%Y-%m-%d").to_string())
+            }
+            "DATETIME" => {
+                let time: chrono::NaiveDateTime = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Timestamp", timestamp(time))
+            }
+            "TIMESTAMP" => {
+                let time: chrono::DateTime<chrono::Utc> = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Timestamp", timestamp(time.naive_utc()))
+            }
+            "TIME" => {
+                let time: chrono::NaiveTime = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Time", time.format("%H:%M:%S").to_string())
+            }
+            _ => Datum::Text(row.try_get_unchecked(index).map_err(|_| {
+                format!(
+                    "uwe cannot read the MySQL type {kind} of column {}",
                     column.name()
                 )
             })?),

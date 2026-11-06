@@ -178,13 +178,14 @@ serde_jcs = "0.2.0"
 sha1 = { version = "0.11.0", default-features = false }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
-# The PostgreSQL client in Rust for nf-sqldb, without the sqlx facade, whose optional SQLite
-# driver clashes with rusqlite's SQLite.
+# PostgreSQL and MySQL clients in Rust for nf-sqldb, without the sqlx facade, whose optional
+# SQLite driver clashes with rusqlite's SQLite. No RSA, so MySQL passwords need TLS.
 sqlx-core = { version = "0.9.0", default-features = false, features = [
     "_rt-tokio",
     "_tls-rustls-aws-lc-rs",
     "json",
 ] }
+sqlx-mysql = { version = "0.9.0", default-features = false, features = ["chrono", "json"] }
 sqlx-postgres = { version = "0.9.0", default-features = false, features = ["chrono", "json"] }
 suppaftp = { version = "12.1.1", default-features = false, features = [
     "tokio",

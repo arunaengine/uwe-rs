@@ -144,7 +144,9 @@ fn calls_included_plugins() {
     let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
     let error = error.to_string();
     assert!(
-        error.ends_with("main.nf:3:5: NoSuchFileException: /schema.json"),
+        error.ends_with(
+            "main.nf:3:5: SchemaValidationException: JSON schema file /schema.json does not exist"
+        ),
         "{error}"
     );
     write(

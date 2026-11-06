@@ -1,5 +1,5 @@
 //! Checks nf-schema path formats and existence through the host before validation, and the
-//! keywords of its own: `deprecated` and `uniqueEntries`.
+//! keywords of its own: `deprecated`, `uniqueEntries` and `schema`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -23,10 +23,16 @@ enum Named {
     Failed(String),
 }
 
+/// A samplesheet that a `schema` keyword checks: the schema name and the value.
+type Sheet = (String, String);
+
 #[derive(Default)]
 struct Paths {
     known: HashMap<String, Named>,
     pending: HashSet<String>,
+    /// The error lines of each checked samplesheet, empty when it is valid.
+    sheets: HashMap<Sheet, Vec<String>>,
+    waiting: HashSet<Sheet>,
 }
 
 type Lookup = Arc<Mutex<Paths>>;
@@ -36,11 +42,11 @@ type Lookup = Arc<Mutex<Paths>>;
 pub(crate) struct Check {
     /// `exists` only checks values with a path format, as nf-validation 1.1.3 does.
     pub path_exists: bool,
-    /// nf-schema's own keywords: `deprecated` and `uniqueEntries`.
+    /// nf-schema's own keywords: `deprecated`, `uniqueEntries` and `schema`.
     pub keywords: bool,
     /// From nf-schema 2.8.0: its wording for directories, and no directory checks on Azure.
     pub newer: bool,
-    /// The folder of the schema.
+    /// The folder of the schema, where its `schema` keywords look first from 3.1.0 on.
     pub base: Option<String>,
 }
 
@@ -71,6 +77,7 @@ pub(crate) fn checker(
     let lookup: Lookup = Arc::default();
     let formats = lookup.clone();
     let exists = lookup.clone();
+    let sheets = lookup.clone();
     let (path_exists, newer) = (check.path_exists, check.newer);
     let mut options = jsonschema::options()
         .with_keyword("format", move |_, value, _| {
@@ -101,14 +108,26 @@ pub(crate) fn checker(
                     .filter_map(|field| field.as_str().map(str::to_owned))
                     .collect();
                 Ok(Box::new(Unique(fields)))
+            })
+            .with_keyword("schema", move |_, value, _| {
+                Ok(Box::new(SheetSchema {
+                    name: value.as_str().unwrap_or_default().to_owned(),
+                    lookup: sheets.clone(),
+                }))
             });
     }
     let validator = options.build(schema).map_err(|error| error.to_string())?;
     // Deferred keyword lookups let the validator itself resolve references and branches.
     loop {
         for _ in validator.iter_errors(instance) {}
-        let pending = std::mem::take(&mut lookup.lock().expect("path lookup lock").pending);
-        if pending.is_empty() {
+        let (pending, waiting) = {
+            let mut paths = lookup.lock().expect("path lookup lock");
+            (
+                std::mem::take(&mut paths.pending),
+                std::mem::take(&mut paths.waiting),
+            )
+        };
+        if pending.is_empty() && waiting.is_empty() {
             break;
         }
         for text in pending {
@@ -118,6 +137,11 @@ pub(crate) fn checker(
                 .expect("path lookup lock")
                 .known
                 .insert(text, named);
+        }
+        for (name, value) in waiting {
+            let lines = super::samplesheet::nested(&name, &value, check.base.as_deref(), context);
+            let mut paths = lookup.lock().expect("path lookup lock");
+            paths.sheets.insert((name, value), lines);
         }
     }
     Ok(validator)
@@ -341,6 +365,45 @@ impl<'i> Keyword<'i> for Unique {
             .map(|problem| ValidationError::custom(problem))
             .collect();
         Box::new(errors.into_iter())
+    }
+}
+
+/// `schema` on a param: the samplesheet that the value names must be valid against the
+/// samplesheet schema of that name.
+struct SheetSchema {
+    name: String,
+    lookup: Lookup,
+}
+
+impl SheetSchema {
+    fn problem(&self, instance: &Json) -> Option<String> {
+        let text = instance.as_str()?;
+        let key = (self.name.clone(), text.to_owned());
+        let mut lookup = self.lookup.lock().expect("path lookup lock");
+        let Some(lines) = lookup.sheets.get(&key) else {
+            lookup.waiting.insert(key);
+            return Some(format!(
+                "could not validate '{text}': missing samplesheet check"
+            ));
+        };
+        if lines.is_empty() {
+            return None;
+        }
+        let lines: Vec<String> = lines.iter().map(|line| format!("\t{line}")).collect();
+        Some(format!("Validation of file failed:\n{}", lines.join("\n")))
+    }
+}
+
+impl<'i> Keyword<'i> for SheetSchema {
+    fn validate(&self, instance: &'i Json) -> Result<(), ValidationError<'i>> {
+        match self.problem(instance) {
+            Some(message) => Err(ValidationError::custom(message)),
+            None => Ok(()),
+        }
+    }
+
+    fn is_valid(&self, instance: &'i Json) -> bool {
+        self.problem(instance).is_none()
     }
 }
 

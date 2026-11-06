@@ -242,6 +242,14 @@ of `sqlInsert` is one statement with named parameters. Refused with a message: c
 (`/sql/protocolv1/...`), OAuth (`AuthMech` other than 3), and results larger than the inline
 limit of the API (`EXTERNAL_LINKS` is not read).
 
+## src/nf_gpt.rs
+
+nf-gpt 0.4.0 fails on Nextflow 26.04.6 before it sends a request, so uwe builds the working
+calls from its documented behaviour: all functions use `gpt.endpoint`, where the plugin's data
+functions always call `api.openai.com`, and a configured `gpt.temperature` and `gpt.maxTokens`
+apply, where the plugin loses them. Requests go through the shared HTTP client, with the
+retries of `gpt.retryPolicy` on network errors, 429 and 5xx.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

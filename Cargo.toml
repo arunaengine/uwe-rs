@@ -16,6 +16,7 @@ members = [
     "cwl-runtime",
     "executor",
     "google-batch-executor",
+    "htcondor-executor",
     "input-schema",
     "uwe",
     "kubernetes-executor",

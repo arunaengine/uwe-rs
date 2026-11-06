@@ -16,6 +16,7 @@ mod nf_co2footprint;
 mod nf_core_utils;
 mod nf_csvext;
 mod nf_dotenv;
+mod nf_drs;
 mod nf_emoji;
 mod nf_fairscape;
 mod nf_fgbio;

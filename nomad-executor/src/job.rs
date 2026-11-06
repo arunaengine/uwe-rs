@@ -204,6 +204,9 @@ fn config(shape: &Shape<'_>, settings: &Settings, driver: &str) -> Value {
     if let Some(mode) = &settings.network_mode {
         config["network_mode"] = json!(mode);
     }
+    if shape.placement.offline {
+        config["network_mode"] = json!("none");
+    }
     config["security_opt"] = json!(["no-new-privileges"]);
     if shape.mounts.is_empty() {
         return config;
@@ -282,5 +285,35 @@ mod tests {
         let id = job_id(&long);
         assert_eq!(id.len(), LONGEST_ID);
         assert_ne!(id, job_id(&format!("{long}y")));
+    }
+
+    #[test]
+    fn cuts_offline_tasks() {
+        let placement = Placement {
+            offline: true,
+            ..Placement::default()
+        };
+        let shape = Shape {
+            id: "uwe-a",
+            attempt: "a",
+            image: "ubuntu",
+            command: vec!["sh".into(), "-c".into(), "true".into()],
+            work_dir: None,
+            user: None,
+            mounts: Vec::new(),
+            artifact: None,
+            placement: &placement,
+        };
+        let settings = Settings {
+            network_mode: Some("bridge".into()),
+            ..Settings::default()
+        };
+        let job = body(&shape, &settings).expect("a body");
+        let config = &job["TaskGroups"][0]["Tasks"][0]["Config"];
+        assert_eq!(config["network_mode"], "none");
+        assert_eq!(
+            (config["command"].as_str(), config["privileged"].as_bool()),
+            (Some("sh"), Some(false))
+        );
     }
 }

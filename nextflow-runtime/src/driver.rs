@@ -107,6 +107,8 @@ pub struct Nextflow {
     requests: HashMap<TaskId, TaskRequest>,
     /// The variables of the config's `env` scope, which every task gets.
     environment: BTreeMap<String, String>,
+    /// What nf-labrobotics adds to the tasks of its executor, when the config names it.
+    lab: Option<nextflow_plugins::Lab>,
     project_bin: Option<PathBuf>,
     /// What the run noted since the engine last asked: files it read, listed or spread.
     notes: Vec<Note>,
@@ -158,6 +160,7 @@ impl Nextflow {
             run: None,
             requests: HashMap::new(),
             environment: BTreeMap::new(),
+            lab: None,
             project_bin: None,
             notes: Vec::new(),
             registry: None,
@@ -347,6 +350,9 @@ impl Nextflow {
                     });
                 }
                 let mut task = task(&request, &self.environment)?;
+                if let Some(lab) = self.lab.as_ref().filter(|_| request.made.is_none()) {
+                    lab.apply(&request.directives, &mut task.environment);
+                }
                 if task.environment.contains_key(crate::options::WORK_ENV) && !self.settings.local_options {
                     return Err(DriverError { unsupported: true, message: "container PWD environment binding requires the local executor".into() });
                 }
@@ -466,6 +472,7 @@ impl Driver for Nextflow {
             };
         }
         self.environment = environment(config);
+        self.lab = nextflow_plugins::labrobotics(config, &self.settings.run_name);
         let engine = self
             .settings
             .container_engine

@@ -339,6 +339,24 @@ pub(crate) fn value_json(value: &Value) -> serde_json::Value {
     }
 }
 
+/// A script value as JSON with the key order of its maps, as the files that plugins read
+/// and write keep it; other values as [`value_json`] gives them.
+pub(crate) fn ordered_json(value: &Value) -> Json {
+    match value {
+        Value::Map(map) => Json::Object(
+            (map.borrow().entries.iter())
+                .map(|(key, value)| (key.0.to_string(), ordered_json(value)))
+                .collect(),
+        ),
+        Value::List(list) => Json::List(list.borrow().items.iter().map(ordered_json).collect()),
+        Value::Number(Number::BigDecimal(_) | Number::BigInteger(_)) => {
+            let number = serde_json::from_str(&value.to_string()).ok();
+            number.map_or(Json::Null, Json::Number)
+        }
+        other => Json::from(&value_json(other)),
+    }
+}
+
 /// A time as Java's `OffsetDateTime` prints it in the time zone of this machine, like
 /// `2026-11-06T10:22:01.778+01:00`; seconds and milliseconds are left out when zero.
 pub(crate) fn offset_time(millis: i64) -> String {

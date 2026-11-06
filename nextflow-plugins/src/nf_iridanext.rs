@@ -9,15 +9,16 @@ use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
 use nextflow_config::Config;
-use nextflow_evaluator::interpreter::Error;
+use nextflow_evaluator::csv::{CsvOptions, records};
 use nextflow_evaluator::interpreter::glob::matches;
+use nextflow_evaluator::interpreter::{Error, parse_json};
 use nextflow_evaluator::value::Value;
 
 use crate::Context;
 use crate::catalogue::{Kind, Plugin, State};
 use crate::nf_schema::entries;
 use crate::observer::{Event, Observer, Part, Task};
-use crate::report_format::Json;
+use crate::report_format::{Json, ordered_json};
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &["loadIridaSampleIds"],
@@ -25,7 +26,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     script: Some(SCRIPT),
     scopes: &["iridanext"],
     observer: Some(activate),
-    ..Plugin::new("nf-iridanext", Kind::Observer, State::Partial)
+    ..Plugin::new("nf-iridanext", Kind::Observer, State::Implemented)
 };
 
 /// The operator, which passes each item on after registering the id of its meta map.
@@ -133,6 +134,19 @@ fn texts(value: &Value) -> Vec<String> {
     }
 }
 
+/// Where a metadata parser reads its samples from.
+#[derive(Debug)]
+enum Parser {
+    Csv {
+        glob: Option<String>,
+        column: String,
+        separator: char,
+    },
+    Json {
+        glob: Option<String>,
+    },
+}
+
 /// The settings of the `iridanext` scope.
 #[derive(Debug)]
 struct Settings {
@@ -144,6 +158,11 @@ struct Settings {
     key: String,
     global: Vec<String>,
     samples: Vec<String>,
+    parsers: Vec<Parser>,
+    flatten: bool,
+    ignore: Vec<String>,
+    keep: Option<Vec<String>>,
+    rename: Vec<(String, String)>,
 }
 
 fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
@@ -173,6 +192,24 @@ fn settings(config: &Config) -> Result<Settings, String> {
         }
         globs.insert(scope, texts(&value));
     }
+    let samples = config.get(&["iridanext", "output", "metadata", "samples"]);
+    let samples = samples.unwrap_or(Value::Null);
+    let mut parsers = Vec::new();
+    let mut flatten = false;
+    let (mut ignore, mut keep, mut rename) = (Vec::new(), None, Vec::new());
+    for (name, value) in entries(&samples) {
+        match name.as_str() {
+            "flatten" => flatten = value.truth(),
+            "ignore" => ignore = texts(&value),
+            "keep" => keep = Some(texts(&value)),
+            "rename" => {
+                rename = (entries(&value).into_iter())
+                    .map(|(from, to)| (from, to.to_string()))
+                    .collect()
+            }
+            _ => parsers.push(parser(&name, &value, &samples)?),
+        }
+    }
     Ok(Settings {
         path: text(config, &["path"]),
         overwrite: flag(config, &["overwrite"], false),
@@ -182,7 +219,40 @@ fn settings(config: &Config) -> Result<Settings, String> {
         key: text(config, &["files", "idkey"]).unwrap_or("id".into()),
         global: globs.remove("global").unwrap_or_default(),
         samples: globs.remove("samples").unwrap_or_default(),
+        parsers,
+        flatten,
+        ignore,
+        keep,
+        rename,
     })
+}
+
+/// A metadata parser entry of `output.metadata.samples`.
+fn parser(name: &str, value: &Value, samples: &Value) -> Result<Parser, String> {
+    if !matches!(value, Value::Map(_)) {
+        return Err(format!(
+            "Invalid config for iridanext.output.metadata.samples: {samples}"
+        ));
+    }
+    let setting = |key: &str| {
+        let found = entries(value).into_iter().find(|(name, _)| name == key);
+        found.map(|(_, value)| value.to_string())
+    };
+    match name {
+        "csv" => Ok(Parser::Csv {
+            glob: setting("path"),
+            column: setting("idcol").unwrap_or("id".into()),
+            separator: setting("sep")
+                .and_then(|sep| sep.chars().next())
+                .unwrap_or(','),
+        }),
+        "json" => Ok(Parser::Json {
+            glob: setting("path"),
+        }),
+        _ => Err(format!(
+            "Invalid type={name} for iridanext.output.metadata.samples: {samples}"
+        )),
+    }
 }
 
 /// A setting as Groovy prints a one-entry map.
@@ -331,7 +401,7 @@ impl Irida {
                 }
             }
         }
-        let metadata = Json::Object(Vec::new());
+        let metadata = self.metadata(&ids)?;
         Ok(Json::object([
             (
                 "files",
@@ -339,6 +409,81 @@ impl Irida {
             ),
             ("metadata", Json::object([("samples", metadata)])),
         ]))
+    }
+
+    /// The metadata of the registered samples from the parsers, after flattening and the key
+    /// rules.
+    fn metadata(&self, ids: &[String]) -> Result<Json, String> {
+        let mut found = Json::Object(Vec::new());
+        for parser in &self.settings.parsers {
+            let glob = match parser {
+                Parser::Csv { glob, .. } | Parser::Json { glob } => glob,
+            };
+            let target = (self.published.iter())
+                .map(|(_, target)| target)
+                .find(|target| glob.as_ref().is_none_or(|glob| matches(glob, target)));
+            let Some(target) = target else {
+                continue;
+            };
+            for (id, value) in read(parser, &self.launch.join(target))? {
+                if ids.contains(&id) {
+                    found.insert(&id, value);
+                }
+            }
+        }
+        let Json::Object(samples) = found else {
+            return Ok(Json::Object(Vec::new()));
+        };
+        let mut kept = Vec::new();
+        for (id, value) in samples {
+            kept.push((id, self.arrange(value)?));
+        }
+        Ok(Json::Object(kept))
+    }
+
+    /// The metadata of one sample after `flatten`, `ignore`, `keep` and `rename`.
+    fn arrange(&self, value: Json) -> Result<Json, String> {
+        let settings = &self.settings;
+        let value = match settings.flatten {
+            true => {
+                let mut flat = Vec::new();
+                flattened("", value, &mut flat);
+                Json::Object(flat)
+            }
+            false => value,
+        };
+        let Json::Object(entries) = value else {
+            return Ok(value);
+        };
+        let mut result: Vec<(String, Json)> = Vec::new();
+        for (key, value) in entries.iter().cloned() {
+            if settings.ignore.contains(&key) {
+                continue;
+            }
+            if settings
+                .keep
+                .as_ref()
+                .is_some_and(|keep| !keep.contains(&key))
+            {
+                continue;
+            }
+            let renamed = settings.rename.iter().find(|(from, _)| *from == key);
+            let name = match renamed {
+                Some((from, to)) => {
+                    let taken = |name: &str| entries.iter().any(|(known, _)| known == name);
+                    if taken(to) || result.iter().any(|(known, _)| known == to) {
+                        return Err(format!(
+                            "Cannot rename metadata key [{from}] to [{to}], key [{to}] already \
+                             exists"
+                        ));
+                    }
+                    to.clone()
+                }
+                None => key,
+            };
+            result.push((name, value));
+        }
+        Ok(Json::Object(result))
     }
 }
 
@@ -385,6 +530,77 @@ fn files<'a>(parts: &'a [Part], task: &'a Task) -> impl Iterator<Item = &'a str>
         .map(|file| file.path.as_str())
 }
 
+/// The samples of a metadata file, by id, in row or key order.
+fn read(parser: &Parser, path: &Path) -> Result<Vec<(String, Json)>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    match parser {
+        Parser::Csv {
+            column, separator, ..
+        } => {
+            let options = CsvOptions {
+                separator: *separator,
+                quote: Some('"'),
+                header: Some(None),
+                skip: 0,
+                strip: true,
+            };
+            let rows =
+                records(&text, &options, false).map_err(|error| error.message.to_string())?;
+            let mut samples = Vec::new();
+            for row in rows {
+                let fields = entries(&row);
+                let Some((_, id)) = fields.iter().find(|(name, _)| name == column) else {
+                    return Err(format!(
+                        "Error: column with idColumn={column} not in CSV {}",
+                        path.display()
+                    ));
+                };
+                let others =
+                    (fields.iter())
+                        .filter(|(name, _)| name != column)
+                        .map(|(name, value)| {
+                            let value = match value {
+                                Value::Null => String::new(),
+                                other => other.to_string(),
+                            };
+                            (name.clone(), Json::from(value))
+                        });
+                samples.push((id.to_string(), Json::Object(others.collect())));
+            }
+            Ok(samples)
+        }
+        Parser::Json { .. } => {
+            let value = parse_json(&text).map_err(|error| error.message.to_string())?;
+            match ordered_json(&value) {
+                Json::Object(entries) => Ok(entries),
+                _ => Ok(Vec::new()),
+            }
+        }
+    }
+}
+
+/// The entries of nested objects and lists under keys joined with `.`, list places from 1.
+fn flattened(prefix: &str, value: Json, flat: &mut Vec<(String, Json)>) {
+    let key = |name: &str| match prefix {
+        "" => name.to_owned(),
+        prefix => format!("{prefix}.{name}"),
+    };
+    match value {
+        Json::Object(entries) => {
+            for (name, value) in entries {
+                flattened(&key(&name), value, flat);
+            }
+        }
+        Json::List(items) => {
+            for (place, value) in items.into_iter().enumerate() {
+                flattened(&key(&(place + 1).to_string()), value, flat);
+            }
+        }
+        scalar => flat.push((prefix.to_owned(), scalar)),
+    }
+}
+
 /// A path relative to a folder, with `..` for the parts of the folder it is not in.
 fn relative(folder: &Path, path: &Path) -> String {
     let folder: Vec<Component> = folder.components().collect();
@@ -402,6 +618,21 @@ fn relative(folder: &Path, path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flattens_with_places() {
+        let value = Json::object([(
+            "k",
+            Json::object([
+                ("x", Json::from(1i64)),
+                ("y", Json::list([Json::Bool(true), Json::from("a")])),
+            ]),
+        )]);
+        let mut flat = Vec::new();
+        flattened("", value, &mut flat);
+        let keys: Vec<&str> = flat.iter().map(|(key, _)| key.as_str()).collect();
+        assert_eq!(keys, ["k.x", "k.y.1", "k.y.2"]);
+    }
 
     #[test]
     fn relativizes_paths() {

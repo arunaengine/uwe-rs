@@ -15,6 +15,7 @@ mod nf_core_utils;
 mod nf_dotenv;
 mod nf_fgbio;
 mod nf_logsaver;
+mod nf_metalog;
 mod nf_ped;
 mod nf_pregex;
 mod nf_prov;

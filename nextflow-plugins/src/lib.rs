@@ -40,6 +40,7 @@ mod nf_trino;
 #[path = "validation.rs"]
 mod nf_validation;
 mod nf_versions;
+mod nf_weblog;
 pub mod observer;
 mod report_format;
 mod run_metadata;

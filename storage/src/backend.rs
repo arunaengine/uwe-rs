@@ -354,6 +354,7 @@ impl Connection {
                 | Backend::Irods(_)
                 | Backend::Oci(_)
                 | Backend::Lakefs(_)
+                | Backend::Quilt(_)
         )
     }
 
@@ -430,6 +431,7 @@ impl Connection {
             Backend::Irods(irods) => irods.upload(file, target).await,
             Backend::Oci(oci) => oci.upload(file, target).await,
             Backend::Lakefs(lakefs) => lakefs.upload(file, target).await,
+            Backend::Quilt(quilt) => quilt.upload(file, target).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
     }

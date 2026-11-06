@@ -16,7 +16,7 @@ use nextflow_evaluator::interpreter::Host;
 use nextflow_plugins::observer::{Counts, Event, File, Observer, Output, Task};
 use nextflow_runtime::driver::{Nextflow, Settings};
 use workflow_graph::{
-    Attempt, Delivery, Engine, Executor, Files, Launch, Outcome, OutputFile, Running,
+    Attempt, Delivery, Engine, Executor, Files, Launch, Outcome, OutputFile, Running, Stream,
 };
 
 const PIPELINE: &str = r#"
@@ -484,4 +484,68 @@ fn hears_resumed_runs() {
         panic!("the run starts first");
     };
     assert!(start.resume);
+}
+
+/// Ends every task well with its streams only in log files, as executors keep them.
+struct Logged(PathBuf);
+
+impl Executor for Logged {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let log = |name: &str, text: &str| {
+            let file = self.0.join(name);
+            std::fs::write(&file, text).expect("writes the log");
+            Some(Stream {
+                location: file.to_string_lossy().into_owned(),
+                size: text.len() as u64,
+                digest: String::new(),
+            })
+        };
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            stdout_log: log("stdout", "made\n"),
+            stderr_log: log("stderr", "warned\n"),
+            files: vec![OutputFile {
+                path: "made.txt".into(),
+                location: "/work/made.txt".into(),
+                ..OutputFile::default()
+            }],
+            ..Outcome::default()
+        }))
+    }
+
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        Some(Arc::new(Kept))
+    }
+}
+
+/// Observers hear the standard output and error of a task that ended well from its logs.
+#[test]
+fn hears_task_streams() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), OUTPUTS).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        output_dir: Some(directory.path().join("results")),
+        ..Launch::default()
+    };
+    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: Arc::default(),
+    }));
+    let mut executor = Logged(directory.path().to_owned());
+    let execution = Engine::new(&mut executor).run("main.nf", &mut driver);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let events = events.borrow();
+    let completed = (events.iter()).find_map(|event| match event {
+        Event::TaskCompleted(task) => Some(task),
+        _ => None,
+    });
+    let task = completed.expect("MAKE completes");
+    assert_eq!(
+        (task.stdout.as_str(), task.stderr.as_str()),
+        ("made\n", "warned\n")
+    );
 }

@@ -14,7 +14,7 @@ pub mod observer;
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::value::{State as ObjectState, Value};
 
 use crate::catalogue::{Kind, Plugin, State};
 
@@ -132,6 +132,26 @@ pub fn start(context: &mut Context) -> Result<(), Error> {
         nf_schema::start(context)?;
     }
     Ok(())
+}
+
+/// Calls a method of a plugin object, `None` when the object has no such method.
+pub fn method(
+    object: &Value,
+    name: &str,
+    arguments: Vec<Value>,
+    context: &mut Context,
+) -> Result<Option<Value>, Error> {
+    let plugin = match object {
+        Value::Object(native) => match &native.borrow().state {
+            ObjectState::Plugin(native) => native.plugin(),
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    match catalogue::find(plugin).and_then(|plugin| plugin.methods) {
+        Some(methods) => methods(object, name, arguments, context),
+        None => Ok(None),
+    }
 }
 
 /// Calls a function of a plugin.

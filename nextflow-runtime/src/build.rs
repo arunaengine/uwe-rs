@@ -203,6 +203,15 @@ impl Host for Builder<'_> {
         self.base.plugin_function(plugin, name, arguments)
     }
 
+    fn plugin_method(
+        &mut self,
+        object: &Value,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        self.base.plugin_method(object, name, arguments)
+    }
+
     /// A workflow output publishes the files of the values of its channel, with the options
     /// of the `output { }` block over those of the config's `workflow.output` scope.
     fn publish(&mut self, name: &str, channel: Value, options: OutputOptions) -> Result<(), Error> {

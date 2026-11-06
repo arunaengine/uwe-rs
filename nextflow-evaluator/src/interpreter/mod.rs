@@ -236,6 +236,17 @@ pub trait Host {
         Err(unsupported(message, Span::default()))
     }
 
+    /// Calls a method of a plugin object, like `segments()` of fgbio's `ReadStructure`; `None`
+    /// when the object has no such method.
+    fn plugin_method(
+        &mut self,
+        _object: &Value,
+        _name: &str,
+        _arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
+    }
+
     /// A property of a channel, like `ch.first().baseName`; `None` when the channel has no
     /// such property.
     fn channel_property(&mut self, _channel: &Value, _name: &str) -> Result<Option<Value>, Error> {

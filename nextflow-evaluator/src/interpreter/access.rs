@@ -150,6 +150,18 @@ impl Interpreter<'_> {
             .next()
             .map(|c| c.to_uppercase().collect::<String>());
         let capitalized = format!("{}{}", first.unwrap_or_default(), capitalized.as_str());
+        // A plugin object answers a property with its getter, or with the method of that name.
+        if plugin_object(object) {
+            for method in [
+                format!("get{capitalized}"),
+                format!("is{capitalized}"),
+                name.into(),
+            ] {
+                if let Some(value) = self.plugin_method(object, &method, Vec::new(), span)? {
+                    return Ok(value);
+                }
+            }
+        }
         for prefix in ["get", "is"] {
             let getter = format!("{prefix}{capitalized}");
             if let Some(value) = self.library_method(object, &getter, &[], span)? {
@@ -187,6 +199,20 @@ impl Interpreter<'_> {
             }
             Value::Object(object) if super::classes::is_library(object) => {
                 self.set_library_property(object, name, value, span)
+            }
+            Value::Object(_) if plugin_object(object) => {
+                let mut setter = name.chars();
+                let first = setter.next().map(|c| c.to_uppercase().collect::<String>());
+                let setter = format!("set{}{}", first.unwrap_or_default(), setter.as_str());
+                match self.plugin_method(object, &setter, vec![value], span)? {
+                    Some(_) => Ok(()),
+                    None => {
+                        let class = object.java_class_name();
+                        let message = format!("No such property: {name} for class: {class}");
+                        let error = Exception::new("MissingPropertyException", message);
+                        Err(thrown(error, span))
+                    }
+                }
             }
             Value::Map(map) => {
                 map.borrow_mut()
@@ -569,6 +595,12 @@ impl Interpreter<'_> {
                 self.property(object, name, span)
             }
             _ => {
+                if plugin_object(object)
+                    && let Some(value) =
+                        self.plugin_method(object, name, arguments.clone(), span)?
+                {
+                    return Ok(value);
+                }
                 if let Some(value) = self.library_method(object, name, &arguments, span)? {
                     return Ok(value);
                 }
@@ -595,6 +627,33 @@ impl Interpreter<'_> {
                 Err(unsupported(format!("the method `{name}` of {class}"), span))
             }
         }
+    }
+
+    /// A method of a plugin object, which its plugin runs; `None` when it has no such method.
+    fn plugin_method(
+        &mut self,
+        object: &Value,
+        name: &str,
+        mut arguments: Vec<Value>,
+        span: Span,
+    ) -> Result<Option<Value>, Error> {
+        let calls = match object {
+            Value::Object(native) => match &native.borrow().state {
+                State::Plugin(native) => native.calls_closure(name),
+                _ => false,
+            },
+            _ => false,
+        };
+        if calls {
+            for argument in &mut arguments {
+                if let Value::Closure(closure) = argument {
+                    let closure = closure.clone();
+                    *argument = self.call_closure_value(&closure, Vec::new(), span)?;
+                }
+            }
+        }
+        let result = self.host.plugin_method(object, name, arguments);
+        result.map_err(|error| error.or_at(span))
     }
 
     /// `value as Class` for the conversions of the core; `null` stays `null`.
@@ -1035,4 +1094,9 @@ fn out_of_bounds(class: &'static str, index: &Number, length: usize, span: Span)
 /// The `UnsupportedOperationException` of a tuple or record that rejects a change.
 fn rejected(span: Span) -> Error {
     thrown(Exception::new("UnsupportedOperationException", ""), span)
+}
+
+/// Whether the value is an object of a plugin class, whose plugin runs its methods.
+fn plugin_object(value: &Value) -> bool {
+    matches!(value, Value::Object(object) if matches!(object.borrow().state, State::Plugin(_)))
 }

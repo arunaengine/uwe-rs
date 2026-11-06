@@ -26,6 +26,7 @@ mod nf_gc;
 mod nf_irods;
 mod nf_logsaver;
 mod nf_metalog;
+mod nf_oci;
 mod nf_parquet;
 mod nf_ped;
 mod nf_pregex;

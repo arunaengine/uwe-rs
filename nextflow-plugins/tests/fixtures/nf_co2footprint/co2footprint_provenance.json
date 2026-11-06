@@ -398,3 +398,403 @@
                 "@type": "schema:QuantitativeValue",
                 "value": 0.0001914344344290,
                 "unitText": "Wh",
+                "additionalProperty": {
+                    "readable": "191.43 uWh"
+                }
+            },
+            "raw_energy_memory": {
+                "@type": "schema:QuantitativeValue",
+                "value": 0.0003355293893649235968000,
+                "unitText": "Wh",
+                "additionalProperty": {
+                    "readable": "335.53 uWh"
+                }
+            },
+            "hasPart": [
+                {
+                    "@id": "urn:co2footprint:WORK",
+                    "@type": "schema:SoftwareApplication",
+                    "workflowLevel": {
+                        "@type": "schema:PropertyValue",
+                        "value": "process"
+                    },
+                    "task_id": {
+                        "@type": "schema:PropertyValue",
+                        "value": "-1",
+                        "additionalProperty": {
+                            "readable": "-1"
+                        }
+                    },
+                    "status": {
+                        "@type": "schema:PropertyValue",
+                        "value": "COMPLETED",
+                        "additionalProperty": {
+                            "readable": "COMPLETED"
+                        }
+                    },
+                    "name": {
+                        "@type": "schema:PropertyValue",
+                        "value": "WORK",
+                        "additionalProperty": {
+                            "readable": "WORK"
+                        }
+                    },
+                    "energy_consumption": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 0.00052696382379392359680000,
+                        "unitText": "Wh",
+                        "additionalProperty": {
+                            "readable": "526.96 uWh"
+                        }
+                    },
+                    "CO2e": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 0.0001758847154676978789039360000,
+                        "unitText": "g",
+                        "additionalProperty": {
+                            "readable": "175.88 ug"
+                        }
+                    },
+                    "carbon_intensity": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 333.77,
+                        "unitText": "gCO\u2082e/kWh",
+                        "additionalProperty": {
+                            "readable": "333.77 gCO\u2082e/kWh"
+                        }
+                    },
+                    "%cpu": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 2.0,
+                        "unitText": "%",
+                        "additionalProperty": {
+                            "readable": "2 %"
+                        }
+                    },
+                    "memory": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 1073741824,
+                        "unitText": "B",
+                        "additionalProperty": {
+                            "readable": "1.07 GB"
+                        }
+                    },
+                    "realtime": {
+                        "@type": "schema:Duration",
+                        "value": "PT3.02S",
+                        "unitText": "ms",
+                        "additionalProperty": {
+                            "readable": "3s 20ms"
+                        }
+                    },
+                    "cpus": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 1,
+                        "unitText": "",
+                        "additionalProperty": {
+                            "readable": "1"
+                        }
+                    },
+                    "pue": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 1.0,
+                        "unitText": "",
+                        "additionalProperty": {
+                            "readable": "1"
+                        }
+                    },
+                    "powerdraw_cpu": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 11.41,
+                        "unitText": "W",
+                        "additionalProperty": {
+                            "readable": "11.41 W"
+                        }
+                    },
+                    "powerdraw_memory": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 0.3725,
+                        "unitText": "W",
+                        "additionalProperty": {
+                            "readable": "372.5 mW"
+                        }
+                    },
+                    "cpu_model": {
+                        "@type": "schema:PropertyValue",
+                        "value": "AMD Ryzen 9 7945HX with Radeon Graphics",
+                        "additionalProperty": {
+                            "readable": "AMD Ryzen 9 7945HX with Radeon Graphics"
+                        }
+                    },
+                    "raw_energy_processor": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 0.0001914344344290,
+                        "unitText": "Wh",
+                        "additionalProperty": {
+                            "readable": "191.43 uWh"
+                        }
+                    },
+                    "raw_energy_memory": {
+                        "@type": "schema:QuantitativeValue",
+                        "value": 0.0003355293893649235968000,
+                        "unitText": "Wh",
+                        "additionalProperty": {
+                            "readable": "335.53 uWh"
+                        }
+                    },
+                    "hasPart": [
+                        {
+                            "@id": "urn:co2footprint:3",
+                            "@type": "schema:Action",
+                            "workflowLevel": {
+                                "@type": "schema:PropertyValue",
+                                "value": "task"
+                            },
+                            "task_id": {
+                                "@type": "schema:PropertyValue",
+                                "value": 3,
+                                "additionalProperty": {
+                                    "readable": "3"
+                                }
+                            },
+                            "status": {
+                                "@type": "schema:PropertyValue",
+                                "value": "COMPLETED",
+                                "additionalProperty": {
+                                    "readable": "COMPLETED"
+                                }
+                            },
+                            "name": {
+                                "@type": "schema:PropertyValue",
+                                "value": "WORK (3)",
+                                "additionalProperty": {
+                                    "readable": "WORK (3)"
+                                }
+                            },
+                            "energy_consumption": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.000175712766942381568000,
+                                "unitText": "Wh",
+                                "additionalProperty": {
+                                    "readable": "175.71 uWh"
+                                }
+                            },
+                            "CO2e": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.00005864765022235869595136000,
+                                "unitText": "g",
+                                "additionalProperty": {
+                                    "readable": "58.65 ug"
+                                }
+                            },
+                            "carbon_intensity": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 333.77,
+                                "unitText": "gCO\u2082e/kWh",
+                                "additionalProperty": {
+                                    "readable": "333.77 gCO\u2082e/kWh"
+                                }
+                            },
+                            "%cpu": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 2.0,
+                                "unitText": "%",
+                                "additionalProperty": {
+                                    "readable": "2 %"
+                                }
+                            },
+                            "memory": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 1073741824,
+                                "unitText": "B",
+                                "additionalProperty": {
+                                    "readable": "1.07 GB"
+                                }
+                            },
+                            "realtime": {
+                                "@type": "schema:Duration",
+                                "value": "PT1.007S",
+                                "unitText": "ms",
+                                "additionalProperty": {
+                                    "readable": "1s 7ms"
+                                }
+                            },
+                            "cpus": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 1,
+                                "unitText": "",
+                                "additionalProperty": {
+                                    "readable": "1"
+                                }
+                            },
+                            "pue": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 1.0,
+                                "unitText": "",
+                                "additionalProperty": {
+                                    "readable": "1"
+                                }
+                            },
+                            "powerdraw_cpu": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 11.41,
+                                "unitText": "W",
+                                "additionalProperty": {
+                                    "readable": "11.41 W"
+                                }
+                            },
+                            "powerdraw_memory": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.3725,
+                                "unitText": "W",
+                                "additionalProperty": {
+                                    "readable": "372.5 mW"
+                                }
+                            },
+                            "cpu_model": {
+                                "@type": "schema:PropertyValue",
+                                "value": "AMD Ryzen 9 7945HX with Radeon Graphics",
+                                "additionalProperty": {
+                                    "readable": "AMD Ryzen 9 7945HX with Radeon Graphics"
+                                }
+                            },
+                            "raw_energy_processor": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.00006383260604,
+                                "unitText": "Wh",
+                                "additionalProperty": {
+                                    "readable": "63.83 uWh"
+                                }
+                            },
+                            "raw_energy_memory": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.00011188016090238156800,
+                                "unitText": "Wh",
+                                "additionalProperty": {
+                                    "readable": "111.88 uWh"
+                                }
+                            }
+                        },
+                        {
+                            "@id": "urn:co2footprint:2",
+                            "@type": "schema:Action",
+                            "workflowLevel": {
+                                "@type": "schema:PropertyValue",
+                                "value": "task"
+                            },
+                            "task_id": {
+                                "@type": "schema:PropertyValue",
+                                "value": 2,
+                                "additionalProperty": {
+                                    "readable": "2"
+                                }
+                            },
+                            "status": {
+                                "@type": "schema:PropertyValue",
+                                "value": "COMPLETED",
+                                "additionalProperty": {
+                                    "readable": "COMPLETED"
+                                }
+                            },
+                            "name": {
+                                "@type": "schema:PropertyValue",
+                                "value": "WORK (2)",
+                                "additionalProperty": {
+                                    "readable": "WORK (2)"
+                                }
+                            },
+                            "energy_consumption": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.000175712766942381568000,
+                                "unitText": "Wh",
+                                "additionalProperty": {
+                                    "readable": "175.71 uWh"
+                                }
+                            },
+                            "CO2e": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.00005864765022235869595136000,
+                                "unitText": "g",
+                                "additionalProperty": {
+                                    "readable": "58.65 ug"
+                                }
+                            },
+                            "carbon_intensity": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 333.77,
+                                "unitText": "gCO\u2082e/kWh",
+                                "additionalProperty": {
+                                    "readable": "333.77 gCO\u2082e/kWh"
+                                }
+                            },
+                            "%cpu": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 2.0,
+                                "unitText": "%",
+                                "additionalProperty": {
+                                    "readable": "2 %"
+                                }
+                            },
+                            "memory": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 1073741824,
+                                "unitText": "B",
+                                "additionalProperty": {
+                                    "readable": "1.07 GB"
+                                }
+                            },
+                            "realtime": {
+                                "@type": "schema:Duration",
+                                "value": "PT1.007S",
+                                "unitText": "ms",
+                                "additionalProperty": {
+                                    "readable": "1s 7ms"
+                                }
+                            },
+                            "cpus": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 1,
+                                "unitText": "",
+                                "additionalProperty": {
+                                    "readable": "1"
+                                }
+                            },
+                            "pue": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 1.0,
+                                "unitText": "",
+                                "additionalProperty": {
+                                    "readable": "1"
+                                }
+                            },
+                            "powerdraw_cpu": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 11.41,
+                                "unitText": "W",
+                                "additionalProperty": {
+                                    "readable": "11.41 W"
+                                }
+                            },
+                            "powerdraw_memory": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.3725,
+                                "unitText": "W",
+                                "additionalProperty": {
+                                    "readable": "372.5 mW"
+                                }
+                            },
+                            "cpu_model": {
+                                "@type": "schema:PropertyValue",
+                                "value": "AMD Ryzen 9 7945HX with Radeon Graphics",
+                                "additionalProperty": {
+                                    "readable": "AMD Ryzen 9 7945HX with Radeon Graphics"
+                                }
+                            },
+                            "raw_energy_processor": {
+                                "@type": "schema:QuantitativeValue",
+                                "value": 0.00006383260604,
+                                "unitText": "Wh",
+                                "additionalProperty": {
+                                    "readable": "63.83 uWh"
+                                }
+                            },

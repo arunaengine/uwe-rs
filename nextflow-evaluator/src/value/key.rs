@@ -111,6 +111,11 @@ impl Value {
                 match (&left.borrow().state, &right.borrow().state) {
                     (super::State::Uuid(a), super::State::Uuid(b)) => a == b,
                     (super::State::Time(a), super::State::Time(b)) => a == b,
+                    (super::State::Plugin(a), super::State::Plugin(b)) => {
+                        let class = left.borrow().class == right.borrow().class;
+                        Rc::ptr_eq(left, right)
+                            || class && a.key().is_some_and(|a| b.key() == Some(a))
+                    }
                     _ => Rc::ptr_eq(left, right),
                 }
             }
@@ -189,6 +194,10 @@ impl Value {
                     long_hash((high ^ low) as i64)
                 }
                 super::State::Time(time) => string_hash(&time.text()),
+                super::State::Plugin(native) => match native.key() {
+                    Some(key) => string_hash(&key),
+                    None => Rc::as_ptr(object) as usize as i32,
+                },
                 _ => Rc::as_ptr(object) as usize as i32,
             },
             Value::Exception(exception) => Rc::as_ptr(exception) as usize as i32,

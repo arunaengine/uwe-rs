@@ -130,6 +130,15 @@ impl Host for Noting<'_> {
         self.host.plugin_function(plugin, name, arguments)
     }
 
+    fn plugin_method(
+        &mut self,
+        object: &Value,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        self.host.plugin_method(object, name, arguments)
+    }
+
     fn channel_property(&mut self, channel: &Value, name: &str) -> Result<Option<Value>, Error> {
         self.host.channel_property(channel, name)
     }

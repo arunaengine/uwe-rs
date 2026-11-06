@@ -178,6 +178,15 @@ impl Host for Session<'_> {
         nextflow_plugins::call(plugin, name, arguments, &mut self.plugin_context())
     }
 
+    fn plugin_method(
+        &mut self,
+        object: &Value,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        nextflow_plugins::method(object, name, arguments, &mut self.plugin_context())
+    }
+
     /// Validates with the everit validator of `nextflow-plugins`.
     fn validate_json(&mut self, schema: &str, instance: &str) -> Result<Option<String>, Error> {
         match nextflow_plugins::everit::violation(schema, instance) {

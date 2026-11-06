@@ -51,6 +51,9 @@ pub enum State {
 /// Calls a function of a plugin by its name.
 pub type Call = fn(&str, Vec<Value>, &mut Context) -> Result<Value, Error>;
 
+/// Calls a method of an object of a plugin, `None` when the object has no such method.
+pub type Methods = fn(&Value, &str, Vec<Value>, &mut Context) -> Result<Option<Value>, Error>;
+
 /// Makes the run observer of a plugin from the config, `None` when the config turns it off.
 pub type Activate = fn(&Config) -> Result<Option<Box<dyn Observer>>, String>;
 
@@ -66,6 +69,8 @@ pub struct Plugin {
     pub supported: Option<&'static [&'static str]>,
     /// Runs the functions that `script` does not define.
     pub call: Option<Call>,
+    /// Runs the methods of the objects that its functions give.
+    pub methods: Option<Methods>,
     /// Nextflow script that defines some of the functions.
     pub script: Option<&'static str>,
     /// The channel factories it adds, like `fromSamplesheet` for `Channel.fromSamplesheet`.
@@ -85,6 +90,7 @@ impl Plugin {
             functions: &[],
             supported: None,
             call: None,
+            methods: None,
             script: None,
             factories: &[],
             scopes: &[],

@@ -80,6 +80,29 @@ pub enum State {
         class: Rc<crate::lowered::LibraryClass>,
         fields: indexmap::IndexMap<Rc<str>, super::Value>,
     },
+    /// An object of a plugin class, like fgbio's `ReadStructure`, whose plugin runs its methods.
+    Plugin(Box<dyn Native>),
+}
+
+/// The state of a plugin object. The host runs its methods through `Host::plugin_method`.
+pub trait Native: std::any::Any + std::fmt::Debug {
+    /// The id of the plugin that runs the methods, like `nf-fgbio`.
+    fn plugin(&self) -> &'static str;
+
+    /// The text of `toString()`.
+    fn text(&self) -> String;
+
+    /// The value that `equals` and `hashCode` compare, for objects of the same class;
+    /// `None` when the object is only equal to itself.
+    fn key(&self) -> Option<String> {
+        None
+    }
+
+    /// Whether the method takes the result of its closure arguments instead of the
+    /// closures, like Scala's `getOrElse` of `None`.
+    fn calls_closure(&self, _method: &str) -> bool {
+        false
+    }
 }
 
 /// The values of `java.time` that scripts use for timestamps.

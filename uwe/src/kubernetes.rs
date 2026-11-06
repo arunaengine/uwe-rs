@@ -30,13 +30,15 @@ pub fn executor(
         }
         None => {
             let kubeconfig = kubeconfig.ok_or("-executor kubernetes requires -kubeconfig, an injected client or explicit in_cluster configuration")?;
-            runtime.block_on(Cluster::connect(kubeconfig, namespace))?
+            let context = setup.executors.kubernetes_context.clone();
+            runtime.block_on(Cluster::connect_context(kubeconfig, namespace, context))?
         }
     };
     let mut backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
     let executors = &setup.executors;
     backend.trusted = !setup.hosted;
     backend.references = executors.kubernetes_references.clone();
+    backend.pod = executors.kubernetes_pod.clone();
     if let Volumes::Under { root, .. } = &executors.kubernetes_volumes
         && !backend.scratch.starts_with(root)
     {

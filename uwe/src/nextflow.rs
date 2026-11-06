@@ -394,7 +394,9 @@ pub fn pipeline_executor(
     let named = arguments.executor.as_deref();
     let batch = matches!(
         named,
-        Some("aws-batch" | "google-batch" | "azure-batch" | "nomad" | "slurm" | "tes")
+        Some(
+            "aws-batch" | "google-batch" | "azure-batch" | "kubernetes" | "nomad" | "slurm" | "tes"
+        )
     );
     if language != Language::Nextflow {
         return Ok(None);
@@ -435,6 +437,10 @@ pub fn pipeline_executor(
     }
     if named == Some("slurm") || picked.as_deref() == Some("slurm") {
         crate::scopes::slurm(&config, &mut setup.executors);
+    }
+    if named == Some("kubernetes") || picked.as_deref() == Some("kubernetes") {
+        crate::scopes::kubernetes(&config, &mut setup.executors)
+            .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
     }
     if named == Some("tes") || picked.as_deref() == Some("tes") {
         crate::scopes::tes(&config, &mut setup.executors)

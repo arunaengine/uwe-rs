@@ -592,6 +592,90 @@ Limits:
 
 Their tasks use the settings of `[executor.snowflake]`. The image, CPUs, memory, GPUs and time come from the task.
 
+## JARVICE
+
+`-executor jarvice` runs each attempt of a task as one JARVICE batch job (`/jarvice/batch`) through the JARVICE API, with the user name and API key of a JARVICE account. JARVICE runs a job script in the image of the task on one node of the machine type.
+
+```toml
+[executor.jarvice]
+api_url = "https://cloud.nimbix.net/api"   # the default, the API of the Nimbix cloud
+username = "lab"
+api_key = { environment = "JARVICE_API_KEY" }
+machine_type = "n1"                        # for tasks that name no machine type
+vault = "persistent"                       # the vault that the jobs mount
+# vault_readonly = false
+# vault_force = false
+# vault_path = "/data"                     # where the jobs see the vault
+# poll_seconds = 10
+# staging = "object-store"                 # with staging_root and helper_path, helper_url or helper_file
+# task_folder = "/tmp/uwe"                 # with object-store staging: the folder of the attempts in the job
+```
+
+With `staging = "shared-path"` (the default) uwe runs in a JARVICE job itself, with its cache on the vault, as nf-jarvice needs Nextflow there: the store and scratch folders must be below `vault_path`, where the jobs see them at the same paths. The job script changes to the work folder of the task and runs its wrapper. A folder of the task outside the vault is refused before the job starts.
+
+With `staging = "object-store"` uwe can run anywhere: the job script fetches the helper (from `helper_url` with `helper_sha256`, or the binary of `helper_file`, else the running binary, which uwe uploads; the image needs `curl` or `wget` and `sha256sum`), or runs it from `helper_path` on the vault, stages the inputs through the staging root, runs the wrapper and sends the outputs back. No vault is needed then.
+
+A task runs like this:
+
+1. uwe submits the job with `POST /jarvice/batch`: the image of the task (an image of Docker Hub without a namespace gets `library/`, as JARVICE asks), the job script in base64, the machine type with one node, the vault, the user, and the label `uwe-<attempt>`.
+2. uwe reads `/jarvice/status` every `poll_seconds` until the job is `COMPLETED`, `COMPLETED WITH ERROR`, `CANCELED` or `TERMINATED`.
+3. The exit code that the wrapper recorded is the exit code of the task. A job that ended without it shows the end of its output (`/jarvice/output`, without the header of the platform).
+4. A cancelled task, or a job that runs longer than its time and `staging_minutes`, ends with `/jarvice/shutdown`, else `/jarvice/terminate`.
+
+The machine type of a task is its `machineType` option, else its queue, else `machine_type`. CPUs and memory do not pick a machine type: JARVICE sizes jobs by machine type only.
+
+Limits:
+
+- The API key goes in the body of a submission and in the query of the other calls, as the JARVICE API asks, so a web proxy may log it. uwe never logs those addresses.
+- Tasks of several containers and tasks that run as a named user are refused; with object-store staging also tasks without network and inputs at absolute paths. JARVICE cannot cut a job off the network.
+- A job runs on one node; more nodes and a time limit of JARVICE's own are not sent.
+- The tests run against a local fake of the API, after the fake of the nf-jarvice spec. Runs on a real JARVICE system are not verified, nor whether JARVICE takes the job script in base64, as nf-jarvice sends it, or as plain text, as the API documentation shows.
+
+### Nextflow pipelines
+
+`process.executor = 'jarvice'` picks this executor. nf-jarvice's settings of the process config fill those that `[executor.jarvice]` leaves unset: `process.apiUrl`, `machineType`, `vault` (`name`, `readonly`, `force`) and `user` (`username`, `apikey`). The `machineType` directive of a process picks the machine type of its tasks. uwe does not export the `NXF_*` variables of its own environment into the jobs, as nf-jarvice does, and prints no banner.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the settings of `[executor.jarvice]`; the queue of a task picks its machine type.
+
+## wr
+
+`-executor wr` runs each attempt of a task as one job of a wr manager (the workflow runner of the Wellcome Sanger Institute), through the manager's REST API over HTTPS. wr runs the job on the machine of the manager, on LSF or on OpenStack instances that it starts. The job script is that of the SLURM jobs: it runs the task container with the container program of the nodes.
+
+```toml
+[executor.wr]
+# deployment = "production"                # or "development": the folder and port of the manager
+# endpoint = "https://localhost:5022"      # else https://localhost at wr's port for the user of uwe
+# token_file = "/home/lab/.wr_production/client.token"   # the default
+# ca_file = "/home/lab/.wr_production/ca.pem"            # the default
+# poll_seconds = 1
+# container = "apptainer"                  # or "singularity", "podman", "docker" on the nodes
+# staging = "object-store"                 # with staging_root and helper_path, helper_url or helper_file
+# node_folder = "/local/scratch"           # with object-store staging; else $TMPDIR, else /tmp
+```
+
+uwe sends the token of `token_file` as a bearer token and trusts only the CA certificate of `ca_file`, which wr made, and checks the host name of the certificate. The manager is reached without the web proxy. The default port is wr's: 1021 + 4 x the user id + 1, 2 more for `development`.
+
+With `staging = "shared-path"` (the default) the nodes see the store and scratch folders at the same paths: the job runs `/bin/bash <job script>` in the attempt folder (`cwd_matters`), with its log in the control folder. With `staging = "object-store"` the job carries its job script, runs in a fresh folder that wr removes after the job (`on_exit` cleanup), and stages the files of its task through the staging root with the uwe helper, as on SLURM.
+
+Each job gets the CPUs of its task, its memory in MiB, its time and `staging_minutes` in seconds and its disk in GB, with `override = 2` so that wr uses these values and not what it learned of the group, `retries = 0` (uwe retries itself), `rerun = true`, and `[uwe] <run>-<step>` as `rep_grp` and `req_grp`. uwe reads the states of its jobs in one call. A cancelled job, or one that uwe gives up on, is stopped (`state=running`) and then deleted (`state=deletable`). A job whose task failed stays in wr's queue as `buried`, where `wr status` shows it.
+
+Limits:
+
+- `staging_access = "credentials"` is refused: the jobs get no secrets. The web proxy of the config file does not reach the jobs.
+- wr's `with_docker` and `with_singularity` job options and its S3 mounts are not used: uwe runs the container and stages the files itself.
+- Tasks of several containers, daemons, image archives and image IDs are refused, as on HTCondor and PBS.
+- The tests run against a local fake of the REST API over HTTPS with a throwaway CA. Runs with a real wr manager, LSF and OpenStack are not verified.
+
+### Nextflow pipelines
+
+`process.executor = 'wr'` picks this executor. nf-wr's `executor.$wr` scope (also read as `executor.wr`) fills the settings that `[executor.wr]` leaves unset: `deployment`, `endpoint`, `tokenpath` and `cacertpath`. uwe stages files itself, so it ignores `disableRemoteBinDir` with a warning. Unlike nf-wr, uwe checks the host name of the manager's certificate.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the settings of `[executor.wr]`. CPUs, memory, disk and time come from the resources of the task.
+
 ## Kubernetes pod options
 
 `pod` in `[executor.kubernetes]` gives every Job pod options in the form of Nextflow's `pod` directive, `service_account` its service account, and `context` the context of the kubeconfig:
@@ -612,6 +696,29 @@ pod = [
 The options are `env` with `value`, `secret`, `config` or `fieldPath`; volumes of `secret`, `config`, `volumeClaim`, `emptyDir`, `hostPath` or `csi` with `mountPath` (and `subPath`, `readOnly`); `label` and `annotation` with `value`; `nodeSelector`, `affinity`, `toleration`; `imagePullPolicy`, `imagePullSecret`; `priorityClassName`, `schedulerName`, `runtimeClassName`; `automountServiceAccountToken`; `runAsUser` and `securityContext`; and `ttlSecondsAfterFinished`. The `pod` directive of a Nextflow process adds its options after these. Resource labels become Job labels, cleaned as Nextflow cleans them. A task's disk becomes `ephemeral-storage`, and the `type` of Nextflow's `accelerator` names the GPU resource (`amd` gives `amd.com/gpu`). uwe's own labels, its architecture selector and the security of its containers stay: `privileged`, and a `runAsUser` of 0 or another root `securityContext`, are refused with a clear message.
 
 With `process.executor = 'k8s'` the `k8s` scope fills these settings: `k8s.namespace`, `context`, `serviceAccount`, `pod`, `imagePullPolicy`, `runAsUser`, `securityContext`, and with shared paths `storageClaimName` with `storageMountPath` as the shared volume. uwe still needs `-kubeconfig`, `kubeconfig` in `[executor.kubernetes]` or `in_cluster`; it does not read `KUBECONFIG` or `~/.kube/config`. It always runs Jobs, also with `k8s.computeResourceType = 'Pod'`, and ignores `k8s.client`, `storageSubPath` and `autoMountHostPaths` with a warning. Containers always get a CPU limit, whatever `k8s.cpuLimits` says.
+
+## Common Workflow Scheduler on Kubernetes
+
+`[executor.kubernetes.cws]` lets a running Common Workflow Scheduler (CWS) place the pods of the Kubernetes executor. uwe registers the run with CWS, adds the vertex of each process to its graph, and registers each task before its Job exists. The pods name CWS as their `schedulerName`. uwe does not start CWS, which runs as root by default; the cluster's administrators run it.
+
+```toml
+[executor.kubernetes.cws]
+address = "http://cws.lab:8080"            # the CWS REST API, without /v1
+# strategy = "FIFO"                        # the scheduling strategy, like "rank_max-fair"
+# cost_function = "<name>"
+# scheduler_name = "workflow-scheduler"    # the SCHEDULER_NAME of the CWS instance
+```
+
+The calls are `POST /v1/scheduler/<run>` with `dns`, `namespace`, `strategy` and `costFunction`, `POST /v1/scheduler/<run>/DAG/vertices` once for each process, and `POST /v1/scheduler/<run>/task/<n>` with the Job name as `runName`, the process, the CPUs, the memory in bytes, the work folder, the attempt as `repetition` and the bytes of the inputs as `inputSize`. The registration of the run is tried again for 150 seconds while CWS refuses connections.
+
+With `process.executor = 'k8s'` nf-cws's `cws` scope fills these settings: `cws.dns`, `strategy` and `costFunction`. uwe tells CWS of each task by itself and ignores `cws.batchSize`, `memoryPredictor`, `minMemory`, `maxMemory`, `maxCopyTasksPerNode` and `maxWaitingCopyTasksPerNode`, and the on-demand scheduler pod of `k8s.scheduler`, with a warning.
+
+Limits:
+
+- The graph has no edges: the Kubernetes executor sees the tasks, not the data between them. Strategies that rank by the graph see each process alone.
+- The file inputs of a task are not listed (`fileInputs` is empty), and there are no batches, memory prediction or WOW (node-local work folders with copy daemons).
+- uwe runs Jobs, so CWS sees pods named `<Job name>-<suffix>`, while `runName` is the Job name. Whether CWS matches these pods was not checked against a real CWS.
+- The tests run against a local fake of CWS next to the fake Kubernetes API. Runs with a real CWS are not verified.
 
 ## SLURM memory per CPU
 

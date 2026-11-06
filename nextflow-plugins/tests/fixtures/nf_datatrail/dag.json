@@ -1,0 +1,230 @@
+{
+    "origins": [
+        {
+            "ID": "o0",
+            "origin": true,
+            "process": false,
+            "rank": 0
+        },
+        {
+            "ID": "o1",
+            "origin": true,
+            "process": false,
+            "rank": 0
+        }
+    ],
+    "processes": [
+        {
+            "outputFiles": 1,
+            "outputSize": 18,
+            "inputFiles": 1,
+            "inputSize": 10,
+            "taskName": "SAY (b)",
+            "processName": "SAY",
+            "rank": 1,
+            "ID": "p0",
+            "label": "SAY (b) input: 1 files (10 bytes)",
+            "origin": false,
+            "process": true,
+            "tag": "b"
+        },
+        {
+            "outputFiles": 1,
+            "outputSize": 18,
+            "inputFiles": 1,
+            "inputSize": 10,
+            "taskName": "SAY (a)",
+            "processName": "SAY",
+            "rank": 1,
+            "ID": "p1",
+            "label": "SAY (a) input: 1 files (10 bytes)",
+            "origin": false,
+            "process": true,
+            "tag": "a"
+        },
+        {
+            "outputFiles": 1,
+            "outputSize": 36,
+            "inputFiles": 2,
+            "inputSize": 36,
+            "taskName": "JOIN",
+            "processName": "JOIN",
+            "rank": 2,
+            "ID": "p2",
+            "label": "JOIN input: 2 files (36 bytes)",
+            "origin": false,
+            "process": true,
+            "tag": null
+        },
+        {
+            "outputFiles": 1,
+            "outputSize": 13,
+            "inputFiles": 1,
+            "inputSize": 36,
+            "taskName": "COUNT",
+            "processName": "COUNT",
+            "rank": 3,
+            "ID": "p3",
+            "label": "COUNT input: 1 files (36 bytes)",
+            "origin": false,
+            "process": true,
+            "tag": null
+        }
+    ],
+    "edges": [
+        {
+            "from": {
+                "ID": "o0",
+                "origin": true,
+                "process": false,
+                "rank": 0
+            },
+            "to": {
+                "outputFiles": 1,
+                "outputSize": 18,
+                "inputFiles": 1,
+                "inputSize": 10,
+                "taskName": "SAY (b)",
+                "processName": "SAY",
+                "rank": 1,
+                "ID": "p0",
+                "label": "SAY (b) input: 1 files (10 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": "b"
+            },
+            "inputFiles": 1,
+            "inputSize": 10,
+            "ID": null,
+            "label": "Input: 1 files (10 bytes)"
+        },
+        {
+            "from": {
+                "ID": "o1",
+                "origin": true,
+                "process": false,
+                "rank": 0
+            },
+            "to": {
+                "outputFiles": 1,
+                "outputSize": 18,
+                "inputFiles": 1,
+                "inputSize": 10,
+                "taskName": "SAY (a)",
+                "processName": "SAY",
+                "rank": 1,
+                "ID": "p1",
+                "label": "SAY (a) input: 1 files (10 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": "a"
+            },
+            "inputFiles": 1,
+            "inputSize": 10,
+            "ID": null,
+            "label": "Input: 1 files (10 bytes)"
+        },
+        {
+            "from": {
+                "outputFiles": 1,
+                "outputSize": 18,
+                "inputFiles": 1,
+                "inputSize": 10,
+                "taskName": "SAY (a)",
+                "processName": "SAY",
+                "rank": 1,
+                "ID": "p1",
+                "label": "SAY (a) input: 1 files (10 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": "a"
+            },
+            "to": {
+                "outputFiles": 1,
+                "outputSize": 36,
+                "inputFiles": 2,
+                "inputSize": 36,
+                "taskName": "JOIN",
+                "processName": "JOIN",
+                "rank": 2,
+                "ID": "p2",
+                "label": "JOIN input: 2 files (36 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": null
+            },
+            "inputFiles": 1,
+            "inputSize": 18,
+            "ID": null,
+            "label": "Input: 1 files (18 bytes)"
+        },
+        {
+            "from": {
+                "outputFiles": 1,
+                "outputSize": 18,
+                "inputFiles": 1,
+                "inputSize": 10,
+                "taskName": "SAY (b)",
+                "processName": "SAY",
+                "rank": 1,
+                "ID": "p0",
+                "label": "SAY (b) input: 1 files (10 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": "b"
+            },
+            "to": {
+                "outputFiles": 1,
+                "outputSize": 36,
+                "inputFiles": 2,
+                "inputSize": 36,
+                "taskName": "JOIN",
+                "processName": "JOIN",
+                "rank": 2,
+                "ID": "p2",
+                "label": "JOIN input: 2 files (36 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": null
+            },
+            "inputFiles": 1,
+            "inputSize": 18,
+            "ID": null,
+            "label": "Input: 1 files (18 bytes)"
+        },
+        {
+            "from": {
+                "outputFiles": 1,
+                "outputSize": 36,
+                "inputFiles": 2,
+                "inputSize": 36,
+                "taskName": "JOIN",
+                "processName": "JOIN",
+                "rank": 2,
+                "ID": "p2",
+                "label": "JOIN input: 2 files (36 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": null
+            },
+            "to": {
+                "outputFiles": 1,
+                "outputSize": 13,
+                "inputFiles": 1,
+                "inputSize": 36,
+                "taskName": "COUNT",
+                "processName": "COUNT",
+                "rank": 3,
+                "ID": "p3",
+                "label": "COUNT input: 1 files (36 bytes)",
+                "origin": false,
+                "process": true,
+                "tag": null
+            },
+            "inputFiles": 1,
+            "inputSize": 36,
+            "ID": null,
+            "label": "Input: 1 files (36 bytes)"
+        }
+    ]
+}

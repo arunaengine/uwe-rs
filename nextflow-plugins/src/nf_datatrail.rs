@@ -1,5 +1,5 @@
 //! nf-datatrail 0.0.1: records the files that each task read and wrote, and writes them at the
-//! end of the run as CSV lists, a per-task summary, and a graph of tasks in DOT.
+//! end of the run as CSV lists, a per-task summary, and a graph of tasks in DOT and JSON.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -15,16 +15,18 @@ use nextflow_evaluator::value::Value;
 
 use crate::catalogue::{Kind, Plugin, State};
 use crate::observer::{Event, Observer, Task};
+use crate::report_format::Json;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     scopes: &["datatrail"],
     observer: Some(activate),
-    ..Plugin::new("nf-datatrail", Kind::Observer, State::Partial)
+    ..Plugin::new("nf-datatrail", Kind::Observer, State::Implemented)
 };
 
 /// What the `datatrail` scope asks for.
 struct Settings {
     plot: Option<Plot>,
+    persist: Option<String>,
     input: Option<String>,
     output: Option<String>,
     summary: Option<String>,
@@ -38,6 +40,8 @@ struct Plot {
     detailed: bool,
     external: bool,
     legend: bool,
+    cluster: bool,
+    tag_names: bool,
     filter: Vec<Pattern>,
 }
 
@@ -117,6 +121,8 @@ impl Settings {
                     detailed: flag(&["plot", "detailed"], false),
                     external: flag(&["plot", "external"], true),
                     legend: flag(&["plot", "legend"], true),
+                    cluster: flag(&["plot", "cluster"], false),
+                    tag_names: flag(&["plot", "tagNames"], true),
                     file,
                     filter,
                 })
@@ -144,6 +150,7 @@ impl Settings {
         let output = lists.pop().flatten();
         let input = lists.pop().flatten();
         Ok(Some(Settings {
+            persist: text(&["persist"]).filter(|_| plot.is_some()),
             plot,
             input,
             output,
@@ -200,6 +207,7 @@ struct Record {
     id: i64,
     name: String,
     process: String,
+    tag: Option<String>,
     hash: String,
     inputs: Vec<Entry>,
     outputs: Vec<Entry>,
@@ -243,6 +251,7 @@ impl Datatrail {
                 .unwrap_or(0),
             name: text("name").unwrap_or_default(),
             process: text("process").unwrap_or_default(),
+            tag: text("tag"),
             hash: task.hash.clone(),
             inputs: Vec::new(),
             outputs: Vec::new(),
@@ -323,6 +332,12 @@ impl Datatrail {
                 .map(|stem| stem.to_string_lossy().into_owned()))
             .unwrap_or_default();
             write(&dot, &graph.dot(&self.tasks, plot, &name));
+            if let Some(persist) = &self.settings.persist {
+                write(
+                    &self.launch.join(persist),
+                    &graph.json(&self.tasks).pretty(),
+                );
+            }
         }
         if let Some(summary) = &self.settings.summary {
             write(&self.launch.join(summary), &self.summary());
@@ -494,26 +509,57 @@ impl Graph {
         let shown: Vec<usize> = (0..tasks.len())
             .filter(|place| self.nodes[*place].is_some())
             .collect();
-        let top = shown
-            .iter()
-            .map(|place| self.ranks[*place])
-            .max()
-            .unwrap_or(0);
-        for rank in 1..=top {
-            let members: Vec<&usize> = shown
-                .iter()
-                .filter(|place| self.ranks[**place] == rank)
-                .collect();
-            if members.is_empty() {
-                continue;
+        if plot.cluster {
+            let mut groups: Vec<Option<&str>> = Vec::new();
+            for place in &shown {
+                let tag = tasks[*place].tag.as_deref();
+                if !groups.contains(&tag) {
+                    groups.push(tag);
+                }
             }
-            text.push_str(&format!(
-                "  subgraph \"Rank: {rank}\" {{\n    rank = same;\n"
-            ));
-            members
+            for group in groups {
+                let members = shown
+                    .iter()
+                    .filter(|place| tasks[**place].tag.as_deref() == group);
+                let Some(tag) = group else {
+                    members.for_each(|place| text.push_str(&self.node(tasks, *place, plot, "  ")));
+                    continue;
+                };
+                let clean: String = tag.chars().filter(char::is_ascii_alphanumeric).collect();
+                let title = if plot.tag_names {
+                    format!("cluster_{clean}")
+                } else {
+                    clean
+                };
+                text.push_str(&format!(
+                    "  subgraph \"{title}\" {{\n    label=\"{}\";\n    style=\"rounded\";\n",
+                    quoted(tag)
+                ));
+                members.for_each(|place| text.push_str(&self.node(tasks, *place, plot, "    ")));
+                text.push_str("  }\n");
+            }
+        } else {
+            let top = shown
                 .iter()
-                .for_each(|place| text.push_str(&self.node(tasks, **place, plot, "    ")));
-            text.push_str("  }\n");
+                .map(|place| self.ranks[*place])
+                .max()
+                .unwrap_or(0);
+            for rank in 1..=top {
+                let members: Vec<&usize> = shown
+                    .iter()
+                    .filter(|place| self.ranks[**place] == rank)
+                    .collect();
+                if members.is_empty() {
+                    continue;
+                }
+                text.push_str(&format!(
+                    "  subgraph \"Rank: {rank}\" {{\n    rank = same;\n"
+                ));
+                members
+                    .iter()
+                    .for_each(|place| text.push_str(&self.node(tasks, **place, plot, "    ")));
+                text.push_str("  }\n");
+            }
         }
         text.push_str("  // Edges\n");
         let largest = self.edges.iter().map(|edge| edge.bytes).max().unwrap_or(0);
@@ -589,6 +635,74 @@ impl Graph {
             "        </table>\n      >\n  ,style=filled,fillcolor=\"{colour}\"];\n\n"
         ));
         text
+    }
+
+    /// The graph as JSON, with every node in full at each end of its edges.
+    fn json(&self, tasks: &[Record]) -> Json {
+        let origin = |id: &str| {
+            Json::object([
+                ("ID", Json::from(id)),
+                ("origin", Json::from(true)),
+                ("process", Json::from(false)),
+                ("rank", Json::from(0i64)),
+            ])
+        };
+        let process = |place: usize| {
+            let task = &tasks[place];
+            let total = |entries: &[Entry]| entries.iter().map(|entry| entry.size).sum::<u64>();
+            let read = total(&task.inputs);
+            Json::object([
+                ("outputFiles", Json::from(task.outputs.len() as u64)),
+                ("outputSize", Json::from(total(&task.outputs))),
+                ("inputFiles", Json::from(task.inputs.len() as u64)),
+                ("inputSize", Json::from(read)),
+                ("taskName", Json::from(&task.name)),
+                ("processName", Json::from(&task.process)),
+                ("rank", Json::from(self.ranks[place] as u64)),
+                ("ID", Json::from(self.nodes[place].clone())),
+                (
+                    "label",
+                    Json::from(format!(
+                        "{} input: {} files ({read} bytes)",
+                        task.name,
+                        task.inputs.len()
+                    )),
+                ),
+                ("origin", Json::from(false)),
+                ("process", Json::from(true)),
+                ("tag", Json::from(task.tag.clone())),
+            ])
+        };
+        let origins = self.origins.iter().flatten().map(|id| origin(id)).collect();
+        let shown = (0..tasks.len()).filter(|place| self.nodes[*place].is_some());
+        let processes = shown.map(process).collect();
+        let edges = (self.edges.iter())
+            .map(|edge| {
+                let from = match edge.from {
+                    Some(producer) => process(producer),
+                    None => origin(self.origins[edge.to].as_deref().unwrap_or_default()),
+                };
+                Json::object([
+                    ("from", from),
+                    ("to", process(edge.to)),
+                    ("inputFiles", Json::from(edge.files)),
+                    ("inputSize", Json::from(edge.bytes)),
+                    ("ID", Json::Null),
+                    (
+                        "label",
+                        Json::from(format!(
+                            "Input: {} files ({} bytes)",
+                            edge.files, edge.bytes
+                        )),
+                    ),
+                ])
+            })
+            .collect();
+        Json::object([
+            ("origins", Json::List(origins)),
+            ("processes", Json::List(processes)),
+            ("edges", Json::List(edges)),
+        ])
     }
 }
 

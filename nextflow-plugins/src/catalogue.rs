@@ -131,7 +131,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_anndata::PLUGIN,
     // Functions.
     crate::nf_bactopia::PLUGIN,
-    planned("nf-bids", Kind::Functions),
+    crate::nf_bids::PLUGIN,
     crate::nf_boost::PLUGIN,
     crate::nf_cmgg::PLUGIN,
     crate::nf_dotenv::PLUGIN,

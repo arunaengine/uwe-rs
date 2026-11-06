@@ -5,6 +5,7 @@
 pub mod auth;
 mod client;
 pub mod outcome;
+pub mod pool;
 mod settings;
 pub mod task;
 

@@ -371,3 +371,73 @@ fn passing_on(status: StatusCode, message: String) -> Problem {
         false => Problem::fixed(message),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_object_addresses() {
+        assert_eq!(
+            parts("drs://localhost:4430/dg.TEST/abc-123").ok(),
+            Some(("localhost:4430", "dg.TEST/abc-123"))
+        );
+        let error = parts("drs://only-host")
+            .err()
+            .map(|problem| problem.message);
+        assert_eq!(
+            error.as_deref(),
+            Some("Invalid DRS URI: drs://only-host. Expected format: drs://<host>/<object_id>")
+        );
+    }
+
+    #[test]
+    fn prefers_access_methods() {
+        let object = serde_json::json!({ "access_methods": [
+            { "type": "https", "access_id": "h" },
+            { "type": "gs", "access_id": "g" },
+            { "type": "s3", "access_id": "s" },
+        ]});
+        let chosen = |protocol| choose(&object, protocol).map(|method| &method["access_id"]);
+        assert_eq!(chosen(Some("https")), Some(&Value::from("h")));
+        assert_eq!(chosen(Some("ftp")), Some(&Value::from("s")));
+        assert_eq!(chosen(None), Some(&Value::from("s")));
+        let only = serde_json::json!({ "access_methods": [{ "type": "https", "access_id": "h" }] });
+        assert_eq!(
+            choose(&only, None).map(|method| &method["type"]),
+            Some(&"https".into())
+        );
+        assert!(choose(&serde_json::json!({}), None).is_none());
+    }
+
+    #[test]
+    fn reads_token_expiry() {
+        let encode = |text: &str| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(text);
+        let token = format!(
+            "{}.{}.sig",
+            encode("{\"alg\":\"none\"}"),
+            encode("{\"exp\":2000}")
+        );
+        let now = UNIX_EPOCH + Duration::from_secs(1000);
+        assert_eq!(expiry(&token, now), UNIX_EPOCH + Duration::from_secs(2000));
+        assert_eq!(expiry("opaque", now), now + UNKNOWN_EXPIRY);
+    }
+
+    #[test]
+    fn versions_need_sizes() {
+        let object = serde_json::json!({
+            "size": 16,
+            "updated_time": "2026-01-03T03:04:05Z",
+            "checksums": [{ "type": "md5", "checksum": "abc" }],
+        });
+        let found = metadata(&object);
+        assert_eq!(
+            (found.size, found.version.as_deref()),
+            (16, Some("md5:abc"))
+        );
+        assert!(found.modified.is_some());
+        let unsized_object =
+            serde_json::json!({ "checksums": [{ "type": "md5", "checksum": "a" }] });
+        assert_eq!(metadata(&unsized_object).version, None);
+    }
+}

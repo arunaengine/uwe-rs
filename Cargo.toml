@@ -36,6 +36,7 @@ members = [
     "slurm-executor",
     "snakemake-parser",
     "snakemake-runtime",
+    "snowflake-executor",
     "storage",
     "task-model",
     "task-runner",
@@ -82,6 +83,7 @@ run-telemetry = { path = "run-telemetry" }
 slurm-executor = { path = "slurm-executor" }
 snakemake-parser = { path = "snakemake-parser" }
 snakemake-runtime = { path = "snakemake-runtime" }
+snowflake-executor = { path = "snowflake-executor" }
 storage = { path = "storage" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }

@@ -7097,6 +7097,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "199905e6153d6405f9728fe44daace35f8f837bbf830bb6e85fbd5828709a886"
 
 [[package]]
+name = "snowflake-executor"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "config-file",
+ "content-store",
+ "executor",
+ "reqwest",
+ "rsa",
+ "serde_json",
+ "storage",
+ "task-model",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

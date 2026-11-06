@@ -111,6 +111,8 @@ pub struct Nextflow {
     /// What nf-labrobotics adds to the tasks of its executor, when the config names it.
     lab: Option<nextflow_plugins::Lab>,
     project_bin: Option<PathBuf>,
+    /// The names of the files in `project_bin`, which task scripts call by name.
+    bin_scripts: Vec<String>,
     /// What the run noted since the engine last asked: files it read, listed or spread.
     notes: Vec<Note>,
     /// The registry of the container engine, like `docker.registry`, for images without one.
@@ -169,6 +171,7 @@ impl Nextflow {
             environment: BTreeMap::new(),
             lab: None,
             project_bin: None,
+            bin_scripts: Vec::new(),
             notes: Vec::new(),
             registry: None,
             images: None,
@@ -387,6 +390,7 @@ impl Nextflow {
                 }
                 if !driven
                     && let Some(bin) = &self.project_bin
+                    && names_bin_script(&task, &self.bin_scripts)
                 {
                     task.inputs.push(Input {
                         path: ".command.bin".into(),
@@ -479,6 +483,11 @@ impl Driver for Nextflow {
         self.load()?;
         let loaded = self.loaded.take().ok_or_else(not_started)?;
         let bin = loaded.project.join("bin");
+        let entries = std::fs::read_dir(&bin).into_iter().flatten().flatten();
+        let files = entries.filter(|entry| entry.file_type().is_ok_and(|kind| !kind.is_dir()));
+        self.bin_scripts = files
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
         self.project_bin = bin.is_dir().then_some(bin);
         let config = &loaded.config;
         if config
@@ -1021,6 +1030,24 @@ fn environment(config: &Config) -> BTreeMap<String, String> {
         }
     }
     variables
+}
+
+/// Whether the script of a task names one of these `bin` scripts as a word of its own. As in
+/// Nextflow, only such a task depends on `bin`, so a change there reruns only those.
+fn names_bin_script(task: &Task, scripts: &[String]) -> bool {
+    let part = |letter: char| letter.is_alphanumeric() || matches!(letter, '.' | '_' | '-');
+    let named = |text: &str, name: &str| {
+        text.match_indices(name).any(|(at, _)| {
+            let before = text[..at].chars().next_back();
+            let after = text[at + name.len()..].chars().next();
+            !before.is_some_and(part) && !after.is_some_and(part)
+        })
+    };
+    let mut texts = task
+        .inputs
+        .iter()
+        .filter_map(|input| input.content.as_deref());
+    texts.any(|text| scripts.iter().any(|name| named(text, name)))
 }
 
 /// The container task of a Nextflow task: `.command.sh`, with the code that captures `env` and

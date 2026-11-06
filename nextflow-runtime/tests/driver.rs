@@ -271,6 +271,35 @@ fn bin_helpers_run() {
     }
 }
 
+/// As in Nextflow, a change in `bin` reruns only the tasks whose script names one of its
+/// scripts; those get the whole folder, as a named script may call the others.
+#[test]
+fn stages_named_scripts() {
+    let directory = tempfile::tempdir().unwrap();
+    let bin = directory.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for name in ["used.sh", "other.sh"] {
+        std::fs::write(bin.join(name), "#!/bin/sh\necho hi\n").unwrap();
+    }
+    let script = "process USES {\n container 'debian:stable-slim'\n script:\n 'used.sh --fast'\n}\n\
+        process PLAIN {\n container 'debian:stable-slim'\n script:\n 'echo used'\n}\n\
+        workflow { USES(); PLAIN() }";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    })
+    .unwrap();
+    for task in driver.start().unwrap() {
+        let staged = (task.inputs.iter()).find(|input| input.path == ".command.bin");
+        let staged = staged.map(|input| (input.source.as_str(), input.directory));
+        match task.step.as_str() {
+            "USES" => assert_eq!(staged, Some((bin.to_str().unwrap(), true))),
+            _ => assert_eq!((staged, task.command[0].as_str()), (None, "/bin/bash")),
+        }
+    }
+}
+
 #[test]
 fn copies_staged_inputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");

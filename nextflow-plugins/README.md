@@ -116,6 +116,16 @@ second. uwe ships none of the plugin's greeting texts: `emoji.greeting = true` p
 a greeting text of the config is printed. `emoji.confetti` runs no outside program and warns
 once.
 
+## src/nf_drs.rs
+
+nf-drs 0.1.0 hands its `drs` scope (`authProvider`, `authSecret`, `tokenEndpointPath`,
+`accessProtocol`) to the DRS provider of the `storage` crate when the run starts, which then
+reads `drs://` paths for every language. `authSecret` names an environment variable, which a
+`[secrets]` entry of uwe's config can set. Without `authProvider`, uwe uses `gen3` when that
+variable is set and reads without a token otherwise, where the plugin fails. uwe sends the
+headers of an access URL, which the plugin leaves out. A path's name is the last part of the
+address, not the object's `name`, so a staged input is named after its object id.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

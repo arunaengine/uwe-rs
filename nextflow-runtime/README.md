@@ -4,6 +4,18 @@
 
 # Source contracts
 
+## src/cleanup.rs
+
+The cleanup that nf-gc and nf-boost's `boost.cleanup` turn on. Task results stay: they are in
+the store, which other runs, the cache, published files and workflow outputs share. It deletes
+only the run's own files that tasks read, like those of `collectFile`, the splitters and
+`exec:` sections, once every node that sent such a file and every node that reads from those
+nodes have stopped, and none of them is a workflow output. A file that a delivery takes stays.
+A path that moves outside channels, like in a variable or in a plugin object, stays unseen and
+so stays too. The modes of `nfGc.gc_mode` and `boost.cleanup` free files at the same moments;
+`boost.cleanupFailedTasks` and `boost.cleanupInterval` change nothing, since the executor
+removes the folder of every attempt when it ends, also of a failed one.
+
 ## src/inputs.rs
 
 The inputs of a Nextflow pipeline as one JSON Schema (decision 24). A pipeline with a

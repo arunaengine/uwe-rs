@@ -447,3 +447,36 @@ fn refused(status: StatusCode, body: &str) -> Problem {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_addresses() {
+        let parsed = address("lamin://laminlabs/lamindata/artifact/s3rtK8wIzJNKvg5Q/a/b.txt");
+        assert_eq!(
+            parsed.ok(),
+            Some(Address {
+                owner: "laminlabs",
+                name: "lamindata",
+                uid: "s3rtK8wIzJNKvg5Q",
+                path: "a/b.txt",
+            })
+        );
+        let bare = address("lamin://laminlabs/lamindata/artifact/s3rtK8wIzJNKvg5Q").ok();
+        assert_eq!(bare.map(|parsed| parsed.path), Some(""));
+        assert!(address("lamin://laminlabs/lamindata/transform/x").is_err());
+        assert!(address("lamin://laminlabs/lamindata/artifact/").is_err());
+    }
+
+    #[test]
+    fn keys_follow_records() {
+        let real = json!({ "uid": "AbC", "key": "raw/a.csv", "suffix": ".csv" });
+        assert_eq!(key(&real).ok().as_deref(), Some("raw/a.csv"));
+        let hidden = json!({ "uid": "AbC", "key": "a.csv", "suffix": ".csv",
+            "_key_is_virtual": true });
+        assert_eq!(key(&hidden).ok().as_deref(), Some(".lamindb/AbC.csv"));
+        let unnamed = json!({ "uid": "AbC", "key": null, "suffix": ".h5ad" });
+        assert_eq!(key(&unnamed).ok().as_deref(), Some(".lamindb/AbC.h5ad"));
+    }
+}

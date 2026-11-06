@@ -8,6 +8,7 @@ mod azure;
 mod backend;
 mod blocking;
 mod downloads;
+pub mod drs;
 mod error;
 mod folder;
 mod ftp;
@@ -216,6 +217,7 @@ impl Storage {
             Provider::new(Source::PublicBuckets, prefixes(&["s3://", "gs://"])),
             Provider::new(Source::Files, prefixes(&["file://"])),
             Provider::new(Source::Ftp, prefixes(&["ftp://"])),
+            Provider::new(Source::Drs, prefixes(&["drs://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

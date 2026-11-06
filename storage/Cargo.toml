@@ -4,7 +4,7 @@
 
 [package]
 name = "storage"
-description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local folders"
+description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP, local folders and GA4GH DRS"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,9 +28,11 @@ reqsign-azure-storage.workspace = true
 reqsign-core.workspace = true
 reqsign-file-read-tokio.workspace = true
 reqwest.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 suppaftp.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
 webpki-root-certs.workspace = true

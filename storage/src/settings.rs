@@ -42,6 +42,7 @@ pub enum Kind {
     Https(Https),
     Ftp(Ftp),
     Folder(Folder),
+    Drs(Drs),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -102,6 +103,21 @@ pub struct Ftp {
     pub password: Option<Secret>,
 }
 
+/// GA4GH DRS servers, for inputs. Unset values come from the environment.
+#[derive(Clone, Debug, Default)]
+pub struct Drs {
+    /// `gen3`, `bearer` or `none`.
+    pub authentication: Option<String>,
+    /// The Gen3 API key or the bearer token; else `GEN3_API_KEY` of the environment.
+    pub credential: Option<Secret>,
+    /// For `gen3`: the path of the token exchange on the DRS server.
+    pub token_path: Option<String>,
+    /// The `type` of access method to prefer, like `s3` or `https`.
+    pub access_protocol: Option<String>,
+    /// Servers, as `host:port`, that serve plain HTTP instead of HTTPS.
+    pub plain_http: Vec<String>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -110,13 +126,14 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 6] = [
+const TYPES: [&str; 7] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
     "https",
     "ftp",
     "folder",
+    "drs",
 ];
 
 impl Settings {
@@ -278,6 +295,25 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
             }))
         }),
         "folder" => (&["path"], &[], |table| Ok(Kind::Folder(folder(table)?))),
+        "drs" => (
+            &[
+                "authentication",
+                "credential",
+                "token_path",
+                "access_protocol",
+                "plain_http",
+            ],
+            &["drs"],
+            |table| {
+                Ok(Kind::Drs(Drs {
+                    authentication: table.text("authentication")?,
+                    credential: table.secret("credential")?,
+                    token_path: table.text("token_path")?,
+                    access_protocol: table.text("access_protocol")?,
+                    plain_http: table.texts("plain_http")?.unwrap_or_default(),
+                }))
+            },
+        ),
         _ => return None,
     };
     Some(kind)

@@ -141,7 +141,7 @@ pub const PLUGINS: &[Plugin] = &[
     // Functions that read data, query services or run code in containers.
     crate::nf_crg_report::PLUGIN,
     crate::nf_csvext::PLUGIN,
-    planned("nf-fl86", Kind::Functions),
+    crate::nf_fl86::PLUGIN,
     planned("nf-jev", Kind::Functions),
     planned("nf-labrobotics", Kind::Functions),
     crate::nf_parquet::PLUGIN,

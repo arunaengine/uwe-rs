@@ -399,6 +399,8 @@ mod executors {
             "nomad",
             "htcondor",
             "pbs",
+            "flyte",
+            "snowflake",
         ];
         let store = (setup.store(arguments))
             .map_err(|failure| failure.message.trim_start_matches("uwe: ").to_owned());
@@ -470,6 +472,14 @@ mod executors {
             "htcondor" => {
                 crate::grid::htcondor(store, &scratch, run, image, setup)?;
                 grid("HTCondor", &executors.htcondor)
+            }
+            "flyte" => {
+                crate::flyte::executor(store, &scratch, run, image, setup)?;
+                cloud("Flyte")
+            }
+            "snowflake" => {
+                crate::snowflake::executor(store, &scratch, run, image, setup)?;
+                cloud("Snowflake")
             }
             _ => {
                 crate::grid::pbs(store, &scratch, run, image, setup)?;

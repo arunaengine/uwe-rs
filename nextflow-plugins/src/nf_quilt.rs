@@ -466,3 +466,151 @@ fn json_of(value: &Script) -> Value {
         other => Value::String(other.to_string()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_templates() {
+        let variables = json!({ "config": { "runName": "loving_northcutt" },
+            "meta": { "cmd": "nextflow run main.nf", "workflow": { "runName": "x" } } });
+        assert_eq!(
+            render(MESSAGE, &variables).as_deref(),
+            Some("\nloving_northcutt: nextflow run main.nf\n")
+        );
+        let text =
+            "${meta['workflow']?.get('runName')} ${meta.missing?.get('a')} ${config.runName}";
+        assert_eq!(
+            render(text, &variables).as_deref(),
+            Some("x null loving_northcutt")
+        );
+        assert_eq!(render("${meta.get(a)}", &variables), None);
+    }
+
+    #[test]
+    fn prints_like_jackson() {
+        let value = json!({ "plugins": ["nf-quilt@1.0.1"], "env": {}, "quilt": { "meta": { "pipeline": "probe" } } });
+        let expected = "{\n  \"env\" : { },\n  \"plugins\" : [ \"nf-quilt@1.0.1\" ],\n  \"quilt\" : {\n    \
+                        \"meta\" : {\n      \"pipeline\" : \"probe\"\n    }\n  }\n}";
+        assert_eq!(pretty(&value, 0), expected);
+        assert_eq!(pretty(&json!({}), 0), "{ }");
+    }
+
+    #[test]
+    fn maps_plain_addresses() {
+        let address = overlay("s3://bucket/test/probe/out/a.txt").expect("a package");
+        assert_eq!(
+            (
+                address.bucket.as_str(),
+                address.package.as_str(),
+                address.path.as_str()
+            ),
+            ("bucket", "test/probe", "out/a.txt")
+        );
+        let short = overlay("s3://bucket/results/a.txt").expect("a package");
+        assert_eq!(
+            (short.package.as_str(), short.path.as_str()),
+            ("results/default_suffix", "a.txt")
+        );
+        let top = overlay("s3://bucket/a.txt").expect("a package");
+        assert_eq!(top.package, "default_prefix/default_suffix");
+        assert!(overlay("/home/me/a.txt").is_none());
+    }
+
+    fn run() -> (Start, End) {
+        let start = Start {
+            run_name: "loving_northcutt".into(),
+            session_id: "619cf0cb-361f-476c-85e0-995e98fb6f1e".into(),
+            launch_dir: "/scratch".into(),
+            work_dir: "/scratch/work".into(),
+            project_dir: "/scratch".into(),
+            script: "/scratch/main.nf".into(),
+            project_name: "main.nf".into(),
+            repository: None,
+            commit_id: None,
+            revision: None,
+            command_line: "nextflow run main.nf -ansi-log false".into(),
+            profile: "standard".into(),
+            config_files: vec!["/scratch/nextflow.config".into()],
+            params: json!({}),
+            config: json!({ "plugins": ["nf-quilt@1.0.1"], "params": {}, "workDir": "work" }),
+            manifest: json!({}),
+            processes: Vec::new(),
+            start: 1_793_963_795_486,
+        };
+        let end = End {
+            success: true,
+            error: None,
+            counts: Default::default(),
+            task: None,
+            outputs: Vec::new(),
+            end: 1_793_963_796_775,
+        };
+        (start, end)
+    }
+
+    #[test]
+    fn assembles_push() {
+        let mut scope = Map::new();
+        scope.insert("meta".into(), json!({ "pipeline": "probe" }));
+        let settings = Settings::read(scope);
+        let address = Address::parse("quilt+s3://nfquilt-test#package=test/probe&path=out/a.txt");
+        let address = address.expect("an address");
+        let now = Now {
+            day: "2026-11-06".into(),
+            local: "2026-11-06t12-16-36.984583936".into(),
+        };
+        let (start, end) = run();
+        let push = push_of(&settings, &address, &start, &end, &now);
+        assert_eq!(push.address, "quilt+s3://nfquilt-test#package=test%2fprobe");
+        assert_eq!(
+            push.message,
+            "nf-quilt:2026-11-06-\nloving_northcutt: nextflow run main.nf -ansi-log false\n"
+        );
+        let keys: Vec<&str> = push.meta.keys().map(String::as_str).collect();
+        let expected = [
+            "cmd",
+            "now",
+            "params",
+            "pipeline",
+            "quilt",
+            "time_complete",
+            "time_start",
+            "uri",
+            "workflow",
+        ];
+        assert_eq!(keys, expected);
+        let uri = "quilt+s3://nfquilt-test#package=test%2fprobe&path=out%2fa.txt";
+        assert_eq!(
+            (&push.meta["uri"], &push.meta["quilt"]),
+            (&json!(uri), &json!({}))
+        );
+        let workflow = push.meta["workflow"].as_object().expect("a map");
+        assert!(workflow.contains_key("runName") && !workflow.contains_key("commandLine"));
+        assert!(!workflow.contains_key("stats") && !workflow.contains_key("start"));
+        let files: Vec<&str> = push.files.iter().map(|(key, _)| key.as_str()).collect();
+        let names = [
+            "nf-quilt/config.json",
+            "nf-quilt/params.json",
+            "nf-quilt/workflow.json",
+            "README_NF_QUILT.md",
+        ];
+        assert_eq!(files, names);
+        let config = String::from_utf8_lossy(&push.files[0].1).into_owned();
+        assert!(
+            !config.contains("\"params\"") && config.contains("\"runName\" : \"loving_northcutt\"")
+        );
+        assert_eq!(push.files[1].1, b"{ }");
+        let readme = String::from_utf8_lossy(&push.files[3].1).into_owned();
+        assert!(readme.starts_with("\n# test/probe\n\n## 2026-11-06t12-16-36.984583936\n"));
+        assert!(
+            readme.contains("- **workflow run name**: ```loving_northcutt```"),
+            "{readme}"
+        );
+        let off = Settings::read(Map::from_iter([("meta".to_owned(), json!(false))]));
+        let bare = push_of(&off, &address, &start, &end, &now);
+        assert!(bare.meta.is_empty());
+        assert_eq!(bare.files.len(), 1, "only the README");
+    }
+}

@@ -9,6 +9,7 @@ use nextflow_evaluator::value::Value;
 use super::client::{Hub, Retry};
 
 const HUB: &str = "https://hub.lamin.ai";
+const WEB: &str = "https://lamin.ai";
 
 /// Reads an environment variable; empty values count as unset.
 pub(super) type Variable<'a> = &'a dyn Fn(&str) -> Option<String>;
@@ -16,6 +17,8 @@ pub(super) type Variable<'a> = &'a dyn Fn(&str) -> Option<String>;
 /// What the run tracking needs, read once when the run starts.
 pub(super) struct Settings {
     pub(super) hub: Hub,
+    /// The base of the links in log messages.
+    pub(super) web: String,
     pub(super) dry_run: bool,
 }
 
@@ -52,7 +55,13 @@ impl Settings {
             Some(value) => value.truth() && value.to_string() != "false",
             None => variable("LAMIN_DRY_RUN").is_some_and(|value| value == "true"),
         };
-        Ok(Some(Settings { hub, dry_run }))
+        Ok(Some(Settings {
+            hub,
+            web: scope
+                .text(&["api", "web_url"])
+                .unwrap_or_else(|| WEB.to_owned()),
+            dry_run,
+        }))
     }
 }
 

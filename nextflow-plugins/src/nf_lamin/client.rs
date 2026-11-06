@@ -212,6 +212,51 @@ impl Client {
             std::thread::sleep(delay);
         }
     }
+
+    fn module(&self, model: &str) -> String {
+        format!("/instances/{}/modules/core/{model}", self.instance_id)
+    }
+
+    /// The records of a model that match a filter.
+    pub(super) fn find(
+        &mut self,
+        model: &str,
+        filter: Value,
+        foreign: bool,
+    ) -> Result<Vec<Value>, String> {
+        let path = format!(
+            "{}?limit=50&offset=0&limit_to_many=10&include_foreign_keys={foreign}",
+            self.module(model)
+        );
+        let body = json!({"filter": filter});
+        let found = self.call(Method::POST, &path, Some(&body), &format!("POST {model}"))?;
+        Ok(found
+            .and_then(|found| found.as_array().cloned())
+            .unwrap_or_default())
+    }
+
+    /// Creates a record and gives it back with its `id` and `uid`.
+    pub(super) fn create(&mut self, model: &str, body: &Value) -> Result<Value, String> {
+        let path = self.module(model);
+        let created = self.call(Method::PUT, &path, Some(body), &format!("PUT {model}"))?;
+        first(created).ok_or_else(|| format!("PUT {model} gave no record"))
+    }
+
+    pub(super) fn update(&mut self, model: &str, uid: &str, body: &Value) -> Result<(), String> {
+        let path = format!("{}/{uid}", self.module(model));
+        self.call(Method::PATCH, &path, Some(body), &format!("PATCH {model}"))?;
+        Ok(())
+    }
+
+    /// Creates a transform from its key, kind, source code and the other fields in `kwargs`.
+    pub(super) fn transform(&mut self, body: &Value) -> Result<Value, String> {
+        let path = format!("/instances/{}/transforms", self.instance_id);
+        let created = self.call(Method::POST, &path, Some(body), "POST transforms")?;
+        let transform = created.map(|created| created["body"]["transform"].clone());
+        transform
+            .filter(Value::is_object)
+            .ok_or_else(|| "POST transforms gave no transform".to_owned())
+    }
 }
 
 /// A LaminHub function refused the token.
@@ -241,6 +286,15 @@ fn final_error(body: &str) -> bool {
     .any(|word| body.contains(word))
 }
 
+/// The first record of a list answer, or the answer itself.
+fn first(answer: Option<Value>) -> Option<Value> {
+    match answer? {
+        Value::Array(items) => items.into_iter().next(),
+        record @ Value::Object(_) => Some(record),
+        _ => None,
+    }
+}
+
 fn text(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
@@ -264,5 +318,6 @@ mod tests {
         }
         assert!(final_error("boom: PermissionError at x"));
         assert!(!final_error("Bad gateway"));
+        assert_eq!(first(Some(json!([{"id": 1}]))), Some(json!({"id": 1})));
     }
 }

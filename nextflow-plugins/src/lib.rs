@@ -142,6 +142,20 @@ pub fn cgroup_metrics(config: &Config) -> bool {
     nf_cgroup_metrics::enabled(config)
 }
 
+pub use nf_biffix::ImageMap;
+
+/// The image map of nf-biffix, which every container of the run goes through, when the config
+/// names the plugin and `BIFFIX_IMAGE_MAP_FILE` is set.
+pub fn image_map(config: &Config) -> Option<ImageMap> {
+    let path = std::env::var("BIFFIX_IMAGE_MAP_FILE")
+        .ok()
+        .filter(|path| !path.is_empty())?;
+    let configured = catalogue::configured(config)
+        .iter()
+        .any(|id| id == "nf-biffix");
+    configured.then(|| ImageMap::load(&path))
+}
+
 /// Where nf-cloudcache puts the cache store: see [`nf_cloudcache::location`].
 pub fn cloud_cache(config: &Config, variable: Option<&str>) -> Result<Option<String>, String> {
     nf_cloudcache::location(config, variable)

@@ -114,6 +114,8 @@ pub struct Nextflow {
     notes: Vec<Note>,
     /// The registry of the container engine, like `docker.registry`, for images without one.
     registry: Option<String>,
+    /// The image map of nf-biffix, which every container goes through.
+    images: Option<nextflow_plugins::ImageMap>,
     conda_channels: Vec<String>,
     /// The Wave service of nf-wave, when the config turns it on.
     wave: Option<nextflow_plugins::Wave>,
@@ -166,6 +168,7 @@ impl Nextflow {
             project_bin: None,
             notes: Vec::new(),
             registry: None,
+            images: None,
             conda_channels: vec!["conda-forge".into(), "bioconda".into()],
             wave: None,
             reports: None,
@@ -391,7 +394,14 @@ impl Nextflow {
                         .splice(0..0, ["/bin/sh".into(), ".command.run".into()]);
                 }
                 let registry = self.registry.as_deref();
-                task.image = (task.image).map(|image| with_registry(&image, registry));
+                let written = task.image.take();
+                task.image = (written.as_deref()).map(|image| with_registry(image, registry));
+                if let (Some(images), Some(written), Some(image)) =
+                    (&self.images, &written, &task.image)
+                {
+                    let mapped = images.resolve(&request.process, written, image);
+                    task.image = Some(mapped.map_err(DriverError::new)?);
+                }
                 if let Some(wave) = self.wave.as_mut().filter(|_| request.made.is_none()) {
                     let sources = wave_sources(&request, registry, &self.conda_channels);
                     if let Some(image) = wave.resolve(&sources).map_err(DriverError::new)? {
@@ -490,6 +500,7 @@ impl Driver for Nextflow {
         self.registry = config
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
+        self.images = nextflow_plugins::image_map(config);
         let launch_dir = std::env::current_dir().unwrap_or_default();
         let host = &self.settings.host;
         let variable = |name: &str| host.environment(name);

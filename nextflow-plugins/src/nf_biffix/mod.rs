@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod images;
 mod journal;
 mod poster;
 
@@ -16,6 +17,7 @@ use crate::catalogue::{Kind, Plugin, State};
 use crate::observer::{Background, End, Event, Observer, Start, Task};
 use crate::report_format::{Json, now};
 use crate::service;
+pub use images::ImageMap;
 use journal::Journal;
 use poster::Poster;
 

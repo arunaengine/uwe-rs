@@ -1,0 +1,106 @@
+[
+  {
+    "input": "ubuntu",
+    "normalized": "docker.io/library/ubuntu:latest"
+  },
+  {
+    "input": "ubuntu:24.04",
+    "normalized": "docker.io/library/ubuntu:24.04"
+  },
+  {
+    "input": "  ubuntu:24.04  ",
+    "normalized": "docker.io/library/ubuntu:24.04"
+  },
+  {
+    "input": "biocontainers/fastqc:0.12.1--hdfd78af_0",
+    "normalized": "docker.io/biocontainers/fastqc:0.12.1--hdfd78af_0"
+  },
+  {
+    "input": "docker.io/ubuntu",
+    "normalized": "docker.io/library/ubuntu:latest"
+  },
+  {
+    "input": "index.docker.io/ubuntu",
+    "normalized": "docker.io/library/ubuntu:latest"
+  },
+  {
+    "input": "registry-1.docker.io/library/ubuntu:24.04",
+    "normalized": "docker.io/library/ubuntu:24.04"
+  },
+  {
+    "input": "x:_tag",
+    "normalized": "docker.io/library/x:_tag"
+  },
+  {
+    "input": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0",
+    "normalized": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"
+  },
+  {
+    "input": "Quay.IO/biocontainers/fastqc:1",
+    "normalized": "quay.io/biocontainers/fastqc:1"
+  },
+  {
+    "input": "Index.Docker.io/ubuntu",
+    "normalized": "docker.io/library/ubuntu:latest"
+  },
+  {
+    "input": "localhost:5000/coord",
+    "normalized": "localhost:5000/coord:latest"
+  },
+  {
+    "input": "localhost/coord:1",
+    "normalized": "localhost/coord:1"
+  },
+  {
+    "input": "[::1]:5000/x:1",
+    "normalized": "[::1]:5000/x:1"
+  },
+  {
+    "input": "my-registry.local:5000/team/tool",
+    "normalized": "my-registry.local:5000/team/tool:latest"
+  },
+  {
+    "input": "quay.io/b/bwa@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "normalized": "quay.io/b/bwa@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "input": "quay.io/x/y:1@sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "normalized": "quay.io/x/y:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "input": "ghcr.io/org/tool:1.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "normalized": "ghcr.io/org/tool:1.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "input": "123456789012.dkr.ecr.us-east-1.amazonaws.com/biffix-workers@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "normalized": "123456789012.dkr.ecr.us-east-1.amazonaws.com/biffix-workers@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "input": "",
+    "normalized": null
+  },
+  {
+    "input": "UPPER/repo",
+    "normalized": null
+  },
+  {
+    "input": "https://quay.io/x/y",
+    "normalized": null
+  },
+  {
+    "input": "quay.io/x/y@sha256:short",
+    "normalized": null
+  },
+  {
+    "input": "quay.io/x/y:bad tag",
+    "normalized": null
+  },
+  {
+    "input": "@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "normalized": null
+  },
+  {
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "normalized": null
+  }
+]

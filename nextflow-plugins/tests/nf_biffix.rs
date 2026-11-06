@@ -49,7 +49,10 @@ fn child_run() {
         return;
     };
     let folder = std::env::current_dir().expect("the run folder");
-    common::run(&folder, &name);
+    let (execution, _) = common::run(&folder, &name);
+    if let Some(error) = execution.error {
+        std::fs::write(folder.join("error.txt"), error.to_string()).expect("notes the error");
+    }
 }
 
 fn events(folder: &Path) -> Vec<Value> {
@@ -166,4 +169,31 @@ fn splits_rejected_batches() {
         "each event is tried alone before it is dropped: {sizes:?}"
     );
     assert_eq!(events(directory.path()).len(), 9);
+}
+
+#[test]
+fn maps_images() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    let fixtures = common::fixtures("nf_biffix");
+    common::copy(&fixtures, folder, &["image.nf", "image-map.json"]);
+    std::fs::rename(folder.join("image.nf"), folder.join("main.nf")).expect("renames");
+    std::fs::write(
+        folder.join("nextflow.config"),
+        "plugins { id 'nf-biffix@0.6.2' }\n",
+    )
+    .expect("writes the config");
+    let child = Command::new(std::env::current_exe().expect("this test binary"))
+        .args(["--exact", "child_run", "--ignored", "--test-threads=1"])
+        .current_dir(folder)
+        .env("BIFFIX_IMAGE_MAP_FILE", folder.join("image-map.json"))
+        .env("BIFFIX_TEST_RUN", "biffix_images")
+        .output()
+        .expect("runs the child");
+    assert!(child.status.success());
+    let error = std::fs::read_to_string(folder.join("error.txt")).expect("the run fails");
+    let message = "Process `MISSING` uses container 'quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0', \
+                   which biffix did not import for this workflow version: declare it under \
+                   `images:` in biffix.yaml and re-register";
+    assert!(error.contains(message), "{error}");
 }

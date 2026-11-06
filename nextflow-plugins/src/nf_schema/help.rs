@@ -11,7 +11,7 @@ use nextflow_evaluator::value::Value;
 
 use super::params::parameters_schema;
 use super::settings::Settings;
-use super::{Schema, entries, get, since, thrown};
+use super::{Schema, entries, get, hash_position, since, thrown};
 use crate::Context;
 
 /// `paramsHelp`: the help as text. `parameter` is the param of 2.x's second argument.
@@ -384,7 +384,8 @@ fn help_lines(settings: &Settings) -> Vec<Line> {
     ]
 }
 
-/// The help of one param: each key of its schema, and its params for an object.
+/// The help of one param: each key of its schema, its params for an object, and the fields of
+/// the samplesheet schema that its `schema` keyword names.
 fn detail(
     schema: &Schema,
     name: &str,
@@ -443,7 +444,13 @@ fn detail(
         let value = wrap(&value.to_string(), settings.help.width).join("\n");
         lines.push(format!("    {key:<width$}: {value}"));
     }
-    let text = format!("--{name}\n{}", lines.join("\n"));
+    let mut text = format!("--{name}\n{}", lines.join("\n"));
+    let sheet = top.and_then(|top| get(&top, "schema"));
+    if let Some(block) = sheet.and_then(|sheet| fields(&sheet, context, since(context, [3, 0, 0])))
+    {
+        text.push('\n');
+        text.push_str(&block);
+    }
     Ok(text)
 }
 
@@ -454,4 +461,58 @@ fn find(tree: &Value, name: &str) -> Option<Value> {
     (groups.into_iter().map(|(_, group)| group))
         .chain(std::iter::once(tree.clone()))
         .find_map(|group| get(&group, "properties").and_then(|p| get(&p, name)))
+}
+
+/// The fields of the samplesheet schema of a `schema` keyword, if its file exists. 3.0.0 lists
+/// them in Java hash order, as it reads the schema through org.json.
+fn fields(name: &Value, context: &mut Context, hashed: bool) -> Option<String> {
+    let file = super::locate(name, None, context);
+    if !matches!(context.host.metadata(&file), Ok(Some(_))) {
+        return None;
+    }
+    let schema = super::load(&Value::Path(Rc::new(file)), context).ok()?;
+    let items = get(&schema.tree, "items").unwrap_or(Value::Null);
+    let required: Vec<String> = match get(&items, "required") {
+        Some(Value::List(list)) => list.borrow().items.iter().map(Value::to_string).collect(),
+        _ => Vec::new(),
+    };
+    let mut properties = get(&items, "properties").map_or_else(Vec::new, |p| entries(&p));
+    if hashed {
+        let names: Vec<String> = properties.iter().map(|(name, _)| name.clone()).collect();
+        properties.sort_by_key(|(name, _)| hash_position(&names, name));
+    }
+    let width = (properties.iter())
+        .map(|(name, _)| name.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(10);
+    let mut text = String::from("== Top-level schema below ==\n");
+    let title = get(&schema.tree, "title").map_or(String::new(), |title| title.to_string());
+    text.push_str(&format!("Title: {title}\n"));
+    if let Some(description) = get(&schema.tree, "description") {
+        text.push_str(&format!("Description: {description}\n"));
+    }
+    text.push_str("Fields:\n");
+    for (field, definition) in properties {
+        let kind = get(&definition, "type").map_or("string".to_owned(), |kind| kind.to_string());
+        let mut line = format!("    {field:<width$} {:<10}", format!("[{kind}]"));
+        if required.contains(&field) {
+            line.push_str(" [required]");
+        }
+        if let Some(description) = get(&definition, "description") {
+            line.push_str(&format!(" {description}"));
+        }
+        if let Some(pattern) = get(&definition, "pattern") {
+            line.push_str(&format!(" (pattern: {pattern})"));
+        }
+        if let Some(Value::List(values)) = get(&definition, "enum") {
+            let values: Vec<String> = values.borrow().items.iter().map(Value::to_string).collect();
+            line.push_str(&format!(" (allowed: {})", values.join(", ")));
+        }
+        text.push_str(&format!("{line}\n"));
+        if let Some(note) = get(&definition, "errorMessage") {
+            text.push_str(&format!("      Note: {note}\n"));
+        }
+    }
+    Some(text)
 }

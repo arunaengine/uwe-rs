@@ -18,14 +18,14 @@ pub enum Event {
     RunStarted(Start),
     /// The run handed a task to the engine. A task that the cache answers on resume has this
     /// event too, then [`Event::TaskCached`].
-    TaskSubmitted(Record),
+    TaskSubmitted(Task),
     /// An attempt began: the executor has it.
-    TaskStarted(Record),
-    TaskCompleted(Record),
+    TaskStarted(Task),
+    TaskCompleted(Task),
     /// An earlier result answered the task, so it did not run.
-    TaskCached(Record),
+    TaskCached(Task),
     /// An attempt ended with an error, also one that the error strategy retries or ignores.
-    TaskFailed(Record),
+    TaskFailed(Task),
     /// A file went to where the workflow publishes it, like a `publishDir`.
     FilePublished {
         source: String,
@@ -39,6 +39,35 @@ pub enum Event {
 /// `status`, `exit`, `submit` and `realtime`. Times are milliseconds since 1970, durations
 /// milliseconds and sizes bytes; a value that is not known is null.
 pub type Record = serde_json::Map<String, serde_json::Value>;
+
+/// A task as its events show it: the trace record and what the trace does not hold.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Task {
+    pub record: Record,
+    /// The SHA-256 by which a resumed run finds the task in the cache, in hex; the record's
+    /// `hash` has Nextflow's short form of it, like `ab/cdef01`.
+    pub hash: String,
+    /// The `executor` directive of the process, `local` when it names none, as Nextflow names
+    /// executors; uwe's own executor may differ.
+    pub executor: String,
+    /// The files staged for the task.
+    pub inputs: Vec<File>,
+    /// The files that the task made; empty before it ended.
+    pub outputs: Vec<File>,
+    /// The values of its inputs, one per input declaration; a tuple is a list.
+    pub values: Vec<serde_json::Value>,
+}
+
+/// A file of a task.
+#[derive(Clone, Debug, PartialEq)]
+pub struct File {
+    /// The path that the task sees, relative to its work directory.
+    pub name: String,
+    /// Where the file is: a path on this machine or an address like `s3://bucket/key`.
+    pub path: String,
+    /// The content digest, like `sha256:<hex>`, when the executor computed it.
+    pub digest: Option<String>,
+}
 
 /// The start of a run, as Nextflow's `workflow` object shows it.
 #[derive(Clone, Debug, PartialEq)]

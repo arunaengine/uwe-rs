@@ -3,9 +3,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod help;
 mod params;
 pub(crate) mod paths;
 mod samplesheet;
+mod summary;
 
 use std::rc::Rc;
 
@@ -37,16 +39,12 @@ pub(crate) fn call(
         ("validate", [input, schema]) => validate(None, input, schema, context),
         ("validateParameters", []) => params::validate(None, context),
         ("validateParameters", [options]) => params::validate(Some(options), context),
-        ("paramsSummaryMap", [workflow]) => params::summary(None, workflow, context),
-        ("paramsSummaryMap", [options, workflow]) => {
-            params::summary(Some(options), workflow, context)
-        }
-        ("paramsSummaryLog", [workflow]) => params::summary_log(None, workflow, context),
-        ("paramsSummaryLog", [options, workflow]) => {
-            params::summary_log(Some(options), workflow, context)
-        }
-        ("paramsHelp", []) => params::help(None, context),
-        ("paramsHelp", [options @ Value::Map(_), ..]) => params::help(Some(options), context),
+        ("paramsSummaryMap", [workflow]) => summary::map(None, workflow, context),
+        ("paramsSummaryMap", [options, workflow]) => summary::map(Some(options), workflow, context),
+        ("paramsSummaryLog", [workflow]) => summary::log(None, workflow, context),
+        ("paramsSummaryLog", [options, workflow]) => summary::log(Some(options), workflow, context),
+        ("paramsHelp", []) => help::text(None, context),
+        ("paramsHelp", [options @ Value::Map(_), ..]) => help::text(Some(options), context),
         _ => Err(Error::Unsupported {
             message: format!(
                 "the function `{name}` of the plugin `nf-schema` with these arguments"

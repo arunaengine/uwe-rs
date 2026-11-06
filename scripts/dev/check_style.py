@@ -35,6 +35,7 @@ SMALL_DOMAINS = {
     "nextflow-plugins/src/nf_seqlab_progress": "plugin module with its registry, dashboard and view parts",
     "nextflow-plugins/src/nf_runinsights": "plugin module with its statistics and AI section parts",
     "nextflow-plugins/src/nf_slack": "plugin module with its settings, blocks and worker parts",
+    "nextflow-plugins/src/nf_wave": "plugin module with its settings, request and client parts",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",
     "nextflow-plugins/src/nf_core_utils": "grouped shared-prefix domain; hoisting recreates nf_core_*",
     "uwe/src/run": "grouped shared-prefix domain; hoisting recreates run_*",

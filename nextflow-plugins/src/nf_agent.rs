@@ -441,3 +441,7 @@ pub fn ask(endpoint: &Endpoint, question: &Question, timeout: Duration) -> Resul
         _ => Err(format!("Agent `{agent}`: the model returned no answer")),
     }
 }
+
+#[cfg(test)]
+#[path = "nf_agent_tests.rs"]
+mod tests;

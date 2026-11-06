@@ -1,4 +1,5 @@
-//! nf-parquet 0.2.3: `splitParquet` and `countParquet` read Parquet rows as maps; no records.
+//! nf-parquet 0.2.3: `splitParquet` and `countParquet` read Parquet rows as maps; uwe has no
+//! Java records, so a record class fails as one that is not a record does.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -50,7 +51,11 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
 
 /// Fails for an option the splitter does not know, and for the options uwe cannot follow.
 fn check(options: &Value) -> Result<(), Error> {
-    for (name, value) in crate::nf_schema::entries(options) {
+    let entries = crate::nf_schema::entries(options);
+    let record = entries
+        .iter()
+        .any(|(name, value)| name == "record" && value.truth());
+    for (name, value) in entries {
         if !OPTIONS.contains(&name.as_str()) {
             return Err(thrown(format!(
                 "Unknown argument '{name}' for operator 'split' -- Possible arguments: {}",
@@ -59,13 +64,13 @@ fn check(options: &Value) -> Result<(), Error> {
         }
         let set = !matches!(value, Value::Null | Value::Boolean(false));
         match name.as_str() {
-            "record" if set => {
+            "record" if set && class_name(&value).is_none() => {
                 return Err(thrown(format!(
-                    "uwe cannot read Parquet rows into the record class {value}, which needs a \
-                     compiled Java record; leave out `record` to get each row as a map"
+                    "Value '{value}' cannot be used in in parameter 'record' for operator \
+                     'split' -- Value don't match: class java.lang.Class"
                 )));
             }
-            "file" if set => {
+            "file" if set && !record => {
                 return Err(thrown("A Record.class is required. Class provided null"));
             }
             "into" if set => {
@@ -80,8 +85,8 @@ fn check(options: &Value) -> Result<(), Error> {
     Ok(())
 }
 
-/// `toParquet(path, [record:, by:])` checks its options as the plugin does, then refuses: the
-/// schema comes from a compiled Java record class, which uwe cannot load.
+/// `toParquet(path, [record:, by:])` checks its options as the plugin does; its record class is
+/// never a Java record in uwe.
 fn writer(options: &Value) -> Result<Value, Error> {
     let entries = crate::nf_schema::entries(options);
     if let Some((name, _)) = entries
@@ -94,20 +99,24 @@ fn writer(options: &Value) -> Result<Value, Error> {
     }
     let record = entries.into_iter().find(|(name, _)| name == "record");
     let record = record.map_or(Value::Null, |(_, value)| value);
-    let class = match &record {
-        Value::Class(_) => true,
-        Value::Object(object) => matches!(object.borrow().state, ObjectState::Class(_)),
-        _ => false,
-    };
-    if !class {
-        return Err(thrown(format!(
+    match class_name(&record) {
+        Some(class) => Err(thrown(format!("{class} must be a java Record"))),
+        None => Err(thrown(format!(
             "A Record.class is required. Class provided {record}"
-        )));
+        ))),
     }
-    Err(thrown(format!(
-        "uwe cannot write Parquet files with toParquet: its record class {record} must be a \
-         compiled Java record, which uwe cannot load"
-    )))
+}
+
+/// The Java name of a class, as the plugin names it in messages; `None` for other values.
+fn class_name(value: &Value) -> Option<String> {
+    match value {
+        Value::Class(name) => Some(name.to_string()),
+        Value::Object(object) => match &object.borrow().state {
+            ObjectState::Class(class) => Some(class.def.name.replace('.', "$")),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// The items that one source item gives: its rows, or lists of `by` rows, at most `limit`
@@ -121,6 +130,11 @@ fn items(item: &Value, options: &Value, context: &mut Context) -> Result<Vec<Val
         Some((_, Value::Number(Number::Long(value)))) => Some(value),
         _ => None,
     };
+    let mut entries = crate::nf_schema::entries(options).into_iter();
+    let record = entries.find(|(key, _)| key == "record");
+    if let Some(class) = record.and_then(|(_, value)| class_name(&value)) {
+        return Err(thrown(format!("{class} is not a Java Record")));
+    }
     let (list, index) = match item {
         Value::List(list) => {
             let items = list.borrow().items.clone();

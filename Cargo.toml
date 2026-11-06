@@ -85,6 +85,8 @@ axum = { version = "0.8.9", default-features = false, features = [
     "query",
     "tokio",
 ] }
+# RSA signatures of OCI requests, with the crypto library that rustls already uses.
+aws-lc-rs = { version = "1.18.1", default-features = false, features = ["aws-lc-sys"] }
 base64 = "0.23.1"
 bollard = "0.21.1"
 oxrdf = "0.3.4"

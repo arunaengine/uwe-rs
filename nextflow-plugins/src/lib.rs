@@ -41,6 +41,10 @@ mod nf_validation;
 mod nf_versions;
 pub mod observer;
 mod report_format;
+#[expect(dead_code, reason = "nf-tower, its first user, follows")]
+mod run_metadata;
+#[expect(dead_code, reason = "nf-tower, its first user, follows")]
+mod service;
 
 use std::any::Any;
 use std::cell::{RefCell, RefMut};

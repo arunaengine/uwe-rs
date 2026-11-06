@@ -1,0 +1,95 @@
+//! Sends the requests of the plugins that report to network services from their worker
+//! threads, with the one HTTP client of the process.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::hash::{BuildHasher, RandomState};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use reqwest::header::HeaderMap;
+
+/// The answer to a request.
+pub(crate) struct Answer {
+    pub(crate) status: u16,
+    pub(crate) headers: HeaderMap,
+    pub(crate) body: String,
+}
+
+/// Sends requests from one worker thread: a runtime of its own drives the shared client.
+pub(crate) struct Sender {
+    runtime: tokio::runtime::Runtime,
+    client: &'static reqwest::Client,
+}
+
+impl Sender {
+    /// A sender for the calling thread, which must not run inside an async runtime.
+    pub(crate) fn new() -> Result<Sender, String> {
+        let client = storage::http_client()?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?;
+        Ok(Sender { runtime, client })
+    }
+
+    pub(crate) fn client(&self) -> &'static reqwest::Client {
+        self.client
+    }
+
+    /// Sends a request and reads the whole answer.
+    pub(crate) fn send(&self, request: reqwest::RequestBuilder) -> Result<Answer, reqwest::Error> {
+        self.runtime.block_on(async {
+            let response = request.send().await?;
+            let status = response.status().as_u16();
+            let headers = response.headers().clone();
+            let body = response.text().await?;
+            Ok(Answer {
+                status,
+                headers,
+                body,
+            })
+        })
+    }
+}
+
+/// The sender of a worker, made on its first use in the worker thread, so that its runtime
+/// is never made or dropped inside the runtime of the caller.
+pub(crate) fn sender(slot: &mut Option<Sender>) -> Result<&Sender, String> {
+    if slot.is_none() {
+        *slot = Some(Sender::new()?);
+    }
+    slot.as_ref().ok_or_else(|| "no HTTP client".to_owned())
+}
+
+/// Random lower-case hex digits, for ids like those of a `traceparent` header and for the
+/// spread of retry delays; not for secrets.
+pub(crate) fn random_hex(digits: usize) -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut text = String::new();
+    while text.len() < digits {
+        let value = RandomState::new().hash_one(COUNTER.fetch_add(1, Ordering::Relaxed));
+        text.push_str(&format!("{value:016x}"));
+    }
+    text.truncate(digits);
+    text
+}
+
+/// A random number in `[0, 1)`.
+pub(crate) fn random_unit() -> f64 {
+    let digits = random_hex(13);
+    u64::from_str_radix(&digits, 16).unwrap_or(0) as f64 / (1u64 << 52) as f64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_ids_differ() {
+        let (first, second) = (random_hex(32), random_hex(32));
+        assert_eq!(first.len(), 32);
+        assert!(first.chars().all(|digit| digit.is_ascii_hexdigit()));
+        assert_ne!(first, second);
+        assert!((0.0..1.0).contains(&random_unit()));
+    }
+}

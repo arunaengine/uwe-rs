@@ -26,6 +26,7 @@ nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
 parquet.workspace = true
+reqwest.workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true
 sha1.workspace = true

@@ -7040,6 +7040,7 @@ dependencies = [
  "hmac 0.13.0",
  "http",
  "jiff",
+ "md-5",
  "opendal",
  "opendal-http-transport-reqwest",
  "opendal-service-azblob",

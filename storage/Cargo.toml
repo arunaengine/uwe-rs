@@ -19,6 +19,7 @@ futures-util.workspace = true
 hmac.workspace = true
 http.workspace = true
 jiff.workspace = true
+md-5.workspace = true
 opendal.workspace = true
 opendal-http-transport-reqwest.workspace = true
 opendal-service-azblob.workspace = true

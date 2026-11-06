@@ -152,7 +152,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_sqldb::PLUGIN,
     crate::nf_trino::PLUGIN,
     // Observers that write local files.
-    planned("nf-arts", Kind::Observer),
+    crate::nf_arts::PLUGIN,
     crate::nf_bigbrother::PLUGIN,
     crate::nf_cgroup_metrics::PLUGIN,
     crate::nf_co2footprint::PLUGIN,

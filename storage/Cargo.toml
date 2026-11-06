@@ -4,7 +4,7 @@
 
 [package]
 name = "storage"
-description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP, local folders and GA4GH DRS"
+description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP, local folders, GA4GH DRS and Synapse"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

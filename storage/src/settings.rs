@@ -43,6 +43,7 @@ pub enum Kind {
     Ftp(Ftp),
     Folder(Folder),
     Drs(Drs),
+    Synapse(Synapse),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -118,6 +119,15 @@ pub struct Drs {
     pub plain_http: Vec<String>,
 }
 
+/// Synapse, for inputs and outputs. Unset values come from the environment.
+#[derive(Clone, Debug, Default)]
+pub struct Synapse {
+    /// The address of the REST API; Synapse itself without one.
+    pub endpoint: Option<String>,
+    /// A personal access token; else `SYNAPSE_AUTH_TOKEN` of the environment.
+    pub token: Option<Secret>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -126,7 +136,7 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 7] = [
+const TYPES: [&str; 8] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
@@ -134,6 +144,7 @@ const TYPES: [&str; 7] = [
     "ftp",
     "folder",
     "drs",
+    "synapse",
 ];
 
 impl Settings {
@@ -314,6 +325,12 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
                 }))
             },
         ),
+        "synapse" => (&["endpoint", "token"], &["syn"], |table| {
+            Ok(Kind::Synapse(Synapse {
+                endpoint: web_address(table, "endpoint")?,
+                token: table.secret("token")?,
+            }))
+        }),
         _ => return None,
     };
     Some(kind)

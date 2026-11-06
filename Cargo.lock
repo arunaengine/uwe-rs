@@ -4103,6 +4103,7 @@ dependencies = [
  "nextflow-parser",
  "nextflow-runtime",
  "serde_json",
+ "sha2 0.11.0",
  "storage",
  "tempfile",
  "thiserror 2.0.21",

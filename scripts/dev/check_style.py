@@ -47,6 +47,8 @@ HEADER_HASH_SUFFIXES = (".env", ".example", ".sh", ".toml", ".ttl", ".yaml", ".y
 HEADER_EXCEPTIONS = {
     "Cargo.lock": "generated lockfile; Cargo rewrites it",
     "nextflow-plugins/tests/fixtures/nf_boost/in.yaml": "nf-boost probe input copied byte for byte",
+    "nextflow-plugins/tests/fixtures/nf_logsaver/say_it (a)_b182fa.sh": "nf-logsaver copy compared byte for byte",
+    "nextflow-plugins/tests/fixtures/nf_logsaver/say_it (b)_96d56f.sh": "nf-logsaver copy compared byte for byte",
     "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_COWPY.sh": "native Nextflow stub script compared byte for byte",
     "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE1_PE.sh": "native Nextflow stub script compared byte for byte",
     "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE2_PE.sh": "native Nextflow stub script compared byte for byte",

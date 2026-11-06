@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "probe",
+  "description": "probe schema",
+  "type": "object",
+  "$defs": {
+    "input": {
+      "title": "Required Parameters",
+      "type": "object",
+      "description": "Input options",
+      "properties": {
+        "sample": {"type": "string", "description": "Sample name"},
+        "r1": {"type": "string", "description": "First read", "format": "file-path"},
+        "r2": {"type": "string", "description": "Second read"},
+        "genome_size": {"type": "integer", "description": "Genome size", "default": 0},
+        "species": {"type": "string", "description": "Species name", "default": "UNKNOWN_SPECIES"},
+        "max_downloads": {"type": "integer", "description": "Max downloads", "default": 3, "hidden": true},
+        "outdir": {"type": "string", "description": "Output dir", "default": "bactopia"}
+      }
+    }
+  },
+  "allOf": [{"$ref": "#/$defs/input"}]
+}

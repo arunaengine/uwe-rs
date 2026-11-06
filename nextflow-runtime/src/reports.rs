@@ -208,6 +208,11 @@ impl Reports {
         self.wanted.is_empty() && self.observers.is_empty()
     }
 
+    /// Whether run observers hear the events of the run.
+    pub fn observed(&self) -> bool {
+        !self.observers.is_empty()
+    }
+
     /// Tells the observers that the run starts, with its options, its processes and where
     /// the pipeline came from.
     pub fn run_started(

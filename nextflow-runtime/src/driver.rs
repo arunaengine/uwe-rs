@@ -542,10 +542,17 @@ impl Driver for Nextflow {
         let request = self.requests.remove(&id).ok_or_else(|| {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
         })?;
+        let mut outcome = outcome;
         if let Some(reports) = &mut self.reports {
+            // A task that ended well keeps its standard error in the store; observers read it.
+            if reports.observed()
+                && outcome.stderr.is_empty()
+                && let Some(log) = &outcome.stderr_log
+            {
+                outcome.stderr = stdout_text(self.files.as_deref(), log).unwrap_or_default();
+            }
             reports.ended(&outcome);
         }
-        let mut outcome = outcome;
         let outcome = match &request.made {
             // An `exec:` section ran when the task was asked for; its files are its outputs.
             Some(made) if outcome.exit_code == 0 => TaskOutcome {

@@ -1,0 +1,6 @@
+reports:
+  "report.html":
+    display: "Joined report"
+    mimeType: "text/html"
+  "*.txt":
+    display: "Greeting"

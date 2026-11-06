@@ -21,6 +21,7 @@ mod nf_crg_report;
 mod nf_crukci_support;
 mod nf_csvext;
 mod nf_databricks;
+mod nf_datatrail;
 mod nf_dotenv;
 mod nf_drs;
 mod nf_emoji;

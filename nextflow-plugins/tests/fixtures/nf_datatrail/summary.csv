@@ -1,0 +1,5 @@
+task;hash;inputs;inputSize;outputs;outputSize;usedBy
+SAY (a);a5552603f2635a022c00c4ef5ef8fecc;1;10;1;18;1
+SAY (b);0484b37f734fa528a773e63a03a241da;1;10;1;18;1
+JOIN;7c0d9d86024fb8295d576bbfaa69d133;2;36;1;36;1
+COUNT;672b35021e71a17017a9f1dd01456675;1;36;1;13;0

@@ -566,4 +566,5 @@ storage-test:
 	serve inputs 9100 "$UWE_TEST_INPUTS_KEY" "$UWE_TEST_INPUTS_SECRET" inputs
 	serve store 9101 "$UWE_TEST_STORE_KEY" "$UWE_TEST_STORE_SECRET" cache
 	cargo test --locked -p storage --test s3 -- --ignored
+	cargo test --locked -p storage --test quilt -- --ignored
 	cargo test --locked -p uwe --test storage -- --ignored

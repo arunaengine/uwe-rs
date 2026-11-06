@@ -10,9 +10,9 @@ use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use aws_batch_executor::Helper;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use executor::batch::Helper;
 use executor::remote::RemoteStage;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use google_batch_executor::{Client, Credentials, GoogleBackend, Settings};

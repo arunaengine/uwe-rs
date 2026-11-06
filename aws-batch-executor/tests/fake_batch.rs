@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
-use aws_batch_executor::{BatchBackend, Client, Helper, Settings, Volume};
+use aws_batch_executor::{BatchBackend, Client, Settings, Volume};
+use executor::batch::Helper;
 use executor::remote::RemoteStage;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use serde_json::{Value, json};

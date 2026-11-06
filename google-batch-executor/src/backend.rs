@@ -7,8 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use aws_batch_executor::Helper;
-use aws_batch_executor::script::Source;
+use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
 use executor::registry::{self, ImageConfigs};
@@ -242,8 +241,7 @@ impl GoogleBackend {
             }
         };
         let time = job.placement.time_seconds;
-        let commands =
-            aws_batch_executor::script::command(&text(&root), &planned.location, source, time);
+        let commands = executor::batch::command(&text(&root), &planned.location, source, time);
         let shape = Shape {
             task: job.name,
             image: &image.reference,

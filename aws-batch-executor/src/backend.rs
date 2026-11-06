@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
 use executor::registry::{self, ImageConfigs};
@@ -21,8 +22,7 @@ use tokio_util::sync::CancellationToken;
 use crate::client::{BatchError, Client};
 use crate::definition::{Definitions, Shape, log_group};
 use crate::outcome::{Ended, exit_code, finish, log_stream, machine, reason};
-use crate::script::Source;
-use crate::settings::{Helper, Settings};
+use crate::settings::Settings;
 use crate::submit::Submission;
 
 /// The reasons of AWS Batch for a job that no compute environment of its queue can run.
@@ -248,7 +248,7 @@ impl BatchBackend {
             }
         };
         let time = job.placement.time_seconds;
-        let command = crate::script::command(&text(&root), &planned.location, source, time);
+        let command = executor::batch::command(&text(&root), &planned.location, source, time);
         let region = &self.client.region;
         let platform = image.platform.as_deref().unwrap_or_default();
         let shape = Shape {

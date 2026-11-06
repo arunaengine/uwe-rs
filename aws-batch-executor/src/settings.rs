@@ -7,10 +7,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use config_file::{ConfigError, Table};
+use executor::batch::{Helper, TASK_FOLDER, helper};
 use storage::aws::{Credentials, Keys};
-
-/// The folder of the container where each job makes the folder of its attempt, by default.
-pub const TASK_FOLDER: &str = "/tmp/uwe";
 
 /// How often AWS Batch is asked about the jobs, by default, as Nextflow does.
 const POLL: Duration = Duration::from_secs(10);
@@ -82,16 +80,6 @@ pub struct Volume {
     pub host: String,
     pub container: String,
     pub read_only: bool,
-}
-
-/// Where a job finds the static uwe binary that stages the files of its task.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Helper {
-    /// A path on the hosts of the compute environment, like a folder of its AMI. The job
-    /// definition mounts its folder read-only; Fargate has no such folders.
-    Path(String),
-    /// An address that the job downloads with `curl` or `wget`, and the SHA-256 of the file.
-    Download { url: String, sha256: String },
 }
 
 impl Volume {
@@ -222,31 +210,6 @@ impl Settings {
             environment,
             home: variable("HOME").map(Into::into),
         }
-    }
-}
-
-/// Where the jobs get the uwe binary: `helper_path` on the hosts, or `helper_url` with its
-/// `helper_sha256`. The Google Batch executor reads the same keys.
-pub fn helper(table: &Table<'_>) -> Result<Option<Helper>, ConfigError> {
-    let (path, url) = (table.text("helper_path")?, table.text("helper_url")?);
-    match (path, url, table.text("helper_sha256")?) {
-        (None, None, None) => Ok(None),
-        (Some(path), None, None) if path.starts_with('/') => Ok(Some(Helper::Path(path))),
-        (Some(_), None, None) => Err(table.invalid("helper_path", "must be an absolute path")),
-        (None, Some(url), Some(sha256))
-            if sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
-        {
-            let sha256 = sha256.to_ascii_lowercase();
-            Ok(Some(Helper::Download { url, sha256 }))
-        }
-        (None, Some(_), _) => Err(table.invalid(
-            "helper_sha256",
-            "must be the SHA-256 of the file at helper_url, as 64 hex digits",
-        )),
-        _ => Err(table.invalid(
-            "helper_path",
-            "takes no helper_url; name the binary on the hosts or the address to download",
-        )),
     }
 }
 

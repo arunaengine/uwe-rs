@@ -1,0 +1,48 @@
+<!--
+  ~ Copyright 2013-2023, Seqera Labs
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<html>
+<head>
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1, maximum-scale=1">
+</head>
+<body>
+<pre class="mermaid" style="text-align: center;">
+flowchart TD
+    subgraph " "
+    in0["input.txt"]
+    end
+    t0(["SPLIT"])
+    t1(["SHOUT (3)"])
+    t2(["SHOUT (2)"])
+    t3(["SHOUT (1)"])
+    in0 --> t0
+    t0 -->|part_02.txt| t1
+    t0 -->|part_01.txt| t2
+    t0 -->|part_00.txt| t3
+    t1 --> out0
+    t2 --> out1
+    t3 --> out2
+    subgraph " "
+    out0[part_02.up.txt]
+    out1[part_01.up.txt]
+    out2[part_00.up.txt]
+    end
+</pre>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, maxTextSize: Number.MAX_SAFE_INTEGER, maxEdges: Number.MAX_SAFE_INTEGER });
+</script>
+</body>
+</html>

@@ -29,6 +29,7 @@ SMALL_DOMAINS = {
     "nextflow-plugins/src/nf_cmgg": "plugin module with its worksheet, sheet and expression parts",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",
     "nextflow-plugins/src/nf_core_utils": "grouped shared-prefix domain; hoisting recreates nf_core_*",
+    "nextflow-plugins/src/nf_prov": "grouped shared-prefix domain; hoisting recreates nf_prov_*",
     "uwe/src/run": "grouped shared-prefix domain; hoisting recreates run_*",
     "run-database/src/compare": "grouped shared-prefix domain; hoisting recreates compare_*",
     "workflow-graph/src/shell": "grouped shared-prefix domain; hoisting recreates shell_*",

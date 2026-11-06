@@ -1,0 +1,12 @@
+digraph physical {
+  rankdir=TB;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10];
+  edge [color="#666666"];
+  "t1" [label="SPLIT\\n[1]", fillcolor="#8dd3c7"];
+  "t3" [label="SHOUT\\n[3]", fillcolor="#ffffb3"];
+  "t4" [label="SHOUT\\n[4]", fillcolor="#ffffb3"];
+  "t2" [label="SHOUT\\n[2]", fillcolor="#ffffb3"];
+  "t1" -> "t2";
+  "t1" -> "t3";
+  "t1" -> "t4";
+}

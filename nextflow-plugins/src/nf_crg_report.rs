@@ -396,3 +396,64 @@ fn head(path: &str) -> Option<[f64; 3]> {
             continue;
         };
         scheduled = true;
+        let joined = words.join(" ");
+        for option in ["--cpus-per-task", "-c"] {
+            if let Some(found) = value_after(&joined, option).and_then(|value| value.parse().ok()) {
+                cpus = Some(found);
+            }
+        }
+        for option in ["--mem-per-cpu", "--mem", "-l h_vmem", "-l m_mem_free"] {
+            if let Some(found) = value_after(&joined, option).and_then(|value| gigabytes(&value)) {
+                memory = found;
+            }
+        }
+        if let Some(found) = value_after(&joined, "-pe").and_then(|value| {
+            let mut parts = value.split_whitespace();
+            parts.nth(1).and_then(|count| count.parse().ok())
+        }) {
+            cpus = Some(found);
+        }
+        for marker in ["--gpus=", "--gpus ", "gpu:"] {
+            if let Some(at) = joined.find(marker) {
+                let digits: String = joined[at + marker.len()..]
+                    .chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect();
+                if let Ok(found) = digits.parse() {
+                    gpus = found;
+                }
+            }
+        }
+    }
+    scheduled.then(|| [cpus.unwrap_or(1.0), memory, gpus])
+}
+
+/// The text after an option and `=` or a blank, up to the next blank; for `-pe` the rest.
+fn value_after(line: &str, option: &str) -> Option<String> {
+    let rest = &line[line.find(option)? + option.len()..];
+    if option == "-pe" {
+        return Some(rest.trim().to_owned());
+    }
+    let rest = rest.strip_prefix('=').or_else(|| rest.strip_prefix(' '))?;
+    rest.split_whitespace().next().map(str::to_owned)
+}
+
+/// A memory amount like `8G` or `512` (megabytes) in gigabytes.
+fn gigabytes(text: &str) -> Option<f64> {
+    let digits: String = text
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    let number: f64 = digits.parse().ok()?;
+    let unit = text[digits.len()..]
+        .chars()
+        .next()
+        .map(|c| c.to_ascii_uppercase());
+    Some(match unit {
+        Some('K') => number / 1024f64.powi(2),
+        Some('G') => number,
+        Some('T') => number * 1024.0,
+        Some('P') => number * 1024f64.powi(2),
+        _ => number / 1024.0,
+    })
+}

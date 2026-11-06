@@ -19,6 +19,7 @@ use workflow_graph::{
     Outcome, Task,
 };
 
+use crate::calls::Calls;
 use crate::notes::Noting;
 use crate::process::glob_matches;
 use crate::reports::Reports;
@@ -135,6 +136,8 @@ pub struct Nextflow {
     acceptance: HashMap<(workflow_graph::TaskId, u32), bool>,
     /// The run observers that the caller adds; a real run joins them to those of the plugins.
     observers: Vec<Box<dyn Observer>>,
+    /// The model calls of agent tasks, which run before the engine records their tasks.
+    calls: Calls,
 }
 
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
@@ -179,6 +182,7 @@ impl Nextflow {
             made_by: HashMap::new(),
             acceptance: HashMap::new(),
             observers: Vec::new(),
+            calls: Calls::default(),
         })
     }
 
@@ -345,6 +349,10 @@ impl Nextflow {
 
     /// The container tasks of the requests of the network, which are kept until they finish.
     fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
+        let host = self.settings.host.as_mut();
+        let requests: Vec<TaskRequest> = (requests.into_iter())
+            .filter_map(|request| self.calls.ask(request, host))
+            .collect();
         requests
             .into_iter()
             .map(|request| {
@@ -356,7 +364,9 @@ impl Nextflow {
                     });
                 }
                 let mut task = task(&request, &self.environment)?;
-                if let Some(lab) = self.lab.as_ref().filter(|_| request.made.is_none()) {
+                // The task of an `exec:` section or an agent ran in the driver; it has no command.
+                let driven = request.made.is_some() || request.agent.is_some();
+                if let Some(lab) = self.lab.as_ref().filter(|_| !driven) {
                     lab.apply(&request.directives, &mut task.environment);
                 }
                 if task.environment.contains_key(crate::options::WORK_ENV) && !self.settings.local_options {
@@ -374,7 +384,7 @@ impl Nextflow {
                         return Err(DriverError { unsupported: true, message: "container shared memory, swap and GPU 'all' flags require the local executor".into() });
                     }
                 }
-                if request.made.is_none()
+                if !driven
                     && let Some(bin) = &self.project_bin
                 {
                     task.inputs.push(Input {
@@ -402,7 +412,7 @@ impl Nextflow {
                     let mapped = images.resolve(&request.process, written, image);
                     task.image = Some(mapped.map_err(DriverError::new)?);
                 }
-                if let Some(wave) = self.wave.as_mut().filter(|_| request.made.is_none()) {
+                if let Some(wave) = self.wave.as_mut().filter(|_| !driven) {
                     let sources = wave_sources(&request, registry, &self.conda_channels);
                     if let Some(image) = wave.resolve(&sources).map_err(DriverError::new)? {
                         task.image = Some(image);
@@ -491,6 +501,8 @@ impl Driver for Nextflow {
             };
         }
         self.environment = environment(config);
+        let answers = self.launch.scratch.join("nextflow").join("agents");
+        self.calls = Calls::new(config, answers, self.settings.resume, self.launch.simulated);
         self.lab = nextflow_plugins::labrobotics(config, &self.settings.run_name);
         let engine = self
             .settings
@@ -554,6 +566,7 @@ impl Driver for Nextflow {
             reports.ended(&outcome);
         }
         let outcome = match &request.made {
+            _ if request.agent.is_some() => self.calls.outcome(&request),
             // An `exec:` section ran when the task was asked for; its files are its outputs.
             Some(made) if outcome.exit_code == 0 => TaskOutcome {
                 id: request.id,
@@ -588,6 +601,16 @@ impl Driver for Nextflow {
         if let Some(reports) = &mut self.reports {
             reports.started(task, attempt);
         }
+    }
+
+    fn wake_at(&self) -> Option<std::time::Instant> {
+        self.calls.wake_at()
+    }
+
+    /// Asks the engine for the agent tasks whose model calls ended.
+    fn wake(&mut self) -> Result<Vec<Task>, DriverError> {
+        let answered = self.calls.answered();
+        self.tasks(answered)
     }
 
     fn take_acceptance(&mut self, task: workflow_graph::TaskId, attempt: u32) -> bool {
@@ -1024,7 +1047,7 @@ pub fn task(
             .iter()
             .map(|(name, value)| (name.to_string(), value.to_string())),
     );
-    if request.made.is_some() {
+    if request.made.is_some() || request.agent.is_some() {
         return Ok(exec_task(request, environment, reuse));
     }
     let mut resources = resources(request).map_err(DriverError::new)?;

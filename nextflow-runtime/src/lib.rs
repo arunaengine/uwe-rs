@@ -4,6 +4,7 @@
 
 mod agent;
 mod build;
+mod calls;
 pub mod channel;
 mod cleanup;
 pub mod driver;

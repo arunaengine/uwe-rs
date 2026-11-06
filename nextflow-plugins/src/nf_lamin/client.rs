@@ -235,6 +235,21 @@ impl Client {
             .unwrap_or_default())
     }
 
+    /// One record by its uid, `None` when the instance has none.
+    pub(super) fn record(&mut self, model: &str, uid: &str) -> Result<Option<Value>, String> {
+        let path = format!(
+            "{}/{uid}?limit_to_many=10&include_foreign_keys=false",
+            self.module(model)
+        );
+        let found = self.call(
+            Method::POST,
+            &path,
+            Some(&json!({})),
+            &format!("GET {model}"),
+        )?;
+        Ok(found.filter(Value::is_object))
+    }
+
     /// Creates a record and gives it back with its `id` and `uid`.
     pub(super) fn create(&mut self, model: &str, body: &Value) -> Result<Value, String> {
         let path = self.module(model);
@@ -245,6 +260,22 @@ impl Client {
     pub(super) fn update(&mut self, model: &str, uid: &str, body: &Value) -> Result<(), String> {
         let path = format!("{}/{uid}", self.module(model));
         self.call(Method::PATCH, &path, Some(body), &format!("PATCH {model}"))?;
+        Ok(())
+    }
+
+    /// Links records through a link model; the conflict columns are the keys of the rows.
+    pub(super) fn upsert(&mut self, model: &str, rows: Vec<Value>) -> Result<(), String> {
+        let Some(row) = rows.first().and_then(Value::as_object) else {
+            return Ok(());
+        };
+        let mut columns: Vec<&String> = row.keys().collect();
+        columns.sort();
+        let query: Vec<String> = (columns.iter())
+            .map(|column| format!("conflict_columns={column}"))
+            .collect();
+        let path = format!("{}/upsert?{}", self.module(model), query.join("&"));
+        let body = Value::Array(rows);
+        self.call(Method::PUT, &path, Some(&body), &format!("PUT {model}"))?;
         Ok(())
     }
 

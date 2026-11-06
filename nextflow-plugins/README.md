@@ -120,11 +120,21 @@ once.
 
 nf-drs 0.1.0 hands its `drs` scope (`authProvider`, `authSecret`, `tokenEndpointPath`,
 `accessProtocol`) to the DRS provider of the `storage` crate when the run starts, which then
-reads `drs://` paths for every language. `authSecret` names an environment variable, which a
-`[secrets]` entry of uwe's config can set. Without `authProvider`, uwe uses `gen3` when that
+reads `drs://` paths for every language. `authSecret` names the environment variable that
+holds the credential; uwe does not look that name up among its secrets. Without `authProvider`, uwe uses `gen3` when that
 variable is set and reads without a token otherwise, where the plugin fails. uwe sends the
 headers of an access URL, which the plugin leaves out. A path's name is the last part of the
 address, not the object's `name`, so a staged input is named after its object id.
+
+## src/nf_synapse.rs
+
+nf-synapse 0.1.3 hands its `synapse` scope (`endpoint`, `authToken`) to the Synapse provider of
+the `storage` crate when the run starts, which then reads `syn://` paths and publishes into
+Synapse folders for every language. Without `authToken`, the token comes from the environment
+variable `SYNAPSE_AUTH_TOKEN`; uwe does not look that name up among its secrets, while
+`authToken = secrets.NAME` works. uwe follows every page of a folder's children, where the
+plugin reads the first one. A path's name is the last part of the address, like
+`syn100.fastq.gz`, not the entity's `name`, so a staged input keeps the address's name.
 
 ## src/observer.rs
 

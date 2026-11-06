@@ -33,6 +33,7 @@ mod nf_schema;
 mod nf_snapshot;
 mod nf_sqldb;
 mod nf_storagemetrics;
+mod nf_synapse;
 mod nf_trino;
 #[path = "validation.rs"]
 mod nf_validation;

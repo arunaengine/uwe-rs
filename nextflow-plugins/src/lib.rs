@@ -79,13 +79,6 @@ const NF_VALIDATION_PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-validation", Kind::Functions, State::Implemented)
 };
 
-const NF_ANNDATA_PLUGIN: Plugin = Plugin {
-    functions: &["anndata"],
-    supported: Some(&[]),
-    call: Some(nf_anndata::call),
-    ..Plugin::new("nf-anndata", Kind::Functions, State::Partial)
-};
-
 /// The functions of a plugin that uwe runs, or `None` for a plugin uwe does not run.
 pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
     let plugin = catalogue::find(plugin).filter(|plugin| plugin.works())?;

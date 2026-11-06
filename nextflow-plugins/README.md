@@ -213,6 +213,14 @@ are not read: active files are always indeterminate. A task's identity comes fro
 as uwe gives observers no names of `env` inputs. The number of publish copies in flight is
 unknown in uwe, and the audit file is written only to a local folder.
 
+## src/nf_jev.rs
+
+nf-jev 0.2.1 sends the plugin's request bytes, so a cache folder can be shared with Nextflow
+runs. Its settings are checked, and the warning about caching a floating model is printed, when
+a run of a config whose `plugins` block names nf-jev starts, where the plugin does it when the
+include is loaded. A network error after three attempts gives the error's text where the
+plugin gives `null`.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

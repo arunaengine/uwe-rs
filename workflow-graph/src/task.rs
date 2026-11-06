@@ -232,6 +232,12 @@ pub struct Resources {
     pub disk_bytes: Option<u64>,
     pub time_seconds: Option<u64>,
     pub gpus: Option<u32>,
+    /// The queue of the executor that runs the task, like Nextflow's `queue` directive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
+    /// Labels for the job of the task, like Nextflow's `resourceLabels`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 /// What came of an attempt of a task.

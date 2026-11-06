@@ -955,6 +955,7 @@ fn sum(total: &Resources, container: &Container) -> Result<Resources> {
         disk_bytes: add(total.disk_bytes, more.disk_bytes)?,
         time_seconds: total.time_seconds,
         gpus,
+        ..Resources::default()
     })
 }
 

@@ -140,6 +140,23 @@ fn missing_env_empty() {
 }
 
 #[test]
+fn passes_placement_hints() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process P {\n queue 'long'\n resourceLabels team: 'genomics', \
+                  'cost-center': 'A 12'\n script:\n 'true'\n}\nworkflow { P() }";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    let resources = &graph.nodes[0].task.resources;
+    assert_eq!(resources.queue.as_deref(), Some("long"));
+    assert_eq!(resources.labels["team"], "genomics");
+    assert_eq!(resources.labels["cost-center"], "A 12");
+}
+
+#[test]
 fn builds_task_graph() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");

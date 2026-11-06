@@ -275,6 +275,16 @@ pub fn resources(request: &TaskRequest) -> Result<Resources, String> {
         disk_bytes: number("disk")?,
         time_seconds: number("time")?,
         gpus: number("accelerator")?.map(|count| count as u32),
+        queue: directive(directives, "queue")
+            .filter(|value| !matches!(value, Value::Null))
+            .map(|value| value.to_string())
+            .filter(|queue| !queue.is_empty()),
+        labels: match directive(directives, "resourceLabels") {
+            Some(Value::Map(labels)) => (labels.borrow().entries.iter())
+                .map(|(name, value)| (name.0.to_string(), value.to_string()))
+                .collect(),
+            _ => Default::default(),
+        },
     })
 }
 

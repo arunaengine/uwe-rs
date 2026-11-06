@@ -404,6 +404,7 @@ pub fn task_resources(threads: i64, resources: &[(String, Value)]) -> Resources 
             }
             "runtime" | "time_min" | "walltime" => result.time_seconds = seconds(value),
             "gpu" | "gpus" | "nvidia_gpu" => result.gpus = number(value).map(|count| count as u32),
+            "queue" => result.queue = value.as_str().map(str::to_owned),
             _ => {}
         }
     }

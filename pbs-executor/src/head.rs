@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use slurm_executor::LOG;
+use crate::JOB_LOG;
 use slurm_executor::grid::Submission;
 
 use crate::Pbs;
@@ -34,7 +34,7 @@ pub fn head(submission: &Submission<'_>, pbs: &Pbs) -> String {
     let log = match submission.remote {
         // The node has no attempt folder; the job sends its log through the staging root.
         true => "/dev/null".to_owned(),
-        false => control.join(LOG).display().to_string(),
+        false => control.join(JOB_LOG).display().to_string(),
     };
     let mut lines: Vec<(&str, String)> = vec![
         ("-N", format!("-N {}", name(submission.job.name))),
@@ -180,7 +180,7 @@ mod tests {
         for line in recorded.lines().filter(|line| line.starts_with("#PBS")) {
             let line = match line.split_whitespace().nth(1) {
                 Some("-N") => "#PBS -N uwe-run-BIG-1-1",
-                Some("-o") => "#PBS -o /scratch/run-BIG-1-1/control/slurm.log",
+                Some("-o") => "#PBS -o /scratch/run-BIG-1-1/control/pbs.log",
                 _ => line,
             };
             assert!(ours.iter().any(|ours| ours == line), "{line} in {ours:?}");

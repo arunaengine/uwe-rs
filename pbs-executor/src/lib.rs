@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use executor::CONTROL;
 use executor::wrapper::STDERR;
 use serde_json::Value;
+use slurm_executor::executable;
 use slurm_executor::grid::{GridBackend, Scheduler, State, Submission, call};
-use slurm_executor::{LOG, executable};
 use tokio::process::Command;
 
 pub use head::head;
@@ -21,6 +21,9 @@ pub use summary::summary;
 
 /// The PBS tools that the backend runs.
 pub const TOOLS: [&str; 3] = ["qsub", "qstat", "qdel"];
+
+/// Both streams of the job of an attempt, in its control folder.
+pub const JOB_LOG: &str = "pbs.log";
 
 /// The PBS executor's backend.
 pub type PbsBackend = GridBackend<Pbs>;
@@ -62,6 +65,7 @@ impl Pbs {
 
 impl Scheduler for Pbs {
     const NAME: &'static str = "PBS";
+    const LOG: &'static str = JOB_LOG;
 
     fn head(&self, submission: &Submission<'_>) -> String {
         head(submission, self)
@@ -125,7 +129,7 @@ impl Scheduler for Pbs {
     fn ended(&self, root: &Path) -> std::io::Result<()> {
         use std::io::Write;
         let control = root.join(CONTROL);
-        let Ok(log) = std::fs::read_to_string(control.join(LOG)) else {
+        let Ok(log) = std::fs::read_to_string(control.join(JOB_LOG)) else {
             return Ok(());
         };
         let Some(block) = summary(&log) else {

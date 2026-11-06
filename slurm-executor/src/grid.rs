@@ -24,8 +24,8 @@ use tokio_util::sync::CancellationToken;
 use crate::backend::{explain, read_number, record, sync_files};
 use crate::remote::{Helper, Links, NodeStaging, records};
 use crate::script::{
-    CONTAINER_EXIT, Container, ENGINE_EXIT, LOG, NOT_SEEN, SCRIPT, TIMED_OUT, check_binds,
-    check_gpus, engine_marker, job_script, shared_memory, size_memory,
+    CONTAINER_EXIT, Container, ENGINE_EXIT, NOT_SEEN, SCRIPT, TIMED_OUT, check_binds, check_gpus,
+    engine_marker, job_script, shared_memory, size_memory,
 };
 
 /// How long one call of a tool of the scheduler may take, as a busy scheduler answers slowly.
@@ -43,6 +43,9 @@ const END_GRACE: Duration = Duration::from_secs(120);
 pub trait Scheduler: Send + Sync + 'static {
     /// Its name in messages, like `HTCondor`.
     const NAME: &'static str;
+
+    /// The file of the job's output in the control folder of an attempt, like `pbs.log`.
+    const LOG: &'static str;
 
     /// The lines that the job script gets after its first line, like `#PBS` options.
     fn head(&self, _submission: &Submission<'_>) -> String {
@@ -371,7 +374,7 @@ impl<S: Scheduler> GridBackend<S> {
         self.queue.remove(&id).await;
         let ended = ended?;
         if let (Some(remote), Some(prefix)) = (&self.remote, prefix) {
-            let names = records();
+            let names = records(S::LOG);
             executor::remote::patiently(|| remote.stage.collect(prefix, root, &names)).await?;
             if matches!(ended, Ended::Done(0))
                 && read_number(&control.join(CONTAINER_EXIT)).await.is_none()
@@ -422,7 +425,7 @@ impl<S: Scheduler> GridBackend<S> {
         };
         let open = run.access.hand_back.is_some();
         let planned = (remote.stage)
-            .plan(job, root, &extra, &[], &records(), open)
+            .plan(job, root, &extra, &[], &records(S::LOG), open)
             .await?;
         *staged = Some(Staged {
             prefix: planned.prefix.clone(),
@@ -434,7 +437,7 @@ impl<S: Scheduler> GridBackend<S> {
         };
         check_binds(&self.container, &run)?;
         // Without it, a job whose helper cannot start keeps its log on the node.
-        let log = match remote.stage.record(&planned.prefix, LOG).await {
+        let log = match remote.stage.record(&planned.prefix, S::LOG).await {
             Ok(log) => Some(log),
             Err(error) => {
                 tracing::warn!(%error, "jobs cannot send their logs without the helper");
@@ -465,6 +468,7 @@ impl<S: Scheduler> GridBackend<S> {
             gpus,
             time,
             links,
+            S::LOG,
         ))
     }
 
@@ -571,7 +575,9 @@ impl<S: Scheduler> GridBackend<S> {
         let time = job.placement.time_seconds;
         let (exit_code, note) = match outcome::<S>(recorded, &ended, time) {
             Ok(outcome) => outcome,
-            Err(message) => return Err(machine::<S>(explain(message, &root, shared).await)),
+            Err(message) => {
+                return Err(machine::<S>(explain(message, &root, S::LOG, shared).await));
+            }
         };
         if let Some(note) = note {
             use tokio::io::AsyncWriteExt;
@@ -740,6 +746,7 @@ mod tests {
 
     impl Scheduler for Fake {
         const NAME: &'static str = "Fake";
+        const LOG: &'static str = "fake.log";
 
         async fn submit(&self, _: &Submission<'_>) -> Result<String, String> {
             Ok("1".into())

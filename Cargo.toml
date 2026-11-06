@@ -106,6 +106,7 @@ gix = { version = "0.90.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "sha1",
 ] }
+hmac = "0.13.0"
 http = "1.5.0"
 indexmap = "2.14.2"
 jiff = "0.2.38"
@@ -158,8 +159,10 @@ reqwest = { version = "0.13.5", default-features = false, features = [
     "blocking",
     "rustls",
 ] }
+reqsign-aws-core = { version = "3.2.0", default-features = false }
 reqsign-azure-storage = { version = "3.3.0", default-features = false }
 reqsign-core = { version = "3.3.2", default-features = false }
+reqsign-file-read-tokio = "3.0.7"
 ruff_python_ast = "=0.0.20"
 ruff_python_parser = "=0.0.20"
 ruff_text_size = "=0.0.20"

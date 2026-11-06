@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod address;
+pub mod aws;
 mod azure;
 mod backend;
 mod blocking;

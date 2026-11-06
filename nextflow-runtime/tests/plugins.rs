@@ -178,3 +178,54 @@ workflow {
          initializePed(java.util.Map, java.util.List)\n"
     );
 }
+
+/// The output of a recorded nf-pregex probe script, and the recorded output.
+fn pregex_probe(name: &str) -> (String, String) {
+    let folder = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../nextflow-plugins/tests/fixtures/nf_pregex"
+    );
+    let read = |file: String| std::fs::read_to_string(format!("{folder}/{file}")).expect("reads");
+    let output = run(&read(format!("{name}.nf")), &[]).expect("runs");
+    (output, read(format!("{name}.out")))
+}
+
+/// The text without the lines from the one that starts with `first` to the one before `next`.
+fn without(text: &str, first: &str, next: &str) -> String {
+    let start = text.find(first).expect("the first line");
+    let end = text[start..].find(next).expect("the next line") + start;
+    format!("{}{}", &text[..start], &text[end..])
+}
+
+#[test]
+fn builds_pregex_patterns() {
+    let (output, recorded) = pregex_probe("builders");
+    // uwe's lists have no unmodifiable class of their own.
+    let recorded = recorded.replace(
+        "(java.util.Collections$UnmodifiableRandomAccessList)",
+        "(java.util.ArrayList)",
+    );
+    assert_eq!(output, recorded);
+}
+
+#[test]
+fn runs_pregex_methods() {
+    let (output, recorded) = pregex_probe("methods");
+    // uwe's key sets are sets, and its regex errors have their own wording.
+    let recorded = recorded.replace("LinkedHashMap$LinkedKeySet", "LinkedHashSet");
+    let invalid = "bad regex test !! java.util.regex.PatternSyntaxException / \
+                   java.util.regex.PatternSyntaxException: ";
+    assert!(output.contains(invalid), "{output}");
+    assert_eq!(
+        without(&output, "bad regex test", "report class"),
+        without(&recorded, "bad regex test", "report class")
+    );
+    let script = "include { Digit } from 'plugin/nf-pregex'\n\
+        workflow {\n\
+            try { Digit().exactly(-1) } catch (e) { println \"${e.getClass().name}: ${e.message}\" }\n\
+        }\n";
+    assert_eq!(
+        run(script, &[]).expect("runs"),
+        "java.lang.IllegalArgumentException: Count must be non-negative\n"
+    );
+}

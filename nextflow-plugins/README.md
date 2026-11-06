@@ -202,6 +202,17 @@ selects a path-style endpoint. The Notion and Seqera requests run on a backgroun
 Not done: Fusion tags (uwe has no Fusion), the per-task `resourceLabels` (no plugin hook for
 process directives), tags of published S3 folders, and the Platform watch URL, which is empty.
 
+## src/nf_seqlab_progress/mod.rs
+
+nf-seqlab-progress 0.2.0 keeps the plugin's task states, stages, completed files, error count
+and publish counts, prints the plugin's plain and JSON lines on standard output when they
+change, and appends every state to `<outdir>/pipeline_info/progress.jsonl` in every mode. In a
+terminal it prints uwe's own text view of the same data instead of the plugin's animation. uwe
+does not tell observers where a running task's folder is, so the tasks' progress snapshot files
+are not read: active files are always indeterminate. A task's identity comes from its meta map,
+as uwe gives observers no names of `env` inputs. The number of publish copies in flight is
+unknown in uwe, and the audit file is written only to a local folder.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

@@ -425,3 +425,66 @@ fn json_text(value: &serde_json::Value) -> String {
         other => other.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::registry::{Mapping, Stage};
+    use super::*;
+
+    fn task(status: &str) -> Task {
+        let record = serde_json::json!({
+            "task_id": 1, "process": "EXACT_PROGRESS", "attempt": 1, "status": status
+        });
+        Task {
+            record: record.as_object().cloned().unwrap_or_default(),
+            process_id: Some(1),
+            hash: String::new(),
+            executor: "local".into(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            values: vec![serde_json::json!({ "file_id": "chr22", "parent_file_id": "chr22" })],
+            declared: Vec::new(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
+    #[test]
+    fn prints_recorded_lines() {
+        let mut board = Board::new(Mode::Off, 2, "results".into());
+        board.run = "progress-success".into();
+        board.registry = Registry {
+            inputs: vec![("chr22".into(), "synthetic://chr22".into())],
+            stages: vec![Stage {
+                id: "exact".into(),
+                label: "Exact progress".into(),
+                files: vec!["chr22".into()],
+            }],
+            mappings: vec![Mapping {
+                process: "EXACT_PROGRESS".into(),
+                stage: "exact".into(),
+                boundary: Boundary::Parent,
+            }],
+        };
+        let line = |board: &Board| super::super::view::plain(&board.dashboard());
+        let prefix = "[nf-seqlab progress] run=progress-success stage=exact files=";
+        board.notify(&Event::TaskSubmitted(task("SUBMITTED")));
+        assert_eq!(
+            line(&board),
+            format!(
+                "{prefix}0/1 stage_percent=0.0 state=running file=chr22 file_percent=indeterminate phase=running"
+            )
+        );
+        board.notify(&Event::TaskCompleted(task("COMPLETED")));
+        assert_eq!(
+            line(&board),
+            format!("{prefix}1/1 stage_percent=100.0 state=completed")
+        );
+        let failed = task("FAILED");
+        board.notify(&Event::TaskFailed(failed));
+        assert_eq!(
+            board.dashboard().get("error_count"),
+            Some(&Json::from(1i64))
+        );
+    }
+}

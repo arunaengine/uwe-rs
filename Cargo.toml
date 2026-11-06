@@ -180,6 +180,8 @@ rustix = { version = "1.1.5", default-features = false, features = [
     "std",
 ] }
 saphyr-parser = "0.3.3"
+# TLS for the iRODS protocol, which starts TLS inside its own connection, checked by the system.
+rustls-platform-verifier = "0.7.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"
 sha1 = { version = "0.11.0", default-features = false }
@@ -206,6 +208,7 @@ tokio = { version = "1.53.2", features = [
     "macros",
     "rt-multi-thread",
 ] }
+tokio-rustls = "0.26.6"
 tokio-util = "0.7.20"
 toml = { version = "1.1.8", default-features = false, features = [
     "parse",

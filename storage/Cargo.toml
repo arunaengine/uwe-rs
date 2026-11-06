@@ -29,11 +29,13 @@ reqsign-azure-storage.workspace = true
 reqsign-core.workspace = true
 reqsign-file-read-tokio.workspace = true
 reqwest.workspace = true
+rustls-platform-verifier.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 suppaftp.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "time"] }
+tokio-rustls.workspace = true
 tracing.workspace = true
 webpki-root-certs.workspace = true

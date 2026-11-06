@@ -499,6 +499,9 @@ s3-test:
 	UWE_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://uwe-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
 	cargo test -p executor --lib -- --ignored presigned_round_trip credentials_round_trip sends_large_outputs \
 		presigns_binary_download
+	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
+	UWE_S3_BUCKET=uwe-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
+	cargo test -p aws-batch-executor --test fake_batch -- --ignored stages_through_s3
 
 # Runs the tests of presigned requests of object-store staging against local emulators of
 # Google Cloud Storage (fake-gcs-server) and Azure Blob Storage (Azurite), which stop at the end.

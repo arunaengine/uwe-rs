@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod insert;
+mod server;
 mod sqlite;
 pub(crate) mod target;
 

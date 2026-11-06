@@ -538,6 +538,7 @@ emulator-test:
 	key = \"$key\""
 	cargo test --locked -p executor --lib -- --ignored gcs_presigned_requests azure_round_trip
 	cargo test --locked -p google-batch-executor --test fake_batch -- --ignored stages_through_gcs
+	cargo test --locked -p azure-batch-executor --test fake_batch -- --ignored stages_through_azure
 
 # Runs the tests of two S3 storage providers against two local RustFS servers, one for inputs
 # (bucket `inputs`) and one for the store (bucket `cache`), each with its own credentials, and

@@ -191,10 +191,11 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-kuberun", Kind::Executor),
     planned("nf-wave", Kind::Other),
     // Cloud batch executors. nf-amazon: S3, SES mail and the `aws-batch` executor; no Fusion,
-    // array jobs or machine details.
+    // array jobs or machine details. nf-google: GCS and the `google-batch` executor; no Fusion,
+    // array jobs or machine types per process.
     Plugin::new("nf-amazon", Kind::Executor, State::Partial),
     planned("nf-azure", Kind::Executor),
-    planned("nf-google", Kind::Executor),
+    Plugin::new("nf-google", Kind::Executor, State::Partial),
     // Other executors.
     planned("nf-ccloud", Kind::Executor),
     planned("nf-flyte", Kind::Executor),

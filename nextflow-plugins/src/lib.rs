@@ -5,6 +5,7 @@
 pub mod catalogue;
 pub mod everit;
 mod nf_anndata;
+mod nf_core_utils;
 mod nf_fgbio;
 mod nf_schema;
 #[path = "validation.rs"]
@@ -54,57 +55,6 @@ const NF_SCHEMA: &[&str] = &[
     "validateParameters",
 ];
 
-/// The functions of nf-core-utils 0.5.0. Those that `nf_core_utils.nf` defines run as
-/// script code; the others are not supported yet.
-const NF_CORE_UTILS: &[&str] = &[
-    "autoToolBibliographyText",
-    "autoToolCitationText",
-    "checkCondaChannels",
-    "checkConfigProvided",
-    "checkProfileProvided",
-    "collectCitationsFromFiles",
-    "collectVersions",
-    "completionEmail",
-    "completionSummary",
-    "convertLegacyYamlToEvalSyntax",
-    "convertMetaYamlToTopicFormat",
-    "dumpParametersToJSON",
-    "generateCitationReport",
-    "generateComprehensiveReport",
-    "generateModuleToolCitation",
-    "generateVersionReport",
-    "generateYamlFromEvalSyntax",
-    "getCitation",
-    "getGenomeAttribute",
-    "getReferencesFile",
-    "getReferencesValue",
-    "getWorkflowVersion",
-    "imNotification",
-    "methodsDescriptionText",
-    "paramsSummaryMultiqc",
-    "processCitationsFromFile",
-    "processCitationsFromTopic",
-    "processMixedCitationSources",
-    "processMixedVersionSources",
-    "processVersionsFromFile",
-    "processVersionsFromTopic",
-    "softwareVersionsToYAML",
-    "toolBibliographyText",
-    "toolCitationText",
-    "workflowVersionToChannel",
-];
-
-/// The functions of nf-core-utils that `nf_core_utils.nf` defines.
-const NF_CORE_PORTED: &[&str] = &[
-    "getGenomeAttribute",
-    "getWorkflowVersion",
-    "checkConfigProvided",
-    "checkProfileProvided",
-    "completionSummary",
-    "dumpParametersToJSON",
-    "softwareVersionsToYAML",
-];
-
 const NF_SCHEMA_PLUGIN: Plugin = Plugin {
     functions: NF_SCHEMA,
     call: Some(nf_schema::call),
@@ -118,13 +68,6 @@ const NF_VALIDATION_PLUGIN: Plugin = Plugin {
     factories: &["fromSamplesheet"],
     scopes: &["validation"],
     ..Plugin::new("nf-validation", Kind::Functions, State::Implemented)
-};
-
-const NF_CORE_PLUGIN: Plugin = Plugin {
-    functions: NF_CORE_UTILS,
-    supported: Some(NF_CORE_PORTED),
-    script: Some(include_str!("nf_core_utils.nf")),
-    ..Plugin::new("nf-core-utils", Kind::Functions, State::Partial)
 };
 
 const NF_FGBIO_PLUGIN: Plugin = Plugin {

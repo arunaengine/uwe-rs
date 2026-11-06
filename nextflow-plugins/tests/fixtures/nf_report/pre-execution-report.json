@@ -1,0 +1,90 @@
+{
+    "report_type": "execution-report",
+    "generated_at": "2026-11-06T11:33:24.877821617+01:00",
+    "events": [
+        {
+            "event_type": "workflow_start",
+            "timestamp": "2026-11-06T11:33:23.473068497+01:00",
+            "run_name": "loving_hilbert",
+            "script_id": "defefdf10fc50d4c8494ec1bc4b6638a",
+            "script_name": "main.nf",
+            "command_line": "nextflow run main.nf -ansi-log false",
+            "params": {
+                "greeting": "hi"
+            },
+            "repository": null,
+            "commit_id": null,
+            "revision": null,
+            "start_time": "2026-11-06T11:33:23.328367868+01:00",
+            "nextflow_version": {
+                "major": "26",
+                "minor": "04",
+                "patch": "6"
+            },
+            "project_dir": "<probe>",
+            "launch_dir": "<probe>",
+            "output_dir": "<probe>/results",
+            "work_dir": "<probe>/work",
+            "home_dir": "<home>",
+            "user_name": "<user>",
+            "profile": "standard",
+            "session_id": "f06e31e2-eb15-4081-86b9-13edc040e99c",
+            "container_engine": null,
+            "config_files": [
+                "<probe>/nextflow.config"
+            ]
+        },
+        {
+            "event_type": "workflow_complete",
+            "timestamp": "2026-11-06T11:33:24.876363704+01:00",
+            "run_name": "loving_hilbert",
+            "script_id": "defefdf10fc50d4c8494ec1bc4b6638a",
+            "script_name": "main.nf",
+            "command_line": "nextflow run main.nf -ansi-log false",
+            "params": {
+                "greeting": "hi"
+            },
+            "repository": null,
+            "commit_id": null,
+            "revision": null,
+            "start_time": "2026-11-06T11:33:23.328367868+01:00",
+            "end_time": "2026-11-06T11:33:24.868832523+01:00",
+            "duration": {
+                "durationInMillis": 1540,
+                "days": 0,
+                "hours": 0,
+                "millis": 1540,
+                "minutes": 0,
+                "seconds": 1,
+                "units": [
+                    "DAYS",
+                    "HOURS",
+                    "MINUTES",
+                    "SECONDS",
+                    "MILLIS"
+                ]
+            },
+            "success": true,
+            "exit_status": 0,
+            "error_message": null,
+            "error_report": null,
+            "nextflow_version": {
+                "major": "26",
+                "minor": "04",
+                "patch": "6"
+            },
+            "project_dir": "<probe>",
+            "launch_dir": "<probe>",
+            "output_dir": "<probe>/results",
+            "work_dir": "<probe>/work",
+            "home_dir": "<home>",
+            "user_name": "<user>",
+            "profile": "standard",
+            "session_id": "f06e31e2-eb15-4081-86b9-13edc040e99c",
+            "container_engine": null,
+            "config_files": [
+                "<probe>/nextflow.config"
+            ]
+        }
+    ]
+}

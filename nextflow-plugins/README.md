@@ -174,6 +174,20 @@ and is mounted at its own path, so `docker_workdir` has no effect. Refused with 
 command in a running container; `docker_args` are ignored with a warning. `asZonedDateTime`
 gives an object that prints as Java's `ZonedDateTime`, without its methods.
 
+## src/nf_report/mod.rs
+
+nf-report 1.1.1 and nf-crg-report 1.1.10 write the plugins' execution, task status and sample
+status reports as JSON and TSV with their keys and texts, after each event as the plugins do.
+The HTML is uwe's own page of the same data, as the plugins' templates are their content; a
+user template of `htmlTemplatePath` gets the report's values for `$name` and `${name.key}`
+placeholders, and one with other Groovy code is skipped with a warning. The email is not sent
+(a warning says so). The trace has no `error_action`, so a failed attempt is `RETRIED` when a
+later attempt of the same task id follows, else `IGNORED` unless it ended the run. uwe keeps no
+task folders, so `workdir`, `log`, `out` and `err` are null, and `rchar` and `wchar` stay null.
+In meta map mode the first entry of the meta map is the first in key order, as observers get
+inputs as JSON objects. nf-crg-report fetches its prices once a run, when the run starts, and
+writes its raw costs as JSON numbers like `4.35e-8` where the plugin writes `4.35E-8`.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

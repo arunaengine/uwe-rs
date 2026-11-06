@@ -457,3 +457,27 @@ fn gigabytes(text: &str) -> Option<f64> {
         _ => number / 1024.0,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_launch_script() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let script = directory.path().join("launch.sh");
+        let text =
+            "#!/bin/bash\n#SBATCH --cpus-per-task=4\n#SBATCH --mem=8G\n#SBATCH --gres=gpu:1\n";
+        std::fs::write(&script, text).expect("writes the script");
+        assert_eq!(head(&script.to_string_lossy()), Some([4.0, 8.0, 1.0]));
+        let prices = parse("{\n  \"kCPUHr\": 9.69,  # per CPU\n  \"kGBHr\": 1.08 // per GB\n}");
+        assert_eq!(
+            prices.and_then(|prices| prices["kGBHr"].as_f64()),
+            Some(1.08)
+        );
+        assert_eq!(
+            shown("https://user:secret@prices.example/fees"),
+            "https://prices.example/fees"
+        );
+    }
+}

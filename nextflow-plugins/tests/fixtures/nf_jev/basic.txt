@@ -1,0 +1,10 @@
+### TYPESAFE_API_KEY=<dummy> nextflow run cases/basic.nf -ansi-log false -c cases/basic.config
+Downloading plugin nf-jev@0.2.1
+[WARN] WARN: Jev caching is enabled with the floating model id `jev-latest` - cached answers will keep being replayed after it moves to a newer snapshot; pin `jev.model` to the snapshot the response reports, such as `jev-1.13.0` on TypeSafe or `typesafe/jev-1.13-20260917` on OpenRouter
+question: [type:choice, instructions:Which assay?, criteria:[RNA-seq:transcriptome, ATAC-seq:chromatin]]
+noul2: [type:noul, instructions:Seen?, criteria:[true:yes means, false:no means]]
+answers: [q1:[type:noul, noul:0.98], q2:[type:choice, choice:RNA-seq, confidence:0.99, probabilities:[RNA-seq:0.99, ATAC-seq:0.01]], q3:[type:score, score:1.97, confidence:0.96, legend:[0:low, 1:mid, 2:high], probabilities:[0:0.0, 1:0.02, 2:0.98]]]
+classes: BigDecimal BigDecimal
+second (cache): true
+[q1:[type:noul, noul:0.98], q2:[type:choice, choice:RNA-seq, confidence:0.99, probabilities:[RNA-seq:0.99, ATAC-seq:0.01]], q3:[type:score, score:1.97, confidence:0.96, legend:[0:low, 1:mid, 2:high], probabilities:[0:0.0, 1:0.02, 2:0.98]]]
+[SUCCESS] completed=0 failed=0 cached=0

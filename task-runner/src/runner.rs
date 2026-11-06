@@ -633,8 +633,11 @@ impl<B: Backend> Runner<B> {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled.into());
         }
-        // Ordered outcomes must not retain a lease that another pending attempt needs.
-        drop(_turn);
+        // Ordered outcomes must not retain a lease that another pending attempt needs, and
+        // settlement takes the same lease, which an object store frees only after removal.
+        if let Some(turn) = _turn {
+            turn.release().await;
+        }
         Ok((result, candidate))
     }
 

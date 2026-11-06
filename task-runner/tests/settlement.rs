@@ -149,6 +149,20 @@ async fn acceptance_gates_publication() {
     executor.settle(TaskId(2), 1, true).await.unwrap();
 }
 
+/// An accepted result reaches an object store right after the attempt gave back its lease of
+/// the same task.
+#[tokio::test]
+async fn publishes_object_results() {
+    let root = tempfile::tempdir().unwrap();
+    let store = Store::memory().unwrap();
+    let mut executor = executor(root.path(), store.clone(), "run");
+    let cancel = CancellationToken::new();
+    let first = executor.run(attempt(1, 1, &cancel)).await.unwrap();
+    assert!(!first.cached);
+    executor.settle(TaskId(1), 1, true).await.unwrap();
+    assert!(cached(&store).await.is_some(), "the result is cached");
+}
+
 #[tokio::test]
 async fn preserves_accepted_code() {
     let root = tempfile::tempdir().unwrap();

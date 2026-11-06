@@ -503,8 +503,10 @@ impl ProcessNode {
         let directives = self.directives(interpreter, &mut frame, &base)?;
         if index == 1 && attempt == 1 {
             for directive in &directives {
+                let used = &*directive.name == "clusterOptions" && takes_cluster(&directives);
                 if HINT_DIRECTIVES.contains(&directive.name.as_ref())
                     && directive.arguments.iter().any(Value::truth)
+                    && !used
                 {
                     interpreter.print(&format!(
                         "INFO: process directive `{}` is ignored for process `{}`; \

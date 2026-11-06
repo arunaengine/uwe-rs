@@ -116,6 +116,16 @@ second. uwe ships none of the plugin's greeting texts: `emoji.greeting = true` p
 a greeting text of the config is printed. `emoji.confetti` runs no outside program and warns
 once.
 
+## src/nf_datatrail.rs
+
+nf-datatrail 0.0.1 writes the plugin's input and output lists, its summary and its graph of
+tasks as DOT and JSON, with its settings, start-up checks, colours, layout and number texts. A
+task appears when it starts, so cached tasks do not, as in Nextflow. Where it differs: the `hash`
+columns hold uwe's task hash; a remote input counts as empty, since uwe does not ask its store;
+a graph file of another format than DOT is written as `<name>.dot` beside it with the plugin's
+Graphviz warning, as uwe runs no outside program; the JSON keeps the full task and process
+names, which only the DOT labels shorten.
+
 ## src/nf_drs.rs
 
 nf-drs 0.1.0 hands its `drs` scope (`authProvider`, `authSecret`, `tokenEndpointPath`,

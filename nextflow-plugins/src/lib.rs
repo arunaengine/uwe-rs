@@ -17,6 +17,7 @@ mod nf_csvext;
 mod nf_dotenv;
 mod nf_fairscape;
 mod nf_fgbio;
+mod nf_flowviewer;
 mod nf_gc;
 mod nf_logsaver;
 mod nf_metalog;

@@ -8,6 +8,7 @@ members = [
     "argo-parser",
     "argo-runtime",
     "aws-batch-executor",
+    "azure-batch-executor",
     "conda-environment",
     "config-file",
     "content-store",

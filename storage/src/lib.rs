@@ -26,7 +26,7 @@ use config_file::{ConfigError, ConfigFile};
 use backend::{Backend, Connection, Source};
 use error::Problem;
 
-pub use blocking::Blocking;
+pub use blocking::{Answer, Blocking, exchange};
 pub use downloads::{download_name, hold_downloads};
 pub use error::StorageError;
 pub use journal::Fetched;

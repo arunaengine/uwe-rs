@@ -95,6 +95,12 @@ fancy-regex = "0.20.0"
 flate2 = "1.1.10"
 futures-util = { version = "0.3.34", default-features = false }
 granit-parser = "2.1.0"
+# Reads the HDF5 files of nf-anndata (`.h5ad`) in Rust: no C library.
+hdf5-pure = { version = "0.47.0", default-features = false, features = [
+    "std",
+    "checksum",
+    "deflate",
+] }
 # Git over HTTPS in Rust, for repository sources and Argo git artifacts: no git program.
 gix = { version = "0.90.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
@@ -111,6 +117,11 @@ kube = { version = "5.0.0", default-features = false, features = [
     "aws-lc-rs",
 ] }
 # Mail over SMTP with rustls, for the completion e-mail of nf-core-utils: no sendmail program.
+# LZ4 blocks inside the Blosc chunks of Zarr stores, for nf-anndata.
+lz4_flex = { version = "0.14.0", default-features = false, features = [
+    "safe-decode",
+    "std",
+] }
 lettre = { version = "0.11.23", default-features = false, features = [
     "aws-lc-rs",
     "builder",
@@ -183,6 +194,7 @@ toml = { version = "1.1.8", default-features = false, features = [
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 webpki-root-certs = "1.0.9"
+zstd = { version = "0.14.3", default-features = false }
 zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 
 # Debug and test builds keep line tables for backtraces only. With full debug info each test

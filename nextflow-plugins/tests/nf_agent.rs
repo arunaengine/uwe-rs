@@ -144,11 +144,31 @@ fn answers_and_resumes() {
         schema["properties"]["notes"]["type"],
         json!(["string", "null"])
     );
-    // A resumed run takes the kept answers and asks the model nothing.
+    // A resumed run takes the kept answers and asks the model nothing; a reuse refreshes the
+    // time of an answer, which `uwe clean` keeps by its last use.
+    let answers = directory.path().join("scratch/nextflow/agents");
+    let kept: Vec<_> = (std::fs::read_dir(&answers).expect("lists the answers"))
+        .map(|entry| entry.expect("an answer").path())
+        .collect();
+    assert_eq!(kept.len(), 2);
+    for answer in &kept {
+        let file = std::fs::File::options().write(true).open(answer);
+        let file = file.expect("opens an answer");
+        file.set_modified(std::time::UNIX_EPOCH)
+            .expect("sets the time");
+    }
     let (error, resumed) = run(directory.path(), true);
     assert_eq!(error, None, "{resumed:?}");
     assert_eq!(resumed, expected);
     assert_eq!(fake.requests().len(), 2);
+    for answer in &kept {
+        let used = std::fs::metadata(answer).and_then(|found| found.modified());
+        assert!(
+            used.expect("a time") > std::time::UNIX_EPOCH,
+            "{}",
+            answer.display()
+        );
+    }
     // Without `-resume` the agents ask again, as Nextflow's tasks run again.
     let (error, _) = run(directory.path(), false);
     assert_eq!(error, None);

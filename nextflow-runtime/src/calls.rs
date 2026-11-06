@@ -226,9 +226,15 @@ impl Calls {
         })
     }
 
+    /// A kept answer; its time becomes the time of this use, by which `uwe clean` keeps it.
     fn stored(&self, key: &str) -> Option<String> {
-        let text = std::fs::read_to_string(self.folder.join(format!("{key}.json"))).ok()?;
+        let path = self.folder.join(format!("{key}.json"));
+        let text = std::fs::read_to_string(&path).ok()?;
         let entry: Json = serde_json::from_str(&text).ok()?;
+        let used = std::fs::File::options().write(true).open(&path);
+        if let Err(error) = used.and_then(|file| file.set_modified(std::time::SystemTime::now())) {
+            tracing::warn!(path = %path.display(), "cannot mark the answer of an agent task as used: {error}");
+        }
         entry["answer"].as_str().map(str::to_owned)
     }
 

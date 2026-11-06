@@ -1,0 +1,2 @@
+Recorded with Nextflow 26.04.6 and nf-bactopia 2.1.7, offline, from the probe folder of the plugin spec.
+The .out files leave out the plugin's logo and its Message of the Day block, which uwe does not print.

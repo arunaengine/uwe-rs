@@ -1,0 +1,7 @@
+echo: [s:text, i:7, bd:1.25, d:2.5, f:1.5, b:true, n:null, list:[1, a], set:[3], map:[k:[1, 2]], p:/tmp/x.txt, dur:1m 30s, mem:1 KB, inf:Infinity]
+classes: s=String i=Integer bd=BigDecimal d=BigDecimal f=BigDecimal b=Boolean n=null list=ArrayList set=LinkedHashSet map=LinkedHashMap p=UnixPath dur=Duration mem=MemoryUnit inf=Double
+inline: [a:1, b:[true, null, 2.5, [1, 2]], c:[1:x], dec:1.10]
+positional: [1, two]
+args-type: [t:dict, keys:[y, z]]
+
+[SUCCESS] completed=0 failed=0 cached=0

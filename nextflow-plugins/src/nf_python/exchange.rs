@@ -176,3 +176,53 @@ fn integer(value: &Json) -> Result<Value, String> {
 fn decimal(digits: &str) -> Option<Value> {
     BigDecimal::parse(digits).map(|decimal| Value::Number(Number::BigDecimal(decimal)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decodes_recorded_output() {
+        let text = r#"["Map",[[["String","s"],["String","text"]],[["String","i"],["Integer",7]],[["String","bd"],["Decimal","1.25"]],[["String","d"],["Float",2.5]],[["String","b"],["Boolean",true]],[["String","n"],["Null",null]],[["String","list"],["List",[["Integer",1],["String","a"]]]],[["String","set"],["Set",[["Integer",3]]]],[["String","map"],["Map",[[["String","k"],["List",[["Integer",1],["Integer",2]]]]]]],[["String","p"],["Path","/tmp/x.txt"]],[["String","dur"],["Duration",90000]],[["String","mem"],["MemoryUnit",1024]],[["String","inf"],["Float","inf"]]]]"#;
+        let value = decode(&serde_json::from_str(text).expect("JSON"), "/").expect("decodes");
+        assert_eq!(
+            value.to_string(),
+            "[s:text, i:7, bd:1.25, d:2.5, b:true, n:null, list:[1, a], set:[3], \
+             map:[k:[1, 2]], p:/tmp/x.txt, dur:1m 30s, mem:1 KB, inf:Infinity]"
+        );
+        let big = decode(&json!(["Integer", 1_099_511_627_776i64]), "/").expect("a Long");
+        assert_eq!(big.to_string(), "1099511627776");
+        let refused = decode(&json!(["Tuple", []]), "/").expect_err("unknown");
+        assert_eq!(refused, "Unknown type from Python: Tuple");
+        let refused = decode(&json!(["Map", [1]]), "/").expect_err("not a pair");
+        assert_eq!(
+            refused,
+            "Expected a list of key-value pairs for Map, got: 1"
+        );
+    }
+
+    #[test]
+    fn encodes_recorded_input() {
+        let arguments = vec![
+            ("s".to_owned(), Value::string("text")),
+            ("i".to_owned(), Value::integer(7)),
+            ("d".to_owned(), Value::Number(Number::Double(2.5))),
+            ("f".to_owned(), Value::Number(Number::Float(1.5))),
+            ("n".to_owned(), Value::Null),
+            ("set".to_owned(), Value::set([Value::integer(3)])),
+            ("dur".to_owned(), Value::Duration(90_000)),
+            ("mem".to_owned(), Value::MemoryUnit(1024)),
+            (
+                "inf".to_owned(),
+                Value::Number(Number::Double(f64::INFINITY)),
+            ),
+        ];
+        let encoded = encode_map(&arguments).expect("encodes").to_string();
+        assert_eq!(
+            encoded,
+            r#"["Map",[[["String","s"],["String","text"]],[["String","i"],["Integer",7]],[["String","d"],["Float",2.5]],[["String","f"],["Float",1.5]],[["String","n"],["Null",null]],[["String","set"],["Set",[["Integer",3]]]],[["String","dur"],["Duration",90000]],[["String","mem"],["MemoryUnit",1024]],[["String","inf"],["Float","inf"]]]]"#
+        );
+        let refused = encode(&Value::Date(0)).expect_err("a date");
+        assert_eq!(refused, "Cannot serialize type: class java.util.Date");
+    }
+}

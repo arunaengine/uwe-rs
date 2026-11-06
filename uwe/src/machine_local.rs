@@ -48,7 +48,7 @@ pub(super) fn engine(
         Err(error) => match arguments.executor.as_deref() {
             Some(
                 executor @ ("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch"
-                | "azure-batch"),
+                | "azure-batch" | "nomad"),
             ) => report.add(
                 State::NotSetUp,
                 part,

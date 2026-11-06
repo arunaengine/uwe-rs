@@ -44,6 +44,7 @@ pub(crate) const EXECUTORS: &[&str] = &[
     "aws-batch",
     "google-batch",
     "azure-batch",
+    "nomad",
 ];
 
 /// What the config files set up for a command; the default is what no config file sets up.
@@ -139,6 +140,8 @@ pub struct Executors {
     pub google_batch: crate::google_batch::Config,
     /// `[executor.azure-batch]`: the tasks, their pools, staging root and helper.
     pub azure_batch: crate::azure_batch::Config,
+    /// `[executor.nomad]`: the agent, the jobs, their staging and helper.
+    pub nomad: crate::nomad::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -169,6 +172,7 @@ impl Executors {
             "aws-batch",
             "google-batch",
             "azure-batch",
+            "nomad",
         ];
         section.only(&keys)?;
         if let Some(batch) = section.table("aws-batch")? {
@@ -179,6 +183,9 @@ impl Executors {
         }
         if let Some(batch) = section.table("azure-batch")? {
             settings.azure_batch = crate::azure_batch::Config::read(&batch)?;
+        }
+        if let Some(nomad) = section.table("nomad")? {
+            settings.nomad = crate::nomad::Config::read(&nomad)?;
         }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;

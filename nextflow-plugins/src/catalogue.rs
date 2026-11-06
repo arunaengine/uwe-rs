@@ -213,7 +213,12 @@ pub const PLUGINS: &[Plugin] = &[
     Plugin::new("nf-google", Kind::Executor, State::Partial),
     // Other executors.
     planned("nf-ccloud", Kind::Executor),
-    planned("nf-flyte", Kind::Executor),
+    // nf-flyte: the `flyte` executor, one Flyte run per attempt with uwe's staging; no child
+    // actions of a running Flyte run, token command or Flyte caching.
+    Plugin {
+        scopes: &["flyte"],
+        ..Plugin::new("nf-flyte", Kind::Executor, State::Partial)
+    },
     planned("nf-fovus", Kind::Executor),
     // nf-ga4gh: the `tes` scope on uwe's TES executor, which counts memory in GB of 10^9 bytes
     // as the TES specification does; its `drs://` paths are those of nf-drs.
@@ -249,7 +254,12 @@ pub const PLUGINS: &[Plugin] = &[
     // nf-tencentcloud: its executor on uwe's TES executor, `cos://` on an S3 provider, and its
     // metadata file; the shape of that file was not recorded.
     crate::nf_tencentcloud::PLUGIN,
-    planned("nf-snowflake", Kind::Executor),
+    // nf-snowflake: the `snowflake` executor with object-store staging; no `snowflake://` stage
+    // file system, trace upload to a stage or cache store on a stage.
+    Plugin {
+        scopes: &["snowflake"],
+        ..Plugin::new("nf-snowflake", Kind::Executor, State::Partial)
+    },
     // nf-agent: the `agent` primitive of Nextflow 26.10, a preview; one chat completions
     // request per task, for text or structured output, without tools or skills.
     Plugin {

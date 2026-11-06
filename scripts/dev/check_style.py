@@ -25,6 +25,7 @@ EXTERNAL_NAMES = {}
 SMALL_DOMAINS = {
     "nextflow-evaluator/src/number": "grouped shared-prefix domain; hoisting recreates number_*",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",
+    "nextflow-plugins/src/nf_core_utils": "grouped shared-prefix domain; hoisting recreates nf_core_*",
     "uwe/src/run": "grouped shared-prefix domain; hoisting recreates run_*",
     "run-database/src/compare": "grouped shared-prefix domain; hoisting recreates compare_*",
     "workflow-graph/src/shell": "grouped shared-prefix domain; hoisting recreates shell_*",

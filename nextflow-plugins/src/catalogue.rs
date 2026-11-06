@@ -120,7 +120,7 @@ pub const PLUGINS: &[Plugin] = &[
     // Plugins of nf-core pipelines.
     crate::NF_SCHEMA_PLUGIN,
     crate::NF_VALIDATION_PLUGIN,
-    crate::NF_CORE_PLUGIN,
+    crate::nf_core_utils::PLUGIN,
     crate::NF_FGBIO_PLUGIN,
     crate::NF_ANNDATA_PLUGIN,
     // Functions.

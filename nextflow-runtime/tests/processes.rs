@@ -251,6 +251,7 @@ fn accepts_scheduling_hints() {
             "[[affinity: [nodeAffinity: [:]]], [toleration: [key: 'workload']]]",
         ),
         ("array", "10"),
+        ("hints", "['labrobotics/capability': 'liquid-handling']"),
     ] {
         for configured in [false, true] {
             let directive = if configured {

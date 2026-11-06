@@ -57,13 +57,14 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "time",
 ];
 
-const REFUSED_DIRECTIVES: &[&str] = &["hints", "maxErrors", "module", "spack"];
+const REFUSED_DIRECTIVES: &[&str] = &["maxErrors", "module", "spack"];
 
 const HINT_DIRECTIVES: &[&str] = &[
     "arch",
     "array",
     "clusterOptions",
     "executor",
+    "hints",
     "machineType",
     "maxSubmitAwait",
     "penv",

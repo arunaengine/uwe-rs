@@ -5,6 +5,7 @@
 pub mod catalogue;
 pub mod everit;
 mod nf_anndata;
+mod nf_bactopia;
 mod nf_boost;
 mod nf_cmgg;
 mod nf_core_utils;
@@ -128,7 +129,24 @@ pub fn start(context: &mut Context) -> Result<(), Error> {
     {
         nf_schema::start(context)?;
     }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-bactopia")
+    {
+        nf_bactopia::start(context)?;
+    }
     Ok(())
+}
+
+/// Runs what the plugins of the config do when a run ends, after its `onComplete` handlers;
+/// `context.workflow` is the finished `workflow` object.
+pub fn finish(context: &mut Context) {
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-bactopia")
+    {
+        nf_bactopia::finish(context);
+    }
 }
 
 /// Calls a method of a plugin object, `None` when the object has no such method.

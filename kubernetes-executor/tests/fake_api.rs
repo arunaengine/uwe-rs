@@ -1004,7 +1004,12 @@ async fn binds_selected_platform() {
     let reference = format!("localhost:{}/tool", address.rsplit(':').next().unwrap());
     let mut spec = spec(&format!("{reference}:1"), "echo $FROM_ENTRYPOINT > out.txt");
     spec.image.as_mut().unwrap().platform = Some("linux/arm64".into());
-    let (staging, placement) = (Staging::default(), placement());
+    let mut placement = placement();
+    // The pod options of the task come after the arch selector of uwe, which wins.
+    let pod = json!([{"nodeSelector": "kubernetes.io/arch=amd64,disktype=ssd"},
+                     {"priorityClassName": "high"}]);
+    placement.options.insert("pod".into(), pod);
+    let staging = Staging::default();
     let job = Job {
         name: "platform",
         spec: &spec,
@@ -1024,6 +1029,8 @@ async fn binds_selected_platform() {
     );
     assert_eq!(pod["nodeSelector"]["kubernetes.io/arch"], "arm64");
     assert_eq!(pod["nodeSelector"]["kubernetes.io/os"], "linux");
+    assert_eq!(pod["nodeSelector"]["disktype"], "ssd");
+    assert_eq!(pod["priorityClassName"], "high");
 }
 
 #[tokio::test]

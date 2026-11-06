@@ -402,7 +402,7 @@ it is known, else the revision as a branch, and no entry workflow; a closure in 
 is skipped with a warning; artifacts are made one at a time, not on `api.max_workers` threads;
 `publishDir` labels and the Seqera Platform reference are not sent; a cancelled run is errored,
 not aborted. `getRunUid()` and `getTransformUid()` give null in the workflow body, which uwe runs
-before the run record exists, and the uids in process scripts and `workflow.onComplete`. The
+before the run record exists, and the uids once it exists, as in `workflow.onComplete`. The
 patterns of the rules find their match anywhere in the path.
 
 ## src/crg_lims.rs

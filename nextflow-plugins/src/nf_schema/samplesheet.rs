@@ -8,7 +8,7 @@ use nextflow_evaluator::number::{BigDecimal, Number};
 use nextflow_evaluator::value::{PathValue, Value};
 
 use super::settings::{Settings, report};
-use super::{entries, errors, get, json, path, plain, read, schema, thrown};
+use super::{Order, entries, errors, get, json, path, plain, read, schema, thrown};
 use crate::Context;
 
 const PATH_FORMATS: &[&str] = &["file-path", "path", "directory-path", "file-path-pattern"];
@@ -629,9 +629,15 @@ fn check(
     file: &PathValue,
     context: &mut Context,
 ) -> Result<(), Error> {
-    let validator = super::paths::validator(schema, instance, context, false)
+    let check = super::paths::Check {
+        keywords: true,
+        newer: super::since(context, [2, 8, 0]),
+        ..super::paths::Check::default()
+    };
+    let validator = super::paths::checker(schema, instance, context, &check)
         .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, instance, "field", context, None)
+    let found = errors(&validator, instance, schema, "field", context, Order::Crate);
+    let errors: Vec<String> = found
         .into_iter()
         .map(|(location, message)| {
             let mut parts = location.trim_start_matches('/').splitn(2, '/');

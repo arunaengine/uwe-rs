@@ -1,4 +1,5 @@
-//! Checks nf-schema path formats and existence through the host before validation.
+//! Checks nf-schema path formats and existence through the host before validation, and the
+//! keywords of its own: `deprecated` and `uniqueEntries`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -30,6 +31,19 @@ struct Paths {
 
 type Lookup = Arc<Mutex<Paths>>;
 
+/// What a check adds to plain JSON Schema validation.
+#[derive(Clone, Default)]
+pub(crate) struct Check {
+    /// `exists` only checks values with a path format, as nf-validation 1.1.3 does.
+    pub path_exists: bool,
+    /// nf-schema's own keywords: `deprecated` and `uniqueEntries`.
+    pub keywords: bool,
+    /// From nf-schema 2.8.0: its wording for directories, and no directory checks on Azure.
+    pub newer: bool,
+    /// The folder of the schema.
+    pub base: Option<String>,
+}
+
 /// A validator with nf-schema's path keywords. Other formats are not checked, as before.
 /// With `path_exists`, `exists` only checks values whose format is a path, as nf-validation
 /// 1.1.3 does.
@@ -39,15 +53,31 @@ pub(crate) fn validator(
     context: &mut Context,
     path_exists: bool,
 ) -> Result<jsonschema::Validator, String> {
+    let check = Check {
+        path_exists,
+        ..Check::default()
+    };
+    checker(schema, instance, context, &check)
+}
+
+/// A validator with the path keywords and, as `check` asks, nf-schema's own keywords.
+pub(crate) fn checker(
+    schema: &Json,
+    instance: &Json,
+    context: &mut Context,
+    check: &Check,
+) -> Result<jsonschema::Validator, String> {
     let launch = context.host.launch_dir();
     let lookup: Lookup = Arc::default();
     let formats = lookup.clone();
     let exists = lookup.clone();
-    let validator = jsonschema::options()
+    let (path_exists, newer) = (check.path_exists, check.newer);
+    let mut options = jsonschema::options()
         .with_keyword("format", move |_, value, _| {
             Ok(Box::new(PathFormat {
                 format: value.as_str().unwrap_or_default().to_owned(),
                 lookup: formats.clone(),
+                newer,
             }))
         })
         .with_keyword("exists", move |parent, value, _| {
@@ -60,9 +90,20 @@ pub(crate) fn validator(
                 wanted: value.as_bool().filter(|_| checked),
                 lookup: exists.clone(),
             }))
-        })
-        .build(schema)
-        .map_err(|error| error.to_string())?;
+        });
+    if check.keywords {
+        options = options
+            .with_keyword("deprecated", |_, value, _| {
+                Ok(Box::new(Deprecated(value.as_bool() == Some(true))))
+            })
+            .with_keyword("uniqueEntries", |_, value, _| {
+                let fields = (value.as_array().into_iter().flatten())
+                    .filter_map(|field| field.as_str().map(str::to_owned))
+                    .collect();
+                Ok(Box::new(Unique(fields)))
+            });
+    }
+    let validator = options.build(schema).map_err(|error| error.to_string())?;
     // Deferred keyword lookups let the validator itself resolve references and branches.
     loop {
         for _ in validator.iter_errors(instance) {}
@@ -115,6 +156,8 @@ fn look_up(text: &str, launch: &str, context: &mut Context) -> Named {
 struct PathFormat {
     format: String,
     lookup: Lookup,
+    /// nf-schema 2.8.0 or later.
+    newer: bool,
 }
 
 impl PathFormat {
@@ -135,10 +178,16 @@ impl PathFormat {
                 "could not validate file format of '{text}': missing path lookup"
             ));
         };
+        // From 2.8.0 on, the type of an Azure path is not checked.
+        let azure = self.newer && text.starts_with("az://");
         match (kind, named) {
+            ("directory", Named::Failed(message)) if self.newer => Some(format!(
+                "could not validate directory format of '{text}': {message}"
+            )),
             (_, Named::Failed(message)) => Some(format!(
                 "could not validate file format of '{text}': {message}"
             )),
+            _ if azure => None,
             ("", Named::Pattern(files)) if files.is_empty() => Some(format!(
                 "No files were found using the glob pattern '{text}'"
             )),
@@ -222,6 +271,76 @@ impl<'i> Keyword<'i> for Exists {
 
     fn is_valid(&self, instance: &'i Json) -> bool {
         self.problem(instance).is_none()
+    }
+}
+
+/// `deprecated: true`: any value is an error.
+struct Deprecated(bool);
+
+impl<'i> Keyword<'i> for Deprecated {
+    fn validate(&self, _: &'i Json) -> Result<(), ValidationError<'i>> {
+        match self.0 {
+            true => Err(ValidationError::custom("This option is deprecated")),
+            false => Ok(()),
+        }
+    }
+
+    fn is_valid(&self, _: &'i Json) -> bool {
+        !self.0
+    }
+}
+
+/// `uniqueEntries`: no two entries of a list may have the same values in these fields.
+struct Unique(Vec<String>);
+
+impl Unique {
+    fn problems(&self, instance: &Json) -> Vec<String> {
+        let Some(entries) = instance.as_array() else {
+            return Vec::new();
+        };
+        let mut seen: Vec<Vec<Json>> = Vec::new();
+        let mut problems = Vec::new();
+        for (index, entry) in entries.iter().enumerate() {
+            let values: Vec<Json> = (self.0.iter())
+                .map(|field| entry.get(field).cloned().unwrap_or(Json::Null))
+                .collect();
+            if seen.contains(&values) {
+                let fields: Vec<String> = (self.0.iter().zip(&values))
+                    .map(|(field, value)| format!("{field}:{}", super::plain(value)))
+                    .collect();
+                problems.push(format!(
+                    "Entry {}: Detected duplicate entries: [{}]",
+                    index + 1,
+                    fields.join(", ")
+                ));
+            } else {
+                seen.push(values);
+            }
+        }
+        problems
+    }
+}
+
+impl<'i> Keyword<'i> for Unique {
+    fn validate(&self, instance: &'i Json) -> Result<(), ValidationError<'i>> {
+        match self.problems(instance).into_iter().next() {
+            Some(problem) => Err(ValidationError::custom(problem)),
+            None => Ok(()),
+        }
+    }
+
+    fn is_valid(&self, instance: &'i Json) -> bool {
+        self.problems(instance).is_empty()
+    }
+
+    fn iter_errors(
+        &self,
+        instance: &'i Json,
+    ) -> Box<dyn Iterator<Item = ValidationError<'i>> + 'i> {
+        let errors: Vec<ValidationError<'i>> = (self.problems(instance).into_iter())
+            .map(|problem| ValidationError::custom(problem))
+            .collect();
+        Box::new(errors.into_iter())
     }
 }
 

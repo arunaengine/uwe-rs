@@ -7,7 +7,7 @@ use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
 use super::settings::{Settings, report};
-use super::{Schema, entries, errors, get, json, plain, schema, thrown, version};
+use super::{Order, Schema, entries, errors, get, json, plain, schema, thrown, version};
 use crate::Context;
 
 /// Validates params, warns for unknown nonignored names, and checks all known names.
@@ -60,24 +60,32 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     if casts(options, context) {
         cast(&mut instance, context.cli_params);
     }
-    let validator = super::paths::validator(&schema.json, &instance, context, false)
+    let check = super::check(context, &schema);
+    let validator = super::paths::checker(&schema.json, &instance, context, &check)
         .map_err(|error| thrown(format!("Invalid parameters schema: {error}")))?;
-    let order = Some((&schema.tree, names.as_slice()));
-    let errors: Vec<String> = errors(&validator, &instance, "parameter", context, order)
-        .into_iter()
-        .map(|(path, message)| {
-            let name = path.trim_start_matches('/');
-            match instance.get(name) {
-                Some(value) => format!("* --{name} ({}): {message}", shown(value)),
-                None => format!("* {message}"),
-            }
-        })
-        .filter(|error: &String| {
-            !ignored
-                .iter()
-                .any(|name| error.starts_with(&format!("* --{name}")))
-        })
-        .collect();
+    let order = Order::Params(&schema.tree, names.as_slice());
+    let errors: Vec<String> = errors(
+        &validator,
+        &instance,
+        &schema.json,
+        "parameter",
+        context,
+        order,
+    )
+    .into_iter()
+    .map(|(path, message)| {
+        let name = path.trim_start_matches('/');
+        match instance.get(name) {
+            Some(value) => format!("* --{name} ({}): {message}", shown(value)),
+            None => format!("* {message}"),
+        }
+    })
+    .filter(|error: &String| {
+        !ignored
+            .iter()
+            .any(|name| error.starts_with(&format!("* --{name}")))
+    })
+    .collect();
     if errors.is_empty() {
         return Ok(Value::Null);
     }

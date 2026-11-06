@@ -9,6 +9,7 @@ mod nf_anndata;
 mod nf_arts;
 mod nf_bactopia;
 mod nf_bids;
+mod nf_biffix;
 mod nf_bigbrother;
 mod nf_blocks;
 mod nf_boost;

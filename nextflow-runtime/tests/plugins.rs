@@ -87,3 +87,94 @@ fn collates_versions() {
         "all_mqc_versions.yml\nalpha: \"2.0\"\nbeta: \"3\"\nzeta: \"1.0\"\ngamma: \"0\"\n\n"
     );
 }
+
+#[test]
+fn runs_ped_objects() {
+    let script = r#"include { initializePed } from 'plugin/nf-ped'
+
+def show(String label, Closure c) {
+    try {
+        def v = c.call()
+        println "${label} => ${v} (${v == null ? 'null' : v.getClass().name})"
+    }
+    catch (Throwable e) {
+        println "${label} !! ${e.getClass().name}: ${e.message}"
+    }
+}
+
+workflow {
+    def ped = initializePed(file('a.ped'))
+    show('entries') { ped.getEntries().collect { it.toString().replace('\t', '|') } }
+    show('families') { ped.getFamilies() }
+    show('individuals') { ped.getIndividuals() }
+    show('byFamily fam1') { ped.getEntriesByFamily('fam1').collect { it.individual } }
+    show('familiesFromIndividual kid') { ped.getFamiliesFromIndividual('kid') }
+    show('individualsFromFamily fam1') { ped.getIndividualsFromFamily('fam1') }
+    show('byFamily none') { ped.getEntriesByFamily('nope') }
+    def m = ped.getEntriesByIndividual('mom').toList()[0]
+    show('mom fields') { [m.family, m.individual, m.father, m.mother, m.sex, m.phenotype, m.additionalFields] }
+    def overwrite = initializePed([overwrite: true], [file('a.ped')])
+    show('overwrite import') { overwrite.getEntries().collect { it.toString().replace('\t', '|') } }
+    def spaced = initializePed(file('a.ped'))
+    spaced.importPed([sep: ' '], file('b.ped'))
+    show('import b skip dup') { spaced.getEntries().collect { it.toString().replace('\t', '|') } }
+    show('regex sep') { initializePed([sep: '\\s+'], file('b.ped')).getEntries().size() }
+    def k = initializePed(file('a.ped')).getEntriesByIndividual('kid').toList()[0]
+    k.setFather('NA')
+    k.sex = 2
+    k.setPhenotype('9')
+    k.setMother('0')
+    k.setAdditionalFields(['x'])
+    show('after setters') { k.toString().replace('\t', '|') }
+    k.setFamily('0')
+    show('null family') { "${k}".replace('\t', '|') }
+    def e = ped.getEntries().toList()[0]
+    def other = initializePed()
+    other.addEntry(e)
+    other.addEntry(e)
+    show('addEntry twice') { other.getEntries().size() }
+    other.addEntries(ped.getEntries())
+    show('addEntries') { other.getEntries().size() }
+    other.setEntries(ped.getEntries().toList())
+    show('setEntries list') { [other.getEntries().size(), other.getEntries().getClass().name] }
+    show('identity') { initializePed(file('a.ped')).getEntries().toList()[0] == initializePed(file('a.ped')).getEntries().toList()[0] }
+    show('writePed again') { initializePed(file('b.ped'), sep: ' ').writePed('out/explicit.ped').text.readLines().size() }
+    show('string arg') { initializePed('a.ped') }
+}
+"#;
+    let a = "#FID\tIID\tPAT\tMAT\tSEX\tPHENO\nfam1\tkid\tdad\tmom\t1\t2\nfam1\tdad\t0\t0\t1\t1\n\
+             fam1\tmom\tNA\t\t2\t-9\nfam2\tsolo\t0\t0\tother\t0\textra1\textra2\n\
+             fam1\tkid\tX\tY\t2\t1\n";
+    let b = "fam1 kid newdad newmom 2 2\nfam3 z 0 0 2 1\n";
+    let existing = "1\t2\t3\t4\t5\t6\n1\t2\t3\t4\t5\t7\n1\t2\t3\t4\t5\t8\n";
+    let files = [("a.ped", a), ("b.ped", b), ("out/explicit.ped", existing)];
+    assert_eq!(
+        run(script, &files).expect("runs"),
+        "entries => [fam1|kid|dad|mom|1|2, fam1|dad|0|0|1|1, fam1|mom|0|0|2|0, \
+         fam2|solo|0|0|0|0|extra1|extra2] (java.util.ArrayList)\n\
+         families => [fam1, fam2] (java.util.LinkedHashSet)\n\
+         individuals => [kid, dad, mom, solo] (java.util.LinkedHashSet)\n\
+         byFamily fam1 => [kid, dad, mom] (java.util.ArrayList)\n\
+         familiesFromIndividual kid => [fam1] (java.util.LinkedHashSet)\n\
+         individualsFromFamily fam1 => [kid, dad, mom] (java.util.LinkedHashSet)\n\
+         byFamily none => [] (java.util.LinkedHashSet)\n\
+         mom fields => [fam1, mom, null, null, 2, 0, []] (java.util.ArrayList)\n\
+         overwrite import => [fam1|dad|0|0|1|1, fam1|mom|0|0|2|0, \
+         fam2|solo|0|0|0|0|extra1|extra2, fam1|kid|X|Y|2|1] (java.util.ArrayList)\n\
+         import b skip dup => [fam1|kid|dad|mom|1|2, fam1|dad|0|0|1|1, fam1|mom|0|0|2|0, \
+         fam2|solo|0|0|0|0|extra1|extra2, fam3|z|0|0|2|1] (java.util.ArrayList)\n\
+         regex sep => 2 (java.lang.Integer)\n\
+         after setters => fam1|kid|0|0|2|0|x (java.lang.String)\n\
+         null family => null|kid|0|0|2|0|x (java.lang.String)\n\
+         addEntry twice => 1 (java.lang.Integer)\n\
+         addEntries => 4 (java.lang.Integer)\n\
+         setEntries list => [4, java.util.LinkedHashSet] (java.util.ArrayList)\n\
+         identity => false (java.lang.Boolean)\n\
+         writePed again => 3 (java.lang.Integer)\n\
+         string arg !! groovy.lang.MissingMethodException: No signature of method: \
+         nvnieuwk.ped.PedExtension.initializePed() is applicable for argument types: (String) \
+         values: [a.ped]\nPossible solutions: initializePed(), initializePed(java.nio.file.Path), \
+         initializePed(java.util.Map), initializePed(java.util.Map, java.nio.file.Path), \
+         initializePed(java.util.Map, java.util.List)\n"
+    );
+}

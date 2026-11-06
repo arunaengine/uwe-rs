@@ -31,6 +31,8 @@ Each language is a subset that uwe implements in Rust. The exact limits are in [
 | `nomad` | The `docker` or `podman` driver of a Nomad cluster | `shared-path`, `object-store` |
 | `simulator` | None, outputs are placeholders | None |
 
+`uwe kuberun <repository or path in the cluster> -head-image <image>` (nf-kuberun, Nextflow's former `kuberun`) runs uwe itself in a pod of the cluster of `-kubeconfig`, with `-executor kubernetes` for the tasks, and follows its log; uwe ends with the exit code of the pod. The image must have uwe on its `PATH`. uwe makes a service account with a Role that only allows the Jobs, pods, pod logs and events of the namespace, a ConfigMap with the config files of the command line (`-uwe-config`, `-c`, `-params-file`) and a pod that runs without root, privileges or capabilities and with a read-only root file system. These objects belong to the pod: deleting it deletes them. uwe deletes the pod after a successful run and keeps it after a failed one. `-volume-mount <claim>:<path>` mounts volume claims, and the first holds uwe's cache, as shared-path staging needs. `-background` ends once the pod has started. A local workflow is refused. Kubedal staging and Nextflow's interactive `login` are not supported.
+
 Object-store staging on SLURM, Kubernetes, AWS Batch, Google Batch, Azure Batch and Nomad needs a static Linux build of uwe for the machine type of the nodes. Tasks with several containers need `shared-path`. See [Remote executors and staging](remote-executors.md).
 
 ## Storage providers

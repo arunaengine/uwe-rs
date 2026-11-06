@@ -55,7 +55,7 @@ Workflows can come straight from GitHub, GitLab, Bitbucket, Gitea or any Git ser
 
 - Local **Docker** and **Podman**.
 - **SLURM**, with Apptainer, Singularity, Podman or Docker on the nodes.
-- **Kubernetes** Jobs.
+- **Kubernetes** Jobs. `uwe kuberun` also runs uwe itself in a pod of the cluster.
 - **GA4GH TES** servers, such as Funnel.
 - A **simulator** that plans a whole workflow and makes placeholder outputs, without running any tool.
 

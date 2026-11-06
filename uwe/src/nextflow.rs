@@ -368,6 +368,7 @@ pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
 pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("local", "local"),
     ("awsbatch", "aws-batch"),
+    ("azurebatch", "azure-batch"),
     ("google-batch", "google-batch"),
     ("k8s", "kubernetes"),
     ("slurm", "slurm"),
@@ -375,8 +376,8 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
 ];
 
 /// For a Nextflow run: the uwe executor that the pipeline's `process.executor` picks, when no
-/// `-executor` chose one; and for AWS Batch and Google Batch the settings of the `aws` and
-/// `google` scopes.
+/// `-executor` chose one; and for AWS Batch, Google Batch and Azure Batch the settings of the
+/// `aws`, `google` and `azure` scopes.
 pub fn pipeline_executor(
     language: Language,
     launch: &Launch,
@@ -385,7 +386,7 @@ pub fn pipeline_executor(
 ) -> Result<Option<String>, crate::Failure> {
     let chosen = arguments.executor.is_some() && !arguments.executor_default;
     let named = arguments.executor.as_deref();
-    let batch = matches!(named, Some("aws-batch" | "google-batch"));
+    let batch = matches!(named, Some("aws-batch" | "google-batch" | "azure-batch"));
     if language != Language::Nextflow || (chosen && !batch) {
         return Ok(None);
     }
@@ -405,6 +406,10 @@ pub fn pipeline_executor(
     }
     if named == Some("google-batch") || picked.as_deref() == Some("google-batch") {
         google_scope(&config, &mut setup.executors.google_batch)
+            .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
+    }
+    if named == Some("azure-batch") || picked.as_deref() == Some("azure-batch") {
+        azure_scope(&config, &mut setup.executors.azure_batch)
             .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
     }
     Ok(picked)
@@ -662,6 +667,181 @@ fn google_scope(
     Ok(())
 }
 
+/// Fills the Azure Batch settings that `[executor.azure-batch]` leaves unset from the Nextflow
+/// `azure` scope, `executor.$azurebatch` and an `az://` work directory. Fusion and privileged
+/// pools are refused, as their tasks would run privileged.
+fn azure_scope(
+    config: &nextflow_config::Config,
+    batch: &mut crate::azure_batch::Config,
+) -> Result<(), String> {
+    use azure_batch_executor::{Hidden, Identity, PRIVILEGED, PoolSettings, Registry};
+    let get = |path: &[&str]| {
+        config
+            .get(path)
+            .filter(|value| !matches!(value, Value::Null))
+    };
+    let text_of = |path: &[&str]| get(path).as_ref().and_then(text);
+    let flag = |path: &[&str]| text_of(path).map(|text| text == "true");
+    let number = |path: &[&str]| text_of(path).and_then(|text| text.trim().parse::<u32>().ok());
+    let millis = |path: &[&str]| match get(path) {
+        Some(Value::Duration(millis)) => u64::try_from(millis).ok(),
+        Some(value) => text(&value)
+            .and_then(|text| nextflow_evaluator::units::parse_duration(&text).ok())
+            .and_then(|millis| u64::try_from(millis).ok()),
+        None => None,
+    };
+    if flag(&["fusion", "enabled"]) == Some(true) {
+        return Err(
+            "uwe does not run Fusion, as its containers would run privileged; set \
+             fusion.enabled = false"
+                .into(),
+        );
+    }
+    let scope = |key: &'static str| ["azure", "batch", key];
+    let settings = &mut batch.settings;
+    let fill = |slot: &mut Option<String>, path: &[&str]| {
+        if slot.is_none() {
+            *slot = text_of(path);
+        }
+    };
+    fill(&mut settings.account, &scope("accountName"));
+    fill(&mut settings.endpoint, &scope("endpoint"));
+    fill(&mut settings.location, &scope("location"));
+    fill(
+        &mut settings.tenant_id,
+        &["azure", "activeDirectory", "tenantId"],
+    );
+    let principal = ["azure", "activeDirectory", "servicePrincipalId"];
+    fill(&mut settings.client_id, &principal);
+    let hidden = |path: &[&str]| text_of(path).map(Hidden::Text);
+    if settings.account_key.is_none() {
+        settings.account_key = hidden(&scope("accountKey"));
+    }
+    if settings.client_secret.is_none() {
+        settings.client_secret = hidden(&["azure", "activeDirectory", "servicePrincipalSecret"]);
+    }
+    if settings.managed_identity.is_none() {
+        let client = text_of(&["azure", "managedIdentity", "clientId"]).map(Identity::User);
+        let system = flag(&["azure", "managedIdentity", "system"]) == Some(true);
+        settings.managed_identity = client.or(system.then_some(Identity::System));
+    }
+    settings.auto_pools |= flag(&scope("autoPoolMode")) == Some(true);
+    settings.allow_pool_creation |= flag(&scope("allowPoolCreation")) == Some(true);
+    settings.delete_jobs |= flag(&scope("deleteJobsOnCompletion")) == Some(true);
+    settings.delete_pools |= flag(&scope("deletePoolsOnCompletion")) == Some(true);
+    if settings.delete_tasks.is_none() {
+        settings.delete_tasks = flag(&scope("deleteTasksOnCompletion"));
+    }
+    settings.terminate_jobs &= flag(&scope("terminateJobsOnCompletion")) != Some(false);
+    if let Some(millis) = millis(&scope("jobMaxWallClockTime")).filter(|millis| *millis >= 1000) {
+        settings.job_time = std::time::Duration::from_millis(millis);
+    }
+    if let Some(count) = number(&scope("maxJobQuotaRetries")) {
+        settings.quota_retries = count;
+    }
+    if let Some(millis) = millis(&scope("jobQuotaRetryDelay")) {
+        settings.quota_wait = std::time::Duration::from_millis(millis);
+    }
+    let registry = ["azure", "registry"];
+    let user = text_of(&[registry[0], registry[1], "userName"]);
+    let password = text_of(&[registry[0], registry[1], "password"]);
+    if settings.registry.is_none()
+        && let (Some(user), Some(password)) = (user, password)
+    {
+        let server = text_of(&[registry[0], registry[1], "server"]);
+        settings.registry = Some(Registry {
+            server: server.unwrap_or_else(|| "docker.io".into()),
+            user,
+            password: Hidden::Text(password),
+        });
+    }
+    let names: Vec<String> = match get(&scope("pools")) {
+        Some(Value::Map(pools)) => (pools.borrow().entries.iter())
+            .map(|(name, _)| name.0.to_string())
+            .collect(),
+        _ => Vec::new(),
+    };
+    for name in &names {
+        if settings.pools.contains_key(name) {
+            continue;
+        }
+        let key = |key: &'static str| ["azure", "batch", "pools", name.as_str(), key];
+        let start =
+            |key: &'static str| ["azure", "batch", "pools", name.as_str(), "startTask", key];
+        if flag(&key("privileged")) == Some(true) || flag(&start("privileged")) == Some(true) {
+            return Err(format!("azure.batch.pools.{name}.privileged: {PRIVILEGED}"));
+        }
+        let mut pool = PoolSettings::default();
+        let text_or = |slot: &mut String, path: &[&str]| {
+            if let Some(value) = text_of(path) {
+                *slot = value;
+            }
+        };
+        text_or(&mut pool.vm_size, &key("vmType"));
+        text_or(&mut pool.publisher, &key("publisher"));
+        text_or(&mut pool.offer, &key("offer"));
+        text_or(&mut pool.sku, &key("sku"));
+        pool.vm_count = number(&key("vmCount")).unwrap_or(pool.vm_count);
+        pool.max_vm_count = number(&key("maxVmCount"));
+        pool.auto_scale = flag(&key("autoScale")) == Some(true);
+        pool.scale_formula = text_of(&key("scaleFormula"));
+        if let Some(millis) = millis(&key("scaleInterval")).filter(|millis| *millis >= 60_000) {
+            pool.scale_interval = std::time::Duration::from_millis(millis);
+        }
+        pool.low_priority = flag(&key("lowPriority")) == Some(true);
+        pool.schedule_policy = text_of(&key("schedulePolicy"));
+        if !matches!(
+            pool.schedule_policy.as_deref(),
+            None | Some("spread" | "pack")
+        ) {
+            let policy = pool.schedule_policy.unwrap_or_default();
+            return Err(format!("Unknown Azure Batch scheduling policy: {policy}"));
+        }
+        pool.run_as = text_of(&key("runAs"));
+        pool.image_id = text_of(&key("virtualMachineImageId"));
+        pool.unverified_images = flag(&key("allowUnverifiedImages")) == Some(true);
+        pool.virtual_network = text_of(&key("virtualNetwork"));
+        pool.start_script = text_of(&start("script"));
+        settings.pools.insert(name.clone(), pool);
+    }
+    let poll = millis(&["executor", "$azurebatch", "pollInterval"]);
+    if let Some(millis) = poll.filter(|millis| *millis >= 1000) {
+        settings.poll = std::time::Duration::from_millis(millis);
+    }
+    for (path, why) in [
+        (&scope("poolIdentityClientId")[..], "it is for Fusion only"),
+        (
+            &scope("copyToolInstallMode"),
+            "its tasks use the uwe helper, not azcopy",
+        ),
+        (
+            &scope("maxParallelTransfers"),
+            "its tasks use the uwe helper, not azcopy",
+        ),
+        (
+            &["azure", "azcopy"],
+            "its tasks use the uwe helper, not azcopy",
+        ),
+        (
+            &["azure", "storage", "fileShares"],
+            "it mounts no Azure Files shares",
+        ),
+        (&["azure", "retryPolicy"], "it keeps its own retry policy"),
+    ] {
+        if get(path).is_some() {
+            tracing::warn!("uwe ignores {}: {why}", path.join("."));
+        }
+    }
+    let work = text_of(&["workDir"]).filter(|work| work.starts_with("az://"));
+    if batch.staging.root.is_none()
+        && let Some(work) = work
+    {
+        batch.staging.root = Some(work);
+        batch.staging.mode = crate::staging::Mode::ObjectStore;
+    }
+    Ok(())
+}
+
 /// The text of a config value, without quotes; `None` for one without text.
 fn text(value: &Value) -> Option<String> {
     match value {
@@ -767,6 +947,56 @@ mod tests {
         let mut batch = crate::google_batch::Config::default();
         let error = super::google_scope(&fusion, &mut batch).expect_err("Fusion");
         assert!(error.contains("privileged"), "{error}");
+    }
+
+    #[test]
+    fn maps_azure_scope() {
+        let text = "workDir = 'az://probe/work'\nprocess.executor = 'azurebatch'\n\
+                    azure {\n batch {\n  accountName = 'lab'\n  accountKey = 'a2V5'\n  \
+                    location = 'westeurope'\n  autoPoolMode = true\n  allowPoolCreation = true\n  \
+                    deleteTasksOnCompletion = false\n  terminateJobsOnCompletion = false\n  \
+                    jobMaxWallClockTime = '2d'\n  pools {\n   auto {\n    vmType = 'Standard_E2d_v5'\n    \
+                    autoScale = true\n    maxVmCount = 12\n    lowPriority = true\n   }\n  }\n }\n \
+                    registry {\n  userName = 'me'\n  password = 'pw'\n }\n \
+                    activeDirectory.tenantId = 't'\n}\n\
+                    executor.'$azurebatch'.pollInterval = '30 sec'\n";
+        let config = loaded(text);
+        assert_eq!(super::choice(&config), Ok(Some("azure-batch".to_owned())));
+        let mut batch = crate::azure_batch::Config::default();
+        batch.settings.location = Some("northeurope".into());
+        super::azure_scope(&config, &mut batch).expect("a mapping");
+        let settings = &batch.settings;
+        assert_eq!(settings.account.as_deref(), Some("lab"));
+        assert_eq!(
+            settings.location.as_deref(),
+            Some("northeurope"),
+            "uwe's own setting wins"
+        );
+        let key = settings.account_key.as_ref().map(|key| key.reveal());
+        assert_eq!(key, Some(Ok("a2V5".to_owned())));
+        assert!(settings.auto_pools && settings.allow_pool_creation);
+        assert_eq!(settings.delete_tasks, Some(false));
+        assert!(!settings.terminate_jobs);
+        assert_eq!(
+            settings.job_time,
+            std::time::Duration::from_secs(2 * 24 * 3600)
+        );
+        let pool = &settings.pools["auto"];
+        assert_eq!(pool.vm_size, "Standard_E2d_v5");
+        assert!(pool.auto_scale && pool.low_priority);
+        assert_eq!(pool.max_vm_count, Some(12));
+        let registry = settings.registry.as_ref().expect("a registry");
+        assert_eq!(
+            (registry.server.as_str(), registry.user.as_str()),
+            ("docker.io", "me")
+        );
+        assert_eq!(settings.tenant_id.as_deref(), Some("t"));
+        assert_eq!(settings.poll, std::time::Duration::from_secs(30));
+        assert_eq!(batch.staging.root.as_deref(), Some("az://probe/work"));
+        let privileged = loaded("azure.batch.pools.p.privileged = true\n");
+        let mut batch = crate::azure_batch::Config::default();
+        let error = super::azure_scope(&privileged, &mut batch).expect_err("privileged");
+        assert!(error.contains("least privilege"), "{error}");
     }
 
     #[test]

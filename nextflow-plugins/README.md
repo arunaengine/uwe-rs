@@ -82,8 +82,10 @@ durations in milliseconds and sizes in bytes. uwe fills `task_id`, `name`, `proc
 `write_bytes`, `script`, `tag`, `queue` and `hash`. `hash` is the short form, like
 `ab/cdef01`, of the SHA-256 by which a resumed run finds the task, not Nextflow's own hash.
 These stay null, because uwe does not know or measure them: `workdir` (executors keep task
-folders to themselves), `native_id`, `cpu_model`, `rchar`, `wchar`, `rss`, `vmem`,
-`peak_vmem`, `%mem`, `vol_ctxt` and `inv_ctxt`. Input digests are known at the end of a task
+folders to themselves), `native_id`, `cpu_model`, `rchar`, `wchar`, `vol_ctxt` and
+`inv_ctxt`. `rss`, `vmem`, `peak_vmem` and `%mem` stay null too, unless nf-cgroup-metrics is
+on: the wrapper samples the cgroup of each container task once per second, and the trace then
+takes them, and `peak_rss`, from the samples as that plugin does. Input digests are known at the end of a task
 when the executor hashed its inputs.
 
 Nextflow's pending event has no event of its own: it marks a task that waits for its

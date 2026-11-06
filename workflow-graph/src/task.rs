@@ -348,6 +348,16 @@ pub struct Usage {
     /// The bytes read from and written to block devices.
     pub read_bytes: Option<u64>,
     pub write_bytes: Option<u64>,
+    /// The largest memory and anonymous memory of the cgroup, sampled once per second while
+    /// the task ran, the peak at the last sample, and the memory of the machine, in bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vmem: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_vmem: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_total: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

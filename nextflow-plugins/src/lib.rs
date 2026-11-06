@@ -9,6 +9,7 @@ mod nf_bactopia;
 mod nf_bids;
 mod nf_bigbrother;
 mod nf_boost;
+mod nf_cgroup_metrics;
 mod nf_cmgg;
 mod nf_co2footprint;
 mod nf_core_utils;
@@ -93,6 +94,11 @@ const NF_VALIDATION_PLUGIN: Plugin = Plugin {
     scopes: &["validation"],
     ..Plugin::new("nf-validation", Kind::Functions, State::Implemented)
 };
+
+/// Whether nf-cgroup-metrics fills the memory fields of the trace from the cgroup samples.
+pub fn cgroup_metrics(config: &Config) -> bool {
+    nf_cgroup_metrics::enabled(config)
+}
 
 /// The functions of a plugin that uwe runs, or `None` for a plugin uwe does not run.
 pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {

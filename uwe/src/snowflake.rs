@@ -65,16 +65,17 @@ pub fn executor(
         home.as_deref(),
         variable("SNOWFLAKE_HOME").as_deref().map(Path::new),
     );
-    match (file, &named) {
-        (Some(file), named) if file.is_file() => {
-            settings.connect(&file, named.as_deref().unwrap_or("default"))?;
-        }
-        (_, Some(named)) => {
-            return Err(format!(
-                "the Snowflake connection `{named}` needs a connections.toml"
-            ));
-        }
-        _ => {}
+    let file = file.filter(|file| file.is_file());
+    let found = match &file {
+        Some(file) => settings.connect(file, named.as_deref().unwrap_or("default"))?,
+        None => false,
+    };
+    // Only a connection that was asked for must exist; the default one is optional.
+    if let Some(named) = named.filter(|_| !found) {
+        return Err(format!(
+            "the Snowflake connection `{named}` is in no connections.toml ({})",
+            file.map_or("none found".into(), |file| file.display().to_string())
+        ));
     }
     for (slot, name) in [
         (&mut settings.account, "SNOWFLAKE_ACCOUNT"),

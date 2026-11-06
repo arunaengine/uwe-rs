@@ -150,6 +150,11 @@ const CLASSES: &[(&str, &str, &str)] = &[
     ),
     ("EOFException", "java.io.EOFException", "IOException"),
     (
+        "ProtocolException",
+        "java.net.ProtocolException",
+        "IOException",
+    ),
+    (
         "FileNotFoundException",
         "java.io.FileNotFoundException",
         "IOException",

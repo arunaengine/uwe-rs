@@ -35,14 +35,14 @@ fn loaded(text: &str) -> Config {
 fn warns_skipped_plugins() {
     let config = loaded(
         "plugins {\n    id 'nf-schema@2.1.0'\n    id 'nf-unknown@1.0'\n    id 'nf-aspera'\n    \
-         id 'nf-boost@0.8.0'\n    id 'nf-hello'\n    id 'nf-boost'\n}\n",
+         id 'nf-prov@1.4.0'\n    id 'nf-hello'\n    id 'nf-prov'\n}\n",
     );
     assert_eq!(
         catalogue::configured(&config),
         [
             "nf-aspera",
-            "nf-boost",
             "nf-hello",
+            "nf-prov",
             "nf-schema",
             "nf-unknown"
         ]
@@ -52,10 +52,10 @@ fn warns_skipped_plugins() {
         [
             "The plugin `nf-aspera` cannot be implemented in uwe (it needs IBM's closed FASP \
              protocol); its features are skipped",
-            "The plugin `nf-boost` is planned in uwe but not implemented yet; its features are \
-             skipped",
             "The plugin `nf-hello` is not supported by uwe (no release since 2024-03-06); its \
              features are skipped",
+            "The plugin `nf-prov` is planned in uwe but not implemented yet; its features are \
+             skipped",
             "The plugin `nf-unknown` is not known to uwe; its features are skipped",
         ]
     );

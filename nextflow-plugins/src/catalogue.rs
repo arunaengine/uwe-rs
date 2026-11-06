@@ -132,7 +132,7 @@ pub const PLUGINS: &[Plugin] = &[
     // Functions.
     planned("nf-bactopia", Kind::Functions),
     planned("nf-bids", Kind::Functions),
-    planned("nf-boost", Kind::Functions),
+    crate::nf_boost::PLUGIN,
     planned("nf-cmgg", Kind::Functions),
     crate::nf_dotenv::PLUGIN,
     crate::nf_ped::PLUGIN,
@@ -285,7 +285,7 @@ pub fn find(id: &str) -> Option<&'static Plugin> {
     PLUGINS.iter().find(|plugin| plugin.id == id)
 }
 
-/// What uwe does for a plugin, for messages, like "the plugin `nf-boost` is planned ...".
+/// What uwe does for a plugin, for messages, like "the plugin `nf-prov` is planned ...".
 pub fn status(id: &str) -> String {
     let Some(plugin) = find(id) else {
         return format!("the plugin `{id}` is not known to uwe");

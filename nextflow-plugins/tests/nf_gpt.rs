@@ -126,4 +126,14 @@ fn prompts_text_data() {
         error.contains(r#"ChatGPT unexpected response: [400] {"error":"nope"}"#),
         "{error}"
     );
+    let config = "plugins { id 'nf-gpt@0.4.0' }\ngpt { endpoint = 'http://user:secret@127.0.0.1:9/'; \
+                  apiKey = 'dummy-key' }\n";
+    std::fs::write(folder.join("nextflow.config"), config).expect("writes the config");
+    let (execution, _) = common::run(folder, "gpt");
+    let error = execution
+        .error
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    let shown = "Endpoint url must not end with a slash - offending value: http://127.0.0.1:9/";
+    assert!(error.contains(shown), "{error}");
 }

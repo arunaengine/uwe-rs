@@ -285,7 +285,7 @@ fn stops_unauthorized_run() {
     let error = error.expect("the run fails");
     let expected = format!(
         "Abort exception produced when notifying an event - Unexpected HTTP response\n\
-         - endpoint    : {}/trace/create?workspaceId=12345\n- status code : 401\n\
+         - endpoint    : {}/trace/create\n- status code : 401\n\
          - response msg: Unauthorized Seqera Platform API access -- Make sure you have \
          specified the correct access token",
         fake.address
@@ -309,7 +309,7 @@ fn aborts_failed_progress() {
     let error = error.expect("the run fails");
     let expected = format!(
         "Aborting session due to Seqera Platform telemetry exception - Unexpected HTTP \
-         response\n- endpoint    : {}/trace/{id}/progress?workspaceId=12345\n\
+         response\n- endpoint    : {}/trace/{id}/progress\n\
          - status code : 503\n- response msg: 503 Service Unavailable",
         fake.address
     );

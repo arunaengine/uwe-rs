@@ -95,6 +95,21 @@ pub(crate) fn form_encode(text: &str) -> String {
     encoded
 }
 
+/// An address as messages show it: without user name, password, query and fragment, which
+/// may hold credentials.
+pub(crate) fn safe_url(url: &str) -> String {
+    let url = url.split(['?', '#']).next().unwrap_or_default();
+    let (scheme, rest) = match url.split_once("://") {
+        Some((scheme, rest)) => (format!("{scheme}://"), rest),
+        None => (String::new(), url),
+    };
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    format!("{scheme}{host}{path}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +121,16 @@ mod tests {
         assert!(first.chars().all(|digit| digit.is_ascii_hexdigit()));
         assert_ne!(first, second);
         assert!((0.0..1.0).contains(&random_unit()));
+    }
+
+    #[test]
+    fn hides_credentials() {
+        let url = "https://user:secret@push.example.org:9091/a/b?token=abc#part";
+        assert_eq!(safe_url(url), "https://push.example.org:9091/a/b");
+        assert_eq!(
+            safe_url("http://127.0.0.1:9/trace?workspaceId=1"),
+            "http://127.0.0.1:9/trace"
+        );
+        assert_eq!(safe_url("user:pw@host/path"), "host/path");
     }
 }

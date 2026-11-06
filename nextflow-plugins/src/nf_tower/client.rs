@@ -9,7 +9,7 @@ use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use reqwest::Method;
 
 use crate::report_format::{Json, NEXTFLOW_VERSION};
-use crate::service::{Answer, Sender, form_encode, random_hex, random_unit};
+use crate::service::{Answer, Sender, form_encode, random_hex, random_unit, safe_url};
 
 /// Answers that are tried again; others fail at once.
 const RETRIED: [u16; 5] = [429, 500, 502, 503, 504];
@@ -60,7 +60,9 @@ impl Problem {
     pub(super) fn report(&self) -> String {
         format!(
             "Unexpected HTTP response\n- endpoint    : {}\n- status code : {}\n- response msg: {}",
-            self.url, self.code, self.message
+            safe_url(&self.url),
+            self.code,
+            self.message
         )
     }
 
@@ -69,7 +71,9 @@ impl Problem {
         format!(
             "Unexpected HTTP response.\nFailed to send message to {endpoint} -- received\n\
              - status code : {}\n- response msg: {}\n- error cause : -",
-            self.code, self.message
+            self.code,
+            self.message,
+            endpoint = safe_url(endpoint)
         )
     }
 
@@ -79,7 +83,7 @@ impl Problem {
                     correct access token"
                 .to_owned(),
             _ => error_text(&answer.body)
-                .unwrap_or_else(|| format!("Unexpected response for request {url}")),
+                .unwrap_or_else(|| format!("Unexpected response for request {}", safe_url(url))),
         };
         Problem {
             url: url.to_owned(),
@@ -88,7 +92,7 @@ impl Problem {
         }
     }
 
-    fn of_error(url: &str, error: &reqwest::Error) -> Problem {
+    fn of_error(url: &str, error: reqwest::Error) -> Problem {
         let message = match (error.is_connect(), reqwest::Url::parse(url)) {
             (true, Ok(parsed)) => {
                 let port = (parsed.port()).map_or(String::new(), |port| format!(":{port}"));
@@ -98,7 +102,7 @@ impl Problem {
                     parsed.scheme()
                 )
             }
-            _ => error.to_string(),
+            _ => error.without_url().to_string(),
         };
         Problem {
             url: url.to_owned(),
@@ -169,7 +173,10 @@ impl Api {
                     Problem::of_answer(&url, &answer),
                     RETRIED.contains(&answer.status),
                 ),
-                Err(error) => (Problem::of_error(&url, &error), error.is_timeout()),
+                Err(error) => {
+                    let timeout = error.is_timeout();
+                    (Problem::of_error(&url, error), timeout)
+                }
             };
             if !again || attempt >= self.retry.attempts {
                 return Err(problem);

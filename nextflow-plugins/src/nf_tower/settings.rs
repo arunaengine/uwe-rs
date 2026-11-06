@@ -56,7 +56,8 @@ impl Settings {
         let endpoint = endpoint.trim_end_matches('/').to_owned();
         if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
             return Err(format!(
-                "Only http and https are supported -- The given URL was: {endpoint}"
+                "Only http and https are supported -- The given URL was: {}",
+                crate::service::safe_url(&endpoint)
             ));
         }
         if endpoint.contains("https://api.tower.nf") {

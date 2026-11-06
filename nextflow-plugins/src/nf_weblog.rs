@@ -41,7 +41,8 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
     let url = setting("url").map_or("http://localhost".to_owned(), |url| url.to_string());
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(format!(
-            "Only http and https are supported -- The given URL was: {url}"
+            "Only http and https are supported -- The given URL was: {}",
+            service::safe_url(&url)
         ));
     }
     let auth = match setting("basicToken").map(|token| token.to_string()) {

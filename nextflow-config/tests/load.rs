@@ -259,6 +259,32 @@ fn orders_process_selectors() {
     assert_eq!(show(&settings.selected), "cpus=4");
 }
 
+#[test]
+fn reads_agent_selectors() {
+    let text = "process.cpus = 8
+agent {
+    baseUrl = 'http://127.0.0.1:1/v1'
+                    model = 'openai/small'
+    cpus = 1
+                withLabel: 'reasoning' { model = 'openai/large' }
+                withName: '!critic' { maxRetries = 3; apiKey = 'k' }
+}
+";
+    let config = load_text(text).unwrap();
+    let show = |settings: &[(std::rc::Rc<str>, Value)]| {
+        let items: Vec<String> = (settings.iter())
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect();
+        items.join(" ")
+    };
+    let labels = ["reasoning".to_owned()];
+    let settings = config.agent_settings(&["planner"], &labels).unwrap();
+    assert_eq!(show(&settings.selected), "model=openai/large maxRetries=3");
+    assert_eq!(show(&settings.defaults), "model=openai/small cpus=1");
+    let settings = config.agent_settings(&["critic"], &[]).unwrap();
+    assert_eq!(show(&settings.selected), "");
+}
+
 /// The maps of params, also those in lists, are `nextflow.config.ConfigMap`, as Nextflow
 /// 26.04.6 gives them to scripts; old nf-core schema checks tell them from `LinkedHashMap`.
 #[test]

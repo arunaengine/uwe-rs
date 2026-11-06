@@ -184,7 +184,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-irods", Kind::FileSystem),
     planned("nf-lakefs", Kind::FileSystem),
     planned("nf-quilt", Kind::FileSystem),
-    planned("nf-synapse", Kind::FileSystem),
+    crate::nf_synapse::PLUGIN,
     // Pipeline sources and images.
     planned("nf-codecommit", Kind::Other),
     planned("nf-diff", Kind::Other),

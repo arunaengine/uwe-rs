@@ -179,12 +179,47 @@ impl Background {
         wait: Duration,
         mut handle: impl FnMut(Event) + Send + 'static,
     ) -> std::io::Result<Background> {
+        Background::spawn(name, wait, None, move |event| {
+            if let Some(event) = event {
+                handle(event);
+            }
+        })
+    }
+
+    /// Like [`Background::start`], but `handle` also hears `None` when `tick` passed without
+    /// an event, for observers that send on a timer, like heartbeats.
+    pub fn ticking(
+        name: &str,
+        wait: Duration,
+        tick: Duration,
+        handle: impl FnMut(Option<Event>) + Send + 'static,
+    ) -> std::io::Result<Background> {
+        Background::spawn(name, wait, Some(tick), handle)
+    }
+
+    fn spawn(
+        name: &str,
+        wait: Duration,
+        tick: Option<Duration>,
+        mut handle: impl FnMut(Option<Event>) + Send + 'static,
+    ) -> std::io::Result<Background> {
         let (sender, events) = mpsc::channel();
         let (done, finished) = mpsc::channel();
         let worker = std::thread::Builder::new()
             .name(name.to_owned())
             .spawn(move || {
-                for event in events {
+                loop {
+                    let event = match tick {
+                        Some(tick) => match events.recv_timeout(tick) {
+                            Ok(event) => Some(event),
+                            Err(mpsc::RecvTimeoutError::Timeout) => None,
+                            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                        },
+                        None => match events.recv() {
+                            Ok(event) => Some(event),
+                            Err(mpsc::RecvError) => break,
+                        },
+                    };
                     handle(event);
                 }
                 let _ = done.send(());
@@ -270,6 +305,23 @@ mod tests {
         observer.notify(&published);
         let heard = heard.lock().expect("not poisoned");
         assert_eq!(*heard, [published, ended()]);
+    }
+
+    #[test]
+    fn ticks_when_quiet() {
+        let (heard, ticks) = mpsc::channel();
+        let mut observer = Background::ticking(
+            "tick",
+            Duration::from_secs(60),
+            Duration::from_millis(1),
+            move |event| {
+                let _ = heard.send(event.is_none());
+            },
+        )
+        .expect("starts the worker");
+        assert_eq!(ticks.recv_timeout(Duration::from_secs(60)), Ok(true));
+        observer.notify(&ended());
+        assert!(ticks.iter().any(|tick| !tick), "the end is heard too");
     }
 
     #[test]

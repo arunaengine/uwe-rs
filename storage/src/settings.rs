@@ -46,6 +46,7 @@ pub enum Kind {
     Synapse(Synapse),
     Irods(Irods),
     Oci(Oci),
+    Lakefs(Lakefs),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -158,6 +159,18 @@ pub struct Oci {
     pub endpoint: Option<String>,
 }
 
+/// lakeFS repositories, through its REST API and presigned addresses.
+#[derive(Clone, Debug, Default)]
+pub struct Lakefs {
+    /// The base of the API, like `https://lakefs.example.org/api/v1`.
+    pub endpoint: Option<String>,
+    pub access_key: Option<String>,
+    pub secret_key: Option<Secret>,
+    /// Whether writing to a missing branch makes it, from `branch_source`.
+    pub create_branches: bool,
+    pub branch_source: Option<String>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -166,7 +179,7 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 10] = [
+const TYPES: [&str; 11] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
@@ -177,6 +190,7 @@ const TYPES: [&str; 10] = [
     "synapse",
     "irods",
     "oci",
+    "lakefs",
 ];
 
 impl Settings {
@@ -390,6 +404,25 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
                     fingerprint: table.text("fingerprint")?,
                     private_key: table.secret("private_key")?,
                     endpoint: web_address(table, "endpoint")?,
+                }))
+            },
+        ),
+        "lakefs" => (
+            &[
+                "endpoint",
+                "access_key",
+                "secret_key",
+                "create_branches",
+                "branch_source",
+            ],
+            &["lakefs"],
+            |table| {
+                Ok(Kind::Lakefs(Lakefs {
+                    endpoint: web_address(table, "endpoint")?,
+                    access_key: table.text("access_key")?,
+                    secret_key: table.secret("secret_key")?,
+                    create_branches: table.flag("create_branches")?.unwrap_or(false),
+                    branch_source: table.text("branch_source")?,
                 }))
             },
         ),

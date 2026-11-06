@@ -453,8 +453,46 @@ fn skips_other_transports() {
         prints[2..],
         [
             "WARN: Cannot write email reports - output directory is null\n",
-            "WARN: [nf-core/probe] Did not send the summary e-mail to a@b.c: uwe sends mail only \
-             through SMTP, and the config sets no mail.smtp.host\n",
+            "WARN: [nf-core/probe] Did not send the summary e-mail to a@b.c: uwe sends mail \
+             through SMTP or AWS SES, and the config sets no mail.smtp.host and does not turn on \
+             SES\n",
         ]
     );
+}
+
+#[test]
+fn sends_through_ses() {
+    let ses = Recorder::start(http);
+    let endpoint = format!("http://{}", ses.address);
+    let script = "include { completionEmail } from 'plugin/nf-core-utils'\n\
+                  workflow {\n    completionEmail([:], 'a@b.c', null, true, null, true, [])\n}\n";
+    let environment = [
+        ("NXF_ENABLE_AWS_SES", "true"),
+        ("AWS_ENDPOINT_URL_SESV2", &*endpoint),
+        ("AWS_ACCESS_KEY_ID", "AKIDSES"),
+        ("AWS_SECRET_ACCESS_KEY", "secret"),
+        ("AWS_REGION", "eu-west-1"),
+        ("AWS_EC2_METADATA_DISABLED", "true"),
+    ];
+    let prints = own("0.7.0", script, &environment);
+    let posts = ses.finish();
+    assert_eq!(posts.len(), 1, "{prints:?}");
+    let (head, body) = posts[0].split_once("\n\n").expect("a body");
+    assert!(
+        head.starts_with("POST /v2/email/outbound-emails\n"),
+        "{head}"
+    );
+    assert!(
+        head.contains("Credential=AKIDSES/") && head.contains("/eu-west-1/ses/aws4_request"),
+        "{head}"
+    );
+    let body: serde_json::Value = serde_json::from_str(body).expect("JSON");
+    assert_eq!(
+        body["Destination"]["ToAddresses"],
+        serde_json::json!(["a@b.c"])
+    );
+    let data = body["Content"]["Raw"]["Data"].as_str().expect("raw data");
+    let raw = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data);
+    let raw = String::from_utf8(raw.expect("base64")).expect("text");
+    assert!(raw.contains("To: a@b.c"), "{raw}");
 }

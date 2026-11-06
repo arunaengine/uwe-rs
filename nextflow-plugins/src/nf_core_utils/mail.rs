@@ -1,10 +1,11 @@
-//! Sends the completion e-mail through SMTP, with the settings of the `mail` config scope.
+//! Sends the completion e-mail through SMTP or AWS SES, with the `mail` and `aws` config scopes.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::sync::mpsc;
 use std::time::Duration;
 
+use base64::Engine;
 use lettre::message::header::ContentType;
 use lettre::message::{Attachment, Body, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
@@ -14,6 +15,7 @@ use lettre::{Message, SmtpTransport, Transport};
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::Host;
 use nextflow_evaluator::value::{PathValue, Value, tree};
+use storage::aws;
 
 use super::text_setting;
 use crate::Context;
@@ -38,7 +40,7 @@ enum Failure {
 /// `logo` file and the `attachment` file. The result has the `status`, `sent`, `timeout`,
 /// `skipped` or `failed`, and the `message` of a failure.
 pub(super) fn deliver(message: &Value, context: &mut Context) -> Value {
-    let outcome = prepare(message, context).and_then(|(transport, email)| send(transport, email));
+    let outcome = prepare(message, context).and_then(|(route, email)| send(route, email));
     let (status, text) = match outcome {
         Ok(()) => ("sent", String::new()),
         Err(failure @ Failure::Skipped(_)) => ("skipped", failure.to_string()),
@@ -51,36 +53,121 @@ pub(super) fn deliver(message: &Value, context: &mut Context) -> Value {
     ])
 }
 
-fn prepare(message: &Value, context: &mut Context) -> Result<(SmtpTransport, Message), Failure> {
+/// Where a mail goes: an SMTP server, or AWS SES.
+enum Route {
+    Smtp(SmtpTransport),
+    Ses(Ses),
+}
+
+/// The SES v2 endpoint of a region, with the credentials that sign its requests.
+struct Ses {
+    endpoint: String,
+    region: String,
+    credentials: aws::Credentials,
+}
+
+fn prepare(message: &Value, context: &mut Context) -> Result<(Route, Message), Failure> {
     let config = context.config;
-    let ses = context.host.environment("NXF_ENABLE_AWS_SES");
-    if ses.is_some_and(|value| value == "true") {
-        return Err(Failure::Skipped(
-            "uwe cannot send mail through AWS SES (NXF_ENABLE_AWS_SES); set mail.smtp.host to \
-             send it through SMTP"
-                .to_owned(),
-        ));
-    }
-    let Some(server) = text_setting(config, &["mail", "smtp", "host"]) else {
-        return Err(Failure::Skipped(
-            "uwe sends mail only through SMTP, and the config sets no mail.smtp.host".to_owned(),
-        ));
+    let host = &*context.host;
+    let ses = host.environment("NXF_ENABLE_AWS_SES");
+    let region = text_setting(config, &["aws", "region"])
+        .or_else(|| host.environment("AWS_REGION"))
+        .or_else(|| host.environment("AWS_DEFAULT_REGION"));
+    let amazon = crate::catalogue::configured(config)
+        .iter()
+        .any(|id| id == "nf-amazon");
+    // Nextflow's order: SES when asked for, else SMTP, else SES when nf-amazon has a region.
+    let route = match text_setting(config, &["mail", "smtp", "host"]) {
+        _ if ses.is_some_and(|value| value == "true") => {
+            Route::Ses(ses_route(config, host, region))
+        }
+        Some(server) => Route::Smtp(transport(config, &server)?),
+        None if amazon && region.is_some() => Route::Ses(ses_route(config, host, region)),
+        None => {
+            return Err(Failure::Skipped(
+                "uwe sends mail through SMTP or AWS SES, and the config sets no \
+                 mail.smtp.host and does not turn on SES"
+                    .to_owned(),
+            ));
+        }
     };
-    let transport = transport(config, &server)?;
-    let from = sender(config, &*context.host);
+    let from = sender(config, host);
     let email = build(message, &from, &mut *context.host)?;
-    Ok((transport, email))
+    Ok((route, email))
+}
+
+/// SES in the region of the `aws` scope or the environment, else `us-east-1`, with the keys of
+/// the `aws` scope, else AWS's default credential chain.
+fn ses_route(config: &Config, host: &dyn Host, region: Option<String>) -> Ses {
+    let region = region.unwrap_or_else(|| "us-east-1".to_owned());
+    let default = format!("https://email.{region}.amazonaws.com");
+    let endpoint = aws::endpoint("SESV2", default, |name| host.environment(name));
+    let keys = (text_setting(config, &["aws", "accessKey"]))
+        .zip(text_setting(config, &["aws", "secretKey"]));
+    let credentials = match keys {
+        Some((id, secret)) => aws::Credentials::Keys(aws::Keys {
+            id,
+            secret,
+            token: text_setting(config, &["aws", "sessionToken"]),
+        }),
+        None => aws::Credentials::Chain {
+            environment: (aws::VARIABLES.iter())
+                .filter_map(|name| Some((name.to_string(), host.environment(name)?)))
+                .collect(),
+            home: host.environment("HOME").map(Into::into),
+        },
+    };
+    Ses {
+        endpoint,
+        region,
+        credentials,
+    }
+}
+
+/// Sends the raw message with SES v2 `SendEmail`.
+fn ses_send(ses: Ses, email: &Message) -> Result<(), String> {
+    let envelope = email.envelope();
+    let from = envelope.from().map(ToString::to_string).unwrap_or_default();
+    let to: Vec<String> = envelope.to().iter().map(ToString::to_string).collect();
+    let data = base64::engine::general_purpose::STANDARD.encode(email.formatted());
+    let body = serde_json::json!({
+        "FromEmailAddress": from,
+        "Destination": {"ToAddresses": to},
+        "Content": {"Raw": {"Data": data}},
+    });
+    let request = aws::Request {
+        service: "ses".to_owned(),
+        region: ses.region,
+        method: "POST".to_owned(),
+        url: format!("{}/v2/email/outbound-emails", ses.endpoint),
+        headers: vec![("content-type".to_owned(), "application/json".to_owned())],
+        body: body.to_string().into_bytes(),
+    };
+    let answer = aws::send(request, &ses.credentials).map_err(|error| error.to_string())?;
+    if (200..300).contains(&answer.status) {
+        return Ok(());
+    }
+    let reply: serde_json::Value = serde_json::from_slice(&answer.body).unwrap_or_default();
+    let reason = (reply.get("message").or_else(|| reply.get("Message")))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&answer.reason);
+    Err(format!("AWS SES answered {}: {reason}", answer.status))
 }
 
 /// Sends in a thread of its own, so that a server that does not answer cannot hold the run
 /// longer than `LIMIT`.
-fn send(transport: SmtpTransport, email: Message) -> Result<(), Failure> {
+fn send(route: Route, email: Message) -> Result<(), Failure> {
     let (sender, receiver) = mpsc::channel();
     std::thread::Builder::new()
         .name("nf-core-utils mail".to_owned())
         .spawn(move || {
-            let sent = transport.send(&email).map(drop);
-            let _ = sender.send(sent.map_err(|error| error.to_string()));
+            let sent = match route {
+                Route::Smtp(transport) => {
+                    (transport.send(&email).map(drop)).map_err(|error| error.to_string())
+                }
+                Route::Ses(ses) => ses_send(ses, &email),
+            };
+            let _ = sender.send(sent);
         })
         .map_err(|error| Failure::Failed(error.to_string()))?;
     match receiver.recv_timeout(LIMIT) {

@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64.workspace = true
 flate2.workspace = true
 hdf5-pure.workspace = true
 jiff.workspace = true

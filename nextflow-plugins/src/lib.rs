@@ -11,6 +11,7 @@ mod nf_fgbio;
 mod nf_schema;
 #[path = "validation.rs"]
 mod nf_validation;
+mod nf_versions;
 pub mod observer;
 
 use std::any::Any;

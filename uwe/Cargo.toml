@@ -42,6 +42,7 @@ tar.workspace = true
 tempfile.workspace = true
 kubernetes-executor.workspace = true
 aws-batch-executor.workspace = true
+google-batch-executor.workspace = true
 slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }

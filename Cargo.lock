@@ -7829,6 +7829,7 @@ dependencies = [
  "fancy-regex 0.20.0",
  "flate2",
  "gix",
+ "google-batch-executor",
  "input-schema",
  "jiff",
  "kubernetes-executor",

@@ -18,6 +18,7 @@ mod detect;
 mod failure;
 mod fetched;
 mod git;
+mod google_batch;
 mod inputs;
 mod insight;
 mod kubernetes;

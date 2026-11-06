@@ -126,7 +126,6 @@ fn from_query(
         return Err(thrown("Missing query argument"));
     }
     let source = source(flavour, &option_text(&options, "db"), context.config, false)?;
-    let mut connection = target::connect(&source, &context.host.launch_dir()).map_err(thrown)?;
     let emit = option(&options, "emitColumns").is_some_and(|value| value.truth());
     let size = option_number(&options, "batchSize").unwrap_or(0);
     let delay = option_number(&options, "batchDelay").unwrap_or(100);
@@ -142,7 +141,6 @@ fn from_query(
     }
     let base = paged(&query)?;
     for page in 0.. {
-        let sql = format!("{base}\nLIMIT {size} OFFSET {}", page * size);
         let table = connection.query(&sql).map_err(failed)?;
         if emit && page == 0 {
             items.push(names(&table.columns));
@@ -214,8 +212,6 @@ fn sql_execute(
         }
         Err(error) => return Err(error),
     };
-    let launch = context.host.launch_dir();
-    let mut connection = match target::connect(&source, &launch) {
         Ok(connection) => connection,
         Err(message) if target::refused(&source.url) => return Err(thrown(message)),
         Err(message) => return Ok(logged(message, context)),

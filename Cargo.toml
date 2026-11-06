@@ -19,6 +19,7 @@ members = [
     "google-batch-executor",
     "htcondor-executor",
     "input-schema",
+    "jarvice-executor",
     "uwe",
     "kubernetes-executor",
     "nextflow-config",

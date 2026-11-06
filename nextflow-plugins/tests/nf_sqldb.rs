@@ -6,7 +6,7 @@ mod common;
 
 use std::path::Path;
 
-const INCLUDE: &str = "include { sqlExecute } from 'plugin/nf-sqldb'\n";
+const INCLUDE: &str = "include { fromQuery; sqlExecute } from 'plugin/nf-sqldb'\n";
 
 /// Runs a workflow body with the database `foo` at `url`; gives the error and the printed text.
 fn run(folder: &Path, url: &str, body: &str) -> (Option<String>, String) {
@@ -113,6 +113,10 @@ fn reports_errors() {
             "println sqlExecute(statement: 'CREATE TABLE x (a INT)')",
             "H2 is a Java database, which uwe cannot run: jdbc:h2:mem:",
         ),
+        (
+            "channel.fromQuery('select 1 limit 1', db: 'foo', batchSize: 2).view()",
+            "Sql query should not include the LIMIT statement when pageSize is specified",
+        ),
     ];
     for (body, message) in cases {
         let directory = tempfile::tempdir().expect("a temporary directory");
@@ -133,5 +137,42 @@ fn reports_errors() {
     assert!(
         error.contains("Invalid database JDBC connection url: mysql://x"),
         "{error}"
+    );
+}
+
+#[test]
+fn queries_rows() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    let url = database(folder);
+    let body = "  channel.fromQuery('select id, name, value, flag, n, d from sample order by id', \
+                db: 'foo').view { r -> \"row ${r} ${r.collect { it?.getClass()?.simpleName }}\" }
+  channel.fromQuery('select id, name from sample order by id', db: 'foo', emitColumns: \
+                true).view { \"cols ${it}\" }
+  channel.fromQuery('select id from sample order by id; -- all\\n', db: 'foo', batchSize: 2, \
+                batchDelay: 0).view { \"batch ${it}\" }
+  channel.fromQuery('select rate_limit from (select 1 as rate_limit)', db: 'foo', batchSize: \
+                1, batchDelay: 0).view { \"limit ${it}\" }";
+    let (error, printed) = run(folder, &url, body);
+    assert_eq!(error, None, "{printed}");
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort();
+    assert_eq!(
+        lines,
+        [
+            "batch [1]",
+            "batch [2]",
+            "batch [3]",
+            "cols [1, alpha]",
+            "cols [2, beta]",
+            "cols [3, gamma]",
+            "cols [id, name]",
+            "limit [1]",
+            "row [1, alpha, 10.5, 1, 9007199254740993, 2024-01-02] [Integer, String, Double, \
+             Integer, Long, String]",
+            "row [2, beta, null, 0, 2, null] [Integer, String, null, Integer, Integer, null]",
+            "row [3, gamma, 3.0, null, 3, 2024-03-04] [Integer, String, Double, null, Integer, \
+             String]",
+        ]
     );
 }

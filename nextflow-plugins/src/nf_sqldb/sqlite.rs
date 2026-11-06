@@ -1,10 +1,11 @@
-//! The SQLite connection of nf-sqldb, with the error texts of sqlite-jdbc.
+//! The SQLite connection of nf-sqldb, with the values that sqlite-jdbc gives.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use rusqlite::OpenFlags;
+use rusqlite::types::ValueRef;
 
-use super::Connection;
+use super::{Connection, Datum, Table};
 
 pub(crate) struct Sqlite(rusqlite::Connection);
 
@@ -19,6 +20,22 @@ pub(crate) fn open(place: Option<&str>) -> Result<Sqlite, String> {
 }
 
 impl Connection for Sqlite {
+    fn query(&mut self, sql: &str) -> Result<Table, String> {
+        let mut statement = self.0.prepare(sql).map_err(text)?;
+        let columns: Vec<String> = (statement.column_names()).map(str::to_owned).collect();
+        let width = columns.len();
+        let mut rows = Vec::new();
+        let mut found = statement.query([]).map_err(text)?;
+        while let Some(row) = found.next().map_err(text)? {
+            let mut values = Vec::with_capacity(width);
+            for index in 0..width {
+                values.push(datum(row.get_ref(index).map_err(text)?));
+            }
+            rows.push(values);
+        }
+        Ok(Table { columns, rows })
+    }
+
     fn execute(&mut self, sql: &str) -> Result<u64, String> {
         let mut statement = self.0.prepare(sql).map_err(text)?;
         if statement.column_count() > 0 {
@@ -28,6 +45,21 @@ impl Connection for Sqlite {
         }
         let changed = statement.raw_execute().map_err(text)?;
         Ok(u64::try_from(changed).unwrap_or(0))
+    }
+}
+
+/// The value as sqlite-jdbc gives it: integers that fit as `Integer`, else `Long`; dates and
+/// booleans as they are stored.
+fn datum(value: ValueRef<'_>) -> Datum {
+    match value {
+        ValueRef::Null => Datum::Null,
+        ValueRef::Integer(value) => match i32::try_from(value) {
+            Ok(small) => Datum::Integer(small),
+            Err(_) => Datum::Long(value),
+        },
+        ValueRef::Real(value) => Datum::Double(value),
+        ValueRef::Text(bytes) => Datum::Text(String::from_utf8_lossy(bytes).into_owned()),
+        ValueRef::Blob(bytes) => Datum::Bytes(bytes.to_vec()),
     }
 }
 

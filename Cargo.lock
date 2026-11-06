@@ -3285,6 +3285,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "htcondor-executor"
+version = "0.1.0"
+dependencies = [
+ "executor",
+ "serde_json",
+ "slurm-executor",
+ "task-model",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "http"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

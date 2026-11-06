@@ -351,8 +351,19 @@ fn clean_requires_rule() {
     // Folders of attempts that the ended run left, in the scratch folder of each executor; the
     // SIF files of SLURM jobs and folders of unknown runs stay.
     let scratch = cache.join("uwe/scratch");
-    let attempts = ["", "tes/", "kubernetes/", "slurm/"]
-        .map(|folder| scratch.join(format!("{folder}{earlier}-1-1")));
+    let attempts = [
+        "",
+        "tes/",
+        "kubernetes/",
+        "slurm/",
+        "aws-batch/",
+        "google-batch/",
+        "azure-batch/",
+        "nomad/",
+        "htcondor/",
+        "pbs/",
+    ]
+    .map(|folder| scratch.join(format!("{folder}{earlier}-1-1")));
     let staying = [scratch.join("slurm/images"), scratch.join("slurm/1-2-3-4")];
     for folder in attempts.iter().chain(&staying) {
         std::fs::create_dir_all(folder.join("work")).expect("makes the folder");
@@ -361,7 +372,7 @@ fn clean_requires_rule() {
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("It keeps what run"), "{output}");
     assert!(
-        output.contains("scratch folders of runs that ended: 5 folders"),
+        output.contains("scratch folders of runs that ended: 11 folders"),
         "{output}"
     );
     assert!(
@@ -373,7 +384,7 @@ fn clean_requires_rule() {
     let (code, output) = uwe(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(
-        output.contains("Removed 0 results, 0 files and 5 scratch folders."),
+        output.contains("Removed 0 results, 0 files and 11 scratch folders."),
         "{output}"
     );
     assert!(attempts.iter().all(|folder| !folder.exists()));

@@ -395,6 +395,15 @@ not aborted. `getRunUid()` and `getTransformUid()` give null in the workflow bod
 before the run record exists, and the uids in process scripts and `workflow.onComplete`. The
 patterns of the rules find their match anywhere in the path.
 
+## src/nf_crukci_support.rs
+
+nf-crukci-support 1.1.3 is partly implemented: `javaMemoryOptions`, `javaMemMB`, `sizeOf`,
+`makeCollection`, `safeName` and `logException` work as in the plugin, with its messages and
+the `crukci.javaOverhead` and `crukci.javaMetaspace` settings. The scanner of `.command.log` files
+is not implemented: it writes `.exitcode` into task folders, which uwe's executors keep to
+themselves and whose exit status they decide; a rule like it belongs in uwe's SLURM executor. A
+config that sets `crukci.patterns`, `defaultPatterns` or `maxLinesToScan` gets one warning.
+
 ## src/nf_llm_debugger.rs
 
 nf-llm-debugger 1.0.14 is off unless `llm.enabled` or the param `llm_enabled` turns it on, and

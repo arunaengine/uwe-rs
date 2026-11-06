@@ -172,7 +172,7 @@ pub const PLUGINS: &[Plugin] = &[
     // Observers that send to services.
     planned("nf-biffix", Kind::Observer),
     planned("nf-crg-genomics-lims", Kind::Observer),
-    planned("nf-crukci-support", Kind::Observer),
+    crate::nf_crukci_support::PLUGIN,
     crate::nf_lamin::PLUGIN,
     crate::nf_llm_debugger::PLUGIN,
     crate::nf_prometheus::PLUGIN,

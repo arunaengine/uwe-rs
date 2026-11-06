@@ -44,6 +44,7 @@ pub enum Kind {
     Folder(Folder),
     Drs(Drs),
     Synapse(Synapse),
+    Irods(Irods),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -128,6 +129,20 @@ pub struct Synapse {
     pub token: Option<Secret>,
 }
 
+/// iRODS zones, over the iRODS protocol. Unset values come from the environment.
+#[derive(Clone, Debug, Default)]
+pub struct Irods {
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub user: Option<String>,
+    pub zone: Option<String>,
+    pub password: Option<Secret>,
+    /// `native`, or `pam_password` for a PAM password.
+    pub authentication: Option<String>,
+    /// The TLS policy: `CS_NEG_REQUIRE`, `CS_NEG_DONT_CARE` or `CS_NEG_REFUSE`.
+    pub negotiation: Option<String>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -136,7 +151,7 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 8] = [
+const TYPES: [&str; 9] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
@@ -145,6 +160,7 @@ const TYPES: [&str; 8] = [
     "folder",
     "drs",
     "synapse",
+    "irods",
 ];
 
 impl Settings {
@@ -325,6 +341,19 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
                 }))
             },
         ),
+        "irods" => (
+            &[
+                "host",
+                "port",
+                "user",
+                "zone",
+                "password",
+                "authentication",
+                "negotiation",
+            ],
+            &["irods"],
+            |table| Ok(Kind::Irods(irods(table)?)),
+        ),
         "synapse" => (&["endpoint", "token"], &["syn"], |table| {
             Ok(Kind::Synapse(Synapse {
                 endpoint: web_address(table, "endpoint")?,
@@ -412,6 +441,25 @@ fn https(table: &Table<'_>) -> Result<Https, ConfigError> {
         return Err(table.missing("user", "which goes with `password`"));
     }
     Ok(settings)
+}
+
+fn irods(table: &Table<'_>) -> Result<Irods, ConfigError> {
+    let port = match table.integer("port")? {
+        None => None,
+        Some(port) => Some(
+            u16::try_from(port)
+                .map_err(|_| table.invalid("port", "must be a port number, like 1247"))?,
+        ),
+    };
+    Ok(Irods {
+        host: table.text("host")?,
+        port,
+        user: table.text("user")?,
+        zone: table.text("zone")?,
+        password: table.secret("password")?,
+        authentication: table.text("authentication")?,
+        negotiation: table.text("negotiation")?,
+    })
 }
 
 fn folder(table: &Table<'_>) -> Result<Folder, ConfigError> {

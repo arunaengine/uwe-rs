@@ -281,3 +281,17 @@ in LaminDB yet, with one warning. The prod hub's anon key is not shipped with uw
 come from the scope or `SUPABASE_ANON_KEY`; `lamin.env` other than `prod` needs
 `api.supabase_api_url`. A 401 answer does not fetch a new token, and S3 session credentials are
 not renewed during a run.
+
+## src/nf_quilt.rs
+
+nf-quilt 1.0.1 publishes a Quilt package for each package that the run's files went to:
+`quilt+s3://` targets, and plain `s3://<bucket>/<p1>/<p2>/<rest>` targets as package `p1/p2`.
+At the end of a successful run (or with `force`), it writes `nf-quilt/config.json`,
+`params.json` and `workflow.json`, `README_NF_QUILT.md` and `quilt_summarize.json`, then the
+manifest with the metadata of the `quilt` scope and the run, and prints `SUCCESS: <uri>`.
+Where it differs: files go to S3 as they are published, not at the end, so a failed run leaves
+them without a package version; templates take `${name}`, `.get('key')`, `['key']`, `.key`
+and `?.` lookups only, other Groovy fails as `compileMessage.FAILED`; JSON keys are sorted; the
+`workflow` values are uwe's (plain strings, `nextflow` 26.04.6, `stats` counts) and the README
+lists them; bucket access is not checked before; Quilt workflows are not checked. A plain
+`s3://` file needs a local copy to be hashed.

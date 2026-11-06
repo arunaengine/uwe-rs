@@ -1,4 +1,4 @@
-//! nf-boost 0.8.0: `request` and the cleanup config; `nf_boost.nf` has the functions.
+//! nf-boost 0.8.0: `toYaml`, `request` and the cleanup config; `nf_boost.nf` has the rest.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -14,13 +14,14 @@ use crate::catalogue::{Kind, Plugin, State};
 use crate::observer::Observer;
 use crate::{Context, native, object};
 
-/// The functions run as script code of `nf_boost.nf`, `request` here; `scan` is an operator of
-/// the runtime.
+/// The functions run as script code of `nf_boost.nf`, `toYaml` and `request` here; `scan` is an
+/// operator of the runtime.
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &[
         "fromJson",
         "toJson",
         "fromYaml",
+        "toYaml",
         "mergeCsv",
         "mergeText",
         "request",
@@ -58,6 +59,7 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
 
 fn call(name: &str, arguments: Vec<Value>, _: &mut Context) -> Result<Value, Error> {
     match (name, arguments.as_slice()) {
+        ("toYaml", [value]) => Ok(Value::string(yaml(value))),
         ("request", [url]) => request(&url.to_string(), None),
         ("request", [options @ Value::Map(_), url]) => request(&url.to_string(), Some(options)),
         _ => Err(Error::Unsupported {
@@ -230,6 +232,162 @@ fn stream(bytes: &[u8]) -> Value {
         class: "java.io.InputStream",
         state: ObjectState::Stream(bytes.into(), 0),
     })))
+}
+
+/// The YAML text of a value as SnakeYAML dumps it by default: collections of scalars in flow
+/// style, other collections in block style, and a final line break.
+fn yaml(value: &Value) -> String {
+    let mut out = String::new();
+    match block(value) {
+        true => write_block(value, 0, &mut out),
+        false => match value {
+            Value::String(text) | Value::GString(text) if text.contains('\n') => {
+                out.push_str(&literal(text, 0));
+            }
+            other => {
+                out.push_str(&inline(other));
+                out.push('\n');
+            }
+        },
+    }
+    out
+}
+
+/// The entries of a map or the items of a list, `None` for a scalar.
+fn members(value: &Value) -> Option<Vec<(Option<Value>, Value)>> {
+    match value {
+        Value::Map(map) => Some(
+            (map.borrow().entries.iter())
+                .map(|(key, value)| (Some(key.0.clone()), value.clone()))
+                .collect(),
+        ),
+        Value::List(list) => Some(
+            list.borrow()
+                .items
+                .iter()
+                .map(|v| (None, v.clone()))
+                .collect(),
+        ),
+        Value::Set(set) => Some(
+            set.borrow()
+                .items
+                .iter()
+                .map(|k| (None, k.0.clone()))
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+/// Whether a value is a collection that holds a collection, which goes in block style.
+fn block(value: &Value) -> bool {
+    members(value).is_some_and(|members| members.iter().any(|(_, item)| members_of(item)))
+}
+
+fn members_of(value: &Value) -> bool {
+    members(value).is_some()
+}
+
+fn write_block(value: &Value, indent: usize, out: &mut String) {
+    let pad = " ".repeat(indent);
+    for (key, item) in members(value).unwrap_or_default() {
+        let lead = match &key {
+            Some(key) => format!("{pad}{}:", scalar(key, false)),
+            None => format!("{pad}-"),
+        };
+        match &item {
+            Value::String(text) | Value::GString(text) if text.contains('\n') => {
+                out.push_str(&format!("{lead} {}", literal(text, indent + 2)));
+            }
+            nested if block(nested) && key.is_none() => {
+                // The first line of a nested block goes after the dash.
+                let mut inner = String::new();
+                write_block(nested, indent + 2, &mut inner);
+                out.push_str(&format!("{lead} {}", &inner[indent + 2..]));
+            }
+            nested if block(nested) => {
+                out.push_str(&format!("{lead}\n"));
+                let deeper = if matches!(nested, Value::Map(_)) {
+                    indent + 2
+                } else {
+                    indent
+                };
+                write_block(nested, deeper, out);
+            }
+            other => out.push_str(&format!("{lead} {}\n", inline(other))),
+        }
+    }
+}
+
+/// A multi-line text as a literal block, its lines indented.
+fn literal(text: &str, indent: usize) -> String {
+    let pad = " ".repeat(indent.max(2));
+    let (chomp, body) = match text.strip_suffix('\n') {
+        Some(body) if !body.ends_with('\n') => ("|", body),
+        Some(_) => ("|+", text.trim_end_matches('\n')),
+        None => ("|-", text),
+    };
+    let lines: Vec<String> = body
+        .split('\n')
+        .map(|line| format!("{pad}{line}\n"))
+        .collect();
+    format!("{chomp}\n{}", lines.concat())
+}
+
+/// A scalar, or a collection of scalars in flow style.
+fn inline(value: &Value) -> String {
+    match members(value) {
+        Some(members) => {
+            let map = matches!(value, Value::Map(_));
+            let items: Vec<String> = (members.iter())
+                .map(|(key, item)| match key {
+                    Some(key) => format!("{}: {}", scalar(key, true), scalar(item, true)),
+                    None => scalar(item, true),
+                })
+                .collect();
+            match map {
+                true => format!("{{{}}}", items.join(", ")),
+                false => format!("[{}]", items.join(", ")),
+            }
+        }
+        None => scalar(value, false),
+    }
+}
+
+/// A scalar, in quotes when it would read as another type or as YAML syntax.
+fn scalar(value: &Value, flow: bool) -> String {
+    let text = match value {
+        Value::Null => return "null".into(),
+        Value::Boolean(_) | Value::Number(_) => return value.to_string(),
+        other => other.to_string(),
+    };
+    const IMPLICIT: [&str; 5] = [
+        "yes|Yes|YES|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF",
+        "~|null|Null|NULL",
+        "[-+]?(?:0b[0-1_]+|0[0-7_]+|(?:0|[1-9][0-9_]*)|0x[0-9a-fA-F_]+|[1-9][0-9_]*(?::[0-5]?[0-9])+)",
+        "[-+]?(?:\\.[0-9]+|[0-9_]+(?:\\.[0-9_]*)?)(?:[eE][-+]?[0-9]+)?|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN)",
+        "[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:(?:[Tt]|[ \\t]+).*)?",
+    ];
+    let implicit = IMPLICIT.iter().any(|regex| {
+        let pattern = nextflow_evaluator::regex::Pattern::new(regex);
+        pattern.is_ok_and(|pattern| pattern.matches(&text).unwrap_or(false))
+    });
+    let first = text.chars().next().unwrap_or(' ');
+    let second = text.chars().nth(1).unwrap_or(' ');
+    let special = text.is_empty()
+        || "#,[]{}&*!|>'\"%@`".contains(first)
+        || "-?:".contains(first) && second == ' '
+        || text.contains(": ")
+        || text.contains(" #")
+        || text.ends_with(':')
+        || text.starts_with(' ')
+        || text.ends_with(' ')
+        || flow && text.contains([',', '[', ']', '{', '}'])
+        || text.chars().any(char::is_control);
+    match implicit || special {
+        true => format!("'{}'", text.replace('\'', "''")),
+        false => text,
+    }
 }
 
 fn thrown(exception: Exception) -> Error {

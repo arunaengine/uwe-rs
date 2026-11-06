@@ -61,6 +61,10 @@ pub struct Placement {
     /// 0 when unknown. Tasks with more after them start first, so that the run ends sooner.
     #[serde(default)]
     pub priority: u64,
+    /// Options of the executor for this task by name, as the workflow gives them, like
+    /// Nextflow's `pod` and `nomadOptions`; each executor reads its own.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

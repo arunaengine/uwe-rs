@@ -143,8 +143,11 @@ fn missing_env_empty() {
 fn passes_placement_hints() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let script = "process P {\n queue 'long'\n resourceLabels team: 'genomics', \
-                  'cost-center': 'A 12'\n script:\n 'true'\n}\nworkflow { P() }";
+                  'cost-center': 'A 12'\n accelerator 1, type: 'nvidia.com'\n \
+                  pod nodeSelector: 'disktype=ssd'\n script:\n 'true'\n}\nworkflow { P() }";
     std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let config = "process {\n withName: P {\n  nomadOptions = [nodePool: 'highmem']\n }\n}\n";
+    std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
     let launch = Launch {
         target: directory.path().to_owned(),
         ..Launch::default()
@@ -154,6 +157,13 @@ fn passes_placement_hints() {
     assert_eq!(resources.queue.as_deref(), Some("long"));
     assert_eq!(resources.labels["team"], "genomics");
     assert_eq!(resources.labels["cost-center"], "A 12");
+    let options = &resources.options;
+    assert_eq!(
+        options["pod"],
+        serde_json::json!([{"nodeSelector": "disktype=ssd"}])
+    );
+    assert_eq!(options["nomadOptions"]["nodePool"], "highmem");
+    assert_eq!(options["accelerator"]["type"], "nvidia.com");
 }
 
 #[test]

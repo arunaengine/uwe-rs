@@ -238,6 +238,10 @@ pub struct Resources {
     /// Labels for the job of the task, like Nextflow's `resourceLabels`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub labels: BTreeMap<String, String>,
+    /// Options of the executor for the task by name, like Nextflow's `pod` and `nomadOptions`,
+    /// and the named options of `accelerator`, like its `type`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, serde_json::Value>,
 }
 
 /// What came of an attempt of a task.

@@ -42,6 +42,8 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "maxForks",
     "maxRetries",
     "memory",
+    // The executors that take pod options get them, like Kubernetes.
+    "pod",
     "publishDir",
     // The executor that has queues and job labels takes them, like AWS Batch and SLURM.
     "queue",
@@ -68,7 +70,6 @@ const HINT_DIRECTIVES: &[&str] = &[
     "machineType",
     "maxSubmitAwait",
     "penv",
-    "pod",
     "scratch",
 ];
 
@@ -429,6 +430,8 @@ impl ProcessNode {
                 ("maxErrors", _) => true,
                 ("conda", _) if !self.conda_enabled => false,
                 ("spack", _) if !self.spack_enabled => false,
+                // nf-nomad's setting of the process config, which the Nomad executor reads.
+                ("nomadOptions", _) => false,
                 (name, _) if HINT_DIRECTIVES.contains(&name) => !scheduling_hint(directive),
                 (name, _) if REFUSED_DIRECTIVES.contains(&name) => {
                     directive.arguments.iter().any(Value::truth)
@@ -909,7 +912,6 @@ fn scheduling_hint(directive: &TaskDirective) -> bool {
         .iter()
         .all(|value| match &*directive.name {
             "clusterOptions" => cluster_hint(value),
-            "pod" => placement_hint(value, &["nodeSelector", "affinity", "toleration"]),
             "arch" if matches!(value, Value::Map(_)) => placement_hint(value, &["name"]),
             _ => true,
         })

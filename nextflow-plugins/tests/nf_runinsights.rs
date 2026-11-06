@@ -100,6 +100,7 @@ fn run(
         manifest: serde_json::json!({}),
         processes: Vec::new(),
         start: 1_000,
+        resume: false,
     };
     observer.notify(&Event::RunStarted(Box::new(start)));
     observer.notify(&task(2, 1_000, 1_035, realtimes[0]));

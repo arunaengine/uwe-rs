@@ -453,6 +453,7 @@ mod tests {
             manifest: serde_json::Value::Null,
             processes: Vec::new(),
             start: 0,
+            resume: false,
         }
     }
 

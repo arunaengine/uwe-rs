@@ -247,6 +247,7 @@ impl Reports {
             }),
             processes,
             start: self.started,
+            resume: options.resume,
         };
         self.notify(Event::RunStarted(Box::new(start)));
     }

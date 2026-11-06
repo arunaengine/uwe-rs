@@ -132,7 +132,7 @@ pub(crate) fn metadata(options: &Options, launch_dir: &str) -> Value {
         (text("container"), containers(&options.config)),
         (text("containerEngine"), engine),
         (text("stubRun"), Value::Boolean(options.stub)),
-        (text("resume"), Value::Boolean(false)),
+        (text("resume"), Value::Boolean(options.resume)),
         (text("preview"), Value::Boolean(false)),
         (text("failOnIgnore"), Value::Boolean(false)),
         (text("manifest"), manifest),

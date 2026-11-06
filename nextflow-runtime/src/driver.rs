@@ -51,6 +51,8 @@ pub struct Settings {
     pub local_options: bool,
     /// Where uwe pulled the pipeline from, which run observers hear.
     pub repository: Option<Repository>,
+    /// Whether the run resumes an earlier one, `workflow.resume`.
+    pub resume: bool,
 }
 
 /// The Git repository of a pulled pipeline, as `workflow.repository`, `workflow.commitId` and
@@ -76,6 +78,7 @@ impl Default for Settings {
             secret_env: false,
             local_options: false,
             repository: None,
+            resume: false,
         }
     }
 }
@@ -259,6 +262,7 @@ impl Nextflow {
                 .map(|file| file.to_string_lossy().into_owned())
                 .collect(),
             command_line: self.settings.command_line.clone(),
+            resume: self.settings.resume,
             exec_folder: Some(self.folder().join("exec")),
             cleanup: (!self.launch.simulated && nextflow_plugins::cleanup(&loaded.config))
                 .then(|| std::path::absolute(self.folder()).unwrap_or_else(|_| self.folder())),

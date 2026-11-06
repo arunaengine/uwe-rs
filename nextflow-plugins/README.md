@@ -156,7 +156,7 @@ observers. A simulated run, like `uwe check`, has no observers.
 
 | Event | Carries |
 | --- | --- |
-| `RunStarted(Start)` | run name, session id, launch, work and project directories, main script, project name, repository, commit id and revision of a pulled pipeline, command line, profile, config files, params, config, `manifest` scope, process graph, start time |
+| `RunStarted(Start)` | run name, session id, launch, work and project directories, main script, project name, repository, commit id and revision of a pulled pipeline, command line, profile, config files, params, config, `manifest` scope, process graph, start time, whether the run resumes |
 | `TaskSubmitted`, `TaskStarted`, `TaskCompleted`, `TaskCached`, `TaskFailed` (`Task`) | trace record, process id, full hash, executor, staged input files, output files, standard output and error (end events), input values |
 | `FilePublished { source, target }` | each file of a `publishDir` or a workflow output |
 | `RunEnded(End)` | success, error message, counts, the task whose failure ended the run, workflow outputs with their files and index file, end time |

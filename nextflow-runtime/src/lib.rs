@@ -81,6 +81,8 @@ pub struct Options {
     pub config_files: Vec<String>,
     /// The command line that started the run.
     pub command_line: String,
+    /// Whether the run resumes an earlier one (`-resume`), `workflow.resume`.
+    pub resume: bool,
     /// Where the `exec:` sections of processes run: a folder of this run on this machine, with
     /// a folder for each task, its `task.workDir`. Without it, `exec:` sections are not
     /// supported.
@@ -367,6 +369,7 @@ impl Default for Options {
             run_name: "uwe".into(),
             config_files: Vec::new(),
             command_line: String::new(),
+            resume: false,
             exec_folder: None,
             cleanup: None,
             keep_going: false,

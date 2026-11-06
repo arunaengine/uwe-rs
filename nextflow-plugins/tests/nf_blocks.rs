@@ -86,6 +86,7 @@ fn start() -> Start {
         manifest: serde_json::json!({}),
         processes: Vec::new(),
         start: 1_793_964_945_628,
+        resume: false,
     }
 }
 

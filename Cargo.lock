@@ -4035,6 +4035,7 @@ dependencies = [
  "nextflow-evaluator",
  "serde_json",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]

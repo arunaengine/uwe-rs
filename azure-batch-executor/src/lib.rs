@@ -2,9 +2,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod auth;
 mod settings;
 pub mod task;
 
+pub use auth::{Credentials, Source};
 pub use settings::{
     API_VERSION, AUTO, Hidden, Identity, PRIVILEGED, PoolSettings, Registry, Settings,
 };

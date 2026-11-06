@@ -329,13 +329,29 @@ impl Exporter {
             .body(text);
         let problem = match sender.send(request) {
             Ok(answer) if (200..300).contains(&answer.status) => return,
-            Ok(answer) => format!("pushgateway returned HTTP {} for {url}", answer.status),
-            Err(error) => format!("cannot reach pushgateway at {url}: {}", error.without_url()),
+            Ok(answer) => Push::Refused(answer.status),
+            Err(error) => Push::Failed(error.without_url().to_string()),
         };
+        let problem = push_warning(&url, &problem);
         if !self.warned {
             self.warned = true;
             tracing::warn!("nf-prometheus: {problem}");
         }
+    }
+}
+
+/// How a push failed.
+enum Push {
+    Refused(u16),
+    Failed(String),
+}
+
+/// The warning of a failed push, with the address shown without its credentials.
+fn push_warning(url: &str, push: &Push) -> String {
+    let url = service::safe_url(url);
+    match push {
+        Push::Refused(status) => format!("pushgateway returned HTTP {status} for {url}"),
+        Push::Failed(message) => format!("cannot reach pushgateway at {url}: {message}"),
     }
 }
 
@@ -478,5 +494,20 @@ mod tests {
         assert_eq!(number(6_991_872.0), "6991872");
         assert_eq!(number(0.185), "0.185");
         assert_eq!(number(5.35), "5.35");
+    }
+
+    #[test]
+    fn hides_push_credentials() {
+        let url = "https://user:secret@push.example.org/metrics/job/nf/run_name/a?token=abc";
+        let refused = push_warning(url, &Push::Refused(401));
+        assert_eq!(
+            refused,
+            "pushgateway returned HTTP 401 for https://push.example.org/metrics/job/nf/run_name/a"
+        );
+        let failed = push_warning(url, &Push::Failed("connection refused".into()));
+        assert!(
+            !failed.contains("secret") && !failed.contains("token"),
+            "{failed}"
+        );
     }
 }

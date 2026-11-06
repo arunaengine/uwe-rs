@@ -154,14 +154,12 @@ fn locates_settings_errors() {
         settings_error("[storage.a]\nprefixes = [\"s3://a/\"]\n"),
         format!(
             "{file}:1: `[storage.a]` needs `type`, the kind of provider: one of s3, \
-             google-cloud-storage, azure-blob-storage, https, ftp, folder, drs, synapse, irods, oci, lakefs"
         )
     );
     assert_eq!(
         settings_error("[storage.a]\ntype = \"dropbox\"\n"),
         format!(
             "{file}:2: `storage.a.type` is `dropbox`, which uwe does not know; use \
-             one of s3, google-cloud-storage, azure-blob-storage, https, ftp, folder, drs, synapse, irods, oci, lakefs"
         )
     );
     assert_eq!(

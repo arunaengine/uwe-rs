@@ -35,7 +35,7 @@ Inputs can come from S3 (and S3-compatible services), Google Cloud Storage, Azur
 
 `drs://<host>/<object id>` addresses read GA4GH DRS objects. uwe takes the access method of the type `access_protocol` names, else the first of type `s3`, then `gs`, else the first one, and downloads its HTTPS address. A `[storage.<name>]` table of type `drs` sets `authentication` (`gen3`, `bearer` or `none`), `credential` (a Gen3 API key or a bearer token), `token_path`, `access_protocol` and `plain_http` (servers, as `host:port`, that serve plain HTTP). Without one, uwe signs in with the Gen3 API key of the environment variable `GEN3_API_KEY`, or reads without a token. DRS objects cannot be written.
 
-`syn://` addresses read and write Synapse. `syn://syn123` names an entity, `syn://syn123.5` its version 5, and `syn://syn123.fastq.gz` the same entity, with a suffix for file name patterns. Files download through presigned addresses. A `[storage.<name>]` table of type `synapse` sets `endpoint` and `token`. Without one, uwe signs in with the token of the environment variable `SYNAPSE_AUTH_TOKEN`. Synapse folders list no files.
+`syn://` addresses read and write Synapse. `syn://syn123` names an entity, `syn://syn123.5` its version 5, and `syn://syn123.fastq.gz` the same entity, with a suffix for file name patterns. Files download through presigned addresses. Writing `syn://syn123/a/b.txt` makes the missing folder `a` below the folder `syn123`, uploads the file in parts and makes the file entity `b.txt`, or a new version of it. A `[storage.<name>]` table of type `synapse` sets `endpoint` and `token`. Without one, uwe signs in with the token of the environment variable `SYNAPSE_AUTH_TOKEN`. Synapse folders list no files.
 
 ## Hosts
 

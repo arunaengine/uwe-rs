@@ -230,7 +230,10 @@ impl Connection {
 
     /// Whether the provider can write files.
     pub fn writes(&self) -> bool {
-        matches!(self.backend, Backend::Objects(_) | Backend::Folder(_))
+        matches!(
+            self.backend,
+            Backend::Objects(_) | Backend::Folder(_) | Backend::Synapse(_)
+        )
     }
 
     pub async fn stat(&self, prefix: &str, target: &str) -> Result<Option<Metadata>, Problem> {
@@ -287,6 +290,7 @@ impl Connection {
         match &self.backend {
             Backend::Objects(objects) => objects.upload(file, target).await,
             Backend::Folder(folder) => folder.upload(file, &folder.path(prefix, target)?).await,
+            Backend::Synapse(synapse) => synapse.upload(file, target).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
     }

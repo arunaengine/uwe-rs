@@ -15,6 +15,7 @@ publish.workspace = true
 base64.workspace = true
 bytes.workspace = true
 chrono.workspace = true
+executor.workspace = true
 flate2.workspace = true
 hdf5-pure.workspace = true
 jiff.workspace = true

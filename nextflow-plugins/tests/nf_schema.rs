@@ -1,5 +1,5 @@
-//! nf-schema functions against the plugin nf-schema 2.5.1 with Nextflow 26.04.6; the fixtures
-//! have the script that recorded the expected values.
+//! nf-schema functions against the real nf-schema 2.5.1 to 3.0.0 with Nextflow 26.04.6, and
+//! 3.1.0 against its specification; the fixtures say how they were recorded.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -760,4 +760,348 @@ fn orders_missing_names() {
         error.ends_with("* Missing required parameter(s): zeta, a1, q, beta\n\n"),
         "{error}"
     );
+}
+
+/// The folder of the inputs and the outputs that nf-schema 2.7.3, 2.8.0 and 3.0.0 recorded.
+fn probe_folder() -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/nf_schema")
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// A host of the probe folder that keeps what it prints, with an empty environment.
+struct Probe {
+    launch: String,
+    printed: String,
+}
+
+impl Host for Probe {
+    fn print(&mut self, text: &str) {
+        self.printed.push_str(text);
+    }
+
+    fn launch_dir(&self) -> String {
+        self.launch.clone()
+    }
+
+    fn environment(&self, _: &str) -> Option<String> {
+        None
+    }
+}
+
+/// The lines after `===== <name>` of a recorded output, without Nextflow's own log lines, and
+/// with exception classes without their package.
+fn recorded(file: &str, name: &str) -> String {
+    let folder = probe_folder();
+    let text = std::fs::read_to_string(Path::new(&folder).join(file)).expect("reads");
+    let text = text.replace("<probe>", &folder);
+    let header = format!("===== {name}");
+    let mut lines = text.lines().skip_while(|line| *line != header).skip(1);
+    let mut section = String::new();
+    while let Some(line) = lines.next() {
+        if line.starts_with("=====") || line.starts_with("[PIPELINE]") {
+            break;
+        }
+        if line.starts_with("[ERROR]") {
+            lines.next();
+            lines.next();
+            continue;
+        }
+        if line.starts_with("[WARN]") {
+            continue;
+        }
+        let line = match line
+            .strip_prefix("!! ")
+            .and_then(|rest| rest.split_once(": "))
+        {
+            Some((class, message)) => {
+                let class = class.rsplit('.').next().unwrap_or(class);
+                format!("!! {class}: {message}")
+            }
+            None => line.to_owned(),
+        };
+        section.push_str(&line);
+        section.push('\n');
+    }
+    section
+}
+
+/// A result as the probe scripts print it.
+fn printed(result: Result<Value, Error>) -> String {
+    match result {
+        Ok(value) => format!("{value}\n"),
+        Err(error) => {
+            let exception = error.exception().expect("an exception");
+            format!("!! {}: {}\n", exception.class, exception.message)
+        }
+    }
+}
+
+/// A run of the probe folder with nf-schema of `version` and the params of `common.config`.
+struct Session {
+    config: Config,
+    params: Value,
+    cli: Vec<String>,
+    workflow: Value,
+}
+
+impl Session {
+    fn new(version: &str, extra: &str) -> Session {
+        Session::with("common.config", version, extra)
+    }
+
+    fn with(params: &str, version: &str, extra: &str) -> Session {
+        let folder = probe_folder();
+        let plugin = match version {
+            "" => "nf-schema".to_owned(),
+            version => format!("nf-schema@{version}"),
+        };
+        let config = loaded(&format!(
+            "plugins {{ id '{plugin}' }}\nincludeConfig '{folder}/{params}'\n{extra}\n"
+        ));
+        let params = config.params();
+        Session {
+            config,
+            params,
+            cli: Vec::new(),
+            workflow: Value::Null,
+        }
+    }
+
+    fn call(&self, name: &str, arguments: Vec<Value>) -> (String, String) {
+        let folder = probe_folder();
+        let mut host = Probe {
+            launch: folder.clone(),
+            printed: String::new(),
+        };
+        let mut context = Context {
+            host: &mut host,
+            config: &self.config,
+            params: self.params.clone(),
+            project_dir: &folder,
+            cli_params: &self.cli,
+            workflow: self.workflow.clone(),
+        };
+        let result = match name {
+            "start" => nextflow_plugins::start(&mut context).map(|()| Value::Null),
+            name => call("nf-schema", name, arguments, &mut context),
+        };
+        (printed(result), host.printed)
+    }
+}
+
+fn options(entries: &[(&str, Value)]) -> Value {
+    Value::map((entries.iter()).map(|(key, value)| (Value::string(*key), value.clone())))
+}
+
+/// `paramsHelp` in its short, full, parameter and text forms, as 2.7.3, 2.8.0 and 3.0.0 print it.
+#[test]
+fn help_matches_recordings() {
+    for (version, file) in [
+        ("2.7.3", "out-2.7.3.txt"),
+        ("2.8.0", "out-2.8.0.txt"),
+        ("3.0.0", "out-3.0.0.txt"),
+    ] {
+        let session = Session::new(version, "");
+        let parameter = |name: &str| match version {
+            "3.0.0" => vec![options(&[("parameter", Value::string(name))])],
+            _ => vec![options(&[]), Value::string(name)],
+        };
+        let texts = options(&[
+            ("beforeText", Value::string("BEFORE")),
+            ("afterText", Value::string("AFTER")),
+            ("command", Value::string("nextflow run probe --input x.csv")),
+            ("showHidden", Value::Boolean(true)),
+        ]);
+        for (name, arguments) in [
+            ("help short", vec![]),
+            (
+                "help full",
+                vec![options(&[("fullHelp", Value::Boolean(true))])],
+            ),
+            ("help parameter tool", parameter("tool")),
+            ("help parameter input", parameter("input")),
+            ("help missing", parameter("nope")),
+            ("help texts", vec![texts]),
+        ] {
+            let (output, _) = session.call("paramsHelp", arguments);
+            assert_eq!(output, recorded(file, name), "{version} {name}");
+        }
+    }
+}
+
+/// A summary map as Groovy's `JsonOutput.prettyPrint` writes it.
+fn pretty(value: &Value, depth: usize) -> String {
+    match value {
+        Value::Map(map) => {
+            let pad = "    ".repeat(depth + 1);
+            let items: Vec<String> = (map.borrow().entries.iter())
+                .map(|(key, value)| format!("{pad}\"{}\": {}", key.0, pretty(value, depth + 1)))
+                .collect();
+            format!("{{\n{}\n{}}}", items.join(",\n"), "    ".repeat(depth))
+        }
+        Value::Null => "null".to_owned(),
+        other => format!("\"{other}\""),
+    }
+}
+
+/// The `workflow` object of the summary probes, whose folders the mask hides.
+fn summary_workflow(run: &str, config: &str) -> Value {
+    let folder = "/home/someone/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema";
+    let text = |name: &str, value: &str| (Value::string(name), Value::string(value));
+    let properties = Value::map([
+        text("runName", run),
+        text("container", "quay.io/biocontainers/fastqc:0.12.1"),
+        text("launchDir", folder),
+        text("workDir", &format!("{folder}/work")),
+        text("projectDir", folder),
+        text("userName", "<user>"),
+        text("profile", "standard"),
+        (
+            Value::string("configFiles"),
+            Value::list(vec![Value::string(format!("{folder}/{config}"))]),
+        ),
+    ]);
+    Value::Object(Rc::new(RefCell::new(Object {
+        class: "nextflow.script.WorkflowMetadata",
+        state: State::Workflow(Workflow {
+            properties,
+            on_complete: Vec::new(),
+            on_error: Vec::new(),
+        }),
+    })))
+}
+
+/// Summaries with masks, `hideParams`, a text container and nested params: 3.0.0 leaves a
+/// null param out, 2.7.3 and 2.8.0 fail on it, and fail their log on a text container.
+#[test]
+fn summaries_match_recordings() {
+    for (version, params, file, run, config) in [
+        (
+            "3.0.0",
+            "summary.config",
+            "sum-3.0.0.txt",
+            "big_einstein",
+            "s3.0.0.config",
+        ),
+        (
+            "2.7.3",
+            "summary.config",
+            "sum-2.7.3.txt",
+            "x",
+            "s2.7.3.config",
+        ),
+        (
+            "3.0.0",
+            "summary2.config",
+            "sumt-3.0.0.txt",
+            "compassionate_jang",
+            "t3.0.0.config",
+        ),
+        (
+            "2.8.0",
+            "summary2.config",
+            "sumt-2.8.0.txt",
+            "compassionate_fermat",
+            "t2.8.0.config",
+        ),
+    ] {
+        let mut session = Session::with(params, version, "");
+        session.workflow = summary_workflow(run, config);
+        let modern = version == "3.0.0";
+        let with_workflow = |mut arguments: Vec<Value>| {
+            if !modern {
+                arguments.push(session.workflow.clone());
+            }
+            arguments
+        };
+        let folder = probe_folder();
+        let mut host = Probe {
+            launch: folder.clone(),
+            printed: String::new(),
+        };
+        let mut context = Context {
+            host: &mut host,
+            config: &session.config,
+            params: session.params.clone(),
+            project_dir: &folder,
+            cli_params: &[],
+            workflow: session.workflow.clone(),
+        };
+        let map = call(
+            "nf-schema",
+            "paramsSummaryMap",
+            with_workflow(vec![]),
+            &mut context,
+        );
+        let map = match map {
+            Ok(map) => format!("{}\n", pretty(&map, 0)),
+            Err(error) => printed(Err(error)),
+        };
+        assert_eq!(map, recorded(file, "summary map"), "{file}");
+        let log_options = options(&[
+            ("beforeText", Value::string("OPT-BEFORE\n")),
+            ("afterText", Value::string("\nOPT-AFTER")),
+        ]);
+        for (name, arguments) in [
+            ("summary log", vec![]),
+            ("summary log options", vec![log_options]),
+        ] {
+            let (output, _) = session.call("paramsSummaryLog", with_workflow(arguments));
+            let expected =
+                recorded(file, name).replace("GroovyCastException", "ClassCastException");
+            assert_eq!(output, expected, "{file} {name}");
+        }
+    }
+}
+
+/// The null params of `common.config` with defaults: 2.7.3 and 2.8.0 fail on any, 3.0.0 only
+/// on one whose default has `$projectDir`.
+#[test]
+fn summarizes_null_defaults() {
+    for (version, file) in [
+        ("2.7.3", "out-2.7.3.txt"),
+        ("2.8.0", "out-2.8.0.txt"),
+        ("3.0.0", "out-3.0.0.txt"),
+    ] {
+        let mut session = Session::new(version, "");
+        session.workflow = summary_workflow("x", "v.config");
+        let mut arguments = vec![];
+        if version != "3.0.0" {
+            arguments.push(session.workflow.clone());
+        }
+        for (name, function) in [
+            ("summary map", "paramsSummaryMap"),
+            ("summary log", "paramsSummaryLog"),
+        ] {
+            let (output, _) = session.call(function, arguments.clone());
+            assert_eq!(output, recorded(file, name), "{version} {name}");
+        }
+    }
+}
+
+/// `validateParameters` warns for the unknown `--ref`, and `samplesheetToList` converts the
+/// sheet with its texts as they are.
+#[test]
+fn validates_like_recordings() {
+    for (version, file) in [
+        ("2.7.3", "out-2.7.3.txt"),
+        ("2.8.0", "out-2.8.0.txt"),
+        ("3.0.0", "out-3.0.0.txt"),
+    ] {
+        let session = Session::new(version, "");
+        let (output, warned) = session.call("validateParameters", vec![]);
+        assert_eq!(output.replace("null", "valid"), recorded(file, "validate"));
+        assert_eq!(
+            warned,
+            "WARN: The following invalid input values have been detected:\n\n* --ref: genome.fa\n\n"
+        );
+        let arguments = vec![
+            Value::string("samplesheet.csv"),
+            Value::string("assets/schema_input.json"),
+        ];
+        let (output, _) = session.call("samplesheetToList", arguments);
+        assert_eq!(output, recorded(file, "samplesheet"), "{version}");
+    }
 }

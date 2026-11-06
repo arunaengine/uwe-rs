@@ -108,3 +108,118 @@ fn py_function(arguments: Vec<Value>, context: &mut Context) -> Result<Value, Er
     };
     let passed: Vec<(String, Value)> = (options.into_iter())
         .filter(|(name, _)| !RESERVED.contains(&name.as_str()))
+        .collect();
+    let encoded = exchange::encode_map(&passed).map_err(thrown)?.to_string();
+    let base = work_dir(context, &launch).join(".nf-python");
+    let hash = Sha256::digest(format!("{program}\0{source}\0{encoded}"));
+    let hex: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+    let folder = base.join(&hex[..2]).join(&hex[2..32]);
+    let failed =
+        |error: std::io::Error| thrown(format!("cannot prepare {}: {error}", folder.display()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).map_err(failed)?;
+    let library = base.join("lib");
+    std::fs::create_dir_all(library.join("nf_python")).map_err(failed)?;
+    std::fs::write(library.join("nf_python/__init__.py"), MODULE).map_err(failed)?;
+    let script = match file {
+        Some(file) => file,
+        None => {
+            let path = folder.join("script.py");
+            let text = format!("\nfrom nf_python import nf\n\n{}", dedent(&source));
+            std::fs::write(&path, text).map_err(failed)?;
+            path
+        }
+    };
+    std::fs::write(folder.join("in.json"), &encoded).map_err(failed)?;
+    let mut folders = vec![launch.clone()];
+    for extra in [&base, script.parent().unwrap_or(&launch)] {
+        if !extra.starts_with(&launch) && !folders.iter().any(|known| extra.starts_with(known)) {
+            folders.push(extra.to_owned());
+        }
+    }
+    let text = |path: PathBuf| path.to_string_lossy().into_owned();
+    let call = Call {
+        engine: context.host.environment("UWE_ENGINE").unwrap_or_default(),
+        image: setting(context.config.get(&["nf_python", "container"]))?
+            .unwrap_or(IMAGE.to_owned()),
+        program: program.clone(),
+        arguments: vec![text(script.clone())],
+        folders,
+        workdir: launch.clone(),
+        environment: vec![
+            ("NEXTFLOW_INFILE".to_owned(), text(folder.join("in.json"))),
+            ("NEXTFLOW_OUTFILE".to_owned(), text(folder.join("out.json"))),
+            ("PYTHONPATH".to_owned(), text(library)),
+        ],
+        stdout: folder.join("stdout.log"),
+        stderr: folder.join("stderr.log"),
+        status: folder.join(".exitcode"),
+    };
+    let ended = container::run(&call)
+        .map_err(|message| thrown(format!("nf-python could not run Python: {message}")))?;
+    let report = |first: &str, code: i32| report(first, &program, &script, code, &folder);
+    let output = folder.join("out.json");
+    let first = match ended {
+        Ended::Missing => {
+            return Err(thrown(format!(
+                "Cannot run program \"{program}\": Exec failed, error: 2 (No such file or \
+                 directory)"
+            )));
+        }
+        Ended::Exited(0) if output.exists() => {
+            let text = std::fs::read_to_string(&output)
+                .map_err(|error| thrown(format!("cannot read {}: {error}", output.display())))?;
+            let json = serde_json::from_str(&text).map_err(|error| thrown(error.to_string()))?;
+            return exchange::decode(&json, &launch.to_string_lossy()).map_err(thrown);
+        }
+        Ended::Exited(0) => ("Python script did not produce expected output file.", 0),
+        Ended::Exited(code) => ("Python script evaluation failed", code),
+    };
+    (context.host).print(&format!("ERROR ~ {}\n", report(first.0, first.1)));
+    Err(thrown(first.0))
+}
+
+/// The work directory of the run: `workDir` of the config, else `workflow.workDir`.
+pub(crate) fn work_dir(context: &Context, launch: &Path) -> PathBuf {
+    if let Some(folder) = context
+        .config
+        .get(&["workDir"])
+        .filter(|value| value.truth())
+    {
+        return launch.join(folder.to_string());
+    }
+    let found = entries(&context.workflow).into_iter();
+    let found = found.filter(|(name, _)| name == "workDir");
+    let found = found.map(|(_, value)| value.to_string()).next_back();
+    launch.join(found.unwrap_or("work".to_owned()))
+}
+
+/// The code without the indent of its first line that is not blank, cut from the lines that
+/// start with it; other lines stay as they are.
+fn dedent(code: &str) -> String {
+    let first = code
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default();
+    let indent = &first[..first.len() - first.trim_start_matches([' ', '\t']).len()];
+    let lines: Vec<&str> = (code.split('\n'))
+        .map(|line| line.strip_prefix(indent).unwrap_or(line))
+        .collect();
+    lines.join("\n")
+}
+
+/// The error report of a call: the command, the first and last lines it wrote to standard
+/// error, and its log files.
+fn report(first: &str, program: &str, script: &Path, code: i32, folder: &Path) -> String {
+    let stderr = std::fs::read_to_string(folder.join("stderr.log")).unwrap_or_default();
+    let lines: Vec<&str> = stderr.lines().collect();
+    let head = lines[..lines.len().min(10)].join("\n");
+    let tail = lines[lines.len().saturating_sub(10)..].join("\n");
+    let folder = folder.display();
+    format!(
+        "{first}\nCommand: {program} {} exited with exit code {code}\nFirst 10 lines of \
+         stderr:\n{head}\nLast 10 lines of stderr:\n{tail}\nCheck the log files in:\n\t\
+         '{folder}/stdout.log'\n\t'{folder}/stderr.log'",
+        script.display()
+    )
+}

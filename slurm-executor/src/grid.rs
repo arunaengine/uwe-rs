@@ -14,16 +14,18 @@ use executor::poll::{CANCEL_GRACE, Poll};
 use executor::registry::{self, ImageConfigs};
 use executor::wrapper::{MANIFEST, STDERR};
 use executor::{
-    Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, containers, place,
+    Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, Staging, containers,
+    place,
 };
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::backend::{explain, read_number, record, sync_files};
+use crate::remote::{Helper, Links, NodeStaging, records};
 use crate::script::{
-    CONTAINER_EXIT, Container, NOT_SEEN, SCRIPT, TIMED_OUT, check_binds, check_gpus, engine_marker,
-    job_script, shared_memory, size_memory,
+    CONTAINER_EXIT, Container, ENGINE_EXIT, LOG, NOT_SEEN, SCRIPT, TIMED_OUT, check_binds,
+    check_gpus, engine_marker, job_script, shared_memory, size_memory,
 };
 
 /// How long one call of a tool of the scheduler may take, as a busy scheduler answers slowly.
@@ -97,13 +99,15 @@ pub enum State {
 }
 
 /// A backend whose attempts run as jobs of the scheduler `S`, on nodes that see the scratch
-/// folder at the same path.
+/// folder at the same path or that get their files through a staging root.
 #[derive(Debug)]
 pub struct GridBackend<S> {
     pub scheduler: S,
     /// Where each attempt gets its folder.
     pub scratch: PathBuf,
     pub container: Container,
+    /// How the jobs get their files when the nodes share no folders with this machine.
+    pub remote: Option<NodeStaging>,
     /// How often the scheduler is asked about the jobs, at most.
     pub poll: Duration,
     /// How much longer than its task a job may run, for staging and the start of its container.
@@ -124,6 +128,12 @@ enum Ended {
     Held(String),
 }
 
+/// Where an attempt keeps its objects in the staging root.
+struct Staged {
+    prefix: String,
+    plan: String,
+}
+
 impl<S: Scheduler> GridBackend<S> {
     /// A backend whose attempts get their folders in `scratch` and run their tasks with
     /// `container`.
@@ -132,6 +142,7 @@ impl<S: Scheduler> GridBackend<S> {
             scheduler,
             scratch,
             container,
+            remote: None,
             poll: Duration::from_secs(10),
             staging_time: Duration::from_secs(5 * 60),
             proxy: None,
@@ -157,7 +168,11 @@ impl<S: Scheduler + std::fmt::Debug> Backend for GridBackend<S> {
         self.admit(job)?;
         tokio::fs::create_dir_all(&self.scratch).await?;
         let root = self.scratch.join(job.name);
-        let staging = job.staging.clone();
+        // Without shared folders the inputs go to the node through the staging root.
+        let staging = match self.remote {
+            Some(_) => Staging::default(),
+            None => job.staging.clone(),
+        };
         let folder = root.clone();
         let mounts = tokio::task::spawn_blocking(move || place(&folder, &staging))
             .await
@@ -173,7 +188,11 @@ impl<S: Scheduler + std::fmt::Debug> Backend for GridBackend<S> {
             }
             Ok(mounts) => mounts,
         };
-        let result = self.attempt(job, &root, &mounts, cancel).await;
+        let mut staged = None;
+        let result = self.attempt(job, &root, &mounts, &mut staged, cancel).await;
+        if let (Some(remote), Some(staged)) = (&self.remote, &staged) {
+            remote.stage.clean(&staged.prefix, &staged.plan).await;
+        }
         if result.is_err() {
             let _ = tokio::fs::remove_dir_all(&root).await;
         }
@@ -258,12 +277,13 @@ impl<S: Scheduler> GridBackend<S> {
     }
 
     /// Writes the wrapper and the job script of a placed attempt, submits the job and waits
-    /// for its end.
+    /// for its end. A plan in the staging root goes to `staged` as soon as it is there.
     async fn attempt(
         &self,
         job: Job<'_>,
         root: &Path,
         mounts: &[executor::process::Mount],
+        staged: &mut Option<Staged>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
         let mut spec = job.spec.clone();
@@ -275,7 +295,7 @@ impl<S: Scheduler> GridBackend<S> {
         let image = spec.image.as_ref().ok_or(ExecutorError::NoImage)?;
         let control = root.join(CONTROL);
         let engine = matches!(&self.container, Container::Engine(_));
-        if engine {
+        if engine && self.remote.is_none() {
             // The container can write its folder, so its removal proof stays outside it.
             tokio::fs::write(engine_marker(root), "0\n").await?;
         }
@@ -310,16 +330,21 @@ impl<S: Scheduler> GridBackend<S> {
         let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
         check_binds(&self.container, &run)?;
         let time = job.placement.time_seconds;
-        let wrapper = run.wrapper(spec);
-        tokio::fs::write(run.script(), &wrapper).await?;
-        let script = job_script(&self.container, &run, gpus, time, wrapper.len() as u64);
+        let script = match &self.remote {
+            Some(remote) => self.node_script(job, spec, run, remote, staged).await?,
+            None => {
+                let wrapper = run.wrapper(spec);
+                tokio::fs::write(run.script(), &wrapper).await?;
+                job_script(&self.container, &run, gpus, time, wrapper.len() as u64)
+            }
+        };
         let script = size_memory(&self.container, script, shm);
         let path = control.join(SCRIPT);
         let submission = Submission {
             job,
             root,
             script: &path,
-            remote: false,
+            remote: self.remote.is_some(),
             margin: self.staging_time.as_secs(),
             proxy: self.proxy.as_deref(),
         };
@@ -337,15 +362,27 @@ impl<S: Scheduler> GridBackend<S> {
         })?;
         tracing::debug!(job = id, attempt = job.name, "submitted {} job", S::NAME);
         self.queue.add(&id).await;
-        let ended = self.wait(&id, &control, cancel).await;
+        let prefix = staged.as_ref().map(|staged| staged.prefix.as_str());
+        let ended = self.wait(&id, &control, prefix, cancel).await;
         match &ended {
             Ok(Ended::Done(_) | Ended::Stopped(_)) => self.settle(&id).await,
             _ => self.stop(&id).await,
         }
         self.queue.remove(&id).await;
         let ended = ended?;
+        if let (Some(remote), Some(prefix)) = (&self.remote, prefix) {
+            let names = records();
+            executor::remote::patiently(|| remote.stage.collect(prefix, root, &names)).await?;
+            if matches!(ended, Ended::Done(0))
+                && read_number(&control.join(CONTAINER_EXIT)).await.is_none()
+            {
+                return Err(machine::<S>(
+                    "the staged completion record is missing".to_owned(),
+                ));
+            }
+        }
         self.scheduler.ended(root)?;
-        if engine && read_number(&engine_marker(root)).await == Some(1) {
+        if engine && self.remote.is_none() && read_number(&engine_marker(root)).await == Some(1) {
             tracing::warn!(
                 job = id,
                 "the node did not confirm the removal of the container"
@@ -354,12 +391,91 @@ impl<S: Scheduler> GridBackend<S> {
         self.finish(ended, root.to_owned(), job).await
     }
 
+    /// The job script of an attempt on a node without the shared folders: the files go through
+    /// the staging root, between stage-in and stage-out by the uwe helper.
+    async fn node_script(
+        &self,
+        job: Job<'_>,
+        spec: &task_model::TaskSpec,
+        run: ContainerRun<'_>,
+        remote: &NodeStaging,
+        staged: &mut Option<Staged>,
+    ) -> Result<String, ExecutorError> {
+        let text = |path: PathBuf| path.to_string_lossy().into_owned();
+        let root = run.root;
+        let (control, home) = (text(root.join(CONTROL)), text(root.join(executor::HOME)));
+        let (outbox, owner) = (text(root.join("outbox")), run.access.owner());
+        let folders = executor::wrapper::Folders {
+            work: &run.inside(),
+            control: &control,
+            home: &home,
+            outbox: &outbox,
+            owner: &owner,
+        };
+        let transfer = text(root.join(executor::helper::TRANSFER));
+        let wrapper = executor::wrapper::wrapper(spec, &folders);
+        let wrapper = executor::capture::capture(&wrapper, &transfer)?;
+        let extra = [("control/wrapper.sh", wrapper)];
+        let binary = match &remote.helper {
+            Helper::Upload(binary) => Some(remote.stage.binary(binary).await?),
+            _ => None,
+        };
+        let open = run.access.hand_back.is_some();
+        let planned = (remote.stage)
+            .plan(job, root, &extra, &[], &records(), open)
+            .await?;
+        *staged = Some(Staged {
+            prefix: planned.prefix.clone(),
+            plan: planned.plan.clone(),
+        });
+        let run = ContainerRun {
+            mounts: &planned.mounts,
+            ..run
+        };
+        check_binds(&self.container, &run)?;
+        // Without it, a job whose helper cannot start keeps its log on the node.
+        let log = match remote.stage.record(&planned.prefix, LOG).await {
+            Ok(log) => Some(log),
+            Err(error) => {
+                tracing::warn!(%error, "jobs cannot send their logs without the helper");
+                None
+            }
+        };
+        let engine = match &self.container {
+            Container::Engine(_) => {
+                (remote.stage)
+                    .write_record(&planned.prefix, ENGINE_EXIT, b"0\n")
+                    .await?;
+                Some(remote.stage.record(&planned.prefix, ENGINE_EXIT).await?)
+            }
+            Container::Apptainer(_) => None,
+        };
+        let links = Links {
+            plan: &planned.location,
+            binary: binary.as_deref(),
+            log: log.as_ref(),
+            engine: engine.as_ref(),
+        };
+        let gpus = job.placement.accelerators.iter().any(|gpu| gpu.count > 0);
+        let time = job.placement.time_seconds;
+        Ok(crate::remote::job_script(
+            &self.container,
+            &run,
+            remote,
+            gpus,
+            time,
+            links,
+        ))
+    }
+
     /// Waits for the record of the container, or for the scheduler to tell that the job ended
-    /// or is held.
+    /// or is held. A job that sends its records to `prefix` of the staging root shows its end
+    /// there.
     async fn wait(
         &self,
         id: &str,
         control: &Path,
+        prefix: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Ended, ExecutorError> {
         let mut poll = Poll::new(self.poll);
@@ -368,6 +484,13 @@ impl<S: Scheduler> GridBackend<S> {
             poll.read(cancel, std::future::ready(()))
                 .await
                 .map_err(|_| ExecutorError::Cancelled)?;
+            if let (Some(remote), Some(prefix), Some(root)) =
+                (&self.remote, prefix, control.parent())
+                && let Err(error) = remote.stage.fetch(prefix, CONTAINER_EXIT, root).await
+            {
+                // The staging root may fail for a moment; the job goes on meanwhile.
+                tracing::debug!(job = id, %error, "cannot look at the staging root");
+            }
             if let Some(status) = read_number(&control.join(CONTAINER_EXIT)).await {
                 return Ok(Ended::Done(status));
             }
@@ -440,6 +563,7 @@ impl<S: Scheduler> GridBackend<S> {
         job: Job<'_>,
     ) -> Result<Finished, ExecutorError> {
         let control = root.join(CONTROL);
+        let shared = self.remote.is_none();
         let recorded = match ended {
             Ended::Done(0) => record(job.spec, &control).await,
             _ => containers::recorded(job.spec, &control),
@@ -447,7 +571,7 @@ impl<S: Scheduler> GridBackend<S> {
         let time = job.placement.time_seconds;
         let (exit_code, note) = match outcome::<S>(recorded, &ended, time) {
             Ok(outcome) => outcome,
-            Err(message) => return Err(machine::<S>(explain(message, &root, true).await)),
+            Err(message) => return Err(machine::<S>(explain(message, &root, shared).await)),
         };
         if let Some(note) = note {
             use tokio::io::AsyncWriteExt;
@@ -473,7 +597,9 @@ impl<S: Scheduler> GridBackend<S> {
             usage: executor::Usage::of(&root),
             root,
         };
-        finished.collect_outputs(job.spec, job.staging)?;
+        if shared {
+            finished.collect_outputs(job.spec, job.staging)?;
+        }
         Ok(finished)
     }
 }

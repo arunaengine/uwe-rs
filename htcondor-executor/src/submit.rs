@@ -2,7 +2,6 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use slurm_executor::LOG;
 use slurm_executor::grid::Submission;
 
 /// The submit description of an attempt, beside its job script.
@@ -10,6 +9,9 @@ pub const SUBMIT_FILE: &str = "job.condor";
 
 /// HTCondor's event log of the job of an attempt, beside its job script.
 pub const EVENT_LOG: &str = "condor.log";
+
+/// Both streams of the job of an attempt, beside its job script.
+pub const JOB_LOG: &str = "condor.out";
 
 /// The submit description of the job of an attempt: its script, logs, file transfer, resources
 /// and time, the cluster options of its task, then `lines`, which come last and so win.
@@ -26,8 +28,8 @@ pub fn description(submission: &Submission<'_>, lines: &[String]) -> String {
         format!("executable = {}", submission.script.display()),
         format!("log = {}", path(EVENT_LOG)),
         // The same file for both streams makes HTCondor merge them.
-        format!("output = {}", path(LOG)),
-        format!("error = {}", path(LOG)),
+        format!("output = {}", path(JOB_LOG)),
+        format!("error = {}", path(JOB_LOG)),
         format!("initialdir = {}", submission.root.display()),
         format!("should_transfer_files = {transfer}"),
         "when_to_transfer_output = ON_EXIT".to_owned(),

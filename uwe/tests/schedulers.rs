@@ -266,6 +266,11 @@ fn runs_ospool_pipelines() {
     ] {
         assert!(submitted.contains(line), "{line} in {submitted}");
     }
+    let output = submitted.lines().find(|line| line.starts_with("output = "));
+    assert!(
+        output.is_some_and(|line| line.ends_with("/control/condor.out")),
+        "{submitted}"
+    );
     assert!(state.join("1002.condor").is_file());
     assert!(!state.join("removed").exists());
 }
@@ -316,6 +321,11 @@ fn runs_gadi_pipelines() {
     ] {
         assert!(script.contains(line), "{line} in {script}");
     }
+    let log = script.lines().find(|line| line.starts_with("#PBS -o "));
+    assert!(
+        log.is_some_and(|line| line.ends_with("/control/pbs.log")),
+        "{script}"
+    );
     let recorded = "Name,Process,Queue,Service Units,CPUs,CPU time,Used Walltime,\
                     Requested Walltime,Used Memory,Requested Memory,Used JobFS,Requested JobFS,\
                     Efficiency,Exit Code\n\

@@ -540,7 +540,7 @@ impl SlurmBackend {
                         root,
                         &extra,
                         &files,
-                        &records(),
+                        &records(LOG),
                         access.hand_back.is_some(),
                     )
                     .await?;
@@ -581,7 +581,7 @@ impl SlurmBackend {
                     ..links
                 };
                 let time = job.placement.time_seconds;
-                crate::remote::job_script(&self.container, &run, remote, gpus, time, links)
+                crate::remote::job_script(&self.container, &run, remote, gpus, time, links, LOG)
             }
             (None, true) => {
                 let wrapper = run.wrapper(spec);
@@ -695,7 +695,7 @@ impl SlurmBackend {
                 (ended, _) => break ended,
             }
         };
-        let names = records();
+        let names = records(LOG);
         if let (Some(remote), Some(prefix)) = (&self.remote, prefix)
             && let Err(error) =
                 executor::remote::patiently(|| remote.stage.collect(prefix, root, &names)).await
@@ -954,7 +954,7 @@ impl SlurmBackend {
         };
         let pulled = match pulled {
             Ok(path) => Ok(path),
-            Err(message) => Err(machine(explain(message, &root, true).await)),
+            Err(message) => Err(machine(explain(message, &root, LOG, true).await)),
         };
         if root.join("remote.json").try_exists()? {
             let journal = serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
@@ -1247,7 +1247,7 @@ impl SlurmBackend {
             let mut stage = remote.stage.clone();
             stage.cleanup = staging["cleanup"].as_bool().unwrap_or(stage.cleanup);
             if journal["collect"] == true {
-                stage.collect(prefix, root, &records()).await?;
+                stage.collect(prefix, root, &records(LOG)).await?;
                 let mut journal = journal.clone();
                 journal["collect"] = serde_json::json!(false);
                 journal_at(root, &journal)?;
@@ -1654,7 +1654,7 @@ async fn finish(
     };
     let (exit_code, note) = match outcome(recorded, &ended, time) {
         Ok(outcome) => outcome,
-        Err(message) => return Err(machine(explain(message, &root, shared).await)),
+        Err(message) => return Err(machine(explain(message, &root, LOG, shared).await)),
     };
     if let Some(note) = note {
         use tokio::io::AsyncWriteExt;
@@ -1770,8 +1770,8 @@ fn too_long(time: Option<u64>) -> String {
 /// A failure of the machine with the end of the job's log, or a hint when the job left none.
 /// A job on a node without the `shared` folders keeps its log beside its folder on the node
 /// when it could not send it back.
-pub(crate) async fn explain(message: String, root: &Path, shared: bool) -> String {
-    let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
+pub(crate) async fn explain(message: String, root: &Path, log_file: &str, shared: bool) -> String {
+    let log = tokio::fs::read_to_string(root.join(CONTROL).join(log_file)).await;
     if log.is_err() && !shared {
         return format!(
             "{message}, and sent back no log; look for uwe-{}.*.log in the node folder \
@@ -1929,7 +1929,7 @@ esac"#,
     async fn names_node_folder() {
         let folder = tempfile::tempdir().unwrap();
         let root = folder.path().join("run-P-1-1");
-        let text = explain("the job failed".into(), &root, false).await;
+        let text = explain("the job failed".into(), &root, LOG, false).await;
         let hint = "look for uwe-run-P-1-1.*.log in the node folder";
         assert!(text.contains(hint), "{text}");
     }

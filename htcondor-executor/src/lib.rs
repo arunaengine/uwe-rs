@@ -12,7 +12,7 @@ use slurm_executor::executable;
 use slurm_executor::grid::{GridBackend, Scheduler, State, Submission, call};
 use tokio::process::Command;
 
-pub use submit::{EVENT_LOG, SUBMIT_FILE, description};
+pub use submit::{EVENT_LOG, JOB_LOG, SUBMIT_FILE, description};
 
 /// The HTCondor tools that the backend runs. Runs need the first three; `condor_history` only
 /// tells how a job ended that left the queue.
@@ -77,6 +77,7 @@ impl Condor {
 
 impl Scheduler for Condor {
     const NAME: &'static str = "HTCondor";
+    const LOG: &'static str = JOB_LOG;
 
     async fn submit(&self, submission: &Submission<'_>) -> Result<String, String> {
         let file = submission.script.with_file_name(SUBMIT_FILE);

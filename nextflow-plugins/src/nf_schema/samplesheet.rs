@@ -7,6 +7,7 @@ use nextflow_evaluator::interpreter::{Error, parse_json, parse_yaml};
 use nextflow_evaluator::number::{BigDecimal, Number};
 use nextflow_evaluator::value::{PathValue, Value};
 
+use super::settings::{Settings, report};
 use super::{entries, errors, get, json, path, plain, read, schema, thrown};
 use crate::Context;
 
@@ -21,6 +22,7 @@ pub(super) fn to_list(
     _options: Option<&Value>,
     context: &mut Context,
 ) -> Result<Value, Error> {
+    let settings = Settings::read(context);
     let launch = context.host.launch_dir();
     let file = path(samplesheet, &launch);
     let schema = schema(schema_path, context)?;
@@ -60,11 +62,12 @@ pub(super) fn to_list(
             .iter()
             .map(|header| format!("\t- {header}"))
             .collect();
-        context.host.print(&format!(
-            "WARN: Found the following unidentified headers in {}:\n{}\n\n",
+        let message = format!(
+            "Found the following unidentified headers in {}:\n{}\n\n",
             file.uri(),
             headers.join("\n")
-        ));
+        );
+        report(context, settings.headers_level, &message)?;
     }
     Ok(Value::list(result))
 }

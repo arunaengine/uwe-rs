@@ -6,6 +6,7 @@
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
+use super::settings::{Settings, report};
 use super::{Schema, entries, errors, get, json, plain, schema, thrown, version};
 use crate::Context;
 
@@ -13,8 +14,9 @@ use crate::Context;
 /// Drops errors prefixed by ignored names; command-line text stays text, including `--n 7`.
 /// See the crate README for the nf-schema parameter contract.
 pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result<Value, Error> {
+    let settings = Settings::read(context);
     let schema = parameters_schema(options, context)?;
-    let ignored = ignored(context);
+    let ignored = &settings.ignored;
     let groups = groups(&schema.tree);
     let mut instance = serde_json::Map::new();
     // The names of the params in the order they were set, which the JSON map loses.
@@ -49,10 +51,10 @@ pub(super) fn validate(options: Option<&Value>, context: &mut Context) -> Result
     }
     if !unknown.is_empty() {
         let message = format!(
-            "WARN: The following invalid input values have been detected:\n\n{}\n\n",
+            "The following invalid input values have been detected:\n\n{}\n\n",
             unknown.join("\n")
         );
-        context.host.print(&message);
+        report(context, settings.params_level, &message)?;
     }
     let mut instance = serde_json::Value::Object(instance);
     if casts(options, context) {
@@ -187,18 +189,6 @@ pub(super) fn parameters_schema(
         .filter(Value::truth)
         .unwrap_or_else(|| Value::string("nextflow_schema.json"));
     schema(&path, context)
-}
-
-/// The params that validation skips: `validation.ignoreParams` and
-/// `validation.defaultIgnoreParams`.
-fn ignored(context: &Context) -> Vec<String> {
-    let mut names = Vec::new();
-    for setting in ["ignoreParams", "defaultIgnoreParams"] {
-        if let Some(Value::List(list)) = context.config.get(&["validation", setting]) {
-            names.extend(list.borrow().items.iter().map(Value::to_string));
-        }
-    }
-    names
 }
 
 /// The groups of a parameters schema, by title, in the order of `$defs`, then the params

@@ -7,6 +7,7 @@ mod help;
 mod params;
 pub(crate) mod paths;
 mod samplesheet;
+mod settings;
 mod summary;
 
 use std::rc::Rc;
@@ -15,6 +16,8 @@ use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, parse_json};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{Key, PathValue, State, Value};
+
+pub(crate) use settings::start;
 
 use crate::Context;
 
@@ -52,11 +55,6 @@ pub(crate) fn call(
             span: Default::default(),
         }),
     }
-}
-
-/// What nf-schema does when a run starts, before the script runs.
-pub(crate) fn start(_context: &mut Context) -> Result<(), Error> {
-    Ok(())
 }
 
 /// `validate`: the errors of a value against a schema. With `exitOnError`, which is on by
@@ -161,6 +159,18 @@ pub(crate) fn json(value: &Value) -> serde_json::Value {
                 .collect(),
         ),
         other => serde_json::Value::String(other.to_string()),
+    }
+}
+
+/// Whether the selected nf-schema is this version or newer. Without a pin it is 3.0.0, the
+/// latest release; 3.1.0 runs only when a config pins it.
+pub(crate) fn since(context: &Context, wanted: [u32; 3]) -> bool {
+    match version(context) {
+        Some(mut parts) => {
+            parts.resize(3.max(parts.len()), 0);
+            parts.as_slice() >= wanted.as_slice()
+        }
+        None => wanted <= [3, 0, 0],
     }
 }
 

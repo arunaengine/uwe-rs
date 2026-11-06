@@ -1,11 +1,18 @@
+//! nf-fl86 0.6.4: guards and records a run in `<outdir>/pipeline_info`, tells a Notion tracker
+//! when it begins and ends, keeps S3 tags on publishing and launches a follow-up Seqera Action.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod secrets;
 mod seqera;
+mod tags;
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread::JoinHandle;
+use std::time::Duration;
 
+use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, parse_json};
 use nextflow_evaluator::value::Value;
 
@@ -14,18 +21,27 @@ use crate::catalogue::{Kind, Plugin, State};
 use crate::nf_report::files::time;
 use crate::nf_schema::get;
 use crate::nf_sqldb::thrown;
+use crate::observer::{Background, Event, Observer, Start};
 use crate::report_format::{Json, NEXTFLOW_VERSION};
 use secrets::Access;
+use tags::Store;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &["getAWSSecret", "call_seqera_action"],
     call: Some(call),
     scopes: &["notion", "seqera_action"],
+    observer: Some(activate),
     ..Plugin::new("nf-fl86", Kind::Observer, State::Partial)
 };
 
 /// The Seqera Platform API when the call or the config names none.
 const PLATFORM: &str = "https://api.cloud.seqera.io";
+
+/// How long the end of the run waits for the Notion update and the Seqera Action.
+const WAIT: Duration = Duration::from_secs(300);
+
+/// How long one Notion request may take.
+const NOTION_LIMIT: Duration = Duration::from_secs(20);
 
 fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error> {
     let text = |place: usize| match arguments.get(place) {
@@ -238,4 +254,300 @@ fn metadata(context: &Context) -> Json {
         ("resume", Json::Bool(property("resume").truth())),
         ("nextflowVersion", Json::from(NEXTFLOW_VERSION)),
     ])
+}
+
+/// What the run end of a successful run launches: a Seqera Action.
+#[derive(Clone, Debug)]
+struct Action {
+    token: Option<String>,
+    region: Option<String>,
+    action: Option<String>,
+    workspace: Option<String>,
+    run_name: Option<String>,
+    suffix: Option<String>,
+    params: Option<String>,
+    launch: Option<serde_json::Value>,
+    base: String,
+}
+
+/// The settings that the worker needs.
+#[derive(Clone, Debug)]
+struct Settings {
+    beginning: Option<String>,
+    completion: Option<String>,
+    action: Option<Action>,
+    access: Access,
+}
+
+fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+    let text = |path: &[&str]| {
+        let found = config
+            .get(path)
+            .filter(|value| !matches!(value, Value::Null));
+        found
+            .map(|value| value.to_string().trim().to_owned())
+            .filter(|value| !value.is_empty())
+    };
+    let access = Access::of(config, &|name| std::env::var(name).ok());
+    let action = config
+        .get(&["seqera_action"])
+        .filter(|value| value.truth())
+        .map(|_| Action {
+            token: text(&["seqera_action", "aws_token_name"]),
+            region: text(&["seqera_action", "aws_region"]),
+            action: text(&["seqera_action", "action"]),
+            workspace: text(&["seqera_action", "workspace"]),
+            run_name: text(&["seqera_action", "run_name"]),
+            suffix: text(&["seqera_action", "run_name_suffix"]),
+            params: text(&["seqera_action", "params"]),
+            launch: config
+                .get(&["seqera_action", "launch_params"])
+                .map(|value| crate::nf_schema::json(&value)),
+            base: text(&["seqera_action", "api_base"]).unwrap_or(PLATFORM.to_owned()),
+        });
+    let settings = Settings {
+        beginning: text(&["notion", "beginning_endpoint"]),
+        completion: text(&["notion", "complete_endpoint"]),
+        action,
+        access: access.clone(),
+    };
+    let store = Store {
+        access,
+        endpoint: text(&["aws", "client", "endpoint"]),
+    };
+    let mut start: Option<Box<Start>> = None;
+    let worker = Background::start("nf-fl86", WAIT, move |event| match event {
+        Event::RunStarted(begun) => {
+            write_params(&begun);
+            notion(settings.beginning.as_deref(), &begun.run_name, "beginning");
+            start = Some(begun);
+        }
+        Event::RunEnded(end) if end.success => {
+            let Some(begun) = &start else {
+                return;
+            };
+            notion(
+                settings.completion.as_deref(),
+                &begun.run_name,
+                "completion",
+            );
+            if let Some(action) = &settings.action {
+                follow(action, begun, &settings.access);
+            }
+        }
+        _ => {}
+    })
+    .map_err(|error| error.to_string())?;
+    Ok(Some(Box::new(Fl86 {
+        worker,
+        tags: Tags::start(store),
+    })))
+}
+
+/// `pipeline_info/params.json`: the params, top-level keys sorted.
+fn write_params(start: &Start) {
+    let folder =
+        outdir(&start.params, &start.config, Path::new(&start.launch_dir)).join("pipeline_info");
+    let text = Json::from(&start.params).pretty();
+    let written = std::fs::create_dir_all(&folder)
+        .and_then(|()| std::fs::write(folder.join("params.json"), text));
+    match written {
+        Ok(()) => tracing::info!("Workflow parameters written to pipeline_info/params.json"),
+        Err(_) => {
+            tracing::warn!("Failed to write workflow parameters to pipeline_info/params.json")
+        }
+    }
+}
+
+/// The first `NGSRUN<digits>` of a run name, or with `QE` before it when `qe` allows that.
+fn identifier(run_name: &str, qe: bool) -> Option<String> {
+    for (at, _) in run_name.match_indices("NGSRUN") {
+        let digits: String = run_name[at + 6..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        if !digits.is_empty() {
+            let start = if qe && run_name[..at].ends_with("QE") {
+                at - 2
+            } else {
+                at
+            };
+            return Some(format!("{}{digits}", &run_name[start..at + 6]));
+        }
+    }
+    None
+}
+
+/// Sends the Notion update of a phase; never fails the run.
+fn notion(template: Option<&str>, run_name: &str, phase: &str) {
+    let Some(template) = template else {
+        return;
+    };
+    let incomplete =
+        |reason: &str| tracing::warn!("Notion {phase} update was not completed: {reason}");
+    let Some(id) = identifier(run_name, false) else {
+        return incomplete("workflow run name does not contain an NGSRUN identifier");
+    };
+    // The plugin replaces `{NGSRUN}` first, so `${NGSRUN}` keeps its `$`.
+    let mut url = template.to_owned();
+    for (placeholder, value) in [
+        ("{NGSRUN}", id.as_str()),
+        ("{ngsrun}", id.as_str()),
+        ("${NGSRUN}", id.as_str()),
+        ("${ngsrun}", id.as_str()),
+        ("{seqeraPlatformUrl}", ""),
+        ("${seqeraPlatformUrl}", ""),
+    ] {
+        url = url.replace(placeholder, value);
+    }
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return incomplete("endpoint must use HTTP or HTTPS");
+    }
+    let (Ok(client), Ok(runtime)) = (
+        storage::http_client(),
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build(),
+    ) else {
+        return incomplete("request could not be completed");
+    };
+    let request = (client.post(url).timeout(NOTION_LIMIT))
+        .header("X-HTTP-Method-Override", "PATCH")
+        .header("Content-Type", "application/json")
+        .body(Vec::new());
+    match runtime.block_on(async {
+        request
+            .send()
+            .await
+            .map(|response| response.status().as_u16())
+    }) {
+        Ok(200..=299) => tracing::info!("Notion {phase} update completed"),
+        Ok(status) => incomplete(&format!("HTTP status {status}")),
+        Err(_) => incomplete("request could not be completed"),
+    }
+}
+
+/// Launches the configured Seqera Action after a successful run; never fails the run.
+fn follow(action: &Action, start: &Start, access: &Access) {
+    if identifier(&start.run_name, true).is_none() {
+        tracing::info!(
+            "Seqera action launch skipped because the completed workflow run name does not contain \
+             an NGSRUN or QENGSRUN identifier"
+        );
+        return;
+    }
+    let params = match (&action.params, &action.launch) {
+        (Some(text), _) => serde_json::from_str::<serde_json::Value>(text)
+            .ok()
+            .filter(serde_json::Value::is_object),
+        (None, Some(launch)) => Some(launch.clone()),
+        (None, None) => {
+            let folder = outdir(&start.params, &start.config, Path::new(&start.launch_dir));
+            Some(serde_json::json!({ "input_dir": folder.to_string_lossy() }))
+        }
+    };
+    let (Some(name), Some(id), Some(workspace), Some(params)) =
+        (&action.token, &action.action, &action.workspace, params)
+    else {
+        tracing::warn!("Seqera action configuration was invalid; follow-up launch skipped");
+        return;
+    };
+    let run_name = match (&action.run_name, &action.suffix) {
+        (Some(name), _) => name.clone(),
+        (None, Some(suffix)) => format!("{}{suffix}", start.run_name),
+        (None, None) => start.run_name.clone(),
+    };
+    let token = match secrets::secret(name, action.region.as_deref(), access) {
+        Ok(secret) => {
+            tracing::info!("Seqera action AWS secret retrieved successfully");
+            match secret.starts_with('{') {
+                true => serde_json::from_str::<serde_json::Value>(&secret)
+                    .ok()
+                    .and_then(|value| value["TOWER_ACCESS_TOKEN"].as_str().map(str::to_owned))
+                    .unwrap_or_default(),
+                false => secret,
+            }
+        }
+        Err(_) => {
+            tracing::warn!(
+                "Seqera action AWS secret could not be retrieved; follow-up launch skipped"
+            );
+            return;
+        }
+    };
+    tracing::info!("Calling configured Seqera action");
+    match seqera::launch(&token, &run_name, &params, id, workspace, &action.base) {
+        Ok(_) => tracing::info!("Seqera action launch completed successfully"),
+        Err(reason) => tracing::warn!("Seqera action launch was not completed: {reason}"),
+    }
+}
+
+/// The observer: Notion and the Seqera Action on a background worker, S3 tags on a worker
+/// whose failures the check at the end of the run reports.
+struct Fl86 {
+    worker: Background,
+    tags: Tags,
+}
+
+impl Observer for Fl86 {
+    fn notify(&mut self, event: &Event) {
+        if let Event::FilePublished { source, target } = event
+            && source.starts_with("s3://")
+            && target.starts_with("s3://")
+        {
+            self.tags.send(source, target);
+        }
+        self.worker.notify(event);
+    }
+
+    fn check(&mut self) -> Result<(), String> {
+        self.tags.finish()
+    }
+}
+
+/// A worker thread that copies S3 tags, and keeps the first failure.
+struct Tags {
+    sender: Option<mpsc::Sender<(String, String)>>,
+    worker: Option<JoinHandle<Option<String>>>,
+}
+
+impl Tags {
+    fn start(store: Store) -> Tags {
+        let (sender, published) = mpsc::channel::<(String, String)>();
+        let worker = std::thread::Builder::new()
+            .name("nf-fl86-tags".to_owned())
+            .spawn(move || {
+                let mut failure = None;
+                for (source, target) in published {
+                    if failure.is_none()
+                        && let Err(message) = tags::keep(&store, &source, &target)
+                    {
+                        failure = Some(message);
+                    }
+                }
+                failure
+            });
+        if let Err(error) = &worker {
+            tracing::warn!(%error, "nf-fl86 cannot keep S3 tags");
+        }
+        Tags {
+            sender: Some(sender),
+            worker: worker.ok(),
+        }
+    }
+
+    fn send(&self, source: &str, target: &str) {
+        if let Some(sender) = &self.sender {
+            let _ = sender.send((source.to_owned(), target.to_owned()));
+        }
+    }
+
+    /// Waits for the copies that are left; the first failure fails the run.
+    fn finish(&mut self) -> Result<(), String> {
+        self.sender.take();
+        match self.worker.take().map(JoinHandle::join) {
+            Some(Ok(Some(message))) => Err(message),
+            _ => Ok(()),
+        }
+    }
 }

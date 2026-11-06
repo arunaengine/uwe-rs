@@ -9,6 +9,7 @@ use base64::Engine;
 use serde_json::{Value as Json, json};
 
 use super::{Connection, Datum, Table};
+use crate::service::safe_url;
 
 /// A SQL warehouse and the token, catalog and schema of its statements.
 #[derive(Clone, PartialEq)]
@@ -177,8 +178,9 @@ impl Databricks {
         ];
         let url = format!("{}{path}", self.base);
         let body = body.map(|body| body.to_string().into_bytes());
-        let answer =
-            storage::exchange(method, &url, &headers, body).map_err(|error| error.to_string())?;
+        // The error's text holds the full address, so the message names only the safe part.
+        let answer = storage::exchange(method, &url, &headers, body)
+            .map_err(|_| format!("cannot reach Databricks at {}", safe_url(&self.base)))?;
         let reply: Json = serde_json::from_slice(&answer.body).unwrap_or_default();
         if answer.status < 300 {
             return Ok(reply);

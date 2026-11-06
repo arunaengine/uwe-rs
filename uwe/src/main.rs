@@ -104,7 +104,7 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe origin <file>
        uwe digest <path>
        uwe time <run> [-format text|json]
-       uwe compare <run> [<run>] [-format text|json]
+       uwe compare <run> [<run>] [-format text|json] [-report <file>] [-fail-on-change]
        uwe replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
        uwe telemetry <run> [-output <file>]
        uwe report <run> [-output <file>]
@@ -195,7 +195,9 @@ options:
                                       container
   -page                               serves the web page of the run while it goes on
   -report <file>                      writes the report of the run when it ends: one HTML
-                                      file with the page of the run, to open without a server
+                                      file with the page of the run, to open without a server;
+                                      for `compare`, the report of the comparison as JSON
+  -fail-on-change                     `compare` ends with exit code 3 when the runs differ
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)
   -output <folder or file>            where `export` writes the RO-Crate (default: <run>-crate),

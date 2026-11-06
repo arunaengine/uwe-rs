@@ -31,6 +31,8 @@ pub(crate) struct Call {
     pub arguments: Vec<String>,
     /// Mounted read-write at the same path inside the container.
     pub folders: Vec<PathBuf>,
+    /// Further mounts, like those that a call asks for.
+    pub mounts: Vec<Mount>,
     pub workdir: PathBuf,
     pub environment: Vec<(String, String)>,
     pub stdout: PathBuf,
@@ -78,6 +80,7 @@ pub(crate) fn run(call: &Call) -> Result<Ended, String> {
                 target: text(folder),
                 read_only: false,
             })
+            .chain(call.mounts.iter().cloned())
             .collect(),
         workdir: Some(text(&call.workdir)),
         environment,

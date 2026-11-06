@@ -145,6 +145,7 @@ fn py_function(arguments: Vec<Value>, context: &mut Context) -> Result<Value, Er
         program: program.clone(),
         arguments: vec![text(script.clone())],
         folders,
+        mounts: Vec::new(),
         workdir: launch.clone(),
         environment: vec![
             ("NEXTFLOW_INFILE".to_owned(), text(folder.join("in.json"))),

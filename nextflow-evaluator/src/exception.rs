@@ -88,6 +88,11 @@ const CLASSES: &[(&str, &str, &str)] = &[
         "RuntimeException",
     ),
     (
+        "HdfException",
+        "io.jhdf.exceptions.HdfException",
+        "RuntimeException",
+    ),
+    (
         "IllegalArgumentException",
         "java.lang.IllegalArgumentException",
         "RuntimeException",

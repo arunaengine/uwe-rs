@@ -12,8 +12,11 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+flate2.workspace = true
+hdf5-pure.workspace = true
 jsonschema.workspace = true
 lettre.workspace = true
+lz4_flex.workspace = true
 md-5.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
@@ -22,6 +25,7 @@ storage.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+zstd.workspace = true
 
 [dev-dependencies]
 nextflow-runtime.workspace = true

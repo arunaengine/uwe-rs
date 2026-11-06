@@ -7,17 +7,20 @@ mod common;
 #[path = "common/fake.rs"]
 mod fake;
 
-use fake::Fake;
+use fake::{Fake, Request, recorded};
 use serde_json::{Value, json};
 
 const INSTANCE: &str = "11111111-2222-3333-4444-555555555555";
 
-/// Answers like the fake of the recordings.
+/// Answers like the fake of the recordings, with fixed ids and uids.
 fn routes(settings: Value) -> Value {
     json!([
         {"match": "get-jwt-v1", "body": {"accessToken": "fake.jwt.token"}},
         {"match": "get-instance-settings-v1", "body": settings},
         {"match": "/api/account", "body": {"handle": "demo-user"}},
+        {"method": "POST", "match": "/core/transform?", "body": []},
+        {"match": "/transforms", "body": {"body": {"transform": {"id": 1, "uid": "TRANSFORM0001"}}}},
+        {"method": "PUT", "match": "/core/run", "body": [{"id": 5, "uid": "RUN0001"}]},
         {"match": "/", "body": {}}
     ])
 }
@@ -54,6 +57,94 @@ fn run(script: &str, fake: &Fake, extra: &str, name: &str) -> (String, Option<St
         execution.error.map(|error| error.to_string()),
         printed,
     )
+}
+
+/// The method and path of a request, with the instance and record uids left out.
+fn shape(method: &str, path: &str) -> String {
+    let mut path = path.replace(INSTANCE, "<instance>");
+    for model in ["run", "artifact"] {
+        let marker = format!("/core/{model}/");
+        if let Some(place) = path.find(&marker) {
+            path.truncate(place + marker.len());
+            path.push_str("<uid>");
+        }
+    }
+    format!("{method} {path}")
+}
+
+fn shapes(requests: &[Request]) -> Vec<String> {
+    (requests.iter())
+        .map(|request| shape(&request.method, &request.path))
+        .collect()
+}
+
+fn bodies(requests: &[Request], method: &str, part: &str) -> Vec<Value> {
+    (requests.iter())
+        .filter(|request| request.method == method && request.path.contains(part))
+        .map(Request::json)
+        .collect()
+}
+
+#[test]
+fn records_run() {
+    let fake = Fake::start(routes(instance()));
+    let (project, error, _) = run("main.nf", &fake, "", "prickly_archimedes");
+    assert_eq!(error, None);
+    let requests = fake.requests();
+    let expected: Vec<String> = (recorded(include_str!("fixtures/nf_lamin/req-basic.log")).iter())
+        .map(|line| {
+            shape(
+                line["method"].as_str().unwrap_or_default(),
+                line["path"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(shapes(&requests), expected);
+    assert_eq!(requests[0].json(), json!({"api_key": "not-a-real-key"}));
+    assert_eq!(
+        requests[0].header("Authorization"),
+        Some("Bearer fake-anon-key")
+    );
+    assert_eq!(
+        requests[2].header("Authorization"),
+        Some("Bearer fake.jwt.token")
+    );
+    let filter = json!({"filter": {"and": [{"key": {"eq": project}},
+                                            {"version_tag": {"eq": "local-development"}}]}});
+    assert_eq!(requests[3].json(), filter);
+    let transform = requests[4].json();
+    assert_eq!(
+        transform["source_code"],
+        format!("repo: {project}\npath: main.nf")
+    );
+    assert_eq!(
+        transform["kwargs"],
+        json!({"reference": project, "version_tag": "local-development",
+               "description": "demo/probe: probe", "reference_type": "url"})
+    );
+    let created = requests[5].json();
+    assert_eq!(
+        (created["transform_id"].clone(), created["name"].clone()),
+        (json!(1), json!("prickly_archimedes"))
+    );
+    assert_eq!(created["_status_code"], -3);
+    let time = created["created_at"].as_str().unwrap_or_default();
+    assert!(time.len() == 32 && time.ends_with("+00:00"), "{time}");
+    assert_eq!(requests[6].json()["_status_code"], -1);
+    assert_eq!(requests[7].json()["_status_code"], 0);
+    assert!(requests[7].path.ends_with("/core/run/RUN0001"));
+}
+
+#[test]
+fn marks_failed_run() {
+    let fake = Fake::start(routes(instance()));
+    let (_, error, _) = run("fail.nf", &fake, "", "failing_run");
+    assert!(error.is_some());
+    let ended = bodies(&fake.requests(), "PATCH", "/core/run/");
+    assert_eq!(
+        ended.last().map(|body| body["_status_code"].clone()),
+        Some(json!(1))
+    );
 }
 
 #[test]

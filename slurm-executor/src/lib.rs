@@ -1,4 +1,3 @@
-//! Runs task attempts as SLURM jobs using configured container runtimes.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

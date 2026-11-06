@@ -136,7 +136,6 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-cmgg", Kind::Functions),
     crate::nf_dotenv::PLUGIN,
     crate::nf_ped::PLUGIN,
-    planned("nf-pregex", Kind::Functions),
     crate::nf_versions::PLUGIN,
     // Functions that read data, query services or run code in containers.
     planned("nf-crg-report", Kind::Functions),

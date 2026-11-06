@@ -551,3 +551,18 @@ impl Tags {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_run_identifiers() {
+        assert_eq!(
+            identifier("probe_NGSRUN123_x", false).as_deref(),
+            Some("NGSRUN123")
+        );
+        assert_eq!(identifier("QENGSRUN7", true).as_deref(), Some("QENGSRUN7"));
+        assert_eq!(identifier("NGSRUN_x", false), None);
+    }
+}

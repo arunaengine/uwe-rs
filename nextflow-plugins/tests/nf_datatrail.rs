@@ -1,5 +1,5 @@
 //! nf-datatrail against the files that nf-datatrail 0.0.1 wrote with Nextflow 26.04.6 for the
-//! probe pipeline `main.nf`: its `summary.csv`.
+//! probe `main.nf`: a detailed graph with its summary.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -22,6 +22,22 @@ fn run(scope: &str, name: &str) -> (tempfile::TempDir, Option<String>) {
     (directory, execution.error.map(|error| error.to_string()))
 }
 
+/// The two `SAY` tasks under one name, as their order differs between runs.
+fn same(text: &str) -> String {
+    text.replace("SAY (a)", "SAY (x)")
+        .replace("SAY (b)", "SAY (x)")
+        .replace("\"cluster_a\"", "\"cluster_x\"")
+        .replace("\"cluster_b\"", "\"cluster_x\"")
+        .replace("label=\"a\"", "label=\"x\"")
+        .replace("label=\"b\"", "label=\"x\"")
+}
+
+fn lines(text: &str) -> Vec<String> {
+    let mut lines: Vec<String> = same(text).lines().map(str::to_owned).collect();
+    lines.sort();
+    lines
+}
+
 fn read(path: &Path) -> String {
     std::fs::read_to_string(path).expect("reads the output")
 }
@@ -38,13 +54,17 @@ fn without_hash(text: &str, delimiter: char) -> Vec<String> {
 }
 
 #[test]
-fn writes_lists() {
-    let scope = "  input = '{out}/input.csv'\n  output = '{out}/output.csv'\n  summary = \
-                 '{out}/summary.csv'\n";
+fn writes_detailed_graph() {
+    let scope = "  overwrite = true\n  plot { file = '{out}/dag.dot'; detailed = true }\n\n  input = '{out}/input.csv'\n  output = \
+                 '{out}/output.csv'\n  summary = '{out}/summary.csv'\n";
     let (directory, error) = run(scope, "detailed_run");
     assert_eq!(error, None);
     let out = directory.path().join("out");
     let fixtures = common::fixtures("nf_datatrail");
+    assert_eq!(
+        lines(&read(&out.join("dag.dot"))),
+        lines(&read(&fixtures.join("dag.dot")))
+    );
     assert_eq!(
         without_hash(&read(&out.join("summary.csv")), ';'),
         without_hash(&read(&fixtures.join("summary.csv")), ';')

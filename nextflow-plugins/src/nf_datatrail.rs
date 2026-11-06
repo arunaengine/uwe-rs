@@ -1,5 +1,5 @@
-//! nf-datatrail 0.0.1: records the files that each task read and wrote, as CSV lists while
-//! the tasks run and as a per-task summary at the end of the run.
+//! nf-datatrail 0.0.1: records the files that each task read and wrote, and writes them at the
+//! end of the run as CSV lists, a per-task summary, and a graph of tasks in DOT.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -9,6 +9,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use nextflow_config::Config;
+use nextflow_evaluator::regex::Pattern;
+use nextflow_evaluator::units::memory_text;
 use nextflow_evaluator::value::Value;
 
 use crate::catalogue::{Kind, Plugin, State};
@@ -22,10 +24,21 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 
 /// What the `datatrail` scope asks for.
 struct Settings {
+    plot: Option<Plot>,
     input: Option<String>,
     output: Option<String>,
     summary: Option<String>,
     delimiter: String,
+}
+
+/// How the graph is drawn.
+struct Plot {
+    file: String,
+    rankdir: String,
+    detailed: bool,
+    external: bool,
+    legend: bool,
+    filter: Vec<Pattern>,
 }
 
 fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
@@ -85,6 +98,30 @@ impl Settings {
             },
         };
         let overwrite = flag(&["overwrite"], false);
+        let plot = match text(&["plot", "file"]) {
+            None => None,
+            Some(file) => {
+                let filter = match get(&["plot", "filter"]) {
+                    Some(Value::List(list)) => {
+                        list.borrow().items.iter().map(Value::to_string).collect()
+                    }
+                    Some(other) => vec![other.to_string()],
+                    None => Vec::new(),
+                };
+                let filter = (filter.iter())
+                    .map(|text| Pattern::new(text).map_err(|error| error.to_string()))
+                    .collect::<Result<Vec<_>, _>>()?;
+                prepare(&launch.join(&file), &file, "DAG", overwrite)?;
+                Some(Plot {
+                    rankdir: text(&["plot", "rankdir"]).unwrap_or_else(|| "TB".to_owned()),
+                    detailed: flag(&["plot", "detailed"], false),
+                    external: flag(&["plot", "external"], true),
+                    legend: flag(&["plot", "legend"], true),
+                    file,
+                    filter,
+                })
+            }
+        };
         let mut lists = Vec::new();
         for (key, name) in [
             ("input", "Input"),
@@ -100,13 +137,14 @@ impl Settings {
             }
             lists.push(path);
         }
-        if lists.iter().all(Option::is_none) {
+        if plot.is_none() && lists.iter().all(Option::is_none) {
             return Ok(None);
         }
         let summary = lists.pop().flatten();
         let output = lists.pop().flatten();
         let input = lists.pop().flatten();
         Ok(Some(Settings {
+            plot,
             input,
             output,
             summary,
@@ -161,6 +199,7 @@ struct Datatrail {
 struct Record {
     id: i64,
     name: String,
+    process: String,
     hash: String,
     inputs: Vec<Entry>,
     outputs: Vec<Entry>,
@@ -203,6 +242,7 @@ impl Datatrail {
                 .and_then(serde_json::Value::as_i64)
                 .unwrap_or(0),
             name: text("name").unwrap_or_default(),
+            process: text("process").unwrap_or_default(),
             hash: task.hash.clone(),
             inputs: Vec::new(),
             outputs: Vec::new(),
@@ -260,10 +300,30 @@ impl Datatrail {
         }
     }
 
-    /// Writes the summary, and closes the lists.
+    /// Writes the graph and the summary, and closes the lists.
     fn finish(&mut self) {
         self.inputs = None;
         self.outputs = None;
+        if let Some(plot) = &self.settings.plot {
+            println!("Rendering datatrail graph to file: {}", plot.file);
+            let graph = Graph::of(&self.tasks, plot);
+            let target = self.launch.join(&plot.file);
+            let dot = match target.extension().and_then(|extension| extension.to_str()) {
+                Some("dot") => target.clone(),
+                _ => {
+                    tracing::warn!(
+                        "Graphviz is required to render the execution DAG in the given format -- \
+                         See http://www.graphviz.org for more info."
+                    );
+                    target.with_extension("dot")
+                }
+            };
+            let name = (target
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned()))
+            .unwrap_or_default();
+            write(&dot, &graph.dot(&self.tasks, plot, &name));
+        }
         if let Some(summary) = &self.settings.summary {
             write(&self.launch.join(summary), &self.summary());
         }
@@ -302,6 +362,232 @@ impl Datatrail {
             text.push_str(&fields.join(delimiter));
             text.push('\n');
         }
+        text
+    }
+}
+
+/// The node graph of the tasks that the filter shows.
+struct Graph {
+    /// The node id of each shown task, by place.
+    nodes: Vec<Option<String>>,
+    /// The external point of each shown task that read files no task made.
+    origins: Vec<Option<String>>,
+    ranks: Vec<usize>,
+    /// The colour of each process name, by sorted name.
+    colours: Vec<(String, String)>,
+    /// The common `:` prefix of all process names, which labels leave out.
+    prefix: String,
+    edges: Vec<Edge>,
+}
+
+struct Edge {
+    from: Option<usize>,
+    to: usize,
+    files: u64,
+    bytes: u64,
+}
+
+impl Graph {
+    fn of(tasks: &[Record], plot: &Plot) -> Graph {
+        let hidden = |task: &Record| {
+            (plot.filter.iter()).any(|pattern| pattern.matches(&task.process).unwrap_or(false))
+        };
+        let nodes: Vec<Option<String>> = (tasks.iter().enumerate())
+            .map(|(place, task)| (!hidden(task)).then(|| format!("p{place}")))
+            .collect();
+        let mut count = 0;
+        let origins = (tasks.iter().zip(&nodes))
+            .map(|(task, node)| {
+                let has = plot.external && node.is_some() && task.external.0 > 0;
+                has.then(|| {
+                    count += 1;
+                    format!("o{}", count - 1)
+                })
+            })
+            .collect();
+        let mut ranks: Vec<usize> = Vec::with_capacity(tasks.len());
+        for task in tasks {
+            let rank = task
+                .producers
+                .iter()
+                .map(|producer| ranks[producer.0] + 1)
+                .max();
+            ranks.push(rank.unwrap_or(1));
+        }
+        let names: BTreeSet<&str> = (tasks.iter().zip(&nodes))
+            .filter(|(_, node)| node.is_some())
+            .map(|(task, _)| task.process.as_str())
+            .collect();
+        let colours = (names.iter().enumerate())
+            .map(|(index, name)| (name.to_string(), colour(index as f32 / names.len() as f32)))
+            .collect();
+        let mut edges = Vec::new();
+        for (place, task) in tasks
+            .iter()
+            .enumerate()
+            .filter(|(place, _)| nodes[*place].is_some())
+        {
+            if plot.external && task.external.0 > 0 {
+                let (files, bytes) = task.external;
+                edges.push(Edge {
+                    from: None,
+                    to: place,
+                    files,
+                    bytes,
+                });
+            }
+            for &(producer, files, bytes) in &task.producers {
+                if nodes[producer].is_some() {
+                    edges.push(Edge {
+                        from: Some(producer),
+                        to: place,
+                        files,
+                        bytes,
+                    });
+                }
+            }
+        }
+        Graph {
+            prefix: prefix(names.iter().copied()),
+            nodes,
+            origins,
+            ranks,
+            colours,
+            edges,
+        }
+    }
+
+    fn colour(&self, process: &str) -> &str {
+        (self.colours.iter())
+            .find(|(name, _)| name == process)
+            .map_or("#000000", |(_, colour)| colour)
+    }
+
+    fn label<'a>(&self, name: &'a str) -> &'a str {
+        name.strip_prefix(self.prefix.as_str())
+            .filter(|_| !self.prefix.is_empty())
+            .unwrap_or(name)
+    }
+
+    /// The graph in DOT, as the plugin writes it.
+    fn dot(&self, tasks: &[Record], plot: &Plot, name: &str) -> String {
+        let name: String = name
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        let mut text = format!("digraph \"{name}\" {{\n  rankdir={};\n", plot.rankdir);
+        text.push_str(if plot.detailed {
+            "  ranksep=1.0;\n"
+        } else {
+            "  ranksep=0.4;\n"
+        });
+        if self.origins.iter().any(Option::is_some) {
+            text.push_str("  // Inputs\n  subgraph inputs {\n    rank = same;\n");
+            for origin in self.origins.iter().flatten() {
+                text.push_str(&format!(
+                    "    {origin} [shape=point,label=\"\",fixedsize=true,width=0.1,tooltip=\"External data input\"];\n"
+                ));
+            }
+            text.push_str("  }\n");
+        }
+        text.push_str("  // Vertices\n");
+        let shown: Vec<usize> = (0..tasks.len())
+            .filter(|place| self.nodes[*place].is_some())
+            .collect();
+        let top = shown
+            .iter()
+            .map(|place| self.ranks[*place])
+            .max()
+            .unwrap_or(0);
+        for rank in 1..=top {
+            let members: Vec<&usize> = shown
+                .iter()
+                .filter(|place| self.ranks[**place] == rank)
+                .collect();
+            if members.is_empty() {
+                continue;
+            }
+            text.push_str(&format!(
+                "  subgraph \"Rank: {rank}\" {{\n    rank = same;\n"
+            ));
+            members
+                .iter()
+                .for_each(|place| text.push_str(&self.node(tasks, **place, plot, "    ")));
+            text.push_str("  }\n");
+        }
+        text.push_str("  // Edges\n");
+        let largest = self.edges.iter().map(|edge| edge.bytes).max().unwrap_or(0);
+        for edge in &self.edges {
+            let from = match edge.from {
+                Some(producer) => self.nodes[producer].clone().unwrap_or_default(),
+                None => self.origins[edge.to].clone().unwrap_or_default(),
+            };
+            let to = self.nodes[edge.to].clone().unwrap_or_default();
+            let amount = format!("{} {}", files(edge.files), size(edge.bytes));
+            let mut line = match plot.detailed {
+                true => format!("  {from} -> {to} [label=\"{amount}\",fontsize=10"),
+                false => format!("  {from} -> {to} [label=\"\",tooltip=\"{amount}\""),
+            };
+            if edge.bytes > 0 {
+                line.push_str(&format!(",penwidth={}", pen_width(edge.bytes, largest)));
+            }
+            let colour = self.colour(&tasks[edge.to].process);
+            text.push_str(&format!("{line},color=\"{colour}\"];\n"));
+        }
+        if plot.legend {
+            text.push_str(
+                "  // Legend\n  legend [shape=plain, margin=0.2, label=<\n    <table border=\"0\" \
+                 cellborder=\"1\" cellspacing=\"0\">\n      <tr><td colspan=\"2\"><b>Tasks</b></td></tr>\n",
+            );
+            for (process, colour) in &self.colours {
+                let process = html(self.label(process));
+                text.push_str(&format!(
+                    "    <tr><td bgcolor=\"{colour}\"></td><td>{process}</td></tr>\n"
+                ));
+            }
+            text.push_str("    </table>\n  >];\n  { rank=sink; legend; }\n");
+        }
+        text.push_str("}\n");
+        text
+    }
+
+    /// A task node: a table with its volumes when detailed, else a point with a tooltip.
+    fn node(&self, tasks: &[Record], place: usize, plot: &Plot, indent: &str) -> String {
+        let task = &tasks[place];
+        let id = self.nodes[place].clone().unwrap_or_default();
+        let colour = self.colour(&task.process);
+        let total = |entries: &[Entry]| entries.iter().map(|entry| entry.size).sum::<u64>();
+        let (inputs, outputs) = (task.inputs.len() as u64, task.outputs.len() as u64);
+        let (read, written) = (total(&task.inputs), total(&task.outputs));
+        let name = self.label(&task.name);
+        if !plot.detailed {
+            return format!(
+                "{indent}{id} [label=\"\",shape=point,width=0.2,tooltip=\"{}\n{indent}Inputs: {} {}\n\
+                 {indent}Outputs: {} {}\",style=filled,fillcolor=\"{colour}\"];\n\n",
+                quoted(name),
+                files(inputs),
+                size(read),
+                files(outputs),
+                size(written)
+            );
+        }
+        let mut text = format!(
+            "  {id} [label=< \n        <table border=\"0\" cellspacing=\"0\">\n          \
+             <tr><td colspan=\"4\"><b>{}</b></td></tr>\n",
+            html(name)
+        );
+        for (title, count, bytes) in [("Input:", inputs, read), ("Output:", outputs, written)] {
+            if count > 0 {
+                text.push_str(&format!(
+                    "          <tr><td align=\"left\">{title}</td><td>{}</td><td>{}</td></tr>\n",
+                    files(count),
+                    size(bytes)
+                ));
+            }
+        }
+        text.push_str(&format!(
+            "        </table>\n      >\n  ,style=filled,fillcolor=\"{colour}\"];\n\n"
+        ));
         text
     }
 }
@@ -362,12 +648,104 @@ fn ancestors(path: &str) -> impl Iterator<Item = &str> {
     })
 }
 
+/// The longest run of leading `:` parts that every name shares, leaving each at least one.
+fn prefix<'a>(names: impl Iterator<Item = &'a str>) -> String {
+    let parts: Vec<Vec<&str>> = names.map(|name| name.split(':').collect()).collect();
+    if parts.is_empty() || parts.iter().any(|name| name.len() < 2) {
+        return String::new();
+    }
+    let most = parts.iter().map(|name| name.len() - 1).min().unwrap_or(0);
+    let shared = (0..most)
+        .take_while(|index| parts.iter().all(|name| name[*index] == parts[0][*index]))
+        .count();
+    match shared {
+        0 => String::new(),
+        _ => format!("{}:", parts[0][..shared].join(":")),
+    }
+}
+
+/// A colour spread on the hue circle, as Java's `Color.HSBtoRGB` converts it.
+fn colour(hue: f32) -> String {
+    let (saturation, brightness) = (0.7f32, 0.9f32);
+    let h = (hue - hue.floor()) * 6.0;
+    let f = h - h.floor();
+    let p = brightness * (1.0 - saturation);
+    let q = brightness * (1.0 - saturation * f);
+    let t = brightness * (1.0 - saturation * (1.0 - f));
+    let (r, g, b) = match h as u32 {
+        0 => (brightness, t, p),
+        1 => (q, brightness, p),
+        2 => (p, brightness, t),
+        3 => (p, q, brightness),
+        4 => (t, p, brightness),
+        _ => (brightness, p, q),
+    };
+    let channel = |value: f32| (value * 255.0 + 0.5) as u8;
+    format!("#{:02x}{:02x}{:02x}", channel(r), channel(g), channel(b))
+}
+
+/// `8 * (bytes / largest + 0.08)` in Groovy's decimals: an exact share, else one rounded half
+/// up to ten decimals, whose scale the text keeps.
+fn pen_width(bytes: u64, largest: u64) -> String {
+    let (bytes, largest) = (u128::from(bytes), u128::from(largest.max(1)));
+    let exact = (0..=10).find(|scale| (bytes * 10u128.pow(*scale)) % largest == 0);
+    let (share, scale) = match exact {
+        Some(own) => (
+            bytes * 10u128.pow(own) / largest * 10u128.pow(own.max(2) - own),
+            own.max(2),
+        ),
+        None => ((bytes * 10u128.pow(11) / largest + 5) / 10, 10),
+    };
+    let units = 8 * (share + 8 * 10u128.pow(scale - 2));
+    let whole = units / 10u128.pow(scale);
+    let fraction = units % 10u128.pow(scale);
+    format!("{whole}.{fraction:0width$}", width = scale as usize)
+}
+
+fn files(count: u64) -> String {
+    match count {
+        1 => "1 file".to_owned(),
+        _ => format!("{count} files"),
+    }
+}
+
+/// A size as Nextflow's memory text without spaces, like `1.5KB`.
+fn size(bytes: u64) -> String {
+    memory_text(i64::try_from(bytes).unwrap_or(i64::MAX)).replace(' ', "")
+}
+
+fn quoted(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn lists_ancestors() {
+    fn writes_java_numbers() {
+        assert_eq!(colour(0.0), "#e64545");
+        assert_eq!(colour(1.0 / 3.0), "#45e645");
+        assert_eq!(colour(2.0 / 3.0), "#4545e6");
+        assert_eq!(colour(0.5), "#45e6e6");
+        assert_eq!(pen_width(10, 36), "2.8622222224");
+        assert_eq!(pen_width(10, 18), "5.0844444448");
+        assert_eq!(
+            (pen_width(18, 36), pen_width(36, 36)),
+            ("4.64".into(), "8.64".into())
+        );
+        assert_eq!(
+            (size(10), size(1536)),
+            ("10B".to_owned(), "1.5KB".to_owned())
+        );
+        assert_eq!(prefix(["A:B:X", "A:B:Y"].into_iter()), "A:B:");
+        assert_eq!(prefix(["A:X", "B"].into_iter()), "");
         assert_eq!(
             ancestors("/a/b/c").collect::<Vec<_>>(),
             ["/a/b/c", "/a/b", "/a"]

@@ -31,7 +31,6 @@ mod nf_pregex;
 mod nf_prov;
 mod nf_runinsights;
 mod nf_schema;
-#[expect(dead_code, reason = "the plugin entry of nf-slack follows")]
 mod nf_slack;
 mod nf_snapshot;
 mod nf_sqldb;

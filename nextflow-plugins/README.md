@@ -78,6 +78,15 @@ with the plugin's ids, entities, inverse links, inputs and outputs. Where they d
   `ext fairscape`, which the run events do not carry, and the grouping of many sibling
   Datasets in the evidence graph.
 
+## src/nf_runinsights/mod.rs
+
+nf-runinsights 0.2.0 keeps its history, findings and report as the plugin does, and prints its
+lines on standard output at the end of the run: observers have no host there. It writes no
+`~/.nf-runinsights/debug.log`. The history must be a local folder; `s3://` and other stores are
+not read. The AI section is one Anthropic Messages API call through the shared HTTP client,
+with uwe's own instruction, `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, and
+`ANTHROPIC_BASE_URL`; the run's end waits up to 150 seconds for it.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

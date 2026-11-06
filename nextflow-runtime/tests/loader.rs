@@ -229,9 +229,12 @@ fn loads_plugin_scripts() {
         .expect("loads");
     let mut output = Output::default();
     nextflow_runtime::run(&module, &mut output).expect("runs");
+    // A run without a custom config gets nf-core-utils' warning since 0.6.0.
+    let (start, end) = output.0.split_once("pipeline.\n \n").expect("the warning");
+    assert!(start.starts_with("v1.0-gabcdef1\nWARN: [] You are attempting to run"));
     assert_eq!(
-        output.0,
-        "v1.0-gabcdef1\nfalse\nB:\n  y: '2'\nFASTQC:\n  fastqc: 0.12.1\n\
+        end,
+        "false\nB:\n  y: '2'\nFASTQC:\n  fastqc: 0.12.1\n\
          Workflow:\n    unknown: \n    Nextflow: 26.04.6\n"
     );
     write(

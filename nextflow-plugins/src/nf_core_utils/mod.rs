@@ -8,7 +8,7 @@ mod webhook;
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::Error;
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::value::{Value, tree};
 
 use crate::Context;
 use crate::catalogue::{Kind, Plugin, State};
@@ -80,6 +80,9 @@ const LATEST: &str = "0.7.0";
 
 fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error> {
     match (name, arguments.as_slice()) {
+        ("getGenomeAttribute", [attribute]) => {
+            Ok(genome_attribute(&context.params, &attribute.to_string()))
+        }
         // The helpers that only `functions.nf` can include.
         ("coreSettings", []) => Ok(settings(context.config)),
         ("condaChannels", []) => Ok(conda::channels(&*context.host)),
@@ -90,6 +93,16 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
             span: Default::default(),
         }),
     }
+}
+
+/// `genomes[genome][attribute]` of the params of the config, as stored, or null.
+fn genome_attribute(params: &Value, attribute: &str) -> Value {
+    let genome = match tree::get(params, &["genome"]) {
+        Some(Value::String(text) | Value::GString(text)) => text,
+        _ => return Value::Null,
+    };
+    let genomes = tree::get(params, &["genomes"]).unwrap_or(Value::Null);
+    tree::get(&genomes, &[&genome, attribute]).unwrap_or(Value::Null)
 }
 
 /// The pinned release, like `0.7.0`, and the `nextflow.version` setting of the config.

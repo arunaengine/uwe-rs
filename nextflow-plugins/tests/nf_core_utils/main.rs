@@ -203,6 +203,108 @@ fn flat(text: &str) -> String {
 }
 
 #[test]
+fn probes_release_seven() {
+    let launch = tempfile::tempdir().expect("a temporary directory");
+    let mail = Recorder::start(smtp);
+    let hooks = Recorder::start(http);
+    let servers = format!(
+        "mail {{\n    from = 'probe@example.org'\n    smtp.host = '127.0.0.1'\n    \
+         smtp.port = {}\n}}\nparams.email = 'someone@example.org'\n\
+         params.hook_url = 'http://127.0.0.1:{}'\n",
+        mail.address.port(),
+        hooks.address.port()
+    );
+    let folder = launch.path().join("bin");
+    std::fs::create_dir(&folder).expect("creates");
+    let path = folder.to_string_lossy();
+    let script = fixtures().join("core.nf");
+    let (prints, result) = run(
+        &script,
+        "0.7.0",
+        &servers,
+        launch.path(),
+        &[("PATH", &path)],
+    );
+    let sessions = mail.finish();
+    let posts = hooks.finish();
+    result.expect("runs");
+    let mut wanted = Transcript::recorded(&expected("core-0.7.0.txt"));
+    wanted.answer(
+        "dumpParametersToJSON",
+        &["1"],
+        "the recording ran twice in one folder",
+    );
+    wanted.answer(
+        "imNotification teams",
+        &["IM notification sent successfully", "returned"],
+        "Python's server refused the blank that Java left in the path; uwe encodes it",
+    );
+    wanted.replace_warning("IM notification failed with response code 400", None);
+    wanted.replace_warning(
+        "Could not verify conda channel configuration: Cannot run program \"conda\": Exec \
+         failed, error: 2 (No such file or directory)",
+        Some(
+            "Could not verify conda channel configuration: Cannot run program \"conda\": no \
+             conda program in PATH",
+        ),
+    );
+    assert_eq!(Transcript::heard(&prints), wanted);
+
+    assert_eq!(sessions.len(), 2, "the HTML mail and the plain text mail");
+
+    assert_eq!(posts.len(), 3, "the Slack, Teams and failing hooks");
+    let post = |record: &str| {
+        let (head, body) = record.split_once("\n\n").expect("a body");
+        let request = head.lines().next().unwrap_or_default().to_owned();
+        let kind =
+            (head.lines()).any(|line| line.eq_ignore_ascii_case("content-type: application/json"));
+        let body: serde_json::Value = serde_json::from_str(body).expect("JSON");
+        (request, kind, masked_post(body))
+    };
+    let (request, kind, body) = post(&posts[0]);
+    assert_eq!(request, "POST /hooks.slack.com/services/x");
+    assert!(kind, "a JSON body");
+    assert_eq!(body, post(&expected("slack-post.txt")).2);
+
+    let reports = launch.path().join("results/pipeline_info");
+    let dumps: Vec<PathBuf> = (std::fs::read_dir(&reports).expect("lists").flatten())
+        .map(|entry| entry.path())
+        .filter(|path| path.to_string_lossy().contains("/params_"))
+        .collect();
+    let dump = std::fs::read_to_string(&dumps[0]).expect("the params");
+    let recorded = std::fs::read_to_string(fixtures().join("expected/params.json"));
+    let recorded = recorded
+        .expect("reads")
+        .replace("<probe>", &launch.path().to_string_lossy());
+    assert_eq!(dump.trim_end(), recorded.trim_end());
+    let text = std::fs::read_to_string(reports.join("pipeline_report.txt")).expect("a report");
+    assert!(text.starts_with("TXT version=v1.0.0 runName=tiny_watson success=true"));
+    assert!(reports.join("pipeline_report.html").is_file());
+}
+
+/// A chat body with the values of the run-specific facts masked.
+fn masked_post(mut body: serde_json::Value) -> serde_json::Value {
+    let facts = body
+        .get_mut("fields")
+        .and_then(serde_json::Value::as_array_mut);
+    for fact in facts.into_iter().flatten() {
+        let title = fact["title"].as_str().unwrap_or_default();
+        if [
+            "start",
+            "complete",
+            "scriptid",
+            "nxf_build",
+            "nxf_timestamp",
+        ]
+        .contains(&title)
+        {
+            fact["value"] = "*".into();
+        }
+    }
+    body
+}
+
+#[test]
 fn probes_release_five() {
     let launch = tempfile::tempdir().expect("a temporary directory");
     let mail = Recorder::start(smtp);

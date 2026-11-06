@@ -89,6 +89,8 @@ HEADER_EXCEPTIONS = {
     "nextflow-plugins/tests/fixtures/nf_bids/configs/config_t1w_fmap_multiruns.yaml": "probe input of the recorded plugin runs",
     "nextflow-plugins/tests/fixtures/nf_cmgg/bad-worksheet.yml": "probe input of the recorded plugin runs",
     "nextflow-plugins/tests/fixtures/nf_cmgg/worksheet.yml": "probe input of the recorded plugin runs",
+    "nextflow-plugins/tests/fixtures/nf_runinsights/report-run1.md": "recorded plugin report compared with the written one",
+    "nextflow-plugins/tests/fixtures/nf_runinsights/report-run2.md": "recorded plugin report compared with the written one",
     "python-evaluator/tests/fixtures/python/library.py": "the program prints its own first source line",
     "snakemake-runtime/tests/fixtures/embedded/preambles/scripts/test.rs": "fragment included in a generated preamble",
     "snakemake-runtime/tests/fixtures/embedded/preambles/scripts/test.sh": "fragment included in a generated preamble",

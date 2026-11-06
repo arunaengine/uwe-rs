@@ -8022,6 +8022,7 @@ dependencies = [
  "executor",
  "fancy-regex 0.20.0",
  "flate2",
+ "flyte-executor",
  "futures-util",
  "gix",
  "google-batch-executor",

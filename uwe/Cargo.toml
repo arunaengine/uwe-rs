@@ -19,6 +19,7 @@ content-store.workspace = true
 cwl-runtime.workspace = true
 executor.workspace = true
 flate2.workspace = true
+flyte-executor.workspace = true
 futures-util = { workspace = true, features = ["io"] }
 gix.workspace = true
 input-schema.workspace = true

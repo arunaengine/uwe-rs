@@ -13,7 +13,7 @@ use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 use nextflow_evaluator::interpreter::Host;
-use nextflow_plugins::observer::{Counts, Event, File, Observer, Task};
+use nextflow_plugins::observer::{Counts, Event, File, Observer, Output, Task};
 use nextflow_runtime::driver::{Nextflow, Settings};
 use workflow_graph::{
     Attempt, Delivery, Engine, Executor, Files, Launch, Outcome, OutputFile, Running,
@@ -309,10 +309,99 @@ fn hears_run_events() {
     };
     assert!(!end.success);
     assert!(end.error.is_some());
+    assert_eq!(end.task.as_ref(), Some(failed), "SECOND ended the run");
+    assert!(end.outputs.is_empty());
     let counts = Counts {
         succeeded: 0,
         cached: 1,
         failed: 1,
     };
     assert_eq!(end.counts, counts);
+}
+
+const OUTPUTS: &str = r#"
+process MAKE {
+    output:
+    path 'made.txt'
+    script:
+    "echo a > made.txt"
+}
+
+workflow {
+    main:
+    made = MAKE()
+    publish:
+    texts = made
+}
+
+output {
+    texts {
+        path 'texts'
+        index {
+            path 'texts.csv'
+        }
+    }
+}
+"#;
+
+/// Runs every task, which makes `made.txt`.
+struct Making;
+
+impl Executor for Making {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            files: vec![OutputFile {
+                path: "made.txt".into(),
+                location: "/work/made.txt".into(),
+                ..OutputFile::default()
+            }],
+            ..Outcome::default()
+        }))
+    }
+
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        Some(Arc::new(Kept))
+    }
+}
+
+#[test]
+fn hears_workflow_outputs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), OUTPUTS).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        output_dir: Some(directory.path().join("results")),
+        ..Launch::default()
+    };
+    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: Arc::default(),
+    }));
+    let execution = Engine::new(&mut Making).run("main.nf", &mut driver);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let events = events.borrow();
+    let target = directory.path().join("results/texts/made.txt");
+    let target = target.to_string_lossy().into_owned();
+    let published: Vec<&str> = (events.iter())
+        .filter_map(|event| match event {
+            Event::FilePublished { target, .. } => Some(target.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(published, [target.as_str()]);
+    let Some(Event::RunEnded(end)) = events.last() else {
+        panic!("the run ends last");
+    };
+    assert!(end.success && end.task.is_none());
+    let index = directory.path().join("results/texts.csv");
+    let output = Output {
+        name: "texts".into(),
+        files: vec![target.clone()],
+        index: Some(index.to_string_lossy().into_owned()),
+    };
+    assert_eq!(end.outputs, [output]);
 }

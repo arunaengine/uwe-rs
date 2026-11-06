@@ -43,6 +43,11 @@ pub(crate) trait Behaviour {
     fn definition(&self) -> Option<Definition> {
         None
     }
+
+    /// The workflow output that the node publishes, with its files so far.
+    fn output(&self) -> Option<nextflow_plugins::observer::Output> {
+        None
+    }
 }
 
 /// A process definition: its name and the script file that defines it.
@@ -360,6 +365,12 @@ impl Network {
             });
         }
         processes
+    }
+
+    /// The workflow outputs of the network, with the files that they published.
+    pub(crate) fn outputs(&self) -> Vec<nextflow_plugins::observer::Output> {
+        let nodes = self.nodes.iter().filter_map(|node| node.behaviour.as_ref());
+        nodes.filter_map(|node| node.output()).collect()
     }
 
     /// Starts every node in the order it was created, then runs until nothing is waiting.

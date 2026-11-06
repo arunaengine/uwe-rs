@@ -555,7 +555,7 @@ impl Driver for Nextflow {
         let run = self.run.as_mut().ok_or_else(not_started)?;
         run.finish(self.settings.host.as_mut()).map_err(error)?;
         if let Some(reports) = &mut self.reports {
-            reports.run_ended(None);
+            reports.run_ended(None, None, run.outputs());
         }
         self.write_reports()
     }
@@ -578,7 +578,7 @@ impl Driver for Nextflow {
             )
             .map_err(error);
         if let Some(reports) = &mut self.reports {
-            reports.run_ended(Some(&message));
+            reports.run_ended(Some(&message), run.failing_task(), run.outputs());
         }
         run.take_deliveries();
         let reports = self.write_reports();

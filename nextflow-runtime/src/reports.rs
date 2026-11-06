@@ -75,6 +75,8 @@ pub(crate) struct Reports {
     details: HashMap<TaskId, Details>,
     /// The number of each process, by its qualified name.
     process_ids: HashMap<String, u32>,
+    /// The last failed attempt of each task, for the end of a run that a task failed.
+    failures: HashMap<TaskId, observer::Task>,
     /// Whether the observers heard the end of the run, after which they hear nothing.
     closed: bool,
 }
@@ -187,6 +189,7 @@ impl Reports {
             attempts: HashMap::new(),
             details: HashMap::new(),
             process_ids: HashMap::new(),
+            failures: HashMap::new(),
             closed: false,
         }
     }
@@ -253,12 +256,21 @@ impl Reports {
         });
     }
 
-    /// Tells the observers that the run ended, with the message of the error that failed it.
-    pub fn run_ended(&mut self, error: Option<&str>) {
+    /// Tells the observers that the run ended, with the message of the error that failed it
+    /// and the task whose failure ended it, and with the workflow outputs.
+    pub fn run_ended(
+        &mut self,
+        error: Option<&str>,
+        failing: Option<crate::TaskId>,
+        outputs: Vec<observer::Output>,
+    ) {
+        let task = failing.and_then(|task| self.failures.remove(&TaskId(task.0)));
         self.notify(Event::RunEnded(End {
             success: error.is_none(),
             error: error.map(str::to_owned),
             counts: self.counts,
+            task,
+            outputs,
             end: now(),
         }));
         self.closed = true;
@@ -358,6 +370,7 @@ impl Reports {
             }
             _ => {
                 self.counts.failed += 1;
+                self.failures.insert(outcome.id, task.clone());
                 Event::TaskFailed(task)
             }
         };

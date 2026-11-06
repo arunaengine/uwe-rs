@@ -251,6 +251,7 @@ impl Host for Builder<'_> {
             mode,
             overwrite,
             published: Vec::new(),
+            targets: Vec::new(),
         };
         self.network.add(&label, &[channel], Box::new(node));
         Ok(())

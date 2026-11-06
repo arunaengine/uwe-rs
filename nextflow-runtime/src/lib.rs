@@ -201,6 +201,17 @@ impl Run {
         self.network.processes()
     }
 
+    /// The workflow outputs, with the files that they published.
+    pub(crate) fn outputs(&self) -> Vec<nextflow_plugins::observer::Output> {
+        self.network.outputs()
+    }
+
+    /// The task whose failure ended the run, if one did.
+    pub(crate) fn failing_task(&self) -> Option<TaskId> {
+        let task = tree::get(self.network.failed_task.as_ref()?, &["task_id"])?;
+        task.to_string().parse().ok().map(TaskId)
+    }
+
     /// Consumes the native output-check verdict of the task just completed.
     pub fn take_acceptance(&mut self, task: TaskId) -> bool {
         self.network.take_acceptance(task)

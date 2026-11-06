@@ -796,6 +796,44 @@ fn agent_sections() {
 }
 
 #[test]
+fn agent_outputs() {
+    let agent = |output: &str| {
+        format!(
+            "agent qa {{\n    model 'openai/gpt-5-mini'\n    input:\n    id: String\n\n    \
+             output:\n    {output}\n\n    prompt:\n    \"Answer for ${{id}}\"\n}}\n"
+        )
+    };
+    for valid in [
+        "stdout()",
+        "result: Classification",
+        "file('report.md')",
+        "record(id: id, summary: stdout())",
+    ] {
+        assert!(messages(&agent(valid)).is_empty(), "{valid}");
+    }
+    let invalid = [
+        (
+            "eval('date')",
+            "`eval()` and `env()` are not available in an agent output",
+        ),
+        (
+            "env('HOME')",
+            "`eval()` and `env()` are not available in an agent output",
+        ),
+        ("[1, 2]", "Invalid agent output"),
+        (
+            "stdout()\n    other: String",
+            "Agent `qa` must declare exactly one output",
+        ),
+    ];
+    for (output, message) in invalid {
+        assert_eq!(messages(&agent(output)), [message], "{output}");
+    }
+    let silent = "agent qa {\n    model 'openai/gpt-5-mini'\n    prompt:\n    'Hello'\n}\n";
+    assert_eq!(messages(silent), ["Agent `qa` must declare an output"]);
+}
+
+#[test]
 fn declaration_statements() {
     for source in [
         "params { v -> v }\n",

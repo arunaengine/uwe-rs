@@ -449,10 +449,46 @@ impl Parser<'_> {
             let message =
                 "Invalid agent definition -- check for missing or out-of-order section labels";
             self.error_at(message, agent.span);
+        } else if agent.outputs.len() != 1 {
+            let name = &agent.name.text;
+            let message = match agent.outputs.is_empty() {
+                true => format!("Agent `{name}` must declare an output"),
+                false => format!("Agent `{name}` must declare exactly one output"),
+            };
+            self.error_at(&message, agent.span);
         } else {
             self.check_directives(&agent.directives, "Invalid agent directive");
+            self.check_agent_output(&agent.outputs[0]);
         }
         Ok(Item::Agent(Box::new(agent)))
+    }
+
+    /// An agent output is `name: Type`, or `stdout()`, `file()`, `files()` or a `record(...)`
+    /// of them; `eval()` and `env()` read what a command did, which an agent has not.
+    fn check_agent_output(&mut self, output: &NamedOutput) {
+        let NamedOutput::Statement(statement) = output else {
+            return;
+        };
+        let name = match &statement.kind {
+            StatementKind::Expression(Expression {
+                kind:
+                    ExpressionKind::MethodCall {
+                        target: None, name, ..
+                    },
+                ..
+            }) => name.text.as_str(),
+            _ => "",
+        };
+        match name {
+            "stdout" | "file" | "files" | "record" => {}
+            "eval" | "env" => {
+                let message = "`eval()` and `env()` are not available in an agent output";
+                self.error_at(message, statement.span);
+            }
+            _ => {
+                self.error_at("Invalid agent output", statement.span);
+            }
+        }
     }
 
     /// The agent section that starts here, if any.

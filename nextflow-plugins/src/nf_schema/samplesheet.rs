@@ -56,6 +56,10 @@ pub(super) fn to_list(
         }
         return Ok(Value::list(Vec::new()));
     };
+    let object = match settings.substitution {
+        true => substitute(&object, context),
+        false => object,
+    };
     let lines = sheet_errors(&schema, &without_nulls(json(&object)), &settings, context)?;
     if !lines.is_empty() {
         context
@@ -138,6 +142,10 @@ pub(super) fn nested(
         let Some(object) = sheet(&file, &root, &converter, context)? else {
             return Ok(Vec::new());
         };
+        let object = match settings.substitution {
+            true => substitute(&object, context),
+            false => object,
+        };
         sheet_errors(&schema, &without_nulls(json(&object)), &settings, context)
     })();
     checked.unwrap_or_else(|error| vec![error.to_string()])
@@ -163,6 +171,87 @@ fn sheet(
         return Ok(None);
     };
     file_object(file, kind, &text, root, converter).map(Some)
+}
+
+/// From 3.0.0 on with `validation.allowParamsSubstitution`: `${params.a.b}` in the texts of
+/// the samplesheet becomes the text of that param. A missing last part gives `null`; a missing
+/// part before it leaves the text as it is.
+fn substitute(value: &Value, context: &mut Context) -> Value {
+    match value {
+        Value::Map(_) => Value::map(
+            entries(value)
+                .into_iter()
+                .map(|(key, value)| (Value::string(key), substitute(&value, context)))
+                .collect::<Vec<_>>(),
+        ),
+        Value::List(list) => {
+            let items = list.borrow().items.clone();
+            Value::list(items.iter().map(|item| substitute(item, context)).collect())
+        }
+        Value::String(text) if text.contains("${") => Value::string(replaced(text, context)),
+        other => other.clone(),
+    }
+}
+
+fn replaced(text: &str, context: &mut Context) -> String {
+    let mut output = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("${") {
+        output.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let name = after.find('}').map(|end| &after[..end]);
+        let Some(name) = name.filter(|name| reference(name)) else {
+            output.push_str("${");
+            rest = after;
+            continue;
+        };
+        let whole = &rest[start..start + name.len() + 3];
+        rest = &after[name.len() + 1..];
+        let mut parts = name.split('.');
+        if parts.next() != Some("params") {
+            output.push_str(whole);
+            continue;
+        }
+        let parts: Vec<&str> = parts.collect();
+        let mut current = context.params.clone();
+        let mut found = true;
+        for (index, part) in parts.iter().enumerate() {
+            let next = get(&current, part);
+            if next.is_none() && index == 0 {
+                context.host.print(&format!(
+                    "WARN: Access to undefined parameter `{part}` -- Initialise it to a default \
+                     value eg. `params.{part} = some_value`\n"
+                ));
+            }
+            match next {
+                Some(next) => current = next,
+                None if index + 1 == parts.len() => current = Value::Null,
+                None => {
+                    found = false;
+                    break;
+                }
+            }
+        }
+        match found {
+            true => output.push_str(&current.to_string()),
+            false => output.push_str(whole),
+        }
+    }
+    output.push_str(rest);
+    output
+}
+
+/// Whether text is a dotted name of letters, digits and `_`, each part not starting with a
+/// digit, with at least one dot.
+fn reference(name: &str) -> bool {
+    name.contains('.')
+        && name.split('.').all(|part| {
+            let mut characters = part.chars();
+            characters
+                .next()
+                .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+                && characters.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
 }
 
 struct Converter {

@@ -869,6 +869,17 @@ impl Session {
         }
     }
 
+    /// Sets params as the command line gives them, as text.
+    fn cli(mut self, values: &[(&str, Value)]) -> Session {
+        for (name, value) in values {
+            let path = [Rc::from("params"), Rc::from(*name)];
+            nextflow_config::tree::assign(&self.config.tree, &path, value.clone()).unwrap();
+            self.cli.push((*name).to_owned());
+        }
+        self.params = self.config.params();
+        self
+    }
+
     fn call(&self, name: &str, arguments: Vec<Value>) -> (String, String) {
         let folder = probe_folder();
         let mut host = Probe {
@@ -1104,4 +1115,343 @@ fn validates_like_recordings() {
         let (output, _) = session.call("samplesheetToList", arguments);
         assert_eq!(output, recorded(file, "samplesheet"), "{version}");
     }
+}
+
+/// `--tool.level 9 --threads 4 --showHidden` from the command line, a parameter help, a bad
+/// sheet with `errorMessage`, a broken schema and a cut value.
+#[test]
+fn matches_command_line() {
+    for version in ["2.8.0", "3.0.0"] {
+        let file = format!("misc-cli-{version}.txt");
+        let tool = options(&[
+            ("level", Value::string("9")),
+            ("name", Value::string("bwa")),
+        ]);
+        let session = Session::new(version, "").cli(&[
+            ("tool", tool),
+            ("threads", Value::string("4")),
+            ("showHidden", Value::string("true")),
+        ]);
+        let (_, started) = session.call("start", vec![]);
+        assert_eq!(
+            started,
+            "WARN: Incorrect value detected for `validation.help.showHidden` or `--showHidden`, \
+             a boolean is expected. Defaulting to `false`\n"
+        );
+        let (output, _) = session.call("validateParameters", vec![]);
+        assert_eq!(output, recorded(&file, "validate params"), "{version}");
+        let parameter = match version {
+            "3.0.0" => vec![options(&[("parameter", Value::string("secret_flag"))])],
+            _ => vec![options(&[]), Value::string("secret_flag")],
+        };
+        let (output, _) = session.call("paramsHelp", parameter);
+        assert_eq!(output, recorded(&file, "help hidden"), "{version}");
+        let sheet = vec![
+            Value::string("badsheet.csv"),
+            Value::string("assets/schema_input.json"),
+        ];
+        let (output, printed) = session.call("samplesheetToList", sheet);
+        assert_eq!(output, recorded(&file, "bad sheet"), "{version}");
+        assert_eq!(printed, "ERROR ~ Validation of samplesheet failed!\n");
+        let broken = vec![
+            options(&[("a", Value::integer(1))]),
+            Value::string("broken_schema.json"),
+        ];
+        let (output, _) = session.call("validate", broken);
+        let expected = recorded(&file, "validate broken schema");
+        let (start, end) = match version {
+            "3.0.0" => ("!! JSONException: ", "\n"),
+            _ => (
+                "!! SchemaValidationException: Failed to load JSON schema (broken_schema.json):\n    ",
+                "\n\n\n",
+            ),
+        };
+        assert!(
+            expected.starts_with(start) && expected.ends_with(end),
+            "{expected}"
+        );
+        assert!(
+            output.starts_with(start) && output.ends_with(end),
+            "{output}"
+        );
+        let input = options(&[
+            ("threads", Value::string("x".repeat(200))),
+            ("input", Value::string("a.csv")),
+            ("outdir", Value::string("o")),
+        ]);
+        let arguments = vec![
+            options(&[("exitOnError", Value::Boolean(false))]),
+            input,
+            Value::string("nextflow_schema.json"),
+        ];
+        let (output, _) = session.call("validate", arguments);
+        assert_eq!(output, recorded(&file, "validate no exit"), "{version}");
+    }
+}
+
+/// The `schema` keyword of `--input` checks the sheet it names, and the errors of the sheet
+/// come tab-indented under the param.
+#[test]
+fn validates_nested_samplesheets() {
+    let file = "val-nested-3.0.0.txt";
+    let session = Session::new("3.0.0", "").cli(&[("input", Value::string("badsheet.csv"))]);
+    let (output, printed) = session.call("validateParameters", vec![]);
+    assert_eq!(output, recorded(file, "validate"));
+    assert_eq!(
+        printed,
+        "ERROR ~ Validation of pipeline parameters failed!\n"
+    );
+    let sheet = vec![
+        Value::string("badsheet.csv"),
+        Value::string("assets/schema_input.json"),
+    ];
+    let (output, _) = session.call("samplesheetToList", sheet);
+    assert_eq!(output, recorded(file, "samplesheet"));
+}
+
+/// `uniqueEntries` and `deprecated` errors, in the order of nf-schema 3.0.0.
+#[test]
+fn rejects_duplicate_entries() {
+    let session = Session::new("3.0.0", "");
+    let sheet = vec![
+        Value::string("dupsheet.csv"),
+        Value::string("assets/schema_input_unique.json"),
+    ];
+    let (output, _) = session.call("samplesheetToList", sheet);
+    let folder = probe_folder();
+    let text = std::fs::read_to_string(Path::new(&folder).join("val-unique-3.0.0.txt")).unwrap();
+    let message = text.replace("<probe>", &folder);
+    let message = message.split("!! ").nth(1).unwrap();
+    let message = &message[..message.find("[PIPELINE]").unwrap()];
+    assert_eq!(output, format!("!! SchemaValidationException: {message}"));
+}
+
+/// `allowParamsSubstitution` fills `${params.x}` from 3.0.0 on; 2.8.0 does not know it.
+#[test]
+fn substitutes_params() {
+    let session = Session::new("3.0.0", "validation.allowParamsSubstitution = true");
+    let sheet = vec![
+        Value::string("samplesheet.csv"),
+        Value::string("assets/schema_input.json"),
+    ];
+    let (output, printed) = session.call("samplesheetToList", sheet.clone());
+    assert_eq!(output, recorded("val-subst-3.0.0.txt", "samplesheet"));
+    assert_eq!(
+        printed,
+        "WARN: Access to undefined parameter `missing` -- Initialise it to a default value eg. \
+         `params.missing = some_value`\nWARN: Access to undefined parameter `nothere` -- \
+         Initialise it to a default value eg. `params.nothere = some_value`\n"
+    );
+    let session = Session::new("2.8.0", "validation.allowParamsSubstitution = true");
+    let (_, started) = session.call("start", vec![]);
+    assert_eq!(
+        started,
+        "WARN: Unrecognized config option 'validation.allowParamsSubstitution'\n"
+    );
+    let (output, _) = session.call("samplesheetToList", sheet);
+    assert_eq!(output, recorded("out-2.8.0.txt", "samplesheet"));
+}
+
+/// `logging.unrecognisedParams = "error"` fails on the unknown `--ref`.
+#[test]
+fn fails_unknown_params() {
+    let session = Session::new("3.0.0", "validation.logging.unrecognisedParams = 'error'");
+    let (output, printed) = session.call("validateParameters", vec![]);
+    assert_eq!(output, recorded("val-logerror-3.0.0.txt", "validate"));
+    assert_eq!(printed, "");
+}
+
+/// 2.7.3 and 2.8.0 fail at the start on the removed `failUnrecognised*` options; 3.0.0 only
+/// has Nextflow's warnings.
+#[test]
+fn starts_like_recordings() {
+    let extra =
+        "validation.failUnrecognisedParams = true\nvalidation.failUnrecognisedHeaders = true";
+    let warnings = "WARN: Unrecognized config option 'validation.failUnrecognisedParams'\n\
+                    WARN: Unrecognized config option 'validation.failUnrecognisedHeaders'\n";
+    for version in ["2.7.3", "2.8.0"] {
+        let (output, printed) = Session::new(version, extra).call("start", vec![]);
+        assert_eq!(
+            output,
+            "!! MissingPropertyException: No such variable: failUnrecognisedParams\n"
+        );
+        assert_eq!(printed, warnings);
+    }
+    let (output, printed) = Session::new("3.0.0", extra).call("start", vec![]);
+    assert_eq!((output.as_str(), printed.as_str()), ("null\n", warnings));
+    let (_, printed) = Session::new("", "").call("start", vec![]);
+    assert!(printed.contains("Please pin the nf-schema version in your config!"));
+}
+
+/// A path that does not match its pattern, whose file type nf-schema cannot tell: the `schema`
+/// keyword and `samplesheetToList` log that, and the list is empty.
+#[test]
+fn rejects_unknown_types() {
+    let file = "val-pattern-2.8.0.txt";
+    let session = Session::new("2.8.0", "").cli(&[("input", Value::string("sheet.txt"))]);
+    let derive = format!(
+        "ERROR ~ Could not derive file type from {}/sheet.txt. Please specify the file \
+         extension (CSV, TSV, YML, YAML and JSON are supported).\n",
+        probe_folder()
+    );
+    let (output, printed) = session.call("validateParameters", vec![]);
+    assert_eq!(output, recorded(file, "validate"));
+    assert_eq!(
+        printed,
+        format!("{derive}ERROR ~ Validation of pipeline parameters failed!\n")
+    );
+    let sheet = vec![
+        Value::string("sheet.txt"),
+        Value::string("assets/schema_input.json"),
+    ];
+    let (output, printed) = session.call("samplesheetToList", sheet);
+    assert_eq!(output, recorded(file, "samplesheet"));
+    assert_eq!(printed, format!("{derive}{derive}"));
+}
+
+/// The help that nf-schema 2 prints instead of running with `validation.help.enabled`; 3.0.0
+/// no longer knows the option.
+#[test]
+fn helps_from_config() {
+    let extra = "validation.help.enabled = true\n\
+                 validation.help.beforeText = 'CFG-BEFORE'\n\
+                 validation.help.afterText = 'CFG-AFTER'\n\
+                 validation.help.command = 'nextflow run probe --input x.csv'";
+    let tool = Value::string("tool");
+    let yes = || Value::string("true");
+    for (file, params) in [
+        ("help-short-2.8.0.txt", vec![("help", yes())]),
+        ("help-param-2.8.0.txt", vec![("help", tool)]),
+        (
+            "help-full-2.8.0.txt",
+            vec![("helpFull", yes()), ("showHidden", yes())],
+        ),
+    ] {
+        let session = Session::new("2.8.0", extra).cli(&params);
+        let (output, printed) = session.call("start", vec![]);
+        assert_eq!(output, "!! AbortOperationException: \n", "{file}");
+        let text = std::fs::read_to_string(Path::new(&probe_folder()).join(file)).unwrap();
+        let end = text.find("===== workflow body ran").unwrap();
+        let expected = format!("{}\n", text[..end].replace("[WARN] ", ""));
+        assert_eq!(printed, expected, "{file}");
+    }
+    let session = Session::new("3.0.0", extra).cli(&[("help", yes())]);
+    let (output, printed) = session.call("start", vec![]);
+    assert_eq!(output, "null\n");
+    assert_eq!(
+        printed,
+        "WARN: Unrecognized config option 'validation.help.enabled'\n"
+    );
+}
+
+/// 3.0.0 has no positional workflow or help param any more.
+#[test]
+fn rejects_old_forms() {
+    let session = Session::new("3.0.0", "");
+    let (output, _) = session.call("paramsHelp", vec![Value::string("input")]);
+    assert!(output.starts_with("!! MissingMethodException: No signature of method: paramsHelp()"));
+    let workflow = summary_workflow("x", "v.config");
+    let (output, _) = session.call("paramsSummaryLog", vec![workflow]);
+    assert!(
+        output.starts_with("!! MissingMethodException: "),
+        "{output}"
+    );
+}
+
+/// 3.1.0, which a config must pin: nested command-line params and `--showHidden` are typed.
+#[test]
+fn casts_nested_params() {
+    let tool = options(&[
+        ("level", Value::string("9")),
+        ("name", Value::string("bwa")),
+    ]);
+    let cli = [
+        ("tool", tool),
+        ("threads", Value::string("4")),
+        ("showHidden", Value::string("true")),
+    ];
+    let session = Session::new("3.1.0", "").cli(&cli);
+    let (_, started) = session.call("start", vec![]);
+    assert_eq!(started, "");
+    let (output, printed) = session.call("validateParameters", vec![]);
+    assert_eq!(output, "null\n");
+    assert!(printed.contains("* --ref: genome.fa"), "{printed}");
+    let (output, _) = session.call("paramsHelp", vec![]);
+    assert!(output.contains("  --secret_flag [boolean]"), "{output}");
+    assert!(!output.contains("!! Hiding"), "{output}");
+}
+
+/// 3.1.0 looks for the sheet schema of a `schema` keyword beside the schema that names it.
+#[test]
+fn finds_schema_beside() {
+    let folder = tempfile::tempdir().unwrap();
+    let schemas = folder.path().join("schemas");
+    std::fs::create_dir(&schemas).unwrap();
+    std::fs::write(
+        schemas.join("params.json"),
+        r#"{"type": "object", "properties": {"input": {"type": "string", "schema": "rows.json"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("rows.json"),
+        r#"{"type": "array", "items": {"type": "object", "properties": {"n": {"type": "integer"}}}}"#,
+    )
+    .unwrap();
+    std::fs::write(folder.path().join("sheet.csv"), "n\nx\n").unwrap();
+    let launch = folder.path().to_string_lossy().into_owned();
+    for (version, valid) in [("3.0.0", true), ("3.1.0", false)] {
+        let config = pinned(version);
+        let mut host = Probe {
+            launch: launch.clone(),
+            printed: String::new(),
+        };
+        let mut context = Context {
+            host: &mut host,
+            config: &config,
+            params: options(&[("input", Value::string("sheet.csv"))]),
+            project_dir: &launch,
+            cli_params: &[],
+            workflow: Value::Null,
+        };
+        let arguments = vec![options(&[(
+            "parameters_schema",
+            Value::string("schemas/params.json"),
+        )])];
+        let result = call("nf-schema", "validateParameters", arguments, &mut context);
+        assert_eq!(result.is_ok(), valid, "{version}: {result:?}");
+    }
+}
+
+/// Unknown params come from the schema's evaluation, nested ones with dots; a core Nextflow
+/// option with two hyphens fails; `maxErrValSize` cuts values.
+#[test]
+fn reports_unknown_params() {
+    let tool = options(&[
+        ("level", Value::integer(3)),
+        ("name", Value::string("bwa")),
+        ("extra", Value::string("x")),
+    ]);
+    let session = Session::new("3.0.0", "").cli(&[("tool", tool)]);
+    let (output, printed) = session.call("validateParameters", vec![]);
+    assert_eq!(output, "null\n");
+    assert!(
+        printed.ends_with(":\n\n* --tool.extra: x\n* --ref: genome.fa\n\n"),
+        "{printed}"
+    );
+    let session = Session::new("3.0.0", "").cli(&[("resume", Value::string("true"))]);
+    let (output, _) = session.call("validateParameters", vec![]);
+    assert!(
+        output.contains(
+            "* You used a core Nextflow option with two hyphens: '--resume'. Please resubmit \
+             with '-resume'"
+        ),
+        "{output}"
+    );
+    let session = Session::new("3.0.0", "validation.maxErrValSize = 4")
+        .cli(&[("threads", Value::string("abcdefgh"))]);
+    let (output, _) = session.call("validateParameters", vec![]);
+    assert!(
+        output.contains("* --threads (ab...gh): Value is [string]"),
+        "{output}"
+    );
 }

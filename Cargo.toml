@@ -26,6 +26,7 @@ members = [
     "nextflow-plugins",
     "nextflow-runtime",
     "nomad-executor",
+    "pbs-executor",
     "python-evaluator",
     "run-crate",
     "run-database",

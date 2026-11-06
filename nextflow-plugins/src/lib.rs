@@ -5,6 +5,7 @@
 pub mod catalogue;
 mod crg_lims;
 pub mod everit;
+pub mod nf_agent;
 mod nf_anndata;
 mod nf_arts;
 mod nf_bactopia;

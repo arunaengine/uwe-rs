@@ -1,3 +1,4 @@
 Recorded with Nextflow 26.04.6 and nf-cmgg 0.5.0, offline, from the probe pipeline of the plugin spec.
 run2-samplesheets.txt: the run's sheets with X9_R2 and S2_R1 added back, which the plugin lost through its publish race.
 bad-worksheet.txt: the logged message for bad-worksheet.yml without Groovy's Java stack trace.
+main.nf: the probe pipeline of those runs; the driver test runs it with a writing executor.

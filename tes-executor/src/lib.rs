@@ -12,5 +12,5 @@ mod staging;
 
 pub use backend::TesBackend;
 pub use client::{Client, TesError};
-pub use settings::Settings;
+pub use settings::{Platform, Settings};
 pub use staging::ObjectStage;

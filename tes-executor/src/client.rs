@@ -77,6 +77,11 @@ pub struct Resources {
     pub ram_gb: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disk_gb: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preemptible: Option<bool>,
+    /// Settings of the server's backend, like a GPU type, which it may ignore.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub backend_parameters: BTreeMap<String, String>,
 }
 
 /// One executor of a task: a command in an image.
@@ -187,6 +192,11 @@ pub struct Client {
     /// A bearer token for the server, when it needs one.
     token: Option<String>,
     basic: Option<(String, String)>,
+    /// An API key: its parameter name, the key, and whether it goes in a header rather than
+    /// the query.
+    api_key: Option<(String, String, bool)>,
+    /// How long one request may take.
+    timeout: Duration,
     polling: Arc<tokio::sync::Semaphore>,
     pub(crate) history: Arc<tokio::sync::Mutex<executor::history::Scan>>,
 }
@@ -202,7 +212,8 @@ impl std::fmt::Debug for Client {
 
 impl Client {
     /// A client of the server at `server`, like `http://localhost:8000`; the API path
-    /// `/ga4gh/tes/v1` is added unless the address has it.
+    /// `/ga4gh/tes/v1` is added unless the address ends with it or with `/v1`, as an address
+    /// from Nextflow's `tes.endpoint` does.
     pub fn new(server: &str, token: Option<String>) -> Result<Client, TesError> {
         let address = reqwest::Url::parse(server)
             .map_err(|_| TesError::Answer("TES server must be an HTTP address".into()))?;
@@ -217,7 +228,7 @@ impl Client {
             ));
         }
         let server = server.trim_end_matches('/');
-        let base = match server.ends_with("/ga4gh/tes/v1") {
+        let base = match server.ends_with("/v1") {
             true => server.to_owned(),
             false => format!("{server}/ga4gh/tes/v1"),
         };
@@ -230,6 +241,8 @@ impl Client {
             http,
             token,
             basic: None,
+            api_key: None,
+            timeout: Duration::from_secs(120),
             polling: Arc::new(tokio::sync::Semaphore::new(16)),
             history: Default::default(),
         })
@@ -237,6 +250,18 @@ impl Client {
 
     pub fn with_basic(mut self, user: String, password: String) -> Self {
         self.basic = Some((user, password));
+        self
+    }
+
+    /// Sends the API key `key` as the query parameter `name`, or with `header` as the header.
+    pub fn with_api_key(mut self, name: String, key: String, header: bool) -> Self {
+        self.api_key = Some((name, key, header));
+        self
+    }
+
+    /// Gives each request at most `timeout`.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
         self
     }
 
@@ -255,7 +280,8 @@ impl Client {
         {
             text = text.replace(value, "[secret]");
         }
-        for secret in self.token.iter().chain(
+        let key = self.api_key.iter().map(|(_, key, _)| key);
+        for secret in self.token.iter().chain(key).chain(
             self.basic
                 .iter()
                 .flat_map(|(user, password)| [user, password]),
@@ -374,17 +400,24 @@ impl Client {
         mut request: reqwest::RequestBuilder,
         url: &str,
     ) -> Result<T, TesError> {
-        request = request.timeout(Duration::from_secs(120));
+        request = request.timeout(self.timeout);
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         } else if let Some((user, password)) = &self.basic {
             request = request.basic_auth(user, Some(password));
         }
+        if let Some((name, key, true)) = &self.api_key {
+            request = request.header(name.as_str(), key.as_str());
+        }
         let failed = |error: reqwest::Error| TesError::Request {
             url: url.to_owned(),
             message: self.redact(&cause(&error)),
         };
-        let response = request.send().await.map_err(failed)?;
+        let mut request = request.build().map_err(failed)?;
+        if let Some((name, key, false)) = &self.api_key {
+            request.url_mut().query_pairs_mut().append_pair(name, key);
+        }
+        let response = self.http.execute(request).await.map_err(failed)?;
         let status = response.status();
         let text = response.text().await.map_err(failed)?;
         if !status.is_success() {

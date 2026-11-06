@@ -1,0 +1,72 @@
+digraph "dag" {
+  rankdir=TB;
+  ranksep=1.0;
+  // Inputs
+  subgraph inputs {
+    rank = same;
+    o0 [shape=point,label="",fixedsize=true,width=0.1,tooltip="External data input"];
+    o1 [shape=point,label="",fixedsize=true,width=0.1,tooltip="External data input"];
+  }
+  // Vertices
+  subgraph "Rank: 1" {
+    rank = same;
+  p0 [label=< 
+        <table border="0" cellspacing="0">
+          <tr><td colspan="4"><b>SAY (b)</b></td></tr>
+          <tr><td align="left">Input:</td><td>1 file</td><td>10B</td></tr>
+          <tr><td align="left">Output:</td><td>1 file</td><td>18B</td></tr>
+        </table>
+      >
+  ,style=filled,fillcolor="#4545e6"];
+
+  p1 [label=< 
+        <table border="0" cellspacing="0">
+          <tr><td colspan="4"><b>SAY (a)</b></td></tr>
+          <tr><td align="left">Input:</td><td>1 file</td><td>10B</td></tr>
+          <tr><td align="left">Output:</td><td>1 file</td><td>18B</td></tr>
+        </table>
+      >
+  ,style=filled,fillcolor="#4545e6"];
+
+  }
+  subgraph "Rank: 2" {
+    rank = same;
+  p2 [label=< 
+        <table border="0" cellspacing="0">
+          <tr><td colspan="4"><b>JOIN</b></td></tr>
+          <tr><td align="left">Input:</td><td>2 files</td><td>36B</td></tr>
+          <tr><td align="left">Output:</td><td>1 file</td><td>36B</td></tr>
+        </table>
+      >
+  ,style=filled,fillcolor="#45e645"];
+
+  }
+  subgraph "Rank: 3" {
+    rank = same;
+  p3 [label=< 
+        <table border="0" cellspacing="0">
+          <tr><td colspan="4"><b>COUNT</b></td></tr>
+          <tr><td align="left">Input:</td><td>1 file</td><td>36B</td></tr>
+          <tr><td align="left">Output:</td><td>1 file</td><td>13B</td></tr>
+        </table>
+      >
+  ,style=filled,fillcolor="#e64545"];
+
+  }
+  // Edges
+  o0 -> p0 [label="1 file 10B",fontsize=10,penwidth=2.8622222224,color="#4545e6"];
+  o1 -> p1 [label="1 file 10B",fontsize=10,penwidth=2.8622222224,color="#4545e6"];
+  p1 -> p2 [label="1 file 18B",fontsize=10,penwidth=4.64,color="#45e645"];
+  p0 -> p2 [label="1 file 18B",fontsize=10,penwidth=4.64,color="#45e645"];
+  p2 -> p3 [label="1 file 36B",fontsize=10,penwidth=8.64,color="#e64545"];
+  // Legend
+  legend [shape=plain, margin=0.2, label=<
+    <table border="0" cellborder="1" cellspacing="0">
+      <tr><td colspan="2"><b>Tasks</b></td></tr>
+    <tr><td bgcolor="#e64545"></td><td>COUNT</td></tr>
+    <tr><td bgcolor="#45e645"></td><td>JOIN</td></tr>
+    <tr><td bgcolor="#4545e6"></td><td>SAY</td></tr>
+    </table>
+  >];
+  { rank=sink; legend; }
+}

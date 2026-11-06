@@ -273,8 +273,8 @@ impl Run {
         let status = tree::get(&trace, &["exit"]).unwrap_or(Value::integer(status));
         workflow::finish(&self.workflow, false, self.network.succeeded);
         workflow::failure(&self.workflow, message, status);
-        let error = self.handlers(host, true, trace, true).err();
         let completion_error = self.handlers(host, false, Value::Null, true).err();
+        let error = self.handlers(host, true, trace, true).err();
         match error.or(completion_error) {
             Some(error) => Err(error),
             None => Ok(()),

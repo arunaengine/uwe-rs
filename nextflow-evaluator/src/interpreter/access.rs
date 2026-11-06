@@ -224,6 +224,14 @@ impl Interpreter<'_> {
                 self.call_method(object, "setText", vec![value], span)?;
                 Ok(())
             }
+            // Nextflow's `setOnComplete` and `setOnError` add a handler, like the method form.
+            Value::Object(workflow)
+                if matches!(workflow.borrow().state, State::Workflow(_))
+                    && matches!(name, "onComplete" | "onError") =>
+            {
+                self.call_method(object, name, vec![value], span)?;
+                Ok(())
+            }
             // A method added to a metaclass, like `Map.metaClass.deepMerge = { ... }`.
             Value::Namespace(namespace) if namespace.starts_with("metaClass:") => Ok(()),
             _ => {

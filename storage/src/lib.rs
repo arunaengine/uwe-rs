@@ -16,6 +16,8 @@ pub mod irods;
 mod irods_protocol;
 mod journal;
 mod objects;
+pub mod oci;
+pub mod oci_key;
 mod public;
 pub mod settings;
 pub mod synapse;

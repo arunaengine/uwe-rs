@@ -221,7 +221,9 @@ pub const PLUGINS: &[Plugin] = &[
         scopes: &["tes"],
         ..Plugin::new("nf-ga4gh", Kind::Executor, State::Partial)
     },
-    planned("nf-gadi", Kind::Executor),
+    // nf-gadi: its usage report from the job summaries that uwe's PBS executor reads;
+    // `publishTo` only to a local path, and no start and end lines.
+    crate::nf_gadi::PLUGIN,
     planned("nf-iac", Kind::Executor),
     // nf-k8s: the `k8s` scope and `pod` options on uwe's Kubernetes executor; no bare pods,
     // `k8s.client` or debug YAML, and no privileged pods.
@@ -238,7 +240,9 @@ pub const PLUGINS: &[Plugin] = &[
     // nf-nomad-s5cmd: its work dir and S3 settings map onto uwe's object-store staging; uwe
     // runs no s5cmd.
     Plugin::new("nf-nomad-s5cmd", Kind::Executor, State::Partial),
-    planned("nf-ospool", Kind::Executor),
+    // nf-ospool: `ospool` and `condor` on uwe's HTCondor executor, which stages files itself
+    // and ignores the staging settings of `executor.$ospool`.
+    Plugin::new("nf-ospool", Kind::Executor, State::Partial),
     planned("nf-rest", Kind::Executor),
     // nf-slurm-no-memory: `slurm_no_memory` is uwe's SLURM executor with `memory_per_cpu_gb`.
     Plugin::new("nf-slurm-no-memory", Kind::Executor, State::Implemented),

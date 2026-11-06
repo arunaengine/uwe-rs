@@ -30,6 +30,7 @@ mod nf_fairscape;
 mod nf_fgbio;
 mod nf_fl86;
 mod nf_flowviewer;
+mod nf_gadi;
 mod nf_gc;
 mod nf_gpt;
 mod nf_iridanext;

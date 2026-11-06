@@ -347,9 +347,19 @@ fn old_archives(
     Ok((Some(saving), old))
 }
 
-/// The folders in the scratch folder where the TES, Kubernetes and SLURM executors keep the
+/// The folders in the scratch folder where the executors other than the local one keep the
 /// folders of their attempts.
-const EXECUTOR_FOLDERS: [&str; 3] = ["tes", "kubernetes", "slurm"];
+const EXECUTOR_FOLDERS: [&str; 9] = [
+    "tes",
+    "kubernetes",
+    "slurm",
+    "aws-batch",
+    "google-batch",
+    "azure-batch",
+    "nomad",
+    "htcondor",
+    "pbs",
+];
 
 fn remote_attempts_finished(scratch: &Path) -> Result<(), Failure> {
     let folders = EXECUTOR_FOLDERS.iter().map(|name| scratch.join(name));

@@ -105,7 +105,7 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe digest <path>
        uwe time <run> [-format text|json]
        uwe compare <run> [<run>] [-format text|json] [-report <file>] [-fail-on-change]
-       uwe replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
+       uwe replay <run> <task> [-executor <executor>] [-store <place>]
        uwe telemetry <run> [-output <file>]
        uwe report <run> [-output <file>]
        uwe resume <run> [<step>] [<name>=<value>]...
@@ -137,7 +137,10 @@ options:
   -executor <executor>                local (the default for run) runs Docker or Podman
                                       containers on this machine; simulator writes TES task
                                       documents and makes up outputs, tes runs on a TES server,
-                                      slurm as SLURM batch jobs, kubernetes as Kubernetes Jobs
+                                      slurm as SLURM batch jobs, kubernetes as Kubernetes Jobs,
+                                      aws-batch, google-batch and azure-batch as jobs of these
+                                      cloud services, nomad as Nomad jobs, htcondor and pbs as
+                                      HTCondor and PBS jobs
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step

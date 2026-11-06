@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use aws_batch_executor::{BatchBackend, Client, Helper, Settings, Volume};
 use executor::remote::RemoteStage;
-use executor::{Backend, Job, Staged, Staging};
+use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use serde_json::{Value, json};
 use storage::aws::{Credentials, Keys};
 use task_model::{Accelerator, FORMAT, Image, OutputRule, Placement, TaskSpec};
@@ -286,4 +286,115 @@ async fn reuses_job_definitions() {
         .map(|request| request.body["jobDefinition"].clone())
         .collect();
     assert_eq!(definitions[0], definitions[1]);
+}
+
+/// A cancelled task stops its job, which then ends.
+#[tokio::test]
+async fn cancels_running_jobs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeBatch::start(&folder.path().join("fake"));
+    let backend = backend(folder.path(), &fake);
+    let spec = spec("sleep 60");
+    let placement = placement();
+    let staging = Staging::default();
+    let job = Job {
+        name: "run-SLOW-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let stop = async {
+        for _ in 0..3000 {
+            if fake.running("job-1") {
+                cancel.cancel();
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("the job never ran");
+    };
+    let (ended, ()) = tokio::join!(backend.run(job, &cancel), stop);
+    assert!(matches!(ended, Err(ExecutorError::Cancelled)), "{ended:?}");
+    let stopped = fake.requests("terminatejob");
+    assert_eq!(
+        stopped[0].body,
+        json!({"jobId": "job-1", "reason": "uwe cancelled the task"})
+    );
+    assert!(!fake.running("job-1"));
+}
+
+/// A job that cannot even stage fails with the end of its log, and a throttled submission is
+/// sent again.
+#[tokio::test]
+async fn reports_job_logs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeBatch::start(&folder.path().join("fake"));
+    fake.throttle(2);
+    let mut backend = backend(folder.path(), &fake);
+    backend.settings.helper = Some(Helper::Path("/nonexistent/uwe".into()));
+    let spec = spec("true");
+    let placement = placement();
+    let staging = Staging::default();
+    let job = Job {
+        name: "run-BROKEN-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let ended = backend.run(job, &CancellationToken::new()).await;
+    let Err(ExecutorError::Engine { engine, message }) = ended else {
+        panic!("a failure of the machine: {ended:?}");
+    };
+    assert_eq!(engine, "AWS Batch");
+    assert!(message.contains("exit code 125"), "{message}");
+    assert!(message.contains("/nonexistent/uwe"), "{message}");
+    assert_eq!(fake.requests("submitjob").len(), 3);
+    let read = &fake.requests("GetLogEvents")[0].body;
+    assert_eq!(read["logGroupName"], "/probe/batch");
+    assert_eq!(read["logStreamName"], "uwe/default/job-1");
+}
+
+/// A job that no compute environment can run is stopped when the settings say so, and a task
+/// without a queue is refused before anything is sent.
+#[tokio::test]
+async fn stops_unschedulable_jobs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeBatch::start(&folder.path().join("fake"));
+    fake.unschedulable();
+    let mut backend = backend(folder.path(), &fake);
+    backend.settings.terminate_unschedulable = true;
+    let spec = spec("true");
+    let staging = Staging::default();
+    let placement = placement();
+    let job = Job {
+        name: "run-BIG-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let ended = backend.run(job, &CancellationToken::new()).await;
+    let Err(ExecutorError::Unsupported(message)) = ended else {
+        panic!("a permanent failure: {ended:?}");
+    };
+    assert!(
+        message.contains("MISCONFIGURATION:JOB_RESOURCE_REQUIREMENT"),
+        "{message}"
+    );
+    assert_eq!(fake.requests("terminatejob").len(), 1);
+    let unqueued = Placement {
+        queue: None,
+        ..placement.clone()
+    };
+    let job = Job {
+        name: "run-NOQUEUE-1-1",
+        placement: &unqueued,
+        ..job
+    };
+    let ended = backend.run(job, &CancellationToken::new()).await;
+    assert!(
+        matches!(&ended, Err(ExecutorError::Unsupported(message)) if message.contains("job queue")),
+        "{ended:?}"
+    );
+    assert_eq!(fake.requests("submitjob").len(), 1);
 }

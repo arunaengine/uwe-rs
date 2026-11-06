@@ -20,6 +20,26 @@ pub(crate) struct Session<'a> {
     pub operator_directory: &'a mut Option<PathValue>,
 }
 
+impl Session<'_> {
+    /// What plugin functions see of the run.
+    fn plugin_context(&mut self) -> nextflow_plugins::Context<'_> {
+        let workflow = crate::workflow::metadata(self.options, &self.base.launch_dir());
+        nextflow_plugins::Context {
+            host: &mut *self.base,
+            config: &self.options.config,
+            params: self.options.config.params(),
+            project_dir: &self.options.project_dir,
+            cli_params: &self.options.cli_params,
+            workflow,
+        }
+    }
+
+    /// Runs what the plugins of the config do before the script, like nf-schema's help.
+    pub(crate) fn start_plugins(&mut self) -> Result<(), Error> {
+        nextflow_plugins::start(&mut self.plugin_context())
+    }
+}
+
 impl Host for Session<'_> {
     fn print(&mut self, text: &str) {
         self.base.print(text);
@@ -155,14 +175,7 @@ impl Host for Session<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
-        let mut context = nextflow_plugins::Context {
-            host: &mut *self.base,
-            config: &self.options.config,
-            params: self.options.config.params(),
-            project_dir: &self.options.project_dir,
-            cli_params: &self.options.cli_params,
-        };
-        nextflow_plugins::call(plugin, name, arguments, &mut context)
+        nextflow_plugins::call(plugin, name, arguments, &mut self.plugin_context())
     }
 
     /// Validates with the everit validator of `nextflow-plugins`.

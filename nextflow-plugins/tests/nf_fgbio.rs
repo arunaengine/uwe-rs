@@ -23,6 +23,7 @@ fn read_structure(text: &str) -> String {
         params: Value::map([]),
         project_dir: "/",
         cli_params: &[],
+        workflow: Value::Null,
     };
     match call(
         "nf-fgbio",

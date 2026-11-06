@@ -118,6 +118,20 @@ pub struct Context<'a> {
     /// The names of the params of the command line and the params file, which Nextflow keeps
     /// as `session.cliParams`.
     pub cli_params: &'a [String],
+    /// The `workflow` object of the run, which nf-schema 3 summaries read; null when unknown.
+    pub workflow: Value,
+}
+
+/// Runs what the plugins of the config do when a run starts, before its script: nf-schema
+/// checks its config, and may print help and end the run instead.
+pub fn start(context: &mut Context) -> Result<(), Error> {
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-schema")
+    {
+        nf_schema::start(context)?;
+    }
+    Ok(())
 }
 
 /// Calls a function of a plugin.

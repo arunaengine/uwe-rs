@@ -9,6 +9,7 @@ mod nf_arts;
 mod nf_bactopia;
 mod nf_bids;
 mod nf_bigbrother;
+mod nf_blocks;
 mod nf_boost;
 mod nf_cgroup_metrics;
 mod nf_cloudcache;

@@ -19,9 +19,12 @@ content-store.workspace = true
 cwl-runtime.workspace = true
 executor.workspace = true
 flate2.workspace = true
+futures-util = { workspace = true, features = ["io"] }
 gix.workspace = true
 input-schema.workspace = true
 jiff.workspace = true
+k8s-openapi.workspace = true
+kube.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true

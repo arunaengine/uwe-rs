@@ -117,6 +117,8 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe changes <run>
        uwe repeat <run> [-executor <executor>] [-store <folder or address>] [options]
        uwe lock-environment <conda environment file> [-platform <name>] [-output <file>]
+       uwe kuberun <repository or path in the cluster> -head-image <image> [-kubeconfig <file>]
+                     [-volume-mount <claim:path,...>] [-background] [options]
        uwe version
        uwe help [command]
 
@@ -152,6 +154,11 @@ options:
   -kubeconfig <file>                  the kubeconfig of the cluster of -executor kubernetes;
                                       uwe never takes the default one
   -kubernetes-namespace <name>        the namespace of the Jobs; the kubeconfig's by default
+  -head-image <image>                 the image with uwe on its PATH that `kuberun` runs in a
+                                      pod; -head-cpus <n> and -head-memory <size> its requests
+  -volume-mount <claim:path,...>      volume claims of the `kuberun` pod; the first holds the
+                                      cache of uwe
+  -background                         `kuberun` ends once the pod has started
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, 1024 for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]

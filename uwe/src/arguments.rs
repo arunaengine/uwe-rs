@@ -573,6 +573,7 @@ pub const COMMANDS: &[&str] = &[
     "resume",
     "reconcile",
     "presets",
+    "kuberun",
     "version",
 ];
 const WORKFLOW: &[&str] = &[

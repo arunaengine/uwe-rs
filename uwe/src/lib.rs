@@ -23,6 +23,7 @@ mod google_batch;
 mod inputs;
 mod insight;
 mod kubernetes;
+mod kuberun;
 mod local;
 mod logging;
 mod machine;

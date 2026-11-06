@@ -82,6 +82,10 @@ impl Cluster {
         &self.server
     }
 
+    pub fn client(&self) -> Client {
+        self.client.clone()
+    }
+
     pub fn jobs(&self) -> Api<Job> {
         Api::namespaced(self.client.clone(), &self.namespace)
     }

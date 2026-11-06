@@ -1,0 +1,2 @@
+Recorded 2026-11-06 with Nextflow 26.04.6 and nf-arts 1.0.0, local executor, from the probe pipeline of nf-fairscape's fixtures with manifest `probe-arts` 0.0.1 and a 400 x 400 picture.
+art-sleepy_fermat.svg: the plugin's picture of that run, style radial, palette viridis; uwe draws its own pictures, so the test compares its frame, colours and caption only.

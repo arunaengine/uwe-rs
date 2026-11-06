@@ -1,5 +1,5 @@
 //! Checks the AWS Batch backend against a local fake of AWS Batch and CloudWatch Logs that runs
-//! each job's command here.
+//! each job's command here, and compares its requests with those of nf-amazon.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use aws_batch_executor::{BatchBackend, Client, Helper, Settings, Volume};
 use executor::remote::RemoteStage;
-use executor::{Backend, Job, Staging};
-use serde_json::Value;
+use executor::{Backend, Job, Staged, Staging};
+use serde_json::{Value, json};
 use storage::aws::{Credentials, Keys};
 use task_model::{Accelerator, FORMAT, Image, OutputRule, Placement, TaskSpec};
 use tokio_util::sync::CancellationToken;
@@ -125,6 +125,132 @@ fn placement() -> Placement {
             .into(),
         ..Placement::default()
     }
+}
+
+/// The body of the recorded request to `path` that `pick` selects.
+fn recorded(path: &str, pick: impl Fn(&Value) -> bool) -> Value {
+    let text = include_str!("fixtures/nf_amazon_requests.jsonl");
+    let requests = text
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("JSON"));
+    let mut found = requests
+        .filter(|request| request["path"] == path)
+        .map(|request| request["body"].clone());
+    found.find(|body| pick(body)).expect("a recorded request")
+}
+
+/// Runs a task with an input through the fake, and compares the requests with those that
+/// nf-amazon sent for the same settings.
+#[tokio::test]
+async fn runs_staged_jobs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeBatch::start(&folder.path().join("fake"));
+    let backend = backend(folder.path(), &fake);
+    let source = folder.path().join("in.txt");
+    std::fs::write(&source, "hello\n").expect("writes the input");
+    let staging = Staging {
+        inputs: vec![Staged {
+            path: "in.txt".into(),
+            source,
+            ..Staged::default()
+        }],
+        ..Staging::default()
+    };
+    let spec = spec("tr a-z A-Z < in.txt > out.txt");
+    let placement = placement();
+    let job = Job {
+        name: "run-ALIGN-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("the output");
+    assert_eq!(output, "HELLO\n");
+    let submitted = &fake.requests("submitjob")[0];
+    let signed = "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/";
+    assert!(
+        submitted.authorization.starts_with(signed),
+        "{}",
+        submitted.authorization
+    );
+    assert!(
+        submitted
+            .authorization
+            .contains("/eu-west-1/batch/aws4_request")
+    );
+    let body = &submitted.body;
+    let native = recorded("/v1/submitjob", |body| body["jobName"] == "ALIGN");
+    for field in [
+        "jobQueue",
+        "retryStrategy",
+        "schedulingPriorityOverride",
+        "shareIdentifier",
+        "tags",
+        "propagateTags",
+        "timeout",
+    ] {
+        assert_eq!(body[field], native[field], "{field}");
+    }
+    let resources = "resourceRequirements";
+    assert_eq!(
+        body["containerOverrides"][resources],
+        native["containerOverrides"][resources]
+    );
+    assert_eq!(body["jobName"], "run-ALIGN-1-1");
+    assert_eq!(
+        body["jobDefinition"],
+        "uwe-ubuntu-sha256-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef:1"
+    );
+    let registered = &fake.requests("registerjobdefinition")[0].body;
+    let native = recorded("/v1/registerjobdefinition", |body| {
+        body["jobDefinitionName"] == "nf-ubuntu-24-04"
+    });
+    let (ours, theirs) = (
+        &registered["containerProperties"],
+        &native["containerProperties"],
+    );
+    for field in [
+        "command",
+        "jobRoleArn",
+        "logConfiguration",
+        "resourceRequirements",
+    ] {
+        assert_eq!(ours[field], theirs[field], "{field}");
+    }
+    // The fixture's two volumes, then the folder of the helper on the host.
+    for field in ["volumes", "mountPoints"] {
+        assert_eq!(
+            ours[field].as_array().expect("a list")[..2],
+            theirs[field].as_array().expect("a list")[..],
+            "{field}"
+        );
+    }
+    assert_eq!(ours["mountPoints"][2]["readOnly"], true);
+    assert_eq!(registered["type"], "container");
+    assert!(
+        registered["parameters"]["uwe-digest"]
+            .as_str()
+            .is_some_and(|digest| digest.len() == 64)
+    );
+    let described = &fake.requests("describejobdefinitions")[0].body;
+    assert_eq!(described["status"], "ACTIVE");
+    assert_eq!(
+        fake.requests("describejobs")[0].body,
+        json!({"jobs": ["job-1"]})
+    );
+    // The objects of the attempt went away with its collection.
+    assert!(
+        !folder
+            .path()
+            .join("staging/attempts")
+            .read_dir()
+            .is_ok_and(|mut entries| entries.next().is_some())
+    );
 }
 
 /// A second run finds the definition of the first one by its digest instead of registering

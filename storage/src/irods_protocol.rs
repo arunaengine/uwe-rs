@@ -459,3 +459,45 @@ fn unescape(text: &str) -> String {
     .replace("&#96;", "`")
     .replace("&amp;", "&")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn negotiates_tls() {
+        use Policy::{DontCare, Refuse, Require};
+        assert_eq!(negotiate(Require, DontCare), Some(true));
+        assert_eq!(negotiate(DontCare, DontCare), Some(true));
+        assert_eq!(negotiate(DontCare, Refuse), Some(false));
+        assert_eq!(negotiate(Refuse, DontCare), Some(false));
+        assert_eq!(negotiate(Require, Refuse), None);
+        assert_eq!(negotiate(Refuse, Require), None);
+    }
+
+    #[test]
+    fn hashes_challenges() {
+        assert_eq!(digest(&"a".repeat(64), "rods"), "Rl9VFDXZK2lsMJU4L4EhWw==");
+        let challenge = "0123456789abcdef".repeat(4);
+        assert_eq!(digest(&challenge, "rods"), "FyEC9j4SQM5mgkgToh/PrA==");
+    }
+
+    #[test]
+    fn reads_elements() {
+        let xml = "<a><value>x &amp; y</value><value>&apos;z&apos;</value></a>";
+        assert_eq!(tags(xml, "value"), ["x & y", "'z'"]);
+        assert_eq!(tag(xml, "missing"), None);
+        assert_eq!(
+            escape("<'a'&\"b\">"),
+            "&lt;&apos;a&apos;&amp;&quot;b&quot;&gt;"
+        );
+        assert!(failure(-310002, b"").missing);
+        assert!(failure(-809000, b"").existing);
+        let error = b"<RError_PI><count>1</count><RErrMsg_PI><status>-818000</status>\
+                      <msg>no access</msg></RErrMsg_PI></RError_PI>";
+        assert_eq!(
+            failure(-818000, error).message,
+            "iRODS error -818000: no access"
+        );
+    }
+}

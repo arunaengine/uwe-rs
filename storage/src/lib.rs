@@ -7,6 +7,7 @@ pub mod aws;
 mod azure;
 mod backend;
 mod blocking;
+pub mod cbor;
 mod downloads;
 pub mod drs;
 mod error;

@@ -181,7 +181,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-blocks", Kind::FileSystem),
     planned("nf-cloudcache", Kind::FileSystem),
     crate::nf_drs::PLUGIN,
-    planned("nf-irods", Kind::FileSystem),
+    crate::nf_irods::PLUGIN,
     planned("nf-lakefs", Kind::FileSystem),
     planned("nf-quilt", Kind::FileSystem),
     crate::nf_synapse::PLUGIN,

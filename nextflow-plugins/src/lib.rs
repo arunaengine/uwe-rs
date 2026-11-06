@@ -22,6 +22,7 @@ mod nf_fairscape;
 mod nf_fgbio;
 mod nf_flowviewer;
 mod nf_gc;
+mod nf_irods;
 mod nf_logsaver;
 mod nf_metalog;
 mod nf_parquet;

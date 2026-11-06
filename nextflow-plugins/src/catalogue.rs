@@ -176,7 +176,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-slack", Kind::Observer),
     planned("nf-teams", Kind::Observer),
     crate::nf_tower::PLUGIN,
-    planned("nf-weblog", Kind::Observer),
+    crate::nf_weblog::PLUGIN,
     // File systems.
     planned("nf-blocks", Kind::FileSystem),
     planned("nf-cloudcache", Kind::FileSystem),

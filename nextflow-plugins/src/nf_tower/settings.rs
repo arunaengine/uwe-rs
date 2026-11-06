@@ -216,3 +216,64 @@ fn render(value: &Value) -> String {
         other => other.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(text: &str) -> Config {
+        let directory = tempfile::tempdir().expect("a folder");
+        let file = directory.path().join("nextflow.config");
+        std::fs::write(&file, text).expect("writes the config");
+        let options = nextflow_config::Options {
+            profiles: None,
+            params: Value::map([]),
+            project_dir: "/project".into(),
+            launch_dir: "/launch".into(),
+            work_dir: "/work".into(),
+        };
+        nextflow_config::load(&[file], &options, &mut Quiet).expect("loads")
+    }
+
+    struct Quiet;
+
+    impl nextflow_evaluator::interpreter::Host for Quiet {
+        fn print(&mut self, _: &str) {}
+    }
+
+    #[test]
+    fn checks_settings() {
+        let none = |_: &str| None;
+        let read = |text: &str| Settings::read(&config(text), &none).map(|read| read.is_some());
+        assert_eq!(read("tower.accessToken = 'x'"), Ok(false));
+        let workspace = read("tower { enabled = true; accessToken = 'x'; workspaceId = 'abc' }");
+        assert!(
+            workspace.is_err_and(|error| error.starts_with("Invalid Seqera Platform workspace"))
+        );
+        let endpoint = read("tower { enabled = true; accessToken = 'x'; endpoint = 'ftp://a' }");
+        assert_eq!(
+            endpoint,
+            Err("Only http and https are supported -- The given URL was: ftp://a".into())
+        );
+        let token = read("tower.enabled = true");
+        assert!(token.is_err_and(|error| error.starts_with("Missing Seqera Platform access")));
+        let launched = |name: &str| (name == "TOWER_WORKFLOW_ID").then(|| "abc".to_owned());
+        let from_env = Settings::read(&config("tower.accessToken = 'x'"), &launched);
+        assert!(
+            from_env.is_err(),
+            "a launched run takes the token from the environment"
+        );
+    }
+
+    #[test]
+    fn hides_secrets() {
+        let text = config_text(
+            &config("plugins { id 'nf-tower' }\ntower { enabled = true\n accessToken = 'abc' }\n")
+                .tree,
+        );
+        assert_eq!(
+            text,
+            "plugins = ['nf-tower']\n\ntower {\n   enabled = true\n   accessToken = '[secret]'\n}\n"
+        );
+    }
+}

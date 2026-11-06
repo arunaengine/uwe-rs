@@ -353,3 +353,19 @@ impl Worker {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decides_sending() {
+        let second = Duration::from_millis(1001);
+        assert_eq!(due(Duration::ZERO, 1, false), Due::Nothing);
+        assert_eq!(due(second, 1, false), Due::Progress);
+        assert_eq!(due(Duration::ZERO, 100, false), Due::Progress);
+        assert_eq!(due(Duration::ZERO, 1, true), Due::Progress);
+        assert_eq!(due(Duration::from_secs(59), 0, true), Due::Nothing);
+        assert_eq!(due(Duration::from_secs(61), 0, false), Due::Heartbeat);
+    }
+}

@@ -103,3 +103,42 @@ impl Reports {
 fn key(name: &str) -> nextflow_evaluator::value::Key {
     nextflow_evaluator::value::Key(Value::string(name))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lists_matching_files() {
+        let directory = tempfile::tempdir().expect("a folder");
+        let folder = directory.path().to_string_lossy().into_owned();
+        let tower = "reports:\n  \"report.html\":\n    display: \"Joined report\"\n    \
+                     mimeType: \"text/html\"\n  \"*.txt\":\n    display: \"Greeting\"\n";
+        std::fs::write(directory.path().join("tower.yml"), tower).expect("writes tower.yml");
+        let results = directory.path().join("results");
+        std::fs::create_dir(&results).expect("makes results");
+        std::fs::write(results.join("a.txt"), "hello a\n").expect("writes a");
+        std::fs::write(results.join("report.html"), "x").expect("writes the report");
+        let start = Start {
+            launch_dir: folder.clone(),
+            project_dir: folder.clone(),
+            ..crate::run_metadata::tests::start()
+        };
+        let mut reports = Reports::load(&start, "abc", None)
+            .expect("reads tower.yml")
+            .expect("has reports");
+        for name in ["a.txt", "report.html", "other.csv"] {
+            reports.publish(&format!("{folder}/results/{name}"));
+        }
+        let text = std::fs::read_to_string(directory.path().join("nf-abc-reports.tsv"))
+            .expect("the reports file");
+        assert_eq!(
+            text,
+            format!(
+                "key\tpath\tsize\tdisplay\tmime_type\n*.txt\t{folder}/results/a.txt\t8\t\
+                 Greeting\t\nreport.html\t{folder}/results/report.html\t1\tJoined report\t\
+                 text/html\n"
+            )
+        );
+    }
+}

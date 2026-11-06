@@ -281,7 +281,8 @@ process TOTAL {
 workflow {
     samples = channel.of(file('s3://inputs/run/samples.csv')).splitCsv(header: true)
     counted = COUNT(samples.map { row -> tuple(row.id, file(row.reads)) })
-    TOTAL(counted.map { id, count -> count }.collect())
+    // Sorted, as the order of the files is part of the task, whichever count ends first.
+    TOTAL(counted.map { id, count -> count }.collect(sort: true))
 }
 "#;
 

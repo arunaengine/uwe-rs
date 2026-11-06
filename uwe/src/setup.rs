@@ -43,6 +43,7 @@ pub(crate) const EXECUTORS: &[&str] = &[
     "kubernetes",
     "aws-batch",
     "google-batch",
+    "azure-batch",
 ];
 
 /// What the config files set up for a command; the default is what no config file sets up.
@@ -136,6 +137,8 @@ pub struct Executors {
     pub aws_batch: crate::aws_batch::Config,
     /// `[executor.google-batch]`: the jobs, their staging root and their helper.
     pub google_batch: crate::google_batch::Config,
+    /// `[executor.azure-batch]`: the tasks, their pools, staging root and helper.
+    pub azure_batch: crate::azure_batch::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -165,6 +168,7 @@ impl Executors {
             "kubernetes",
             "aws-batch",
             "google-batch",
+            "azure-batch",
         ];
         section.only(&keys)?;
         if let Some(batch) = section.table("aws-batch")? {
@@ -172,6 +176,9 @@ impl Executors {
         }
         if let Some(batch) = section.table("google-batch")? {
             settings.google_batch = crate::google_batch::Config::read(&batch)?;
+        }
+        if let Some(batch) = section.table("azure-batch")? {
+            settings.azure_batch = crate::azure_batch::Config::read(&batch)?;
         }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;

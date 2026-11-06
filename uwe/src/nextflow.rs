@@ -322,11 +322,11 @@ pub fn driver(
         command_line: std::env::args().collect::<Vec<_>>().join(" "),
         secret_env: !matches!(
             arguments.executor.as_deref(),
-            Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch")
+            Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
-            Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch")
+            Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),

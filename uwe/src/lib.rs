@@ -9,6 +9,7 @@ pub mod hosted;
 
 mod arguments;
 mod aws_batch;
+mod azure_batch;
 mod changes;
 mod check;
 mod clean;

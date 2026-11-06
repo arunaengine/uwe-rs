@@ -54,7 +54,7 @@ pub struct Arguments {
     pub forceall: bool,
     /// `-rerun-triggers`: Snakemake checks that can require existing outputs to run again.
     pub rerun_triggers: Option<Vec<String>>,
-    /// `-executor simulator|local|tes|slurm|kubernetes|aws-batch|google-batch`; `None` uses
+    /// `-executor simulator|local|tes|slurm|kubernetes|aws-batch|google-batch|azure-batch`; `None` uses
     /// config, else local for runs.
     pub executor: Option<String>,
     /// Whether `executor` is `default` of `[executor]` or `local`, which a Nextflow pipeline's
@@ -640,7 +640,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("-forceall", &["run", "graph", "check", "check-order"]),
     ("-rerun-triggers <a,b>", &["run"]),
     (
-        "-executor <simulator|local|tes|slurm|kubernetes|aws-batch|google-batch>",
+        "-executor <simulator|local|tes|slurm|kubernetes|aws-batch|google-batch|azure-batch>",
         BACKEND,
     ),
     (

@@ -1,15 +1,16 @@
-//! Reads content-addressed stores of `cas://` addresses: blocks named by their CIDs and the
-//! publish coordinates that name them, in local folders or S3 prefixes.
+//! Reads and writes content-addressed stores of `cas://` addresses: blocks named by their CIDs,
+//! publish coordinates that name them, and the Store Log, in local folders or S3 prefixes.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::cbor::{Cid, Node, RAW, decode};
 use crate::error::Problem;
 use crate::objects::{Objects, problem};
-use crate::{Downloaded, Entry, Metadata};
+use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
 /// The stores of a client: each member by its alias and location, the order reads look in, and
 /// the member that writes go to.
@@ -37,9 +38,94 @@ pub(crate) fn scope() -> Options {
     scope.clone().unwrap_or_default()
 }
 
+/// Writes a DAG-CBOR block into the writable store of [`use_scope`] and returns its CID.
+pub fn put_block(node: &Node) -> Result<Cid, StorageError> {
+    let node = node.clone();
+    run("write a block to", move |cas| async move {
+        let (bytes, cid) = node.block().map_err(Problem::fixed)?;
+        cas.writable()?.absent(&block_key(&cid), &bytes).await?;
+        Ok(cid)
+    })
+}
+
+/// Writes the Store Log entry `log/<rts>-<kind>-<cid>`, newest first by name.
+pub fn put_log(kind: &str, cid: &Cid) -> Result<(), StorageError> {
+    let key = format!(
+        "log/{:013}-{kind}-{cid}",
+        9_999_999_999_999 - jiff::Timestamp::now().as_millisecond()
+    );
+    run("write the Store Log of", move |cas| async move {
+        cas.writable()?.absent(&key, b"").await
+    })
+}
+
+/// A block of the stores of [`use_scope`], decoded; raw blocks are refused.
+pub fn block(cid: &Cid) -> Result<Option<Node>, StorageError> {
+    let cid = *cid;
+    run("read a block of", move |cas| async move {
+        match cas.find(&cid).await? {
+            Some(bytes) => decode(&bytes).map(Some).map_err(Problem::fixed),
+            None => Ok(None),
+        }
+    })
+}
+
+/// The CIDs that the `run` entries of the Store Logs name, newest first, across the stores.
+pub fn runs() -> Result<Vec<Cid>, StorageError> {
+    run("read the Store Log of", |cas| async move {
+        let mut entries = Vec::new();
+        for (_, member) in &cas.members {
+            entries.extend(
+                (member.entries("log").await?)
+                    .into_iter()
+                    .map(|entry| entry.name),
+            );
+        }
+        entries.sort();
+        entries.dedup();
+        Ok((entries.iter())
+            .filter_map(|name| Cid::parse(name.split_once("-run-")?.1))
+            .collect())
+    })
+}
+
+/// The content and size that a publish coordinate `cas://<alias>/<path>` names.
+pub fn coordinate(target: &str) -> Result<Option<(Cid, u64)>, StorageError> {
+    let target = target.to_owned();
+    run("read the coordinate", move |cas| async move {
+        let Some(content) = cas.coordinate(&target).await? else {
+            return Ok(None);
+        };
+        let size = cas.size(&content).await?.unwrap_or(0);
+        Ok(Some((content, size)))
+    })
+}
+
+/// Runs a request against the stores of [`use_scope`].
+fn run<T: Send + 'static, F>(
+    action: &'static str,
+    request: impl FnOnce(Cas) -> F + Send + 'static,
+) -> Result<T, StorageError>
+where
+    F: Future<Output = Result<T, Problem>> + Send,
+{
+    crate::blocking::run(async move {
+        let failed = |problem: Problem| StorageError::Failed {
+            action,
+            address: "cas://".to_owned(),
+            provider: "the stores of the cas scope".to_owned(),
+            message: problem.message,
+            retryable: problem.retryable,
+        };
+        let cas = Cas::new(scope()).map_err(failed)?;
+        request(cas).await.map_err(failed)
+    })
+}
+
 pub(crate) struct Cas {
     /// The members in the order reads look in.
     members: Vec<(String, Member)>,
+    writable: Option<String>,
 }
 
 /// A member store: a folder on this machine or a place in S3.
@@ -91,7 +177,10 @@ impl Cas {
             };
             members.push((alias, member));
         }
-        Ok(Cas { members })
+        Ok(Cas {
+            members,
+            writable: options.writable,
+        })
     }
 
     pub async fn stat(&self, target: &str) -> Result<Option<Metadata>, Problem> {
@@ -132,6 +221,44 @@ impl Cas {
         Ok(Downloaded {
             version: Some(cid.to_string()),
         })
+    }
+
+    /// Publishes a file at a coordinate of the writable store: its content block, then the
+    /// coordinate, which names the content.
+    pub async fn upload(&self, file: &Path, target: &str) -> Result<Written, Problem> {
+        let (alias, path) = coordinate_parts(target)?;
+        if self.writable.as_deref() != Some(alias) {
+            return Err(Problem::fixed(format!(
+                "cas://{alias} is not the writable store; publish to the store of \
+                 lineage.store.location"
+            )));
+        }
+        let path = normalised(path);
+        let name = path.rsplit('/').next().unwrap_or_default().to_owned();
+        if name.is_empty() {
+            return Err(Problem::fixed(format!("{target} names no file")));
+        }
+        let bytes = std::fs::read(file).map_err(|error| Problem::local(file, error))?;
+        let cid = Cid::of(RAW, &bytes);
+        let member = self.writable()?;
+        member.absent(&block_key(&cid), &bytes).await?;
+        let line = format!("cas://{cid}/{name}\n");
+        member
+            .replace(&format!("coords/{path}"), line.as_bytes())
+            .await?;
+        Ok(Written {
+            size: bytes.len() as u64,
+            version: Some(cid.to_string()),
+        })
+    }
+
+    fn writable(&self) -> Result<&Member, Problem> {
+        let alias = (self.writable.as_deref())
+            .ok_or_else(|| Problem::fixed("no store is writable; set lineage.store.location"))?;
+        (self.members.iter())
+            .find(|(name, _)| name == alias)
+            .map(|(_, member)| member)
+            .ok_or_else(|| Problem::fixed(format!("the writable store {alias} is not configured")))
     }
 
     /// The bytes of a block, from the first member that has it.
@@ -272,6 +399,67 @@ impl Member {
         }
     }
 
+    /// Writes a block that never changes: an existing one stays, and a local one is made
+    /// read-only and linked into place whole.
+    async fn absent(&self, key: &str, bytes: &[u8]) -> Result<(), Problem> {
+        match self {
+            Member::Folder(root) => {
+                let target = root.join(key);
+                if target.exists() {
+                    return Ok(());
+                }
+                let parent = target.parent().unwrap_or(root);
+                let local = |error| Problem::local(&target, error);
+                std::fs::create_dir_all(parent).map_err(local)?;
+                let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(local)?;
+                temporary.write_all(bytes).map_err(local)?;
+                temporary.as_file().sync_all().map_err(local)?;
+                read_only(temporary.path()).map_err(local)?;
+                match std::fs::hard_link(temporary.path(), &target) {
+                    Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
+                        Err(local(error))
+                    }
+                    _ => Ok(()),
+                }
+            }
+            Member::Objects(operator) => {
+                let written = operator
+                    .write_with(key, bytes.to_vec())
+                    .if_not_exists(true)
+                    .cache_control("public, max-age=31536000, immutable")
+                    .await;
+                match written {
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            opendal::ErrorKind::ConditionNotMatch
+                                | opendal::ErrorKind::AlreadyExists
+                        ) =>
+                    {
+                        Ok(())
+                    }
+                    other => other.map(|_| ()).map_err(problem),
+                }
+            }
+        }
+    }
+
+    async fn replace(&self, key: &str, bytes: &[u8]) -> Result<(), Problem> {
+        match self {
+            Member::Folder(root) => {
+                let target = root.join(key);
+                let local = |error| Problem::local(&target, error);
+                std::fs::create_dir_all(target.parent().unwrap_or(root)).map_err(local)?;
+                std::fs::write(&target, bytes).map_err(local)
+            }
+            Member::Objects(operator) => operator
+                .write(key, bytes.to_vec())
+                .await
+                .map(|_| ())
+                .map_err(problem),
+        }
+    }
+
     /// The entries of a folder of the store.
     async fn entries(&self, folder: &str) -> Result<Vec<Entry>, Problem> {
         match self {
@@ -367,4 +555,10 @@ fn normalised(path: &str) -> String {
         }
     }
     kept.join("/")
+}
+
+#[cfg(unix)]
+fn read_only(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o444))
 }

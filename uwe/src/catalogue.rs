@@ -359,7 +359,7 @@ fn features(executor: &str) -> &'static [&'static str] {
     match executor {
         "local" => &["daemons", "sidecars", "offline"],
         "kubernetes" => &["daemons", "sidecars"],
-        "slurm" => &["offline"],
+        "slurm" | "htcondor" | "pbs" | "nomad" => &["offline"],
         _ => &[],
     }
 }

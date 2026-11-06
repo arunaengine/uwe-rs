@@ -520,6 +520,12 @@ impl Driver for Nextflow {
         self.tasks(requests)
     }
 
+    fn started(&mut self, task: workflow_graph::TaskId, attempt: u32) {
+        if let Some(reports) = &mut self.reports {
+            reports.started(task, attempt);
+        }
+    }
+
     fn take_acceptance(&mut self, task: workflow_graph::TaskId, attempt: u32) -> bool {
         self.acceptance.remove(&(task, attempt)).unwrap_or(false)
     }

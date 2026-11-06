@@ -221,6 +221,29 @@ impl Reports {
         self.notify(Event::TaskSubmitted(record));
     }
 
+    /// Tells the observers that an attempt of a task began.
+    pub fn started(&mut self, id: TaskId, attempt: u32) {
+        let Some((task, submit)) = self.asked.get(&id).filter(|_| !self.observers.is_empty())
+        else {
+            return;
+        };
+        let number = self.order.iter().position(|asked| *asked == id);
+        let row = Row {
+            number: number.map_or(0, |place| place + 1),
+            task: task.clone(),
+            exit: 0,
+            attempt,
+            cached: false,
+            image: None,
+            submit: *submit,
+            start: Some(now()),
+            complete: None,
+            usage: None,
+        };
+        let record = unfinished(row.record(), "RUNNING");
+        self.notify(Event::TaskStarted(record));
+    }
+
     /// Notes how an attempt of a task ended.
     pub fn ended(&mut self, outcome: &Outcome) {
         let Some((task, submit)) = self.asked.get(&outcome.id) else {
@@ -249,7 +272,7 @@ impl Reports {
         }
     }
 
-    /// Tells the observers how an attempt ended; one that ran started first.
+    /// Tells the observers how an attempt ended.
     fn tell(&mut self, row: &Row) {
         let record = row.record();
         let event = match row.status() {
@@ -257,18 +280,13 @@ impl Reports {
                 self.counts.cached += 1;
                 Event::TaskCached(record)
             }
-            status => {
-                self.notify(Event::TaskStarted(unfinished(record.clone(), "RUNNING")));
-                match status {
-                    "COMPLETED" => {
-                        self.counts.succeeded += 1;
-                        Event::TaskCompleted(record)
-                    }
-                    _ => {
-                        self.counts.failed += 1;
-                        Event::TaskFailed(record)
-                    }
-                }
+            "COMPLETED" => {
+                self.counts.succeeded += 1;
+                Event::TaskCompleted(record)
+            }
+            _ => {
+                self.counts.failed += 1;
+                Event::TaskFailed(record)
             }
         };
         self.notify(event);

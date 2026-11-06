@@ -19,7 +19,7 @@ pub enum Event {
     /// The run handed a task to the engine. A task that the cache answers on resume has this
     /// event too, then [`Event::TaskCached`].
     TaskSubmitted(Record),
-    /// An attempt started, told when it ended, with its start time in the record.
+    /// An attempt began: the executor has it.
     TaskStarted(Record),
     TaskCompleted(Record),
     /// An earlier result answered the task, so it did not run.

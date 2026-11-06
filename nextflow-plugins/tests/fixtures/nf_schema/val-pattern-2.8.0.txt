@@ -1,0 +1,24 @@
+===== validate
+[ERROR] ERROR ~ Could not derive file type from <probe>/sheet.txt. Please specify the file extension (CSV, TSV, YML, YAML and JSON are supported).
+
+ -- Check '.nextflow.log' file for details
+[ERROR] ERROR ~ Validation of pipeline parameters failed!
+
+ -- Check '.nextflow.log' file for details
+!! nextflow.validation.exceptions.SchemaValidationException: The following invalid input values have been detected:
+
+* --input (sheet.txt): "sheet.txt" does not match regular expression ^\S+\.csv$
+
+
+===== samplesheet
+[ERROR] ERROR ~ Could not derive file type from <probe>/sheet.txt. Please specify the file extension (CSV, TSV, YML, YAML and JSON are supported).
+
+ -- Check '.nextflow.log' file for details
+[ERROR] ERROR ~ Could not derive file type from <probe>/sheet.txt. Please specify the file extension (CSV, TSV, YML, YAML and JSON are supported).
+
+ -- Check '.nextflow.log' file for details
+[]
+[PIPELINE] val.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

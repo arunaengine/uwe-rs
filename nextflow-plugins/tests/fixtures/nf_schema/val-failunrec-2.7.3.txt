@@ -1,0 +1,7 @@
+WARN: Unrecognized config option 'validation.failUnrecognisedParams'
+WARN: Unrecognized config option 'validation.failUnrecognisedHeaders'
+
+[FAILED] completed=0 failed=0 cached=0
+[ERROR] ERROR ~ No such variable: failUnrecognisedParams
+
+ -- Check '.nextflow.log' file for details

@@ -1,0 +1,12 @@
+===== validate
+!! nextflow.validation.exceptions.SchemaValidationException: The following invalid input values have been detected:
+
+* --ref: genome.fa
+
+
+===== samplesheet
+[[[id:S1, count:4], ${params.ref}], [[id:S2, count:5], ${params.tool.name}], [[id:S3, count:6], ${params.missing}], [[id:S4, count:7], ${params.nothere.deep}], [[id:S5, count:8], plain]]
+[PIPELINE] val.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

@@ -190,6 +190,26 @@ pub fn container(request: &TaskRequest) -> Option<String> {
     }
 }
 
+/// What a task gives the Wave service: its `container` directive with the engine's registry,
+/// and its `conda` and `arch` directives.
+pub fn wave_sources(
+    request: &TaskRequest,
+    registry: Option<&str>,
+    channels: &[String],
+) -> nextflow_plugins::WaveSources {
+    let text = |name: &str| {
+        let value = directive(&request.directives, name).filter(Value::truth);
+        value.map(|value| value.to_string())
+    };
+    nextflow_plugins::WaveSources {
+        process: request.process.to_string(),
+        container: text("container").map(|image| with_registry(&image, registry)),
+        conda: text("conda"),
+        platform: text("arch"),
+        channels: channels.to_vec(),
+    }
+}
+
 /// Prepends the engine registry unless the image's first part contains a dot or colon.
 /// For example, docker.registry = 'quay.io' qualifies biocontainers/fastqc.
 pub fn with_registry(image: &str, registry: Option<&str>) -> String {

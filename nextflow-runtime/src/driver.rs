@@ -24,7 +24,7 @@ use crate::process::glob_matches;
 use crate::reports::Reports;
 use crate::task::{
     ENVIRONMENT, SCRIPT, command, command_script, container, launcher, read_environment, resources,
-    with_registry,
+    wave_sources, with_registry,
 };
 use crate::{LoadError, Loader, Options, Run, TaskId, TaskOutcome, TaskRequest};
 
@@ -115,6 +115,8 @@ pub struct Nextflow {
     /// The registry of the container engine, like `docker.registry`, for images without one.
     registry: Option<String>,
     conda_channels: Vec<String>,
+    /// The Wave service of nf-wave, when the config turns it on.
+    wave: Option<nextflow_plugins::Wave>,
     /// The reports that the config turns on, like the trace, in a real run.
     reports: Option<Reports>,
     /// The deliveries of the reports, once they are written.
@@ -165,6 +167,7 @@ impl Nextflow {
             notes: Vec::new(),
             registry: None,
             conda_channels: vec!["conda-forge".into(), "bioconda".into()],
+            wave: None,
             reports: None,
             report_deliveries: Vec::new(),
             cause: None,
@@ -389,6 +392,12 @@ impl Nextflow {
                 }
                 let registry = self.registry.as_deref();
                 task.image = (task.image).map(|image| with_registry(&image, registry));
+                if let Some(wave) = self.wave.as_mut().filter(|_| request.made.is_none()) {
+                    let sources = wave_sources(&request, registry, &self.conda_channels);
+                    if let Some(image) = wave.resolve(&sources).map_err(DriverError::new)? {
+                        task.image = Some(image);
+                    }
+                }
                 for input in &task.inputs {
                     if let Some(maker) = self.made_by.get(&input.source)
                         && !task.after.contains(maker)
@@ -482,6 +491,13 @@ impl Driver for Nextflow {
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
         let launch_dir = std::env::current_dir().unwrap_or_default();
+        let host = &self.settings.host;
+        let variable = |name: &str| host.environment(name);
+        self.wave = nextflow_plugins::wave(config, &variable, self.launch.simulated)
+            .map_err(DriverError::new)?;
+        if let Some(note) = self.wave.as_ref().and_then(nextflow_plugins::Wave::note) {
+            self.settings.host.print(&format!("WARN: {note}\n"));
+        }
         if !self.launch.simulated {
             for warning in nextflow_plugins::catalogue::warnings(config) {
                 self.settings.host.print(&format!("WARN: {warning}\n"));

@@ -59,6 +59,8 @@ Repositories in AWS CodeCommit (nf-codecommit) are fetched over Git HTTPS from `
 
 A Nextflow config with `cloudcache.enabled = true` (nf-cloudcache) puts uwe's store at `cloudcache.path`, else at the address of the environment variable `NXF_CLOUDCACHE_PATH`, else at `workDir`, unless `-store` names a store. A place on this machine is refused. The address needs a storage provider that can write there. The store keeps uwe's own format, not Nextflow's cache files. `uwe clean` and other commands do not read the Nextflow config, so they need `-store` with the same address.
 
+A Nextflow config with `wave.enabled = true` (nf-wave) keeps uwe's own images by default: uwe pulls the `container` images and builds Conda images itself, and says once that Wave is not contacted. When `wave.endpoint` (or `WAVE_API_ENDPOINT`), `wave.freeze`, `wave.mirror`, `wave.scan.mode` or `wave.build.repository` is set, uwe asks that Wave service for the image of each task with a `container` or `conda` directive, in the order of `wave.strategy`, waits until Wave has built it, and runs the image that Wave names. Simulated runs send dry-run requests. The Seqera Platform token of `tower.accessToken` or `TOWER_ACCESS_TOKEN` goes with each request. `NXF_DISABLE_WAVE_SERVICE` turns Wave off. Not supported: Dockerfiles of module bundles, extra layers (`containerConfigUrl`, `bundleProjectResources`), Singularity images, Fusion, token refresh and the `nf-wave:` commands.
+
 ## Hosts
 
 uwe builds and runs on Linux and macOS, and on Windows through WSL 2. The static release build is for x86_64 Linux. Remote nodes that receive the uwe binary must run Linux.

@@ -2,10 +2,64 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
+use std::sync::{Arc, Mutex};
+
 use nextflow_evaluator::value::Value;
 use serde_json::{Value as Json, json};
 
 use super::*;
+
+/// A request that the fake heard: its first line, its headers in lower case and its body.
+struct Heard {
+    line: String,
+    headers: Vec<String>,
+    body: String,
+}
+
+/// Answers each request with the next of `replies` (status and body), the last one again
+/// when they run out.
+fn service(replies: Vec<(u16, String)>) -> (String, Arc<Mutex<Vec<Heard>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let base = format!("http://{}", listener.local_addr().expect("an address"));
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let log = heard.clone();
+    std::thread::spawn(move || {
+        for (index, stream) in listener.incoming().flatten().enumerate() {
+            let mut reader = BufReader::new(&stream);
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            let mut headers = Vec::new();
+            let mut length = 0;
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).unwrap_or(0) == 0 || header.trim().is_empty() {
+                    break;
+                }
+                let header = header.trim().to_ascii_lowercase();
+                if let Some(value) = header.strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+                headers.push(header);
+            }
+            let mut body = vec![0; length];
+            let _ = reader.read_exact(&mut body);
+            log.lock().expect("the log").push(Heard {
+                line: line.trim().to_owned(),
+                headers,
+                body: String::from_utf8_lossy(&body).into_owned(),
+            });
+            let (status, reply) = &replies[index.min(replies.len() - 1)];
+            let answer = format!(
+                "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+            let _ = (&stream).write_all(answer.as_bytes());
+        }
+    });
+    (base, heard)
+}
 
 fn config(text: &str) -> Config {
     let directory = tempfile::tempdir().expect("a folder");
@@ -162,4 +216,138 @@ fn keeps_local_images() {
     let off = |name: &str| (name == "NXF_DISABLE_WAVE_SERVICE").then(|| "1".to_owned());
     assert!(wave(&config("wave.enabled = true"), &off, false).is_ok_and(|wave| wave.is_none()));
     assert!(wave(&config("wave.freeze = true"), &none, false).is_ok_and(|wave| wave.is_none()));
+    let token = |name: &str| (name == "TOWER_ACCESS_TOKEN").then(|| "secret".to_owned());
+    let text = "wave { enabled = true; scan.mode = 'required' }\ntower.workspaceId = '42'";
+    let wave = wave(&config(text), &token, false)
+        .expect("settings")
+        .expect("on");
+    let body = request(&wave, &sources("P", Some("ubuntu:22.04"), None));
+    assert_eq!(body["towerAccessToken"], "secret");
+    assert_eq!(body["towerWorkspaceId"], 42);
+}
+
+#[test]
+fn rejects_wrong_settings() {
+    let none = |_: &str| None;
+    let error = |text: &str| wave(&config(text), &none, false).err().unwrap_or_default();
+    assert_eq!(
+        error("wave { enabled = true; mirror = true; freeze = true }"),
+        "Wave configuration setting 'wave.mirror' and 'wave.freeze' conflicts each other"
+    );
+    assert!(error("wave { enabled = true; mirror = true }").contains("requires the use of"));
+    assert_eq!(
+        error("wave { enabled = true; strategy = 'container,spack' }"),
+        "Invalid value for 'wave.strategy' configuration attribute - offending value: spack"
+    );
+    assert_eq!(
+        error("wave { enabled = true; build.repository = 'https://r.example/x' }"),
+        "Config setting 'wave.build.repository' should not include any protocol prefix - \
+         offending value: 'https://r.example/x'"
+    );
+    assert!(error("wave { enabled = true; endpoint = 'ftp://w' }").starts_with("Endpoint URL"));
+    let text = "wave { enabled = true; mirror = true; build.repository = 'r.example/x' }";
+    let mirror = wave(&config(text), &none, false)
+        .expect("settings")
+        .expect("on");
+    let conda = mirror.request(&sources("P", None, Some("samtools")));
+    assert_eq!(
+        conda,
+        Err("Invalid container mirror operation - missing source container".into())
+    );
+    let url = mirror.request(&sources("P", Some("docker://ubuntu"), None));
+    assert!(url.is_err_and(|error| error.starts_with("Wave container request image cannot")));
+    let mut arm = sources("P", Some("ubuntu:22.04"), None);
+    arm.platform = Some("aarch64".into());
+    let body = mirror.request(&arm).expect("a request").expect("a body");
+    assert_eq!(body["containerPlatform"], "linux/arm64");
+}
+
+#[test]
+fn sends_to_service() {
+    let answer =
+        json!({ "requestId": "req1", "targetImage": "wave.example/a:1", "succeeded": true });
+    let (base, heard) = service(vec![(200, answer.to_string())]);
+    let text =
+        format!("wave {{ enabled = true; endpoint = '{base}/'; httpClient.maxRate = '100/sec' }}");
+    let token = |name: &str| (name == "TOWER_ACCESS_TOKEN").then(|| "secret".to_owned());
+    let mut wave = wave(&config(&text), &token, false)
+        .expect("settings")
+        .expect("on");
+    let image = sources("P", Some("ubuntu:22.04"), None);
+    assert_eq!(wave.resolve(&image), Ok(Some("wave.example/a:1".into())));
+    // The same sources again reuse the answer.
+    assert_eq!(wave.resolve(&image), Ok(Some("wave.example/a:1".into())));
+    let heard = heard.lock().expect("the log");
+    assert_eq!(heard.len(), 1);
+    assert_eq!(heard[0].line, "POST /v1alpha2/container HTTP/1.1");
+    let headers = heard[0].headers.join("\n");
+    assert!(headers.contains("content-type: application/json"));
+    assert!(headers.contains("authorization: bearer secret"));
+    assert!(headers.contains("traceparent: 00-"));
+    let body: Json = serde_json::from_str(&heard[0].body).expect("a JSON body");
+    assert_eq!(body["containerImage"], "ubuntu:22.04");
+}
+
+#[test]
+fn waits_for_build() {
+    let pending =
+        json!({ "requestId": "req9", "buildId": "bd-9", "targetImage": "wave.example/x:1" });
+    let (base, heard) = service(vec![
+        (200, pending.to_string()),
+        (
+            200,
+            json!({ "id": "req9", "status": "PENDING" }).to_string(),
+        ),
+        (
+            200,
+            json!({ "id": "req9", "status": "DONE", "succeeded": false,
+            "reason": "conda failed", "detailsUri": "https://wave.example/view/builds/bd-9" })
+            .to_string(),
+        ),
+    ]);
+    let text = format!(
+        "wave.enabled = true\nwave.endpoint = '{base}'\nwave.httpClient.maxRate = '100/sec'"
+    );
+    let none = |_: &str| None;
+    let mut wave = wave(&config(&text), &none, false)
+        .expect("settings")
+        .expect("on");
+    wave.poll = Duration::ZERO;
+    let failed = wave.resolve(&sources("P", Some("ubuntu:22.04"), None));
+    assert_eq!(
+        failed,
+        Err(
+            "Wave provisioning for container 'wave.example/x:1' did not complete successfully\n\
+             - Reason: conda failed\n- Find out more here: https://wave.example/view/builds/bd-9"
+                .into()
+        )
+    );
+    let heard = heard.lock().expect("the log");
+    let lines: Vec<&str> = heard.iter().map(|heard| heard.line.as_str()).collect();
+    assert_eq!(
+        lines,
+        [
+            "POST /v1alpha2/container HTTP/1.1",
+            "GET /v1alpha2/container/req9/status HTTP/1.1",
+            "GET /v1alpha2/container/req9/status HTTP/1.1",
+        ]
+    );
+}
+
+#[test]
+fn reports_refused_requests() {
+    let (base, _) = service(vec![(400, "{\"message\":\"bad image\"}".into())]);
+    let text = format!("wave.enabled = true\nwave.endpoint = '{base}'");
+    let none = |_: &str| None;
+    let mut wave = wave(&config(&text), &none, false)
+        .expect("settings")
+        .expect("on");
+    assert_eq!(
+        wave.resolve(&sources("P", Some("ubuntu:22.04"), None)),
+        Err(format!(
+            "Wave invalid response: POST {base}/v1alpha2/container [400] {{\"message\":\"bad image\"}}"
+        ))
+    );
+    let url = wave.resolve(&sources("P", Some("docker://ubuntu"), None));
+    assert!(url.is_err_and(|error| error.starts_with("Wave container request image cannot start")));
 }

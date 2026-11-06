@@ -30,6 +30,7 @@ SMALL_DOMAINS = {
     "nextflow-plugins/src/nf_cmgg": "plugin module with its worksheet, sheet and expression parts",
     "nextflow-plugins/src/nf_fairscape": "plugin module with its task, file and evidence graph parts",
     "nextflow-plugins/src/nf_fl86": "plugin module with its secret, S3 tag and Seqera Action parts",
+    "nextflow-plugins/src/nf_lamin": "plugin module with its settings, client and tracker parts",
     "nextflow-plugins/src/nf_python": "plugin module with its exchange format, container and Python parts",
     "nextflow-plugins/src/nf_report": "plugin module with its settings, report entry and file parts",
     "nextflow-plugins/src/nf_seqlab_progress": "plugin module with its registry, dashboard and view parts",

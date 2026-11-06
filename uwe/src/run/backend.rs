@@ -7,7 +7,7 @@ use crate::repeat::Pinned;
 use crate::setup::Setup;
 use crate::{
     Failure, aws_batch, azure_batch, cache_directory, flyte, google_batch, grid, jarvice,
-    kubernetes, local, nomad, preview, resources, runs, slurm, snowflake, tes,
+    kubernetes, local, nomad, preview, resources, runs, slurm, snowflake, tes, wr,
 };
 use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
 
@@ -323,10 +323,17 @@ pub(crate) fn executor(
                 .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
+        "wr" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = wr::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
         other => Err(Failure::usage(format!(
             "uwe: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm`, \
              `kubernetes`, `aws-batch`, `google-batch`, `azure-batch`, `nomad`, `htcondor`, \
-             `pbs`, `flyte`, `snowflake` or `jarvice`"
+             `pbs`, `flyte`, `snowflake`, `jarvice` or `wr`"
         ))),
     }
 }

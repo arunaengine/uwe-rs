@@ -50,6 +50,7 @@ pub(crate) const EXECUTORS: &[&str] = &[
     "flyte",
     "snowflake",
     "jarvice",
+    "wr",
 ];
 
 /// What the config files set up for a command; the default is what no config file sets up.
@@ -164,6 +165,8 @@ pub struct Executors {
     pub snowflake: crate::snowflake::Config,
     /// `[executor.jarvice]`: the API, the jobs, their vault or staging root and helper.
     pub jarvice: crate::jarvice::Config,
+    /// `[executor.wr]`: the wr manager, the jobs, their staging and helper.
+    pub wr: crate::wr::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -200,6 +203,7 @@ impl Executors {
             "flyte",
             "snowflake",
             "jarvice",
+            "wr",
         ];
         section.only(&keys)?;
         if let Some(batch) = section.table("aws-batch")? {
@@ -228,6 +232,9 @@ impl Executors {
         }
         if let Some(jarvice) = section.table("jarvice")? {
             settings.jarvice = crate::jarvice::Config::read(&jarvice)?;
+        }
+        if let Some(wr) = section.table("wr")? {
+            settings.wr = crate::wr::Config::read(&wr)?;
         }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;

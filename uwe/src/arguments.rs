@@ -693,7 +693,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("-forceall", &["run", "graph", "check", "check-order"]),
     ("-rerun-triggers <a,b>", &["run"]),
     (
-        "-executor <simulator|local|tes|slurm|kubernetes|aws-batch|google-batch|azure-batch|nomad|htcondor|pbs|flyte|snowflake|jarvice>",
+        "-executor <simulator|local|tes|slurm|kubernetes|aws-batch|google-batch|azure-batch|nomad|htcondor|pbs|flyte|snowflake|jarvice|wr>",
         BACKEND,
     ),
     (

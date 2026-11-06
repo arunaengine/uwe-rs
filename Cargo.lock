@@ -8207,6 +8207,7 @@ dependencies = [
  "nextflow-runtime",
  "nomad-executor",
  "pbs-executor",
+ "rcgen",
  "reqwest",
  "run-crate",
  "run-database",
@@ -8226,9 +8227,11 @@ dependencies = [
  "tempfile",
  "tes-executor",
  "tokio",
+ "tokio-rustls",
  "tracing",
  "tracing-subscriber",
  "workflow-graph",
+ "wr-executor",
 ]
 
 [[package]]

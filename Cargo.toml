@@ -78,6 +78,7 @@ nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }
 nomad-executor = { path = "nomad-executor" }
 pbs-executor = { path = "pbs-executor" }
+wr-executor = { path = "wr-executor" }
 python-evaluator = { path = "python-evaluator" }
 run-crate = { path = "run-crate" }
 run-database = { path = "run-database" }

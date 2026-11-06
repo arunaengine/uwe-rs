@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod client;
+pub mod definition;
 mod settings;
+pub mod submit;
 
 pub use client::{BatchError, Client, LOG_GROUP};
 pub use settings::{Helper, Settings, TASK_FOLDER, Volume};

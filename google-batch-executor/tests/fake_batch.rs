@@ -94,3 +94,115 @@ fn stage_helper() {
 /// `token_uri` is the fake.
 fn backend(folder: &Path, fake: &FakeGoogle) -> GoogleBackend {
     let pem = key().to_pkcs8_pem(LineEnding::LF).expect("a PEM key");
+    let account = json!({
+        "type": "service_account",
+        "project_id": "lab",
+        "private_key_id": "key-1",
+        "private_key": pem.as_str(),
+        "client_email": "uwe@lab.iam.gserviceaccount.com",
+        "token_uri": format!("{}/token", fake.address),
+    });
+    std::fs::create_dir_all(folder).expect("makes the folder");
+    let file = folder.join("account.json");
+    std::fs::write(&file, account.to_string()).expect("writes the key");
+    let credentials = Credentials::read(&file).expect("credentials");
+    let settings = Settings {
+        location: Some("europe-west4".into()),
+        spot: true,
+        spot_attempts: 2,
+        service_account: Some("jobs@lab.iam.gserviceaccount.com".into()),
+        poll: Duration::from_millis(50),
+        task_folder: folder.join("node").to_string_lossy().into_owned(),
+        helper: Some(Helper::Path(helper(folder))),
+        batch_endpoint: fake.address.clone(),
+        logging_endpoint: fake.address.clone(),
+        ..Settings::default()
+    };
+    let project = credentials.project(None, |_| None).expect("a project");
+    let location = settings.location().to_owned();
+    let client = Client::new(project, location, credentials, &settings, Duration::ZERO);
+    let stage = RemoteStage {
+        objects: content_store::Store::local(&folder.join("staging")).expect("a store"),
+        expiry: Duration::from_secs(600),
+        max_outputs: 4,
+        credentials: false,
+        cleanup: true,
+    };
+    let mut backend = GoogleBackend::new(client, settings, folder.join("scratch"), stage, None)
+        .expect("a backend");
+    backend.staging_time = Duration::ZERO;
+    backend
+}
+
+fn spec(script: &str) -> TaskSpec {
+    TaskSpec {
+        output_manifest: None,
+        run_as: None,
+        format: FORMAT,
+        namespace: String::new(),
+        image: Some(Image {
+            reference: IMAGE.into(),
+            platform: None,
+        }),
+        arguments: vec!["/bin/sh".into(), "-c".into(), script.into()],
+        workdir: None,
+        environment: BTreeMap::new(),
+        inputs: Vec::new(),
+        outputs: vec![OutputRule {
+            pattern: "out.txt".into(),
+        }],
+        stdin: None,
+        containers: Vec::new(),
+        replaces_entrypoint: false,
+    }
+}
+
+fn placement() -> Placement {
+    Placement {
+        cpus: 2,
+        memory_bytes: Some(3 << 30),
+        time_seconds: Some(3600),
+        labels: [("team", "genomics")]
+            .map(|(name, value)| (name.to_owned(), value.to_owned()))
+            .into(),
+        ..Placement::default()
+    }
+}
+
+/// A cancelled task deletes its job, which stops it.
+#[tokio::test]
+async fn cancels_running_jobs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeGoogle::start(&folder.path().join("fake"));
+    let backend = backend(folder.path(), &fake);
+    let spec = spec("sleep 60");
+    let placement = placement();
+    let staging = Staging::default();
+    let job = Job {
+        name: "run-SLOW-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let stop = async {
+        for _ in 0..3000 {
+            if fake.jobs().first().is_some_and(|id| fake.running(id)) {
+                cancel.cancel();
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("the job never ran");
+    };
+    let (ended, ()) = tokio::join!(backend.run(job, &cancel), stop);
+    assert!(matches!(ended, Err(ExecutorError::Cancelled)), "{ended:?}");
+    let id = fake.jobs()[0].clone();
+    assert_eq!(fake.requests("DELETE ").len(), 1);
+    assert!(
+        fake.requests("DELETE ")[0]
+            .path
+            .ends_with(&format!("/jobs/{id}"))
+    );
+    assert!(!fake.running(&id));
+}

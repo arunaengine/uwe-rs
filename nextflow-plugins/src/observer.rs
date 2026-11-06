@@ -15,7 +15,7 @@ pub trait Observer {
 /// One event of a run.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
-    RunStarted(Start),
+    RunStarted(Box<Start>),
     /// The run handed a task to the engine. A task that the cache answers on resume has this
     /// event too, then [`Event::TaskCached`].
     TaskSubmitted(Task),
@@ -44,6 +44,8 @@ pub type Record = serde_json::Map<String, serde_json::Value>;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Task {
     pub record: Record,
+    /// The number of its process in [`Start::processes`].
+    pub process_id: Option<u32>,
     /// The SHA-256 by which a resumed run finds the task in the cache, in hex; the record's
     /// `hash` has Nextflow's short form of it, like `ab/cdef01`.
     pub hash: String,
@@ -78,15 +80,42 @@ pub struct Start {
     /// The work directory, as `workflow.workDir` shows it.
     pub work_dir: String,
     pub project_dir: String,
-    /// The main script.
+    /// The main script that runs, after `manifest.mainScript`.
     pub script: String,
+    /// `owner/name` of a pipeline pulled from a repository, else the folder of the project.
+    pub project_name: String,
+    /// The address of the Git repository of a pulled pipeline, with its commit and the
+    /// revision asked for; `None` for a local pipeline, as in Nextflow.
+    pub repository: Option<String>,
+    pub commit_id: Option<String>,
+    pub revision: Option<String>,
     pub command_line: String,
     pub profile: String,
+    /// The config files that were read, in order.
+    pub config_files: Vec<String>,
     pub params: serde_json::Value,
     /// The merged config as nested objects.
     pub config: serde_json::Value,
+    /// The `manifest` scope of the config, like `name`, `version` and `homePage`.
+    pub manifest: serde_json::Value,
+    /// The processes that the workflow calls, numbered from 1 in the order of the calls.
+    pub processes: Vec<Process>,
     /// Milliseconds since 1970.
     pub start: i64,
+}
+
+/// A process of the run, a vertex of the process graph that Nextflow's DAG shows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Process {
+    pub id: u32,
+    /// The fully qualified name, like `NFCORE_DEMO:DEMO:FASTQC`.
+    pub name: String,
+    /// The name of the definition, which differs from the end of `name` for an alias.
+    pub definition: String,
+    /// The script file that defines it, whose folder is the module directory.
+    pub script: Option<String>,
+    /// The processes that its outputs reach through channels and operators, by id.
+    pub feeds: Vec<u32>,
 }
 
 /// The end of a run.

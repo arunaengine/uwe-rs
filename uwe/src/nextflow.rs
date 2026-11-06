@@ -328,6 +328,11 @@ pub fn driver(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes")
         ),
+        repository: crate::repository::origin(
+            arguments.target.as_deref(),
+            arguments.revision.as_deref(),
+            &launch.target,
+        ),
     };
     Ok(Box::new(Nextflow::new(launch, settings)?))
 }

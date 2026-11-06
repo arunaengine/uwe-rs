@@ -49,6 +49,20 @@ pub struct Settings {
     pub command_line: String,
     pub secret_env: bool,
     pub local_options: bool,
+    /// Where uwe pulled the pipeline from, which run observers hear.
+    pub repository: Option<Repository>,
+}
+
+/// The Git repository of a pulled pipeline, as `workflow.repository`, `workflow.commitId` and
+/// `workflow.revision` describe it.
+#[derive(Clone, Debug, Default)]
+pub struct Repository {
+    pub url: String,
+    /// `owner/name`, as `workflow.projectName` shows it.
+    pub name: String,
+    pub commit_id: Option<String>,
+    /// The revision asked for, like a branch or tag.
+    pub revision: Option<String>,
 }
 
 impl Default for Settings {
@@ -61,6 +75,7 @@ impl Default for Settings {
             command_line: String::new(),
             secret_env: false,
             local_options: false,
+            repository: None,
         }
     }
 }
@@ -466,14 +481,16 @@ impl Driver for Nextflow {
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
         }
         let options = self.options(&loaded, loaded.config.clone());
-        if let Some(reports) = &mut self.reports {
-            reports.run_started(&options, &launch_dir);
-        }
         let mut host = Noting {
             host: self.settings.host.as_mut(),
             notes: &mut self.notes,
         };
         let (run, requests) = Run::start_retained(&loaded.module, &options, &mut host);
+        // Observers hear the start once the network is built, so they get the process graph.
+        if let Some(reports) = &mut self.reports {
+            let repository = self.settings.repository.as_ref();
+            reports.run_started(&options, &launch_dir, run.processes(), repository);
+        }
         self.run = Some(run);
         let requests = requests.map_err(|failure| self.fault(failure))?;
         self.tasks(requests)

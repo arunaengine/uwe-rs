@@ -18,6 +18,7 @@ use crate::lamin::{self, Lamin};
 use crate::objects::{Objects, Service};
 use crate::oci::{self, Oci};
 use crate::public::PublicBuckets;
+use crate::quilt::{self, Quilt};
 use crate::settings::{self, Kind, ProviderSettings};
 use crate::synapse::{self, Synapse};
 use crate::web::Web;
@@ -48,6 +49,8 @@ pub(crate) enum Source {
     Lakefs,
     /// `lamin` addresses that no provider serves, with the `lamin` scope of a Nextflow config.
     Lamin,
+    /// `quilt+s3` addresses that no provider serves, with the AWS settings of the environment.
+    Quilt,
 }
 
 impl Source {
@@ -66,6 +69,7 @@ impl Source {
                     Source::Oci => "oci",
                     Source::Lakefs => "lakefs",
                     Source::Lamin => "lamin",
+                    Source::Quilt => "quilt",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -129,6 +133,15 @@ impl Source {
                 value.endpoint.clone().unwrap_or_default(),
                 value.access_key.clone().unwrap_or_default(),
             ],
+            Kind::Quilt(value) => vec![
+                "quilt".into(),
+                value
+                    .endpoint
+                    .as_deref()
+                    .map(crate::address::redacted)
+                    .unwrap_or_default(),
+                value.region.clone().unwrap_or_default(),
+            ],
             Kind::Lamin(value) => vec!["lamin".into(), value.hub.clone().unwrap_or_default()],
             Kind::Oci(value) => vec![
                 "oci".into(),
@@ -157,6 +170,7 @@ impl Source {
             Source::Oci => "OCI Object Storage, with the API key of the environment".to_owned(),
             Source::Lakefs => "lakeFS, with the lakefs scope of the Nextflow config".to_owned(),
             Source::Lamin => "LaminDB, with the API key of the environment".to_owned(),
+            Source::Quilt => "Quilt packages, with the AWS settings of the environment".to_owned(),
         }
     }
 }
@@ -174,6 +188,7 @@ pub(crate) enum Backend {
     Oci(Oci),
     Lakefs(Lakefs),
     Lamin(Lamin),
+    Quilt(Quilt),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -200,6 +215,7 @@ impl Connection {
             Source::Oci => Backend::Oci(Oci::new(oci::scope()).map_err(failed)?),
             Source::Lakefs => Backend::Lakefs(Lakefs::new(lakefs::scope()).map_err(failed)?),
             Source::Lamin => Backend::Lamin(Lamin::new(lamin::scope()).map_err(failed)?),
+            Source::Quilt => Backend::Quilt(Quilt::new(quilt::environment()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -292,6 +308,10 @@ impl Connection {
                     };
                     Backend::Lakefs(Lakefs::new(options).map_err(failed)?)
                 }
+                Kind::Quilt(s3) => {
+                    let service = s3_service(s3, settings, &mut secrets)?;
+                    Backend::Quilt(Quilt::new(service).map_err(failed)?)
+                }
                 Kind::Lamin(settings) => {
                     let options = lamin::Options {
                         api_key: secrets.reveal(&settings.api_key)?,
@@ -350,6 +370,7 @@ impl Connection {
             Backend::Oci(oci) => oci.stat(target).await,
             Backend::Lakefs(lakefs) => lakefs.stat(target).await,
             Backend::Lamin(lamin) => lamin.stat(target).await,
+            Backend::Quilt(quilt) => quilt.stat(target).await,
         }
     }
 
@@ -368,6 +389,7 @@ impl Connection {
             Backend::Oci(oci) => oci.list(target).await,
             Backend::Lakefs(lakefs) => lakefs.list(target).await,
             Backend::Lamin(lamin) => lamin.list(target).await,
+            Backend::Quilt(quilt) => quilt.list(target).await,
         }
     }
 
@@ -391,6 +413,7 @@ impl Connection {
             Backend::Oci(oci) => oci.download(target, file, offset).await,
             Backend::Lakefs(lakefs) => lakefs.download(target, file).await,
             Backend::Lamin(lamin) => lamin.download(target, file).await,
+            Backend::Quilt(quilt) => quilt.download(target, file).await,
         }
     }
 

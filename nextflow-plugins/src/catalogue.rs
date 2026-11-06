@@ -133,7 +133,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-bactopia", Kind::Functions),
     planned("nf-bids", Kind::Functions),
     crate::nf_boost::PLUGIN,
-    planned("nf-cmgg", Kind::Functions),
+    crate::nf_cmgg::PLUGIN,
     crate::nf_dotenv::PLUGIN,
     crate::nf_ped::PLUGIN,
     crate::nf_pregex::PLUGIN,

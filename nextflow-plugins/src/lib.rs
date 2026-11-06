@@ -6,6 +6,7 @@ pub mod catalogue;
 pub mod everit;
 mod nf_anndata;
 mod nf_boost;
+mod nf_cmgg;
 mod nf_core_utils;
 mod nf_dotenv;
 mod nf_fgbio;

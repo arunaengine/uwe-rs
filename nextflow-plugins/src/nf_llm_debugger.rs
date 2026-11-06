@@ -461,3 +461,39 @@ fn show(text: &str, model: Option<&str>, note: Option<&str>) {
         .unwrap_or_default();
     println!("\n{RULE}\n{header}\n{RULE}\n{text}{note}\n{RULE}\n");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn routes_endpoints() {
+        let route = |endpoint: &str, model: &str| route(endpoint, model, false);
+        assert_eq!(
+            route("LOCAL", ""),
+            (Provider::Local, "http://localhost:8080/v1".into())
+        );
+        assert_eq!(route("claude", ""), (Provider::Claude, CLAUDE.into()));
+        assert_eq!(
+            route("http://h:1/llm-proxy/", ""),
+            (
+                Provider::Proxy,
+                "http://h:1/llm-proxy/debug/nextflow".into()
+            )
+        );
+        assert_eq!(
+            route("http://h:1/v1", "gemini-2.0-flash").0,
+            Provider::Gemini
+        );
+        assert_eq!(route("http://h:1/v1", "gpt-4o").0, Provider::OpenAi);
+        assert_eq!(route("http://h:11434", "llama3").0, Provider::Ollama);
+        assert_eq!(
+            route("http://h:1/v1/chat/completions", "demo"),
+            (Provider::Local, "http://h:1/v1".into())
+        );
+        assert_eq!(
+            super::route("gemini", "", true),
+            (Provider::Proxy, PROXY.into())
+        );
+    }
+}

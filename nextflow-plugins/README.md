@@ -395,6 +395,18 @@ not aborted. `getRunUid()` and `getTransformUid()` give null in the workflow bod
 before the run record exists, and the uids in process scripts and `workflow.onComplete`. The
 patterns of the rules find their match anywhere in the path.
 
+## src/nf_llm_debugger.rs
+
+nf-llm-debugger 1.0.14 is off unless `llm.enabled` or the param `llm_enabled` turns it on, and
+reads its params as the plugin does. When a run fails, it sends one report to the model and
+prints the diagnosis between rules on standard output. Where it differs: the report names the
+failing task, which uwe knows and Nextflow 26.04.6 never gives the plugin, with uwe's error text
+and a null work directory; the instructions to the model are uwe's own wording, in the plugin's
+three answer styles with the documentation and the two-sentence reminder; an `llm_endpoint`
+address is used for Gemini, Claude and OpenAI too, where the plugin always calls the provider's
+own address; Claude gets `max_tokens` 2048, which the Messages API needs; the CRG proxy is called
+with certificate checks, as uwe never turns them off.
+
 ## src/nf_quilt.rs
 
 nf-quilt 1.0.1 publishes a Quilt package for each package that the run's files went to:

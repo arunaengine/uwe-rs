@@ -50,8 +50,9 @@ fn warns_skipped_plugins() {
     assert_eq!(
         catalogue::warnings(&config),
         [
-            "The plugin `nf-agent-pi` is planned in uwe but not implemented yet; its features \
-             are skipped",
+            "The plugin `nf-agent-pi` is planned in uwe but not implemented yet (deferred until \
+             the Nextflow agent feature leaves preview; needs a container talking gRPC); its \
+             features are skipped",
             "The plugin `nf-aspera` cannot be implemented in uwe (it needs IBM's closed FASP \
              protocol); its features are skipped",
             "The plugin `nf-hello` is not supported by uwe (no release since 2024-03-06); its \
@@ -86,4 +87,19 @@ fn lists_registry_plugins() {
     assert_eq!(core["unavailable"], serde_json::json!([]));
     assert_eq!(capabilities["nf-agent"]["state"], "partial");
     assert_eq!(capabilities["nf-agent-pi"]["state"], "planned");
+    let planned: Vec<&str> = (catalogue::PLUGINS.iter())
+        .filter(|plugin| matches!(plugin.state, State::Planned(_)))
+        .map(|plugin| plugin.id)
+        .collect();
+    assert_eq!(
+        planned,
+        ["nf-agent-pi"],
+        "every other plugin has a decided state"
+    );
+    assert_eq!(capabilities["nf-pgcache"]["state"], "not implementable");
+    assert_eq!(capabilities["nf-iac"]["state"], "out of scope");
+    assert_eq!(
+        capabilities["nf-nim"]["reason"],
+        "it ignores the task's inputs and always sends the same downloaded file"
+    );
 }

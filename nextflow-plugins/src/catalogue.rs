@@ -40,8 +40,8 @@ pub enum State {
     Implemented,
     /// Some of its features work, the others are skipped or fail when used.
     Partial,
-    /// uwe will implement it.
-    Planned,
+    /// uwe will implement it later, for the reason given.
+    Planned(&'static str),
     /// uwe cannot implement it, for the reason given.
     NotImplementable(&'static str),
     /// uwe leaves it out, for the reason given, like a plugin without a release for a year.
@@ -104,8 +104,8 @@ impl Plugin {
     }
 }
 
-const fn planned(id: &'static str, kind: Kind) -> Plugin {
-    Plugin::new(id, kind, State::Planned)
+const fn planned(id: &'static str, kind: Kind, reason: &'static str) -> Plugin {
+    Plugin::new(id, kind, State::Planned(reason))
 }
 
 const fn impossible(id: &'static str, kind: Kind, reason: &'static str) -> Plugin {
@@ -213,14 +213,12 @@ pub const PLUGINS: &[Plugin] = &[
     Plugin::new("nf-azure", Kind::Executor, State::Partial),
     Plugin::new("nf-google", Kind::Executor, State::Partial),
     // Other executors.
-    planned("nf-ccloud", Kind::Executor),
     // nf-flyte: the `flyte` executor, one Flyte run per attempt with uwe's staging; no child
     // actions of a running Flyte run, token command or Flyte caching.
     Plugin {
         scopes: &["flyte"],
         ..Plugin::new("nf-flyte", Kind::Executor, State::Partial)
     },
-    planned("nf-fovus", Kind::Executor),
     // nf-ga4gh: the `tes` scope on uwe's TES executor, which counts memory in GB of 10^9 bytes
     // as the TES specification does; its `drs://` paths are those of nf-drs.
     Plugin {
@@ -230,7 +228,6 @@ pub const PLUGINS: &[Plugin] = &[
     // nf-gadi: its usage report from the job summaries that uwe's PBS executor reads;
     // `publishTo` only to a local path, and no start and end lines.
     crate::nf_gadi::PLUGIN,
-    planned("nf-iac", Kind::Executor),
     // nf-k8s: the `k8s` scope and `pod` options on uwe's Kubernetes executor; no bare pods,
     // `k8s.client` or debug YAML, and no privileged pods.
     Plugin {
@@ -249,7 +246,6 @@ pub const PLUGINS: &[Plugin] = &[
     // nf-ospool: `ospool` and `condor` on uwe's HTCondor executor, which stages files itself
     // and ignores the staging settings of `executor.$ospool`.
     Plugin::new("nf-ospool", Kind::Executor, State::Partial),
-    planned("nf-rest", Kind::Executor),
     // nf-slurm-no-memory: `slurm_no_memory` is uwe's SLURM executor with `memory_per_cpu_gb`.
     Plugin::new("nf-slurm-no-memory", Kind::Executor, State::Implemented),
     // nf-tencentcloud: its executor on uwe's TES executor, `cos://` on an S3 provider, and its
@@ -267,20 +263,47 @@ pub const PLUGINS: &[Plugin] = &[
         scopes: &["agent"],
         ..Plugin::new("nf-agent", Kind::Other, State::Partial)
     },
-    // nf-agent-pi: waits for the end of the preview; it runs the pi agent program in a
-    // container that talks gRPC with the driver.
-    planned("nf-agent-pi", Kind::Other),
+    planned(
+        "nf-agent-pi",
+        Kind::Other,
+        "deferred until the Nextflow agent feature leaves preview; needs a container talking gRPC",
+    ),
     // Not implementable.
     impossible(
         "nf-aspera",
         Kind::FileSystem,
         "it needs IBM's closed FASP protocol",
     ),
+    impossible(
+        "nf-ccloud",
+        Kind::Executor,
+        "closed source, its task protocol is not documented",
+    ),
     impossible("nf-console", Kind::Other, "it is a Groovy GUI console"),
+    impossible(
+        "nf-float",
+        Kind::Executor,
+        "only MemVerge's command line tool, no public API",
+    ),
+    impossible(
+        "nf-fovus",
+        Kind::Executor,
+        "only a command line tool, no public API",
+    ),
+    impossible(
+        "nf-ignite",
+        Kind::Executor,
+        "it needs Java worker processes, and `nextflow node` is gone",
+    ),
     impossible(
         "nf-itdepends",
         Kind::Functions,
         "it loads Java libraries through `@Grab`, and uwe has no JVM",
+    ),
+    impossible(
+        "nf-pgcache",
+        Kind::FileSystem,
+        "it stores Nextflow's binary cache records, which uwe cannot share; uwe has its own cache",
     ),
     impossible("nf-seqera", Kind::Executor, CLOSED),
     impossible("xpack-amzn", Kind::Other, EXTENSION),
@@ -288,29 +311,43 @@ pub const PLUGINS: &[Plugin] = &[
     impossible("xpack-google", Kind::Other, EXTENSION),
     impossible("xpack-platform", Kind::Other, EXTENSION),
     impossible("yellowdog", Kind::Executor, CLOSED),
-    // Unmaintained: no release in the year before 2026-11-06.
-    unmaintained("nf-biofuse", Kind::FileSystem, NEVER),
-    unmaintained(
+    // Not re-created, by decision.
+    Plugin::new(
         "nf-cachebrowser",
         Kind::FileSystem,
-        "no release since 2025-05-25",
+        State::OutOfScope("a viewer of Nextflow's own cache files; only a release candidate"),
     ),
+    Plugin::new(
+        "nf-ffq",
+        Kind::Functions,
+        State::OutOfScope("the service it needs (ffq-api) is archived"),
+    ),
+    Plugin::new(
+        "nf-iac",
+        Kind::Executor,
+        State::OutOfScope(
+            "uwe builds no Oracle Cloud machine per task; its Terraform code is not public",
+        ),
+    ),
+    Plugin::new(
+        "nf-nim",
+        Kind::Functions,
+        State::OutOfScope("it ignores the task's inputs and always sends the same downloaded file"),
+    ),
+    Plugin::new(
+        "nf-rest",
+        Kind::Executor,
+        State::OutOfScope("deactivated by its author (\"move to nf-iac\")"),
+    ),
+    // Unmaintained: no release in the year before 2026-11-06.
+    unmaintained("nf-biofuse", Kind::FileSystem, NEVER),
     unmaintained("nf-command-archiver", Kind::Observer, NEVER),
     unmaintained("nf-cws", Kind::Executor, "no release since 2025-05-28"),
     unmaintained("nf-demo", Kind::Other, NEVER),
-    unmaintained("nf-ffq", Kind::Functions, "no release since 2024-03-06"),
-    unmaintained("nf-float", Kind::Executor, "no release since 2025-06-24"),
     unmaintained("nf-hello", Kind::Functions, "no release since 2024-03-06"),
-    unmaintained("nf-ignite", Kind::Executor, "no release since 2021-05-28"),
     unmaintained("nf-jarvice", Kind::Executor, "no release since 2023-05-09"),
     unmaintained("nf-mlflow", Kind::Observer, NEVER),
-    unmaintained("nf-nim", Kind::Functions, "no release since 2025-09-10"),
     unmaintained("nf-notion", Kind::Observer, NEVER),
-    unmaintained(
-        "nf-pgcache",
-        Kind::FileSystem,
-        "no release since 2025-01-28",
-    ),
     unmaintained("nf-sample-sheet", Kind::Functions, NEVER),
     unmaintained("nf-skypilot", Kind::Executor, NEVER),
     unmaintained("nf-wr", Kind::Executor, "no release since 2022-02-28"),
@@ -329,7 +366,9 @@ pub fn status(id: &str) -> String {
     match plugin.state {
         State::Implemented => format!("the plugin `{id}` is implemented in uwe"),
         State::Partial => format!("the plugin `{id}` is partly implemented in uwe"),
-        State::Planned => format!("the plugin `{id}` is planned in uwe but not implemented yet"),
+        State::Planned(reason) => {
+            format!("the plugin `{id}` is planned in uwe but not implemented yet ({reason})")
+        }
         State::NotImplementable(reason) => {
             format!("the plugin `{id}` cannot be implemented in uwe ({reason})")
         }
@@ -390,15 +429,15 @@ pub fn observers(config: &Config) -> Result<Vec<Box<dyn Observer>>, String> {
     Ok(observers)
 }
 
-/// The catalogue as JSON, by plugin id: kind, state, the reason uwe leaves a plugin out, and
-/// the functions that work and those that do not.
+/// The catalogue as JSON, by plugin id: kind, state, the reason for a plugin that uwe does not
+/// run, and the functions that work and those that do not.
 pub fn capabilities() -> serde_json::Value {
     let mut plugins = serde_json::Map::new();
     for plugin in PLUGINS {
         let (state, reason) = match plugin.state {
             State::Implemented => ("implemented", None),
             State::Partial => ("partial", None),
-            State::Planned => ("planned", None),
+            State::Planned(reason) => ("planned", Some(reason)),
             State::NotImplementable(reason) => ("not implementable", Some(reason)),
             State::OutOfScope(reason) => ("out of scope", Some(reason)),
         };

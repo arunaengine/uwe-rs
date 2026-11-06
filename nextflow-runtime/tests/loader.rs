@@ -171,7 +171,8 @@ fn calls_included_plugins() {
              is not known to uwe)",
             "2:11: `nothing` is not a function of the plugin `nf-schema`",
             "3:11: Plugins are not supported yet: plugin/nf-agent-pi (the plugin `nf-agent-pi` \
-             is planned in uwe but not implemented yet)"
+             is planned in uwe but not implemented yet (deferred until the Nextflow agent \
+             feature leaves preview; needs a container talking gRPC))"
         ]
     );
 }

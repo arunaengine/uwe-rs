@@ -1,0 +1,19 @@
+# Manifest of aws-batch-executor, which runs tasks as AWS Batch jobs.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "aws-batch-executor"
+description = "Runs tasks as AWS Batch jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+storage.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "sync", "time"] }
+tracing.workspace = true

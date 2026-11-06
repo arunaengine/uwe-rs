@@ -7,6 +7,7 @@ resolver = "3"
 members = [
     "argo-parser",
     "argo-runtime",
+    "aws-batch-executor",
     "conda-environment",
     "config-file",
     "content-store",
@@ -47,6 +48,7 @@ publish = false
 # Workspace crates
 argo-parser = { path = "argo-parser" }
 argo-runtime = { path = "argo-runtime" }
+aws-batch-executor = { path = "aws-batch-executor" }
 conda-environment = { path = "conda-environment" }
 config-file = { path = "config-file" }
 content-store = { path = "content-store" }

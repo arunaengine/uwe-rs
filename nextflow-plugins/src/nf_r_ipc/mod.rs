@@ -1,5 +1,5 @@
 //! nf-r-ipc 0.2.2: calls R functions in a container, with arguments and results as one Arrow
-//! IPC table each way.
+//! IPC table each way, and the helpers for R's missing values, dates and durations.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -25,7 +25,29 @@ use runtime::{Settings, runtime};
 use table::{CONTROL, CONTROL_FIELDS, Row};
 
 pub(crate) const PLUGIN: Plugin = Plugin {
-    functions: &["rFunction", "rTable", "rRecords", "channelFromR"],
+    functions: &[
+        "rFunction",
+        "rTable",
+        "rRecords",
+        "channelFromR",
+        "isNULL",
+        "isNA",
+        "isNALogical",
+        "isNAInteger",
+        "isNADouble",
+        "isNACharacter",
+        "isMissing",
+        "naType",
+        "coalesce",
+        "coalesceNULL",
+        "coalesceNA",
+        "assertNotMissing",
+        "renderValue",
+        "asLocalDate",
+        "asInstantUtc",
+        "asZonedDateTime",
+        "asDurationSeconds",
+    ],
     call: Some(call),
     script: Some(SCRIPT),
     scopes: &["nfR"],
@@ -51,9 +73,11 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
             let answer = r_function(arguments, context, None)?;
             records(&decoded(&answer))
         }
-        name => Err(Error::Unsupported {
-            message: format!("the function `{name}` of the plugin `nf-r-ipc`"),
-            span: Default::default(),
+        name => missing::helper(name, &arguments).unwrap_or_else(|| {
+            Err(Error::Unsupported {
+                message: format!("the function `{name}` of the plugin `nf-r-ipc`"),
+                span: Default::default(),
+            })
         }),
     }
 }

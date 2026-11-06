@@ -16,7 +16,7 @@ pub(crate) enum Target {
 }
 
 /// The URL forms that uwe connects to, for the message of a refused URL.
-const SUPPORTED: &str = "jdbc:sqlite: and jdbc:postgresql:";
+const SUPPORTED: &str = "jdbc:sqlite:, jdbc:postgresql:, jdbc:mysql: and jdbc:mariadb:";
 
 /// Opens a connection to the database of a source.
 pub(crate) fn connect(source: &Source, launch: &str) -> Result<Box<dyn Connection>, String> {
@@ -29,7 +29,7 @@ pub(crate) fn connect(source: &Source, launch: &str) -> Result<Box<dyn Connectio
 /// Whether uwe refuses the URL, rather than failing to connect.
 pub(crate) fn refused(url: &str) -> bool {
     let word = url.split(':').nth(1).unwrap_or_default();
-    !matches!(word, "sqlite" | "postgresql")
+    !matches!(word, "sqlite" | "postgresql" | "mysql" | "mariadb")
 }
 
 /// The target of a source's URL; the user and password of the config win over those of the URL.
@@ -40,6 +40,7 @@ pub(crate) fn target(source: &Source, launch: &str) -> Result<Target, String> {
     match word {
         "sqlite" => Ok(Target::Sqlite(sqlite_place(address, launch))),
         "postgresql" => server(Engine::Postgres, address, source),
+        "mysql" | "mariadb" => server(Engine::Mysql, address, source),
         "h2" => Err(format!(
             "H2 is a Java database, which uwe cannot run: {url}. uwe connects to {SUPPORTED} \
              URLs; set sql.db.<name>.url to one of them"
@@ -111,6 +112,7 @@ fn server(engine: Engine, address: &str, source: &Source) -> Result<Target, Stri
     };
     let default_port = match engine {
         Engine::Postgres => 5432,
+        Engine::Mysql => 3306,
     };
     let tls = match engine {
         Engine::Postgres => match parameter("sslmode").as_deref() {
@@ -120,6 +122,16 @@ fn server(engine: Engine, address: &str, source: &Source) -> Result<Target, Stri
             Some("verify-ca" | "verify-full") => Tls::Verify,
             _ if parameter("ssl").as_deref() == Some("true") => Tls::Verify,
             _ => Tls::Prefer,
+        },
+        Engine::Mysql => match parameter("sslMode").map(|mode| mode.to_ascii_uppercase()) {
+            Some(mode) if mode == "DISABLED" || mode == "DISABLE" => Tls::Disable,
+            Some(mode) if mode == "REQUIRED" || mode == "TRUST" => Tls::Require,
+            Some(mode) if mode.starts_with("VERIFY") => Tls::Verify,
+            Some(_) => Tls::Prefer,
+            None => match parameter("useSSL").as_deref() {
+                Some("false") => Tls::Disable,
+                _ => Tls::Prefer,
+            },
         },
     };
     let user = (source
@@ -175,11 +187,11 @@ mod tests {
             (server.user.as_deref(), server.tls),
             (Some("u"), Tls::Require)
         );
-        let found = target(&source("jdbc:postgresql://[::1]/x", Some("sa")), "/");
+        let found = target(&source("jdbc:mysql://[::1]/x", Some("sa")), "/");
         let Ok(Target::Server(server)) = found else {
             panic!("a server: {found:?}")
         };
-        assert_eq!((server.host.as_str(), server.port), ("::1", 5432));
+        assert_eq!((server.host.as_str(), server.port), ("::1", 3306));
         assert_eq!(server.user.as_deref(), Some("sa"));
         let found = target(&source("jdbc:postgresql:lab", Some("me")), "/");
         let Ok(Target::Server(server)) = found else {

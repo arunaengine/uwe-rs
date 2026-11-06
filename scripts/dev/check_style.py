@@ -27,6 +27,7 @@ SMALL_DOMAINS = {
     "nextflow-plugins/src/nf_anndata": "plugin module with its store readers, as the plugin README asks",
     "nextflow-plugins/src/nf_bids": "plugin module with its file table, config and grouping parts",
     "nextflow-plugins/src/nf_cmgg": "plugin module with its worksheet, sheet and expression parts",
+    "nextflow-plugins/src/nf_fairscape": "plugin module with its task, file and evidence graph parts",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",
     "nextflow-plugins/src/nf_core_utils": "grouped shared-prefix domain; hoisting recreates nf_core_*",
     "uwe/src/run": "grouped shared-prefix domain; hoisting recreates run_*",

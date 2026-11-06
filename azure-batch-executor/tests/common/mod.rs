@@ -398,3 +398,124 @@ fn run(task: &Mutex<Task>, body: &Value) {
     let mut child = {
         let mut task = lock(task);
         if task.terminated {
+            return;
+        }
+        let child = (command
+            .process_group(0)
+            .stdin(Stdio::null())
+            .stdout(out)
+            .stderr(err))
+        .spawn()
+        .expect("starts the command");
+        task.group = Some(child.id());
+        child
+    };
+    let status = child.wait().expect("the command ends");
+    use std::os::unix::process::ExitStatusExt;
+    let mut task = lock(task);
+    task.group = None;
+    task.exit_code = Some(status.code().unwrap_or(128 + status.signal().unwrap_or(9)));
+}
+
+/// The content of a resource file: a local `file://` URL, or an `http://` URL as Azurite
+/// serves it.
+fn download(url: &str) -> Vec<u8> {
+    if let Some(path) = url.strip_prefix("file://") {
+        let path = path
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .replace("%20", " ");
+        return std::fs::read(path).expect("reads a local resource file");
+    }
+    let rest = url.strip_prefix("http://").expect("an http:// URL");
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let mut stream = TcpStream::connect(host).expect("connects");
+    write!(
+        stream,
+        "GET /{path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+    )
+    .expect("asks");
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer).expect("an answer");
+    let end = (answer.windows(4))
+        .position(|window| window == b"\r\n\r\n")
+        .expect("headers");
+    assert!(
+        answer.starts_with(b"HTTP/1.1 200"),
+        "{}",
+        String::from_utf8_lossy(&answer[..end])
+    );
+    answer[end + 4..].to_vec()
+}
+
+/// The words of a command line, with single and double quotes as a shell reads them.
+fn split(line: &str) -> Vec<String> {
+    let (mut words, mut word, mut quote, mut open) = (Vec::new(), String::new(), None, false);
+    let mut letters = line.chars();
+    while let Some(letter) = letters.next() {
+        match (quote, letter) {
+            (None, ' ') => {
+                if open {
+                    words.push(std::mem::take(&mut word));
+                }
+                open = false;
+            }
+            (None, '\'' | '"') => (quote, open) = (Some(letter), true),
+            (Some(mark), _) if mark == letter => quote = None,
+            (Some('"'), '\\') => word.extend(letters.next()),
+            _ => {
+                word.push(letter);
+                open = true;
+            }
+        }
+    }
+    if open {
+        words.push(word);
+    }
+    words
+}
+
+fn describe(id: &str, task: &Task) -> Value {
+    match (task.terminated, task.exit_code) {
+        (true, _) => {
+            json!({"id": id, "state": "completed", "executionInfo": {"result": "failure", "failureInfo": {"category": "usererror", "code": "TaskEnded", "message": "The task was terminated"}}})
+        }
+        (false, None) if task.group.is_some() => json!({"id": id, "state": "running"}),
+        (false, None) => json!({"id": id, "state": "active"}),
+        (false, Some(0)) => {
+            json!({"id": id, "state": "completed", "executionInfo": {"exitCode": 0, "result": "success"}})
+        }
+        (false, Some(code)) => {
+            json!({"id": id, "state": "completed", "executionInfo": {"exitCode": code, "result": "failure", "failureInfo": {"category": "usererror", "code": "FailureExitCode", "message": "The task exited with an exit code representing a failure"}}})
+        }
+    }
+}
+
+/// The method, the path with its query, the lower-case headers and the body of one request.
+#[expect(clippy::type_complexity, reason = "the parts of one HTTP request")]
+fn read(stream: &mut TcpStream) -> Option<(String, String, BTreeMap<String, String>, Vec<u8>)> {
+    let mut reader = BufReader::new(stream.try_clone().ok()?);
+    let mut first = String::new();
+    reader.read_line(&mut first).ok()?;
+    let mut words = first.split_whitespace();
+    let (method, path) = (words.next()?.to_owned(), words.next()?.to_owned());
+    let mut headers = BTreeMap::new();
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).ok()?;
+        if line.trim().is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_owned());
+        }
+    }
+    let length: usize = headers
+        .get("content-length")
+        .and_then(|text| text.parse().ok())
+        .unwrap_or(0);
+    let mut body = vec![0; length];
+    reader.read_exact(&mut body).ok()?;
+    Some((method, path, headers, body))
+}

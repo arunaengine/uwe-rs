@@ -391,3 +391,128 @@ fn nodes(list: &Value, empty: &str) -> Result<Vec<Rc<Node>>, Error> {
             None => return Err(arity("Sequence")),
         }
     }
+    Ok(nodes)
+}
+
+fn either(list: &Value) -> Result<Value, Error> {
+    let items = elements(list);
+    if items.is_empty() {
+        return Err(failure("Either requires at least one alternative".into()));
+    }
+    if items.iter().any(|item| node_of(item).is_some()) {
+        return Err(failure(
+            "Either alternates over literal strings, but got a PRegEx pattern. Use AnyOf(...) \
+             to alternate over PRegEx sub-patterns."
+                .into(),
+        ));
+    }
+    Ok(pattern(Node::Either(
+        items.iter().map(Value::to_string).collect(),
+    )))
+}
+
+fn elements(list: &Value) -> Vec<Value> {
+    match list {
+        Value::List(list) => list.borrow().items.clone(),
+        Value::Set(set) => set.borrow().items.iter().map(|key| key.0.clone()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn quantified(name: &str, child: Rc<Node>) -> Value {
+    pattern(match name {
+        "Optional" | "optional" => Node::Optional(child),
+        "OneOrMore" | "oneOrMore" => Node::OneOrMore(child),
+        "ZeroOrMore" | "zeroOrMore" => Node::ZeroOrMore(child),
+        _ => Node::Group(child),
+    })
+}
+
+/// `Exactly`, `AtLeast` or, with a maximum, `Range`, with the counts checked.
+fn counted(name: &str, child: Rc<Node>, min: i64, max: Option<i64>) -> Result<Value, String> {
+    Ok(pattern(match (name.to_ascii_lowercase().as_str(), max) {
+        ("exactly", _) if min < 0 => return Err("Count must be non-negative".into()),
+        ("exactly", _) => Node::Exactly(child, min),
+        ("atleast", _) if min < 0 => return Err("Minimum must be non-negative".into()),
+        ("atleast", _) => Node::AtLeast(child, min),
+        (_, Some(max)) if min < 0 || max < min => {
+            return Err(format!("Invalid range: min={min}, max={max}"));
+        }
+        (_, max) => Node::Range(child, min, max.unwrap_or(min)),
+    }))
+}
+
+fn named(name: &str, child: Rc<Node>) -> Result<Value, String> {
+    let mut characters = name.chars();
+    let valid = characters.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && characters.all(|c| c.is_ascii_alphanumeric());
+    if !valid {
+        return Err(
+            "Group name must start with a letter and contain only alphanumeric \
+                    characters (no underscores)"
+                .into(),
+        );
+    }
+    Ok(pattern(Node::NamedGroup(name.into(), child)))
+}
+
+/// The two characters of a range, each one UTF-16 unit, the start not after the end.
+fn characters(start: &str, end: &str) -> Result<(char, char), String> {
+    let single = |text: &str| {
+        let mut units = text.encode_utf16();
+        match (units.next(), units.next()) {
+            (Some(unit), None) => char::from_u32(u32::from(unit)),
+            _ => None,
+        }
+    };
+    let first = single(start).ok_or("Start must be a single character string")?;
+    let last = single(end).ok_or("End must be a single character string")?;
+    if first > last {
+        return Err(format!(
+            "Start character '{first}' must be less than or equal to end character '{last}'"
+        ));
+    }
+    Ok((first, last))
+}
+
+/// The ranges `'a'-'z'` of a specification, with any quote and spaces around the `-`.
+fn multi_range(spec: &Value) -> Result<Value, Error> {
+    let spec = match spec {
+        Value::Null => String::new(),
+        other => other.to_string(),
+    };
+    if spec.is_empty() {
+        return Err(failure(
+            "Range specification cannot be null or empty".into(),
+        ));
+    }
+    let finder = Pattern::new(r#"['"](.)['"]\s*-\s*['"](.)['"]"#).map_err(thrown)?;
+    let mut ranges = Vec::new();
+    for groups in finder.all_groups(&spec).map_err(thrown)? {
+        let part = |index: usize| groups.get(index).cloned().flatten().unwrap_or_default();
+        ranges.push(characters(&part(1), &part(2)).map_err(failure)?);
+    }
+    if ranges.is_empty() {
+        return Err(failure("At least one valid range is required".into()));
+    }
+    Ok(pattern(Node::MultiRange(ranges)))
+}
+
+/// The `IllegalArgumentException` of a check of the plugin.
+fn failure(message: String) -> Error {
+    thrown(Exception::illegal_argument(message))
+}
+
+fn arity(name: &str) -> Error {
+    Error::Unsupported {
+        message: format!("the function `{name}` of the plugin `nf-pregex` with these arguments"),
+        span: Default::default(),
+    }
+}
+
+fn thrown(exception: Exception) -> Error {
+    Error::Thrown {
+        exception: Rc::new(exception),
+        span: Default::default(),
+    }
+}

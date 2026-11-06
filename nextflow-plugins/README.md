@@ -8,7 +8,7 @@
 
 Every plugin of the Nextflow registry, read 2026-11-06, with its kind (functions, observer,
 file system, executor, other) and what uwe does for it: implemented, partial, planned, not
-implementable or out of scope, the last two with a reason. A run warns once for each plugin
+implementable or out of scope, the last three with a reason. A run warns once for each plugin
 of the config's `plugins` block that uwe does not run, and skips its features; `uwe check`
 lists the same warnings. An include from `plugin/<id>` of such a plugin fails to load, with
 the plugin's state in the message. `capabilities()` reports the catalogue.

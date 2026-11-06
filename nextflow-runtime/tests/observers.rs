@@ -204,8 +204,9 @@ fn hears_run_events() {
     );
     assert!(
         printed.borrow().starts_with(
-            "WARN: The plugin `nf-agent-pi` is planned in uwe but not implemented yet; its \
-             features are skipped\n"
+            "WARN: The plugin `nf-agent-pi` is planned in uwe but not implemented yet \
+             (deferred until the Nextflow agent feature leaves preview; needs a container \
+             talking gRPC); its features are skipped\n"
         ),
         "{}",
         printed.borrow()

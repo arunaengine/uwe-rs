@@ -1,0 +1,15 @@
+name: samtools_sort
+description: Sort SAM/BAM/CRAM file
+tools:
+  - samtools:
+      description: Tools for dealing with SAM, BAM and CRAM files
+      homepage: http://www.htslib.org/
+      doi: 10.1093/bioinformatics/btp352
+      author: Heng Li, Bob Handsaker and others
+      year: 2009
+      title: The Sequence Alignment/Map format and SAMtools
+      journal: Bioinformatics
+  - htslib:
+      description: C library for high-throughput sequencing data formats
+      homepage: http://www.htslib.org/
+  - plaintool: just a string

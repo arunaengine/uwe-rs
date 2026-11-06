@@ -1,0 +1,54 @@
+===== getReferenceAttribute datasheet
+sheet.fa
+===== getReferenceAttribute fallback
+genes.gtf
+===== getReferenceAttribute none
+null
+===== getReferenceAttribute unknown arg
+!! java.lang.IllegalArgumentException: getReferenceAttribute got unknown named argument(s): foo. Expected: param, datasheet, genomeMap, genomeKey
+===== getReferenceAttribute missing arg
+!! java.lang.IllegalArgumentException: getReferenceAttribute is missing named argument(s): param
+===== getReferencePath references
+refs.yml
+===== getReferencePath both
+!! java.lang.IllegalArgumentException: Use either --references or --genome, not both.
+===== getReferencePath datasheet
+https://example.org/sheets/GRCh38.yml
+===== getReferencePath genome null text
+refs.yml
+===== getReferencePath no ignore
+null
+===== getReferencePath empty base
+!! java.lang.IllegalArgumentException: references_datasheets_path is empty; cannot build datasheet URL for genome 'GRCh38'
+===== getReferenceMetadata map
+{"genome":"GRCh38","fasta":"a.fa"}
+===== getReferenceMetadata tuple
+{"genome":"GRCh38","fasta":"a.fa"}
+===== getReferenceMetadata many
+!! java.lang.IllegalArgumentException: Reference datasheet has multiple genomes (A, B). Use a datasheet with one genome record.
+===== getReferenceMetadata empty
+!! java.lang.IllegalArgumentException: Reference datasheet did not contain any genome records
+===== getReferenceMetadata bad row
+!! java.lang.IllegalArgumentException: Reference datasheet record is not a genome mapping: text
+===== toolsFromVersionsTopic
+["Samtools","fastqc","multiqc","samtools"]
+===== toolsFromVersionsTopic flat
+[WARN] WARN: toolsFromVersionsTopic received 3 item(s) but no [process, tool, version] tuples ? collect the versions topic with .collect(flat: false) to preserve tuples
+[]
+===== citationsOnTheFly
+[WARN] WARN: No citation metadata found for tool 'multiqc' ? add it to the module's meta.yml 'tools:' section
+[WARN] WARN: No citation metadata found for tool 'plaintool' ? add it to the module's meta.yml 'tools:' section
+{"samtools":{"citation":"samtools (1.22, <a href='https://doi.org/10.1093/bioinformatics/btp352'>Heng <em>et al.</em> (2009)</a>)","bibliography":"<li>Heng Li, Bob Handsaker and others. (2009). The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: <a href='https://doi.org/10.1093/bioinformatics/btp352'>10.1093/bioinformatics/btp352</a>.</li>"},"fastqc":{"citation":"fastqc (0.12.1, <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>Andrews (2010)</a>)","bibliography":"<li>Andrews, S. (2010). FastQC: a quality control tool for high throughput sequence data. Babraham Bioinformatics. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a>.</li>"},"htslib":{"citation":"htslib (<a href='http://www.htslib.org/'>http://www.htslib.org/</a>)","bibliography":"<li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a>.</li>"}}
+===== checkProfileProvided positional
+[WARN] WARN: nf-core pipelines do not accept positional arguments. The positional argument `input.csv` has been detected. HINT: A common mistake is to provide multiple values separated by spaces e.g. `-profile test, docker`.
+returned
+===== checkProfileProvided session
+returned
+===== checkConfigProvided
+true
+[PIPELINE] nf-core/probe 1.0.0 | profile=standard
+[WORKDIR] <probe>/work
+===== completionEmail platform
+[nf-core/probe] Skipping summary e-mail for a Seqera Platform launch; set params.force_completion_email = true to send it. Platform notifications must be enabled separately.returned
+
+[SUCCESS] completed=0 failed=0 cached=0

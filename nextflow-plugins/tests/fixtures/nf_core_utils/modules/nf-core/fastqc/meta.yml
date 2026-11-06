@@ -1,0 +1,14 @@
+name: fastqc
+description: Run FastQC on sequenced reads
+tools:
+  - fastqc:
+      description: |
+        FastQC gives general quality metrics about your reads.
+      homepage: https://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+      documentation: https://www.bioinformatics.babraham.ac.uk/projects/fastqc/Help/
+      licence: ["GPL-2.0-only"]
+      publication:
+        author: Andrews, S.
+        year: 2010
+        title: "FastQC: a quality control tool for high throughput sequence data"
+        source: Babraham Bioinformatics

@@ -7,6 +7,7 @@ use std::path::Path;
 use nextflow_evaluator::interpreter::Host;
 
 use super::athena::Athena;
+use super::databricks::Databricks;
 use super::server::{Engine, Server, Tls};
 use super::trino::Trino;
 use super::{Connection, Source};
@@ -19,11 +20,12 @@ pub(crate) enum Target {
     Server(Server),
     Trino(Trino),
     Athena(Athena),
+    Databricks(Databricks),
 }
 
 /// The URL forms that uwe connects to, for the message of a refused URL.
-const SUPPORTED: &str =
-    "jdbc:sqlite:, jdbc:postgresql:, jdbc:mysql:, jdbc:mariadb:, jdbc:trino: and jdbc:awsathena:";
+const SUPPORTED: &str = "jdbc:sqlite:, jdbc:postgresql:, jdbc:mysql:, jdbc:mariadb:, jdbc:trino:, \
+                         jdbc:awsathena: and jdbc:databricks:";
 
 /// Opens a connection to the database of a source.
 pub(crate) fn connect(source: &Source, host: &dyn Host) -> Result<Box<dyn Connection>, String> {
@@ -33,6 +35,7 @@ pub(crate) fn connect(source: &Source, host: &dyn Host) -> Result<Box<dyn Connec
         Target::Server(server) => Ok(Box::new(super::server::open(server)?)),
         Target::Trino(trino) => Ok(Box::new(trino)),
         Target::Athena(athena) => Ok(Box::new(athena)),
+        Target::Databricks(databricks) => Ok(Box::new(databricks)),
     }
 }
 
@@ -49,6 +52,7 @@ pub(crate) fn refused(url: &str) -> bool {
         "starburst",
         "awsathena",
         "athena",
+        "databricks",
     ];
     !known.contains(&word)
 }
@@ -77,6 +81,10 @@ pub(crate) fn target(
             let keys = source.password.as_ref().and(source.user.clone());
             let athena = super::athena::workgroup(address, keys, source.password.clone(), variable);
             athena.map(Target::Athena)
+        }
+        "databricks" => {
+            let databricks = super::databricks::warehouse(address, source.password.clone());
+            databricks.map(Target::Databricks)
         }
         "starburst" => Err(format!("No suitable driver found for {url}")),
         "h2" => Err(format!(

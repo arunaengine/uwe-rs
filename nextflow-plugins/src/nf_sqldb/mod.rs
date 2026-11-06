@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod athena;
+mod databricks;
 mod insert;
 mod server;
 mod sqlite;

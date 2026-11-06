@@ -141,6 +141,7 @@ pub const PLUGINS: &[Plugin] = &[
     // Functions that read data, query services or run code in containers.
     crate::nf_crg_report::PLUGIN,
     crate::nf_csvext::PLUGIN,
+    crate::nf_databricks::PLUGIN,
     crate::nf_fl86::PLUGIN,
     crate::nf_jev::PLUGIN,
     crate::nf_labrobotics::PLUGIN,
@@ -244,11 +245,6 @@ pub const PLUGINS: &[Plugin] = &[
     ),
     unmaintained("nf-command-archiver", Kind::Observer, NEVER),
     unmaintained("nf-cws", Kind::Executor, "no release since 2025-05-28"),
-    unmaintained(
-        "nf-databricks",
-        Kind::Executor,
-        "no release since 2025-07-16",
-    ),
     unmaintained(
         "nf-datatrail",
         Kind::Observer,

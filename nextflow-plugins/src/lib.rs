@@ -18,6 +18,7 @@ mod nf_co2footprint;
 mod nf_core_utils;
 mod nf_crg_report;
 mod nf_csvext;
+mod nf_databricks;
 mod nf_dotenv;
 mod nf_drs;
 mod nf_emoji;

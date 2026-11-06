@@ -1,0 +1,1 @@
+functions.json is the JSON that functions.nf of the nf-versions 0.8.0 spec printed with Nextflow 26.04.6, offline: each function and the text it returned.

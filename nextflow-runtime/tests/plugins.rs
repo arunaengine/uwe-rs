@@ -68,3 +68,22 @@ fn runs_fgbio_objects() {
          N1 P Some(1)\nN2 none Some(1)\n"
     );
 }
+
+#[test]
+fn collates_versions() {
+    let script = "include { collateVersions } from 'plugin/nf-versions'\n\
+        workflow {\n\
+            def items = channel.of('zeta: \"1.0\"', 'alpha: \"2.0\"\\nbeta: \"3\"\\n', 'gamma: \"0\"')\n\
+            collateVersions(items, 'TOOLS:\\n', 2).subscribe { f -> println \"${f.name}\\n${f.text}\" }\n\
+        }\n";
+    assert_eq!(
+        run(script, &[]).expect("runs"),
+        "all_mqc_versions.yml\nTOOLS:\n\n  gamma: \"0\"\n  alpha: \"2.0\"\n  beta: \"3\"\n  \
+         zeta: \"1.0\"\n\n"
+    );
+    let plain = script.replace("items, 'TOOLS:\\n', 2", "items");
+    assert_eq!(
+        run(&plain, &[]).expect("runs"),
+        "all_mqc_versions.yml\nalpha: \"2.0\"\nbeta: \"3\"\nzeta: \"1.0\"\ngamma: \"0\"\n\n"
+    );
+}

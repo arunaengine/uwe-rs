@@ -1,4 +1,4 @@
-//! Local SMTP and HTTP servers that record what uwe sends, and masked recorded output.
+//! Local SMTP and HTTP servers that record what uwe sends, and the reading of recorded mail.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -162,4 +162,97 @@ pub fn masked(text: &str) -> String {
         }
     }
     text
+}
+
+/// The parts of a recorded message, in order: the content type of each, and the body of each
+/// part that is not multipart, with the `Content-ID` and the file name where there is one.
+pub fn mail_parts(session: &str) -> (Vec<String>, Vec<String>) {
+    let message = (session.lines())
+        .skip_while(|line| !line.starts_with("S: 354"))
+        .skip(1)
+        .take_while(|line| !line.starts_with("S: 250"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut headers = Vec::new();
+    let mut parts = Vec::new();
+    walk(&message, true, &mut headers, &mut parts);
+    (headers, parts)
+}
+
+fn walk(entity: &str, top: bool, headers: &mut Vec<String>, parts: &mut Vec<String>) {
+    let (head, body) = entity.split_once("\n\n").unwrap_or((entity, ""));
+    // Folded header lines continue the line before.
+    let head = head.replace("\n\t", " ").replace("\n ", " ");
+    let field = |name: &str| {
+        (head.lines())
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                key.eq_ignore_ascii_case(name)
+                    .then(|| value.trim().to_owned())
+            })
+            .unwrap_or_default()
+    };
+    if top {
+        for name in ["From", "To", "Subject", "MIME-Version"] {
+            headers.push(format!("{name}: {}", field(name)));
+        }
+    }
+    let kind = field("Content-Type");
+    let main = kind
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+    if let Some(boundary) = kind.split("boundary=").nth(1) {
+        let boundary = boundary.trim_matches('"');
+        parts.push(main);
+        let delimiter = format!("--{boundary}");
+        for piece in body.split(&delimiter).skip(1) {
+            if piece.starts_with("--") {
+                break;
+            }
+            walk(piece.trim_start_matches('\n'), false, headers, parts);
+        }
+        return;
+    }
+    let disposition = field("Content-Disposition");
+    let name = disposition
+        .split("filename=")
+        .nth(1)
+        .unwrap_or_default()
+        .trim_matches('"');
+    let disposition = disposition.split(';').next().unwrap_or_default();
+    let body = match field("Content-Transfer-Encoding").as_str() {
+        "base64" => body.split_whitespace().collect::<String>(),
+        "quoted-printable" => quoted(body.trim_end_matches('\n')),
+        _ => body.trim_end_matches('\n').to_owned(),
+    };
+    parts.push(
+        format!("{main} {disposition} {} {name}", field("Content-ID"))
+            .trim()
+            .to_owned(),
+    );
+    parts.push(masked(&body));
+}
+
+/// Quoted-printable text decoded: soft line breaks joined, `=XX` as its byte.
+fn quoted(text: &str) -> String {
+    let text = text.replace("=\n", "");
+    let mut bytes = Vec::new();
+    let mut rest = text.as_bytes();
+    while let Some((&first, tail)) = rest.split_first() {
+        let code = tail.get(..2).and_then(|hex| std::str::from_utf8(hex).ok());
+        match code.and_then(|hex| u8::from_str_radix(hex, 16).ok()) {
+            Some(byte) if first == b'=' => {
+                bytes.push(byte);
+                rest = &tail[2..];
+            }
+            _ => {
+                bytes.push(first);
+                rest = tail;
+            }
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }

@@ -1,0 +1,69 @@
+S: 220 fake ESMTP
+C: EHLO <host>
+C: MAIL FROM:<probe@example.org>
+S: 250 OK
+C: RCPT TO:<someone@example.org>
+S: 250 OK
+C: DATA
+S: 354 go ahead
+From: probe@example.org
+To: someone@example.org
+Message-ID: <103017203.2.1793953784901.JavaMail.<user>@<host>>
+Subject: [nf-core/probe] Successful: tiny_watson
+MIME-Version: 1.0
+Content-Type: multipart/related; 
+	boundary="----=_Part_1_623918339.1793953784880"
+
+------=_Part_1_623918339.1793953784880
+Content-Type: multipart/alternative; 
+	boundary="----=_Part_0_1020321204.1793953784877"
+
+------=_Part_0_1020321204.1793953784877
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+TXT version=v1.0.0 runName=tiny_watson success=true exitStatus=0
+errorMessage=None
+errorReport=None
+commandLine=nextflow run core.nf -c v0.7.0.config -c fake.config -ansi-log false
+projectDir=<probe>
+dateComplete=2026-11-06T09:29:44.776048956+01:00 duration=1.2s
+  - runName: tiny_watson
+  - outdir: results
+  - Date Started: 2026-11-06T09:29:43.528328125+01:00
+  - Date Completed: 2026-11-06T09:29:44.776048956+01:00
+  - Pipeline script file path: <probe>/core.nf
+  - Pipeline script hash ID: d46fe46fe1b9f9f6a31314d7a52821f7
+  - Nextflow Version: 26.04.6
+  - Nextflow Build: 12646
+  - Nextflow Compile Timestamp: 09-07-2026 18:49 UTC
+
+------=_Part_0_1020321204.1793953784877
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+<html><body><h1>tiny_watson</h1><p>success=true version=v1.0.0</p>
+<ul><li>runName: tiny_watson</li><li>outdir: results</li><li>Date Started: 2026-11-06T09:29:43.528328125+01:00</li><li>Date Completed: 2026-11-06T09:29:44.776048956+01:00</li><li>Pipeline script file path: <probe>/core.nf</li><li>Pipeline script hash ID: d46fe46fe1b9f9f6a31314d7a52821f7</li><li>Nextflow Version: 26.04.6</li><li>Nextflow Build: 12646</li><li>Nextflow Compile Timestamp: 09-07-2026 18:49 UTC</li></ul>
+<img src="cid:nfcorepipelinelogo"></body></html>
+
+------=_Part_0_1020321204.1793953784877--
+
+------=_Part_1_623918339.1793953784880
+Content-Type: image/png; name=nf-core-probe_logo_light.png
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename=nf-core-probe_logo_light.png
+Content-ID: <nfcorepipelinelogo>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAA
+AABJRU5ErkJggg==
+------=_Part_1_623918339.1793953784880
+Content-Type: text/html; charset=us-ascii; name=multiqc_report.html
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename=multiqc_report.html
+
+<html><body>fake multiqc report</body></html>
+
+------=_Part_1_623918339.1793953784880--
+S: 250 OK queued
+C: QUIT
+S: 221 bye

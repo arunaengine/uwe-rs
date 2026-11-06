@@ -168,7 +168,7 @@ fn summary(event: &Event) -> String {
 fn hears_run_events() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
-    let config = "plugins {\n    id 'nf-boost@0.8.0'\n}\nparams.greeting = 'hi'\n";
+    let config = "plugins {\n    id 'nf-prov@1.4.0'\n}\nparams.greeting = 'hi'\n";
     std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
     let launch = Launch {
         target: directory.path().to_owned(),
@@ -203,7 +203,7 @@ fn hears_run_events() {
     );
     assert!(
         printed.borrow().starts_with(
-            "WARN: The plugin `nf-boost` is planned in uwe but not implemented yet; its \
+            "WARN: The plugin `nf-prov` is planned in uwe but not implemented yet; its \
              features are skipped\n"
         ),
         "{}",

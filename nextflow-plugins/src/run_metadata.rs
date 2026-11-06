@@ -610,6 +610,7 @@ pub(crate) mod tests {
             manifest: serde_json::json!({"name": "demo/probe"}),
             processes: Vec::new(),
             start: 1_793_965_381_122,
+            resume: false,
         }
     }
 

@@ -333,6 +333,7 @@ pub fn driver(
             arguments.revision.as_deref(),
             &launch.target,
         ),
+        resume: arguments.resume.is_some(),
     };
     Ok(Box::new(Nextflow::new(launch, settings)?))
 }

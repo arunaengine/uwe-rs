@@ -112,6 +112,8 @@ pub struct Start {
     pub processes: Vec<Process>,
     /// Milliseconds since 1970.
     pub start: i64,
+    /// Whether the run resumes an earlier one, with `-resume`, as `workflow.resume` shows it.
+    pub resume: bool,
 }
 
 /// A process of the run, a vertex of the process graph that Nextflow's DAG shows.

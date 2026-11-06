@@ -451,3 +451,37 @@ fn checks_fail_runs() {
         Some("nf-snapshot: 1 difference(s) from snapshot")
     );
 }
+
+/// Observers and the script learn that a run resumes, as `workflow.resume` of Nextflow
+/// 26.04.6 shows it after `-resume`.
+#[test]
+fn hears_resumed_runs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "workflow {\n    println \"resume=${workflow.resume}\"\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let printed = Rc::new(RefCell::new(String::new()));
+    let settings = Settings {
+        host: Box::new(Printed(printed.clone())),
+        resume: true,
+        ..Settings::default()
+    };
+    let mut driver = Nextflow::new(&launch, settings).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: Arc::new(Mutex::new(Gate::default())),
+    }));
+    let gate = Arc::new(Mutex::new(Gate::default()));
+    let execution = Engine::new(&mut Resumed(gate)).run("main.nf", &mut driver);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert_eq!(*printed.borrow(), "resume=true\n");
+    let Some(Event::RunStarted(start)) = events.borrow().first().cloned() else {
+        panic!("the run starts first");
+    };
+    assert!(start.resume);
+}

@@ -80,6 +80,7 @@ fn run(
         manifest: serde_json::json!({}),
         processes: Vec::new(),
         start: 0,
+        resume: false,
     };
     let mut events = vec![Event::RunStarted(Box::new(start))];
     let results = launch.join("results");

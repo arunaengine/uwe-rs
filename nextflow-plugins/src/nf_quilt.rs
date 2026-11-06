@@ -538,6 +538,7 @@ mod tests {
             manifest: json!({}),
             processes: Vec::new(),
             start: 1_793_963_795_486,
+            resume: false,
         };
         let end = End {
             success: true,

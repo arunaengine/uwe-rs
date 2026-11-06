@@ -28,6 +28,7 @@ mod nf_metalog;
 mod nf_parquet;
 mod nf_ped;
 mod nf_pregex;
+mod nf_prometheus;
 mod nf_prov;
 mod nf_runinsights;
 mod nf_schema;

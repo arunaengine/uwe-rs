@@ -1,0 +1,14 @@
+[ERROR] ERROR ~ Validation of samplesheet failed!
+
+ -- Check '.nextflow.log' file for details
+!! The following errors have been detected in <probe>/dupsheet.csv:
+
+-> Entry 2: Detected duplicate entries: [sample:S1]
+-> Entry 1: Error for field 'reference' (r): This option is deprecated
+-> Entry 2: Error for field 'reference' (r): This option is deprecated
+
+
+[PIPELINE] uniq.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

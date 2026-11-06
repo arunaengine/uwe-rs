@@ -1,0 +1,25 @@
+===== validate
+[ERROR] ERROR ~ Validation of pipeline parameters failed!
+
+ -- Check '.nextflow.log' file for details
+!! nextflow.validation.exceptions.SchemaValidationException: The following invalid input values have been detected:
+
+* --input (badsheet.csv): Validation of file failed:
+	-> Entry 1: Error for field 'count' (x): Value is [string] but should be [integer]
+	-> Entry 1: Error for field 'sample' (S 1): "S 1" does not match regular expression ^\S+$ (Sample name must not contain spaces)
+
+
+===== samplesheet
+[ERROR] ERROR ~ Validation of samplesheet failed!
+
+ -- Check '.nextflow.log' file for details
+!! nextflow.validation.exceptions.SchemaValidationException: The following errors have been detected in <probe>/badsheet.csv:
+
+-> Entry 1: Error for field 'count' (x): Value is [string] but should be [integer]
+-> Entry 1: Error for field 'sample' (S 1): "S 1" does not match regular expression ^\S+$ (Sample name must not contain spaces)
+
+
+[PIPELINE] val.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

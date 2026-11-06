@@ -29,7 +29,7 @@ use crate::exception::Exception;
 use crate::lowered::{Code, Module, Place, Process, Slot};
 use crate::value::{Closure, PathValue, Value};
 
-pub use library::{combinations, parse_json, parse_json_for_split, parse_yaml};
+pub use library::{combinations, dump_yaml, parse_json, parse_json_for_split, parse_yaml};
 pub use task::{
     RenderedOutput, RenderedPart, RenderedTask, TaskDirective, TaskFrame, normalise_script,
 };

@@ -5,7 +5,9 @@
 
 use std::path::{Path, PathBuf};
 
-use run_database::{Database, DatabaseError, LOG_LIMIT, RunStart, VERSION};
+use run_database::{
+    Database, DatabaseError, LOG_LIMIT, RunStart, VERSION, fingerprint, input_states,
+};
 use workflow_graph::{Edge, EdgeKind, Input, Language, Outcome, OutputFile, Task, TaskId};
 
 fn start(id: &str, resumes: Option<&str>) -> RunStart {
@@ -366,14 +368,15 @@ fn rejects_changed_directories() {
     );
     recorder.ended(None);
     recorder.close().expect("closes");
-    std::fs::write(source.join("child"), "after").expect("changes child");
+    // An unchanged folder input reuses the task, as Nextflow's `-resume` does; a change below
+    // it gives the task another fingerprint, which nothing answers.
     let database = Database::open(&path).expect("opens");
-    assert!(
-        database
-            .reusable(&["run-1".into()])
-            .expect("reads")
-            .is_empty()
-    );
+    let reusable = database.reusable(&["run-1".into()]).expect("reads");
+    let unchanged = fingerprint(&task, &input_states(&task));
+    assert_eq!(reusable.keys().collect::<Vec<_>>(), [&unchanged]);
+    std::fs::write(source.join("child"), "after").expect("changes child");
+    let changed = fingerprint(&task, &input_states(&task));
+    assert!(!reusable.contains_key(&changed));
 }
 
 #[test]

@@ -454,6 +454,8 @@ impl ProcessNode {
                 ("spack", _) if !self.spack_enabled => false,
                 // nf-nomad's setting of the process config, which the Nomad executor reads.
                 ("nomadOptions", _) => false,
+                // nf-jarvice's settings of the process config, which the JARVICE executor reads.
+                ("apiUrl" | "vault" | "user", _) => false,
                 ("clusterOptions", _) if takes_cluster(&directives) => false,
                 (name, _) if agent && AGENT_DIRECTIVES.contains(&name) => false,
                 (name, _) if HINT_DIRECTIVES.contains(&name) => !scheduling_hint(directive),
@@ -526,7 +528,8 @@ impl ProcessNode {
         let directives = self.directives(interpreter, &mut frame, &base)?;
         if index == 1 && attempt == 1 {
             for directive in &directives {
-                let used = &*directive.name == "clusterOptions" && takes_cluster(&directives);
+                let used = (&*directive.name == "clusterOptions" && takes_cluster(&directives))
+                    || (&*directive.name == "machineType" && takes_machine(&directives));
                 if HINT_DIRECTIVES.contains(&directive.name.as_ref())
                     && directive.arguments.iter().any(Value::truth)
                     && !used
@@ -956,6 +959,14 @@ fn takes_cluster(directives: &[TaskDirective]) -> bool {
         .find(|directive| &*directive.name == "executor")
         .and_then(|directive| directive.arguments.last());
     matches!(executor, Some(Value::String(name)) if matches!(&**name, "condor" | "ospool" | "pbspro"))
+}
+
+/// Whether the executor of the process is nf-jarvice's, which takes the machine type of a task.
+fn takes_machine(directives: &[TaskDirective]) -> bool {
+    let executor = (directives.iter().rev())
+        .find(|directive| &*directive.name == "executor")
+        .and_then(|directive| directive.arguments.last());
+    matches!(executor, Some(Value::String(name)) if &**name == "jarvice")
 }
 
 fn scheduling_hint(directive: &TaskDirective) -> bool {

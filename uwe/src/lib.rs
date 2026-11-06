@@ -24,6 +24,7 @@ mod google_batch;
 mod grid;
 mod inputs;
 mod insight;
+mod jarvice;
 mod kubernetes;
 mod kuberun;
 mod local;

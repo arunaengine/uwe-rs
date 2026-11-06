@@ -1,5 +1,5 @@
-//! Fills executor settings that the config file of uwe leaves unset from the scopes of a
-//! Nextflow config: `nomad`, `k8s`, `slurm_no_memory`, `ospool`, `tes` and `tencentcloud`.
+//! Fills executor settings that uwe's config file leaves unset from a Nextflow config: `nomad`,
+//! `k8s`, `slurm_no_memory`, `ospool`, `tes`, `tencentcloud` and nf-jarvice's process settings.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -471,6 +471,33 @@ pub(crate) fn slurm(config: &Config, executors: &mut crate::setup::Executors) {
         if !options.iter().any(named) {
             options.push(format!("--account={account}"));
         }
+    }
+}
+
+/// Fills the JARVICE settings from nf-jarvice's process settings `apiUrl`, `machineType`, `vault`
+/// and `user`, which the config gives in the `process` scope.
+pub(crate) fn jarvice(config: &Config, jarvice: &mut crate::jarvice::Config) {
+    let scope = Scope(config);
+    let settings = &mut jarvice.settings;
+    if let Some(url) = scope.text(&["process", "apiUrl"])
+        && settings.api_url == jarvice_executor::API_URL
+    {
+        settings.api_url = url;
+    }
+    if settings.machine_type.is_none() {
+        settings.machine_type = scope.text(&["process", "machineType"]);
+    }
+    if settings.vault.is_none() {
+        settings.vault = scope.text(&["process", "vault", "name"]);
+        settings.vault_readonly = scope.flag(&["process", "vault", "readonly"]) == Some(true);
+        settings.vault_force = scope.flag(&["process", "vault", "force"]) == Some(true);
+    }
+    if settings.username.is_none() {
+        settings.username = scope.text(&["process", "user", "username"]);
+    }
+    if settings.api_key.is_none() {
+        let key = scope.text(&["process", "user", "apikey"]);
+        settings.api_key = key.map(|key| Secret::written(key, origin()));
     }
 }
 

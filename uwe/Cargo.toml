@@ -53,6 +53,7 @@ azure-batch-executor.workspace = true
 google-batch-executor.workspace = true
 htcondor-executor.workspace = true
 pbs-executor.workspace = true
+jarvice-executor.workspace = true
 slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }

@@ -19,4 +19,10 @@ reqwest.workspace = true
 serde_json.workspace = true
 slurm-executor.workspace = true
 tokio = { workspace = true, features = ["fs", "time"] }
-tracing.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+task-model.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
+tokio-rustls.workspace = true

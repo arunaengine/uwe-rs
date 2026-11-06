@@ -180,6 +180,8 @@ opendal = { version = "0.59.4", default-features = false, features = [
 opendal-http-transport-reqwest = "0.59.4"
 opendal-service-azblob = { version = "0.59.4", default-features = false }
 opendal-service-gcs = { version = "0.59.4", default-features = false }
+# A throwaway CA and certificate for tests of TLS servers with their own CA, like wr; tests only.
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 regex = "1.13.1"
 regex-syntax = "0.8.11"
 rattler_conda_types = "0.58.1"

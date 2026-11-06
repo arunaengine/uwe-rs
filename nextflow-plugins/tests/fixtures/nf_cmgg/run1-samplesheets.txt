@@ -1,0 +1,66 @@
+--- ./none/all.yaml
+- tag: none
+  bam: <probe-dir>/results/X9.bam
+  fastq: <probe-dir>/results/X9_R1.fastq.gz
+  derived: none_null
+  constant: fixed
+  reads: '0'
+- tag: none
+  bam: <probe-dir>/results/X9.bam
+  fastq: <probe-dir>/results/X9_R2.fastq.gz
+  derived: none_null
+  constant: fixed
+  reads: '0'
+[end]
+--- ./none/dna.yaml
+[
+  ]
+[end]
+--- ./none/dna_failed.yaml
+[
+  ]
+[end]
+--- ./wes/all.yaml
+- sample: S1
+  tag: wes
+  bam: <probe-dir>/results/S1.bam
+  fastq: <probe-dir>/results/S1_R1.fastq.gz
+  derived: wes_dna
+  constant: fixed
+  yield: '150'
+  reads: '5'
+- sample: S1
+  tag: wes
+  bam: <probe-dir>/results/S1.bam
+  fastq: <probe-dir>/results/S1_R2.fastq.gz
+  derived: wes_dna
+  constant: fixed
+  yield: '150'
+  reads: '5'
+- sample: S10
+  tag: wes
+  bam: <probe-dir>/results/S10.bam
+  fastq: <probe-dir>/results/S10_R1.fastq.gz
+  derived: wes_dna
+  constant: fixed
+  reads: '7'
+- sample: S10
+  tag: wes
+  bam: <probe-dir>/results/S10.bam
+  fastq: <probe-dir>/results/S10_R2.fastq.gz
+  derived: wes_dna
+  constant: fixed
+  reads: '7'
+[end]
+--- ./wes/dna.yaml
+- id: S1
+  cram: <probe-dir>/results/S1.bam
+- id: S1
+  cram: <probe-dir>/results/S1.bam
+[end]
+--- ./wes/dna_failed.yaml
+- id: S10
+  cram: <probe-dir>/results/S10.bam
+- id: S10
+  cram: <probe-dir>/results/S10.bam
+[end]

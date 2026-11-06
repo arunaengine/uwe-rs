@@ -86,6 +86,8 @@ pub struct Arguments {
     pub volume_mounts: Vec<String>,
     /// `-background`: `uwe kuberun` ends once the pod has started.
     pub background: bool,
+    /// `-fail-on-change`: `uwe compare` ends with exit code 3 when the runs differ.
+    pub fail_on_change: bool,
     /// `-format name`: `json`, `dot`, `summary` or `svg` for `uwe graph`; `json`, `text` or
     /// `form` for `uwe inputs`.
     pub format: Option<String>,
@@ -321,6 +323,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                     .extend(mounts.split(',').map(str::to_owned));
             }
             "-background" => parsed.background = true,
+            "-fail-on-change" => parsed.fail_on_change = true,
             "-preset" => parsed.preset = Some(value()?),
             "-profile" => {
                 // Groovy's `tokenize(',')`: empty names are dropped, spaces are kept.
@@ -738,7 +741,8 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ),
     ("-output-dir <folder>", WORKFLOW),
     ("-graph <file>", &["run", "graph"]),
-    ("-report <file>", &["run"]),
+    ("-report <file>", &["run", "compare"]),
+    ("-fail-on-change", &["compare"]),
     (
         "-format <format>",
         &["graph", "inputs", "outputs", "time", "compare"],

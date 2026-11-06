@@ -1,0 +1,224 @@
+{
+  "@type": "evi:EvidenceGraph",
+  "@id": "ark:59853/evidence-graph-rocrate-probe-fair-1acf6e8",
+  "owner": "ark:59853/rocrate-probe-fair-1acf6e8",
+  "description": "Evidence graph for probe-fair",
+  "name": "Evidence Graph - probe-fair",
+  "outputs": [
+    {
+      "@id": "ark:59853/dataset-part-02-up-txt-fb19fe1"
+    },
+    {
+      "@id": "ark:59853/dataset-part-01-up-txt-0902528"
+    },
+    {
+      "@id": "ark:59853/dataset-part-00-up-txt-d9423db"
+    },
+    {
+      "@id": "ark:59853/rocrate-probe-fair-1acf6e8"
+    }
+  ],
+  "@graph": {
+    "ark:59853/dataset-input-txt-ef0f3b7": {
+      "@id": "ark:59853/dataset-input-txt-ef0f3b7",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Dataset"
+      ],
+      "name": "input.txt",
+      "description": "File 'input.txt' used by the Nextflow workflow run 'probe-fair'"
+    },
+    "ark:59853/software-split-d15b37c": {
+      "@id": "ark:59853/software-split-d15b37c",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Software"
+      ],
+      "name": "SPLIT",
+      "description": "split -l 1 -d --additional-suffix=.txt ${infile} part_"
+    },
+    "ark:59853/computation-split-da901f1": {
+      "@id": "ark:59853/computation-split-da901f1",
+      "@type": [
+        "prov:Activity",
+        "https://w3id.org/EVI#Computation"
+      ],
+      "name": "SPLIT",
+      "description": "Nextflow task 'SPLIT' (process SPLIT)",
+      "usedDataset": [
+        {
+          "@id": "ark:59853/dataset-input-txt-ef0f3b7"
+        }
+      ],
+      "usedSoftware": [
+        {
+          "@id": "ark:59853/software-split-d15b37c"
+        }
+      ]
+    },
+    "ark:59853/dataset-part-02-txt-7a60283": {
+      "@id": "ark:59853/dataset-part-02-txt-7a60283",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Dataset"
+      ],
+      "name": "part_02.txt",
+      "description": "File 'part_02.txt' produced by the Nextflow workflow run 'probe-fair'",
+      "generatedBy": {
+        "@id": "ark:59853/computation-split-da901f1"
+      }
+    },
+    "ark:59853/software-shout-a3e6a9f": {
+      "@id": "ark:59853/software-shout-a3e6a9f",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Software"
+      ],
+      "name": "SHOUT",
+      "description": "echo ${params.greeting} > ${part.baseName}.up.txt\ntr a-z A-Z < ${part} >> ${part.baseName}.up.txt"
+    },
+    "ark:59853/computation-shout-3-508ced3": {
+      "@id": "ark:59853/computation-shout-3-508ced3",
+      "@type": [
+        "prov:Activity",
+        "https://w3id.org/EVI#Computation"
+      ],
+      "name": "SHOUT (3)",
+      "description": "Nextflow task 'SHOUT (3)' (process SHOUT)",
+      "usedDataset": [
+        {
+          "@id": "ark:59853/dataset-part-02-txt-7a60283"
+        }
+      ],
+      "usedSoftware": [
+        {
+          "@id": "ark:59853/software-shout-a3e6a9f"
+        }
+      ]
+    },
+    "ark:59853/dataset-part-02-up-txt-fb19fe1": {
+      "@id": "ark:59853/dataset-part-02-up-txt-fb19fe1",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Dataset"
+      ],
+      "name": "part_02.up.txt",
+      "description": "File 'part_02.up.txt' produced by the Nextflow workflow run 'probe-fair'",
+      "generatedBy": {
+        "@id": "ark:59853/computation-shout-3-508ced3"
+      }
+    },
+    "ark:59853/dataset-part-01-txt-417c223": {
+      "@id": "ark:59853/dataset-part-01-txt-417c223",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Dataset"
+      ],
+      "name": "part_01.txt",
+      "description": "File 'part_01.txt' produced by the Nextflow workflow run 'probe-fair'",
+      "generatedBy": {
+        "@id": "ark:59853/computation-split-da901f1"
+      }
+    },
+    "ark:59853/computation-shout-2-2dbbd14": {
+      "@id": "ark:59853/computation-shout-2-2dbbd14",
+      "@type": [
+        "prov:Activity",
+        "https://w3id.org/EVI#Computation"
+      ],
+      "name": "SHOUT (2)",
+      "description": "Nextflow task 'SHOUT (2)' (process SHOUT)",
+      "usedDataset": [
+        {
+          "@id": "ark:59853/dataset-part-01-txt-417c223"
+        }
+      ],
+      "usedSoftware": [
+        {
+          "@id": "ark:59853/software-shout-a3e6a9f"
+        }
+      ]
+    },
+    "ark:59853/dataset-part-01-up-txt-0902528": {
+      "@id": "ark:59853/dataset-part-01-up-txt-0902528",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Dataset"
+      ],
+      "name": "part_01.up.txt",
+      "description": "File 'part_01.up.txt' produced by the Nextflow workflow run 'probe-fair'",
+      "generatedBy": {
+        "@id": "ark:59853/computation-shout-2-2dbbd14"
+      }
+    },
+    "ark:59853/dataset-part-00-txt-a398d1f": {
+      "@id": "ark:59853/dataset-part-00-txt-a398d1f",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Dataset"
+      ],
+      "name": "part_00.txt",
+      "description": "File 'part_00.txt' produced by the Nextflow workflow run 'probe-fair'",
+      "generatedBy": {
+        "@id": "ark:59853/computation-split-da901f1"
+      }
+    },
+    "ark:59853/computation-shout-1-ea4f765": {
+      "@id": "ark:59853/computation-shout-1-ea4f765",
+      "@type": [
+        "prov:Activity",
+        "https://w3id.org/EVI#Computation"
+      ],
+      "name": "SHOUT (1)",
+      "description": "Nextflow task 'SHOUT (1)' (process SHOUT)",
+      "usedDataset": [
+        {
+          "@id": "ark:59853/dataset-part-00-txt-a398d1f"
+        }
+      ],
+      "usedSoftware": [
+        {
+          "@id": "ark:59853/software-shout-a3e6a9f"
+        }
+      ]
+    },
+    "ark:59853/dataset-part-00-up-txt-d9423db": {
+      "@id": "ark:59853/dataset-part-00-up-txt-d9423db",
+      "@type": [
+        "prov:Entity",
+        "https://w3id.org/EVI#Dataset"
+      ],
+      "name": "part_00.up.txt",
+      "description": "File 'part_00.up.txt' produced by the Nextflow workflow run 'probe-fair'",
+      "generatedBy": {
+        "@id": "ark:59853/computation-shout-1-ea4f765"
+      }
+    },
+    "ark:59853/rocrate-probe-fair-1acf6e8": {
+      "@id": "ark:59853/rocrate-probe-fair-1acf6e8",
+      "@type": [
+        "Dataset",
+        "https://w3id.org/EVI#ROCrate"
+      ],
+      "name": "probe-fair",
+      "description": "Tiny probe workflow for nf-fairscape",
+      "hasOutputs": [
+        {
+          "@id": "ark:59853/dataset-part-02-up-txt-fb19fe1"
+        },
+        {
+          "@id": "ark:59853/dataset-part-01-up-txt-0902528"
+        },
+        {
+          "@id": "ark:59853/dataset-part-00-up-txt-d9423db"
+        }
+      ]
+    }
+  },
+  "condensation_stats": {
+    "condensed": false,
+    "originalEntityCount": 14,
+    "condensedEntityCount": 14,
+    "datasetGroupCount": 0
+  }
+}

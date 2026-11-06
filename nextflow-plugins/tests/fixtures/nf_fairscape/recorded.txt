@@ -1,0 +1,3 @@
+Recorded 2026-11-06 with Nextflow 26.04.6 and nf-fairscape 0.2.0, local executor, from the probe pipeline of the plugin spec.
+main.nf and input.txt: the probe pipeline; the driver test runs it with an executor that writes what its scripts write.
+ro-crate-metadata.json and provenance-graph.json: the plugin's files of that run, with the launch folder replaced by /LAUNCH.

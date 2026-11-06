@@ -8522,6 +8522,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "wr-executor"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "config-file",
+ "executor",
+ "reqwest",
+ "serde_json",
+ "slurm-executor",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "write16"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

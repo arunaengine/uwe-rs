@@ -61,6 +61,7 @@ mod nf_trino;
 #[path = "validation.rs"]
 mod nf_validation;
 mod nf_versions;
+mod nf_wave;
 mod nf_weblog;
 pub mod observer;
 mod report_format;
@@ -77,6 +78,7 @@ use nextflow_evaluator::value::{Native, Object, State as ObjectState, Value};
 
 use crate::catalogue::{Kind, Plugin, State};
 pub use crate::nf_labrobotics::Lab;
+pub use crate::nf_wave::{Sources as WaveSources, Wave, wave};
 
 /// Parameters as nf-schema validates them, according to the selected plugin version.
 pub fn schema_params(params: &Value, config: &Config) -> Value {

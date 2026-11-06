@@ -24,6 +24,7 @@ mod nf_parquet;
 mod nf_ped;
 mod nf_pregex;
 mod nf_prov;
+mod nf_runinsights;
 mod nf_schema;
 mod nf_snapshot;
 mod nf_sqldb;

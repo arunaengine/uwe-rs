@@ -163,7 +163,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_logsaver::PLUGIN,
     crate::nf_metalog::PLUGIN,
     crate::nf_prov::PLUGIN,
-    planned("nf-runinsights", Kind::Observer),
+    crate::nf_runinsights::PLUGIN,
     crate::nf_snapshot::PLUGIN,
     crate::nf_storagemetrics::PLUGIN,
     // Observers that send to services.

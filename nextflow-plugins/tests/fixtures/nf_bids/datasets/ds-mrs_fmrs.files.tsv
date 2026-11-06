@@ -1,0 +1,12 @@
+dataset_description.json	781
+sub-01/anat/sub-01_T1w.json	353
+sub-01/anat/sub-01_T1w.nii.gz	0
+sub-01/mrs/sub-01_task-baseline_mrsref.json	685
+sub-01/mrs/sub-01_task-baseline_mrsref.nii.gz	0
+sub-01/mrs/sub-01_task-baseline_svs.json	809
+sub-01/mrs/sub-01_task-baseline_svs.nii.gz	0
+sub-01/mrs/sub-01_task-pain_events.tsv	235
+sub-01/mrs/sub-01_task-pain_mrsref.json	685
+sub-01/mrs/sub-01_task-pain_mrsref.nii.gz	0
+sub-01/mrs/sub-01_task-pain_svs.json	806
+sub-01/mrs/sub-01_task-pain_svs.nii.gz	0

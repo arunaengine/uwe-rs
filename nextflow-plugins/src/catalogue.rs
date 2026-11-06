@@ -142,7 +142,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_crg_report::PLUGIN,
     crate::nf_csvext::PLUGIN,
     crate::nf_fl86::PLUGIN,
-    planned("nf-jev", Kind::Functions),
+    crate::nf_jev::PLUGIN,
     planned("nf-labrobotics", Kind::Functions),
     crate::nf_parquet::PLUGIN,
     crate::nf_python::PLUGIN,

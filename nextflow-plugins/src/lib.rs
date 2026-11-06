@@ -28,6 +28,7 @@ mod nf_flowviewer;
 mod nf_gc;
 mod nf_iridanext;
 mod nf_irods;
+mod nf_jev;
 mod nf_lakefs;
 mod nf_lamin;
 mod nf_logsaver;
@@ -203,6 +204,12 @@ pub fn start(context: &mut Context) -> Result<(), Error> {
         .any(|id| id == "nf-fl86")
     {
         nf_fl86::start(context)?;
+    }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-jev")
+    {
+        nf_jev::start(context)?;
     }
     Ok(())
 }

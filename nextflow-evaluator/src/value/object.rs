@@ -146,7 +146,8 @@ impl Time {
             }
             Time::Duration(duration) => {
                 let seconds = duration.as_secs();
-                if seconds == 0 && duration.subsec_nanos() == 0 {
+                let nanos = duration.subsec_nanos().unsigned_abs();
+                if seconds == 0 && nanos == 0 {
                     return "PT0S".into();
                 }
                 let (hours, minutes, rest) = (seconds / 3600, (seconds % 3600) / 60, seconds % 60);
@@ -157,8 +158,17 @@ impl Time {
                 if minutes != 0 {
                     text.push_str(&format!("{minutes}M"));
                 }
-                if rest != 0 || duration.subsec_nanos() != 0 {
-                    text.push_str(&format!("{rest}{}S", fraction(duration.subsec_nanos())));
+                if rest != 0 || nanos != 0 {
+                    // Java writes a negative part under one second as `-0.5`.
+                    let sign = if rest == 0 && duration.is_negative() {
+                        "-"
+                    } else {
+                        ""
+                    };
+                    let digits = format!("{nanos:09}");
+                    let digits = digits.trim_end_matches('0');
+                    let point = if digits.is_empty() { "" } else { "." };
+                    text.push_str(&format!("{sign}{rest}{point}{digits}S"));
                 }
                 text
             }

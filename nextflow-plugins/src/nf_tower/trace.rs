@@ -83,3 +83,16 @@ pub(super) fn dag(start: &Start) -> Json {
         ("edges", Json::List(edges.collect())),
     ])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_fields() {
+        assert_eq!(camel("%cpu"), "pcpu");
+        assert_eq!(camel("peak_rss"), "peakRss");
+        assert_eq!(camel("accelerator_type"), "acceleratorType");
+        assert_eq!(camel("task_id"), "taskId");
+    }
+}

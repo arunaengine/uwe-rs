@@ -254,3 +254,63 @@ pub(crate) fn form_encode(text: &str) -> String {
     }
     encoded
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn api(token: &str) -> Api {
+        Api {
+            endpoint: "http://127.0.0.1:9".into(),
+            workspace: Some("12345".into()),
+            token: token.into(),
+            refresh: None,
+            timeout: Duration::from_secs(1),
+            retry: Retry {
+                delay: Duration::from_millis(350),
+                max_delay: Duration::from_secs(90),
+                attempts: 10,
+                jitter: 0.25,
+                multiplier: 2.0,
+            },
+        }
+    }
+
+    #[test]
+    fn chooses_authorization() {
+        let basic = api("not-a-real-token").authorization();
+        assert_eq!(
+            basic,
+            format!("Basic {}", STANDARD.encode("@token:not-a-real-token"))
+        );
+        assert!(
+            api("eyJhbGciOiJIUzI1NiJ9.e30.sig")
+                .authorization()
+                .starts_with("Bearer ")
+        );
+        assert_eq!(
+            api("x").url("/trace/create"),
+            "http://127.0.0.1:9/trace/create?workspaceId=12345"
+        );
+    }
+
+    #[test]
+    fn reads_error_answers() {
+        assert_eq!(error_text(r#"{"message":"Bad"}"#).as_deref(), Some("Bad"));
+        let html = "<html><head><title>503 Service Unavailable</title></head></html>";
+        assert_eq!(error_text(html).as_deref(), Some("503 Service Unavailable"));
+        assert_eq!(error_text(""), None);
+    }
+
+    #[test]
+    fn grows_delays() {
+        let retry = Retry {
+            jitter: 0.0,
+            ..api("x").retry
+        };
+        assert_eq!(retry.delay(1), Duration::from_millis(350));
+        assert_eq!(retry.delay(2), Duration::from_millis(700));
+        assert_eq!(retry.delay(20), Duration::from_secs(90));
+        assert_eq!(form_encode("a b/c"), "a+b%2Fc");
+    }
+}

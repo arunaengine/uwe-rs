@@ -110,3 +110,34 @@ fn longest(path: &str) -> Option<usize> {
     let label = path.rsplit('.').next().unwrap_or_default();
     (path.starts_with("metrics.") && LABELS.contains(&label)).then_some(255)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cuts_long_text() {
+        let mut body = Json::object([
+            (
+                "workflow",
+                Json::object([("runName", Json::from("x".repeat(90)))]),
+            ),
+            (
+                "tasks",
+                Json::list([Json::object([("status", Json::from("COMPLETED!!"))])]),
+            ),
+            (
+                "metrics",
+                Json::list([Json::object([(
+                    "cpu",
+                    Json::object([("q1Label", Json::from("y".repeat(300)))]),
+                )])]),
+            ),
+        ]);
+        limit(&mut body);
+        let text = body.compact();
+        assert!(text.contains(&format!("\"{}\"", "x".repeat(80))), "{text}");
+        assert!(text.contains("\"COMPLETED!\""), "{text}");
+        assert!(text.contains(&format!("\"{}\"", "y".repeat(255))), "{text}");
+    }
+}

@@ -134,3 +134,24 @@ fn number(value: f64) -> Json {
         _ => Json::from(cents as f64 / 100.0),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summarises_like_fixture() {
+        let text = summary(vec![(55.2, "SAY (a)"), (114.3, "SAY (b)")]).compact();
+        assert_eq!(
+            text,
+            r#"{"mean":84.75,"min":55.2,"q1":69.97,"q2":84.75,"q3":99.53,"max":114.3,"minLabel":"SAY (a)","maxLabel":"SAY (b)","q1Label":"SAY (a)","q2Label":"SAY (a)","q3Label":"SAY (a)"}"#
+        );
+        let whole = summary(vec![(93851.0, "SAY (b)"), (93850.0, "SAY (a)")]);
+        assert!(
+            whole
+                .compact()
+                .starts_with(r#"{"mean":93850.5,"min":93850,"#)
+        );
+        assert_eq!(summary(vec![(0.0, "a")]), Json::Null);
+    }
+}

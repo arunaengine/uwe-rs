@@ -589,6 +589,30 @@ pub(crate) mod tests {
     use super::*;
     use crate::observer::Task;
 
+    /// The start of a run in `/launch` with one process, for tests.
+    pub(crate) fn start() -> Start {
+        Start {
+            run_name: "lethal_legentil".into(),
+            session_id: "6528c046-1ce8-4848-b491-ee3e024c7752".into(),
+            launch_dir: "/launch".into(),
+            work_dir: "/launch/work".into(),
+            project_dir: "/launch".into(),
+            script: "/launch/main.nf".into(),
+            project_name: "main.nf".into(),
+            repository: None,
+            commit_id: None,
+            revision: None,
+            command_line: "uwe run main.nf".into(),
+            profile: "standard".into(),
+            config_files: vec!["/launch/nextflow.config".into()],
+            params: serde_json::json!({"greeting": "hello"}),
+            config: serde_json::json!({}),
+            manifest: serde_json::json!({"name": "demo/probe"}),
+            processes: Vec::new(),
+            start: 1_793_965_381_122,
+        }
+    }
+
     fn task(id: i64, process: &str, realtime: i64) -> Task {
         let record = serde_json::json!({
             "task_id": id, "process": process, "name": format!("{process} ({id})"),

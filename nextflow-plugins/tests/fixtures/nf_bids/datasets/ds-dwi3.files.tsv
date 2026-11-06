@@ -1,0 +1,16 @@
+.bidsignore	0
+dataset_description.json	114
+sub-01/b0_mask.nii.gz	0
+sub-01/rev_b0.nii.gz	0
+sub-01/ses-005/anat/sub-01_ses-005_T1w.json	62
+sub-01/ses-005/anat/sub-01_ses-005_T1w.nii.gz	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.bval	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.bvec	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.json	318
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.nii.gz	0
+sub-01/ses-005/fmap/sub-01_ses-005_dir-AP_epi.json	348
+sub-01/ses-005/fmap/sub-01_ses-005_dir-AP_epi.nii.gz	0
+sub-01/ses-005/fmap/sub-01_ses-005_dir-PA_epi.json	347
+sub-01/ses-005/fmap/sub-01_ses-005_dir-PA_epi.nii.gz	0
+sub-01/ses-005/sub-01_ses-005_scans.tsv	0
+sub-01/t1_mask.nii.gz	0

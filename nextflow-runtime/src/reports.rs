@@ -256,6 +256,18 @@ impl Reports {
         });
     }
 
+    /// Lets each observer check a run that succeeded; the first error fails the run.
+    pub fn check(&mut self) -> Result<(), String> {
+        let mut first = Ok(());
+        for observer in &mut self.observers {
+            let checked = observer.check();
+            if first.is_ok() {
+                first = checked;
+            }
+        }
+        first
+    }
+
     /// Tells the observers that the run ended, with the message of the error that failed it
     /// and the task whose failure ended it, and with the workflow outputs.
     pub fn run_ended(

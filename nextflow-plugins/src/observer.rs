@@ -10,6 +10,12 @@ use std::time::Duration;
 /// A simulated run has no observers.
 pub trait Observer {
     fn notify(&mut self, event: &Event);
+
+    /// Checks a run whose tasks all succeeded, before [`Event::RunEnded`]. An error fails the
+    /// run with its message, as nf-snapshot fails a run whose files differ from its snapshot.
+    fn check(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// One event of a run.

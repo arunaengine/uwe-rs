@@ -324,7 +324,7 @@ pub(crate) async fn open(target: &Path, append: bool) -> Result<tokio::fs::File,
 }
 
 /// A request that did not reach the server or broke off, which another try may fix.
-fn network(error: reqwest::Error) -> Problem {
+pub(crate) fn network(error: reqwest::Error) -> Problem {
     // The message of reqwest names the address, which the caller names already, and the
     // cause of the error comes after it.
     let error = error.without_url();

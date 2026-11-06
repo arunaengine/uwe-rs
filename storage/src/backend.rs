@@ -8,6 +8,7 @@ use base64::Engine;
 use config_file::{ConfigError, Origin, Secret};
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
+use crate::drs::{self, Drs};
 use crate::error::Problem;
 use crate::folder::Folder;
 use crate::ftp::Ftp;
@@ -30,6 +31,8 @@ pub(crate) enum Source {
     /// `ftp` addresses that no provider serves: read as the user `anonymous`, or as the user
     /// and password that the address names, as Nextflow reads them.
     Ftp,
+    /// `drs` addresses that no provider serves, with the `drs` scope of a Nextflow config.
+    Drs,
 }
 
 impl Source {
@@ -42,6 +45,7 @@ impl Source {
                     Source::PublicBuckets => "public-buckets",
                     Source::Files => "files",
                     Source::Ftp => "ftp",
+                    Source::Drs => "drs",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -86,6 +90,10 @@ impl Source {
             Kind::Https(value) => vec!["https".into(), value.user.clone().unwrap_or_default()],
             Kind::Ftp(value) => vec!["ftp".into(), value.user.clone().unwrap_or_default()],
             Kind::Folder(value) => vec!["folder".into(), value.path.to_string_lossy().into_owned()],
+            Kind::Drs(value) => vec![
+                "drs".into(),
+                value.authentication.clone().unwrap_or_default(),
+            ],
         });
         identity
     }
@@ -100,6 +108,7 @@ impl Source {
             Source::Ftp => {
                 "an FTP server, as the user anonymous or the user of the address".to_owned()
             }
+            Source::Drs => "a DRS server, with the credential of the environment".to_owned(),
         }
     }
 }
@@ -111,6 +120,7 @@ pub(crate) enum Backend {
     Objects(Objects),
     Folder(Folder),
     Ftp(Ftp),
+    Drs(Drs),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -131,6 +141,7 @@ impl Connection {
                 root: PathBuf::from("/"),
             }),
             Source::Ftp => Backend::Ftp(Ftp::public()),
+            Source::Drs => Backend::Drs(Drs::new(drs::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -170,8 +181,23 @@ impl Connection {
                 Kind::Folder(folder) => Backend::Folder(Folder {
                     root: folder.path.clone(),
                 }),
+                Kind::Drs(settings) => {
+                    let options = drs::Options {
+                        authentication: settings.authentication.clone(),
+                        credential: secrets.reveal(&settings.credential)?,
+                        variable: None,
+                        token_path: settings.token_path.clone(),
+                        protocol: settings.access_protocol.clone(),
+                        plain_http: settings.plain_http.clone(),
+                    };
+                    Backend::Drs(Drs::new(options).map_err(failed)?)
+                }
             },
         };
+        // Credentials that a client found in the environment are secrets too.
+        if let Backend::Drs(client) = &backend {
+            secrets.0.extend(client.secrets());
+        }
         Ok(Connection {
             backend,
             secrets: secrets.0,
@@ -195,6 +221,7 @@ impl Connection {
             Backend::Objects(objects) => objects.stat(target).await,
             Backend::Folder(folder) => folder.stat(&folder.path(prefix, target)?).await,
             Backend::Ftp(ftp) => ftp.stat(target).await,
+            Backend::Drs(drs) => drs.stat(target).await,
         }
     }
 
@@ -205,6 +232,8 @@ impl Connection {
             Backend::Objects(objects) => objects.list(target).await,
             Backend::Folder(folder) => folder.list(&folder.path(prefix, target)?).await,
             Backend::Ftp(ftp) => ftp.list(target).await,
+            // DRS objects are single files, so a listing is empty.
+            Backend::Drs(_) => Ok(Vec::new()),
         }
     }
 
@@ -222,6 +251,7 @@ impl Connection {
             Backend::Objects(objects) => objects.download(target, file, offset).await,
             Backend::Folder(folder) => folder.download(&folder.path(prefix, target)?, file).await,
             Backend::Ftp(ftp) => ftp.download(target, file, offset).await,
+            Backend::Drs(drs) => drs.download(target, file).await,
         }
     }
 

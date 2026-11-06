@@ -33,6 +33,8 @@ Object-store staging on SLURM and Kubernetes needs a static Linux build of uwe f
 
 Inputs can come from S3 (and S3-compatible services), Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local folders. Outputs and the store need a provider that can be written: S3, Google Cloud Storage, Azure Blob Storage or a local folder. Any number of providers can be configured at once. Repositories come from GitHub, GitLab, Bitbucket and Gitea through their APIs, and from any Git server over HTTPS. SSH Git URLs are not supported.
 
+`drs://<host>/<object id>` addresses read GA4GH DRS objects. uwe takes the access method of the type `access_protocol` names, else the first of type `s3`, then `gs`, else the first one, and downloads its HTTPS address. A `[storage.<name>]` table of type `drs` sets `authentication` (`gen3`, `bearer` or `none`), `credential` (a Gen3 API key or a bearer token), `token_path`, `access_protocol` and `plain_http` (servers, as `host:port`, that serve plain HTTP). Without one, uwe signs in with the Gen3 API key of the environment variable `GEN3_API_KEY`, or reads without a token. DRS objects cannot be written.
+
 ## Hosts
 
 uwe builds and runs on Linux and macOS, and on Windows through WSL 2. The static release build is for x86_64 Linux. Remote nodes that receive the uwe binary must run Linux.

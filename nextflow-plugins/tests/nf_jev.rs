@@ -147,6 +147,17 @@ fn reports_failures() {
             .unwrap_or_default()
             .contains("Unknown Jev provider `cloudflare`")
     );
+    let closed = "endpoint = 'http://user:secret@127.0.0.1:9/x?key=hidden'";
+    let (error, _) = run(directory.path(), one, closed);
+    let error = error.unwrap_or_default();
+    assert!(
+        error.contains("Jev request failed after 3 attempts - "),
+        "{error}"
+    );
+    assert!(
+        !error.contains("secret") && !error.contains("hidden"),
+        "{error}"
+    );
     let builder = "include { noul; choice } from 'plugin/nf-jev'\nworkflow {\n  \
                    println noul('Seen?', [true: 'yes'])\n}\n";
     let (error, _) = run(

@@ -4953,6 +4953,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pbs-executor"
+version = "0.1.0"
+dependencies = [
+ "executor",
+ "serde_json",
+ "slurm-executor",
+ "task-model",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "pem"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

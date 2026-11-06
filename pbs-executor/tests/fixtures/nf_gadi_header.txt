@@ -1,0 +1,8 @@
+#!/bin/bash
+#PBS -P ab12 -l storage=gdata/ab12
+#PBS -N nf-BIG
+#PBS -o <probe>/gadi-probe/work2/26/2653df38dc24ef41f420e44621bcb3/.command.log
+#PBS -j oe
+#PBS -q normal
+#PBS -l walltime=01:00:00
+NXF_CHDIR=<probe>/gadi-probe/work2/26/2653df38dc24ef41f420e44621bcb3

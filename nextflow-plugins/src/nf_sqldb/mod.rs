@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod athena;
 mod insert;
 mod server;
 mod sqlite;
@@ -101,6 +102,11 @@ pub(crate) trait Connection {
     fn columns(&mut self, table: &str) -> Result<Vec<String>, String>;
     /// Runs the statement once for each row, in one transaction that it commits.
     fn insert(&mut self, statement: &str, rows: &[Vec<Datum>]) -> Result<(), String>;
+
+    /// The clause that limits a query to one page of rows.
+    fn page(&self, size: i64, offset: i64) -> String {
+        format!("LIMIT {size} OFFSET {offset}")
+    }
 }
 
 /// `channel.fromQuery(query, [db:, emitColumns:, batchSize:, batchDelay:])`: the rows as lists
@@ -126,6 +132,7 @@ fn from_query(
         return Err(thrown("Missing query argument"));
     }
     let source = source(flavour, &option_text(&options, "db"), context.config, false)?;
+    let mut connection = target::connect(&source, &*context.host).map_err(thrown)?;
     let emit = option(&options, "emitColumns").is_some_and(|value| value.truth());
     let size = option_number(&options, "batchSize").unwrap_or(0);
     let delay = option_number(&options, "batchDelay").unwrap_or(100);
@@ -141,6 +148,7 @@ fn from_query(
     }
     let base = paged(&query)?;
     for page in 0.. {
+        let sql = format!("{base}\n{}", connection.page(size, page * size));
         let table = connection.query(&sql).map_err(failed)?;
         if emit && page == 0 {
             items.push(names(&table.columns));
@@ -212,6 +220,7 @@ fn sql_execute(
         }
         Err(error) => return Err(error),
     };
+    let mut connection = match target::connect(&source, &*context.host) {
         Ok(connection) => connection,
         Err(message) if target::refused(&source.url) => return Err(thrown(message)),
         Err(message) => return Ok(logged(message, context)),
@@ -514,6 +523,54 @@ fn integer(count: i64) -> Value {
 
 fn object(class: &'static str, state: ObjectState) -> Value {
     Value::Object(Rc::new(std::cell::RefCell::new(Object { class, state })))
+}
+
+/// The statement with its `?` placeholders outside quotes replaced by the row's values as SQL
+/// literals, for services without prepared statements.
+pub(crate) fn literal(statement: &str, row: &[Datum]) -> Result<String, String> {
+    let (mut text, mut values, mut quote) = (String::new(), row.iter(), None);
+    let count = statement.matches('?').count();
+    if row.len() > count {
+        return Err(format!("Index {count} out of bounds for length {count}"));
+    }
+    for c in statement.chars() {
+        match (c, quote) {
+            ('\'' | '"', None) => quote = Some(c),
+            (c, Some(open)) if c == open => quote = None,
+            ('?', None) => {
+                text.push_str(&sql_text(values.next().unwrap_or(&Datum::Null)));
+                continue;
+            }
+            _ => {}
+        }
+        text.push(c);
+    }
+    Ok(text)
+}
+
+fn sql_text(value: &Datum) -> String {
+    let quoted = |text: &str| format!("'{}'", text.replace('\'', "''"));
+    match value {
+        Datum::Null => "NULL".to_owned(),
+        Datum::Boolean(value) => value.to_string().to_uppercase(),
+        Datum::Integer(value) => value.to_string(),
+        Datum::Long(value) => value.to_string(),
+        Datum::Float(value) => format!("REAL '{value}'"),
+        Datum::Double(value) => format!("DOUBLE '{value}'"),
+        Datum::Decimal(text) => format!("DECIMAL '{text}'"),
+        Datum::Text(text) => quoted(text),
+        Datum::Bytes(bytes) => {
+            let hex: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
+            format!("X'{hex}'")
+        }
+        Datum::Typed("java.sql.Date", text) => format!("DATE {}", quoted(text)),
+        Datum::Typed("java.sql.Timestamp", text) => format!("TIMESTAMP {}", quoted(text)),
+        Datum::Typed(_, text) => quoted(text),
+        Datum::List(items) => {
+            let items: Vec<String> = items.iter().map(sql_text).collect();
+            format!("ARRAY[{}]", items.join(", "))
+        }
+    }
 }
 
 pub(crate) fn thrown(message: impl Into<String>) -> Error {

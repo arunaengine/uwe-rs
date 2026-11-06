@@ -183,7 +183,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_drs::PLUGIN,
     crate::nf_irods::PLUGIN,
     crate::nf_oci::PLUGIN,
-    planned("nf-lakefs", Kind::FileSystem),
+    crate::nf_lakefs::PLUGIN,
     planned("nf-quilt", Kind::FileSystem),
     crate::nf_synapse::PLUGIN,
     // Pipeline sources and images.

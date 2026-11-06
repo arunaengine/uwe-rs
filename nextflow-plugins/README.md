@@ -258,3 +258,16 @@ nf-oci 0.0.1 hands its `oci` scope (`profile`, `region`, `tenantId`, `userId`, `
 and writes `oci://` paths for every language through the native Object Storage API, with the
 API key of `~/.oci/config` or the four values of the scope. Each object is written with one
 `PUT`, so objects over 50 GiB fail; copies between `oci://` paths go through this machine.
+
+## src/nf_lakefs.rs
+
+nf-lakefs 0.7.0 hands its `lakefs` scope (`apiUrl`, `accessKey`, `secretKey`, `autoCreateBranch`,
+`autoCreateBranchSource`, `readTimeout`) to the lakeFS provider of the `storage` crate, which
+then reads and writes `lakefs://` paths for every language. `lakefsCommit(path, message)`
+commits the branch of the path. With a `lakefs://` `outputDir`, the branch is made when the run
+starts (`autoCreateBranch`) and committed when it succeeds (`autoCommit`), with
+`params.lakefs_commit_message`, else uwe's message `Run <run name>`. Where it differs: data
+always moves through presigned addresses, so `transferMode = 'physical_path'` and
+`allowedSchemaBucketsForLinking` only warn; `connectTimeout` is uwe's own 30 seconds; the
+staging link sends the ETag of the upload as `checksum`; a ref is used as given, without the
+plugin's branch, tag and commit lookups; deleting a `lakefs://` path is not supported.

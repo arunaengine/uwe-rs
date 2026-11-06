@@ -424,3 +424,75 @@ fn environment_file() -> Value {
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_logical_paths() {
+        let path = |text| logical(text).ok();
+        assert_eq!(
+            path("irods:///tempZone/home/rods/a.txt").as_deref(),
+            Some("/tempZone/home/rods/a.txt")
+        );
+        assert_eq!(
+            path("irods://tempZone/home/rods/").as_deref(),
+            Some("/tempZone/home/rods")
+        );
+        assert_eq!(
+            path("irods://tempZone\\home/a%20b").as_deref(),
+            Some("/tempZone/home/a b")
+        );
+        assert_eq!(path("irods:///").as_deref(), Some("/"));
+        assert!(path("s3://bucket/a").is_none());
+    }
+
+    #[test]
+    fn reads_account_settings() {
+        let file = serde_json::json!({
+            "irods_host": "data.example.org", "irods_port": 1250, "irods_user_name": "alice",
+            "irods_zone_name": "lab", "irods_authentication_scheme": "PAM",
+            "irods_client_server_policy": "CS_NEG_REQUIRE",
+        });
+        let options = Options {
+            host: Some("irods.example.org".into()),
+            password: Some("secret".into()),
+            ..Options::default()
+        };
+        let found = account(options, &file, &|_| None).expect("an account");
+        assert_eq!(
+            (found.host.as_str(), found.port),
+            ("irods.example.org", 1250)
+        );
+        assert_eq!((found.user.as_str(), found.zone.as_str()), ("alice", "lab"));
+        assert_eq!(
+            (found.login, found.policy),
+            (Login::PamPassword, Policy::Require)
+        );
+        let wrong = Options {
+            negotiation: Some("CS_NEG_MAYBE".into()),
+            ..Options::default()
+        };
+        assert!(account(wrong, &Value::Null, &|_| None).is_err());
+        let variables = |name: &str| (name == "IRODS_PASSWORD").then(|| "from-env".to_owned());
+        let found = account(Options::default(), &Value::Null, &variables).expect("an account");
+        assert_eq!((found.password.as_str(), found.port), ("from-env", 1247));
+        assert_eq!(
+            (found.host.as_str(), found.policy),
+            ("localhost", Policy::Refuse)
+        );
+    }
+
+    #[test]
+    fn writes_request_inputs() {
+        let input = object_input("/z/a&b", 1, 0o644, 7, &[("forceFlag", "")]);
+        assert_eq!(
+            input,
+            "<DataObjInp_PI><objPath>/z/a&amp;b</objPath><createMode>420</createMode>\
+             <openFlags>1</openFlags><offset>0</offset><dataSize>7</dataSize>\
+             <numThreads>0</numThreads><oprType>0</oprType><KeyValPair_PI><ssLen>1</ssLen>\
+             <keyWord>forceFlag</keyWord><svalue></svalue></KeyValPair_PI></DataObjInp_PI>"
+        );
+    }
+}

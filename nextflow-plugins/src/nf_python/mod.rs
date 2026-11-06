@@ -14,7 +14,6 @@ use sha2::{Digest, Sha256};
 
 use crate::Context;
 use crate::catalogue::{Kind, Plugin, State};
-use crate::nf_schema::entries;
 use crate::nf_sqldb::{split_options, thrown};
 use container::{Call, Ended};
 
@@ -189,9 +188,10 @@ pub(crate) fn work_dir(context: &Context, launch: &Path) -> PathBuf {
     {
         return launch.join(folder.to_string());
     }
-    let found = entries(&context.workflow).into_iter();
-    let found = found.filter(|(name, _)| name == "workDir");
-    let found = found.map(|(_, value)| value.to_string()).next_back();
+    let found = crate::nf_schema::get(&context.workflow, "workDir");
+    let found = found
+        .filter(|value| value.truth())
+        .map(|value| value.to_string());
     launch.join(found.unwrap_or("work".to_owned()))
 }
 

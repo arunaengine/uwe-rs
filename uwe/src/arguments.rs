@@ -57,6 +57,9 @@ pub struct Arguments {
     /// `-executor simulator|local|tes|slurm|kubernetes|aws-batch`; `None` uses config, else
     /// local for runs.
     pub executor: Option<String>,
+    /// Whether `executor` is `default` of `[executor]` or `local`, which a Nextflow pipeline's
+    /// `process.executor` may override, rather than `-executor` or a preset.
+    pub executor_default: bool,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
     /// `-report file`: where `uwe run` writes the report of the run when it ends.

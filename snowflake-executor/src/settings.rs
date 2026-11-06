@@ -143,13 +143,14 @@ impl Settings {
     }
 
     /// Fills the unset settings from the connection `name` of the `connections.toml` at
-    /// `file`, as the Snowflake drivers name its keys.
-    pub fn connect(&mut self, file: &Path, name: &str) -> Result<(), String> {
+    /// `file`, as the Snowflake drivers name its keys; false when the file has no such one.
+    pub fn connect(&mut self, file: &Path, name: &str) -> Result<bool, String> {
         let text = std::fs::read_to_string(file)
             .map_err(|error| format!("cannot read {}: {error}", file.display()))?;
         let config = ConfigFile::parse(&text, file).map_err(|error| error.to_string())?;
-        let table = (config.section(name).map_err(|error| error.to_string())?)
-            .ok_or_else(|| format!("{} has no connection [{name}]", file.display()))?;
+        let Some(table) = config.section(name).map_err(|error| error.to_string())? else {
+            return Ok(false);
+        };
         let text = |key: &str| table.text(key).map_err(|error| error.to_string());
         for (slot, key) in [
             (&mut self.account, "account"),
@@ -170,7 +171,7 @@ impl Settings {
         if self.token.is_none() {
             self.token = table.secret("token").map_err(|error| error.to_string())?;
         }
-        Ok(())
+        Ok(true)
     }
 }
 
@@ -281,7 +282,7 @@ mod tests {
             role: Some("MINE".into()),
             ..Settings::default()
         };
-        settings.connect(&file, "lab").expect("a connection");
+        assert_eq!(settings.connect(&file, "lab"), Ok(true));
         assert_eq!(settings.account.as_deref(), Some("myorg-lab"));
         assert_eq!(
             settings.role.as_deref(),
@@ -289,7 +290,7 @@ mod tests {
             "uwe's own setting wins"
         );
         assert_eq!(settings.private_key_file.as_deref(), Some("/keys/uwe.p8"));
-        assert!(settings.connect(&file, "other").is_err());
+        assert_eq!(settings.connect(&file, "other"), Ok(false));
         let home = folder.path();
         let found = connections_file(Some(home), None);
         assert_eq!(found, Some(home.join(".config/snowflake/connections.toml")));

@@ -88,7 +88,7 @@ fn run(folder: &Path, config: &str, settings: &str, options: &[&str]) -> (i32, S
 
 /// The pipeline's `process.executor = 'snowflake'` picks the Snowflake executor, and the
 /// `snowflake` scope names the compute pool and maps the image to a Snowflake repository; uwe
-/// signs in with the user's key.
+/// signs in with the user's key. A `connections.toml` without a default connection is no error.
 #[test]
 fn runs_snowflake_pipelines() {
     let folder = tempfile::tempdir().expect("a folder");
@@ -96,6 +96,10 @@ fn runs_snowflake_pipelines() {
         &folder.path().join("fake"),
         Some(PathBuf::from(common::BINARY)),
     );
+    let connections = folder.path().join(".snowflake");
+    std::fs::create_dir(&connections).expect("makes the folder");
+    let other = "[other]\naccount = 'elsewhere'\n";
+    std::fs::write(connections.join("connections.toml"), other).expect("writes the file");
     let config = "process.executor = 'snowflake'\nsnowflake {\n computePool = 'TASKS'\n \
                   registryMappings = 'docker.io:/lab/images/repo'\n}\n";
     let more = format!("account = 'myorg-lab'\nuser = 'uwe'\nprivate_key_file = '{KEY}'\n");

@@ -1,0 +1,7 @@
+TXT version=$version runName=$runName success=$success exitStatus=$exitStatus
+errorMessage=$errorMessage
+errorReport=$errorReport
+commandLine=$commandLine
+projectDir=$projectDir
+dateComplete=$dateComplete duration=$duration
+<% out << summary.collect{ k,v -> "  - $k: $v" }.join("\n") %>

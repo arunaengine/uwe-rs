@@ -1,0 +1,8 @@
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] <probe-dir>/work
+items: 2
+{"meta":{"subject":"sub-01","session":"NA","run":"NA","task":"task-baseline"},"mrsref":{"json":"Path:<ds>/sub-01/mrs/sub-01_task-baseline_mrsref.json","nii":"Path:<ds>/sub-01/mrs/sub-01_task-baseline_mrsref.nii.gz"},"svs":{"json":"Path:<ds>/sub-01/mrs/sub-01_task-baseline_svs.json","nii":"Path:<ds>/sub-01/mrs/sub-01_task-baseline_svs.nii.gz"},"T1w":{"json":"Path:<ds>/sub-01/anat/sub-01_T1w.json","nii":"Path:<ds>/sub-01/anat/sub-01_T1w.nii.gz"}}
+{"meta":{"subject":"sub-01","session":"NA","run":"NA","task":"task-pain"},"events":{"tsv":"Path:<ds>/sub-01/mrs/sub-01_task-pain_events.tsv"},"mrsref":{"json":"Path:<ds>/sub-01/mrs/sub-01_task-pain_mrsref.json","nii":"Path:<ds>/sub-01/mrs/sub-01_task-pain_mrsref.nii.gz"},"svs":{"json":"Path:<ds>/sub-01/mrs/sub-01_task-pain_svs.json","nii":"Path:<ds>/sub-01/mrs/sub-01_task-pain_svs.nii.gz"},"T1w":{"json":"Path:<ds>/sub-01/anat/sub-01_T1w.json","nii":"Path:<ds>/sub-01/anat/sub-01_T1w.nii.gz"}}
+
+[SUCCESS] completed=0 failed=0 cached=0
+[exit code 0]

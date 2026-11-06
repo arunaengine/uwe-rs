@@ -13,7 +13,7 @@ fn fixture(name: &str) -> String {
 
 /// The fields that uwe does not know, which its CSV leaves out; uwe also gives `cpus` only
 /// when the process sets it, where Nextflow gives 1.
-const UNKNOWN: [&str; 4] = ["native_id", "module", "workdir", "cpus"];
+const UNKNOWN: [&str; 3] = ["native_id", "module", "workdir"];
 
 fn run(folder: &Path, store: &str) -> (String, String) {
     common::copy(&common::fixtures("nf_metalog"), folder, &["main.nf"]);

@@ -667,7 +667,8 @@ impl Row {
             "complete": self.complete,
             "duration": self.complete.map(|complete| complete - self.submit),
             "realtime": self.realtime(),
-            "cpus": resources.cpus,
+            // Nextflow's `task.cpus` is 1 without a directive.
+            "cpus": resources.cpus.unwrap_or(1.0),
             "memory": resources.memory_bytes,
             "time": resources.time_seconds.map(|seconds| seconds.saturating_mul(1000)),
             "%cpu": self.cpu_share(),
@@ -713,7 +714,7 @@ impl Row {
             "complete" => self.complete.map_or(UNKNOWN.to_owned(), stamp),
             "duration" => duration(self.complete.map(|complete| complete - self.submit)),
             "realtime" => duration(self.realtime()),
-            "cpus" => (resources.cpus).map_or(UNKNOWN.to_owned(), |cpus| cpus.to_string()),
+            "cpus" => resources.cpus.unwrap_or(1.0).to_string(),
             "memory" => (resources.memory_bytes).map_or(UNKNOWN.to_owned(), size),
             "time" => (resources.time_seconds).map_or(UNKNOWN.to_owned(), |seconds| {
                 duration(Some(seconds as i64 * 1000))
@@ -897,6 +898,29 @@ mod tests {
         assert_eq!(row.value("write_bytes"), "-");
         let unmeasured = Row { usage: None, ..row };
         assert_eq!(unmeasured.value("%cpu"), "-");
+    }
+
+    /// Without directives, Nextflow 26.04.6 traces 1 CPU, and no memory, time or disk.
+    #[test]
+    fn fills_default_cpus() {
+        let row = Row {
+            number: 1,
+            task: Task::default(),
+            exit: 0,
+            attempt: 1,
+            cached: false,
+            image: None,
+            submit: 0,
+            start: None,
+            complete: None,
+            usage: None,
+        };
+        let fields = ["attempt", "cpus", "memory", "time", "disk"];
+        let values: Vec<String> = fields.iter().map(|field| row.value(field)).collect();
+        assert_eq!(values, ["1", "1", "-", "-", "-"]);
+        let record = row.record();
+        assert_eq!(record["cpus"], serde_json::json!(1.0));
+        assert!(record["memory"].is_null() && record["time"].is_null());
     }
 
     #[test]

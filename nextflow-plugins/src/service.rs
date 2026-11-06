@@ -80,6 +80,21 @@ pub(crate) fn random_unit() -> f64 {
     u64::from_str_radix(&digits, 16).unwrap_or(0) as f64 / (1u64 << 52) as f64
 }
 
+/// Text for a form body: letters, digits and `-._*` stay, a space is `+`, the rest `%XX`.
+pub(crate) fn form_encode(text: &str) -> String {
+    let mut encoded = String::new();
+    for byte in text.bytes() {
+        match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'*' => {
+                encoded.push(byte as char)
+            }
+            b' ' => encoded.push('+'),
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

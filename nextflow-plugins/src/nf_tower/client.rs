@@ -9,7 +9,7 @@ use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use reqwest::Method;
 
 use crate::report_format::{Json, NEXTFLOW_VERSION};
-use crate::service::{Answer, Sender, random_hex, random_unit};
+use crate::service::{Answer, Sender, form_encode, random_hex, random_unit};
 
 /// Answers that are tried again; others fail at once.
 const RETRIED: [u16; 5] = [429, 500, 502, 503, 504];
@@ -238,21 +238,6 @@ impl Api {
 /// A W3C `traceparent` header with new random ids.
 fn traceparent() -> String {
     format!("00-{}-{}-01", random_hex(32), random_hex(16))
-}
-
-/// Text for a form body: letters, digits and `-._*` stay, a space is `+`, the rest `%XX`.
-pub(crate) fn form_encode(text: &str) -> String {
-    let mut encoded = String::new();
-    for byte in text.bytes() {
-        match byte {
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'*' => {
-                encoded.push(byte as char)
-            }
-            b' ' => encoded.push('+'),
-            _ => encoded.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    encoded
 }
 
 #[cfg(test)]

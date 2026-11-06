@@ -22,7 +22,7 @@ def countParquet(source, Map options = [:]) {
         .reduce(0) { total, count -> total + count }
 }
 
-// Checks the options as the plugin does; uwe then refuses, as it cannot load record classes.
+// Checks the options as the plugin does; uwe has no Java records to write with.
 def toParquet(source, path, Map options = [:]) {
     parquetWriter(path, options)
     return source

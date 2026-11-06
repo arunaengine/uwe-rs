@@ -147,6 +147,28 @@ fn follows_split_options() {
     );
 }
 
+/// The plugin checks the record class of each file it reads, so an empty channel passes; a
+/// class of the script is not a Java record either.
+#[test]
+fn checks_record_classes() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let body = "  channel.empty().countParquet(record: String).view { \"count \" + it }";
+    let (error, printed) = run(directory.path(), body);
+    assert_eq!((error, printed.trim()), (None, "count 0"));
+    let script = format!(
+        "include {{ splitParquet }} from 'plugin/nf-parquet'\nclass C {{ long id }}\n\
+         workflow {{ channel.fromPath('{}/simple.parquet').splitParquet(record: C).view() }}\n",
+        common::fixtures("nf_parquet").display()
+    );
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let (execution, printed) = common::run(directory.path(), "parquet");
+    let error = format!("{:?}", execution.error);
+    assert!(
+        error.contains("C is not a Java Record"),
+        "{error}\n{printed}"
+    );
+}
+
 #[test]
 fn reports_errors() {
     let cases = [
@@ -179,9 +201,27 @@ fn reports_errors() {
             "channel.of(1).toParquet(\"${dir}/out.parquet\", [by: 2]).view()",
             "A Record.class is required. Class provided null",
         ),
+        // uwe has no Java records, so every class fails as one that is not a record does.
         (
             "channel.of(1).toParquet(\"${dir}/out.parquet\", [record: String]).view()",
-            "uwe cannot write Parquet files with toParquet",
+            "java.lang.String must be a java Record",
+        ),
+        (
+            "channel.fromPath(\"${dir}/simple.parquet\").splitParquet(record: String).view()",
+            "java.lang.String is not a Java Record",
+        ),
+        (
+            "channel.fromPath(\"${dir}/simple.parquet\").countParquet(record: String).view()",
+            "java.lang.String is not a Java Record",
+        ),
+        (
+            "channel.fromPath(\"${dir}/simple.parquet\").splitParquet(file: true, record: String)",
+            "java.lang.String is not a Java Record",
+        ),
+        (
+            "channel.fromPath(\"${dir}/simple.parquet\").splitParquet(record: 'Proj').view()",
+            "Value 'Proj' cannot be used in in parameter 'record' for operator 'split' -- Value \
+             don't match: class java.lang.Class",
         ),
         (
             "channel.of(5).splitParquet().view()",

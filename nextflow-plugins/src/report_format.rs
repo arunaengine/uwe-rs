@@ -304,6 +304,21 @@ pub(crate) fn second_time(millis: i64) -> String {
     }
 }
 
+/// A time as Java's `Instant` prints it, in UTC with the milliseconds when not zero, like
+/// `2026-11-06T09:36:17.388Z`.
+pub(crate) fn instant(millis: i64) -> String {
+    let Ok(time) = Timestamp::from_millisecond(millis) else {
+        return String::new();
+    };
+    let mut text = time.strftime("%Y-%m-%dT%H:%M:%S").to_string();
+    let milli = millis.rem_euclid(1000);
+    if milli != 0 {
+        let _ = write!(text, ".{milli:03}");
+    }
+    text.push('Z');
+    text
+}
+
 /// The date of a time in the time zone of this machine, like `2026-11-06`.
 pub(crate) fn local_date(millis: i64) -> String {
     match Timestamp::from_millisecond(millis) {
@@ -339,5 +354,11 @@ mod tests {
             value.compact(),
             "{\"name\":\"a\\u2082\",\"empty\":[],\"items\":[1,2],\"none\":{}}"
         );
+    }
+
+    #[test]
+    fn prints_java_instants() {
+        assert_eq!(instant(1_793_957_777_388), "2026-11-06T09:36:17.388Z");
+        assert_eq!(instant(1_793_957_777_000), "2026-11-06T09:36:17Z");
     }
 }

@@ -16,6 +16,7 @@ pub mod irods;
 mod irods_protocol;
 mod journal;
 pub mod lakefs;
+pub mod lamin;
 mod objects;
 pub mod oci;
 pub mod oci_key;
@@ -228,6 +229,7 @@ impl Storage {
             Provider::new(Source::Irods, prefixes(&["irods://"])),
             Provider::new(Source::Oci, prefixes(&["oci://"])),
             Provider::new(Source::Lakefs, prefixes(&["lakefs://"])),
+            Provider::new(Source::Lamin, prefixes(&["lamin://"])),
         ];
         Storage {
             inner: Arc::new(Inner {

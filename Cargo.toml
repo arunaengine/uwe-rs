@@ -51,6 +51,7 @@ publish = false
 argo-parser = { path = "argo-parser" }
 argo-runtime = { path = "argo-runtime" }
 aws-batch-executor = { path = "aws-batch-executor" }
+azure-batch-executor = { path = "azure-batch-executor" }
 conda-environment = { path = "conda-environment" }
 config-file = { path = "config-file" }
 content-store = { path = "content-store" }

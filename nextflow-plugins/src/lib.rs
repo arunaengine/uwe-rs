@@ -8,6 +8,7 @@ mod nf_fgbio;
 mod nf_schema;
 #[path = "validation.rs"]
 mod nf_validation;
+pub mod observer;
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};

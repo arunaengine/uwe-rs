@@ -16,6 +16,7 @@ jsonschema.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

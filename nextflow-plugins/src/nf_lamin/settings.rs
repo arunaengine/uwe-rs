@@ -342,3 +342,69 @@ impl Scope<'_> {
         self.text(path)?.trim().parse().ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nextflow_evaluator::interpreter::Host;
+
+    use super::*;
+
+    struct Quiet;
+
+    impl Host for Quiet {
+        fn print(&mut self, _: &str) {}
+    }
+
+    fn loaded(text: &str) -> Config {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("nextflow.config");
+        std::fs::write(&file, text).expect("a config");
+        let settings = nextflow_config::Options {
+            profiles: None,
+            params: Value::map([]),
+            project_dir: "/project".into(),
+            launch_dir: "/launch".into(),
+            work_dir: "/work".into(),
+        };
+        nextflow_config::load(&[file], &settings, &mut Quiet).expect("loads")
+    }
+
+    #[test]
+    fn rules_pick_files() {
+        let config = loaded(
+            "lamin {\n  instance = 'o/n'\n  ulabel_uids = 'a, b'\n  output_artifacts {\n    \
+             include_paths = ['s3://b/x.txt']\n    kind = 'dataset'\n    rules {\n      \
+             logs { type = 'exclude'; pattern = '.*\\\\.log$' }\n      \
+             html { pattern = 'html$'; kind = 'report'; ulabel_uids = ['c']; order = 1 }\n    \
+             }\n  }\n}\n",
+        );
+        let none = |_: &str| None;
+        let settings = Settings::read(&config, &none)
+            .expect("reads")
+            .expect("tracks");
+        assert_eq!(settings.labels, ["a", "b"]);
+        assert_eq!(
+            (settings.hub.owner.as_str(), settings.hub.retry.attempts),
+            ("o", 3)
+        );
+        let outputs = &settings.outputs;
+        assert_eq!(outputs.paths[0].path, "s3://b/x.txt");
+        assert_eq!(outputs.decide("s3://b/run.log", &[]), None);
+        assert_eq!(outputs.decide("s3://b/work/a.txt", &["s3://b/work"]), None);
+        let html = outputs.decide("s3://b/r.html", &[]).expect("tracked");
+        assert_eq!(
+            (html.kind.as_deref(), html.labels),
+            (Some("report"), vec!["c".to_owned()])
+        );
+        assert!(settings.inputs.decide("s3://b/r.log", &[]).is_some());
+        let both = loaded(
+            "lamin { instance = 'o/n'; artifacts.kind = 'a'; input_artifacts.kind = 'b' }\n",
+        );
+        assert!(Settings::read(&both, &none).is_err());
+        assert!(
+            Settings::read(&loaded("lamin { }\n"), &none)
+                .expect("reads")
+                .is_none()
+        );
+    }
+}

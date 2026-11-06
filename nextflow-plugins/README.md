@@ -375,13 +375,25 @@ plugin's branch, tag and commit lookups; deleting a `lakefs://` path is not supp
 
 ## src/nf_lamin/mod.rs
 
-nf-lamin 0.9.0 is partly implemented: its `lamin` scope (`api_key`, `api.supabase_api_url`,
+nf-lamin 0.9.0 is partly implemented. Its `lamin` scope (`api_key`, `api.supabase_api_url`,
 `api.supabase_anon_key`, `features.manage_s3_credentials`) goes to the LaminDB provider of the
-`storage` crate, which then reads `lamin://` paths for every language. The run is not recorded
-in LaminDB yet, with one warning. The prod hub's anon key is not shipped with uwe, so it must
-come from the scope or `SUPABASE_ANON_KEY`; `lamin.env` other than `prod` needs
-`api.supabase_api_url`. A 401 answer does not fetch a new token, and S3 session credentials are
-not renewed during a run.
+`storage` crate, which then reads `lamin://` paths for every language. The prod hub's anon key is
+not shipped with uwe, so it must come from the scope or `SUPABASE_ANON_KEY`; `lamin.env` other
+than `prod` needs `api.supabase_api_url`. A 401 answer of the provider does not fetch a new
+token, and S3 session credentials are not renewed during a run.
+
+With an instance, the run is recorded as the plugin does: the sign-in before the run, which stops
+it on failure; the transform, found by key and version or made with its project and label links;
+the run with its links, marked started and then completed or errored; remote task inputs,
+published files, workflow outputs and `include_paths` as artifacts after the rules; the
+annotations of `annotateArtifact`; a remote execution report. Where it differs: the key is the
+repository, else uwe's project name, the project folder; the source code names the commit when
+it is known, else the revision as a branch, and no entry workflow; a closure in `include_paths`
+is skipped with a warning; artifacts are made one at a time, not on `api.max_workers` threads;
+`publishDir` labels and the Seqera Platform reference are not sent; a cancelled run is errored,
+not aborted. `getRunUid()` and `getTransformUid()` give null in the workflow body, which uwe runs
+before the run record exists, and the uids in process scripts and `workflow.onComplete`. The
+patterns of the rules find their match anywhere in the path.
 
 ## src/nf_quilt.rs
 

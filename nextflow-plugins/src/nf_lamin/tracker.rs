@@ -10,9 +10,9 @@ use std::sync::Arc;
 use jiff::Timestamp;
 use serde_json::{Value, json};
 
-use super::Shared;
 use super::client::Client;
 use super::settings::{Choice, Direction, Settings, merge};
+use super::{Annotation, Shared};
 use crate::observer::{End, Event, Start};
 use crate::report_format::offset_time;
 
@@ -45,6 +45,7 @@ pub(super) struct Tracker {
 
 #[derive(Clone)]
 struct Records {
+    transform_uid: String,
     run_id: i64,
     run_uid: String,
 }
@@ -120,7 +121,11 @@ impl Tracker {
                 });
             }
         };
-        self.shared.update(|status| status.ready = true);
+        self.shared.update(|status| {
+            status.ready = true;
+            status.run_uid = Some(records.run_uid.clone());
+            status.transform_uid = Some(records.transform_uid.clone());
+        });
         let body = json!({"started_at": offset_time(start.start), "_status_code": STARTED});
         match self.client.update("run", &records.run_uid, &body) {
             Ok(()) => tracing::info!("Run {} started", records.run_uid),
@@ -151,7 +156,11 @@ impl Tracker {
         self.client.upsert("runproject", rows)?;
         let rows = labels.iter().map(|id| row("ulabel_id", id)).collect();
         self.client.upsert("runulabel", rows)?;
-        Ok(Records { run_id, run_uid })
+        Ok(Records {
+            transform_uid,
+            run_id,
+            run_uid,
+        })
     }
 
     /// The transform of the pipeline and version: the configured one, an existing one, or a
@@ -439,7 +448,7 @@ impl Tracker {
         }
     }
 
-    /// Registers the outputs and ends the run record, once.
+    /// Registers the outputs, applies the annotations, and ends the run record, once.
     fn finished(&mut self, end: &End) {
         if std::mem::replace(&mut self.ended, true) {
             return;
@@ -460,6 +469,7 @@ impl Tracker {
             };
             self.listed(&listed.path, Direction::Output, choice, None);
         }
+        self.apply_annotations();
         let report = self.report(&run);
         let code = if end.success { COMPLETED } else { ERRORED };
         let mut body = json!({"finished_at": offset_time(end.end), "_status_code": code});
@@ -470,6 +480,63 @@ impl Tracker {
         match self.client.update("run", &run.run_uid, &body) {
             Ok(()) => tracing::info!("Run '{}' {state}", run.run_uid),
             Err(error) => tracing::warn!("nf-lamin: could not end the run record: {error}"),
+        }
+    }
+
+    /// Applies the annotations of the script to the artifacts of their files, or of the
+    /// published copies of them; the others are named in one warning.
+    fn apply_annotations(&mut self) {
+        let annotations = match self.shared.status.lock() {
+            Ok(mut status) => std::mem::take(&mut status.annotations),
+            Err(_) => return,
+        };
+        let mut merged: Vec<Annotation> = Vec::new();
+        for annotation in annotations {
+            match merged
+                .iter_mut()
+                .find(|known| known.path == annotation.path)
+            {
+                Some(known) => {
+                    known.kind = annotation.kind.or(known.kind.take());
+                    known.description = annotation.description.or(known.description.take());
+                    merge(&mut known.labels, &annotation.labels);
+                    merge(&mut known.projects, &annotation.projects);
+                }
+                None => merged.push(annotation),
+            }
+        }
+        let mut unmatched = Vec::new();
+        for annotation in merged {
+            let published = (self.sources.iter())
+                .find(|(_, source)| **source == annotation.path)
+                .map(|(target, _)| target.clone());
+            let found = (self.artifacts.get(&annotation.path).cloned())
+                .or_else(|| published.and_then(|target| self.artifacts.get(&target).cloned()));
+            let Some(artifact) = found else {
+                unmatched.push(annotation.path);
+                continue;
+            };
+            let mut fields = serde_json::Map::new();
+            if let Some(kind) = annotation.kind {
+                fields.insert("kind".into(), kind.into());
+            }
+            if let Some(description) = annotation.description {
+                fields.insert("description".into(), description.into());
+            }
+            if !fields.is_empty()
+                && let Err(error) =
+                    self.client
+                        .update("artifact", &artifact.uid, &Value::Object(fields))
+            {
+                tracing::warn!("nf-lamin: could not annotate {}: {error}", artifact.uid);
+            }
+            self.annotate(&artifact, &annotation.projects, &annotation.labels);
+        }
+        if !unmatched.is_empty() {
+            tracing::warn!(
+                "nf-lamin: no artifact was registered for these annotated files: {}",
+                unmatched.join(", ")
+            );
         }
     }
 

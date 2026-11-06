@@ -175,7 +175,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-prometheus", Kind::Observer),
     planned("nf-slack", Kind::Observer),
     planned("nf-teams", Kind::Observer),
-    planned("nf-tower", Kind::Observer),
+    crate::nf_tower::PLUGIN,
     planned("nf-weblog", Kind::Observer),
     // File systems.
     planned("nf-blocks", Kind::FileSystem),
@@ -344,6 +344,12 @@ pub fn observers(config: &Config) -> Result<Vec<Box<dyn Observer>>, String> {
         {
             observers.push(observer);
         }
+    }
+    // Nextflow loads nf-tower without a `plugins` line when the config turns it on.
+    if !configured(config).iter().any(|id| id == "nf-tower")
+        && let Some(observer) = crate::nf_tower::implied(config)?
+    {
+        observers.push(observer);
     }
     Ok(observers)
 }

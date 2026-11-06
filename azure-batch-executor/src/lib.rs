@@ -4,6 +4,7 @@
 
 pub mod auth;
 mod client;
+pub mod jobs;
 pub mod outcome;
 pub mod pool;
 mod settings;

@@ -373,7 +373,7 @@ always moves through presigned addresses, so `transferMode = 'physical_path'` an
 staging link sends the ETag of the upload as `checksum`; a ref is used as given, without the
 plugin's branch, tag and commit lookups; deleting a `lakefs://` path is not supported.
 
-## src/nf_lamin.rs
+## src/nf_lamin/mod.rs
 
 nf-lamin 0.9.0 is partly implemented: its `lamin` scope (`api_key`, `api.supabase_api_url`,
 `api.supabase_anon_key`, `features.manage_s3_credentials`) goes to the LaminDB provider of the

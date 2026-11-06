@@ -1,15 +1,15 @@
-<!-- How SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch and Nomad jobs get their files, with or without shared folders. -->
+<!-- How SLURM, HTCondor, PBS, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch and Nomad jobs get their files, with or without shared folders. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Remote executors and staging
 
-SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch and Nomad take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]`, `[executor.aws-batch]`, `[executor.google-batch]`, `[executor.azure-batch]` or `[executor.nomad]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
+SLURM, HTCondor, PBS, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch and Nomad take a `staging` setting in `[executor.slurm]`, `[executor.htcondor]`, `[executor.pbs]`, `[executor.kubernetes]`, `[executor.tes]`, `[executor.aws-batch]`, `[executor.google-batch]`, `[executor.azure-batch]` or `[executor.nomad]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
 
 | Mode | Executors | What the nodes need |
 | --- | --- | --- |
-| `shared-path` (default) | SLURM, Kubernetes, Nomad | The store and scratch folders at the same paths as on the machine that runs uwe |
-| `object-store` | SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch, Nomad | Network access to the staging root in an object store |
+| `shared-path` (default) | SLURM, HTCondor, PBS, Kubernetes, Nomad | The store and scratch folders at the same paths as on the machine that runs uwe |
+| `object-store` | SLURM, HTCondor, PBS, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch, Nomad | Network access to the staging root in an object store |
 | `kubedal` | Kubernetes | The [kubedal](https://github.com/arunaengine/kubedal) CSI driver |
 
 ## Shared paths
@@ -193,7 +193,9 @@ When no `-executor` is given, the `process.executor` of a Nextflow pipeline pick
 | `azurebatch` | `azure-batch` |
 | `google-batch` | `google-batch` |
 | `k8s` | `kubernetes` |
+| `condor`, `ospool` | `htcondor` (see [HTCondor](#htcondor)) |
 | `nomad` | `nomad` |
+| `pbspro` | `pbs` (see [PBS](#pbs)) |
 | `slurm` | `slurm` |
 | `slurm_no_memory` | `slurm`, with `memory_per_cpu_gb` (see [SLURM memory per CPU](#slurm-memory-per-cpu)) |
 | `tencentcloud-omics` | `tes`, with `platform = "tencent-omics"` |
@@ -417,6 +419,67 @@ nf-nomad-s5cmd is not needed: with `nomad.s5cmd.enabled` and its distributed wor
 ### Snakemake, CWL and Argo
 
 Their tasks use the settings of `[executor.nomad]`. CPUs, memory, GPUs and time come from the resources of the task, as on the other executors.
+
+## HTCondor
+
+`-executor htcondor` runs each attempt of a task as one HTCondor job of the vanilla universe. uwe runs on an access point and drives the HTCondor tools: `condor_submit -terse` submits a job, `condor_q` and, for a job that left the queue, `condor_history` tell its state, and `condor_rm` removes it. With the SLURM and PBS tools, these are the only programs of a cluster that uwe starts.
+
+```toml
+[executor.htcondor]
+# container = "apptainer"                   # or "singularity", "podman", "docker" on the execute nodes
+# options = ['+ProjectName = "lab"']        # more lines of every submit description
+# staging = "object-store"                  # with staging_root and helper_path, helper_url or helper_file
+# node_folder = "/local/scratch"            # with object-store staging; else $TMPDIR, else /tmp
+```
+
+The submit description of an attempt, `job.condor` in its control folder, names the job script as `executable`, HTCondor's event log `condor.log`, one log for both streams, `request_cpus` with `machine_count = 1` for more than one CPU, `request_memory` in MiB, `request_disk` in KiB, `request_gpus`, and for a task with a time `periodic_remove` after that time and `staging_minutes`. Each job carries `+uwe_attempt = "<attempt>"`. The cluster options of the task come next, then `options`, which come last and so win.
+
+With `staging = "shared-path"` (the default) the execute nodes see the store and scratch folders at the same paths, and the jobs say `should_transfer_files = IF_NEEDED`. With `staging = "object-store"` HTCondor's file transfer brings the job script to the node (`should_transfer_files = YES`), and the job stages the files of its task through the staging root with the uwe helper, as on SLURM. The helper comes from `helper_path` on the nodes, from `helper_url` with `helper_sha256`, or from `helper_file` (else the running binary), which uwe uploads.
+
+A held job fails its attempt with HTCondor's hold reason, after uwe removed it. A cancelled task removes its job. The web proxy of the config file reaches the jobs through `environment`.
+
+Limits:
+
+- `staging_access = "credentials"` is refused: the jobs get no secrets.
+- Tasks of several containers, daemons, image archives and image IDs are refused. Apptainer pulls the image in each job through its own cache; there are no pull jobs as on SLURM.
+- uwe does not recover the jobs of a run that ended abruptly; they run on until their time.
+- The tests run against fake HTCondor tools. Runs on a real pool, held jobs, file transfer and OSPool access points are not verified.
+
+### Nextflow pipelines
+
+`process.executor = 'condor'` and nf-ospool's `'ospool'` pick this executor. The cluster options of a process become lines of the submit description: a text is split at `;` and newlines, a list gives one line per item, as nf-ospool does. uwe keeps the submit description in the folder of the attempt and stages files itself, so it ignores `executor.$ospool.submitFileDir`, `sharedFilesystem`, `pathMappings`, `autoStageDirectories`, `stageBinDir`, `unstageOutputs` and `getenv`, with a warning for each. The `queue` directive is not used.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the `options` of `[executor.htcondor]`. CPUs, memory, disk, GPUs and time come from the resources of the task.
+
+## PBS
+
+`-executor pbs` runs each attempt of a task as one job of PBS Professional or OpenPBS. uwe runs on a login node and drives `qsub`, `qstat -x -f -F json` and `qdel`. Torque, whose `qstat` gives no JSON, is not supported.
+
+```toml
+[executor.pbs]
+# container = "apptainer"                   # or "singularity", "podman", "docker" on the nodes
+# options = ["-A lab"]                      # more options of qsub, on its command line, so they win
+# project = "ab12"                          # -P, as NCI Gadi needs it
+# storage = "gdata/ab12+scratch/ab12"       # -l storage=..., as Gadi needs it
+# disk_resource = "jobfs"                   # the resource that gets the disk of a task, like Gadi's jobfs
+# staging = "object-store"                  # as for HTCondor
+```
+
+The job script starts with `#PBS` lines: the cluster options of the task first, then the name `uwe-<attempt>`, the log in the control folder with `-j oe`, `-q` for the queue of the task, `-P` of `project`, `-l ncpus`, `-l mem` in MiB, `-l walltime` of the time of the task and `staging_minutes`, `-l ngpus`, the disk of the task as `disk_resource` and `-l storage`. A line for something that the cluster options or `options` set is left out, and a `select` statement leaves out `ncpus`, `mem` and `ngpus`. With object-store staging the job log goes to `/dev/null`, and the job sends its own log back.
+
+A held job fails its attempt with the comment of PBS, after uwe removed it. A job that `qstat` no longer knows, on a server without job history, counts as ended, and the record of its container decides. The web proxy of the config file reaches the jobs through `qsub -v`. When the job log ends with a resource summary, as on NCI Gadi, uwe adds that summary to the end of the standard error of the task. The limits of HTCondor apply.
+
+### Nextflow pipelines
+
+`process.executor = 'pbspro'` picks this executor. The cluster options of a process become one `#PBS` line, as Nextflow writes them, like `-P ab12 -l storage=gdata/ab12`. The `queue` directive gives `-q`.
+
+nf-gadi writes its usage report from the resource summaries: one CSV row or JSON entry for each task that ended or came from the cache, with the summary of its `gadi-pbs` job, in `gadi.output` with `gadi.format`, as the plugin settles them. A value that the summary lacks is an empty cell, where the plugin writes `null`. `gadi.publishTo` takes a local path; an address or a closure is not copied, with a warning. The plugin's start and end lines are not printed. The layout of a real Gadi summary was not checked; the tests use the labels that nf-gadi reads.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the settings of `[executor.pbs]`, and the `queue` of a task. CPUs, memory, disk, GPUs and time come from the resources of the task.
 
 ## Kubernetes pod options
 

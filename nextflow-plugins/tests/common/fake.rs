@@ -44,12 +44,13 @@ pub struct Fake {
 impl Fake {
     /// Answers like the routes `[{"method", "match", "status", "type", "body"}]` of the
     /// recorded fixtures: the first route whose `match` is in the path, else 200 and `{}`.
+    /// `{address}` in a body is the server's own address.
     pub fn start(routes: serde_json::Value) -> Fake {
         let listener = TcpListener::bind("127.0.0.1:0").expect("binds a free port");
         let address = format!("http://{}", listener.local_addr().expect("an address"));
         let requests = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
-        let (kept, stop) = (requests.clone(), stopped.clone());
+        let (kept, stop, own) = (requests.clone(), stopped.clone(), address.clone());
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 if stop.load(Ordering::SeqCst) {
@@ -57,7 +58,8 @@ impl Fake {
                 }
                 let Ok(stream) = stream else { continue };
                 let (kept, routes) = (kept.clone(), routes.clone());
-                std::thread::spawn(move || serve(stream, &routes, &kept));
+                let own = own.clone();
+                std::thread::spawn(move || serve(stream, &routes, &kept, &own));
             }
         });
         Fake {
@@ -80,7 +82,7 @@ impl Drop for Fake {
 }
 
 /// Answers the requests of one connection until the client closes it.
-fn serve(stream: TcpStream, routes: &serde_json::Value, kept: &Mutex<Vec<Request>>) {
+fn serve(stream: TcpStream, routes: &serde_json::Value, kept: &Mutex<Vec<Request>>, own: &str) {
     let mut writer = stream.try_clone().expect("clones the stream");
     let mut reader = BufReader::new(stream);
     loop {
@@ -120,12 +122,15 @@ fn serve(stream: TcpStream, routes: &serde_json::Value, kept: &Mutex<Vec<Request
             body,
         };
         let (status, kind, payload) = answer(routes, &request);
+        let payload = String::from_utf8_lossy(&payload).replace("{address}", own);
         kept.lock().expect("not poisoned").push(request);
         let head = format!(
             "HTTP/1.1 {status} Fake\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\r\n",
             payload.len()
         );
-        if writer.write_all(head.as_bytes()).is_err() || writer.write_all(&payload).is_err() {
+        if writer.write_all(head.as_bytes()).is_err()
+            || writer.write_all(payload.as_bytes()).is_err()
+        {
             return;
         }
     }

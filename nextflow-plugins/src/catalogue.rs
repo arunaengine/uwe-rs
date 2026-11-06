@@ -171,7 +171,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_snapshot::PLUGIN,
     crate::nf_storagemetrics::PLUGIN,
     // Observers that send to services.
-    planned("nf-biffix", Kind::Observer),
+    crate::nf_biffix::PLUGIN,
     crate::crg_lims::PLUGIN,
     crate::nf_crukci_support::PLUGIN,
     crate::nf_lamin::PLUGIN,

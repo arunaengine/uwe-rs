@@ -50,6 +50,9 @@ pub struct Placement {
     pub queue: Option<String>,
     /// Backend parameters passed through as given, such as TES `backend_parameters`.
     pub parameters: BTreeMap<String, String>,
+    /// Labels that the backend puts on the job of the task, like AWS Batch tags.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
     /// Whether the task runs without network, where the backend can cut it off.
     #[serde(default)]
     pub offline: bool,

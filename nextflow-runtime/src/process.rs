@@ -42,6 +42,9 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "maxRetries",
     "memory",
     "publishDir",
+    // The executor that has queues and job labels takes them, like AWS Batch and SLURM.
+    "queue",
+    "resourceLabels",
     "resourceLimits",
     "secret",
     "shell",
@@ -64,8 +67,6 @@ const HINT_DIRECTIVES: &[&str] = &[
     "maxSubmitAwait",
     "penv",
     "pod",
-    "queue",
-    "resourceLabels",
     "scratch",
 ];
 

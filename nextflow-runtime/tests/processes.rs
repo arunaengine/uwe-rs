@@ -234,7 +234,6 @@ fn rejects_active_directives() {
 fn accepts_scheduling_hints() {
     for (name, value) in [
         ("executor", "'slurm'"),
-        ("queue", "'batch'"),
         (
             "clusterOptions",
             "'--exclusive --partition=batch --account project'",
@@ -244,7 +243,6 @@ fn accepts_scheduling_hints() {
         ("machineType", "'n1-standard-4'"),
         ("arch", "'arm64'"),
         ("arch", "[name: 'linux/x86_64']"),
-        ("resourceLabels", "[region: 'local']"),
         ("scratch", "true"),
         ("scratch", "'/scratch'"),
         ("pod", "[nodeSelector: 'disk=ssd']"),

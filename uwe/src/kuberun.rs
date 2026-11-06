@@ -476,3 +476,7 @@ fn terminated(pod: &Pod) -> Option<i32> {
     let status = statuses.iter().find(|status| status.name == "uwe")?;
     Some(status.state.as_ref()?.terminated.as_ref()?.exit_code)
 }
+
+#[cfg(test)]
+#[path = "kuberun_tests.rs"]
+mod tests;

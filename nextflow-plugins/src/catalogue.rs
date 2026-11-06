@@ -194,7 +194,9 @@ pub const PLUGINS: &[Plugin] = &[
     // or AWS's chain; no Nextflow SCM file and no CodeCommit API reads (uwe clones).
     Plugin::new("nf-codecommit", Kind::Other, State::Partial),
     planned("nf-diff", Kind::Other),
-    planned("nf-kuberun", Kind::Executor),
+    // nf-kuberun: `uwe kuberun` runs uwe in a pod with its own service account; no `login`
+    // shell, no Job instead of the pod, and only the run options that uwe has.
+    Plugin::new("nf-kuberun", Kind::Executor, State::Partial),
     // nf-wave: Wave images for the `container` and `conda` directives when a Wave-only
     // setting or an endpoint asks; no module bundles, layers, Singularity, Fusion or commands.
     crate::nf_wave::PLUGIN,

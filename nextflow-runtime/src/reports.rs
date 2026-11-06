@@ -79,6 +79,8 @@ pub(crate) struct Reports {
     failures: HashMap<TaskId, observer::Task>,
     /// Whether the observers heard the end of the run, after which they hear nothing.
     closed: bool,
+    /// Whether nf-cgroup-metrics fills the memory fields from the samples of the cgroup.
+    cgroup: bool,
 }
 
 /// What observers hear of a task besides its trace row, from the request of the task.
@@ -191,6 +193,7 @@ impl Reports {
             process_ids: HashMap::new(),
             failures: HashMap::new(),
             closed: false,
+            cgroup: nextflow_plugins::cgroup_metrics(config),
         }
     }
 
@@ -356,7 +359,7 @@ impl Reports {
             submit: *submit,
             start: outcome.started.map(millis),
             complete: outcome.ended.map(millis),
-            usage: outcome.usage,
+            usage: outcome.usage.map(|usage| memory(usage, self.cgroup)),
         };
         if !self.observers.is_empty() {
             self.tell(&row, outcome);
@@ -638,6 +641,15 @@ impl Row {
         Some(cpu as f64 / 10.0 / real as f64)
     }
 
+    /// The share of the machine's memory that the largest anonymous memory of the cgroup took,
+    /// in percent with one decimal, as nf-cgroup-metrics counts it in thousandths.
+    fn memory_share(&self) -> Option<f64> {
+        let usage = self.usage?;
+        let total = usage.memory_total? / 1024;
+        let thousandths = (usage.rss? / 1024) as f64 * 1000.0 / total.max(1) as f64;
+        Some(thousandths.round() / 10.0)
+    }
+
     /// The trace record of the attempt for run observers, with the values unformatted.
     fn record(&self) -> Record {
         let resources = &self.task.resources;
@@ -665,16 +677,16 @@ impl Row {
             "disk": resources.disk_bytes,
             "script": self.task.script,
             // What uwe does not know or measure: executors keep task folders and job ids to
-            // themselves, and count no host, page, swap or context-switch figures.
+            // themselves, and count no character or context-switch figures.
             "workdir": null,
             "native_id": null,
             "cpu_model": null,
             "rchar": null,
             "wchar": null,
-            "rss": null,
-            "vmem": null,
-            "peak_vmem": null,
-            "%mem": null,
+            "rss": usage.and_then(|usage| usage.rss),
+            "vmem": usage.and_then(|usage| usage.vmem),
+            "peak_vmem": usage.and_then(|usage| usage.peak_vmem),
+            "%mem": self.memory_share(),
             "vol_ctxt": null,
             "inv_ctxt": null,
         });
@@ -711,9 +723,37 @@ impl Row {
             "peak_rss" => self.measured(|usage| usage.memory_peak),
             "read_bytes" => self.measured(|usage| usage.read_bytes),
             "write_bytes" => self.measured(|usage| usage.write_bytes),
+            "vmem" => self.measured(|usage| usage.vmem),
+            "rss" => self.measured(|usage| usage.rss),
+            "peak_vmem" => self.measured(|usage| usage.peak_vmem),
+            "%mem" => {
+                (self.memory_share()).map_or(UNKNOWN.to_owned(), |share| format!("{share:.1}%"))
+            }
             _ => UNKNOWN.to_owned(),
         }
     }
+}
+
+/// The usage of an attempt as the trace shows it. With nf-cgroup-metrics, the samples of the
+/// cgroup count in whole KiB, and `peak_rss` is the largest anonymous memory; else they stay out.
+fn memory(mut usage: Usage, cgroup: bool) -> Usage {
+    let whole = |bytes: Option<u64>| bytes.map(|bytes| bytes / 1024 * 1024);
+    if !cgroup {
+        return Usage {
+            vmem: None,
+            rss: None,
+            peak_vmem: None,
+            memory_total: None,
+            ..usage
+        };
+    }
+    usage.vmem = whole(usage.vmem);
+    usage.rss = whole(usage.rss);
+    usage.peak_vmem = whole(usage.peak_vmem);
+    if usage.rss.is_some() {
+        usage.memory_peak = usage.rss;
+    }
+    usage
 }
 
 /// The record of an attempt that has not ended, with this status and without the values of
@@ -848,6 +888,7 @@ mod tests {
                 memory_peak: Some(3 << 20),
                 read_bytes: Some(0),
                 write_bytes: None,
+                ..Usage::default()
             }),
         };
         assert_eq!(row.value("%cpu"), "50.0%");

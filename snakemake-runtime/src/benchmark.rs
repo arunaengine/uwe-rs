@@ -135,6 +135,7 @@ mod tests {
                 memory_peak: Some(3 << 20),
                 read_bytes: Some(1 << 20),
                 write_bytes: None,
+                ..Usage::default()
             }),
             ..Outcome::default()
         }

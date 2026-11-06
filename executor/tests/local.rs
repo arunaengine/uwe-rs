@@ -157,6 +157,9 @@ fn runs_container_task() {
             "{usage:?}"
         );
         assert!(usage.cpu_usec.is_some(), "{usage:?}");
+        // The wrapper sampled the memory of the cgroup at least once.
+        let sampled = [usage.vmem, usage.rss, usage.peak_vmem, usage.memory_total];
+        assert!(sampled.iter().all(Option::is_some), "{usage:?}");
     }
 }
 

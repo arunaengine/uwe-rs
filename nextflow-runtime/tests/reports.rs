@@ -206,6 +206,7 @@ fn fills_measured_columns() {
                 memory_peak: Some(3 << 20),
                 read_bytes: Some(0),
                 write_bytes: Some(4096),
+                ..Usage::default()
             }),
             ..Default::default()
         })
@@ -217,4 +218,61 @@ fn fills_measured_columns() {
         trace,
         "task_id\t%cpu\tpeak_rss\tread_bytes\twrite_bytes\n1\t50.0%\t3 MB\t0\t4 KB\n"
     );
+}
+
+/// The trace of one task with the memory samples of nf-cgroup-metrics' fixture, in a config
+/// with `extra` lines.
+fn memory_trace(extra: &str) -> String {
+    use workflow_graph::{Outcome, Usage};
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("main.nf"),
+        "process P {\n script:\n 'true'\n}\nworkflow { P() }",
+    )
+    .unwrap();
+    let fields = "task_id,status,%mem,vmem,rss,peak_vmem,peak_rss";
+    let config = format!("trace.enabled = true\ntrace.fields = '{fields}'\n{extra}\n");
+    std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    })
+    .unwrap();
+    let tasks = driver.start().unwrap();
+    // The `.command.trace` of the recorded run had these KiB; uwe's wrapper samples bytes.
+    let kib = |kib: u64| Some(kib * 1024 + 100);
+    driver
+        .complete(Outcome {
+            id: tasks[0].id,
+            attempt: 1,
+            usage: Some(Usage {
+                memory_peak: kib(81_092),
+                vmem: kib(76_828),
+                rss: kib(2292),
+                peak_vmem: kib(81_092),
+                memory_total: kib(64_000_000),
+                ..Usage::default()
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+    driver.finish().unwrap();
+    let deliveries = driver.deliveries();
+    std::fs::read_to_string(&deliveries[0].location).unwrap()
+}
+
+#[test]
+fn traces_cgroup_memory() {
+    let header = "task_id\tstatus\t%mem\tvmem\trss\tpeak_vmem\tpeak_rss\n";
+    let plugin = memory_trace("plugins { id 'nf-cgroup-metrics@1.0.1' }");
+    // The trace of the recorded run with the plugin: `0.0%	75 MB	2.2 MB	79.2 MB	2.2 MB`.
+    assert_eq!(
+        plugin,
+        format!("{header}1\tCOMPLETED\t0.0%\t75 MB\t2.2 MB\t79.2 MB\t2.2 MB\n")
+    );
+    let off = "plugins { id 'nf-cgroup-metrics@1.0.1' }\ncgroup.metrics.enabled = false";
+    let without = format!("{header}1\tCOMPLETED\t-\t-\t-\t-\t79.2 MB\n");
+    assert_eq!(memory_trace(off), without);
+    assert_eq!(memory_trace(""), without);
 }

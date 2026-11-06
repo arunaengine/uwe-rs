@@ -102,6 +102,12 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
         Some(_) => format!(" < \"$control/{STDIN}\""),
         None => String::new(),
     };
+    // Only a container has a cgroup of the task's own, which nf-cgroup-metrics reports.
+    let sampled = spec.image.is_some();
+    if sampled {
+        script.push_str(MEMORY_WATCH);
+        script.push_str("memory_watch &\nwatch=$!\n");
+    }
     script.push_str(&format!("{NOW} > \"$control/{START}\"\n"));
     script.push_str(&stoppable(&format!(
         "{} > \"$control/{STDOUT}\" 2> \"$control/{STDERR}\"{stdin}",
@@ -110,6 +116,9 @@ pub fn wrapper(spec: &TaskSpec, folders: &Folders<'_>) -> String {
     script.push_str(&format!(
         "{NOW} > \"$control/{END}\"\necho \"$status\" > \"$control/{EXIT}\"\n"
     ));
+    if sampled {
+        script.push_str("kill \"$watch\" 2> /dev/null\nwait \"$watch\" 2> /dev/null\n");
+    }
     script.push_str(USAGE_SCRIPT);
     script.push_str(COLLECT);
     script.push_str(&format!(": > \"$control/{MANIFEST}\"\n"));
@@ -192,8 +201,16 @@ fi
 /// Records CPU, peak memory, block I/O and memory kills from the private cgroup using shell
 /// builtins.
 pub(crate) const USAGE_SCRIPT: &str = r#"cgroup=/sys/fs/cgroup
+sampled=
+if [ -r "$control/usage" ]; then
+    while IFS= read -r line; do
+        sampled="$sampled$line
+"
+    done < "$control/usage"
+fi
 if [ -r "$cgroup/memory.peak" ]; then
     {
+        printf '%s' "$sampled"
         read -r peak < "$cgroup/memory.peak"
         echo "memory_peak $peak"
         if [ -r "$cgroup/memory.events" ]; then
@@ -221,6 +238,71 @@ if [ -r "$cgroup/memory.peak" ]; then
         fi
     } > "$control/usage" 2> /dev/null
 fi
+"#;
+
+/// Samples the memory of the task's cgroup once per second while the task runs, as
+/// nf-cgroup-metrics 1.0.1 does: cgroup v2, else v1, at the path that `/proc/self/cgroup` names,
+/// else at the root. It keeps the largest values in the usage file, in bytes.
+pub(crate) const MEMORY_WATCH: &str = r#"memory_find() {
+    memory= kind=
+    if [ -f "$1/cgroup.controllers" ]; then
+        while IFS= read -r line; do
+            case $line in 0::*) memory="$1${line#0::}" ;; esac
+        done 2> /dev/null < "$2"
+        [ -r "$memory/memory.current" ] || memory=$1
+        [ -r "$memory/memory.current" ] && kind=2
+    elif [ -d "$1/memory" ]; then
+        while IFS= read -r line; do
+            case $line in *:memory:*) memory="$1/memory${line#*:memory:}" ;; esac
+        done 2> /dev/null < "$2"
+        [ -r "$memory/memory.usage_in_bytes" ] || memory=$1/memory
+        [ -r "$memory/memory.usage_in_bytes" ] && kind=1
+    fi
+    [ -n "$kind" ]
+}
+memory_sample() {
+    case $kind in
+        2)
+            read -r current < "$memory/memory.current" || return 1
+            peak=$current
+            [ -r "$memory/memory.peak" ] && read -r peak < "$memory/memory.peak"
+            anon=0
+            while read -r key value; do
+                [ "$key" = anon ] && anon=$value
+            done < "$memory/memory.stat"
+            ;;
+        1)
+            read -r current < "$memory/memory.usage_in_bytes" || return 1
+            peak=$current
+            [ -r "$memory/memory.max_usage_in_bytes" ] &&
+                read -r peak < "$memory/memory.max_usage_in_bytes"
+            anon=0
+            while read -r key value; do
+                case $key in rss | rss_huge) anon=$((anon + value)) ;; esac
+            done < "$memory/memory.stat"
+            ;;
+        *) return 1 ;;
+    esac
+    [ "$current" -gt "${vmem:-0}" ] && vmem=$current
+    [ "$anon" -gt "${rss:-0}" ] && rss=$anon
+    [ "$peak" -gt "${peak_vmem:-0}" ] && peak_vmem=$peak
+    return 0
+}
+memory_watch() {
+    trap 'exit 0' TERM
+    memory_find /sys/fs/cgroup /proc/self/cgroup || return 0
+    command -v sleep > /dev/null 2>&1 || return 0
+    total=0
+    while read -r key value unit; do
+        [ "$key" = MemTotal: ] && total=$value
+    done 2> /dev/null < /proc/meminfo
+    while memory_sample 2> /dev/null; do
+        printf 'vmem %s\nrss %s\npeak_vmem %s\nmemory_total %s\n' \
+            "$vmem" "$rss" "$peak_vmem" "$((total * 1024))" > "$control/usage"
+        sleep 1 &
+        wait $!
+    done
+}
 "#;
 
 /// Adds each file and directory that a pattern matches to the manifest, as `file <path>` or
@@ -254,4 +336,86 @@ collect() {
 /// A shell word in single quotes.
 pub fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::MEMORY_WATCH;
+
+    /// Writes each file below `root`.
+    fn lay_out(root: &Path, files: &[(&str, &str)]) {
+        for (name, text) in files {
+            let path = root.join(name);
+            std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes folders");
+            std::fs::write(path, text).expect("writes");
+        }
+    }
+
+    /// What two samples of the cgroup files in `root` give, `then` changing them in between:
+    /// the cgroup version, the folder and the largest values.
+    fn sampled(root: &Path, then: &str) -> String {
+        let script = format!(
+            "{MEMORY_WATCH}memory_find \"$1/sys\" \"$1/cgroup\" || exit 3\nmemory_sample\n\
+             {then}\nmemory_sample\necho \"$kind ${{memory#$1}} $vmem $rss $peak_vmem\"\n"
+        );
+        let output = std::process::Command::new("sh")
+            .args(["-c", &script, "sh"])
+            .arg(root)
+            .output()
+            .expect("runs sh");
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+            + &format!("{:?}", output.status.code())
+    }
+
+    #[test]
+    fn samples_cgroup_v2() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        lay_out(
+            root.path(),
+            &[
+                ("sys/cgroup.controllers", "memory\n"),
+                ("sys/task/memory.current", "4096\n"),
+                ("sys/task/memory.peak", "8192\n"),
+                ("sys/task/memory.stat", "anon 1024\nfile 3072\n"),
+                ("cgroup", "0::/task\n"),
+            ],
+        );
+        let then = "echo 2048 > \"$memory/memory.current\"\n\
+                    printf 'anon 1536\\nfile 512\\n' > \"$memory/memory.stat\"";
+        let got = sampled(root.path(), then);
+        assert_eq!(got, "2 /sys/task 4096 1536 8192Some(0)");
+    }
+
+    #[test]
+    fn samples_cgroup_v1() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        // The path of a private cgroup namespace is missing, so the root counts.
+        lay_out(
+            root.path(),
+            &[
+                ("sys/memory/memory.usage_in_bytes", "3000\n"),
+                ("sys/memory/memory.max_usage_in_bytes", "5000\n"),
+                (
+                    "sys/memory/memory.stat",
+                    "cache 100\nrss 1000\nrss_huge 2048\ntotal_rss 9999\n",
+                ),
+                ("cgroup", "12:pids:/docker/x\n4:memory:/docker/x\n"),
+            ],
+        );
+        let then = "echo 2000 > \"$memory/memory.usage_in_bytes\"";
+        let got = sampled(root.path(), then);
+        assert_eq!(got, "1 /sys/memory 3000 3048 5000Some(0)");
+    }
+
+    #[test]
+    fn skips_missing_cgroup() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        lay_out(
+            root.path(),
+            &[("sys/cgroup.controllers", ""), ("cgroup", "0::/gone\n")],
+        );
+        assert_eq!(sampled(root.path(), ":"), "Some(3)");
+    }
 }

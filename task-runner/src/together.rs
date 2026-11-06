@@ -394,6 +394,7 @@ async fn own(root: PathBuf, before: &mut Usage) -> Result<Finished, ExecutorErro
             read_bytes: grown(now.read_bytes, before.read_bytes),
             write_bytes: grown(now.write_bytes, before.write_bytes),
             oom_kills: grown(now.oom_kills, before.oom_kills),
+            ..Usage::default()
         });
         *before = now;
     }

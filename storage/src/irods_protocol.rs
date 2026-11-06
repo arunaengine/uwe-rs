@@ -19,10 +19,13 @@ use tokio_rustls::rustls::{ClientConfig, crypto};
 use crate::error::Problem;
 
 /// The numbers of the API requests that uwe sends.
+pub(crate) const CREATE: u32 = 601;
 pub(crate) const OPEN: u32 = 602;
 pub(crate) const STAT: u32 = 633;
 pub(crate) const CLOSE: u32 = 673;
 pub(crate) const READ: u32 = 675;
+pub(crate) const WRITE: u32 = 676;
+pub(crate) const COLLECTION: u32 = 681;
 pub(crate) const QUERY: u32 = 702;
 const AUTHENTICATE: u32 = 110000;
 

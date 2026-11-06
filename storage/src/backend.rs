@@ -259,7 +259,7 @@ impl Connection {
     pub fn writes(&self) -> bool {
         matches!(
             self.backend,
-            Backend::Objects(_) | Backend::Folder(_) | Backend::Synapse(_)
+            Backend::Objects(_) | Backend::Folder(_) | Backend::Synapse(_) | Backend::Irods(_)
         )
     }
 
@@ -321,6 +321,7 @@ impl Connection {
             Backend::Objects(objects) => objects.upload(file, target).await,
             Backend::Folder(folder) => folder.upload(file, &folder.path(prefix, target)?).await,
             Backend::Synapse(synapse) => synapse.upload(file, target).await,
+            Backend::Irods(irods) => irods.upload(file, target).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
     }

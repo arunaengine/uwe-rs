@@ -8,13 +8,14 @@ use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 
 use serde_json::Value;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
 use crate::irods_protocol::{
-    Account, CLOSE, Login, OPEN, Policy, QUERY, READ, STAT, Session, escape, tag, tags,
+    Account, CLOSE, COLLECTION, CREATE, Login, OPEN, Policy, QUERY, READ, STAT, Session, WRITE,
+    escape, tag, tags,
 };
-use crate::{Downloaded, Entry, Metadata, address};
+use crate::{Downloaded, Entry, Metadata, Written, address};
 
 /// What an iRODS client signs in with. Unset values come from the environment variables
 /// `IRODS_*`, then from the iRODS environment file, then from defaults.
@@ -57,6 +58,8 @@ const PARENT_NAME: u32 = 502;
 /// How many rows a page of a listing holds, and how many bytes a read or write moves.
 const ROWS: usize = 256;
 const CHUNK: usize = 4 << 20;
+/// Open flags of POSIX, as iRODS takes them: write only, create, truncate.
+const CREATE_FLAGS: u32 = 0o1 | 0o100 | 0o1000;
 
 pub(crate) struct Irods {
     account: Account,
@@ -100,6 +103,15 @@ impl Irods {
         let path = logical(target)?;
         let mut session = self.session().await?;
         let done = download(&mut session, &path, file).await;
+        self.settle(session, &done);
+        done
+    }
+
+    /// Writes a data object, replacing one of that name, and makes its missing collections.
+    pub async fn upload(&self, file: &Path, target: &str) -> Result<Written, Problem> {
+        let path = logical(target)?;
+        let mut session = self.session().await?;
+        let done = upload(&mut session, file, &path).await;
         self.settle(session, &done);
         done
     }
@@ -206,6 +218,46 @@ async fn download(session: &mut Session, path: &str, file: &Path) -> Result<Down
         .await?;
     Ok(Downloaded {
         version: found.version,
+    })
+}
+
+async fn upload(session: &mut Session, file: &Path, path: &str) -> Result<Written, Problem> {
+    tracing::debug!("Writing file to iRODS: {path}");
+    let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
+    if !parent.is_empty() {
+        let collection = format!(
+            "<CollInpNew_PI><collName>{}</collName><flags>0</flags><oprType>0</oprType>{}\
+             </CollInpNew_PI>",
+            escape(parent),
+            pairs(&[("recursiveOpr", "")])
+        );
+        match session.call(COLLECTION, &collection, &[]).await {
+            Err(problem) if !problem.existing => return Err(problem),
+            _ => {}
+        }
+    }
+    let mut source =
+        (tokio::fs::File::open(file).await).map_err(|error| Problem::local(file, error))?;
+    let size = (source.metadata().await)
+        .map_err(|error| Problem::local(file, error))?
+        .len();
+    let create = object_input(path, CREATE_FLAGS, 0o644, size, &[("forceFlag", "")]);
+    let descriptor = session.call(CREATE, &create, &[]).await?;
+    let mut buffer = vec![0; CHUNK];
+    loop {
+        let read = (source.read(&mut buffer).await).map_err(|error| Problem::local(file, error))?;
+        if read == 0 {
+            break;
+        }
+        let write = opened_input(descriptor.info, read);
+        session.call(WRITE, &write, &buffer[..read]).await?;
+    }
+    session
+        .call(CLOSE, &opened_input(descriptor.info, 0), &[])
+        .await?;
+    Ok(Written {
+        size,
+        version: None,
     })
 }
 

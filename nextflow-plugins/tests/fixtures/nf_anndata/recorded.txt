@@ -1,0 +1,1 @@
+Recorded with Nextflow 26.04.6 and nf-anndata 0.5.3, offline: probe.nf on the plugin's own test files; expected.out holds their sections of the full recording.

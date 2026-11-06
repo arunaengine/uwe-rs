@@ -35,12 +35,12 @@ fn loaded(text: &str) -> Config {
 fn warns_skipped_plugins() {
     let config = loaded(
         "plugins {\n    id 'nf-schema@2.1.0'\n    id 'nf-unknown@1.0'\n    id 'nf-aspera'\n    \
-         id 'nf-agent@0.1.0'\n    id 'nf-hello'\n    id 'nf-agent'\n}\n",
+         id 'nf-agent-pi@0.1.0'\n    id 'nf-hello'\n    id 'nf-agent-pi'\n}\n",
     );
     assert_eq!(
         catalogue::configured(&config),
         [
-            "nf-agent",
+            "nf-agent-pi",
             "nf-aspera",
             "nf-hello",
             "nf-schema",
@@ -50,8 +50,8 @@ fn warns_skipped_plugins() {
     assert_eq!(
         catalogue::warnings(&config),
         [
-            "The plugin `nf-agent` is planned in uwe but not implemented yet; its features are \
-             skipped",
+            "The plugin `nf-agent-pi` is planned in uwe but not implemented yet; its features \
+             are skipped",
             "The plugin `nf-aspera` cannot be implemented in uwe (it needs IBM's closed FASP \
              protocol); its features are skipped",
             "The plugin `nf-hello` is not supported by uwe (no release since 2024-03-06); its \
@@ -84,5 +84,6 @@ fn lists_registry_plugins() {
     let core = &capabilities["nf-core-utils"];
     assert_eq!(core["supported"].as_array().map(Vec::len), Some(40));
     assert_eq!(core["unavailable"], serde_json::json!([]));
-    assert_eq!(capabilities["nf-agent"]["state"], "planned");
+    assert_eq!(capabilities["nf-agent"]["state"], "partial");
+    assert_eq!(capabilities["nf-agent-pi"]["state"], "planned");
 }

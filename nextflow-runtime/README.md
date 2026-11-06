@@ -16,6 +16,18 @@ so stays too. The modes of `nfGc.gc_mode` and `boost.cleanup` free files at the 
 `boost.cleanupFailedTasks` and `boost.cleanupInterval` change nothing, since the executor
 removes the folder of every attempt when it ends, also of a failed one.
 
+## src/calls.rs
+
+The model calls of agent tasks (nf-agent spec). The driver makes each call on a thread of its
+own and looks for answers every 20 ms through the engine's wake-up, so the run goes on while a
+model answers; an agent runs at most 10 tasks at a time unless `maxForks` says otherwise. The
+engine then records the task, which has neither a command nor an image, like the task of an
+`exec:` section. uwe's own cache keys tasks by their image, so answers are kept apart: one file
+per call in `<scratch>/nextflow/agents`, named by the SHA-256 of the task name, model, endpoint,
+messages, output schema and the size and change time of the input files. A run with `-resume`
+reads them for first attempts; `cache false` neither reads nor writes them. Prompts and keys
+are never logged, and addresses in messages leave out credentials.
+
 ## src/inputs.rs
 
 The inputs of a Nextflow pipeline as one JSON Schema (decision 24). A pipeline with a

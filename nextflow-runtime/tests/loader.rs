@@ -154,7 +154,7 @@ fn calls_included_plugins() {
         "other.nf",
         "include { fromCatalogue } from 'plugin/nf-unknown'\n\
          include { nothing } from 'plugin/nf-schema'\n\
-         include { anything } from 'plugin/nf-agent'\nworkflow {\n}\n",
+         include { anything } from 'plugin/nf-agent-pi'\nworkflow {\n}\n",
     );
     let error = Loader::default()
         .load(&root.path().join("other.nf"))
@@ -170,8 +170,8 @@ fn calls_included_plugins() {
             "1:11: Plugins are not supported yet: plugin/nf-unknown (the plugin `nf-unknown` \
              is not known to uwe)",
             "2:11: `nothing` is not a function of the plugin `nf-schema`",
-            "3:11: Plugins are not supported yet: plugin/nf-agent (the plugin `nf-agent` is \
-             planned in uwe but not implemented yet)"
+            "3:11: Plugins are not supported yet: plugin/nf-agent-pi (the plugin `nf-agent-pi` \
+             is planned in uwe but not implemented yet)"
         ]
     );
 }

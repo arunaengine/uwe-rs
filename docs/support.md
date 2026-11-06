@@ -17,6 +17,8 @@ This page describes uwe 0.1.0. `uwe --version` prints the version you run. Where
 
 Each language is a subset that uwe implements in Rust. The exact limits are in [Known pitfalls](pitfalls.md). `uwe check <workflow>` answers the question for one workflow.
 
+Nextflow's `agent` primitive, a preview feature of Nextflow 26.10, runs with its `langchain4j` runner (nf-agent). Each agent task sends one OpenAI chat completions request from uwe itself, to `agent.baseUrl` or to the OpenAI endpoint, with the credential that the `agent` scope resolves. Text answers (`stdout()`) and typed answers (Boolean, Float, Integer, List, Path, String and record types, through a strict JSON schema) work, the `agent` scope applies with its `withName` and `withLabel` selectors, and `-resume` reuses the answers of earlier runs. Refused before any task starts: the `tools` and `skills` directives, and `agent.runner = 'pi'` (nf-agent-pi). File outputs of agents are refused when the script loads, since only the file tools could write them.
+
 ## Executors
 
 | Executor | Container runtime | Staging modes |

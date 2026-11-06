@@ -98,6 +98,7 @@ ASSET_LAYOUTS = {
     "nextflow-evaluator/tests/fixtures/oracle/groovy_methods": "native Groovy oracle layout",
     "nextflow-evaluator/tests/fixtures/oracle/gunzip": "native Nextflow oracle layout",
     "nextflow-evaluator/tests/fixtures/oracle/org_json": "native Groovy oracle layout",
+    "nextflow-plugins/tests/fixtures/nf_anndata": "native plugin oracle layout with Zarr stores",
     "nextflow-plugins/tests/fixtures/nf_core_utils": "native plugin oracle layout",
     "nextflow-plugins/tests/fixtures/nf_schema": "native plugin oracle layout",
     "nextflow-plugins/tests/fixtures/nf_validation": "native plugin oracle layout",

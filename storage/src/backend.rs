@@ -26,6 +26,7 @@ use crate::web::Web;
 use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
 /// Where a provider comes from.
+#[derive(Clone)]
 pub(crate) enum Source {
     /// A provider of the config file.
     Configured(Box<ProviderSettings>),

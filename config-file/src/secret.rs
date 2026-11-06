@@ -22,7 +22,8 @@ enum Source {
 }
 
 impl Secret {
-    pub(crate) fn written(secret: String, origin: Origin) -> Secret {
+    /// A secret as written at `origin`, like a key of a Nextflow config.
+    pub fn written(secret: String, origin: Origin) -> Secret {
         Secret {
             source: Source::Written(secret),
             origin,

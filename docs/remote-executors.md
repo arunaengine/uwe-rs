@@ -9,7 +9,7 @@ SLURM, HTCondor, PBS, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch and 
 | Mode | Executors | What the nodes need |
 | --- | --- | --- |
 | `shared-path` (default) | SLURM, HTCondor, PBS, Kubernetes, Nomad | The store and scratch folders at the same paths as on the machine that runs uwe |
-| `object-store` | SLURM, HTCondor, PBS, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch, Nomad | Network access to the staging root in an object store |
+| `object-store` | SLURM, HTCondor, PBS, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch, Nomad, Flyte, Snowflake | Network access to the staging root in an object store |
 | `kubedal` | Kubernetes | The [kubedal](https://github.com/arunaengine/kubedal) CSI driver |
 
 ## Shared paths
@@ -191,6 +191,7 @@ When no `-executor` is given, the `process.executor` of a Nextflow pipeline pick
 | --- | --- |
 | `awsbatch` | `aws-batch` |
 | `azurebatch` | `azure-batch` |
+| `flyte` | `flyte` |
 | `google-batch` | `google-batch` |
 | `k8s` | `kubernetes` |
 | `condor`, `ospool` | `htcondor` (see [HTCondor](#htcondor)) |
@@ -198,6 +199,7 @@ When no `-executor` is given, the `process.executor` of a Nextflow pipeline pick
 | `pbspro` | `pbs` (see [PBS](#pbs)) |
 | `slurm` | `slurm` |
 | `slurm_no_memory` | `slurm`, with `memory_per_cpu_gb` (see [SLURM memory per CPU](#slurm-memory-per-cpu)) |
+| `snowflake` | `snowflake` |
 | `tencentcloud-omics` | `tes`, with `platform = "tencent-omics"` |
 | `tes` | `tes` |
 | `local` | `local` |
@@ -480,6 +482,115 @@ nf-gadi writes its usage report from the resource summaries: one CSV row or JSON
 ### Snakemake, CWL and Argo
 
 Their tasks use the settings of `[executor.pbs]`, and the `queue` of a task. CPUs, memory, disk, GPUs and time come from the resources of the task.
+
+## Flyte
+
+`-executor flyte` runs each attempt of a task as one Flyte v2 run, whose root action runs a raw container: the image of the task with uwe's job command as its arguments. uwe calls Flyte's Connect API with JSON messages (`CreateRun`, `GetRunDetails` and `AbortRun` of `flyteidl2.workflow.RunService`, and `TailLogs` of `RunLogsService`), so it needs no `flyte` or `flytectl` program and no protobuf code. It works with open source Flyte 2 and with Union.
+
+```toml
+[executor.flyte]
+endpoint = "tenant.hosted.unionai.cloud"    # else _U_EP_OVERRIDE, FLYTE_ADMIN_ENDPOINT, or the API key
+project = "flows"                           # else FLYTE_INTERNAL_EXECUTION_PROJECT
+domain = "development"                      # else FLYTE_INTERNAL_EXECUTION_DOMAIN
+staging = "object-store"
+staging_root = "s3://bucket/uwe"            # Flyte and the containers read it
+# org = "lab"                               # else _U_ORG_NAME, or the API key
+# api_key = { environment = "MY_FLYTE_KEY" }   # else _UNION_EAGER_API_KEY, EAGER_API_KEY or FLYTE_API_KEY
+# queue = "gpu"                             # sent as the cluster of each run
+# helper_url = "s3://bucket/tools/uwe"      # an object that Flyte downloads, with helper_sha256
+# helper_path = "/opt/uwe/uwe"              # or the static uwe binary inside the task images
+# helper_file = "/home/me/uwe-x86_64"       # or a binary that uwe uploads; else the running binary
+# poll_seconds = 5
+# task_folder = "/tmp/uwe"                  # where a run makes the folder of its attempt
+```
+
+The API key is the base64 of `endpoint:client_id:client_secret:org`, as Flyte and Union give it out. uwe asks the `AuthMetadataService` of the server for the token endpoint and the header name (like `flyte-authorization`), gets an access token with the OAuth 2.0 client-credentials grant, keeps it until a minute before its end, and gets a new one once when Flyte refuses it. Without an API key uwe sends no token, for a local Flyte without sign-in. Missing `endpoint`, `org`, `project` or `domain` stop the run before any task starts.
+
+A task runs like this:
+
+1. uwe uploads the inputs, the plan and, without `helper_path` and `helper_url`, the uwe binary to the staging root.
+2. uwe creates the run `uwe-<24 hex digits>`, unique for each attempt, with an inline task `uwe.<attempt>` of type `raw-container`: the image, the job command as arguments (the entrypoint of the image stays), CPUs, memory, disk (as ephemeral storage) and GPUs as requests and equal limits, no retries and no Flyte caching (uwe does both), and a timeout of the time of the task and `staging_minutes`. The helper is a Blob input, which Flyte downloads before the container starts, so the image needs no download tool, only `sh`, `cp` and `sha256sum`. The job command checks the SHA-256 of the helper, stages the inputs, runs the wrapper and sends the outputs back.
+3. uwe reads the run with `GetRunDetails` every `poll_seconds`, until its root action ended.
+4. The exit code that the wrapper recorded wins. A run that ended without it, for example for an image that cannot be pulled, is a failure of the machine, with the message of Flyte and the end of the log from `TailLogs`.
+5. A cancelled task aborts its run.
+
+Limits:
+
+- Object-store staging only. With an uploaded helper, Flyte reads it from the staging root, so Flyte needs read access there; the containers reach it with presigned requests.
+- uwe makes one Flyte run for each attempt. nf-flyte's child actions of a Nextflow head that runs inside Flyte (`runName`, `parentAction`, `runOutputBase`) need input files in protobuf form and are not supported, nor its `authCommand`.
+- Containers run unprivileged, as the user of their image. Tasks of several containers, tasks that run as a named user, tasks without network and inputs at absolute paths are refused.
+- The tests run against a local fake of the Connect API and its token endpoint. Runs on a real Flyte or Union are not verified yet, nor that Flyte takes `cluster` as the queue of a run.
+
+### Nextflow pipelines
+
+`process.executor = 'flyte'` picks this executor. The `flyte` scope of nf-flyte fills `endpoint`, `org`, `project`, `domain`, `queue` and `pollInterval` when `[executor.flyte]` leaves them unset, and an `s3://`, `gs://` or `az://` `workDir` becomes the staging root when none is set. uwe ignores `runName`, `parentAction`, `runOutputBase`, `heartbeatTimeout`, `rootImage`, `cache` and `authCommand`, with a warning.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the settings of `[executor.flyte]`. The image, CPUs, memory, disk, GPUs and time come from the task. A raw container needs an image: a task without one gets `-default-image`.
+
+## Snowflake
+
+`-executor snowflake` runs each attempt of a task as one Snowpark Container Services job service, which uwe starts with `EXECUTE JOB SERVICE` through the Snowflake SQL API (`/api/v2/statements`). uwe needs no JDBC driver and no `snowsql` or `snow` program.
+
+```toml
+[executor.snowflake]
+account = "myorg-lab"                       # else a connection, or SNOWFLAKE_ACCOUNT
+user = "UWE"
+private_key_file = "/home/me/.snowflake/uwe.p8"   # an unencrypted PKCS #8 or PKCS #1 RSA key
+database = "LAB"                            # where the job services go
+schema = "JOBS"
+compute_pool = "TASKS"
+external_access_integrations = ["STAGING"]  # lets the jobs reach the staging root
+helper_image = "/lab/images/repo/uwe:0.1.0" # an image of an image repository with the static uwe binary at /uwe
+staging = "object-store"
+staging_root = "s3://bucket/uwe"
+# token = { environment = "MY_SNOWFLAKE_TOKEN" }   # a programmatic access token, instead of the key
+# connection_name = "lab"                   # a connection of connections.toml; else SNOWFLAKE_DEFAULT_CONNECTION_NAME, else default
+# role = "RUNNER"
+# warehouse = "XS"
+# registry_mappings = "docker.io:/lab/images/repo,quay.io:/lab/images/quay"
+# helper_path = "/opt/uwe/uwe"              # or the binary inside the task images
+# helper_url = "https://example.org/uwe"    # or an address that the job downloads, with helper_sha256
+# helper_file = "/home/me/uwe-x86_64"       # or a binary that uwe uploads; else the running binary
+# host = "myorg-lab.snowflakecomputing.com" # else <account>.snowflakecomputing.com
+# poll_seconds = 5
+# task_folder = "/tmp/uwe"
+```
+
+An account administrator sets up once: an image repository with the task images and the helper image, a compute pool, and an external access integration that allows the host of the staging root, for example:
+
+```sql
+CREATE NETWORK RULE staging_rule MODE = EGRESS TYPE = HOST_PORT VALUE_LIST = ('bucket.s3.eu-central-1.amazonaws.com');
+CREATE EXTERNAL ACCESS INTEGRATION staging ALLOWED_NETWORK_RULES = (staging_rule) ENABLED = TRUE;
+GRANT USAGE ON INTEGRATION staging TO ROLE runner;
+```
+
+uwe signs in with a key-pair JWT (`iss` is `<ACCOUNT>.<USER>.SHA256:<fingerprint of the public key>`, `sub` is `<ACCOUNT>.<USER>`, valid for 59 minutes, made for each call), with a programmatic access token, or inside Snowpark Container Services with the token of `/snowflake/session/token`. Settings that `[executor.snowflake]` and the Nextflow config leave unset come from the connection of the drivers' `connections.toml` (in `~/.snowflake` when that folder exists, else in `$SNOWFLAKE_HOME`, else in `~/.config/snowflake`: `account`, `user`, `role`, `warehouse`, `database`, `schema`, `host`, `private_key_file` or `private_key_path`, and `token`), then from `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_HOST`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA` and `SNOWFLAKE_WAREHOUSE`.
+
+A task runs like this:
+
+1. uwe uploads the inputs and the plan to the staging root.
+2. uwe submits `EXECUTE JOB SERVICE IN COMPUTE POOL <pool> NAME = UWE_<24 hex digits> COMMENT = 'uwe attempt: <attempt>' EXTERNAL_ACCESS_INTEGRATIONS = (...) FROM SPECIFICATION $$...$$` asynchronously, with a request id that makes a retried submission run once, and a statement timeout of the time of the task and `staging_minutes`. The specification (JSON, which Snowflake reads as YAML) has the container `main`: the image after the registry mappings, the job command as `args` (the entrypoint of the image stays), CPUs and memory as requests, and GPUs as `nvidia.com/gpu` requests and limits. Job services have no init containers, so with `helper_image` a second container `helper` copies the binary into a local volume that both mount (`/uwe __stage install`), and the job command waits until it is there. With `helper_url`, or the binary that uwe uploads to the staging root, the job downloads the helper with `curl` or `wget` and checks its SHA-256; with `helper_path` it runs the binary of the image.
+3. uwe asks about the statement every `poll_seconds`: 202 while the job runs, 200 when it ended, 422 when it failed.
+4. The exit code that the wrapper recorded wins, as Snowflake reports none. A job that ended without it is a failure of the machine, with the message of Snowflake and the end of the log of `main` from `SYSTEM$GET_SERVICE_LOGS`.
+5. uwe drops the job service with `DROP SERVICE IF EXISTS`. A cancelled task cancels its statement, which stops the job, and drops it.
+
+Limits:
+
+- Object-store staging only, through the external access integrations. nf-snowflake's `snowflake://` stage file system (a work dir on an internal stage), its trace upload to the stage and its cache store on the stage are not supported: the SQL API cannot move files to or from a stage.
+- Images must be in a Snowflake image repository. `registry_mappings` replaces the first part of an image name, as nf-snowflake does: `docker.io:/lab/images/repo` turns `docker.io/library/ubuntu:24.04` into `/lab/images/repo/library/ubuntu:24.04`. An image without a registry part stays as it is. uwe pins public images to their digest before it maps them, so the copy in the repository must keep the digest.
+- Encrypted private keys and passwords are not supported.
+- Containers run unprivileged, as the user of their image. Tasks of several containers, tasks that run as a named user, tasks without network and inputs at absolute paths are refused.
+- The tests run against a local fake of the SQL API. Runs on a real Snowflake account are not verified yet, nor that every account edition takes `EXECUTE JOB SERVICE` through the SQL API.
+
+### Nextflow pipelines
+
+`process.executor = 'snowflake'` picks this executor. The `snowflake` scope of nf-snowflake fills `computePool` (the variable `computePool` wins, as in the plugin), `registryMappings` and `connectionName` when `[executor.snowflake]` leaves them unset. A `snowflake://` `workDir` gets a warning, and an `s3://`, `gs://` or `az://` `workDir` becomes the staging root when none is set.
+
+### Snakemake, CWL and Argo
+
+Their tasks use the settings of `[executor.snowflake]`. The image, CPUs, memory, GPUs and time come from the task.
 
 ## Kubernetes pod options
 

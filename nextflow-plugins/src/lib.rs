@@ -44,6 +44,7 @@ mod nf_r_ipc;
 mod nf_report;
 mod nf_runinsights;
 mod nf_schema;
+mod nf_seqlab_progress;
 mod nf_slack;
 mod nf_snapshot;
 mod nf_sqldb;

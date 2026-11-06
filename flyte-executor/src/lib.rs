@@ -3,6 +3,9 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod auth;
+mod client;
 mod settings;
 
+pub use client::{Client, FlyteError};
 pub use settings::{ApiKey, KEY_VARIABLES, Settings, address};

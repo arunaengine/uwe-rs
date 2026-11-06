@@ -1,8 +1,65 @@
-<!-- Contracts for native nf-schema and nf-validation parameter and sample-sheet checks. -->
+<!-- Contracts for the plugin catalogue, run observers and native plugin functions. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Source contracts
+
+## src/catalogue.rs
+
+Every plugin of the Nextflow registry, read 2026-11-06, with its kind (functions, observer,
+file system, executor, other) and what uwe does for it: implemented, partial, planned, not
+implementable or out of scope, the last two with a reason. A run warns once for each plugin
+of the config's `plugins` block that uwe does not run, and skips its features; `uwe check`
+lists the same warnings. An include from `plugin/<id>` of such a plugin fails to load, with
+the plugin's state in the message. `capabilities()` reports the catalogue.
+
+### Adding a plugin
+
+Each plugin is one module, `src/nf_<plugin>.rs` with the plugin id's hyphens as
+underscores (at most three terms), beside the others; `nf_` is a prefix of distinct plugins,
+not a domain. A plugin with three or four files goes into `src/nf_<plugin>/` and gets a
+`SMALL_DOMAINS` entry in `scripts/dev/check_style.py`, like `nf_schema`; five or more files
+need none. The module defines its `Plugin` value, then two shared lines register it:
+`mod nf_<plugin>;` in `lib.rs`, and its value in place of its `planned(...)` line in
+`PLUGINS`.
+
+```rust
+//! nf-example 1.0: what the plugin does, in one line.
+pub(crate) const PLUGIN: Plugin = Plugin {
+    functions: &["exampleText"],          // functions that scripts include
+    call: Some(call),                     // runs them by name
+    factories: &["fromExample"],          // channel factories, `Channel.fromExample`
+    scopes: &["example"],                 // config scopes it reads
+    observer: Some(activate),             // makes its run observer from the config
+    ..Plugin::new("nf-example", Kind::Observer, State::Implemented)
+};
+fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error>;
+fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String>;
+```
+
+A config scope is read with `config.get(&["example", "enabled"])` in `activate` or `call`;
+`scopes` lists it for `capabilities()`. `activate` returns `None` when the config turns the
+plugin off, and an error, which stops the run before it starts, for a config it cannot use.
+
+## src/observer.rs
+
+The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace
+observers: run start (run name, session id, launch, work and project directories, script,
+command line, profile, params, config and start time); per task submitted, started,
+completed, cached and failed, each with the task's trace record under Nextflow's trace
+field names; each file published, with its source and target; and run end (success, error
+message, counts and end time). A simulated run, like `uwe check`, has no observers.
+
+The driver hands a task to the engine when it submits it, and hears of the attempt only when
+it ends: a task that the cache answers on resume is submitted then cached, and the started
+event of an attempt comes right before its end, with its start time in the record. Files
+published after the run ended, like those of `workflow.onComplete`, are not told.
+
+An observer that talks to a network service wraps its sender in `Background`: a worker
+thread that gets the events through a channel, so the run never waits for the service. The
+run end waits a bounded time for the events that are left, then leaves the worker behind.
+The sender uses the one HTTP client of the process, `storage::http_client()`, never a new
+client, and a timeout per request.
 
 ## src/validation.rs
 

@@ -215,6 +215,9 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-ospool", Kind::Executor),
     planned("nf-rest", Kind::Executor),
     planned("nf-slurm-no-memory", Kind::Executor),
+    // nf-tencentcloud: its executor on uwe's TES executor, `cos://` on an S3 provider, and its
+    // metadata file; the shape of that file was not recorded.
+    crate::nf_tencentcloud::PLUGIN,
     planned("nf-snowflake", Kind::Executor),
     // The `agent` primitive.
     planned("nf-agent", Kind::Other),
@@ -268,11 +271,6 @@ pub const PLUGINS: &[Plugin] = &[
     ),
     unmaintained("nf-sample-sheet", Kind::Functions, NEVER),
     unmaintained("nf-skypilot", Kind::Executor, NEVER),
-    unmaintained(
-        "nf-tencentcloud",
-        Kind::Executor,
-        "no release since 2024-12-04",
-    ),
     unmaintained("nf-wr", Kind::Executor, "no release since 2022-02-28"),
 ];
 

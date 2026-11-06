@@ -159,7 +159,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-emoji", Kind::Observer),
     planned("nf-fairscape", Kind::Observer),
     planned("nf-flowviewer", Kind::Observer),
-    planned("nf-gc", Kind::Observer),
+    crate::nf_gc::PLUGIN,
     crate::nf_logsaver::PLUGIN,
     crate::nf_metalog::PLUGIN,
     crate::nf_prov::PLUGIN,

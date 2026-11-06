@@ -22,6 +22,7 @@ regex.workspace = true
 run-database.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+tracing.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]

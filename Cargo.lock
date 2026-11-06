@@ -4215,6 +4215,7 @@ dependencies = [
  "run-database",
  "serde_json",
  "tempfile",
+ "tracing",
  "workflow-graph",
 ]
 

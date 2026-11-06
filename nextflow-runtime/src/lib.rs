@@ -4,6 +4,7 @@
 
 mod build;
 pub mod channel;
+mod cleanup;
 pub mod driver;
 mod files;
 mod hash;
@@ -84,6 +85,9 @@ pub struct Options {
     /// a folder for each task, its `task.workDir`. Without it, `exec:` sections are not
     /// supported.
     pub exec_folder: Option<std::path::PathBuf>,
+    /// The folder of the run whose files the run deletes once no node can pass them on, when
+    /// nf-gc or nf-boost's cleanup is on.
+    pub cleanup: Option<std::path::PathBuf>,
     /// Whether the run goes on after a task failed that would end it (`Launch.keep_going`):
     /// the task counts as ignored, and the run fails at its end.
     pub keep_going: bool,
@@ -121,6 +125,9 @@ impl Run {
     ) -> (Run, Result<Vec<TaskRequest>, Error>) {
         let mut network = Network::default();
         network.keep_going(options.keep_going);
+        if let Some(folder) = &options.cleanup {
+            network.clean(folder.clone());
+        }
         let workflow = workflow::metadata(options, &host.launch_dir());
         let mut operator_directory = None;
         let mut session = Session {
@@ -361,6 +368,7 @@ impl Default for Options {
             config_files: Vec::new(),
             command_line: String::new(),
             exec_folder: None,
+            cleanup: None,
             keep_going: false,
             cli_params: Vec::new(),
         }

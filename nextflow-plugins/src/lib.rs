@@ -16,6 +16,7 @@ mod nf_core_utils;
 mod nf_csvext;
 mod nf_dotenv;
 mod nf_fgbio;
+mod nf_gc;
 mod nf_logsaver;
 mod nf_metalog;
 mod nf_parquet;
@@ -98,6 +99,12 @@ const NF_VALIDATION_PLUGIN: Plugin = Plugin {
 /// Whether nf-cgroup-metrics fills the memory fields of the trace from the cgroup samples.
 pub fn cgroup_metrics(config: &Config) -> bool {
     nf_cgroup_metrics::enabled(config)
+}
+
+/// Whether the plugins of the config free the intermediate files of the run while it runs:
+/// nf-gc. A config that it rejects turns it off; its observer reports it.
+pub fn cleanup(config: &Config) -> bool {
+    nf_gc::mode(config).is_ok_and(|mode| mode.is_some())
 }
 
 /// The functions of a plugin that uwe runs, or `None` for a plugin uwe does not run.

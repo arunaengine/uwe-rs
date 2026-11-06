@@ -8,6 +8,7 @@ use nextflow_evaluator::interpreter::Host;
 
 use super::athena::Athena;
 use super::server::{Engine, Server, Tls};
+use super::trino::Trino;
 use super::{Connection, Source};
 
 /// What uwe connects to for a JDBC URL.
@@ -16,12 +17,13 @@ pub(crate) enum Target {
     /// A SQLite file, an in-memory database for `None`, or a `file:` URI.
     Sqlite(Option<String>),
     Server(Server),
+    Trino(Trino),
     Athena(Athena),
 }
 
 /// The URL forms that uwe connects to, for the message of a refused URL.
 const SUPPORTED: &str =
-    "jdbc:sqlite:, jdbc:postgresql:, jdbc:mysql:, jdbc:mariadb: and jdbc:awsathena:";
+    "jdbc:sqlite:, jdbc:postgresql:, jdbc:mysql:, jdbc:mariadb:, jdbc:trino: and jdbc:awsathena:";
 
 /// Opens a connection to the database of a source.
 pub(crate) fn connect(source: &Source, host: &dyn Host) -> Result<Box<dyn Connection>, String> {
@@ -29,11 +31,13 @@ pub(crate) fn connect(source: &Source, host: &dyn Host) -> Result<Box<dyn Connec
     match target(source, &host.launch_dir(), &variable)? {
         Target::Sqlite(place) => Ok(Box::new(super::sqlite::open(place.as_deref())?)),
         Target::Server(server) => Ok(Box::new(super::server::open(server)?)),
+        Target::Trino(trino) => Ok(Box::new(trino)),
         Target::Athena(athena) => Ok(Box::new(athena)),
     }
 }
 
-/// Whether uwe refuses the URL, rather than failing to connect.
+/// Whether uwe refuses the URL, rather than failing to connect. A `jdbc:starburst:` URL fails
+/// to connect, as it does in nf-trino.
 pub(crate) fn refused(url: &str) -> bool {
     let word = url.split(':').nth(1).unwrap_or_default();
     let known = [
@@ -41,6 +45,8 @@ pub(crate) fn refused(url: &str) -> bool {
         "postgresql",
         "mysql",
         "mariadb",
+        "trino",
+        "starburst",
         "awsathena",
         "athena",
     ];
@@ -60,11 +66,19 @@ pub(crate) fn target(
         "sqlite" => Ok(Target::Sqlite(sqlite_place(address, launch))),
         "postgresql" => server(Engine::Postgres, address, source),
         "mysql" | "mariadb" => server(Engine::Mysql, address, source),
+        "trino" => {
+            // The fallback user `sa` gives way to a user of the URL.
+            let user =
+                (source.user.clone()).filter(|user| user != "sa" || !address.contains("user="));
+            let trino = super::trino::coordinator(address, user, source.password.clone());
+            trino.map(Target::Trino)
+        }
         "awsathena" | "athena" => {
             let keys = source.password.as_ref().and(source.user.clone());
             let athena = super::athena::workgroup(address, keys, source.password.clone(), variable);
             athena.map(Target::Athena)
         }
+        "starburst" => Err(format!("No suitable driver found for {url}")),
         "h2" => Err(format!(
             "H2 is a Java database, which uwe cannot run: {url}. uwe connects to {SUPPORTED} \
              URLs; set sql.db.<name>.url to one of them"

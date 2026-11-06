@@ -7,6 +7,7 @@ mod insert;
 mod server;
 mod sqlite;
 pub(crate) mod target;
+mod trino;
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -30,10 +31,12 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-sqldb", Kind::Functions, State::Partial)
 };
 
-/// The plugin whose functions run.
+/// The plugin whose functions run: nf-sqldb 0.7.1, or nf-trino 0.1.0 with the nf-sqldb 0.7.0
+/// code, which has no secret check and suggests close names for an unknown database.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Flavour {
     Sqldb,
+    Trino,
 }
 
 /// Runs the functions for nf-sqldb.

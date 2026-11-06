@@ -7,6 +7,7 @@ pub mod everit;
 mod nf_anndata;
 mod nf_bactopia;
 mod nf_bids;
+mod nf_bigbrother;
 mod nf_boost;
 mod nf_cmgg;
 mod nf_co2footprint;

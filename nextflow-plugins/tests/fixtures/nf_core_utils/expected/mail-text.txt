@@ -1,0 +1,46 @@
+S: 220 fake ESMTP
+C: EHLO <host>
+C: MAIL FROM:<probe@example.org>
+S: 250 OK
+C: RCPT TO:<someone@example.org>
+S: 250 OK
+C: DATA
+S: 354 go ahead
+From: probe@example.org
+To: someone@example.org
+Message-ID: <672403244.5.1793953784933.JavaMail.<user>@<host>>
+Subject: [nf-core/probe] Successful: tiny_watson
+MIME-Version: 1.0
+Content-Type: multipart/related; 
+	boundary="----=_Part_4_1320982530.1793953784932"
+
+------=_Part_4_1320982530.1793953784932
+Content-Type: multipart/alternative; 
+	boundary="----=_Part_3_1355532319.1793953784932"
+
+------=_Part_3_1355532319.1793953784932
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+TXT version=v1.0.0 runName=tiny_watson success=true exitStatus=0
+errorMessage=None
+errorReport=None
+commandLine=nextflow run core.nf -c v0.7.0.config -c fake.config -ansi-log false
+projectDir=<probe>
+dateComplete=2026-11-06T09:29:44.776048956+01:00 duration=1.2s
+  - runName: tiny_watson
+  - outdir: results
+  - Date Started: 2026-11-06T09:29:43.528328125+01:00
+  - Date Completed: 2026-11-06T09:29:44.776048956+01:00
+  - Pipeline script file path: <probe>/core.nf
+  - Pipeline script hash ID: d46fe46fe1b9f9f6a31314d7a52821f7
+  - Nextflow Version: 26.04.6
+  - Nextflow Build: 12646
+  - Nextflow Compile Timestamp: 09-07-2026 18:49 UTC
+
+------=_Part_3_1355532319.1793953784932--
+
+------=_Part_4_1320982530.1793953784932--
+S: 250 OK queued
+C: QUIT
+S: 221 bye

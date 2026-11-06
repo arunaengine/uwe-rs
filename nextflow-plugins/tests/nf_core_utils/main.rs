@@ -12,7 +12,7 @@ use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
 use nextflow_runtime::{Loader, Options, Run};
 
-use crate::servers::{Recorder, http, masked, smtp};
+use crate::servers::{Recorder, http, mail_parts, masked, smtp};
 
 /// The settings of the probe runs, `configs/common.config` of the recording.
 const COMMON: &str = "manifest {\n    name = 'nf-core/probe'\n    version = '1.0.0'\n    \
@@ -251,6 +251,25 @@ fn probes_release_seven() {
     assert_eq!(Transcript::heard(&prints), wanted);
 
     assert_eq!(sessions.len(), 2, "the HTML mail and the plain text mail");
+    for (session, recorded) in sessions.iter().zip(["mail-html.txt", "mail-text.txt"]) {
+        let dialogue: Vec<String> = (session.lines())
+            .filter(|line| line.starts_with("C: "))
+            .map(|line| line.split(' ').take(2).collect::<Vec<_>>().join(" "))
+            .collect();
+        assert_eq!(
+            dialogue,
+            ["C: EHLO", "C: MAIL", "C: RCPT", "C: DATA", "C: QUIT"]
+        );
+        assert!(
+            session.contains("C: MAIL FROM:<probe@example.org>"),
+            "{session}"
+        );
+        assert!(
+            session.contains("C: RCPT TO:<someone@example.org>"),
+            "{session}"
+        );
+        assert_eq!(mail_parts(session), mail_parts(&expected(recorded)));
+    }
 
     assert_eq!(posts.len(), 3, "the Slack, Teams and failing hooks");
     let post = |record: &str| {

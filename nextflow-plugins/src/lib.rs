@@ -27,6 +27,7 @@ mod nf_fgbio;
 mod nf_fl86;
 mod nf_flowviewer;
 mod nf_gc;
+mod nf_gpt;
 mod nf_iridanext;
 mod nf_irods;
 mod nf_jev;

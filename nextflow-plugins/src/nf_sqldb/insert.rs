@@ -128,8 +128,6 @@ impl Writer {
             ));
         }
         if self.connection.is_none() {
-            let launch = context.host.launch_dir();
-            let mut connection = target::connect(&self.source, &launch).map_err(thrown)?;
             if let Some(setup) = &self.setup {
                 connection.execute(setup).map_err(thrown)?;
             }

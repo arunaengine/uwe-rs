@@ -16,11 +16,8 @@ pub(crate) enum Target {
 }
 
 /// The URL forms that uwe connects to, for the message of a refused URL.
-const SUPPORTED: &str = "jdbc:sqlite:, jdbc:postgresql:, jdbc:mysql: and jdbc:mariadb:";
 
 /// Opens a connection to the database of a source.
-pub(crate) fn connect(source: &Source, launch: &str) -> Result<Box<dyn Connection>, String> {
-    match target(source, launch)? {
         Target::Sqlite(place) => Ok(Box::new(super::sqlite::open(place.as_deref())?)),
         Target::Server(server) => Ok(Box::new(super::server::open(server)?)),
     }
@@ -29,11 +26,9 @@ pub(crate) fn connect(source: &Source, launch: &str) -> Result<Box<dyn Connectio
 /// Whether uwe refuses the URL, rather than failing to connect.
 pub(crate) fn refused(url: &str) -> bool {
     let word = url.split(':').nth(1).unwrap_or_default();
-    !matches!(word, "sqlite" | "postgresql" | "mysql" | "mariadb")
 }
 
 /// The target of a source's URL; the user and password of the config win over those of the URL.
-pub(crate) fn target(source: &Source, launch: &str) -> Result<Target, String> {
     let url = &source.url;
     let rest = url.strip_prefix("jdbc:").unwrap_or(url);
     let (word, address) = rest.split_once(':').unwrap_or((rest, ""));
@@ -187,13 +182,11 @@ mod tests {
             (server.user.as_deref(), server.tls),
             (Some("u"), Tls::Require)
         );
-        let found = target(&source("jdbc:mysql://[::1]/x", Some("sa")), "/");
         let Ok(Target::Server(server)) = found else {
             panic!("a server: {found:?}")
         };
         assert_eq!((server.host.as_str(), server.port), ("::1", 3306));
         assert_eq!(server.user.as_deref(), Some("sa"));
-        let found = target(&source("jdbc:postgresql:lab", Some("me")), "/");
         let Ok(Target::Server(server)) = found else {
             panic!("a server: {found:?}")
         };
@@ -203,7 +196,6 @@ mod tests {
 
     #[test]
     fn refuses_java_drivers() {
-        let place = |url: &str| target(&source(url, None), "/launch");
         assert_eq!(place("jdbc:sqlite:"), Ok(Target::Sqlite(None)));
         assert_eq!(place("jdbc:sqlite::memory:"), Ok(Target::Sqlite(None)));
         assert_eq!(

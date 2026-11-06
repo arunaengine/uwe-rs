@@ -32,6 +32,7 @@ SMALL_DOMAINS = {
     "nextflow-plugins/src/nf_fl86": "plugin module with its secret, S3 tag and Seqera Action parts",
     "nextflow-plugins/src/nf_python": "plugin module with its exchange format, container and Python parts",
     "nextflow-plugins/src/nf_report": "plugin module with its settings, report entry and file parts",
+    "nextflow-plugins/src/nf_seqlab_progress": "plugin module with its registry, dashboard and view parts",
     "nextflow-plugins/src/nf_runinsights": "plugin module with its statistics and AI section parts",
     "nextflow-plugins/src/nf_slack": "plugin module with its settings, blocks and worker parts",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",

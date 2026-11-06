@@ -148,7 +148,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_python::PLUGIN,
     crate::nf_r_ipc::PLUGIN,
     crate::nf_report::PLUGIN,
-    planned("nf-seqlab-progress", Kind::Functions),
+    crate::nf_seqlab_progress::PLUGIN,
     crate::nf_sqldb::PLUGIN,
     crate::nf_trino::PLUGIN,
     // Observers that write local files.

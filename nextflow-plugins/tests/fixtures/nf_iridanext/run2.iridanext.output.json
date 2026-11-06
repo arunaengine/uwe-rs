@@ -1,0 +1,36 @@
+{
+    "files": {
+        "global": [
+            {
+                "path": "summary/summary.txt.gz"
+            }
+        ],
+        "samples": {
+            "SAMPLE1": [
+                {
+                    "path": "assembly/SAMPLE1.assembly.fa.gz"
+                }
+            ],
+            "SAMPLE2": [
+                {
+                    "path": "assembly/SAMPLE2.assembly.fa.gz"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "samples": {
+            "SAMPLE1": {
+                "k.x": 1,
+                "k.y.2": "a"
+            },
+            "SAMPLE2": {
+                "b": "4",
+                "c_col": "5"
+            },
+            "SAMPLE3": {
+                "k": null
+            }
+        }
+    }
+}

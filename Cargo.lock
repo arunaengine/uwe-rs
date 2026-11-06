@@ -7836,6 +7836,7 @@ dependencies = [
  "nextflow-config",
  "nextflow-evaluator",
  "nextflow-parser",
+ "nextflow-plugins",
  "nextflow-runtime",
  "reqwest",
  "run-crate",

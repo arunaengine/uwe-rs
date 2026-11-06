@@ -176,6 +176,23 @@ fn execute_with(
             }
             None => arguments,
         };
+    // nf-cloudcache puts the store where the config says, unless `-store` names one.
+    let cached;
+    let arguments = match language {
+        Language::Nextflow if arguments.store.is_none() => {
+            match crate::nextflow::cloud_cache(&launch, &setup).map_err(Failure::setup)? {
+                Some(location) => {
+                    cached = Arguments {
+                        store: Some(location),
+                        ..arguments.clone()
+                    };
+                    &cached
+                }
+                None => arguments,
+            }
+        }
+        _ => arguments,
+    };
     let run = chosen.unwrap_or_else(run_id);
     let name = arguments.executor.as_deref().unwrap_or("local");
     if let Some(network) = network {

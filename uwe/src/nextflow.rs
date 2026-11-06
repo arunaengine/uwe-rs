@@ -343,6 +343,18 @@ pub fn plugin_warnings(launch: &Launch, setup: &Setup) -> Vec<String> {
     nextflow_runtime::driver::plugin_warnings(launch, &mut console)
 }
 
+/// The place of the store that the `cloudcache` scope of the config names, or the variable
+/// `NXF_CLOUDCACHE_PATH`, for nf-cloudcache. A config that does not load gives none; the run
+/// reports its error.
+pub fn cloud_cache(launch: &Launch, setup: &Setup) -> Result<Option<String>, String> {
+    let mut console = console(true, setup);
+    let Ok(config) = nextflow_runtime::driver::config(&launch.target, launch, &mut console) else {
+        return Ok(None);
+    };
+    let variable = std::env::var("NXF_CLOUDCACHE_PATH").ok();
+    nextflow_plugins::cloud_cache(&config, variable.as_deref())
+}
+
 /// `uwe config`: the config of a project in the flat form of `nextflow config -flat`.
 pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
     let mut console = console(false, setup);

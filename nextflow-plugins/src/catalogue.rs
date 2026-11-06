@@ -190,8 +190,9 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-diff", Kind::Other),
     planned("nf-kuberun", Kind::Executor),
     planned("nf-wave", Kind::Other),
-    // Cloud batch executors.
-    planned("nf-amazon", Kind::Executor),
+    // Cloud batch executors. nf-amazon: S3, SES mail and the `aws-batch` executor; no Fusion,
+    // array jobs or machine details.
+    Plugin::new("nf-amazon", Kind::Executor, State::Partial),
     planned("nf-azure", Kind::Executor),
     planned("nf-google", Kind::Executor),
     // Other executors.

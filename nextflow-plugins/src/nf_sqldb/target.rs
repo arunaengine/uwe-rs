@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use super::server::{Engine, Server, Tls};
 use super::{Connection, Source};
 
 /// What uwe connects to for a JDBC URL.
@@ -11,22 +12,24 @@ use super::{Connection, Source};
 pub(crate) enum Target {
     /// A SQLite file, an in-memory database for `None`, or a `file:` URI.
     Sqlite(Option<String>),
+    Server(Server),
 }
 
 /// The URL forms that uwe connects to, for the message of a refused URL.
-const SUPPORTED: &str = "jdbc:sqlite:";
+const SUPPORTED: &str = "jdbc:sqlite: and jdbc:postgresql:";
 
 /// Opens a connection to the database of a source.
 pub(crate) fn connect(source: &Source, launch: &str) -> Result<Box<dyn Connection>, String> {
     match target(source, launch)? {
         Target::Sqlite(place) => Ok(Box::new(super::sqlite::open(place.as_deref())?)),
+        Target::Server(server) => Ok(Box::new(super::server::open(server)?)),
     }
 }
 
 /// Whether uwe refuses the URL, rather than failing to connect.
 pub(crate) fn refused(url: &str) -> bool {
     let word = url.split(':').nth(1).unwrap_or_default();
-    word != "sqlite"
+    !matches!(word, "sqlite" | "postgresql")
 }
 
 /// The target of a source's URL; the user and password of the config win over those of the URL.
@@ -36,6 +39,7 @@ pub(crate) fn target(source: &Source, launch: &str) -> Result<Target, String> {
     let (word, address) = rest.split_once(':').unwrap_or((rest, ""));
     match word {
         "sqlite" => Ok(Target::Sqlite(sqlite_place(address, launch))),
+        "postgresql" => server(Engine::Postgres, address, source),
         "h2" => Err(format!(
             "H2 is a Java database, which uwe cannot run: {url}. uwe connects to {SUPPORTED} \
              URLs; set sql.db.<name>.url to one of them"
@@ -60,6 +64,80 @@ fn sqlite_place(address: &str, launch: &str) -> Option<String> {
     }
 }
 
+/// A PostgreSQL or MySQL server of `//host[:port]/database[?key=value&...]`, or of the short
+/// forms `database` and `/` on the local host.
+fn server(engine: Engine, address: &str, source: &Source) -> Result<Target, String> {
+    let (place, query) = address.split_once('?').unwrap_or((address, ""));
+    let parameters: Vec<(String, String)> = (query.split('&'))
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+            (key.to_owned(), value.to_owned())
+        })
+        .collect();
+    let parameter = |name: &str| {
+        let found = parameters
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name));
+        found.map(|(_, value)| value.clone())
+    };
+    let (authority, database) = match place.strip_prefix("//") {
+        Some(rest) => rest.split_once('/').unwrap_or((rest, "")),
+        None => ("", place.trim_start_matches('/')),
+    };
+    // The first host of a list of fail-over hosts.
+    let authority = authority.split(',').next().unwrap_or_default();
+    // An IPv6 host is in brackets, which a port follows after a colon.
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(rest) => {
+            let (host, after) = rest.split_once(']').unwrap_or((rest, ""));
+            (host, after.strip_prefix(':'))
+        }
+        None => match authority.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        },
+    };
+    let port = match port {
+        Some(port) => Some(
+            port.parse::<u16>()
+                .map_err(|_| format!("the port of the JDBC URL {} is not a number", source.url))?,
+        ),
+        None => None,
+    };
+    let host = match host {
+        "" => "localhost".to_owned(),
+        host => host.to_owned(),
+    };
+    let default_port = match engine {
+        Engine::Postgres => 5432,
+    };
+    let tls = match engine {
+        Engine::Postgres => match parameter("sslmode").as_deref() {
+            Some("disable") => Tls::Disable,
+            Some("allow" | "prefer") => Tls::Prefer,
+            Some("require") => Tls::Require,
+            Some("verify-ca" | "verify-full") => Tls::Verify,
+            _ if parameter("ssl").as_deref() == Some("true") => Tls::Verify,
+            _ => Tls::Prefer,
+        },
+    };
+    let user = (source
+        .user
+        .clone()
+        .filter(|user| user != "sa" || parameter("user").is_none()))
+    .or_else(|| parameter("user"));
+    Ok(Target::Server(Server {
+        engine,
+        host,
+        port: port.unwrap_or(default_port),
+        database: Some(database.to_owned()).filter(|name| !name.is_empty()),
+        user,
+        password: source.password.clone().or_else(|| parameter("password")),
+        tls,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,6 +149,44 @@ mod tests {
             user: user.map(Into::into),
             password: None,
         }
+    }
+
+    #[test]
+    fn maps_server_urls() {
+        let found = target(
+            &source(
+                "jdbc:postgresql://db.example:6543/lab?user=u&sslmode=require",
+                None,
+            ),
+            "/",
+        );
+        let Ok(Target::Server(server)) = found else {
+            panic!("a server: {found:?}")
+        };
+        assert_eq!(
+            (
+                server.host.as_str(),
+                server.port,
+                server.database.as_deref()
+            ),
+            ("db.example", 6543, Some("lab"))
+        );
+        assert_eq!(
+            (server.user.as_deref(), server.tls),
+            (Some("u"), Tls::Require)
+        );
+        let found = target(&source("jdbc:postgresql://[::1]/x", Some("sa")), "/");
+        let Ok(Target::Server(server)) = found else {
+            panic!("a server: {found:?}")
+        };
+        assert_eq!((server.host.as_str(), server.port), ("::1", 5432));
+        assert_eq!(server.user.as_deref(), Some("sa"));
+        let found = target(&source("jdbc:postgresql:lab", Some("me")), "/");
+        let Ok(Target::Server(server)) = found else {
+            panic!("a server: {found:?}")
+        };
+        assert_eq!((server.host.as_str(), server.port), ("localhost", 5432));
+        assert_eq!(server.user.as_deref(), Some("me"));
     }
 
     #[test]

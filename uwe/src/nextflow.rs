@@ -324,13 +324,13 @@ pub fn driver(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
-                | Some("flyte")
+                | Some("flyte" | "snowflake")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
-                | Some("flyte")
+                | Some("flyte" | "snowflake")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),
@@ -383,6 +383,7 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("pbspro", "pbs"),
     ("slurm", "slurm"),
     ("slurm_no_memory", "slurm"),
+    ("snowflake", "snowflake"),
     ("tencentcloud-omics", "tes"),
     ("tes", "tes"),
 ];
@@ -402,7 +403,7 @@ pub fn pipeline_executor(
         named,
         Some(
             "aws-batch" | "google-batch" | "azure-batch" | "kubernetes" | "nomad" | "slurm" | "tes"
-        ) | Some("htcondor" | "pbs" | "flyte")
+        ) | Some("htcondor" | "pbs" | "flyte" | "snowflake")
     );
     if language != Language::Nextflow {
         return Ok(None);
@@ -446,6 +447,10 @@ pub fn pipeline_executor(
     }
     if named == Some("flyte") || picked.as_deref() == Some("flyte") {
         crate::scopes::flyte(&config, &mut setup.executors.flyte);
+    }
+    if named == Some("snowflake") || picked.as_deref() == Some("snowflake") {
+        crate::scopes::snowflake(&config, &mut setup.executors.snowflake)
+            .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
     }
     if named == Some("slurm") || picked.as_deref() == Some("slurm") {
         crate::scopes::slurm(&config, &mut setup.executors);

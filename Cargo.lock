@@ -8071,6 +8071,7 @@ dependencies = [
  "sha2 0.11.0",
  "slurm-executor",
  "snakemake-runtime",
+ "snowflake-executor",
  "storage",
  "tar",
  "task-model",

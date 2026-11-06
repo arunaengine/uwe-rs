@@ -41,6 +41,7 @@ rustix = { workspace = true, features = ["fs", "pipe", "rand", "stdio", "termios
 serde.workspace = true
 serde_json.workspace = true
 snakemake-runtime.workspace = true
+snowflake-executor.workspace = true
 storage.workspace = true
 task-model.workspace = true
 task-runner.workspace = true

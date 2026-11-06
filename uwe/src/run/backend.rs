@@ -6,7 +6,7 @@ use crate::arguments::Arguments;
 use crate::repeat::Pinned;
 use crate::setup::Setup;
 use crate::{
-    Failure, aws_batch, azure_batch, cache_directory, google_batch, kubernetes, local, nomad,
+    Failure, aws_batch, azure_batch, cache_directory, google_batch, grid, kubernetes, local, nomad,
     preview, resources, runs, slurm, tes,
 };
 use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
@@ -288,9 +288,24 @@ pub(crate) fn executor(
                 .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
+        "htcondor" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = grid::htcondor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "pbs" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = grid::pbs(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
         other => Err(Failure::usage(format!(
             "uwe: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm`, \
-             `kubernetes`, `aws-batch`, `google-batch`, `azure-batch` or `nomad`"
+             `kubernetes`, `aws-batch`, `google-batch`, `azure-batch`, `nomad`, `htcondor` or \
+             `pbs`"
         ))),
     }
 }

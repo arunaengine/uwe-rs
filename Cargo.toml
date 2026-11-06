@@ -62,6 +62,7 @@ cwl-parser = { path = "cwl-parser" }
 cwl-runtime = { path = "cwl-runtime" }
 executor = { path = "executor" }
 google-batch-executor = { path = "google-batch-executor" }
+htcondor-executor = { path = "htcondor-executor" }
 input-schema = { path = "input-schema" }
 kubernetes-executor = { path = "kubernetes-executor" }
 nextflow-config = { path = "nextflow-config" }
@@ -70,6 +71,7 @@ nextflow-parser = { path = "nextflow-parser" }
 nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }
 nomad-executor = { path = "nomad-executor" }
+pbs-executor = { path = "pbs-executor" }
 python-evaluator = { path = "python-evaluator" }
 run-crate = { path = "run-crate" }
 run-database = { path = "run-database" }

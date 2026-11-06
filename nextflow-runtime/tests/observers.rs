@@ -4,9 +4,13 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 
 use nextflow_evaluator::interpreter::Host;
 use nextflow_plugins::observer::{Counts, Event, Observer, Record};
@@ -36,12 +40,53 @@ workflow {
 }
 "#;
 
-/// Keeps every event it hears.
-struct Recorder(Rc<RefCell<Vec<Event>>>);
+/// Keeps every event it hears, and opens the gate of SECOND once it hears that it started.
+struct Recorder {
+    events: Rc<RefCell<Vec<Event>>>,
+    gate: Arc<Mutex<Gate>>,
+}
 
 impl Observer for Recorder {
     fn notify(&mut self, event: &Event) {
-        self.0.borrow_mut().push(event.clone());
+        if let Event::TaskStarted(record) = event
+            && record["name"] == "SECOND"
+        {
+            open(&self.gate, "started");
+        }
+        self.events.borrow_mut().push(event.clone());
+    }
+}
+
+/// Holds the attempt of SECOND open, with what opened it.
+#[derive(Default)]
+struct Gate {
+    opener: Option<&'static str>,
+    waker: Option<Waker>,
+}
+
+fn open(gate: &Mutex<Gate>, opener: &'static str) {
+    let mut gate = gate.lock().expect("not poisoned");
+    if gate.opener.is_none() {
+        gate.opener = Some(opener);
+        if let Some(waker) = gate.waker.take() {
+            waker.wake();
+        }
+    }
+}
+
+/// Ends when the gate opens.
+struct Opened(Arc<Mutex<Gate>>);
+
+impl Future for Opened {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
+        let mut gate = self.0.lock().expect("not poisoned");
+        if gate.opener.is_some() {
+            return Poll::Ready(());
+        }
+        gate.waker = Some(context.waker().clone());
+        Poll::Pending
     }
 }
 
@@ -54,15 +99,15 @@ impl Host for Printed {
     }
 }
 
-/// Answers FIRST from the cache, as on resume, and fails SECOND.
-struct Resumed;
+/// Answers FIRST from the cache, as on resume, and fails SECOND once its gate opens.
+struct Resumed(Arc<Mutex<Gate>>);
 
 impl Executor for Resumed {
     fn run(&mut self, attempt: Attempt) -> Running {
-        let task = attempt.task;
-        let outcome = match task.step.ends_with("FIRST") {
-            true => Outcome {
-                id: task.id,
+        let id = attempt.task.id;
+        if attempt.task.step.ends_with("FIRST") {
+            return Running::ended(Ok(Outcome {
+                id,
                 cached: true,
                 files: vec![OutputFile {
                     path: "out.txt".into(),
@@ -70,14 +115,17 @@ impl Executor for Resumed {
                     ..OutputFile::default()
                 }],
                 ..Outcome::default()
-            },
-            false => Outcome {
-                id: task.id,
+            }));
+        }
+        let gate = Opened(self.0.clone());
+        Running::new(async move {
+            gate.await;
+            Ok(Outcome {
+                id,
                 exit_code: 1,
                 ..Outcome::default()
-            },
-        };
-        Running::ended(Ok(outcome))
+            })
+        })
     }
 
     fn files(&self) -> Option<Arc<dyn Files>> {
@@ -134,9 +182,25 @@ fn hears_run_events() {
     };
     let mut driver = Nextflow::new(&launch, settings).expect("a driver");
     let events = Rc::new(RefCell::new(Vec::new()));
-    driver.observe(Box::new(Recorder(events.clone())));
-    let execution = Engine::new(&mut Resumed).run("main.nf", &mut driver);
+    let gate = Arc::new(Mutex::new(Gate::default()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: gate.clone(),
+    }));
+    // Without the started event the attempt would wait forever; this ends it, and fails the test.
+    let fallback = gate.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(60));
+        open(&fallback, "fallback");
+    });
+    let execution = Engine::new(&mut Resumed(gate.clone())).run("main.nf", &mut driver);
     assert!(execution.error.is_some(), "SECOND fails the run");
+    let opener = gate.lock().expect("not poisoned").opener;
+    assert_eq!(
+        opener,
+        Some("started"),
+        "SECOND started while its attempt ran"
+    );
     assert!(
         printed.borrow().starts_with(
             "WARN: The plugin `nf-boost` is planned in uwe but not implemented yet; its \
@@ -177,6 +241,11 @@ fn hears_run_events() {
     };
     assert_eq!(cached["status"], "CACHED");
     assert_eq!(cached["process"], "FIRST");
+    let Event::TaskStarted(started) = &events[5] else {
+        panic!("SECOND starts");
+    };
+    assert_eq!(started["status"], "RUNNING");
+    assert!(started["start"].is_i64() && started["complete"].is_null());
     let Event::TaskFailed(failed) = &events[6] else {
         panic!("SECOND fails");
     };

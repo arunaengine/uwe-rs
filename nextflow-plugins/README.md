@@ -50,10 +50,10 @@ completed, cached and failed, each with the task's trace record under Nextflow's
 field names; each file published, with its source and target; and run end (success, error
 message, counts and end time). A simulated run, like `uwe check`, has no observers.
 
-The driver hands a task to the engine when it submits it, and hears of the attempt only when
-it ends: a task that the cache answers on resume is submitted then cached, and the started
-event of an attempt comes right before its end, with its start time in the record. Files
-published after the run ended, like those of `workflow.onComplete`, are not told.
+A task is submitted when the driver hands it to the engine, and an attempt starts when the
+executor has it. The executor answers a task from the cache on resume, so such a task is
+submitted then cached, without a start. Only `publishDir` and workflow outputs publish files;
+the files that `workflow.onComplete` copies are not published.
 
 An observer that talks to a network service wraps its sender in `Background`: a worker
 thread that gets the events through a channel, so the run never waits for the service. The

@@ -362,7 +362,10 @@ impl Imports for Includes<'_> {
                 Some(_) => Err(format!(
                     "`{name}` is not a function of the plugin `{plugin}`"
                 )),
-                None => Err(format!("Plugins are not supported yet: {source}")),
+                None => Err(format!(
+                    "Plugins are not supported yet: {source} ({})",
+                    nextflow_plugins::catalogue::status(plugin)
+                )),
             };
         }
         let Some(path) = include_path(&self.loader.project, &self.directory, source) else {

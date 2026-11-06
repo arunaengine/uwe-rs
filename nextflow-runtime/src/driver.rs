@@ -454,6 +454,9 @@ impl Driver for Nextflow {
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
         if !self.launch.simulated {
+            for warning in nextflow_plugins::catalogue::warnings(config) {
+                self.settings.host.print(&format!("WARN: {warning}\n"));
+            }
             let launch_dir = std::env::current_dir().unwrap_or_default();
             let script = loaded.script.to_string_lossy();
             let reports = Reports::of(config, &launch_dir, &script);

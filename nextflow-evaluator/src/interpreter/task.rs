@@ -641,6 +641,15 @@ impl Interpreter<'_> {
         // own process: it makes its files in `task.workDir` and sets the variables of its
         // outputs, and has no script.
         let value = self.block(&mut task.frame, statements)?.value();
+        // The prompt of an agent is the text of its last expression, without the shebang.
+        if process.agent.is_some() {
+            let prompt = strip_indent(&value.to_java_string());
+            return Ok(RenderedTask {
+                run: true,
+                script: prompt.trim_matches(|c: char| c <= ' ').to_owned(),
+                outputs: self.render_outputs(task, process)?,
+            });
+        }
         let script = if exec {
             String::new()
         } else {

@@ -34,7 +34,7 @@ pub use json::{parse as parse_json, parse_for_split as parse_json_for_split};
 pub use list::combinations;
 pub(super) use number::{convert, unit_property};
 pub(super) use statics::text_object;
-pub use yaml::load as parse_yaml;
+pub use yaml::{dump_as_map as dump_yaml, load as parse_yaml};
 
 use nextflow_parser::Span;
 

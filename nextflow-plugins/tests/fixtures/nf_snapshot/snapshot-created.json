@@ -1,0 +1,9 @@
+{
+  "files": {
+    "make/big.dat": "size:100",
+    "make/data.txt.gz": "300bede84ad6570f74cf35c5e411c1c9",
+    "make/fixed.txt": "708837c1d238f0955c23a38051f5ebb7",
+    "make/hello.txt": "b7f0c50af63522f1641870d56bd56002",
+    "make/run.log": null
+  }
+}

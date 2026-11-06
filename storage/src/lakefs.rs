@@ -1,21 +1,22 @@
-//! Reads `lakefs://<repository>/<ref>/<path>` addresses through the lakeFS REST API, moving
-//! the data through presigned addresses.
+//! Reads and writes `lakefs://<repository>/<ref>/<path>` addresses through the lakeFS REST API,
+//! moving the data through presigned addresses, and commits branches.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use base64::Engine;
-use reqwest::header::CONTENT_TYPE;
+use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, ETAG};
 use reqwest::{Method, StatusCode};
-use serde_json::Value;
-use tokio::io::AsyncWriteExt;
+use serde_json::{Value, json};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
-use crate::web::{Web, network, origin_client};
-use crate::{Downloaded, Entry, Metadata};
+use crate::web::{Web, network, origin_client, upload_client};
+use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
 /// What a lakeFS client signs in with.
 #[derive(Clone, Default)]
@@ -48,6 +49,30 @@ pub(crate) fn scope() -> Options {
     scope.clone().unwrap_or_default()
 }
 
+/// Commits the branch of a `lakefs://` address with the options of [`use_scope`] and returns the
+/// id of the commit.
+pub fn commit(target: &str, message: &str) -> Result<String, StorageError> {
+    let (target, message) = (target.to_owned(), message.to_owned());
+    crate::blocking::run(async move {
+        let failed = failed("commit", &target);
+        let lakefs = Lakefs::new(scope()).map_err(&failed)?;
+        let (repository, branch, _) = address(&target).map_err(&failed)?;
+        (lakefs.commit(repository, branch, &message).await).map_err(&failed)
+    })
+}
+
+/// Makes the branch of a `lakefs://` address if it is missing, as writes do with
+/// `create_branches`.
+pub fn create_branch(target: &str) -> Result<(), StorageError> {
+    let target = target.to_owned();
+    crate::blocking::run(async move {
+        let failed = failed("make the branch of", &target);
+        let lakefs = Lakefs::new(scope()).map_err(&failed)?;
+        let (repository, branch, _) = address(&target).map_err(&failed)?;
+        (lakefs.branch(repository, branch).await).map_err(&failed)
+    })
+}
+
 const TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(crate) struct Lakefs {
@@ -55,7 +80,11 @@ pub(crate) struct Lakefs {
     /// The value of the `Authorization` header.
     authorization: String,
     secret: String,
+    create_branches: bool,
+    branch_source: String,
     timeout: Duration,
+    /// The branches known to exist.
+    branches: Mutex<HashSet<(String, String)>>,
 }
 
 impl Lakefs {
@@ -74,7 +103,10 @@ impl Lakefs {
             endpoint: endpoint.trim_end_matches('/').to_owned(),
             authorization: format!("Basic {encoded}"),
             secret,
+            create_branches: options.create_branches,
+            branch_source: options.branch_source.unwrap_or_else(|| "main".to_owned()),
             timeout: options.timeout.unwrap_or(TIMEOUT),
+            branches: Mutex::new(HashSet::new()),
         })
     }
 
@@ -180,6 +212,172 @@ impl Lakefs {
         Ok(Downloaded { version })
     }
 
+    /// Stages a file on its branch: lakeFS names a place in its store, the file goes there
+    /// through the presigned address, and lakeFS links it to the path.
+    pub async fn upload(&self, file: &Path, target: &str) -> Result<Written, Problem> {
+        let (repository, branch, path) = address(target)?;
+        if path.is_empty() || path.ends_with('/') {
+            return Err(Problem::fixed("the address names no object"));
+        }
+        self.branch(repository, branch).await?;
+        let size = (tokio::fs::metadata(file).await)
+            .map_err(|error| Problem::local(file, error))?
+            .len();
+        let staging = format!(
+            "/repositories/{repository}/branches/{branch}/staging/backing?path={}",
+            encode(path)
+        );
+        let place = (self
+            .json(Method::GET, &format!("{staging}&presign=true"), None)
+            .await?)
+            .ok_or_else(Problem::missing)?;
+        let Some(url) = place["presigned_url"]
+            .as_str()
+            .filter(|url| !url.is_empty())
+        else {
+            return self
+                .upload_direct(file, repository, branch, path, size)
+                .await;
+        };
+        tracing::debug!(
+            "******** staging {path} to {}",
+            place["physical_address"].as_str().unwrap_or_default()
+        );
+        let client = upload_client().map_err(Problem::fixed)?;
+        let response = (client.put(url))
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header(CONTENT_LENGTH, size)
+            .body(body(file).await?)
+            .send()
+            .await
+            .map_err(network)?;
+        let status = response.status();
+        if !status.is_success() {
+            let message = format!("the presigned upload of {path} answered {status}");
+            return Err(Problem::passing(message));
+        }
+        let tag = (response.headers().get(ETAG))
+            .and_then(|tag| tag.to_str().ok())
+            .map(|tag| tag.trim_matches('"').to_owned());
+        let mut link = json!({
+            "staging": place, "size_bytes": size, "user_metadata": {}, "force": false,
+        });
+        if let Some(tag) = &tag {
+            link["checksum"] = tag.clone().into();
+        }
+        let linked =
+            (self.json(Method::PUT, &staging, Some(link)).await?).ok_or_else(Problem::missing)?;
+        Ok(Written {
+            size,
+            version: metadata(&linked).version,
+        })
+    }
+
+    /// Uploads a file through the API, for stores that give no presigned address.
+    async fn upload_direct(
+        &self,
+        file: &Path,
+        repository: &str,
+        branch: &str,
+        path: &str,
+        size: u64,
+    ) -> Result<Written, Problem> {
+        let url = format!(
+            "{}/repositories/{repository}/branches/{branch}/objects?path={}",
+            self.endpoint,
+            encode(path)
+        );
+        let client = upload_client().map_err(Problem::fixed)?;
+        let response = (client.post(url))
+            .header("authorization", &self.authorization)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header(CONTENT_LENGTH, size)
+            .body(body(file).await?)
+            .send()
+            .await
+            .map_err(network)?;
+        let status = response.status();
+        let text = response.text().await.map_err(network)?;
+        if !status.is_success() {
+            return Err(refused(status, &text));
+        }
+        let object: Value = serde_json::from_str(&text).unwrap_or_default();
+        Ok(Written {
+            size,
+            version: metadata(&object).version,
+        })
+    }
+
+    /// Makes sure that a branch exists, and makes it from the source ref when that is allowed.
+    async fn branch(&self, repository: &str, branch: &str) -> Result<(), Problem> {
+        let key = (repository.to_owned(), branch.to_owned());
+        if self.known(&key) {
+            return Ok(());
+        }
+        let path = format!("/repositories/{repository}/branches/{branch}");
+        if self.json(Method::GET, &path, None).await?.is_none() {
+            if !self.create_branches {
+                return Err(Problem::fixed(format!(
+                    "the branch '{branch}' does not exist in the lakeFS repository \
+                     '{repository}'; turn on autoCreateBranch to make it"
+                )));
+            }
+            let source = &self.branch_source;
+            tracing::info!(
+                "Reference '{branch}' does not exist in repository '{repository}', \
+                 auto-creating branch from '{source}'"
+            );
+            let body = json!({ "name": branch, "source": source, "force": false, "hidden": false });
+            let made = format!("/repositories/{repository}/branches");
+            self.json(Method::POST, &made, Some(body)).await?;
+            tracing::info!(
+                "Created branch '{branch}' from '{source}' in repository '{repository}'"
+            );
+        }
+        let mut branches = self
+            .branches
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        branches.insert(key);
+        Ok(())
+    }
+
+    fn known(&self, key: &(String, String)) -> bool {
+        let branches = self
+            .branches
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        branches.contains(key)
+    }
+
+    async fn commit(
+        &self,
+        repository: &str,
+        branch: &str,
+        message: &str,
+    ) -> Result<String, Problem> {
+        let path = format!("/repositories/{repository}/branches/{branch}");
+        (self.json(Method::GET, &path, None).await?).ok_or_else(|| {
+            Problem::fixed(format!(
+                "the branch '{branch}' does not exist in the lakeFS repository '{repository}'"
+            ))
+        })?;
+        tracing::info!(
+            "Committing lakeFS repository '{repository}' branch '{branch}' with message: {message}"
+        );
+        let body = json!({
+            "message": message, "metadata": {}, "allow_empty": false, "force": false,
+        });
+        let made = (self
+            .json(Method::POST, &format!("{path}/commits"), Some(body))
+            .await?)
+            .ok_or_else(Problem::missing)?;
+        let id = (made["id"].as_str())
+            .ok_or_else(|| Problem::fixed("the lakeFS answer names no commit"))?;
+        tracing::info!("Created commit '{id}' on branch '{branch}' in repository '{repository}'");
+        Ok(id.to_owned())
+    }
+
     /// The stat of an object, with a presigned address if asked for; `None` when missing.
     async fn object(
         &self,
@@ -258,6 +456,24 @@ fn address(target: &str) -> Result<(&str, &str, &str), Problem> {
     }
 }
 
+/// The body of an upload, streamed from the file.
+async fn body(file: &Path) -> Result<reqwest::Body, Problem> {
+    let source =
+        (tokio::fs::File::open(file).await).map_err(|error| Problem::local(file, error))?;
+    let chunks = futures_util::stream::unfold(source, |mut source| async move {
+        let mut buffer = vec![0; 1 << 20];
+        match source.read(&mut buffer).await {
+            Ok(0) => None,
+            Ok(read) => {
+                buffer.truncate(read);
+                Some((Ok::<_, std::io::Error>(buffer), source))
+            }
+            Err(error) => Some((Err(error), source)),
+        }
+    });
+    Ok(reqwest::Body::wrap_stream(chunks))
+}
+
 /// Percent-encodes all but the unreserved characters of RFC 3986 and `/`.
 fn encode(text: &str) -> String {
     let mut out = String::new();
@@ -304,6 +520,17 @@ fn refused(status: StatusCode, body: &str) -> Problem {
     match status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
         true => Problem::passing(message),
         false => Problem::fixed(message),
+    }
+}
+
+/// An error of a request that no provider of the config file makes.
+fn failed<'a>(action: &'static str, target: &'a str) -> impl Fn(Problem) -> StorageError + 'a {
+    move |problem| StorageError::Failed {
+        action,
+        address: target.to_owned(),
+        provider: "lakeFS, with the lakefs scope".to_owned(),
+        message: problem.message,
+        retryable: problem.retryable,
     }
 }
 

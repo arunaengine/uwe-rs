@@ -315,6 +315,7 @@ impl Connection {
                 | Backend::Synapse(_)
                 | Backend::Irods(_)
                 | Backend::Oci(_)
+                | Backend::Lakefs(_)
         )
     }
 
@@ -384,6 +385,7 @@ impl Connection {
             Backend::Synapse(synapse) => synapse.upload(file, target).await,
             Backend::Irods(irods) => irods.upload(file, target).await,
             Backend::Oci(oci) => oci.upload(file, target).await,
+            Backend::Lakefs(lakefs) => lakefs.upload(file, target).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
     }

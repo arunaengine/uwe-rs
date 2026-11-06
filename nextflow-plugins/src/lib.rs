@@ -36,6 +36,7 @@ mod nf_snapshot;
 mod nf_sqldb;
 mod nf_storagemetrics;
 mod nf_synapse;
+mod nf_teams;
 mod nf_tower;
 mod nf_trino;
 #[path = "validation.rs"]

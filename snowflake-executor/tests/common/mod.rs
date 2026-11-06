@@ -158,7 +158,16 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
     }
     let route = path.split('?').next().unwrap_or_default().to_owned();
     let parts: Vec<&str> = route.trim_start_matches('/').split('/').collect();
+    let text = String::from_utf8_lossy(&body);
     let (status, reply) = match (method.as_str(), parts.as_slice()) {
+        // A compute pool named MISSING does not exist, which Snowflake says before it starts.
+        ("POST", ["api", "v2", "statements"]) if text.contains("IN COMPUTE POOL MISSING") => {
+            let message = "Compute pool 'MISSING' does not exist or not authorized.";
+            (
+                422,
+                json!({"code": "002003", "message": message, "statementHandle": "01b0-0"}),
+            )
+        }
         ("POST", ["api", "v2", "statements"]) => {
             let request = (path.split("requestId=").nth(1))
                 .map(|rest| rest.split('&').next().unwrap_or_default().to_owned())

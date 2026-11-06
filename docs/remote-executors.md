@@ -1,15 +1,15 @@
-<!-- How SLURM, Kubernetes, TES, AWS Batch and Google Batch jobs get their files, with or without shared folders. -->
+<!-- How SLURM, Kubernetes, TES, AWS Batch, Google Batch and Azure Batch jobs get their files, with or without shared folders. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Remote executors and staging
 
-SLURM, Kubernetes, TES, AWS Batch and Google Batch take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]`, `[executor.aws-batch]` or `[executor.google-batch]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
+SLURM, Kubernetes, TES, AWS Batch, Google Batch and Azure Batch take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]`, `[executor.aws-batch]`, `[executor.google-batch]` or `[executor.azure-batch]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
 
 | Mode | Executors | What the nodes need |
 | --- | --- | --- |
 | `shared-path` (default) | SLURM, Kubernetes | The store and scratch folders at the same paths as on the machine that runs uwe |
-| `object-store` | SLURM, Kubernetes, TES, AWS Batch, Google Batch | Network access to the staging root in an object store |
+| `object-store` | SLURM, Kubernetes, TES, AWS Batch, Google Batch, Azure Batch | Network access to the staging root in an object store |
 | `kubedal` | Kubernetes | The [kubedal](https://github.com/arunaengine/kubedal) CSI driver |
 
 ## Shared paths
@@ -190,6 +190,7 @@ When no `-executor` is given, the `process.executor` of a Nextflow pipeline pick
 | `process.executor` | uwe executor |
 | --- | --- |
 | `awsbatch` | `aws-batch` |
+| `azurebatch` | `azure-batch` |
 | `google-batch` | `google-batch` |
 | `k8s` | `kubernetes` |
 | `slurm` | `slurm` |
@@ -271,6 +272,87 @@ The directives `cpus`, `memory`, `accelerator`, `time`, `disk` and `resourceLabe
 ### Snakemake, CWL and Argo
 
 Their tasks use the settings of `[executor.google-batch]`. CPUs, memory, GPUs, time and disk come from the resources of the task, as on the other executors.
+
+## Azure Batch
+
+`-executor azure-batch` runs each attempt of a task as one Azure Batch task. uwe calls the Azure Batch REST API itself, with the Shared Key of the account or an Entra ID token, so it needs no Azure CLI and no Azure SDK. The tasks share no folders with this machine, so this executor always uses object-store staging with presigned requests. The staging root is usually an Azure Blob container that a `[storage.<name>]` table of type `azure-blob-storage` with the account key serves; each request then carries a service SAS for one blob.
+
+```toml
+[executor.azure-batch]
+account = "mylab"                           # else AZURE_BATCH_ACCOUNT_NAME, or the first part of endpoint
+location = "westeurope"                     # with account: https://mylab.westeurope.batch.azure.com
+# endpoint = "https://mylab.westeurope.batch.azure.com"
+account_key = { environment = "AZURE_BATCH_ACCOUNT_KEY" }   # the Shared Key
+staging = "object-store"
+staging_root = "az://container/uwe-staging"
+pool = "small"                              # the pool of tasks that name no queue
+# helper_path = "/opt/uwe/uwe"              # the static uwe binary on the nodes
+# helper_url = "https://example.org/uwe"    # or an address that Batch downloads, with helper_sha256
+# helper_file = "/home/me/uwe-x86_64"       # or a binary that uwe uploads; else the running binary
+# tenant_id = "<tenant>"                    # a service principal, with client_id and client_secret
+# managed_identity = "system"               # or the client id of a user-assigned identity
+# allow_pool_creation = true                # creates a named pool that does not exist
+# auto_pools = true                         # tasks without a pool run on a pool of [executor.azure-batch.pools.auto]
+# delete_jobs = true                        # at the end of the run
+# delete_pools = true                       # the pools that uwe created, at the end of the run
+# delete_tasks = true                       # all ended tasks; false keeps them; unset deletes the successful ones
+# terminate_jobs = false                    # else the jobs end once their tasks ended, at the end of the run
+# job_max_hours = 720
+# job_quota_retries = 3                     # waits job_quota_seconds (120) while the account has its most active jobs
+# registry_server = "lab.azurecr.io"        # a login for the pools that uwe creates, with registry_user and registry_password
+# poll_seconds = 10
+# task_folder = "/tmp/uwe"                  # where a task makes the folder of its attempt
+# api_version = "2024-07-01.20.0"
+# authority_endpoint = "https://login.microsoftonline.com"   # other addresses, for tests
+# identity_endpoint = "http://169.254.169.254/metadata/identity/oauth2/token"
+
+[executor.azure-batch.pools.small]
+vm_size = "Standard_E4d_v5"                 # else Standard_D4a_v4
+vm_cpus = 4                                 # the cores of vm_size; needed to create a pool of another size
+# vm_memory_gb = 32                         # lets the memory of a task count toward its slots
+# vm_count = 1                              # nodes; max_vm_count when auto scaling, else 3 x vm_count
+# auto_scale = true                         # with scale_minutes (5) and scale_formula
+# low_priority = true                       # spot nodes
+# schedule_policy = "pack"                  # or "spread"
+# run_as = "batchuser"                      # a user account of the pool
+# publisher = "microsoft-dsvm"              # the image, with offer and sku; or vm_image_id
+# virtual_network = "/subscriptions/<id>/resourceGroups/<group>/providers/Microsoft.Network/virtualNetworks/<net>/subnets/<subnet>"
+# start_script = "echo ready"               # runs once on each node, as a user without rights
+```
+
+The credentials come from the first of: a managed identity (`managed_identity`, `AZURE_MANAGED_IDENTITY_USER` with a client id, or `AZURE_MANAGED_IDENTITY_SYSTEM=true`), whose token comes from the instance metadata service; a service principal (`tenant_id`, `client_id` and `client_secret`, or `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`), whose token comes from Entra ID with the client credentials grant; and the Shared Key (`account_key`, or `AZURE_BATCH_ACCOUNT_KEY`), which signs each request. Tokens have the scope `https://batch.core.windows.net/.default`. uwe never logs keys, tokens or SAS URLs.
+
+A task runs like this:
+
+1. uwe finds the pool: the queue of the task, else `pool`, else with `auto_pools` the pool `uwe-pool-<digest>-<vm size>` of the `auto` settings and the labels of the task. An existing pool must be active, and its slots per node must equal `vm_cpus` when that is set. A missing pool is created with `allow_pool_creation` (auto pools always): the first verified Linux image of the account with the publisher, offer and node agent of the settings, Docker-compatible containers, the registry login, one task slot per core, and auto scaling or a fixed number of dedicated or low priority nodes.
+2. uwe creates one job per pool and run, `uwe-<random>-<pool>`, with a time limit of `job_max_hours`.
+3. uwe uploads the inputs and the wrapper of the task to the staging root and writes the plan.
+4. uwe adds the task `uwe-<attempt>`: the image of the task with `--cpu-shares` and `--memory`, the plan and the helper as resource files by their SAS URLs (Batch downloads them into the working folder before the task starts), its slots, a time limit of the task's time plus `staging_minutes`, and a task user without rights (or `run_as` of the pool). The command line runs `sh`, which checks the SHA-256 of a downloaded helper, stages the inputs in, runs the wrapper of the task within its time, and sends the outputs back. The script is in the environment variable `UWE_SCRIPT`, as a command line holds no newlines.
+5. uwe asks about the task every `poll_seconds`. While it waits for a node, uwe looks at its pool once a minute: a pool of fixed size with resize errors and no nodes fails the task, and an auto scaling pool whose errors are all `AllocationTimedout` or `AllocationFailed` gets a warning and the task waits. A cancelled task is terminated.
+6. The error of a failed task shows the end of its `stdout.txt` and `stderr.txt`. Then uwe deletes the task as `delete_tasks` says.
+7. At the end of the run, each job ends once its tasks ended (`terminate_jobs`), and uwe deletes the jobs and the pools it created when asked. It does not wait for the deletions.
+
+Limits:
+
+- A task takes as many slots as its CPUs, or its share of the memory of a node when `vm_memory_gb` is set, at most the slots of a node.
+- Containers never run privileged: `privileged` and `start_privileged` of a pool are refused, and so are Nextflow's `privileged` pools and `fusion.enabled = true`. Tasks and start scripts run as users without admin rights.
+- The container keeps the entrypoint of its image around the command line. The image needs `sh`, and `sha256sum` when the helper is downloaded (`helper_url` or the uploaded binary). With `helper_path`, the container sees the folder of the helper read-only.
+- Real Azure Batch downloads resource files over HTTP or HTTPS, so the staging root must be in an object store, like Azure Blob Storage or S3.
+- `delete_pools` deletes only the pools that uwe created in the run; Nextflow deletes every pool it used.
+- `staging_access = "credentials"` is refused; the tasks use presigned requests.
+- Tasks without network, tasks of several containers, tasks that run as a named user, and inputs at absolute paths are refused.
+- uwe ships no table of VM sizes: VM size patterns and the automatic choice of a VM size for auto pools are not supported, and creating a pool of another size than `Standard_D4a_v4` needs `vm_cpus`. Azure Files shares, output files of Batch, low priority nodes per task and Fusion are not supported either.
+- The tests run against a local fake of Azure Batch and the Entra ID token endpoints, and `just emulator-test` stages a task through Azurite. Runs on a real Azure account are not verified yet.
+
+### Nextflow pipelines
+
+`process.executor = 'azurebatch'` picks this executor, as the table under AWS Batch shows. The `azure` scope fills the settings that `[executor.azure-batch]` leaves unset: `azure.batch.accountName`, `accountKey`, `endpoint`, `location`, `autoPoolMode`, `allowPoolCreation`, `deleteJobsOnCompletion`, `deletePoolsOnCompletion`, `deleteTasksOnCompletion`, `terminateJobsOnCompletion`, `jobMaxWallClockTime`, `maxJobQuotaRetries`, `jobQuotaRetryDelay` and the pools of `azure.batch.pools` (`vmType`, `vmCount`, `maxVmCount`, `autoScale`, `scaleFormula`, `scaleInterval`, `lowPriority`, `schedulePolicy`, `runAs`, `publisher`, `offer`, `sku`, `virtualMachineImageId`, `allowUnverifiedImages`, `virtualNetwork` and `startTask.script`), `azure.registry`, `azure.activeDirectory`, `azure.managedIdentity`, and `executor.$azurebatch.pollInterval`. An `az://` `workDir` becomes the staging root when none is set; its storage provider comes from a `[storage.<name>]` table, as uwe does not read `azure.storage`. uwe ignores `azure.batch.poolIdentityClientId`, `copyToolInstallMode`, `maxParallelTransfers`, `azure.azcopy`, `azure.storage.fileShares` and `azure.retryPolicy`, with a warning.
+
+The directive `queue` names the pool. `cpus`, `memory`, `time` and `resourceLabels` (auto pools only) go into the task and its pool. uwe does not read the `machineType` directive, and `containerOptions` does not reach the task.
+
+### Snakemake, CWL and Argo
+
+Their tasks use `pool` of `[executor.azure-batch]`, or auto pools. A Snakemake rule names another pool with `resources: queue="..."`. CPUs, memory and time come from the resources of the task, as on the other executors.
 
 ## Default task time
 

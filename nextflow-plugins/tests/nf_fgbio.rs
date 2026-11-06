@@ -1,10 +1,10 @@
-//! nf-fgbio's read structures against nf-fgbio 1.0.1 with Nextflow 26.04.6.
+//! nf-fgbio's read structures and sample sheets against nf-fgbio 1.0.1 with Nextflow 26.04.6.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_plugins::{Context, call, method};
 
 /// Reads the sample sheets of the fixtures, relative to their folder.
@@ -273,5 +273,193 @@ fn extracts_short_reads() {
         extract(vec!["AAAACCC"]),
         "Vector(SubReadWithoutQuals(AAAA,4M), SubReadWithoutQuals(CCC,3S), \
          SubReadWithoutQuals(,0T))"
+    );
+}
+
+/// The samples of a sheet as their texts, one per line, or the exception.
+fn sheet(options: Option<Value>, path: &str) -> String {
+    let mut arguments: Vec<Value> = options.into_iter().collect();
+    arguments.push(Value::string(path));
+    match function("fromSampleSheet", arguments) {
+        Ok(Value::List(samples)) => {
+            let samples = samples.borrow().items.clone();
+            samples.iter().map(|s| format!("{s}\n")).collect()
+        }
+        other => shown(other),
+    }
+}
+
+const SAMPLES: [&str; 3] = [
+    "Sample(1,S1,Name_One,S1,Some(ProjA),Some(\"desc, with comma\"),Some(1),Some(ACGTACGT),\
+     Some(TTGGCCAA),HashMap(OTHER -> y1, CUSTOM_COL -> x1))\n",
+    "Sample(2,S2,Name_Two,S2,None,None,Some(1),Some(CCCCGGGG),None,\
+     HashMap(OTHER -> , CUSTOM_COL -> x2))\n",
+    "Sample(3,S1,Name_One,S1,Some(ProjB),Some(d3),Some(2),Some(GGGGAAAA),Some(AAAATTTT),\
+     HashMap(OTHER -> , CUSTOM_COL -> ))\n",
+];
+
+#[test]
+fn reads_sample_sheets() {
+    let lane = |n: i32| Some(Value::map([(Value::string("lane"), Value::integer(n))]));
+    assert_eq!(sheet(None, "sheet.csv"), SAMPLES.concat());
+    assert_eq!(sheet(lane(0), "sheet.csv"), SAMPLES.concat());
+    assert_eq!(
+        sheet(lane(2), "sheet.csv"),
+        SAMPLES[2].replacen("Sample(3,", "Sample(1,", 1)
+    );
+    assert_eq!(sheet(lane(3), "sheet.csv"), "");
+    let unknown = Some(Value::map([(Value::string("foo"), Value::integer(1))]));
+    assert_eq!(
+        sheet(unknown, "sheet.csv"),
+        "IllegalArgumentException: Unknown argument 'foo' for operator 'fromSampleSheet' -- \
+         Possible arguments: lane"
+    );
+    let text = Some(Value::map([(Value::string("lane"), Value::string("2"))]));
+    assert_eq!(
+        sheet(text, "sheet.csv"),
+        "IllegalArgumentException: Value '2' cannot be used in in parameter 'lane' for operator \
+         'fromSampleSheet' -- Value don't match: class java.lang.Integer"
+    );
+    let path = Value::Path(PathValue::parse("sheet.csv", "/data").into());
+    assert_eq!(
+        shown(function("fromSampleSheet", vec![path])),
+        "MissingMethodException: Missing process or function fromSampleSheet([/data/sheet.csv])"
+    );
+    assert_eq!(
+        sheet(None, "nope.csv"),
+        "FileNotFoundException: nope.csv (No such file or directory)"
+    );
+}
+
+#[test]
+fn checks_sheet_rules() {
+    let cases = [
+        (
+            "badlane",
+            "NumberFormatException: For input string: \"one\"",
+        ),
+        (
+            "crlf",
+            "Sample(1,S1,N1,S1,None,None,None,None,None,Map())\n",
+        ),
+        (
+            "dupid",
+            "IllegalArgumentException: requirement failed: Sample identifiers were not unique: S1",
+        ),
+        (
+            "dupnamelib",
+            "IllegalArgumentException: requirement failed: Sample name and library identifier \
+             combinations were not unique: N1 L1",
+        ),
+        (
+            "emptymid",
+            "IllegalArgumentException: Found empty line on row 2 of the sample data section.",
+        ),
+        (
+            "emptyname",
+            "IllegalArgumentException: Sample at ordinal #1 is missing: Sample_Name",
+        ),
+        (
+            "headerspace",
+            "Sample(1,\"S1\",N1,\"S1\",None,None,None,Some(acgt),None,Map())\n",
+        ),
+        (
+            "lowercase",
+            "IllegalArgumentException: Could not find the header for sample data.",
+        ),
+        (
+            "mismatch",
+            "IllegalArgumentException: Found a line with a mismatching number of columns on \
+             line #4: S2,N2,extra",
+        ),
+        (
+            "mixedlane",
+            "IllegalArgumentException: requirement failed: Sample identifiers were not unique: S1",
+        ),
+        (
+            "nodata",
+            "IllegalArgumentException: Could not find the header for sample data.",
+        ),
+        (
+            "noheader",
+            "IllegalArgumentException: Could not find the header for sample data.",
+        ),
+        (
+            "noname",
+            "IllegalArgumentException: Sample at ordinal #1 is missing: Sample_Name",
+        ),
+    ];
+    for (name, expected) in cases {
+        assert_eq!(sheet(None, &format!("{name}.csv")), expected, "{name}");
+    }
+}
+
+#[test]
+fn answers_sample_methods() {
+    let Ok(Value::List(samples)) = function("fromSampleSheet", vec![Value::string("sheet.csv")])
+    else {
+        panic!("samples");
+    };
+    let samples = samples.borrow().items.clone();
+    let (first, second) = (&samples[0], &samples[1]);
+    let cases = [
+        (first, "sampleOrdinal", "1 (java.lang.Integer)"),
+        (first, "sampleId", "S1 (java.lang.String)"),
+        (first, "sampleName", "Name_One (java.lang.String)"),
+        (first, "libraryId", "S1 (java.lang.String)"),
+        (first, "project", "Some(ProjA) (scala.Some)"),
+        (
+            first,
+            "description",
+            "Some(\"desc, with comma\") (scala.Some)",
+        ),
+        (first, "lane", "Some(1) (scala.Some)"),
+        (first, "i7IndexBases", "Some(ACGTACGT) (scala.Some)"),
+        (first, "i5IndexBases", "Some(TTGGCCAA) (scala.Some)"),
+        (
+            first,
+            "extendedAttributes",
+            "HashMap(OTHER -> y1, CUSTOM_COL -> x1) (scala.collection.immutable.HashMap)",
+        ),
+        (
+            first,
+            "sampleBarcodes",
+            "List(Some(ACGTACGT), Some(TTGGCCAA)) (scala.collection.immutable.$colon$colon)",
+        ),
+        (
+            first,
+            "sampleBarcodeString",
+            "ACGTACGT-TTGGCCAA (java.lang.String)",
+        ),
+        (second, "project", "None (scala.None$)"),
+        (second, "i5IndexBases", "None (scala.None$)"),
+        (
+            second,
+            "sampleBarcodeBases",
+            "List(Some(CCCCGGGG), None) (scala.collection.immutable.$colon$colon)",
+        ),
+        (second, "sampleBarcodeString", "CCCCGGGG (java.lang.String)"),
+    ];
+    for (sample, name, expected) in cases {
+        assert_eq!(member(sample, name, vec![]), expected, "{name}");
+    }
+    let attribute = |sample: &Value, name: &str| {
+        shown(invoke(
+            sample,
+            "extendedAttribute",
+            vec![Value::string(name)],
+        ))
+    };
+    assert_eq!(attribute(first, "custom_col"), "Some(x1)");
+    assert_eq!(attribute(first, "OTHER"), "Some(y1)");
+    assert_eq!(attribute(second, "OTHER"), "None");
+    let project = invoke(second, "project", vec![]).expect("an option");
+    assert_eq!(
+        member(&project, "isDefined", vec![]),
+        "false (java.lang.Boolean)"
+    );
+    assert_eq!(
+        shown(invoke(&project, "getOrElse", vec![Value::string("none")])),
+        "none"
     );
 }

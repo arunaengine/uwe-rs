@@ -28,7 +28,8 @@ pub(crate) fn call(
     context: &mut Context,
 ) -> Result<Value, Error> {
     // Named arguments come first as a map; nf-schema also takes a map of options as the last
-    // argument of `samplesheetToList`.
+    // argument of `samplesheetToList`. From 3.0.0 on, help takes its param as an option.
+    let modern = since(context, [3, 0, 0]);
     match (name, arguments.as_slice()) {
         ("samplesheetToList", [sheet, schema]) => {
             samplesheet::to_list(sheet, schema, None, context)
@@ -47,14 +48,36 @@ pub(crate) fn call(
         ("paramsSummaryMap", [options, workflow]) => summary::map(Some(options), workflow, context),
         ("paramsSummaryLog", [workflow]) => summary::log(None, workflow, context),
         ("paramsSummaryLog", [options, workflow]) => summary::log(Some(options), workflow, context),
-        ("paramsHelp", []) => help::text(None, context),
-        ("paramsHelp", [options @ Value::Map(_), ..]) => help::text(Some(options), context),
+        ("paramsHelp", []) => help::text(None, None, context),
+        ("paramsHelp", [options @ Value::Map(_)]) => help::text(Some(options), None, context),
+        ("paramsHelp", [parameter @ Value::String(_)]) if !modern => {
+            help::text(None, Some(parameter.to_string()), context)
+        }
+        ("paramsHelp", [options @ Value::Map(_), parameter]) if !modern => {
+            help::text(Some(options), Some(parameter.to_string()), context)
+        }
+        ("paramsHelp", _) => Err(no_signature(name, &arguments)),
         _ => Err(Error::Unsupported {
             message: format!(
                 "the function `{name}` of the plugin `nf-schema` with these arguments"
             ),
             span: Default::default(),
         }),
+    }
+}
+
+/// Groovy's `MissingMethodException` for a call whose arguments fit no form of the function.
+fn no_signature(name: &str, arguments: &[Value]) -> Error {
+    let types: Vec<&str> = arguments.iter().map(Value::class_name).collect();
+    let values: Vec<String> = arguments.iter().map(Value::to_string).collect();
+    let message = format!(
+        "No signature of method: {name}() is applicable for argument types: ({}) values: [{}]",
+        types.join(", "),
+        values.join(", ")
+    );
+    Error::Thrown {
+        exception: Rc::new(Exception::new("MissingMethodException", message)),
+        span: Default::default(),
     }
 }
 

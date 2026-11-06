@@ -312,8 +312,8 @@ fn set_options(scope: &Value, prefix: &str, found: &mut Vec<String>) {
 }
 
 /// What nf-schema and Nextflow do with its config when a run starts: Nextflow warns for
-/// options the plugin does not know, and 2.7.3 and 2.8.0 fail on the removed
-/// `failUnrecognised*` options.
+/// options the plugin does not know, 2.7.3 and 2.8.0 fail on the removed `failUnrecognised*`
+/// options, and nf-schema 2 prints help instead of running when the config asks for it.
 pub(crate) fn start(context: &mut Context) -> Result<(), Error> {
     // The option list was recorded for 2.7.3 and later.
     let recorded = version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 3].as_slice());
@@ -344,6 +344,9 @@ pub(crate) fn start(context: &mut Context) -> Result<(), Error> {
     let settings = Settings::read(context);
     for warning in &settings.warnings {
         context.host.print(&format!("WARN: {warning}\n"));
+    }
+    if settings.help.enabled {
+        super::help::on_start(&settings, context)?;
     }
     Ok(())
 }

@@ -2,7 +2,10 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::time::Duration;
+
 use nextflow_config::Config;
+use nextflow_evaluator::units::parse_duration;
 use nextflow_evaluator::value::Value;
 use serde_json::{Value as Json, json};
 
@@ -14,6 +17,7 @@ const SOURCES: [&str; 3] = ["container", "dockerfile", "conda"];
 pub(super) struct Settings {
     /// Whether uwe asks the service; else it keeps its own images.
     pub(super) service: bool,
+    pub(super) endpoint: String,
     pub(super) freeze: bool,
     pub(super) mirror: bool,
     pub(super) strategy: Vec<String>,
@@ -25,6 +29,22 @@ pub(super) struct Settings {
     pub(super) scan_mode: Option<String>,
     pub(super) scan_levels: Option<Vec<String>>,
     pub(super) tower: Tower,
+    /// How long uwe waits for a build.
+    pub(super) build_limit: Duration,
+    /// How long an answer serves the same request again.
+    pub(super) reuse: Duration,
+    /// The pause between requests, from `httpClient.maxRate`.
+    pub(super) spacing: Duration,
+    pub(super) retry: Retry,
+}
+
+/// The retries of requests that fail on the network or with 429 or 5xx.
+pub(super) struct Retry {
+    pub(super) delay: Duration,
+    pub(super) longest: Duration,
+    pub(super) attempts: u32,
+    pub(super) jitter: f64,
+    pub(super) factor: f64,
 }
 
 /// The Seqera Platform account that Wave knows the user by.
@@ -97,8 +117,11 @@ pub(super) fn read(
     };
     let levels = set(&["wave", "scan", "allowedLevels"]).map(|value| list(&value));
     let tower = |key: &str, name: &str| text(&["tower", key]).or_else(|| variable(name));
+    let time = |path: &[&str], default: Duration| duration(config, path, default);
+    let retry = |key: &'static str| ["wave", "retryPolicy", key];
     Ok(Some(Settings {
         service: given.is_some() || freeze || mirror || scan_mode.is_some() || target.is_some(),
+        endpoint: endpoint.trim_end_matches('/').to_owned(),
         freeze,
         mirror,
         strategy,
@@ -121,7 +144,50 @@ pub(super) fn read(
             endpoint: tower("endpoint", "TOWER_API_ENDPOINT")
                 .unwrap_or("https://api.cloud.seqera.io".into()),
         },
+        build_limit: time(&["wave", "build", "maxDuration"], Duration::from_secs(2400)),
+        reuse: time(
+            &["wave", "tokens", "cache", "maxDuration"],
+            Duration::from_secs(1800),
+        ),
+        spacing: rate(text(&["wave", "httpClient", "maxRate"]).as_deref())?,
+        retry: Retry {
+            delay: time(&retry("delay"), Duration::from_millis(450)),
+            longest: time(&retry("maxDelay"), Duration::from_secs(15)),
+            attempts: number(&retry("maxAttempts")).map_or(10, |count| count as u32),
+            jitter: number(&retry("jitter")).unwrap_or(0.25),
+            factor: number(&retry("multiplier")).unwrap_or(2.0),
+        },
     }))
+}
+
+fn duration(config: &Config, path: &[&str], default: Duration) -> Duration {
+    let millis = match config.get(path) {
+        Some(Value::Duration(millis)) => Some(millis),
+        Some(value) if value.truth() => parse_duration(&value.to_string()).ok(),
+        _ => None,
+    };
+    let millis = millis.map(|millis| u64::try_from(millis).unwrap_or(0));
+    millis.map_or(default, Duration::from_millis)
+}
+
+/// The pause between requests for a rate like `1/sec` or `10/min`; one second by default.
+fn rate(text: Option<&str>) -> Result<Duration, String> {
+    let Some(text) = text else {
+        return Ok(Duration::from_secs(1));
+    };
+    let wrong = || format!("Invalid rate value: {text}");
+    let (count, unit) = text.split_once('/').ok_or_else(wrong)?;
+    let count: f64 = count.trim().parse().map_err(|_| wrong())?;
+    let seconds = match unit.trim() {
+        "s" | "sec" | "second" => 1.0,
+        "m" | "min" | "minute" => 60.0,
+        "h" | "hour" => 3600.0,
+        _ => return Err(wrong()),
+    };
+    if count <= 0.0 {
+        return Err(wrong());
+    }
+    Ok(Duration::from_secs_f64(seconds / count))
 }
 
 /// The items of a list or of comma-separated text.

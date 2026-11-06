@@ -1,0 +1,1 @@
+Sample sheets of the nf-fgbio 1.0.1 spec; the expected texts in tests/nf_fgbio.rs were recorded from the plugin with Nextflow 26.04.6, offline.

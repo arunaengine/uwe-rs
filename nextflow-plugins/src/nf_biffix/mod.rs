@@ -8,7 +8,7 @@ mod poster;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use nextflow_config::Config;
 
@@ -28,6 +28,10 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 const TICK: Duration = Duration::from_millis(250);
 /// How long the end of the run waits for the last events.
 const WAIT: Duration = Duration::from_secs(60);
+/// Buffered publications go out after this time or at this many.
+const PUBLISH_EVERY: Duration = Duration::from_secs(2);
+const PUBLISH_MOST: usize = 200;
+const OUTPUTS_MOST: usize = 1000;
 
 /// The variables that a biffix coordinator sets, read once.
 struct Settings {
@@ -98,6 +102,10 @@ struct Biffix {
     counts: HashMap<String, u32>,
     /// The task key and attempt that made each output path.
     made: HashMap<String, (String, i64)>,
+    /// Published S3 addresses not yet sent, by task key and attempt.
+    published: Vec<((String, i64), String)>,
+    published_at: Instant,
+    processes: Vec<crate::observer::Process>,
     ended: bool,
 }
 
@@ -112,6 +120,9 @@ impl Biffix {
             indexes: HashMap::new(),
             counts: HashMap::new(),
             made: HashMap::new(),
+            published: Vec::new(),
+            published_at: Instant::now(),
+            processes: Vec::new(),
             ended: false,
         }
     }
@@ -145,15 +156,18 @@ impl Biffix {
                     );
                 }
             }
-            Some(Event::TaskCompleted(task)) => self.ended_task(task, "task_succeeded"),
-            Some(Event::TaskFailed(task)) => self.ended_task(task, "task_failed"),
+            Some(Event::TaskCompleted(task)) => self.ended_task(task, "task_succeeded", false),
+            Some(Event::TaskFailed(task)) => self.ended_task(task, "task_failed", false),
             Some(Event::TaskCached(task)) => {
                 self.created(task);
-                self.ended_task(task, "task_cached");
+                self.ended_task(task, "task_cached", true);
             }
-            Some(Event::FilePublished { .. }) => {}
+            Some(Event::FilePublished { source, target }) => self.publish(source, target),
             Some(Event::RunEnded(end)) => self.finish(end),
             None => {}
+        }
+        if self.published.len() >= PUBLISH_MOST || self.published_at.elapsed() >= PUBLISH_EVERY {
+            self.send_published();
         }
         self.poster.tick();
     }
@@ -161,6 +175,7 @@ impl Biffix {
     fn started(&mut self, start: &Start) {
         let path = Path::new(&start.launch_dir).join(&self.settings.file);
         self.journal = Some(Journal::new(path));
+        self.processes = start.processes.clone();
         tracing::info!(
             "nf-biffix: tracking run={} -> {}",
             self.settings.run_id,
@@ -192,8 +207,8 @@ impl Biffix {
         self.emit("task_created", body);
     }
 
-    /// The end of an attempt.
-    fn ended_task(&mut self, task: &Task, kind: &str) {
+    /// The end of an attempt, then its S3 outputs.
+    fn ended_task(&mut self, task: &Task, kind: &str, reused: bool) {
         let key = self.key(task);
         let attempt = attempt(task);
         let id = task_id(task);
@@ -213,11 +228,98 @@ impl Biffix {
             self.made
                 .insert(output.path.clone(), (key.clone(), attempt));
         }
+        if kind == "task_failed" {
+            return;
+        }
+        let names = task.outputs.iter().filter(|output| {
+            let name = output.name.rsplit('/').next().unwrap_or_default();
+            !name.starts_with(".command.") && name != ".exitcode"
+        });
+        let uris: BTreeSet<String> = (names.map(|output| output.path.clone()))
+            .filter(|path| path.starts_with("s3://"))
+            .collect();
+        self.outputs(
+            &key,
+            attempt,
+            "intermediate",
+            uris.into_iter().collect(),
+            reused,
+        );
     }
 
-    /// The result of the run, then the last posts.
+    /// Buffers a publication to S3 under the task that made its source.
+    fn publish(&mut self, source: &str, target: &str) {
+        if !target.starts_with("s3://") {
+            return;
+        }
+        let owner = ancestors(source)
+            .find_map(|path| self.made.get(path))
+            .cloned();
+        if let Some(owner) = owner {
+            self.published.push((owner, target.to_owned()));
+        }
+    }
+
+    fn send_published(&mut self) {
+        self.published_at = Instant::now();
+        let mut grouped: Vec<((String, i64), Vec<String>)> = Vec::new();
+        for (owner, uri) in std::mem::take(&mut self.published) {
+            match grouped.iter_mut().find(|(known, _)| *known == owner) {
+                Some((_, uris)) => uris.push(uri),
+                None => grouped.push((owner, vec![uri])),
+            }
+        }
+        for ((key, attempt), mut uris) in grouped {
+            uris.sort();
+            uris.dedup();
+            self.outputs(&key, attempt, "published", uris, false);
+        }
+    }
+
+    /// `task_outputs` events, at most [`OUTPUTS_MOST`] addresses each.
+    fn outputs(&mut self, key: &str, attempt: i64, role: &str, uris: Vec<String>, reused: bool) {
+        for chunk in uris.chunks(OUTPUTS_MOST) {
+            let outputs = chunk
+                .iter()
+                .map(|uri| Json::object([("s3_uri", Json::from(uri))]));
+            let mut body = vec![
+                ("task_key", Json::from(key)),
+                ("attempt", Json::from(attempt)),
+                ("role", Json::from(role)),
+                ("outputs", Json::List(outputs.collect())),
+            ];
+            if reused {
+                body.push(("reused", Json::from(true)));
+            }
+            self.emit("task_outputs", body);
+        }
+    }
+
+    /// The process graph and the result of the run, then the last posts.
     fn finish(&mut self, end: &End) {
         self.ended = true;
+        self.send_published();
+        if !self.processes.is_empty() {
+            let name = |id: u32| {
+                (self.processes.iter())
+                    .find(|process| process.id == id)
+                    .map(|process| process.name.clone())
+            };
+            let nodes = (self.processes.iter())
+                .map(|process| Json::object([("id", Json::from(&process.name))]));
+            let mut edges = Vec::new();
+            for process in &self.processes {
+                for to in process.feeds.iter().filter_map(|id| name(*id)) {
+                    let edge = [("from", Json::from(&process.name)), ("to", Json::from(to))];
+                    edges.push(Json::object(edge));
+                }
+            }
+            let dag = Json::object([
+                ("nodes", Json::List(nodes.collect())),
+                ("edges", Json::List(edges)),
+            ]);
+            self.emit("run_dag", vec![("dag", dag)]);
+        }
         let kind = if end.success {
             "run_succeeded"
         } else {

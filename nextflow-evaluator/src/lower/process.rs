@@ -164,6 +164,7 @@ impl Lowering<'_> {
                 true => super::typed::non_null(&process.inputs),
                 false => Vec::new(),
             },
+            agent: None,
             span: process.span,
         }
     }

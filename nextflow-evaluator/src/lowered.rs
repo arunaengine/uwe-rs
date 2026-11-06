@@ -236,7 +236,46 @@ pub struct Process {
     /// The indexes of the inputs of a typed process whose type is not nullable, like `x: Int`
     /// but not `x: Int?`.
     pub non_null: Vec<usize>,
+    /// What makes the process an agent, whose `script:` is the prompt to a language model.
+    pub agent: Option<Agent>,
     pub span: Span,
+}
+
+/// An `agent` definition: a task whose answer comes from a language model.
+#[derive(Debug)]
+pub struct Agent {
+    /// The names of the values of each input, for the input JSON: the name of the input, or
+    /// the fields of a `record(...)` or `tuple(...)` input.
+    pub inputs: Vec<Vec<Rc<str>>>,
+    /// The typed output, which the model answers as JSON; `None` for a text answer.
+    pub structured: Option<Structured>,
+}
+
+/// A typed agent output, like `result: Classification`.
+#[derive(Debug)]
+pub struct Structured {
+    pub name: Rc<str>,
+    pub kind: AnswerType,
+}
+
+/// A type that an agent can answer.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AnswerType {
+    Boolean,
+    Integer,
+    Float,
+    Text,
+    Path,
+    List(Box<AnswerType>),
+    Record(Vec<AnswerField>),
+}
+
+/// A field of a record type that an agent answers; an optional one may be missing.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnswerField {
+    pub name: Rc<str>,
+    pub kind: AnswerType,
+    pub optional: bool,
 }
 
 /// A workflow output of the `output { }` block, with its options, like `path`, `mode` and

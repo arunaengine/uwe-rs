@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::lower::lower_module;
-use nextflow_evaluator::lowered::{ExpressionKind, Input, Module, OutputPart};
+use nextflow_evaluator::lowered::{AnswerType, ExpressionKind, Input, Module, OutputPart};
 use nextflow_parser::ast::BodyKind;
 use nextflow_parser::{LineIndex, parse_script};
 
@@ -184,5 +184,109 @@ fn permits_binding_shadowing() {
     assert_eq!(
         lower(source).expect_err("fails"),
         ["3:16: `x` is already declared"]
+    );
+}
+
+const AGENT: &str = "record Verdict {
+    label: String
+    confidence: Float
+    notes: List<String>?
+}
+
+agent classify {
+    model 'openai/gpt-5-mini'
+    instruction 'Sort samples.'
+    cpus 1
+
+    input:
+    record(id: String, reads: Path)
+    level: Integer
+
+    output:
+    verdict: Verdict
+
+    prompt:
+    def text = \"sample ${id}\"
+    \"\"\"
+    Classify ${text} at level ${level}.
+    \"\"\"
+}
+";
+
+#[test]
+fn agent_lowers() {
+    let module = lower(AGENT).expect("lowers");
+    let [process] = module.processes.as_slice() else {
+        panic!("one process")
+    };
+    assert_eq!(&*process.name, "classify");
+    let names: Vec<&str> = process.directives.iter().map(|d| &*d.name).collect();
+    assert_eq!(names, ["model", "instruction", "cpus"]);
+    let agent = process.agent.as_ref().expect("an agent");
+    let inputs: Vec<Vec<&str>> = (agent.inputs.iter())
+        .map(|names| names.iter().map(|name| &**name).collect())
+        .collect();
+    assert_eq!(inputs, [vec!["id", "reads"], vec!["level"]]);
+    let structured = agent.structured.as_ref().expect("a typed output");
+    assert_eq!(&*structured.name, "verdict");
+    let AnswerType::Record(fields) = &structured.kind else {
+        panic!("a record answer, found {:?}", structured.kind)
+    };
+    let fields: Vec<(&str, &AnswerType, bool)> = (fields.iter())
+        .map(|field| (&*field.name, &field.kind, field.optional))
+        .collect();
+    let notes = AnswerType::List(Box::new(AnswerType::Text));
+    assert_eq!(
+        fields,
+        [
+            ("label", &AnswerType::Text, false),
+            ("confidence", &AnswerType::Float, false),
+            ("notes", &notes, true),
+        ]
+    );
+    assert!(matches!(
+        process.outputs[0].parts.as_slice(),
+        [OutputPart::Stdout]
+    ));
+    let text = "agent qa {\n model 'openai/m'\n input:\n q: String\n output:\n stdout()\n \
+                prompt:\n \"Answer ${q}\"\n}\n";
+    let module = lower(text).expect("lowers");
+    let agent = module.processes[0].agent.as_ref().expect("an agent");
+    assert!(agent.structured.is_none());
+}
+
+#[test]
+fn rejects_agent_types() {
+    let agent = |directive: &str, output: &str| {
+        let text = format!(
+            "record Bad {{\n    data: Map\n}}\n\nagent qa {{\n    {directive}\n    input:\n    \
+             q: String\n    output:\n    {output}\n    prompt:\n    \"Answer ${{q}}\"\n}}\n"
+        );
+        lower(&text).expect_err("lowering fails")
+    };
+    assert_eq!(
+        agent("temperature 0", "stdout()"),
+        ["6:5: Unrecognized agent directive `temperature`"]
+    );
+    assert_eq!(
+        agent("model 'openai/m'", "answer: Map"),
+        [
+            "10:5: Agent output `answer` has unsupported type Map -- supported types are \
+             Boolean, Float, Integer, List<E>, Path, String, or a record type"
+        ]
+    );
+    assert_eq!(
+        agent("model 'openai/m'", "answer: Bad"),
+        [
+            "2:5: Unsupported agent output field `data` of type Map -- supported types are \
+             Boolean, Float, Integer, List<E>, Path, String, or a record type"
+        ]
+    );
+    assert_eq!(
+        agent("model 'openai/m'", "file('report.md')"),
+        [
+            "10:5: Agent `qa`: file outputs need the file tools of agents (`fs:write`), \
+             which uwe does not run yet"
+        ]
     );
 }

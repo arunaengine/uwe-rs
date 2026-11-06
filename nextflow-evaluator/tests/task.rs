@@ -140,3 +140,30 @@ fn binds_round_inputs() {
         }
     }
 }
+
+#[test]
+fn renders_agent_prompt() {
+    let source = "agent qa {\n    model 'openai/m'\n    input:\n    reads: Path\n    \
+                  level: Integer\n    output:\n    stdout()\n    prompt:\n    \
+                  def files = \"file ${reads}\"\n    \"\"\"\n    Check ${files}.\n      \
+                  Level ${level}.\n    \"\"\"\n}\n";
+    let parsed = parse_script(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let module = Rc::new(lower_module(&parsed.tree, source).expect("lowers"));
+    let process = &module.processes[0];
+    let mut host = Launch;
+    let mut interpreter = Interpreter::new(&mut host);
+    let reads = Value::Path(Rc::new(PathValue::parse("/data/a b.fq", "/")));
+    let mut task = interpreter
+        .bind_task(&module, process, &[reads, Value::integer(2)])
+        .expect("binds");
+    let rendered = interpreter
+        .render(&mut task, process, &Value::map([]), false)
+        .expect("renders");
+    // Paths show their staged names, unescaped, and the text loses its common indent.
+    assert_eq!(rendered.script, "Check file a b.fq.\n  Level 2.");
+    assert!(matches!(
+        rendered.outputs[0].parts.as_slice(),
+        [RenderedPart::Stdout]
+    ));
+}

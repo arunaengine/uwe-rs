@@ -156,6 +156,21 @@ async fn pushes_written_package() {
         .filter_map(|item| item["path"].as_str())
         .collect();
     assert_eq!(paths, ["README_NF_QUILT.md", "out/table.tsv"]);
+    let puts = service
+        .lines()
+        .into_iter()
+        .filter(|line| line.starts_with("PUT "))
+        .count();
+    assert_eq!(
+        puts, 7,
+        "two files, README, summary, manifest and two pointers"
+    );
+    let requests = service.requests.lock().expect("the requests").clone();
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.headers.contains_key("authorization"))
+    );
     let pinned = format!("quilt+s3://pushtest#package=test/written@{hash}&path=out/a.txt");
     let found = storage
         .stat(&pinned)

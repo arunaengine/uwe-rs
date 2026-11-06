@@ -107,6 +107,15 @@ time, peak memory and status; `hilbert`, `flowfield`, `tree` and `ginkgo` are dr
 encoder, without the caption text, since uwe has no font. The file is written on this
 machine; the `render` command and cloud paths are not supported.
 
+## src/nf_emoji.rs
+
+nf-emoji 0.2.0: `printEmoji`, `emojiView` and `emojiDump` are Nextflow script in
+`nf_emoji.nf`. The observer writes the plugin's themed progress bar, error emoji and summary
+on standard error, the bar at the start and after each task that ended rather than every
+second. uwe ships none of the plugin's greeting texts: `emoji.greeting = true` prints nothing,
+a greeting text of the config is printed. `emoji.confetti` runs no outside program and warns
+once.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

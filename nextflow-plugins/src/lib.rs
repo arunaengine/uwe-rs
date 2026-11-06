@@ -38,6 +38,7 @@ mod nf_prometheus;
 mod nf_prov;
 mod nf_python;
 mod nf_quilt;
+mod nf_r_ipc;
 mod nf_runinsights;
 mod nf_schema;
 mod nf_slack;

@@ -30,6 +30,7 @@ SMALL_DOMAINS = {
     "nextflow-plugins/src/nf_cmgg": "plugin module with its worksheet, sheet and expression parts",
     "nextflow-plugins/src/nf_fairscape": "plugin module with its task, file and evidence graph parts",
     "nextflow-plugins/src/nf_python": "plugin module with its exchange format, container and Python parts",
+    "nextflow-plugins/src/nf_r_ipc": "plugin module with its value graph, table, runtime and R launcher parts",
     "nextflow-plugins/src/nf_runinsights": "plugin module with its statistics and AI section parts",
     "nextflow-plugins/src/nf_slack": "plugin module with its settings, blocks and worker parts",
     "nextflow-plugins/src/nf_schema": "grouped shared-prefix domain; hoisting recreates nf_schema_*",

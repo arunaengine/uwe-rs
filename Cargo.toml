@@ -92,6 +92,10 @@ aws-lc-rs = { version = "1.18.1", default-features = false, features = ["aws-lc-
 base64 = "0.23.1"
 bollard = "0.21.1"
 oxrdf = "0.3.4"
+# Arrow IPC streams in Rust for nf-r-ipc, which exchanges its values with R as one table.
+arrow-array = { version = "60.0.0", default-features = false }
+arrow-ipc = { version = "60.0.0", default-features = false }
+arrow-schema = { version = "60.0.0", default-features = false }
 # Parquet files in Rust for nf-parquet, without Arrow; LZ4, Snappy, gzip and zstd pages.
 parquet = { version = "60.0.0", default-features = false, features = [
     "flate2-zlib-rs",

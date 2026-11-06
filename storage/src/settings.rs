@@ -47,6 +47,7 @@ pub enum Kind {
     Irods(Irods),
     Oci(Oci),
     Lakefs(Lakefs),
+    Lamin(Lamin),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -171,6 +172,19 @@ pub struct Lakefs {
     pub branch_source: Option<String>,
 }
 
+/// LaminDB artifacts, found through LaminHub, for inputs. Unset values come from the
+/// environment.
+#[derive(Clone, Debug, Default)]
+pub struct Lamin {
+    pub api_key: Option<Secret>,
+    /// The address of LaminHub, `https://hub.lamin.ai` by default.
+    pub hub: Option<String>,
+    /// The public anon key of LaminHub.
+    pub anon_key: Option<Secret>,
+    /// Whether S3 is read with the session credentials of LaminHub, true by default.
+    pub hub_credentials: Option<bool>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -179,6 +193,7 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
+const TYPES: [&str; 12] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
@@ -190,6 +205,7 @@ pub struct Folder {
     "irods",
     "oci",
     "lakefs",
+    "lamin",
 ];
 
 impl Settings {
@@ -422,6 +438,18 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
                     secret_key: table.secret("secret_key")?,
                     create_branches: table.flag("create_branches")?.unwrap_or(false),
                     branch_source: table.text("branch_source")?,
+                }))
+            },
+        ),
+        "lamin" => (
+            &["api_key", "hub", "anon_key", "hub_credentials"],
+            &["lamin"],
+            |table| {
+                Ok(Kind::Lamin(Lamin {
+                    api_key: table.secret("api_key")?,
+                    hub: web_address(table, "hub")?,
+                    anon_key: table.secret("anon_key")?,
+                    hub_credentials: table.flag("hub_credentials")?,
                 }))
             },
         ),

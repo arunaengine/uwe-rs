@@ -377,3 +377,73 @@ impl Lamin {
                 id.to_owned(),
                 secret.to_owned(),
                 credentials["SessionToken"].as_str().map(str::to_owned),
+            )),
+            _ => Err(Problem::fixed(format!(
+                "LaminHub gives no credentials for {root}"
+            ))),
+        }
+    }
+}
+
+/// The key of an artifact below its storage root: its own key, or `.lamindb/<uid><suffix>`
+/// when the key is virtual or missing.
+fn key(record: &Value) -> Result<String, Problem> {
+    let suffix = record["suffix"].as_str().unwrap_or_default();
+    let virtual_key = record["_key_is_virtual"].as_bool().unwrap_or(false);
+    match record["key"].as_str() {
+        Some(key) if !virtual_key => Ok(key.trim_start_matches('/').to_owned()),
+        _ => {
+            let uid = (record["uid"].as_str())
+                .ok_or_else(|| Problem::fixed("the artifact record has no uid"))?;
+            Ok(format!(".lamindb/{uid}{suffix}"))
+        }
+    }
+}
+
+/// Parses `lamin://<owner>/<instance>/artifact/<uid>[/<path>]`.
+fn address(target: &str) -> Result<Address<'_>, Problem> {
+    let invalid = || {
+        Problem::fixed(format!(
+            "{target} is not a LaminDB address like lamin://<owner>/<instance>/artifact/<uid>"
+        ))
+    };
+    let rest = target.strip_prefix("lamin://").ok_or_else(invalid)?;
+    let mut parts = rest.splitn(5, '/');
+    let (owner, name, kind, uid) = (parts.next(), parts.next(), parts.next(), parts.next());
+    let (Some(owner), Some(name), Some("artifact"), Some(uid)) = (owner, name, kind, uid) else {
+        return Err(invalid());
+    };
+    if owner.is_empty() || name.is_empty() || uid.is_empty() {
+        return Err(invalid());
+    }
+    Ok(Address {
+        owner,
+        name,
+        uid,
+        path: parts.next().unwrap_or_default().trim_end_matches('/'),
+    })
+}
+
+/// An id, which LaminDB writes as text or as a number.
+fn text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        _ => None,
+    }
+}
+
+/// An answer that is not a success; errors of the server may go away.
+fn refused(status: StatusCode, body: &str) -> Problem {
+    let detail: Value = serde_json::from_str(body).unwrap_or_default();
+    let said = (detail["message"].as_str())
+        .or_else(|| detail["detail"].as_str())
+        .map(|said| format!(": {said}"))
+        .unwrap_or_default();
+    let message = format!("LaminDB answered {status}{said}");
+    match status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
+        true => Problem::passing(message),
+        false => Problem::fixed(message),
+    }
+}
+

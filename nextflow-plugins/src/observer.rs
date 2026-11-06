@@ -125,8 +125,22 @@ pub struct End {
     /// The message of the error that ended a failed run.
     pub error: Option<String>,
     pub counts: Counts,
+    /// The task whose failure ended a failed run, if one did.
+    pub task: Option<Task>,
+    /// The workflow outputs of the `output {}` block.
+    pub outputs: Vec<Output>,
     /// Milliseconds since 1970.
     pub end: i64,
+}
+
+/// A workflow output with the files that it published.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Output {
+    pub name: String,
+    /// The targets of its files, in the order they were published.
+    pub files: Vec<String>,
+    /// Its index file, when it has one.
+    pub index: Option<String>,
 }
 
 /// How the attempts of a run ended.
@@ -223,6 +237,8 @@ mod tests {
             success: true,
             error: None,
             counts: Counts::default(),
+            task: None,
+            outputs: Vec::new(),
             end: 0,
         })
     }

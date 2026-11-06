@@ -50,7 +50,12 @@ pub(super) fn render(
                 ("memory", values(|task| task.memory)),
                 (
                     "peak_rss",
-                    values(|task| task.record["peak_rss"].as_f64().unwrap_or_default()),
+                    values(|task| {
+                        task.record
+                            .get("peak_rss")
+                            .and_then(serde_json::Value::as_f64)
+                            .unwrap_or_default()
+                    }),
                 ),
             ]),
         );

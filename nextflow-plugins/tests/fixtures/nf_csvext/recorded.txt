@@ -1,0 +1,1 @@
+Recorded with Nextflow 26.04.6 and nf-csvext 0.2.0: main.nf on a.csv and b.csv printed out-main.txt, where tmpNcsv stands for the random digits of each result file name.

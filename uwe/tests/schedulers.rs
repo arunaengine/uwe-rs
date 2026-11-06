@@ -157,9 +157,14 @@ fn tools(folder: &Path) -> PathBuf {
 /// Runs `uwe run main.nf` with `options` in `folder`, with the fake tools first on the PATH,
 /// and gives the exit code and the output.
 fn run(folder: &Path, config: &str, settings: &str, options: &[&str]) -> (i32, String) {
-    let bin = tools(folder);
     std::fs::write(folder.join("main.nf"), SCRIPT).expect("writes the script");
     std::fs::write(folder.join("nextflow.config"), config).expect("writes the config");
+    uwe(folder, "main.nf", settings, options)
+}
+
+/// Runs `uwe run <target>` with `options` in `folder`, with the fake tools first on the PATH.
+fn uwe(folder: &Path, target: &str, settings: &str, options: &[&str]) -> (i32, String) {
+    let bin = tools(folder);
     let file = folder.join("uwe.toml");
     std::fs::write(&file, settings).expect("writes the settings");
     let path = format!(
@@ -168,7 +173,7 @@ fn run(folder: &Path, config: &str, settings: &str, options: &[&str]) -> (i32, S
         std::env::var("PATH").unwrap_or_default()
     );
     let output = common::command()
-        .args(["run", "main.nf", "-uwe-config"])
+        .args(["run", target, "-uwe-config"])
         .arg(&file)
         .args(options)
         .current_dir(folder)
@@ -264,4 +269,21 @@ fn runs_gadi_pipelines() {
                     100.0MB,0.17,0\n";
     let report = std::fs::read_to_string(folder.path().join("report.csv")).expect("a report");
     assert_eq!(report, recorded, "{output}");
+}
+
+/// A Snakemake rule runs as a PBS job with `-executor pbs`, as tasks of every language do.
+#[test]
+fn runs_snakemake_rules() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let rule = "rule count:\n    input: \"sample.txt\"\n    output: \"count.txt\"\n    \
+                container: \"docker://debian:stable-slim\"\n    \
+                shell: \"wc -w < {input} > {output}\"\n";
+    std::fs::write(folder.path().join("Snakefile"), rule).expect("writes the rule");
+    std::fs::write(folder.path().join("sample.txt"), "one two three\n").expect("writes");
+    let options = ["-executor", "pbs"];
+    let (code, output) = uwe(folder.path(), "Snakefile", "[executor.pbs]\n", &options);
+    assert_eq!(code, 0, "{output}");
+    let count = std::fs::read_to_string(folder.path().join("count.txt")).expect("a count");
+    assert_eq!(count.trim(), "3");
+    assert!(folder.path().join("bin/state/1.sh").is_file());
 }

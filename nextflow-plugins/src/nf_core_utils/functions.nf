@@ -886,3 +886,201 @@ def shortReference(info) {
     return info.homepage ? "<a href='${info.homepage}'>${text}</a>".toString() : text.toString()
 }
 
+// --- Completion e-mail and chat notification ---
+
+// A time as Nextflow prints its start and end times, like `2026-11-06T09:29:44.776+01:00`.
+def isoDate(date) {
+    if (date == null) {
+        return null
+    }
+    def zone = date.format('Z')
+    return date.format("yyyy-MM-dd'T'HH:mm:ss.SSS") + zone.substring(0, 3) + ':' + zone.substring(3)
+}
+
+// The groups of the summary params in name order, merged, then facts of the run under the
+// names that the e-mail or the chat message gives them.
+def runSummary(summaryParams, names) {
+    def summary = [:]
+    (summaryParams ?: [:]).keySet().sort().each { group -> summary.putAll(summaryParams[group] ?: [:]) }
+    def facts = [
+        isoDate(workflow.start), isoDate(workflow.complete), workflow.scriptFile, workflow.scriptId,
+        workflow.repository, workflow.commitId, workflow.revision,
+        workflow.nextflow.version, workflow.nextflow.build, workflow.nextflow.timestamp,
+    ]
+    (0..<names.size()).each { index ->
+        if (facts[index] || index < 4 || index > 6) {
+            summary[names[index]] = facts[index]
+        }
+    }
+    return summary
+}
+
+def runBinding(summary, commandLine) {
+    return [
+        version: getWorkflowVersion(), runName: workflow.runName, success: workflow.success,
+        dateComplete: isoDate(workflow.complete), duration: workflow.duration,
+        exitStatus: workflow.exitStatus, errorMessage: workflow.errorMessage ?: 'None',
+        errorReport: workflow.errorReport ?: 'None', commandLine: commandLine,
+        projectDir: workflow.projectDir, summary: summary,
+    ]
+}
+
+def renderTemplate(template, binding) {
+    return new groovy.text.SimpleTemplateEngine().createTemplate(template.text).make(binding).toString()
+}
+
+def completionEmail(summaryParams, email, emailOnFail, plaintextEmail, outdir, monochromeLogs = true, multiqcReports = []) {
+    def name = pipelineName()
+    def runName = workflow.runName ?: 'unknown'
+    def subject = workflow.success ? "[${name}] Successful: ${runName}" : "[${name}] FAILED: ${runName}"
+    def names = [
+        'Date Started', 'Date Completed', 'Pipeline script file path', 'Pipeline script hash ID',
+        'Pipeline repository Git URL', 'Pipeline repository Git Commit', 'Pipeline Git branch/tag',
+        'Nextflow Version', 'Nextflow Build', 'Nextflow Compile Timestamp',
+    ]
+    def binding = runBinding(runSummary(summaryParams, names), workflow.commandLine)
+    def assets = file("${workflow.projectDir}/assets")
+    def textTemplate = assets.resolve('email_template.txt')
+    def htmlTemplate = assets.resolve('email_template.html')
+    def text = 'Default email content'
+    def html = '<html><body>Default email content</body></html>'
+    try {
+        if (textTemplate.exists()) {
+            text = renderTemplate(textTemplate, binding)
+        }
+        else {
+            coreWarn("Email template not found: ${textTemplate.toAbsolutePath()}")
+        }
+        if (htmlTemplate.exists()) {
+            html = renderTemplate(htmlTemplate, binding)
+        }
+        else {
+            coreWarn("HTML email template not found: ${htmlTemplate.toAbsolutePath()}")
+        }
+    }
+    catch (Exception e) {
+        coreWarn("Failed to render email templates: ${e.message}")
+    }
+    writeReports(outdir, html, text)
+    def address = email ?: (workflow.success ? null : emailOnFail)
+    if (!address) {
+        return
+    }
+    def platform = System.getenv('TOWER_WORKFLOW_ID')
+    def forced = params.force_completion_email instanceof Boolean && params.force_completion_email
+    if (minorRelease() >= 7 && platform && !forced) {
+        coreInfo("[${name}] Skipping summary e-mail for a Seqera Platform launch; set params.force_completion_email = true to send it. Platform notifications must be enabled separately.")
+        return
+    }
+    def message = [to: address.toString(), subject: subject.toString(), text: text]
+    if (!plaintextEmail) {
+        message.html = html
+        def logo = assets.resolve("${name.replace('/', '-')}_logo_light.png")
+        if (logo.exists()) {
+            message.logo = logo
+        }
+        message.attachment = multiqcAttachment(name, multiqcReports)
+    }
+    def outcome = deliverMail(message)
+    def colours = logColours(monochromeLogs)
+    if (outcome.status == 'sent') {
+        coreInfo("-${colours.purple}[${name}]${colours.green} Sent summary e-mail to ${address}-")
+    }
+    else if (outcome.status == 'timeout') {
+        coreWarn("[${name}] Timed out sending the summary e-mail to ${address} after 30 seconds; delivery status is unknown")
+    }
+    else if (outcome.status == 'skipped') {
+        log.warn("[${name}] Did not send the summary e-mail to ${address}: ${outcome.message}")
+    }
+    else {
+        coreWarn("[${name}] Could not send the summary e-mail to ${address}: ${outcome.message}")
+    }
+}
+
+// Writes the rendered e-mail to `pipeline_info/pipeline_report.html` and `.txt`.
+def writeReports(outdir, html, text) {
+    if (outdir == null) {
+        coreWarn('Cannot write email reports - output directory is null')
+        return
+    }
+    try {
+        def directory = file(outdir.toString()).resolve('pipeline_info')
+        directory.mkdirs()
+        directory.resolve('pipeline_report.html').text = html
+        directory.resolve('pipeline_report.txt').text = text
+    }
+    catch (Exception e) {
+        coreWarn("Failed to write email report files: ${e.message}")
+    }
+}
+
+// The MultiQC report to attach, when it is smaller than `params.max_multiqc_email_size`.
+def multiqcAttachment(name, multiqcReports) {
+    def reports = multiqcReports instanceof List ? multiqcReports : (multiqcReports == null ? [] : [multiqcReports])
+    if (reports.isEmpty()) {
+        coreWarn("[${name}] No reports found from process 'MULTIQC'")
+        return null
+    }
+    if (reports.size() > 1) {
+        coreWarn("[${name}] Found multiple reports from process 'MULTIQC', will use only one")
+    }
+    if (params.max_multiqc_email_size == null) {
+        return null
+    }
+    def limit
+    try {
+        limit = MemoryUnit.of(params.max_multiqc_email_size.toString())
+    }
+    catch (Exception e) {
+        coreWarn("Failed to parse max_multiqc_email_size: ${e.message}")
+        return null
+    }
+    def report = reports[0] instanceof Path ? reports[0] : file(reports[0].toString())
+    try {
+        return report.size() < limit.toBytes() ? report : null
+    }
+    catch (Exception e) {
+        coreWarn("Could not read the MultiQC report ${report.toUriString()}: ${e.message}")
+        return null
+    }
+}
+
+def imNotification(summaryParams, hookUrl) {
+    if (!hookUrl?.toString()?.trim()) {
+        coreWarn('Cannot send IM notification - hook URL is null or empty')
+        return
+    }
+    def url = hookUrl.toString()
+    def names = [
+        'start', 'complete', 'scriptfile', 'scriptid', 'repository', 'commitid', 'revision',
+        'nxf_version', 'nxf_build', 'nxf_timestamp',
+    ]
+    def commandLine = (workflow.commandLine ?: '').toString().replaceFirst(/\s+--hook_url\s+\S+/, '')
+    def binding = runBinding(runSummary(summaryParams, names), commandLine)
+    def template = file("${workflow.projectDir}/assets").resolve(url.contains('hooks.slack.com') ? 'slackreport.json' : 'adaptivecard.json')
+    def body
+    if (template.exists()) {
+        try {
+            body = renderTemplate(template, binding)
+        }
+        catch (Exception e) {
+            coreWarn("Failed to render IM notification template (${e.getClass().simpleName})")
+            return
+        }
+    }
+    else {
+        coreWarn("IM notification template not found: ${template.toAbsolutePath()}")
+        def outcome = workflow.success ? 'completed successfully' : 'failed'
+        body = groovy.json.JsonOutput.toJson([text: "Pipeline ${workflow.runName} ${outcome}".toString()])
+    }
+    def answer = postNotification(url, body)
+    if (answer.code != null && answer.code >= 200 && answer.code < 300) {
+        coreInfo('IM notification sent successfully')
+    }
+    else if (answer.code != null) {
+        coreWarn("IM notification failed with response code ${answer.code}")
+    }
+    else {
+        coreWarn("Failed to send IM notification (${answer.error})")
+    }
+}

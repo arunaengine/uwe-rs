@@ -394,3 +394,275 @@ impl<S: Scheduler> GridBackend<S> {
         }
     }
 
+    /// Waits a while for a job whose container ended to leave the queue, so that the
+    /// scheduler has written its log.
+    async fn settle(&self, id: &str) {
+        let pause = self.poll.min(Duration::from_secs(1));
+        let left = executor::poll::until_stopped(END_GRACE, pause, || async {
+            let look = self.queue.look(&self.scheduler, id, pause).await;
+            (!matches!(look, Look::Unknown | Look::Known(State::Active))).then_some(())
+        })
+        .await;
+        if left.is_err() {
+            tracing::warn!(
+                job = id,
+                "the {} job stays in the queue after its end",
+                S::NAME
+            );
+        }
+    }
+
+    /// Removes a job that is cancelled, held or failed, and waits a while for it to go.
+    async fn stop(&self, id: &str) {
+        if let Err(error) = self.scheduler.remove(id).await {
+            tracing::warn!(job = id, error, "cannot remove the {} job", S::NAME);
+        }
+        let pause = self.poll.min(Duration::from_secs(1));
+        let gone = executor::poll::until_stopped(CANCEL_GRACE, pause, || async {
+            let look = self.queue.look(&self.scheduler, id, pause).await;
+            matches!(look, Look::Gone | Look::Known(State::Ended(_))).then_some(())
+        })
+        .await;
+        if gone.is_err() {
+            tracing::warn!(
+                job = id,
+                "the removal of the {} job was not confirmed",
+                S::NAME
+            );
+        }
+    }
+
+    /// What an attempt left behind, by how its job ended.
+    async fn finish(
+        &self,
+        ended: Ended,
+        root: PathBuf,
+        job: Job<'_>,
+    ) -> Result<Finished, ExecutorError> {
+        let control = root.join(CONTROL);
+        let recorded = match ended {
+            Ended::Done(0) => record(job.spec, &control).await,
+            _ => containers::recorded(job.spec, &control),
+        };
+        let time = job.placement.time_seconds;
+        let (exit_code, note) = match outcome::<S>(recorded, &ended, time) {
+            Ok(outcome) => outcome,
+            Err(message) => return Err(machine::<S>(explain(message, &root, true).await)),
+        };
+        if let Some(note) = note {
+            use tokio::io::AsyncWriteExt;
+            let path = control.join(STDERR);
+            let mut file = (tokio::fs::OpenOptions::new().create(true).append(true))
+                .open(path)
+                .await?;
+            file.write_all(note.as_bytes()).await?;
+            file.flush().await?;
+        }
+        let files = match exit_code {
+            0 => parse(
+                &tokio::fs::read_to_string(control.join(MANIFEST))
+                    .await
+                    .unwrap_or_default(),
+            )?,
+            _ => Vec::new(),
+        };
+        let mut finished = Finished {
+            address: None,
+            exit_code: Some(exit_code),
+            files,
+            usage: executor::Usage::of(&root),
+            root,
+        };
+        finished.collect_outputs(job.spec, job.staging)?;
+        Ok(finished)
+    }
+}
+
+/// The exit code of the task and a note for its standard error, from the exit code that the
+/// wrapper recorded and the end of the job; `Err` when the machine failed rather than the task.
+fn outcome<S: Scheduler>(
+    recorded: Option<i32>,
+    ended: &Ended,
+    time: Option<u64>,
+) -> Result<(i32, Option<String>), String> {
+    match ended {
+        Ended::Done(0) => recorded
+            .map(|code| (code, None))
+            .ok_or_else(|| "the container ended without the exit code of the task".to_owned()),
+        Ended::Done(TIMED_OUT) => Ok((
+            143,
+            Some(format!(
+                "uwe: the task ran longer than its time of {} seconds\n",
+                time.unwrap_or_default()
+            )),
+        )),
+        Ended::Done(NOT_SEEN) => Err("the job did not start the container".to_owned()),
+        Ended::Done(status @ 129..=192) => Ok((
+            *status,
+            Some(format!(
+                "uwe: the container ended with exit code {status}, maybe for lack of memory\n"
+            )),
+        )),
+        // A captured wrapper ends with the code of its task, which it recorded first.
+        Ended::Done(status) if recorded == Some(*status) => Ok((*status, None)),
+        Ended::Done(status) => Err(format!(
+            "the container could not run the task (exit code {status})"
+        )),
+        Ended::Held(reason) => Err(format!(
+            "{} held the job ({reason}), so uwe removed it",
+            S::NAME
+        )),
+        Ended::Stopped(Some(state)) => Err(format!(
+            "the job ended as {state} without a record of its container"
+        )),
+        Ended::Stopped(None) => Err("the job ended without a record of its container".into()),
+    }
+}
+
+fn machine<S: Scheduler>(message: String) -> ExecutorError {
+    ExecutorError::Engine {
+        engine: S::NAME.into(),
+        message,
+    }
+}
+
+/// Runs a tool of a scheduler, which may take [`TOOL_GRACE`], and gives its output.
+pub async fn call(command: &mut Command) -> Result<std::process::Output, String> {
+    let program = command
+        .as_std()
+        .get_program()
+        .to_string_lossy()
+        .into_owned();
+    match tokio::time::timeout(TOOL_GRACE, command.kill_on_drop(true).output()).await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(error)) => Err(format!("cannot run {program}: {error}")),
+        Err(_) => Err(format!("{program} did not answer within {TOOL_GRACE:?}")),
+    }
+}
+
+/// What the queue tells of a job.
+#[derive(Debug)]
+enum Look {
+    Known(State),
+    /// The scheduler does not know the job.
+    Gone,
+    /// The scheduler could not be asked.
+    Unknown,
+}
+
+/// The jobs of a backend and the last answer of the scheduler about all of them, so that one
+/// call of its tool answers for every waiting attempt.
+#[derive(Debug, Default)]
+struct Queue {
+    snapshot: Mutex<Snapshot>,
+}
+
+#[derive(Debug, Default)]
+struct Snapshot {
+    /// The jobs, by when they were submitted.
+    jobs: HashMap<String, Instant>,
+    states: HashMap<String, State>,
+    /// When the scheduler answered, and whether it did.
+    asked: Option<(Instant, bool)>,
+}
+
+impl Queue {
+    async fn add(&self, id: &str) {
+        let mut snapshot = self.snapshot.lock().await;
+        snapshot.jobs.insert(id.to_owned(), Instant::now());
+    }
+
+    async fn remove(&self, id: &str) {
+        let mut snapshot = self.snapshot.lock().await;
+        snapshot.jobs.remove(id);
+        snapshot.states.remove(id);
+    }
+
+    /// The state of a job, from an answer of the scheduler that is younger than `age` and than
+    /// the submission of the job.
+    async fn look<S: Scheduler>(&self, scheduler: &S, id: &str, age: Duration) -> Look {
+        let mut snapshot = self.snapshot.lock().await;
+        let since = snapshot.jobs.get(id).copied();
+        let stale = match snapshot.asked {
+            None => true,
+            Some((at, _)) => at.elapsed() >= age || since.is_some_and(|since| since > at),
+        };
+        if stale {
+            let ids: Vec<String> = snapshot.jobs.keys().cloned().collect();
+            let answer = scheduler.states(&ids).await;
+            let answered = answer.is_ok();
+            match answer {
+                Ok(states) => snapshot.states = states,
+                Err(error) => tracing::debug!(error, "cannot ask {} about its jobs", S::NAME),
+            }
+            snapshot.asked = Some((Instant::now(), answered));
+        }
+        match (snapshot.states.get(id), snapshot.asked) {
+            (_, Some((_, false))) => Look::Unknown,
+            (Some(state), _) => Look::Known(state.clone()),
+            (None, _) => Look::Gone,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct Fake;
+
+    impl Scheduler for Fake {
+        const NAME: &'static str = "Fake";
+
+        async fn submit(&self, _: &Submission<'_>) -> Result<String, String> {
+            Ok("1".into())
+        }
+
+        async fn states(&self, ids: &[String]) -> Result<HashMap<String, State>, String> {
+            match ids.iter().any(|id| id == "broken") {
+                true => Err("no answer".into()),
+                false => Ok(ids.iter().map(|id| (id.clone(), State::Active)).collect()),
+            }
+        }
+
+        async fn remove(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn answers_new_jobs() {
+        let queue = Queue::default();
+        let age = Duration::from_secs(3600);
+        assert!(matches!(queue.look(&Fake, "7", age).await, Look::Gone));
+        // A job submitted after the last answer gets a fresh one.
+        queue.add("7").await;
+        assert!(matches!(
+            queue.look(&Fake, "7", age).await,
+            Look::Known(State::Active)
+        ));
+        queue.add("broken").await;
+        assert!(matches!(
+            queue.look(&Fake, "broken", age).await,
+            Look::Unknown
+        ));
+    }
+
+    #[test]
+    fn classifies_job_ends() {
+        let done = |status| Ended::Done(status);
+        assert_eq!(outcome::<Fake>(Some(3), &done(0), None), Ok((3, None)));
+        assert!(outcome::<Fake>(None, &done(0), None).is_err());
+        let timed_out = outcome::<Fake>(Some(0), &done(TIMED_OUT), Some(3)).expect("an end");
+        assert_eq!(timed_out.0, 143);
+        assert!(timed_out.1.expect("a note").contains("3 seconds"));
+        assert_eq!(outcome::<Fake>(Some(2), &done(2), None), Ok((2, None)));
+        let held = outcome::<Fake>(None, &Ended::Held("no node".into()), None);
+        assert_eq!(
+            held,
+            Err("Fake held the job (no node), so uwe removed it".into())
+        );
+        assert!(outcome::<Fake>(None, &Ended::Stopped(None), None).is_err());
+    }
+}

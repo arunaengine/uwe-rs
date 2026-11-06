@@ -15,12 +15,17 @@ const INSTANCE: &str = "11111111-2222-3333-4444-555555555555";
 /// Answers like the fake of the recordings, with fixed ids and uids.
 fn routes(settings: Value) -> Value {
     json!([
+        {"match": "/upsert", "body": []},
         {"match": "get-jwt-v1", "body": {"accessToken": "fake.jwt.token"}},
         {"match": "get-instance-settings-v1", "body": settings},
         {"match": "/api/account", "body": {"handle": "demo-user"}},
         {"method": "POST", "match": "/core/transform?", "body": []},
         {"match": "/transforms", "body": {"body": {"transform": {"id": 1, "uid": "TRANSFORM0001"}}}},
         {"method": "PUT", "match": "/core/run", "body": [{"id": 5, "uid": "RUN0001"}]},
+        {"method": "POST", "match": "/core/project/", "body": {"id": 501, "uid": "projDEMO00000001"}},
+        {"method": "POST", "match": "/core/ulabel/", "body": {"id": 601, "uid": "ulabRUN000000001"}},
+        {"method": "POST", "match": "/core/ulabel?", "body": []},
+        {"method": "PUT", "match": "/core/ulabel", "body": [{"id": 3, "uid": "LABEL3"}]},
         {"match": "/", "body": {}}
     ])
 }
@@ -144,6 +149,34 @@ fn marks_failed_run() {
     assert_eq!(
         ended.last().map(|body| body["_status_code"].clone()),
         Some(json!(1))
+    );
+}
+
+#[test]
+fn links_labels() {
+    let fake = Fake::start(routes(instance()));
+    let extra = "  project_uids = ['projDEMO00000001']\n  ulabel_uids = ['+nextflow']\n  \
+                 run { ulabel_uids = ['ulabRUN000000001'] }\n";
+    let (_, error, printed) = run("main.nf", &fake, extra, "special_varahamihira");
+    assert_eq!(error, None, "{printed}");
+    let requests = fake.requests();
+    let upserts = |model: &str| bodies(&requests, "PUT", &format!("/core/{model}/upsert"));
+    assert_eq!(
+        upserts("transformproject"),
+        [json!([{"transform_id": 1, "project_id": 501}])]
+    );
+    assert_eq!(
+        upserts("transformulabel"),
+        [json!([{"transform_id": 1, "ulabel_id": 3}])]
+    );
+    assert_eq!(
+        upserts("runulabel"),
+        [json!([{"run_id": 5, "ulabel_id": 3}, {"run_id": 5, "ulabel_id": 601}])]
+    );
+    let ended = bodies(&requests, "PATCH", "/core/run/RUN0001");
+    assert_eq!(
+        ended.last().map(|body| body["_status_code"].clone()),
+        Some(json!(0))
     );
 }
 

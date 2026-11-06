@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use serde_json::{Value, json};
 
 use super::Shared;
 use super::client::Client;
-use super::settings::Settings;
+use super::settings::{Settings, merge};
 use crate::observer::{End, Event, Start};
 use crate::report_format::offset_time;
 
@@ -27,6 +28,10 @@ pub(super) struct Tracker {
     shared: Arc<Shared>,
     /// The records of the run, once made.
     run: Option<Records>,
+    /// The ids of named and uid references, by model and reference.
+    resolved: HashMap<(String, String), Option<i64>>,
+    space: Option<i64>,
+    branch: Option<i64>,
     ended: bool,
 }
 
@@ -42,6 +47,9 @@ impl Tracker {
             client,
             shared,
             run: None,
+            resolved: HashMap::new(),
+            space: None,
+            branch: None,
             ended: false,
         }
     }
@@ -82,13 +90,31 @@ impl Tracker {
     }
 
     fn create(&mut self, start: &Start) -> Result<Records, String> {
+        let (space, branch) = (self.settings.space.clone(), self.settings.branch.clone());
+        self.space = self.reference("space", space.as_deref())?;
+        self.branch = self.reference("branch", branch.as_deref())?;
         let (transform_id, transform_uid) = self.transform(start)?;
-        let (_, run_uid) = self.run_record(start, transform_id, &transform_uid)?;
+        let (run_id, run_uid) = self.run_record(start, transform_id, &transform_uid)?;
+        let projects = self.ids("project", &self.settings.projects.clone())?;
+        let mut labels = self.settings.labels.clone();
+        merge(&mut labels, &self.settings.run_labels);
+        let labels = self.ids("ulabel", &labels)?;
+        let row = |key: &str, id: &i64| json!({"run_id": run_id, key: id});
+        let rows = projects.iter().map(|id| row("project_id", id)).collect();
+        self.client.upsert("runproject", rows)?;
+        let rows = labels.iter().map(|id| row("ulabel_id", id)).collect();
+        self.client.upsert("runulabel", rows)?;
         Ok(Records { run_uid })
     }
 
-    /// The transform of the pipeline and version: an existing one, or a new one.
+    /// The transform of the pipeline and version: the configured one, an existing one, or a
+    /// new one with its links.
     fn transform(&mut self, start: &Start) -> Result<(i64, String), String> {
+        if let Some(uid) = self.settings.transform_uid.clone() {
+            let found = self.client.record("transform", &uid)?;
+            let record = found.ok_or_else(|| format!("Could not find transform '{uid}'"))?;
+            return Ok((id(&record)?, uid));
+        }
         let reference = start
             .repository
             .clone()
@@ -146,33 +172,76 @@ impl Tracker {
         });
         let record = self.client.transform(&body)?;
         let (transform_id, uid) = (id(&record)?, text(&record["uid"]));
+        if let Some(placement) = self.placement() {
+            self.client.update("transform", &uid, &placement)?;
+        }
         let (owner, name) = (&self.settings.hub.owner, &self.settings.hub.name);
         let web = self.settings.web.trim_end_matches('/');
         tracing::info!("Created new transform {uid} ({web}/{owner}/{name}/transform/{uid})");
+        let projects = self.ids("project", &self.settings.projects.clone())?;
+        let mut labels = self.settings.labels.clone();
+        merge(&mut labels, &self.settings.transform_labels);
+        let labels = self.ids("ulabel", &labels)?;
+        let row = |key: &str, id: &i64| json!({"transform_id": transform_id, key: id});
+        let rows = projects.iter().map(|id| row("project_id", id)).collect();
+        self.client.upsert("transformproject", rows)?;
+        let rows = labels.iter().map(|id| row("ulabel_id", id)).collect();
+        self.client.upsert("transformulabel", rows)?;
         Ok((transform_id, uid))
     }
 
-    /// A new run record, scheduled.
+    /// The run record: the scheduled run of `run_uid` when it belongs to the transform, else
+    /// a new one.
     fn run_record(
         &mut self,
         start: &Start,
         transform: i64,
         uid: &str,
     ) -> Result<(i64, String), String> {
+        if let Some(wanted) = self.settings.run_uid.clone() {
+            match self.client.record("run", &wanted)? {
+                Some(record)
+                    if record["transform_id"].as_i64() == Some(transform)
+                        && record["_status_code"].as_i64() == Some(SCHEDULED) =>
+                {
+                    return Ok((id(&record)?, wanted));
+                }
+                _ => tracing::warn!(
+                    "nf-lamin: the run {wanted} is not a scheduled run of this transform; \
+                     a new run is made"
+                ),
+            }
+        }
         let time = utc_time(start.start);
-        let body = json!({
+        let mut body = json!({
             "transform_id": transform,
             "name": start.run_name,
             "created_at": time,
             "started_at": time,
             "_status_code": SCHEDULED,
         });
+        if let (Some(placement), Some(body)) = (self.placement(), body.as_object_mut()) {
+            body.extend(placement.as_object().cloned().unwrap_or_default());
+        }
         let record = self.client.create("run", &body)?;
         let run_uid = text(&record["uid"]);
         let (owner, name) = (&self.settings.hub.owner, &self.settings.hub.name);
         let web = self.settings.web.trim_end_matches('/');
         tracing::info!("Created new run ({web}/{owner}/{name}/transform/{uid}/{run_uid})");
         Ok((id(&record)?, run_uid))
+    }
+
+    /// The space and branch fields of new records, when the config names them.
+    fn placement(&self) -> Option<Value> {
+        let mut fields = serde_json::Map::new();
+        if let Some(space) = self.space {
+            fields.insert("space_id".into(), space.into());
+        }
+        if let Some(branch) = self.branch {
+            fields.insert("branch_id".into(), branch.into());
+            fields.insert("created_on_id".into(), branch.into());
+        }
+        (!fields.is_empty()).then_some(Value::Object(fields))
     }
 
     /// Ends the run record, once.
@@ -190,6 +259,59 @@ impl Tracker {
             Ok(()) => tracing::info!("Run '{}' {state}", run.run_uid),
             Err(error) => tracing::warn!("nf-lamin: could not end the run record: {error}"),
         }
+    }
+
+    /// The ids of references, skipping those that are optional or not found.
+    fn ids(&mut self, model: &str, references: &[String]) -> Result<Vec<i64>, String> {
+        let mut ids = Vec::new();
+        for reference in references {
+            if let Some(id) = self.reference(model, Some(reference))? {
+                ids.push(id);
+            }
+        }
+        Ok(ids)
+    }
+
+    /// The id of a record by uid, or by name: `?name` may be missing, `!name` must exist and
+    /// `+name` is made when missing.
+    fn reference(&mut self, model: &str, reference: Option<&str>) -> Result<Option<i64>, String> {
+        let Some(reference) = reference.filter(|reference| !reference.is_empty()) else {
+            return Ok(None);
+        };
+        let key = (model.to_owned(), reference.to_owned());
+        if let Some(known) = self.resolved.get(&key) {
+            return Ok(*known);
+        }
+        let (mode, name) = match reference.strip_prefix(['?', '!', '+']) {
+            Some(name) => (&reference[..1], name),
+            None => ("", reference),
+        };
+        let id = if mode.is_empty() {
+            let found = self.client.record(model, name)?;
+            if found.is_none() {
+                tracing::warn!("Could not find {model} '{name}'");
+            }
+            found.and_then(|record| record["id"].as_i64())
+        } else {
+            let filter = json!({"name": {"eq": name}});
+            let found = self.client.find(model, filter, false)?;
+            match (found.first(), mode) {
+                (Some(record), _) => record["id"].as_i64(),
+                (None, "?") => {
+                    tracing::warn!("Optional core.{model} with name '{name}' not found – skipping");
+                    None
+                }
+                (None, "!") => {
+                    return Err(format!(
+                        "core.{model} with name '{name}' not found. Use '+{name}' to create it \
+                         automatically, or '?{name}' to skip if missing."
+                    ));
+                }
+                (None, _) => self.client.create(model, &json!({"name": name}))?["id"].as_i64(),
+            }
+        };
+        self.resolved.insert(key, id);
+        Ok(id)
     }
 }
 

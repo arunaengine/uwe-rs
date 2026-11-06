@@ -1,5 +1,5 @@
-//! The `lamin` scope of nf-lamin: the instance and the hub, with the plugin's environment
-//! variables.
+//! The `lamin` scope of nf-lamin: the instance, the hub and the records to link, with the
+//! plugin's environment variables.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -20,6 +20,14 @@ pub(super) struct Settings {
     /// The base of the links in log messages.
     pub(super) web: String,
     pub(super) dry_run: bool,
+    pub(super) transform_uid: Option<String>,
+    pub(super) run_uid: Option<String>,
+    pub(super) projects: Vec<String>,
+    pub(super) labels: Vec<String>,
+    pub(super) run_labels: Vec<String>,
+    pub(super) transform_labels: Vec<String>,
+    pub(super) space: Option<String>,
+    pub(super) branch: Option<String>,
 }
 
 impl Settings {
@@ -55,12 +63,30 @@ impl Settings {
             Some(value) => value.truth() && value.to_string() != "false",
             None => variable("LAMIN_DRY_RUN").is_some_and(|value| value == "true"),
         };
+        let projects = match scope.get(&["project_uids"]) {
+            Some(value) => texts(&value),
+            None => {
+                (variable("LAMIN_CURRENT_PROJECT").map(|text| split(&text))).unwrap_or_default()
+            }
+        };
         Ok(Some(Settings {
             hub,
             web: scope
                 .text(&["api", "web_url"])
                 .unwrap_or_else(|| WEB.to_owned()),
             dry_run,
+            transform_uid: scope
+                .text(&["transform_uid"])
+                .or_else(|| variable("LAMIN_TRANSFORM_UID")),
+            run_uid: scope
+                .text(&["run_uid"])
+                .or_else(|| variable("LAMIN_RUN_UID")),
+            projects,
+            labels: scope.list(&["ulabel_uids"]),
+            run_labels: scope.list(&["run", "ulabel_uids"]),
+            transform_labels: scope.list(&["transform", "ulabel_uids"]),
+            space: scope.text(&["space_uid"]),
+            branch: scope.text(&["branch_uid"]),
         }))
     }
 }
@@ -70,6 +96,35 @@ pub(super) fn instance(config: &Config, variable: Variable) -> Option<String> {
     Scope(config)
         .text(&["instance"])
         .or_else(|| variable("LAMIN_CURRENT_INSTANCE"))
+}
+
+/// Texts of a list, or of comma-separated text.
+pub(super) fn texts(value: &Value) -> Vec<String> {
+    match value {
+        Value::Null => Vec::new(),
+        Value::List(list) => (list.borrow().items.iter())
+            .filter(|item| !matches!(item, Value::Null))
+            .map(Value::to_string)
+            .collect(),
+        other => split(&other.to_string()),
+    }
+}
+
+/// Adds the labels that the list lacks.
+pub(super) fn merge(labels: &mut Vec<String>, more: &[String]) {
+    for label in more {
+        if !labels.contains(label) {
+            labels.push(label.clone());
+        }
+    }
+}
+
+fn split(text: &str) -> Vec<String> {
+    (text.split(','))
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// The `lamin` scope of a config.
@@ -88,6 +143,12 @@ impl Scope<'_> {
         self.get(path)
             .map(|value| value.to_string())
             .filter(|text| !text.is_empty())
+    }
+
+    fn list(&self, path: &[&str]) -> Vec<String> {
+        self.get(path)
+            .map(|value| texts(&value))
+            .unwrap_or_default()
     }
 
     fn number(&self, path: &[&str]) -> Option<i64> {

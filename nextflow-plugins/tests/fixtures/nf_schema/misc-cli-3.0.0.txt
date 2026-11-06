@@ -1,0 +1,37 @@
+[WARN] WARN: Incorrect value detected for `validation.help.showHidden` or `--showHidden`, a boolean is expected. Defaulting to `false`
+===== validate params
+[ERROR] ERROR ~ Validation of pipeline parameters failed!
+
+ -- Check '.nextflow.log' file for details
+!! nextflow.validation.exceptions.SchemaValidationException: The following invalid input values have been detected:
+
+* --tool.level (9): Value is [string] but should be [integer]
+
+
+===== help hidden
+
+--secret_flag
+    type       : boolean
+    hidden     : true
+    description: A hidden flag.
+------------------------------------------------------
+
+
+===== bad sheet
+[ERROR] ERROR ~ Validation of samplesheet failed!
+
+ -- Check '.nextflow.log' file for details
+!! nextflow.validation.exceptions.SchemaValidationException: The following errors have been detected in <probe>/badsheet.csv:
+
+-> Entry 1: Error for field 'count' (x): Value is [string] but should be [integer]
+-> Entry 1: Error for field 'sample' (S 1): "S 1" does not match regular expression ^\S+$ (Sample name must not contain spaces)
+
+
+===== validate broken schema
+!! org.json.JSONException: A JSONObject text must end with '}' at 34 [character 35 line 1]
+===== validate no exit
+[/input (a.csv): the file or directory 'a.csv' does not exist, /threads (xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx): Value is [string] but should be [integer], ({"input":"a.csv","threads":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","outdir":"o"}): Value does not match against the schemas at indexes [0, 1]]
+[PIPELINE] misc.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

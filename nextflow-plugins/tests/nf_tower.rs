@@ -7,7 +7,7 @@ mod common;
 #[path = "common/fake.rs"]
 mod fake;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
 use fake::{Fake, Request, keys, recorded};
@@ -237,5 +237,88 @@ fn reports_like_platform() {
             format!("*.txt\t{folder}/results/b.txt\t8\tGreeting\t"),
             format!("report.html\t{folder}/results/report.html\t16\tJoined report\ttext/html"),
         ]
+    );
+}
+
+#[test]
+fn reports_failed_run() {
+    let id = unique("bad");
+    let _reports = Removed(Path::new(&format!("nf-{id}-reports.tsv")).to_owned());
+    let fake = Fake::start(routes(&id));
+    let (_directory, error) = run("fail.nf", &fake, "");
+    assert!(error.is_some());
+    let requests = fake.requests();
+    let complete = requests.last().expect("a request");
+    assert_eq!(path(complete), format!("/trace/{id}/complete"));
+    let complete = complete.json();
+    let workflow = &complete["workflow"];
+    assert_eq!(workflow["success"], false);
+    assert_eq!(workflow["exitStatus"], 3);
+    assert_eq!(workflow["errorMessage"], "boom");
+    assert_eq!(workflow["stats"]["failedCount"], 1);
+    let metrics: Vec<&Value> = (complete["metrics"].as_array().into_iter().flatten())
+        .map(|metric| &metric["process"])
+        .collect();
+    assert_eq!(metrics, [&json!("SLOW"), &json!("BAD")]);
+    let statuses: Vec<(i64, String)> = (tasks(&requests).iter())
+        .map(|task| {
+            let status = task["status"].as_str().unwrap_or_default().to_owned();
+            (task["taskId"].as_i64().unwrap_or_default(), status)
+        })
+        .collect();
+    assert_eq!(
+        statuses,
+        [(1, "COMPLETED".to_owned()), (2, "FAILED".to_owned())]
+    );
+    let recorded = recorded(include_str!("fixtures/nf_tower/req-fail.log"));
+    let last = recorded.last().expect("a recorded request");
+    assert_eq!(keys(&complete["workflow"]), keys(&last["body"]["workflow"]));
+}
+
+#[test]
+fn stops_unauthorized_run() {
+    let fake = Fake::start(json!([
+        {"method": "POST", "match": "/trace/create", "status": 401,
+         "body": {"message": "Unauthorized"}}
+    ]));
+    let (_directory, error) = run("main.nf", &fake, "");
+    let error = error.expect("the run fails");
+    let expected = format!(
+        "Abort exception produced when notifying an event - Unexpected HTTP response\n\
+         - endpoint    : {}/trace/create?workspaceId=12345\n- status code : 401\n\
+         - response msg: Unauthorized Seqera Platform API access -- Make sure you have \
+         specified the correct access token",
+        fake.address
+    );
+    assert!(error.contains(&expected), "{error}");
+    assert_eq!(fake.requests().len(), 1);
+}
+
+#[test]
+fn aborts_failed_progress() {
+    let id = unique("down");
+    let _reports = Removed(Path::new(&format!("nf-{id}-reports.tsv")).to_owned());
+    let fake = Fake::start(json!([
+        {"method": "POST", "match": "/trace/create", "body": {"workflowId": id}},
+        {"method": "PUT", "match": "/begin", "body": {"watchUrl": "http://127.0.0.1/watch"}},
+        {"method": "PUT", "match": "/progress", "status": 503, "type": "text/html",
+         "body": "<html><head><title>503 Service Unavailable</title></head><body>down</body></html>"},
+    ]));
+    let retry = "  retryPolicy { maxAttempts = 3; delay = '200ms' }\n";
+    let (_directory, error) = run("main.nf", &fake, retry);
+    let error = error.expect("the run fails");
+    let expected = format!(
+        "Aborting session due to Seqera Platform telemetry exception - Unexpected HTTP \
+         response\n- endpoint    : {}/trace/{id}/progress?workspaceId=12345\n\
+         - status code : 503\n- response msg: 503 Service Unavailable",
+        fake.address
+    );
+    assert!(error.contains(&expected), "{error}");
+    let paths: Vec<String> = fake.requests().iter().map(|r| path(r).to_owned()).collect();
+    let progress = format!("/trace/{id}/progress");
+    assert_eq!(paths.iter().filter(|path| **path == progress).count(), 3);
+    assert!(
+        !paths.iter().any(|path| path.ends_with("/complete")),
+        "{paths:?}"
     );
 }

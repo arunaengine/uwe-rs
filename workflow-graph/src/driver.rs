@@ -87,6 +87,10 @@ pub trait Driver {
     /// Takes the outcome of a task and returns the tasks that can run now.
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError>;
 
+    /// An attempt of a task began: the executor has it. A result of an earlier run that the
+    /// executor gives at once does not start the task, and a cancelled attempt never starts.
+    fn started(&mut self, _task: TaskId, _attempt: u32) {}
+
     /// The next time the state machine needs to advance without a task outcome.
     fn wake_at(&self) -> Option<std::time::Instant> {
         None

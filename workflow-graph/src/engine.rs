@@ -313,13 +313,13 @@ impl<'a> Engine<'a> {
                     .is_some_and(|(&(time, _), _)| time <= Instant::now())
             {
                 let (_, task) = retries.pop_first().unwrap();
-                self.start(task, pending, attempts)?;
+                self.start(task, driver, pending, attempts)?;
             }
             while !draining
                 && pending.len() < self.options.max_pending.max(1)
                 && let Some(task) = queue.next()
             {
-                self.start(Arc::new(task), pending, attempts)?;
+                self.start(Arc::new(task), driver, pending, attempts)?;
             }
             self.check_cancel()?;
             let slot = match pending.take() {
@@ -469,6 +469,7 @@ impl<'a> Engine<'a> {
     fn start(
         &mut self,
         task: Arc<Task>,
+        driver: &mut dyn Driver,
         pending: &mut Pending,
         attempts: &mut Attempts,
     ) -> Result<(), ExecuteError> {
@@ -486,12 +487,20 @@ impl<'a> Engine<'a> {
             number,
             cancel: self.task_cancel[&task.id].clone(),
         };
-        let running = if attempt.cancel.is_cancelled() {
+        let cancelled = attempt.cancel.is_cancelled();
+        let running = if cancelled {
             crate::Running::ended(Err(ExecuteError::Cancelled))
         } else {
             self.executor.run(attempt)
         };
-        if let Some(ended) = attempts.start(task.id, number, running) {
+        let ended = attempts.start(task.id, number, running);
+        // On resume the executor answers from the cache at once, and the task does not start.
+        let cached = (ended.as_ref())
+            .is_some_and(|ended| matches!(&ended.result, Ok(outcome) if outcome.cached));
+        if !cancelled && !cached {
+            driver.started(task.id, number);
+        }
+        if let Some(ended) = ended {
             pending.end(ended.id, ended.attempt, ended.result);
         }
         Ok(())

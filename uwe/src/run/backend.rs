@@ -233,6 +233,7 @@ pub(crate) fn executor(
             backend.remote = slurm::remote(settings, &storage)
                 .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             backend.staging_time = settings.slurm_staging.margin();
+            backend.cpu_memory_gb = settings.slurm_cpu_memory;
             if let Some(seconds) = settings.slurm_query {
                 backend.query_grace = std::time::Duration::from_secs(seconds);
             }

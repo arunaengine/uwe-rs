@@ -1,5 +1,5 @@
 //! Fills executor settings that the config file of uwe leaves unset from the scopes of a
-//! Nextflow config: `nomad` with nf-nomad-s5cmd's `nomad.s5cmd`.
+//! Nextflow config: `nomad` with nf-nomad-s5cmd's `nomad.s5cmd`, and `slurm_no_memory`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -258,6 +258,51 @@ fn s5cmd(
     }))
 }
 
+/// Whether `process.executor` or the executor of a process selector is `name`.
+fn names_executor(config: &Config, name: &str) -> bool {
+    let named = |value: Option<Value>| value.as_ref().and_then(text).as_deref() == Some(name);
+    if named(config.get(&["process", "executor"])) {
+        return true;
+    }
+    let Some(Value::Map(scope)) = config.get(&["process"]) else {
+        return false;
+    };
+    let scope = scope.borrow();
+    scope.entries.iter().any(|(key, body)| {
+        let selector = key.0.to_string();
+        let Value::Map(body) = body else {
+            return false;
+        };
+        let body = body.borrow();
+        let executor = (body.entries.iter())
+            .find(|(setting, _)| setting.0.to_string() == "executor")
+            .map(|(_, value)| value.clone());
+        (selector.starts_with("withName:") || selector.starts_with("withLabel:")) && named(executor)
+    })
+}
+
+/// Turns on the memory mode of the SLURM executor for nf-slurm-no-memory's executor
+/// `slurm_no_memory`, with its memory per core (4 GB by default, as the plugin's) and account.
+pub(crate) fn slurm(config: &Config, executors: &mut crate::setup::Executors) {
+    if !names_executor(config, "slurm_no_memory") {
+        return;
+    }
+    let scope = Scope(config);
+    let key = |name: &'static str| ["executor", "$slurm_no_memory", name];
+    if executors.slurm_cpu_memory.is_none() {
+        let gb = scope.text(&key("memoryPerCore"));
+        let gb = gb.and_then(|text| text.trim().parse::<f64>().ok());
+        executors.slurm_cpu_memory = Some(gb.filter(|gb| *gb > 0.0).unwrap_or(4.0));
+    }
+    if let Some(account) = scope.text(&key("account")) {
+        let options = executors.slurm_options.get_or_insert_with(Vec::new);
+        let named = |option: &String| option == "-A" || option.starts_with("--account");
+        if !options.iter().any(named) {
+            options.push(format!("--account={account}"));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,5 +373,26 @@ mod tests {
         let refused = loaded("nomad.jobs.privileged = true\n");
         let error = super::nomad(&refused, &mut crate::nomad::Config::default());
         assert!(error.is_err_and(|error| error.contains("never starts privileged")));
+    }
+
+    #[test]
+    fn maps_slurm_memory() {
+        let text = "process.executor = 'slurm_no_memory'\nexecutor {\n $slurm_no_memory {\n  \
+                    account = 'lab01'\n }\n}\n";
+        let mut executors = crate::setup::Executors::default();
+        super::slurm(&loaded(text), &mut executors);
+        assert_eq!(executors.slurm_cpu_memory, Some(4.0));
+        assert_eq!(
+            executors.slurm_options,
+            Some(vec!["--account=lab01".to_owned()])
+        );
+        let text = "process {\n withLabel: big { executor = 'slurm_no_memory' }\n}\n\
+                    executor.'$slurm_no_memory'.memoryPerCore = '8'\n";
+        let mut executors = crate::setup::Executors::default();
+        super::slurm(&loaded(text), &mut executors);
+        assert_eq!(executors.slurm_cpu_memory, Some(8.0));
+        let mut executors = crate::setup::Executors::default();
+        super::slurm(&loaded("process.executor = 'slurm'\n"), &mut executors);
+        assert_eq!(executors.slurm_cpu_memory, None);
     }
 }

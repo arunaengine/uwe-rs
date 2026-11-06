@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nextflow_config::Config;
 use nextflow_evaluator::date;
 use nextflow_evaluator::value::Value;
-use nextflow_plugins::observer::{Counts, End, Event, Observer, Record, Start};
+use nextflow_plugins::observer::{self, Counts, End, Event, Observer, Record, Start};
 use workflow_graph::render::{Format, Options, View, render};
 use workflow_graph::{
     Delivery, DeliveryMode, Edge, EdgeKind, ExecutionGraph, Language, Node, Outcome, Task, TaskId,
@@ -71,8 +71,51 @@ pub(crate) struct Reports {
     counts: Counts,
     /// How many attempts of each task the run asked for, for the observers.
     attempts: HashMap<TaskId, u32>,
+    /// What the observers hear of each task besides its trace row.
+    details: HashMap<TaskId, Details>,
     /// Whether the observers heard the end of the run, after which they hear nothing.
     closed: bool,
+}
+
+/// What observers hear of a task besides its trace row, from the request of the task.
+struct Details {
+    hash: String,
+    tag: Option<String>,
+    queue: Option<String>,
+    executor: String,
+    inputs: Vec<observer::File>,
+    values: Vec<serde_json::Value>,
+}
+
+impl Details {
+    fn of(task: &Task, request: &crate::TaskRequest) -> Details {
+        let directive = |name: &str| {
+            let found = request
+                .directives
+                .iter()
+                .rev()
+                .find(|directive| &*directive.name == name);
+            let value = found.and_then(|directive| directive.arguments.first());
+            value.filter(|value| value.truth()).map(Value::to_string)
+        };
+        let states = run_database::input_states(task);
+        let hash = run_database::fingerprint(task, &states);
+        let inputs = (request.staged.iter())
+            .map(|(path, name)| observer::File {
+                name: name.clone(),
+                path: path.uri(),
+                digest: None,
+            })
+            .collect();
+        Details {
+            hash: hash.strip_prefix("sha256:").unwrap_or(&hash).to_owned(),
+            tag: directive("tag"),
+            queue: directive("queue"),
+            executor: directive("executor").unwrap_or_else(|| "local".to_owned()),
+            inputs,
+            values: request.values.iter().map(crate::inputs::to_json).collect(),
+        }
+    }
 }
 
 /// One attempt of a task that ended.
@@ -140,6 +183,7 @@ impl Reports {
             observers: Vec::new(),
             counts: Counts::default(),
             attempts: HashMap::new(),
+            details: HashMap::new(),
             closed: false,
         }
     }
@@ -194,7 +238,7 @@ impl Reports {
     }
 
     /// Notes that the run asked for a task, or for another attempt of it.
-    pub fn asked(&mut self, task: &Task) {
+    pub fn asked(&mut self, task: &Task, request: &crate::TaskRequest) {
         if !self.asked.contains_key(&task.id) {
             self.order.push(task.id);
         }
@@ -203,6 +247,7 @@ impl Reports {
         if self.observers.is_empty() {
             return;
         }
+        self.details.insert(task.id, Details::of(task, request));
         let attempt = self.attempts.entry(task.id).or_default();
         *attempt += 1;
         let row = Row {
@@ -218,7 +263,7 @@ impl Reports {
             usage: None,
         };
         let record = unfinished(row.record(), "SUBMITTED");
-        self.notify(Event::TaskSubmitted(record));
+        self.notify(Event::TaskSubmitted(self.task(record, task.id, None)));
     }
 
     /// Tells the observers that an attempt of a task began.
@@ -241,7 +286,7 @@ impl Reports {
             usage: None,
         };
         let record = unfinished(row.record(), "RUNNING");
-        self.notify(Event::TaskStarted(record));
+        self.notify(Event::TaskStarted(self.task(record, id, None)));
     }
 
     /// Notes how an attempt of a task ended.
@@ -263,7 +308,7 @@ impl Reports {
             usage: outcome.usage,
         };
         if !self.observers.is_empty() {
-            self.tell(&row);
+            self.tell(&row, outcome);
         }
         self.rows.push(row);
         self.exits.insert(outcome.id, outcome.exit_code);
@@ -273,23 +318,67 @@ impl Reports {
     }
 
     /// Tells the observers how an attempt ended.
-    fn tell(&mut self, row: &Row) {
-        let record = row.record();
+    fn tell(&mut self, row: &Row, outcome: &Outcome) {
+        let task = self.task(row.record(), outcome.id, Some(outcome));
         let event = match row.status() {
             "CACHED" => {
                 self.counts.cached += 1;
-                Event::TaskCached(record)
+                Event::TaskCached(task)
             }
             "COMPLETED" => {
                 self.counts.succeeded += 1;
-                Event::TaskCompleted(record)
+                Event::TaskCompleted(task)
             }
             _ => {
                 self.counts.failed += 1;
-                Event::TaskFailed(record)
+                Event::TaskFailed(task)
             }
         };
         self.notify(event);
+    }
+
+    /// A task for the observers: its record with the details of its request, and the files
+    /// of its outcome once it ended.
+    fn task(&self, mut record: Record, id: TaskId, outcome: Option<&Outcome>) -> observer::Task {
+        let Some(details) = self.details.get(&id) else {
+            return observer::Task {
+                record,
+                hash: String::new(),
+                executor: "local".to_owned(),
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                values: Vec::new(),
+            };
+        };
+        let short = details
+            .hash
+            .get(..8)
+            .map(|hex| format!("{}/{}", &hex[..2], &hex[2..]));
+        record.insert("hash".into(), short.into());
+        record.insert("tag".into(), details.tag.clone().into());
+        record.insert("queue".into(), details.queue.clone().into());
+        let mut inputs = details.inputs.clone();
+        let mut outputs = Vec::new();
+        if let Some(outcome) = outcome {
+            for input in &mut inputs {
+                input.digest = outcome.inputs.get(&input.name).cloned();
+            }
+            outputs = (outcome.files.iter())
+                .map(|file| observer::File {
+                    name: file.path.clone(),
+                    path: file.location.clone(),
+                    digest: file.digest.clone(),
+                })
+                .collect();
+        }
+        observer::Task {
+            record,
+            hash: details.hash.clone(),
+            executor: details.executor.clone(),
+            inputs,
+            outputs,
+            values: details.values.clone(),
+        }
     }
 
     fn notify(&mut self, event: Event) {
@@ -511,6 +600,21 @@ impl Row {
             "peak_rss": usage.and_then(|usage| usage.memory_peak),
             "read_bytes": usage.and_then(|usage| usage.read_bytes),
             "write_bytes": usage.and_then(|usage| usage.write_bytes),
+            "disk": resources.disk_bytes,
+            "script": self.task.script,
+            // What uwe does not know or measure: executors keep task folders and job ids to
+            // themselves, and count no host, page, swap or context-switch figures.
+            "workdir": null,
+            "native_id": null,
+            "cpu_model": null,
+            "rchar": null,
+            "wchar": null,
+            "rss": null,
+            "vmem": null,
+            "peak_vmem": null,
+            "%mem": null,
+            "vol_ctxt": null,
+            "inv_ctxt": null,
         });
         match record {
             serde_json::Value::Object(record) => record,

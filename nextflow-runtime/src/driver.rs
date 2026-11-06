@@ -373,7 +373,7 @@ impl Nextflow {
                     self.made_by.insert(path.path.clone(), task.id);
                 }
                 if let Some(reports) = &mut self.reports {
-                    reports.asked(&task);
+                    reports.asked(&task, &request);
                 }
                 self.requests.insert(request.id, request);
                 Ok(task)

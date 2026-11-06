@@ -4101,6 +4101,7 @@ dependencies = [
  "nextflow-parser",
  "nextflow-plugins",
  "regex",
+ "run-database",
  "serde_json",
  "tempfile",
  "workflow-graph",

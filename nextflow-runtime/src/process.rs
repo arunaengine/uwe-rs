@@ -94,6 +94,8 @@ pub struct TaskRequest {
     pub directives: Vec<TaskDirective>,
     /// Each input file and the name it is staged under.
     pub staged: Vec<(PathValue, String)>,
+    /// The value of each input declaration, for run observers.
+    pub values: Vec<Value>,
     pub input_environment: Vec<(Rc<str>, Value)>,
     pub stdin: Option<Value>,
     /// The glob patterns of the output files, relative to the task directory.
@@ -552,6 +554,7 @@ impl ProcessNode {
             script: rendered.script,
             directives,
             staged: frame.staged.clone(),
+            values: values.clone(),
             input_environment: frame.input_environment.clone(),
             stdin: frame.stdin.clone(),
             output_patterns: Vec::new(),

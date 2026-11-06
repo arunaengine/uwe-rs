@@ -13,7 +13,7 @@ use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 use nextflow_evaluator::interpreter::Host;
-use nextflow_plugins::observer::{Counts, Event, Observer, Record};
+use nextflow_plugins::observer::{Counts, Event, File, Observer, Task};
 use nextflow_runtime::driver::{Nextflow, Settings};
 use workflow_graph::{
     Attempt, Delivery, Engine, Executor, Files, Launch, Outcome, OutputFile, Running,
@@ -48,8 +48,8 @@ struct Recorder {
 
 impl Observer for Recorder {
     fn notify(&mut self, event: &Event) {
-        if let Event::TaskStarted(record) = event
-            && record["name"] == "SECOND"
+        if let Event::TaskStarted(task) = event
+            && task.record["name"] == "SECOND"
         {
             open(&self.gate, "started");
         }
@@ -148,14 +148,14 @@ impl Files for Kept {
 
 /// The kind of an event, with the task or file it concerns.
 fn summary(event: &Event) -> String {
-    let name = |record: &Record| record["name"].as_str().unwrap_or_default().to_owned();
+    let name = |task: &Task| task.record["name"].as_str().unwrap_or_default().to_owned();
     match event {
         Event::RunStarted(_) => "run started".into(),
-        Event::TaskSubmitted(record) => format!("submitted {}", name(record)),
-        Event::TaskStarted(record) => format!("started {}", name(record)),
-        Event::TaskCompleted(record) => format!("completed {}", name(record)),
-        Event::TaskCached(record) => format!("cached {}", name(record)),
-        Event::TaskFailed(record) => format!("failed {}", name(record)),
+        Event::TaskSubmitted(task) => format!("submitted {}", name(task)),
+        Event::TaskStarted(task) => format!("started {}", name(task)),
+        Event::TaskCompleted(task) => format!("completed {}", name(task)),
+        Event::TaskCached(task) => format!("cached {}", name(task)),
+        Event::TaskFailed(task) => format!("failed {}", name(task)),
         Event::FilePublished { source, target } => {
             let target = target.rsplit("results/").next().unwrap_or_default();
             format!("published {source} as {target}")
@@ -233,27 +233,60 @@ fn hears_run_events() {
     let Event::TaskSubmitted(submitted) = &events[1] else {
         panic!("FIRST is submitted");
     };
-    assert_eq!(submitted["status"], "SUBMITTED");
-    assert_eq!(submitted["task_id"], 1);
-    assert!(submitted["exit"].is_null());
+    let record = &submitted.record;
+    assert_eq!(record["status"], "SUBMITTED");
+    assert_eq!(record["task_id"], 1);
+    assert!(record["exit"].is_null());
+    assert_eq!(submitted.hash.len(), 64, "{}", submitted.hash);
+    let short = format!("{}/{}", &submitted.hash[..2], &submitted.hash[2..8]);
+    assert_eq!(record["hash"], short.as_str());
+    assert_eq!(submitted.executor, "local");
+    assert!(
+        record["script"]
+            .as_str()
+            .is_some_and(|script| script.contains("echo a > out.txt"))
+    );
+    assert!(record["tag"].is_null());
+    assert!(submitted.inputs.is_empty() && submitted.outputs.is_empty());
     let Event::TaskCached(cached) = &events[2] else {
         panic!("FIRST is cached");
     };
-    assert_eq!(cached["status"], "CACHED");
-    assert_eq!(cached["process"], "FIRST");
+    assert_eq!(cached.record["status"], "CACHED");
+    assert_eq!(cached.record["process"], "FIRST");
+    assert_eq!(cached.hash, submitted.hash);
+    let made = File {
+        name: "out.txt".into(),
+        path: "/work/out.txt".into(),
+        digest: None,
+    };
+    assert_eq!(cached.outputs, std::slice::from_ref(&made));
     let Event::TaskStarted(started) = &events[5] else {
         panic!("SECOND starts");
     };
-    assert_eq!(started["status"], "RUNNING");
-    assert!(started["start"].is_i64() && started["complete"].is_null());
+    assert_eq!(started.record["status"], "RUNNING");
+    assert!(started.record["start"].is_i64() && started.record["complete"].is_null());
     let Event::TaskFailed(failed) = &events[6] else {
         panic!("SECOND fails");
     };
+    let record = &failed.record;
     assert_eq!(
-        (&failed["status"], &failed["exit"]),
+        (&record["status"], &record["exit"]),
         (&"FAILED".into(), &1.into())
     );
-    assert_eq!(failed["attempt"], 1);
+    assert_eq!(record["attempt"], 1);
+    assert_eq!(failed.inputs, [made]);
+    assert_eq!(failed.values, [serde_json::json!("/work/out.txt")]);
+    for unknown in [
+        "workdir",
+        "native_id",
+        "cpu_model",
+        "rchar",
+        "rss",
+        "%mem",
+        "vol_ctxt",
+    ] {
+        assert!(record[unknown].is_null(), "{unknown} is not measured");
+    }
     let Event::RunEnded(end) = &events[7] else {
         panic!("the run ends last");
     };

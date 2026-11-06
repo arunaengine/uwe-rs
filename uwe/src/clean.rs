@@ -166,12 +166,22 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let needed = needed_images(&database, &kept)?;
     let (_saving, archives) = old_archives(&crate::cwl_archives(), used_since, &needed)?;
     downloads.extend(archives);
+    // A kept or ongoing run may resume with the answers it used; each use renews their time.
+    let started = (kept.iter())
+        .filter_map(|run| database.run(run).ok().flatten())
+        .map(|run| time(run.started));
+    let answered = (used_since.into_iter())
+        .chain(active_since.map(time))
+        .chain(started)
+        .min();
+    let answers = old_answers(&cache_directory().join("scratch/nextflow/agents"), answered);
     let active = running.len().max(lease_ids.len());
     listing(
-        &location, &rules, active, &planned, &scratch, &downloads, &database,
+        &location, &rules, active, &planned, &scratch, &downloads, &answers, &database,
     )?;
     if !arguments.remove {
-        if !planned.is_empty() || !scratch.is_empty() || !downloads.is_empty() {
+        let some = !scratch.is_empty() || !downloads.is_empty() || !answers.is_empty();
+        if !planned.is_empty() || some {
             println!("Nothing was removed; add -remove to remove it.");
         }
         return Ok(());
@@ -227,7 +237,36 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             bytes(size)
         );
     }
+    for answer in &answers {
+        std::fs::remove_file(&answer.path)
+            .map_err(|error| failure(format!("uwe: {}: {error}", answer.path.display())))?;
+    }
+    if !answers.is_empty() {
+        let size = answers.iter().map(|answer| answer.size).sum();
+        println!(
+            "Removed {} of agent tasks ({}).",
+            count(answers.len(), "answer"),
+            bytes(size)
+        );
+    }
     Ok(())
+}
+
+/// The kept answers of agent tasks, and parts of crashed writes, that no run used since
+/// `since`; without a time, all. A run that resumes asks the model again for those.
+fn old_answers(folder: &Path, since: Option<SystemTime>) -> Vec<Scratch> {
+    let entries = std::fs::read_dir(folder).into_iter().flatten().flatten();
+    let old = entries.filter_map(|entry| {
+        let found = entry.metadata().ok().filter(std::fs::Metadata::is_file)?;
+        let used = found.modified().ok();
+        let recent = since.is_some_and(|since| used.is_none_or(|time| time >= since));
+        let path = entry.path();
+        (!recent).then_some(Scratch {
+            path,
+            size: found.len(),
+        })
+    });
+    old.collect()
 }
 
 /// The locations in the store that published results link to: the links that runs made and
@@ -515,6 +554,7 @@ fn folder_size(folder: &Path) -> u64 {
 }
 
 /// What the store holds, what the rules keep, and what would go, grouped by run.
+#[allow(clippy::too_many_arguments)]
 fn listing(
     location: &str,
     rules: &[String],
@@ -522,6 +562,7 @@ fn listing(
     planned: &Report,
     scratch: &[Scratch],
     downloads: &[Scratch],
+    answers: &[Scratch],
     database: &Database,
 ) -> Result<(), Failure> {
     let summary = &planned.summary;
@@ -545,7 +586,7 @@ fn listing(
             println!("It keeps {}.", words(&keeps));
         }
     }
-    if planned.is_empty() && scratch.is_empty() && downloads.is_empty() {
+    if planned.is_empty() && scratch.is_empty() && downloads.is_empty() && answers.is_empty() {
         println!("Nothing else is there to remove.");
         return Ok(());
     }
@@ -590,6 +631,14 @@ fn listing(
         println!(
             "  downloads and image archives that runs make again when they need them: {} ({})",
             count(downloads.len(), "file"),
+            bytes(size)
+        );
+    }
+    if !answers.is_empty() {
+        let size: u64 = answers.iter().map(|answer| answer.size).sum();
+        println!(
+            "  answers of agent tasks that runs ask the model for again: {} ({})",
+            count(answers.len(), "file"),
             bytes(size)
         );
     }

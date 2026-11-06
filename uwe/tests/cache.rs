@@ -368,6 +368,19 @@ fn clean_requires_rule() {
     for folder in attempts.iter().chain(&staying) {
         std::fs::create_dir_all(folder.join("work")).expect("makes the folder");
     }
+    // Kept answers of agent tasks: one that no run used for long goes, a fresh one stays.
+    let answers = scratch.join("nextflow/agents");
+    std::fs::create_dir_all(&answers).expect("makes the folder");
+    let (old, fresh) = (answers.join("old.json"), answers.join("fresh.json"));
+    for answer in [&old, &fresh] {
+        std::fs::write(answer, r#"{"answer":"yes"}"#).expect("writes an answer");
+    }
+    let file = std::fs::File::options()
+        .write(true)
+        .open(&old)
+        .expect("opens");
+    file.set_modified(std::time::UNIX_EPOCH)
+        .expect("sets the time");
     let (code, output) = uwe(root.path(), &cache, &["clean", "-keep-run", &latest]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("It keeps what run"), "{output}");
@@ -375,6 +388,8 @@ fn clean_requires_rule() {
         output.contains("scratch folders of runs that ended: 11 folders"),
         "{output}"
     );
+    let line = "answers of agent tasks that runs ask the model for again: 1 file (16 bytes)";
+    assert!(output.contains(line), "{output}");
     assert!(
         output.contains("Nothing was removed; add -remove"),
         "{output}"
@@ -387,6 +402,11 @@ fn clean_requires_rule() {
         output.contains("Removed 0 results, 0 files and 11 scratch folders."),
         "{output}"
     );
+    assert!(
+        output.contains("Removed 1 answer of agent tasks (16 bytes)."),
+        "{output}"
+    );
+    assert!(!old.exists() && fresh.exists());
     assert!(attempts.iter().all(|folder| !folder.exists()));
     assert!(staying.iter().all(|folder| folder.exists()));
     let left: Vec<String> = std::fs::read_dir(&simulated)

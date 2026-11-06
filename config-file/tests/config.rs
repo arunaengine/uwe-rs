@@ -43,6 +43,10 @@ fn settings_have_types() {
     assert_eq!(lab.number("share").unwrap(), Some(0.5));
     assert_eq!(lab.number("parts").unwrap(), Some(4.0));
     assert_eq!(lab.text("region").unwrap(), None);
+    let rules = parse("rules = [{ name = \"a\", weight = 50, share = 0.5, on = true }]").unwrap();
+    let json = rules.root().json("rules").unwrap();
+    let expected = serde_json::json!([{"name": "a", "weight": 50, "share": 0.5, "on": true}]);
+    assert_eq!(json, Some(expected));
     // One text counts as a list of one.
     let one = parse("prefixes = \"s3://a/\"").unwrap();
     assert_eq!(

@@ -1,0 +1,1 @@
+Dotenv files of the nf-dotenv 2.0.1 spec; the expected values in tests/nf_dotenv.rs were recorded from the plugin with Nextflow 26.04.6, offline.

@@ -223,6 +223,14 @@ are not read: active files are always indeterminate. A task's identity comes fro
 as uwe gives observers no names of `env` inputs. The number of publish copies in flight is
 unknown in uwe, and the audit file is written only to a local folder.
 
+## src/nf_gadi.rs
+
+nf-gadi 1.4.0 reads the resource summary of each PBS job from the standard error of its task,
+where uwe's PBS executor adds the summary that Gadi writes at the end of the job log; the plugin
+reads `.command.log` instead, and waits up to 120 s for it. Its report and settings follow the
+plugin; a missing value is an empty CSV cell, `publishTo` takes only a local path, and the
+plugin's start and end lines are not printed.
+
 ## src/nf_jev.rs
 
 nf-jev 0.2.1 sends the plugin's request bytes, so a cache folder can be shared with Nextflow

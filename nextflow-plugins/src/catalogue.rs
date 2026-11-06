@@ -134,7 +134,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-bids", Kind::Functions),
     planned("nf-boost", Kind::Functions),
     planned("nf-cmgg", Kind::Functions),
-    planned("nf-dotenv", Kind::Functions),
+    crate::nf_dotenv::PLUGIN,
     planned("nf-ped", Kind::Functions),
     planned("nf-pregex", Kind::Functions),
     planned("nf-versions", Kind::Functions),

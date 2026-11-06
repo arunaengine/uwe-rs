@@ -1,0 +1,2 @@
+   # indented comment
+FOO=bar

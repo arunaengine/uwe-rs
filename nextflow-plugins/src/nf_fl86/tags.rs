@@ -86,3 +86,118 @@ pub(crate) fn keep(store: &Store, source: &str, target: &str) -> Result<(), Stri
         .put(target, &merged)
         .map_err(|failure| message(&failure, ""))
 }
+
+/// An address for messages: S3 objects as they are, others without their details.
+fn shown(address: &str) -> String {
+    match address.split_once("://") {
+        Some(("s3", _)) => address.to_owned(),
+        Some((scheme, _)) => format!("{scheme}:[redacted]"),
+        None => "file:[redacted]".to_owned(),
+    }
+}
+
+impl Store {
+    /// The `?tagging` address of an `s3://bucket/key` object and its region.
+    fn address(&self, object: &str) -> (String, String) {
+        let rest = object.strip_prefix("s3://").unwrap_or(object);
+        let (bucket, key) = rest.split_once('/').unwrap_or((rest, ""));
+        let region = self.access.region.clone().unwrap_or("us-east-1".to_owned());
+        let base = match &self.endpoint {
+            Some(endpoint) => format!("{}/{bucket}", endpoint.trim_end_matches('/')),
+            None => {
+                let default = format!("https://{bucket}.s3.{region}.amazonaws.com");
+                self.access.endpoint("S3", default)
+            }
+        };
+        (format!("{base}/{key}?tagging"), region)
+    }
+
+    fn send(
+        &self,
+        method: &str,
+        object: &str,
+        body: Vec<u8>,
+        stage: &'static str,
+    ) -> Result<String, Failure> {
+        let (url, region) = self.address(object);
+        let mut headers = Vec::new();
+        if !body.is_empty() {
+            let digest = base64::engine::general_purpose::STANDARD.encode(Md5::digest(&body));
+            headers.push(("content-md5".to_owned(), digest));
+            headers.push(("content-type".to_owned(), "application/xml".to_owned()));
+        }
+        let request = aws::Request {
+            service: "s3".to_owned(),
+            region,
+            method: method.to_owned(),
+            url,
+            headers,
+            body,
+        };
+        let answer = aws::send(request, &self.access.credentials).map_err(|_| Failure {
+            stage,
+            kind: "SdkClientException",
+            status: None,
+            code: None,
+        })?;
+        let text = String::from_utf8_lossy(&answer.body).into_owned();
+        if answer.status >= 300 {
+            return Err(Failure {
+                stage,
+                kind: "S3Exception",
+                status: Some(answer.status),
+                code: element(&text, "Code"),
+            });
+        }
+        Ok(text)
+    }
+
+    fn tags(&self, object: &str, stage: &'static str) -> Result<Vec<(String, String)>, Failure> {
+        let text = self.send("GET", object, Vec::new(), stage)?;
+        let mut tags = Vec::new();
+        for part in text.split("<Tag>").skip(1) {
+            let tag = part.split("</Tag>").next().unwrap_or_default();
+            if let (Some(key), Some(value)) = (element(tag, "Key"), element(tag, "Value")) {
+                tags.push((key, value));
+            }
+        }
+        Ok(tags)
+    }
+
+    fn put(&self, object: &str, tags: &[(String, String)]) -> Result<(), Failure> {
+        let set: String = (tags.iter())
+            .map(|(key, value)| {
+                format!(
+                    "<Tag><Key>{}</Key><Value>{}</Value></Tag>",
+                    escape(key),
+                    escape(value)
+                )
+            })
+            .collect();
+        let body = format!(
+            "<Tagging xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><TagSet>{set}</TagSet></Tagging>"
+        );
+        self.send("PUT", object, body.into_bytes(), "write-destination-tags")
+            .map(drop)
+    }
+}
+
+/// The text of the first element of this name.
+fn element(text: &str, name: &str) -> Option<String> {
+    let start = text.find(&format!("<{name}>"))? + name.len() + 2;
+    let end = text[start..].find(&format!("</{name}>"))? + start;
+    let raw = &text[start..end];
+    Some(
+        raw.replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&"),
+    )
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}

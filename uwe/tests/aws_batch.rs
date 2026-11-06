@@ -95,3 +95,17 @@ fn runs_chosen_executor() {
     assert!(output.contains("several executors"), "{output}");
     assert_eq!(fake.requests("submitjob").len(), 1);
 }
+
+/// `-resume` takes the task of an earlier run, so the second run submits no job.
+#[test]
+fn resumes_earlier_runs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeBatch::start(&folder.path().join("fake"));
+    let config = "process.executor = 'awsbatch'\nprocess.queue = 'probe-queue'\n";
+    for _ in 0..2 {
+        let (code, output) = run(folder.path(), &fake, config, &["-resume"]);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("HELLO BATCH"), "{output}");
+    }
+    assert_eq!(fake.requests("submitjob").len(), 1);
+}

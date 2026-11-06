@@ -131,3 +131,23 @@ fn runs_chosen_executor() {
     assert!(output.contains("Azure Batch needs credentials"), "{output}");
     assert_eq!(fake.requests("POST /jobs/").len(), 1);
 }
+
+/// `-resume` takes the task of an earlier run, so the second run adds no task.
+#[test]
+fn resumes_earlier_runs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeAzure::start(&folder.path().join("fake"));
+    fake.add_pool("small", 4);
+    let config = format!(
+        "process.executor = 'azurebatch'\nprocess.queue = 'small'\n\
+         azure.batch.accountName = 'lab'\nazure.batch.accountKey = '{KEY}'\n\
+         azure.batch.endpoint = '{}'\n",
+        fake.address
+    );
+    for _ in 0..2 {
+        let (code, output) = run(folder.path(), &config, "", &["-resume"]);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("HELLO AZURE"), "{output}");
+    }
+    assert_eq!(fake.requests("POST /jobs/").len(), 1);
+}

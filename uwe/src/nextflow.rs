@@ -356,13 +356,15 @@ pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
 pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("local", "local"),
     ("awsbatch", "aws-batch"),
+    ("google-batch", "google-batch"),
     ("k8s", "kubernetes"),
     ("slurm", "slurm"),
     ("tes", "tes"),
 ];
 
 /// For a Nextflow run: the uwe executor that the pipeline's `process.executor` picks, when no
-/// `-executor` chose one; and for AWS Batch the settings of the `aws` scope.
+/// `-executor` chose one; and for AWS Batch and Google Batch the settings of the `aws` and
+/// `google` scopes.
 pub fn pipeline_executor(
     language: Language,
     launch: &Launch,
@@ -370,7 +372,8 @@ pub fn pipeline_executor(
     setup: &mut Setup,
 ) -> Result<Option<String>, crate::Failure> {
     let chosen = arguments.executor.is_some() && !arguments.executor_default;
-    let batch = arguments.executor.as_deref() == Some("aws-batch");
+    let named = arguments.executor.as_deref();
+    let batch = matches!(named, Some("aws-batch" | "google-batch"));
     if language != Language::Nextflow || (chosen && !batch) {
         return Ok(None);
     }
@@ -385,8 +388,12 @@ pub fn pipeline_executor(
             choice(&config).map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?
         }
     };
-    if batch || picked.as_deref() == Some("aws-batch") {
+    if named == Some("aws-batch") || picked.as_deref() == Some("aws-batch") {
         aws_scope(&config, &mut setup.executors.aws_batch);
+    }
+    if named == Some("google-batch") || picked.as_deref() == Some("google-batch") {
+        google_scope(&config, &mut setup.executors.google_batch)
+            .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
     }
     Ok(picked)
 }
@@ -528,6 +535,121 @@ fn aws_scope(config: &nextflow_config::Config, batch: &mut crate::aws_batch::Con
     }
 }
 
+/// Fills the Google Batch settings that `[executor.google-batch]` leaves unset from the
+/// Nextflow `google` scope, `executor.$google-batch` and a `gs://` work directory. Fusion is
+/// refused, as it needs privileged containers.
+fn google_scope(
+    config: &nextflow_config::Config,
+    batch: &mut crate::google_batch::Config,
+) -> Result<(), String> {
+    let get = |path: &[&str]| {
+        config
+            .get(path)
+            .filter(|value| !matches!(value, Value::Null))
+    };
+    let text_of = |path: &[&str]| get(path).as_ref().and_then(text);
+    let flag = |path: &[&str]| text_of(path).as_deref() == Some("true");
+    let texts = |path: &[&str]| match get(path) {
+        Some(Value::List(list)) => list.borrow().items.iter().filter_map(text).collect(),
+        Some(value) => text(&value)
+            .map(|text| text.split(',').map(|part| part.trim().to_owned()).collect())
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+    if flag(&["fusion", "enabled"]) {
+        return Err(
+            "uwe does not run Fusion, as its containers would run privileged; set \
+                    fusion.enabled = false"
+                .into(),
+        );
+    }
+    let settings = &mut batch.settings;
+    let fill = |slot: &mut Option<String>, path: &[&str]| {
+        if slot.is_none() {
+            *slot = text_of(path);
+        }
+    };
+    let scope = |key: &'static str| ["google", "batch", key];
+    fill(&mut settings.project, &["google", "project"]);
+    fill(&mut settings.location, &["google", "location"]);
+    fill(&mut settings.service_account, &scope("serviceAccountEmail"));
+    fill(&mut settings.network, &scope("network"));
+    fill(&mut settings.subnetwork, &scope("subnetwork"));
+    fill(&mut settings.boot_disk_image, &scope("bootDiskImage"));
+    fill(&mut settings.cpu_platform, &scope("cpuPlatform"));
+    if settings.logs_path.is_none() {
+        let logs = text_of(&scope("logsPath")).filter(|path| path.starts_with("gs://"));
+        settings.logs_path = logs;
+    }
+    settings.spot |= flag(&scope("spot"));
+    settings.preemptible |= flag(&scope("preemptible")) && !settings.spot;
+    settings.private_address |= flag(&scope("usePrivateAddress"));
+    settings.gpu_drivers |= flag(&scope("installGpuDrivers"));
+    settings.ops_agent |= flag(&scope("installOpsAgent"));
+    if settings.allowed_locations.is_empty() {
+        settings.allowed_locations = texts(&scope("allowedLocations"));
+    }
+    if settings.network_tags.is_empty() {
+        settings.network_tags = texts(&scope("networkTags"));
+    }
+    if settings.spot_attempts == 0 {
+        let attempts =
+            text_of(&scope("maxSpotAttempts")).and_then(|count| count.trim().parse::<u32>().ok());
+        settings.spot_attempts = attempts.unwrap_or(0).min(10);
+    }
+    let codes: Vec<i64> = (texts(&scope("autoRetryExitCodes")).iter())
+        .filter_map(|code| code.trim().parse().ok())
+        .collect();
+    if !codes.is_empty() {
+        settings.retry_codes = codes;
+    }
+    let disk = match get(&scope("bootDiskSize")) {
+        Some(Value::MemoryUnit(bytes)) => u64::try_from(bytes).ok(),
+        Some(value) => text(&value)
+            .and_then(|text| nextflow_evaluator::units::parse_memory(&text).ok())
+            .and_then(|bytes| u64::try_from(bytes).ok()),
+        None => None,
+    };
+    if settings.boot_disk_gb.is_none() {
+        settings.boot_disk_gb = disk
+            .map(|bytes| bytes.div_ceil(1 << 30))
+            .filter(|gb| *gb > 0);
+    }
+    let poll = match get(&["executor", "$google-batch", "pollInterval"]) {
+        Some(Value::Duration(millis)) => Some(millis),
+        Some(value) => {
+            text(&value).and_then(|text| nextflow_evaluator::units::parse_duration(&text).ok())
+        }
+        None => None,
+    };
+    if let Some(millis) = poll.filter(|millis| *millis >= 1000) {
+        settings.poll = std::time::Duration::from_millis(millis as u64);
+    }
+    for (path, why) in [
+        (&scope("gcsfuseOptions")[..], "its jobs mount no buckets"),
+        (
+            &["google", "enableRequesterPaysBuckets"],
+            "its storage providers bill the bucket owner",
+        ),
+        (
+            &["executor", "$google-batch", "jobName"],
+            "it names its jobs itself",
+        ),
+    ] {
+        if get(path).is_some() {
+            tracing::warn!("uwe ignores {}: {why}", path.join("."));
+        }
+    }
+    let work = text_of(&["workDir"]).filter(|work| work.starts_with("gs://"));
+    if batch.staging.root.is_none()
+        && let Some(work) = work
+    {
+        batch.staging.root = Some(work);
+        batch.staging.mode = crate::staging::Mode::ObjectStore;
+    }
+    Ok(())
+}
+
 /// The text of a config value, without quotes; `None` for one without text.
 fn text(value: &Value) -> Option<String> {
     match value {
@@ -601,6 +723,38 @@ mod tests {
         assert_eq!(settings.poll, std::time::Duration::from_secs(30));
         assert_eq!(batch.staging.root.as_deref(), Some("s3://probe/work"));
         assert_eq!(batch.staging.mode, crate::staging::Mode::ObjectStore);
+    }
+
+    #[test]
+    fn maps_google_scope() {
+        let text = "workDir = 'gs://probe/work'\nprocess.executor = 'google-batch'\n\
+                    google {\n project = 'lab'\n location = 'europe-west4'\n batch {\n  \
+                    spot = true\n  maxSpotAttempts = 3\n  autoRetryExitCodes = [50001, 50002]\n  \
+                    bootDiskSize = 60.GB\n  networkTags = ['uwe', 'batch']\n  \
+                    usePrivateAddress = true\n  serviceAccountEmail = 'jobs@lab.iam'\n  \
+                    logsPath = 'gs://probe/logs'\n }\n}\n\
+                    executor.'$google-batch'.pollInterval = '30 sec'\n";
+        let config = loaded(text);
+        assert_eq!(super::choice(&config), Ok(Some("google-batch".to_owned())));
+        let mut batch = crate::google_batch::Config::default();
+        batch.settings.location = Some("us-east1".into());
+        super::google_scope(&config, &mut batch).expect("a mapping");
+        let settings = &batch.settings;
+        assert_eq!(settings.project.as_deref(), Some("lab"));
+        assert_eq!(settings.location(), "us-east1", "uwe's own setting wins");
+        assert!(settings.spot && settings.private_address);
+        assert_eq!(settings.spot_attempts, 3);
+        assert_eq!(settings.retry_codes, [50001, 50002]);
+        assert_eq!(settings.boot_disk_gb, Some(60));
+        assert_eq!(settings.network_tags, ["uwe", "batch"]);
+        assert_eq!(settings.service_account.as_deref(), Some("jobs@lab.iam"));
+        assert_eq!(settings.logs_path.as_deref(), Some("gs://probe/logs"));
+        assert_eq!(settings.poll, std::time::Duration::from_secs(30));
+        assert_eq!(batch.staging.root.as_deref(), Some("gs://probe/work"));
+        let fusion = loaded("fusion.enabled = true\n");
+        let mut batch = crate::google_batch::Config::default();
+        let error = super::google_scope(&fusion, &mut batch).expect_err("Fusion");
+        assert!(error.contains("privileged"), "{error}");
     }
 
     #[test]

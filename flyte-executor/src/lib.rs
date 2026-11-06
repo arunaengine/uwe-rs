@@ -4,11 +4,13 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod auth;
+mod backend;
 mod client;
 pub mod outcome;
 pub mod run;
 mod settings;
 
+pub use backend::FlyteBackend;
 pub use client::{Client, FlyteError};
 pub use run::Project;
 pub use settings::{ApiKey, KEY_VARIABLES, Settings, address};

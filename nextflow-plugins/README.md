@@ -161,6 +161,19 @@ own `nf_python` module goes to `<workDir>/.nf-python/lib`. The container gets on
 variables, not the environment of the run. Integers of any size come back, where the plugin
 fails above 32 bits, and a `VersionNumber` comes back as its text.
 
+## src/nf_r_ipc/mod.rs
+
+nf-r-ipc 0.2.2 sends the arguments and gets the result of each call as one Arrow IPC stream,
+with the plugin's tables and value graph, and runs uwe's own R launcher, `launcher.R`, in a new
+container per call: the image of `_docker_image` or `nfR.docker_image` for the `docker`
+runtime, else `rocker/r-ver:4.5.1`; `_executable` and `_container_rscript` name the R program
+inside it. The launcher installs `nanoarrow` into `<workDir>/.nf-r-ipc/library` when the image
+has none. The scratch folder of a call is `<workDir>/.nf-r-ipc/nfr-<n>`, kept after the call,
+and is mounted at its own path, so `docker_workdir` has no effect. Refused with a message: the
+`conda` runtime and `_conda_env` (no conda program) and `_docker_container`, as uwe runs no
+command in a running container; `docker_args` are ignored with a warning. `asZonedDateTime`
+gives an object that prints as Java's `ZonedDateTime`, without its methods.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

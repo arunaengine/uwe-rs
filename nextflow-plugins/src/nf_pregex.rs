@@ -1,4 +1,4 @@
-//! nf-pregex 1.1.0: builds readable regular expressions from patterns.
+//! nf-pregex 1.1.0: builds readable regular expressions and tests, explains and draws them.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -15,6 +15,7 @@ use crate::{Context, native, object};
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: FUNCTIONS,
     call: Some(call),
+    methods: Some(methods),
     ..Plugin::new("nf-pregex", Kind::Functions, State::Implemented)
 };
 
@@ -92,10 +93,12 @@ enum Node {
     NamedGroup(String, Rc<Node>),
 }
 
-/// The objects of the plugin: patterns.
+/// The objects of the plugin: patterns and the reports of `testAll`.
 #[derive(Debug)]
 enum Pregex {
     Pattern(Rc<Node>),
+    /// The regex and, per input, whether a match was expected and found.
+    Report(String, Vec<(String, bool, bool)>),
 }
 
 impl Native for Pregex {
@@ -106,6 +109,10 @@ impl Native for Pregex {
     fn text(&self) -> String {
         match self {
             Pregex::Pattern(node) => node.regex(),
+            Pregex::Report(..) => {
+                let address = self as *const Pregex as usize;
+                format!("io.nextflow.pregex.PRegEx$TestReport@{address:x}")
+            }
         }
     }
 }
@@ -184,6 +191,21 @@ impl Node {
             Node::CharClass { .. } => "CharClass",
             Node::Group(_) => "Group",
             Node::NamedGroup(..) => "NamedGroup",
+        }
+    }
+
+    fn children(&self) -> Vec<Rc<Node>> {
+        match self {
+            Node::Sequence(children) | Node::AnyOf(children) => children.clone(),
+            Node::Optional(child)
+            | Node::OneOrMore(child)
+            | Node::ZeroOrMore(child)
+            | Node::Exactly(child, _)
+            | Node::Range(child, ..)
+            | Node::AtLeast(child, _)
+            | Node::Group(child)
+            | Node::NamedGroup(_, child) => vec![child.clone()],
+            _ => Vec::new(),
         }
     }
 }
@@ -496,6 +518,295 @@ fn multi_range(spec: &Value) -> Result<Value, Error> {
         return Err(failure("At least one valid range is required".into()));
     }
     Ok(pattern(Node::MultiRange(ranges)))
+}
+
+/// Runs a method of a pattern or a report, `None` for a method it does not have.
+fn methods(
+    object: &Value,
+    name: &str,
+    arguments: Vec<Value>,
+    _: &mut Context,
+) -> Result<Option<Value>, Error> {
+    let node = match native::<Pregex>(object).as_deref() {
+        Some(Pregex::Pattern(node)) => node.clone(),
+        Some(Pregex::Report(regex, results)) => return Ok(report_method(regex, results, name)),
+        None => return Ok(None),
+    };
+    let regex = node.regex();
+    let number = |index: usize| match arguments.get(index) {
+        Some(Value::Number(number)) => Some(number.to_i64()),
+        _ => None,
+    };
+    let input = |index: usize| match arguments.get(index) {
+        None | Some(Value::Null) => None,
+        Some(other) => Some(other.to_string()),
+    };
+    let compiled = || Pattern::new(&regex).map_err(thrown);
+    Ok(Some(match (name, arguments.as_slice()) {
+        ("toRegex" | "toString", []) => Value::string(regex.as_str()),
+        ("then", [next]) => match node_of(next) {
+            Some(next) => pattern(Node::Sequence(vec![node, next])),
+            None => return Ok(None),
+        },
+        ("optional" | "oneOrMore" | "zeroOrMore" | "group", []) => quantified(name, node),
+        ("exactly" | "atLeast", [_]) => match number(0) {
+            Some(count) => counted(name, node, count, None).map_err(failure)?,
+            None => return Ok(None),
+        },
+        ("range", [_, _]) => match number(0).zip(number(1)) {
+            Some((min, max)) => counted(name, node, min, Some(max)).map_err(failure)?,
+            None => return Ok(None),
+        },
+        ("namedGroup", [name]) => named(&name.to_string(), node).map_err(failure)?,
+        ("children", []) => Value::list(node.children().into_iter().map(shared).collect()),
+        ("test", [_]) => match input(0) {
+            Some(text) => Value::Boolean(compiled()?.find(&text).map_err(thrown)?),
+            None => Value::Boolean(false),
+        },
+        ("matches", [_]) => match input(0) {
+            Some(text) => Value::Boolean(compiled()?.matches(&text).map_err(thrown)?),
+            None => Value::Boolean(false),
+        },
+        ("extract", [_]) => match input(0) {
+            Some(text) => extract(&regex, &compiled()?, &text)?,
+            None => Value::Null,
+        },
+        ("testAll", [Value::Map(cases)]) => {
+            let pattern = compiled()?;
+            let mut results = Vec::new();
+            for (input, expected) in cases.borrow().entries.iter() {
+                let found = pattern.find(&input.0.to_string()).map_err(thrown)?;
+                results.push((input.0.to_string(), expected.truth(), found));
+            }
+            crate::object(
+                "io.nextflow.pregex.PRegEx$TestReport",
+                Pregex::Report(regex, results),
+            )
+        }
+        ("explain", []) => Value::string(explain(&node)),
+        ("visualize", []) => Value::string(visualize(&node)),
+        (getter, []) => match getter_value(&node, getter) {
+            Some(value) => value,
+            None => return Ok(None),
+        },
+        _ => return Ok(None),
+    }))
+}
+
+fn getter_value(node: &Node, getter: &str) -> Option<Value> {
+    let int = |n: i64| Value::integer(n as i32);
+    Some(match (node, getter) {
+        (Node::Literal(text), "getText") => Value::string(text.as_str()),
+        (Node::Either(items), "getAlternatives") => Value::list(
+            items
+                .iter()
+                .map(|item| Value::string(item.as_str()))
+                .collect(),
+        ),
+        (Node::Raw(regex), "getRegex") => Value::string(regex.as_str()),
+        (Node::Exactly(_, count), "getCount") => int(*count),
+        (Node::Range(_, min, _) | Node::AtLeast(_, min), "getMin") => int(*min),
+        (Node::Range(_, _, max), "getMax") => int(*max),
+        (Node::CharClass { chars, .. }, "getChars") => Value::string(chars.as_str()),
+        (Node::NamedGroup(name, _), "getName") => Value::string(name.as_str()),
+        _ => return None,
+    })
+}
+
+/// The first match as a map: the whole match as `0` and `match`, each group by number, then
+/// each named group by name, in the order of the regex.
+fn extract(regex: &str, pattern: &Pattern, text: &str) -> Result<Value, Error> {
+    let Some(groups) = pattern.first_groups(text).map_err(thrown)? else {
+        return Ok(Value::Null);
+    };
+    let group = |index: usize| match groups.get(index).cloned().flatten() {
+        Some(text) => Value::string(text),
+        None => Value::Null,
+    };
+    let mut entries = vec![
+        (Value::string("0"), group(0)),
+        (Value::string("match"), group(0)),
+    ];
+    for index in 1..groups.len() {
+        entries.push((Value::string(index.to_string()), group(index)));
+    }
+    for (name, index) in named_groups(regex) {
+        entries.push((Value::string(name), group(index)));
+    }
+    Ok(Value::map(entries))
+}
+
+/// The named groups of a regex with their numbers, counting the capturing groups outside
+/// classes and escapes.
+fn named_groups(regex: &str) -> Vec<(String, usize)> {
+    let characters: Vec<char> = regex.chars().collect();
+    let at = |index: usize| characters.get(index).copied().unwrap_or_default();
+    let (mut named, mut number, mut class, mut index) = (Vec::new(), 0, false, 0);
+    while index < characters.len() {
+        match (at(index), class) {
+            ('\\', _) => index += 1,
+            (']', true) => class = false,
+            (_, true) => {}
+            ('[', false) => class = true,
+            ('(', false) if at(index + 1) != '?' => number += 1,
+            ('(', false) if at(index + 2) == '<' && at(index + 3).is_ascii_alphabetic() => {
+                number += 1;
+                let name: String = (characters[index + 3..].iter())
+                    .take_while(|c| c.is_ascii_alphanumeric())
+                    .collect();
+                if at(index + 3 + name.len()) == '>' {
+                    named.push((name, number));
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    named
+}
+
+fn report_method(regex: &str, results: &[(String, bool, bool)], name: &str) -> Option<Value> {
+    let passed = results
+        .iter()
+        .filter(|(_, expected, found)| expected == found)
+        .count();
+    let count = |n: usize| Value::integer(n as i32);
+    Some(match name {
+        "getResults" => Value::list(
+            (results.iter())
+                .map(|(input, expected, found)| {
+                    Value::map([
+                        (Value::string("input"), Value::string(input.as_str())),
+                        (Value::string("expected"), Value::Boolean(*expected)),
+                        (Value::string("actual"), Value::Boolean(*found)),
+                        (Value::string("passed"), Value::Boolean(expected == found)),
+                    ])
+                })
+                .collect(),
+        ),
+        "getPassed" => count(passed),
+        "getFailed" => count(results.len() - passed),
+        "getTotal" => count(results.len()),
+        "getAllPassed" | "isAllPassed" => Value::Boolean(passed == results.len()),
+        "getPattern" => Value::string(regex),
+        "report" => Value::string(report(regex, results, passed)),
+        _ => return None,
+    })
+}
+
+fn report(regex: &str, results: &[(String, bool, bool)], passed: usize) -> String {
+    let rule = "─".repeat(70);
+    let mut text = format!(
+        "\n╔{0}╗\n║  Test Report{1}║\n╚{0}╝\n\nPattern: {regex}\n{rule}\n\n",
+        "═".repeat(70),
+        " ".repeat(55)
+    );
+    let outcome = |matched: bool| if matched { "match" } else { "no match" };
+    for (input, expected, found) in results {
+        let (mark, verdict) = if expected == found {
+            ("✓", "PASS")
+        } else {
+            ("✗", "FAIL")
+        };
+        text.push_str(&format!(
+            "  {mark} [{verdict}] \"{input}\"\n      Expected: {} | Actual: {}\n",
+            outcome(*expected),
+            outcome(*found)
+        ));
+    }
+    let failed = results.len() - passed;
+    let status = match failed {
+        0 => "✓ ALL TESTS PASSED",
+        _ => "✗ SOME TESTS FAILED",
+    };
+    text.push_str(&format!(
+        "\n{rule}\nResults: {passed} passed, {failed} failed, {} total\nStatus: {status}\n",
+        results.len()
+    ));
+    text
+}
+
+/// What a node matches, as `explain()` and `visualize()` describe it.
+fn description(node: &Node) -> String {
+    match node {
+        Node::Literal(text) => format!("Literal text: \"{text}\""),
+        Node::Digit => "Any digit (0-9)".into(),
+        Node::WordChar => "Any word character (a-z, A-Z, 0-9, _)".into(),
+        Node::Whitespace => "Any whitespace character".into(),
+        Node::AnyChar => "Any character".into(),
+        Node::OneOrMore(_) => "One or more of:".into(),
+        Node::ZeroOrMore(_) => "Zero or more of:".into(),
+        Node::Optional(_) => "Optional:".into(),
+        Node::Exactly(_, count) => format!("Exactly {count} times:"),
+        Node::Range(_, min, max) => format!("Between {min} and {max} times:"),
+        Node::AtLeast(_, min) => format!("At least {min} times:"),
+        Node::Either(items) => format!("One of: {}", items.join(", ")),
+        Node::AnyOf(_) => "One of the following patterns:".into(),
+        Node::NamedGroup(name, _) => format!("Named group '{name}':"),
+        Node::Group(_) => "Capturing group:".into(),
+        Node::Sequence(_) => "Sequence of patterns".into(),
+        Node::CharClass { chars, .. } => format!("Character class: [{chars}]"),
+        Node::Raw(regex) => format!("Raw regex: {regex}"),
+        other => other.kind().into(),
+    }
+}
+
+fn explain(node: &Node) -> String {
+    let rule = "━".repeat(70);
+    let mut lines = Vec::new();
+    breakdown(node, 0, &mut lines);
+    let summary = match node {
+        Node::Literal(text) => format!("the exact text '{text}'"),
+        Node::Digit => "numeric digits".into(),
+        Node::WordChar => "alphanumeric characters and underscores".into(),
+        Node::Either(items) => format!("one of: {}", items.join(", ")),
+        other => format!("patterns matching: {}", other.regex()),
+    };
+    format!(
+        "Pattern: {}\n{rule}\n\nPattern Type: {}\n\nBreakdown:\n{}\n\n{rule}\nThis pattern will \
+         match strings containing: {summary}",
+        node.regex(),
+        node.kind(),
+        lines.join("\n")
+    )
+}
+
+fn breakdown(node: &Node, depth: usize, lines: &mut Vec<String>) {
+    let indent = "  ".repeat(depth);
+    lines.push(format!("{indent}• {}", description(node)));
+    if let Node::Either(items) = node {
+        lines.push(format!("{indent}  Options:"));
+        lines.extend(items.iter().map(|item| format!("{indent}    - {item}")));
+    }
+    for child in node.children() {
+        breakdown(&child, depth + 1, lines);
+    }
+}
+
+fn visualize(node: &Node) -> String {
+    let rule = "═".repeat(70);
+    let mut lines = Vec::new();
+    drawn(node, "", true, &mut lines);
+    format!(
+        "\nPattern Structure:\n{rule}\n{}\n{rule}\n\nRegex: {}\n",
+        lines.join("\n"),
+        node.regex()
+    )
+}
+
+fn drawn(node: &Node, prefix: &str, last: bool, lines: &mut Vec<String>) {
+    let connector = if last { "└── " } else { "├── " };
+    lines.push(format!("{prefix}{connector}{}", description(node)));
+    let inner = format!("{prefix}{}", if last { "    " } else { "│   " });
+    let children: Vec<Rc<Node>> = match node {
+        Node::Either(items) => (items.iter())
+            .map(|item| Rc::new(Node::Literal(item.clone())))
+            .collect(),
+        other => other.children(),
+    };
+    for (index, child) in children.iter().enumerate() {
+        drawn(child, &inner, index + 1 == children.len(), lines);
+    }
 }
 
 /// The `IllegalArgumentException` of a check of the plugin.

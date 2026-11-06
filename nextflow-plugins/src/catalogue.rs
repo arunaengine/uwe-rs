@@ -164,7 +164,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-metalog", Kind::Observer),
     crate::nf_prov::PLUGIN,
     planned("nf-runinsights", Kind::Observer),
-    planned("nf-snapshot", Kind::Observer),
+    crate::nf_snapshot::PLUGIN,
     planned("nf-storagemetrics", Kind::Observer),
     // Observers that send to services.
     planned("nf-biffix", Kind::Observer),

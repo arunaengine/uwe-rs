@@ -1,5 +1,5 @@
-//! nf-lamin 0.9.0, in part: records the run and its transform in a LaminDB instance, and hands
-//! the `lamin` scope to the provider of `lamin://` paths.
+//! nf-lamin 0.9.0: records the run, its transform and its remote input and output files in a
+//! LaminDB instance, and hands the `lamin` scope to the provider of `lamin://` paths.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

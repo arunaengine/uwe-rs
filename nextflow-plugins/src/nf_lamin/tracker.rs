@@ -1,5 +1,5 @@
-//! The worker of nf-lamin's run tracking: makes the transform and the run, and ends the run
-//! record.
+//! The worker of nf-lamin's run tracking: makes the transform and the run, registers the
+//! remote files that the run reads and writes as artifacts, and ends the run record.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use super::Shared;
 use super::client::Client;
-use super::settings::{Settings, merge};
+use super::settings::{Choice, Direction, Settings, merge};
 use crate::observer::{End, Event, Start};
 use crate::report_format::offset_time;
 
@@ -28,28 +28,59 @@ pub(super) struct Tracker {
     shared: Arc<Shared>,
     /// The records of the run, once made.
     run: Option<Records>,
+    /// Folders whose files are not tracked: the work and assets directories, as configured.
+    work_dir: String,
+    assets_dir: String,
+    /// The artifacts made, by storage path.
+    artifacts: HashMap<String, Artifact>,
+    /// The source of each published file, by target.
+    sources: HashMap<String, String>,
     /// The ids of named and uid references, by model and reference.
     resolved: HashMap<(String, String), Option<i64>>,
     space: Option<i64>,
     branch: Option<i64>,
+    warned_local: bool,
     ended: bool,
 }
 
 #[derive(Clone)]
 struct Records {
+    run_id: i64,
     run_uid: String,
+}
+
+#[derive(Clone)]
+struct Artifact {
+    id: i64,
+    uid: String,
+}
+
+/// What an artifact is made for.
+struct Registration {
+    /// `None` for the run's report, which has no run and no links.
+    direction: Option<Direction>,
+    choice: Choice,
+    description: String,
 }
 
 impl Tracker {
     pub(super) fn new(settings: Settings, client: Client, shared: Arc<Shared>) -> Tracker {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let assets_dir =
+            std::env::var("NXF_ASSETS").unwrap_or_else(|_| format!("{home}/.nextflow/assets"));
         Tracker {
             settings,
             client,
             shared,
             run: None,
+            work_dir: String::new(),
+            assets_dir,
+            artifacts: HashMap::new(),
+            sources: HashMap::new(),
             resolved: HashMap::new(),
             space: None,
             branch: None,
+            warned_local: false,
             ended: false,
         }
     }
@@ -57,18 +88,27 @@ impl Tracker {
     pub(super) fn handle(&mut self, event: &Event) {
         match event {
             Event::RunStarted(start) => self.started(start),
+            Event::TaskCompleted(task) => {
+                for input in &task.inputs {
+                    self.track(&input.path, Direction::Input, None);
+                }
+            }
+            Event::FilePublished { source, target } => {
+                self.sources.insert(target.clone(), source.clone());
+                self.track(target, Direction::Output, None);
+            }
             Event::RunEnded(end) => self.finished(end),
             Event::TaskSubmitted(_)
             | Event::TaskStarted(_)
-            | Event::TaskCompleted(_)
             | Event::TaskCached(_)
-            | Event::TaskFailed(_)
-            | Event::FilePublished { .. } => {}
+            | Event::TaskFailed(_) => {}
         }
     }
 
-    /// Makes the transform and the run, and marks the run as started.
+    /// Makes the transform and the run, marks the run as started and registers the inputs
+    /// that the config lists.
     fn started(&mut self, start: &Start) {
+        self.work_dir = start.work_dir.clone();
         let records = match self.create(start) {
             Ok(records) => records,
             Err(error) => {
@@ -87,6 +127,13 @@ impl Tracker {
             Err(error) => tracing::warn!("nf-lamin: could not mark the run as started: {error}"),
         }
         self.run = Some(records);
+        for listed in self.settings.inputs.paths.clone() {
+            let choice = Choice {
+                kind: listed.kind,
+                labels: listed.labels,
+            };
+            self.listed(&listed.path, Direction::Input, choice, None);
+        }
     }
 
     fn create(&mut self, start: &Start) -> Result<Records, String> {
@@ -104,7 +151,7 @@ impl Tracker {
         self.client.upsert("runproject", rows)?;
         let rows = labels.iter().map(|id| row("ulabel_id", id)).collect();
         self.client.upsert("runulabel", rows)?;
-        Ok(Records { run_uid })
+        Ok(Records { run_id, run_uid })
     }
 
     /// The transform of the pipeline and version: the configured one, an existing one, or a
@@ -244,7 +291,155 @@ impl Tracker {
         (!fields.is_empty()).then_some(Value::Object(fields))
     }
 
-    /// Ends the run record, once.
+    /// Registers a file that the run read or wrote, when the rules track it.
+    fn track(&mut self, path: &str, direction: Direction, description: Option<String>) {
+        if self.run.is_none() || self.artifacts.contains_key(path) || self.local(path) {
+            return;
+        }
+        let tracking = match direction {
+            Direction::Input => &self.settings.inputs,
+            Direction::Output => &self.settings.outputs,
+        };
+        let skipped: Vec<&str> = [
+            (tracking.skip_work, self.work_dir.as_str()),
+            (tracking.skip_assets, self.assets_dir.as_str()),
+        ]
+        .into_iter()
+        .filter_map(|(skip, folder)| skip.then_some(folder))
+        .collect();
+        if let Some(choice) = tracking.decide(path, &skipped) {
+            self.register_file(path, direction, choice, description);
+        }
+    }
+
+    /// Registers a path of `include_paths`, which the rules do not filter.
+    fn listed(&mut self, path: &str, direction: Direction, choice: Choice, note: Option<String>) {
+        if !self.artifacts.contains_key(path) && !self.local(path) {
+            self.register_file(path, direction, choice, note);
+        }
+    }
+
+    fn register_file(
+        &mut self,
+        path: &str,
+        direction: Direction,
+        choice: Choice,
+        note: Option<String>,
+    ) {
+        let Some(run) = &self.run else {
+            return;
+        };
+        let description = note.unwrap_or_else(|| match direction {
+            Direction::Input => format!("Input artifact at {}", nextflow_uri(path)),
+            Direction::Output => format!("Output artifact for run {}", run.run_id),
+        });
+        let registration = Registration {
+            direction: Some(direction),
+            choice,
+            description,
+        };
+        self.register(path, registration);
+    }
+
+    /// Whether a path is on this machine; LaminDB tracks only remote paths, with one warning.
+    fn local(&mut self, path: &str) -> bool {
+        let local = match path.split_once("://") {
+            Some((scheme, _)) => scheme == "file",
+            None => true,
+        };
+        if local && !self.warned_local {
+            self.warned_local = true;
+            tracing::warn!(
+                "Local file detected at {path}. nf-lamin only tracks remote paths (s3://, gs://, \
+                 etc.). Local files will be ignored. This warning is only shown once per session."
+            );
+        }
+        local
+    }
+
+    /// Makes the artifact of a path and links it to the run, the projects and the labels; a
+    /// failure is logged and the run goes on.
+    fn register(&mut self, path: &str, registration: Registration) -> Option<Artifact> {
+        let run = self.run.clone()?;
+        let mut kwargs = serde_json::Map::new();
+        if registration.direction == Some(Direction::Output) {
+            kwargs.insert("run_id".into(), run.run_id.into());
+        }
+        kwargs.insert("description".into(), registration.description.into());
+        if let Some(kind) = &registration.choice.kind {
+            kwargs.insert("kind".into(), kind.clone().into());
+        }
+        if let Some(placement) = self
+            .placement()
+            .and_then(|value| value.as_object().cloned())
+        {
+            kwargs.extend(
+                placement
+                    .into_iter()
+                    .filter(|(key, _)| key != "created_on_id"),
+            );
+        }
+        let body = json!({"path": path, "kwargs": kwargs});
+        let record = match self.client.artifact(&body) {
+            Ok(record) => record,
+            Err(error) => {
+                tracing::warn!("nf-lamin: could not register the artifact {path}: {error}");
+                return None;
+            }
+        };
+        let artifact = Artifact {
+            id: record["id"].as_i64()?,
+            uid: text(&record["uid"]),
+        };
+        let earlier = (record["run_id"].as_i64()).is_some_and(|owner| owner != run.run_id);
+        let verb = if earlier {
+            "Detected previous"
+        } else {
+            "Created"
+        };
+        tracing::info!("{verb} artifact {} for {path}", artifact.uid);
+        self.artifacts.insert(path.to_owned(), artifact.clone());
+        let Some(direction) = registration.direction else {
+            return Some(artifact);
+        };
+        if direction == Direction::Input {
+            let row = json!({"artifact_id": artifact.id, "run_id": run.run_id});
+            self.link("artifact_input_of_runs", vec![row], "the input to the run");
+        }
+        let mut labels = self.settings.labels.clone();
+        merge(&mut labels, &registration.choice.labels);
+        let projects = self.settings.projects.clone();
+        self.annotate(&artifact, &projects, &labels);
+        Some(artifact)
+    }
+
+    /// Links an artifact to projects and labels.
+    fn annotate(&mut self, artifact: &Artifact, projects: &[String], labels: &[String]) {
+        for (model, link, key, references) in [
+            ("project", "artifactproject", "project_id", projects),
+            ("ulabel", "artifactulabel", "ulabel_id", labels),
+        ] {
+            let ids = match self.ids(model, references) {
+                Ok(ids) => ids,
+                Err(error) => {
+                    tracing::warn!("Could not link {model}: {error}");
+                    continue;
+                }
+            };
+            let rows = (ids.iter())
+                .map(|id| json!({"artifact_id": artifact.id, key: id, "feature_id": null}))
+                .collect();
+            self.link(link, rows, model);
+        }
+    }
+
+    fn link(&mut self, model: &str, rows: Vec<Value>, what: &str) {
+        if let Err(error) = self.client.upsert(model, rows) {
+            tracing::warn!("Could not link {what}: {error}");
+        }
+    }
+
+    /// Registers the outputs and ends the run record, once.
     fn finished(&mut self, end: &End) {
         if std::mem::replace(&mut self.ended, true) {
             return;
@@ -252,13 +447,49 @@ impl Tracker {
         let Some(run) = self.run.clone() else {
             return;
         };
+        for output in &end.outputs {
+            let note = format!("Output artifact '{}' for run {}", output.name, run.run_id);
+            for file in output.files.iter().chain(&output.index) {
+                self.track(file, Direction::Output, Some(note.clone()));
+            }
+        }
+        for listed in self.settings.outputs.paths.clone() {
+            let choice = Choice {
+                kind: listed.kind,
+                labels: listed.labels,
+            };
+            self.listed(&listed.path, Direction::Output, choice, None);
+        }
+        let report = self.report(&run);
         let code = if end.success { COMPLETED } else { ERRORED };
-        let body = json!({"finished_at": offset_time(end.end), "_status_code": code});
+        let mut body = json!({"finished_at": offset_time(end.end), "_status_code": code});
+        if let (Some(report), Some(fields)) = (report, body.as_object_mut()) {
+            fields.insert("report_id".into(), report.id.into());
+        }
         let state = if end.success { "completed" } else { "errored" };
         match self.client.update("run", &run.run_uid, &body) {
             Ok(()) => tracing::info!("Run '{}' {state}", run.run_uid),
             Err(error) => tracing::warn!("nf-lamin: could not end the run record: {error}"),
         }
+    }
+
+    /// The execution report as an artifact of the run, when it is a remote file.
+    fn report(&mut self, run: &Records) -> Option<Artifact> {
+        let file = self.settings.report.clone()?;
+        if !file.contains("://") || file.starts_with("file:") {
+            return None;
+        }
+        let registration = Registration {
+            direction: None,
+            choice: Choice {
+                kind: Some("__lamindb_run__".into()),
+                labels: Vec::new(),
+            },
+            description: format!("Nextflow execution report for run {}", run.run_uid),
+        };
+        let artifact = self.register(&file, registration)?;
+        tracing::info!("Created report artifact {}", artifact.uid);
+        Some(artifact)
     }
 
     /// The ids of references, skipping those that are optional or not found.
@@ -315,6 +546,14 @@ impl Tracker {
     }
 }
 
+/// The path as Nextflow's S3 paths print their address, with three slashes.
+fn nextflow_uri(path: &str) -> String {
+    match path.strip_prefix("s3://") {
+        Some(rest) => format!("s3:///{rest}"),
+        None => path.to_owned(),
+    }
+}
+
 /// A time in UTC with microseconds, like `2026-11-06T12:10:05.921000+00:00`.
 fn utc_time(millis: i64) -> String {
     match Timestamp::from_millisecond(millis) {
@@ -351,5 +590,7 @@ mod tests {
             utc_time(1_793_967_005_921),
             "2026-11-06T12:10:05.921000+00:00"
         );
+        assert_eq!(nextflow_uri("s3://b/k.csv"), "s3:///b/k.csv");
+        assert_eq!(nextflow_uri("gs://b/k.csv"), "gs://b/k.csv");
     }
 }

@@ -1,9 +1,10 @@
-//! The `lamin` scope of nf-lamin: the instance, the hub and the records to link, with the
-//! plugin's environment variables.
+//! The `lamin` scope of nf-lamin: the instance, the hub, the records to link and the rules
+//! that pick the files to track, with the plugin's environment variables.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_config::Config;
+use nextflow_evaluator::regex::Pattern;
 use nextflow_evaluator::value::Value;
 
 use super::client::{Hub, Retry};
@@ -28,6 +29,57 @@ pub(super) struct Settings {
     pub(super) transform_labels: Vec<String>,
     pub(super) space: Option<String>,
     pub(super) branch: Option<String>,
+    pub(super) inputs: Tracking,
+    pub(super) outputs: Tracking,
+    /// The `report.file` of a run with `report.enabled`.
+    pub(super) report: Option<String>,
+}
+
+/// Which files of one direction become artifacts, and how.
+#[derive(Clone, Debug)]
+pub(super) struct Tracking {
+    pub(super) enabled: bool,
+    pub(super) skip_work: bool,
+    pub(super) skip_assets: bool,
+    pub(super) include: Option<Pattern>,
+    pub(super) exclude: Option<Pattern>,
+    pub(super) labels: Vec<String>,
+    pub(super) kind: Option<String>,
+    /// Paths registered without the rules: the block's own, then those of its rules.
+    pub(super) paths: Vec<Listed>,
+    /// The rules of this direction, by `order`.
+    pub(super) rules: Vec<Rule>,
+}
+
+/// A path of `include_paths`, with the kind and labels of its block or rule.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Listed {
+    pub(super) path: String,
+    pub(super) kind: Option<String>,
+    pub(super) labels: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct Rule {
+    pub(super) pattern: Option<Pattern>,
+    pub(super) include: bool,
+    pub(super) order: i64,
+    pub(super) labels: Vec<String>,
+    pub(super) kind: Option<String>,
+}
+
+/// How a tracked file becomes an artifact.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct Choice {
+    pub(super) kind: Option<String>,
+    pub(super) labels: Vec<String>,
+}
+
+/// The direction of a file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Direction {
+    Input,
+    Output,
 }
 
 impl Settings {
@@ -69,6 +121,25 @@ impl Settings {
                 (variable("LAMIN_CURRENT_PROJECT").map(|text| split(&text))).unwrap_or_default()
             }
         };
+        let single = scope.get(&["artifacts"]).is_some();
+        if single
+            && (scope.get(&["input_artifacts"]).is_some()
+                || scope.get(&["output_artifacts"]).is_some())
+        {
+            return Err(
+                "Cannot use both 'artifacts' and 'input_artifacts'/'output_artifacts' \
+                 configurations."
+                    .to_owned(),
+            );
+        }
+        let block = |own: &str, direction| match single {
+            true => Tracking::read(&scope, "artifacts", direction),
+            false => Tracking::read(&scope, own, direction),
+        };
+        let report = (config.get(&["report", "enabled"]))
+            .filter(Value::truth)
+            .and_then(|_| config.get(&["report", "file"]))
+            .map(|file| file.to_string());
         Ok(Some(Settings {
             hub,
             web: scope
@@ -87,7 +158,93 @@ impl Settings {
             transform_labels: scope.list(&["transform", "ulabel_uids"]),
             space: scope.text(&["space_uid"]),
             branch: scope.text(&["branch_uid"]),
+            inputs: block("input_artifacts", Direction::Input)?,
+            outputs: block("output_artifacts", Direction::Output)?,
+            report,
         }))
+    }
+}
+
+impl Tracking {
+    fn read(scope: &Scope, block: &str, direction: Direction) -> Result<Tracking, String> {
+        let flag = |key: &str| scope.get(&[block, key]).is_none_or(|value| value.truth());
+        let pattern = |path: &[&str]| scope.text(path).map(|text| compile(&text)).transpose();
+        let kind = scope.text(&[block, "kind"]);
+        let labels = scope.list(&[block, "ulabel_uids"]);
+        let mut paths = listed(scope, &[block, "include_paths"], &kind, &labels);
+        let mut rules = Vec::new();
+        let entries = scope
+            .get(&[block, "rules"])
+            .map(|rules| crate::nf_schema::entries(&rules));
+        for (name, _) in entries.unwrap_or_default() {
+            let rule = |key: &'static str| [block, "rules", name.as_str(), key];
+            let wanted = match scope.text(&rule("direction")).as_deref() {
+                Some("input") => direction == Direction::Input,
+                Some("output") => direction == Direction::Output,
+                _ => true,
+            };
+            if !wanted
+                || scope
+                    .get(&rule("enabled"))
+                    .is_some_and(|value| !value.truth())
+            {
+                continue;
+            }
+            let (kind, labels) = (scope.text(&rule("kind")), scope.list(&rule("ulabel_uids")));
+            paths.extend(listed(scope, &rule("include_paths"), &kind, &labels));
+            rules.push(Rule {
+                pattern: pattern(&rule("pattern"))?,
+                include: scope
+                    .text(&rule("type"))
+                    .is_none_or(|kind| kind != "exclude"),
+                order: scope.number(&rule("order")).unwrap_or(100),
+                labels,
+                kind,
+            });
+        }
+        rules.sort_by_key(|rule| rule.order);
+        Ok(Tracking {
+            enabled: flag("enabled"),
+            skip_work: flag("exclude_work_dir"),
+            skip_assets: flag("exclude_assets_dir"),
+            include: pattern(&[block, "include_pattern"])?,
+            exclude: pattern(&[block, "exclude_pattern"])?,
+            labels,
+            kind,
+            paths,
+            rules,
+        })
+    }
+
+    /// How a file found in the run becomes an artifact, `None` when it is not tracked. The
+    /// patterns find their match anywhere in the path; later rules override the kind.
+    pub(super) fn decide(&self, path: &str, skipped: &[&str]) -> Option<Choice> {
+        if !self.enabled || skipped.iter().any(|folder| inside(path, folder)) {
+            return None;
+        }
+        let found = |pattern: &Pattern| pattern.find(path).unwrap_or(false);
+        if self.include.as_ref().is_some_and(|pattern| !found(pattern))
+            || self.exclude.as_ref().is_some_and(found)
+        {
+            return None;
+        }
+        let mut choice = Choice {
+            kind: self.kind.clone(),
+            labels: self.labels.clone(),
+        };
+        for rule in &self.rules {
+            if !rule.pattern.as_ref().is_some_and(found) {
+                continue;
+            }
+            if !rule.include {
+                return None;
+            }
+            if rule.kind.is_some() {
+                choice.kind = rule.kind.clone();
+            }
+            merge(&mut choice.labels, &rule.labels);
+        }
+        Some(choice)
     }
 }
 
@@ -125,6 +282,36 @@ fn split(text: &str) -> Vec<String> {
         .filter(|part| !part.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+fn compile(text: &str) -> Result<Pattern, String> {
+    Pattern::new(text)
+        .map_err(|error| format!("nf-lamin: the pattern '{text}' is invalid: {error}"))
+}
+
+fn inside(path: &str, folder: &str) -> bool {
+    let folder = folder.trim_end_matches('/');
+    !folder.is_empty() && (path == folder || path.starts_with(&format!("{folder}/")))
+}
+
+/// The paths of an `include_paths` setting. A closure needs the script's interpreter, which an
+/// observer does not have, so it is skipped with a warning.
+fn listed(scope: &Scope, path: &[&str], kind: &Option<String>, labels: &[String]) -> Vec<Listed> {
+    let value = scope.get(path);
+    if let Some(Value::Closure(_)) = value {
+        tracing::warn!("nf-lamin: uwe skips lamin.{}, a closure", path.join("."));
+        return Vec::new();
+    }
+    (value
+        .map(|value| texts(&value))
+        .unwrap_or_default()
+        .into_iter())
+    .map(|path| Listed {
+        path,
+        kind: kind.clone(),
+        labels: labels.to_vec(),
+    })
+    .collect()
 }
 
 /// The `lamin` scope of a config.

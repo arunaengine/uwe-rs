@@ -381,6 +381,7 @@ impl Connection {
                 | Backend::Oci(_)
                 | Backend::Lakefs(_)
                 | Backend::Quilt(_)
+                | Backend::Cas(_)
         )
     }
 
@@ -461,6 +462,7 @@ impl Connection {
             Backend::Oci(oci) => oci.upload(file, target).await,
             Backend::Lakefs(lakefs) => lakefs.upload(file, target).await,
             Backend::Quilt(quilt) => quilt.upload(file, target).await,
+            Backend::Cas(cas) => cas.upload(file, target).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
     }

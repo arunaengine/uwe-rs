@@ -295,3 +295,20 @@ and `?.` lookups only, other Groovy fails as `compileMessage.FAILED`; JSON keys 
 `workflow` values are uwe's (plain strings, `nextflow` 26.04.6, `stats` counts) and the README
 lists them; bucket access is not checked before; Quilt workflows are not checked. A plain
 `s3://` file needs a local copy to be hashed.
+
+## src/nf_blocks.rs
+
+nf-blocks 0.11.0-beta.1 is implemented in its first step: the stores of the `cas` scope go to
+the `cas://` provider of the `storage` crate, the writable one by `lineage.store.location`.
+Files published to `cas://<alias>/...` become content blocks and coordinates. At the end of the
+run the observer writes, in strict DAG-CBOR, an `OutputItem` per published file of each
+workflow output, the `OutputCollection`s, `InputSet`, `ItemLineage`, `RunManifest` and
+`RunCompletion`, then the Store Log entry. `channel.fromStore(run: ..., output: ..., where:
+[...])` reads a run's items before any task runs. Where it differs: uwe cannot default
+`outputDir` to the store, so it must be set; items hold the published file alone, not the
+published value with its maps, so `where:` finds nothing in uwe's own runs; the input set is
+empty, the lineage names a task by the file name, `nf_run_hash` is null and the manifest
+config is JSON; `records: true` gives plain maps; a path prints as `/<cid>/<name>` like other
+remote paths; `asserted_by` does not come from Seqera Platform or `git config`. Not
+implemented (step 2, after the beta): Selections, Claims, DirectoryManifest folders,
+`lid://` references, the SQLite index, the explorer page and the plugin commands.

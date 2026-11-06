@@ -1,21 +1,33 @@
-//! nf-blocks 0.11.0-beta.1, step 1: workflow outputs published into `cas://` stores, with the
-//! blocks and Store Log entry of the run.
+//! nf-blocks 0.11.0-beta.1, step 1: workflow outputs published into `cas://` stores, the
+//! blocks and Store Log entry of the run, and the `fromStore` channel factory.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::rc::Rc;
+
 use nextflow_config::Config;
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::exception::Exception;
+use nextflow_evaluator::interpreter::Error;
+use nextflow_evaluator::number::Number;
+use nextflow_evaluator::value::{PathValue, Value};
 use serde_json::Value as Json;
 use storage::cbor::{Cid, Node};
 
+use crate::Context;
 use crate::catalogue::{Kind, Plugin, State};
 use crate::observer::{End, Event, Observer, Start};
 
 pub(crate) const PLUGIN: Plugin = Plugin {
+    functions: &["fromStore"],
+    call: Some(call),
+    factories: &["fromStore"],
     scopes: &["cas", "lineage"],
     observer: Some(activate),
     ..Plugin::new("nf-blocks", Kind::FileSystem, State::Partial)
 };
+
+const USAGE: &str = "`fromStore` takes `selection: <address>`, or `run: <ref>` with `output: \
+                     <name>`; optionally `where: [...]` and `records: true`.";
 
 /// Hands the stores of the `cas` scope to the `cas://` provider, checks `outputDir`, and
 /// makes the observer that writes the blocks of the run.
@@ -288,6 +300,204 @@ impl Lineage {
             ("nextflow_version", Node::Text("26.04.6".into())),
         ])
     }
+}
+
+/// `channel.fromStore(run: <ref>, output: <name>, where: [...], records: <bool>)`.
+fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error> {
+    let thrown = |message: String| Error::Thrown {
+        exception: Rc::new(Exception::illegal_argument(message)),
+        span: Default::default(),
+    };
+    if name != "fromStore" {
+        return Err(Error::Unsupported {
+            message: format!("the function `{name}` of the plugin `nf-blocks`"),
+            span: Default::default(),
+        });
+    }
+    let named = match arguments.as_slice() {
+        [options @ Value::Map(_)] => crate::nf_schema::entries(options),
+        _ => return Err(thrown(USAGE.to_owned())),
+    };
+    let get = |key: &str| {
+        named
+            .iter()
+            .find(|(name, _)| name == key)
+            .map(|(_, value)| value.clone())
+    };
+    if get("selection").is_some() {
+        return Err(thrown(
+            "uwe does not read nf-blocks Selections yet".to_owned(),
+        ));
+    }
+    let (Some(reference), Some(output)) = (get("run"), get("output")) else {
+        return Err(thrown(USAGE.to_owned()));
+    };
+    match get("records") {
+        None | Some(Value::Boolean(false)) => {}
+        Some(Value::Boolean(true)) => tracing::warn!("nf-blocks: records are plain maps in uwe"),
+        Some(_) => return Err(thrown("`records` takes true or false".to_owned())),
+    }
+    let pipeline = get("pipeline").map(|value| value.to_string());
+    let wanted: Vec<(String, String)> = match get("where") {
+        Some(filter @ Value::Map(_)) => (crate::nf_schema::entries(&filter).into_iter())
+            .map(|(key, value)| (key, value.to_string()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let found = items(
+        &reference.to_string(),
+        pipeline.as_deref(),
+        &output.to_string(),
+    )
+    .map_err(thrown)?;
+    let launch = context.host.launch_dir();
+    let mut values = Vec::new();
+    for (item, value) in found {
+        if wanted.iter().all(|(key, text)| matches(&value, key, text)) {
+            values.push(value_of(&value, &item, &launch).map_err(thrown)?);
+        }
+    }
+    Ok(Value::list(values))
+}
+
+/// The items of an output of a run, with their CIDs and values.
+fn items(
+    reference: &str,
+    pipeline: Option<&str>,
+    output: &str,
+) -> Result<Vec<(Cid, Node)>, String> {
+    let read = |cid: &Cid| {
+        (storage::cas::block(cid).map_err(|error| error.to_string()))?
+            .ok_or_else(|| format!("the block {cid} is in no store"))
+    };
+    let kind = |node: &Node| node.get("kind").and_then(Node::text).map(str::to_owned);
+    let runs = || storage::cas::runs().map_err(|error| error.to_string());
+    let completion = match reference {
+        "latest" => {
+            let pipeline =
+                pipeline.ok_or("`run: 'latest'` needs `pipeline: '<pipeline identity>'`")?;
+            let mut found = None;
+            for cid in runs()? {
+                let completion = read(&cid)?;
+                let Some(Node::Link(run)) = completion.get("run") else {
+                    continue;
+                };
+                if read(run)?.get("pipeline").and_then(Node::text) == Some(pipeline) {
+                    found = Some(completion);
+                    break;
+                }
+            }
+            found.ok_or_else(|| format!("no run of the pipeline {pipeline} is in the stores"))?
+        }
+        reference if reference.starts_with("lid://") => {
+            return Err(
+                "uwe has no Nextflow lineage store; name the run by its cas:// address".into(),
+            );
+        }
+        reference => {
+            let cid = reference.strip_prefix("cas://").unwrap_or(reference);
+            let cid = Cid::parse(cid.trim_end_matches('/'))
+                .ok_or_else(|| format!("{reference} names no run"))?;
+            let block = read(&cid)?;
+            match kind(&block).as_deref() {
+                Some("RunCompletion") => block,
+                Some("RunManifest") => {
+                    let mut found = None;
+                    for completion in runs()? {
+                        let node = read(&completion)?;
+                        if node.get("run") == Some(&Node::Link(cid)) {
+                            found = Some(node);
+                            break;
+                        }
+                    }
+                    found.ok_or_else(|| format!("the run {reference} has no RunCompletion"))?
+                }
+                _ => return Err(format!("{reference} is not a run")),
+            }
+        }
+    };
+    let collections = match completion.get("collections") {
+        Some(Node::List(links)) => links.clone(),
+        _ => Vec::new(),
+    };
+    for link in collections {
+        let Node::Link(cid) = link else { continue };
+        let collection = read(&cid)?;
+        if collection.get("name").and_then(Node::text) != Some(output) {
+            continue;
+        }
+        let Some(Node::List(items)) = collection.get("items") else {
+            return Ok(Vec::new());
+        };
+        let mut found = Vec::new();
+        for item in items {
+            let Node::Link(item) = item else { continue };
+            let block = read(item)?;
+            found.push((*item, block.get("value").cloned().unwrap_or(Node::Null)));
+        }
+        return Ok(found);
+    }
+    Err(format!("the run has no output `{output}`"))
+}
+
+/// Whether the first map of an item has `key` (dotted for nested maps) with this text.
+fn matches(value: &Node, key: &str, text: &str) -> bool {
+    let first = match value {
+        Node::Map(_) => Some(value),
+        Node::List(items) => items.iter().find(|item| matches!(item, Node::Map(_))),
+        _ => None,
+    };
+    let mut found = first;
+    for part in key.split('.') {
+        found = found.and_then(|node| node.get(part));
+    }
+    match found {
+        Some(Node::Text(value)) => value == text,
+        Some(Node::Integer(value)) => value.to_string() == text,
+        Some(Node::Bool(value)) => value.to_string() == text,
+        _ => false,
+    }
+}
+
+/// An item as the script sees it, every leaf a path or, when declined, null.
+fn value_of(node: &Node, item: &Cid, launch: &str) -> Result<Value, String> {
+    if node.get("kind").and_then(Node::text) == Some("Leaf") {
+        let name = node.get("name").and_then(Node::text).unwrap_or_default();
+        return match (node.get("address"), node.get("reason")) {
+            (Some(Node::Link(content)), _) => {
+                let path = format!("cas://{content}/{name}");
+                Ok(Value::Path(Rc::new(PathValue::parse(&path, launch))))
+            }
+            (_, Some(Node::Text(_))) => Ok(Value::Null),
+            _ => Err(format!("the leaf {name} of the item {item} has no address")),
+        };
+    }
+    Ok(match node {
+        Node::Null => Value::Null,
+        Node::Bool(flag) => Value::Boolean(*flag),
+        Node::Integer(number) => match i32::try_from(*number) {
+            Ok(small) => Value::integer(small),
+            Err(_) => Value::Number(Number::Long(i64::try_from(*number).unwrap_or(i64::MAX))),
+        },
+        Node::Float(number) => Value::Number(Number::Double(*number)),
+        Node::Text(text) => Value::string(text.as_str()),
+        Node::Bytes(_) => Value::Null,
+        Node::Link(cid) => Value::string(format!("cas://{cid}").as_str()),
+        Node::List(items) => {
+            let items: Result<Vec<Value>, String> = items
+                .iter()
+                .map(|item_node| value_of(item_node, item, launch))
+                .collect();
+            Value::list(items?)
+        }
+        Node::Map(entries) => {
+            let mut values = Vec::new();
+            for (key, value) in entries {
+                values.push((Value::string(key.as_str()), value_of(value, item, launch)?));
+            }
+            Value::map(values)
+        }
+    })
 }
 
 fn map<const N: usize>(entries: [(&str, Node); N]) -> Node {

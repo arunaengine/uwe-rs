@@ -43,6 +43,7 @@ mod nf_lamin;
 mod nf_llm_debugger;
 mod nf_logsaver;
 mod nf_metalog;
+mod nf_nextpie;
 mod nf_oci;
 mod nf_parquet;
 mod nf_ped;

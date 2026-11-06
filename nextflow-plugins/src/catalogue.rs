@@ -176,6 +176,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_crukci_support::PLUGIN,
     crate::nf_lamin::PLUGIN,
     crate::nf_llm_debugger::PLUGIN,
+    crate::nf_nextpie::PLUGIN,
     crate::nf_prometheus::PLUGIN,
     crate::nf_slack::PLUGIN,
     crate::nf_teams::PLUGIN,
@@ -303,7 +304,6 @@ pub const PLUGINS: &[Plugin] = &[
     unmaintained("nf-ignite", Kind::Executor, "no release since 2021-05-28"),
     unmaintained("nf-jarvice", Kind::Executor, "no release since 2023-05-09"),
     unmaintained("nf-mlflow", Kind::Observer, NEVER),
-    unmaintained("nf-nextpie", Kind::Observer, "no release since 2025-06-29"),
     unmaintained("nf-nim", Kind::Functions, "no release since 2025-09-10"),
     unmaintained("nf-notion", Kind::Observer, NEVER),
     unmaintained(

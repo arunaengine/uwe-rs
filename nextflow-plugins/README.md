@@ -458,6 +458,18 @@ address is used for Gemini, Claude and OpenAI too, where the plugin always calls
 own address; Claude gets `max_tokens` 2048, which the Messages API needs; the CRG proxy is called
 with certificate checks, as uwe never turns them off.
 
+## src/nf_nextpie.rs
+
+nf-nextpie 0.0.2 posts the run's trace with the pipeline name, version, `params.group` and
+`params.name` to `http://<host>:<port>/api/v1.0/upload-data` at the end of the run, in the
+plugin's form. The plugin reads its server from a `config.json` in its install folder; uwe reads
+the `nextpie` scope instead, a uwe addition: `host` (default `localhost`), `port` (default
+`5000`) and `key`, sent as `X-API-KEY` (no header when unset; the plugin's default key is not
+known). Where it differs: the trace is built from the task events in Nextflow's default columns
+and formats, the only ones Nextpie parses, because uwe writes its trace file after the observers
+hear the end of the run; a run without `trace.enabled` or without a name and version warns and
+goes on without an upload, where Nextflow stops it; messages are log lines without colours.
+
 ## src/nf_quilt.rs
 
 nf-quilt 1.0.1 publishes a Quilt package for each package that the run's files went to:

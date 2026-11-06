@@ -556,12 +556,18 @@ impl Driver for Nextflow {
         })?;
         let mut outcome = outcome;
         if let Some(reports) = &mut self.reports {
-            // A task that ended well keeps its standard error in the store; observers read it.
+            // A task that ended well keeps its streams in the store; observers read them.
             if reports.observed()
                 && outcome.stderr.is_empty()
                 && let Some(log) = &outcome.stderr_log
             {
                 outcome.stderr = stdout_text(self.files.as_deref(), log).unwrap_or_default();
+            }
+            if reports.observed()
+                && outcome.stdout.is_empty()
+                && let Some(log) = &outcome.stdout_log
+            {
+                outcome.stdout = stdout_text(self.files.as_deref(), log).unwrap_or_default();
             }
             reports.ended(&outcome);
         }

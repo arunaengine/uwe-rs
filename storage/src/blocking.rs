@@ -165,7 +165,7 @@ pub fn exchange(
 }
 
 /// Runs a request on the runtime of the storage crate and waits for its end.
-fn run<T: Send + 'static>(
+pub(crate) fn run<T: Send + 'static>(
     request: impl Future<Output = Result<T, StorageError>> + Send + 'static,
 ) -> Result<T, StorageError> {
     let runtime = runtime()?;

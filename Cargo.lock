@@ -4091,6 +4091,7 @@ version = "0.1.0"
 name = "nextflow-plugins"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "flate2",
  "hdf5-pure",
  "jiff",

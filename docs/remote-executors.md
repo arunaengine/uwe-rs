@@ -1,15 +1,15 @@
-<!-- How SLURM, Kubernetes and TES jobs get their files, with or without a shared file system. -->
+<!-- How SLURM, Kubernetes, TES and AWS Batch jobs get their files, with or without shared folders. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 # Remote executors and staging
 
-SLURM, Kubernetes and TES take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]` or `[executor.tes]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
+SLURM, Kubernetes, TES and AWS Batch take a `staging` setting in `[executor.slurm]`, `[executor.kubernetes]`, `[executor.tes]` or `[executor.aws-batch]` of the config file. It decides how a job gets its inputs and how its outputs come back. In every mode the task container runs the original image of the task, unchanged.
 
 | Mode | Executors | What the nodes need |
 | --- | --- | --- |
 | `shared-path` (default) | SLURM, Kubernetes | The store and scratch folders at the same paths as on the machine that runs uwe |
-| `object-store` | SLURM, Kubernetes, TES | Network access to the staging root in an object store |
+| `object-store` | SLURM, Kubernetes, TES, AWS Batch | Network access to the staging root in an object store |
 | `kubedal` | Kubernetes | The [kubedal](https://github.com/arunaengine/kubedal) CSI driver |
 
 ## Shared paths
@@ -132,6 +132,78 @@ On Kubernetes the task container holds these credentials too, because it sends t
 - With presigned requests, anyone who can read the job script or the Job sees the address of its plan. That address grants access to the files of the task until it expires.
 - Tasks with several containers need `shared-path`.
 - The uploaded binary is always downloaded through a presigned request, also with `staging_access = "credentials"`, because the job has no helper yet to read the staging root. So the staging root must be able to sign requests in that case too.
+
+## AWS Batch
+
+`-executor aws-batch` runs each attempt of a task as one AWS Batch job. uwe calls the AWS Batch and CloudWatch Logs APIs itself, signed with Signature Version 4, so it needs no AWS CLI. The jobs share no folders with this machine, so this executor always uses object-store staging with presigned requests.
+
+```toml
+[executor.aws-batch]
+region = "eu-west-1"                        # else AWS_REGION or AWS_DEFAULT_REGION
+queue = "my-queue"                          # for tasks that name no queue
+staging = "object-store"
+staging_root = "s3://bucket/uwe-staging"
+helper_path = "/opt/uwe/uwe"                # the static uwe binary on the hosts of the compute environment
+# helper_url = "https://example.org/uwe"    # or an address that the job downloads, with helper_sha256
+# helper_file = "/home/me/uwe-x86_64"       # or a binary that uwe uploads to the staging root
+job_role = "arn:aws:iam::123456789012:role/uwe-job"
+# execution_role = "arn:aws:iam::123456789012:role/uwe-execution"   # needed on Fargate
+# logs_group = "/uwe/batch"                 # else AWS's /aws/batch/job
+# volumes = ["/scratch", "/refs:/refs:ro"]  # host folders that every job sees
+# max_spot_attempts = 3                     # runs a job again when its spot instance went away
+# share_identifier = "blue"                 # fair-share scheduling, with scheduling_priority
+# terminate_unschedulable = true            # stops a job that no compute environment can run
+# platform = "fargate"                      # else "ec2"
+# poll_seconds = 10
+# task_folder = "/tmp/uwe"                  # where a job makes the folder of its attempt
+# profile = "lab"                           # a profile of the shared AWS files
+```
+
+The calls use AWS's default credential chain: the environment, the shared files (with `profile` or `AWS_PROFILE`), web identity, and container and instance roles. `AWS_ENDPOINT_URL_BATCH`, `AWS_ENDPOINT_URL_CLOUDWATCH_LOGS` and `AWS_ENDPOINT_URL` name other endpoints, as AWS's tools read them. The account needs `batch:DescribeJobDefinitions`, `RegisterJobDefinition`, `SubmitJob`, `DescribeJobs`, `TerminateJob` and `TagResource`, `logs:GetLogEvents`, and `iam:PassRole` for the job role.
+
+A task runs like this:
+
+1. uwe uploads the inputs and the wrapper of the task to the staging root and writes the plan.
+2. uwe looks for an active job definition named `uwe-` and the image, whose parameter `uwe-digest` matches its settings, and registers one when there is none. It does this once per image and run. The definition holds the image, the job role, the log group, the volumes and, read-only, the folder of `helper_path`.
+3. uwe submits the job with the queue, the command, the vCPUs, the memory in MiB and the GPUs of the task, its labels as tags, the spot retries, the fair share, and a time limit of the task's time plus `staging_minutes`.
+4. The command of the job gets the helper, stages the inputs into `task_folder`, runs the wrapper of the task within its time, and sends the outputs back.
+5. uwe asks about all running jobs together, up to 100 in one call, every `poll_seconds`. A cancelled task stops its job.
+6. When a job fails before its task has an exit code, the error of the task shows the end of its CloudWatch log.
+
+Limits:
+
+- AWS Batch runs the entrypoint of the image around the command of the job, as it does for Nextflow. An image whose entrypoint does not run its arguments as a command cannot run tasks.
+- The image needs `sh`. With `helper_url` or an uploaded binary it also needs `curl` or `wget`, and `sha256sum`. On EC2, `helper_path` avoids that: put the static binary on the AMI of the compute environment. Fargate has no host folders, so it needs the download.
+- uwe registers its own job definitions and refuses `job-definition://` images. Containers never run privileged: uwe has no setting for it, and `containerOptions` refuses `--privileged`.
+- A task without a queue fails before its job starts: set `queue`, or the queue of the task.
+- `staging_access = "credentials"` is refused; the jobs use presigned requests.
+- On Fargate, uwe rounds the vCPUs up to 1, 2, 4, 8 or 16 and moves the memory into the range that Fargate allows for them, with a warning. The disk of the task sets the ephemeral storage (21 to 200 GiB, default 50), and `linux/arm64` tasks run on ARM64. GPU tasks are refused.
+- Tasks without network, tasks of several containers, tasks that run as a named user, and inputs at absolute paths are refused.
+- A job that no compute environment of its queue can run waits with a warning, or fails with `terminate_unschedulable = true`.
+- Array jobs, machine details of spot instances, and AWS Secrets Manager secrets are not supported.
+- The tests run against a local fake of AWS Batch and CloudWatch Logs. Runs on a real AWS account are not verified yet.
+
+### Nextflow pipelines
+
+When no `-executor` is given, the `process.executor` of a Nextflow pipeline picks the executor:
+
+| `process.executor` | uwe executor |
+| --- | --- |
+| `awsbatch` | `aws-batch` |
+| `k8s` | `kubernetes` |
+| `slurm` | `slurm` |
+| `tes` | `tes` |
+| `local` | `local` |
+
+Without `process.executor`, the run keeps `default` of `[executor]`, else `local`. uwe runs all tasks of a run with one executor. A pipeline whose `withName` or `withLabel` selectors name another executor is refused before any task starts, and so is an executor that uwe does not have. `-executor` overrides the pipeline.
+
+The `aws` scope fills the settings that `[executor.aws-batch]` leaves unset: `aws.region`, `aws.accessKey` with `aws.secretKey`, `aws.profile`, and `aws.batch.jobRole`, `executionRole`, `logsGroup`, `volumes`, `maxSpotAttempts`, `shareIdentifier`, `schedulingPriority`, `terminateUnschedulableJobs` and `platformType`, and `executor.$awsbatch.pollInterval`. An `s3://` `workDir` becomes the staging root when none is set. uwe ignores `aws.batch.cliPath`, as its jobs need no AWS CLI.
+
+The directives `queue`, `cpus`, `memory`, `accelerator`, `time`, `disk` (on Fargate) and `resourceLabels` go into the job. `containerOptions` passes environment variables, CPUs and GPUs, and refuses other flags.
+
+### Snakemake, CWL and Argo
+
+Their tasks use `queue` of `[executor.aws-batch]`. A Snakemake rule names another queue with `resources: queue="..."`. CPUs, memory, GPUs, time and disk come from the resources of the task, as on the other executors.
 
 ## Default task time
 

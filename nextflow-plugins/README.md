@@ -48,6 +48,17 @@ A function may give an object of its own class: `crate::object(class, state)`, w
 implements `Native` (its text, and its equality). Scripts call its methods through `methods`,
 read a property `x` through `getX()` or `x()`, and set it through `setX(value)`.
 
+`start(context)` runs before the script and `finish(context)` at the end of the run, after
+the `workflow.onComplete` handlers, also of a failed run. Each calls the plugins of the
+config that need it, by id; they may print, like nf-bactopia's banner and summary.
+`finish` gets the finished `workflow` object in `context.workflow`, with its success,
+completion time and duration.
+
+A plugin operator, like nf-bids' `groupTupleBy`, is a function of the plugin's `script` that
+takes the channel first. When a script includes it from `plugin/<id>`, `ch.groupTupleBy { }`
+calls that function with `ch`, which builds on the built-in operators. A name that the plugin
+runs natively, like nf-boost's `scan`, stays a built-in operator.
+
 ## src/observer.rs
 
 The events of a real run that an `Observer` hears, in order, modelled on Nextflow's trace

@@ -1,10 +1,13 @@
-//! nf-sqldb against the runs that nf-sqldb 0.7.1 recorded with Nextflow 26.04.6 on SQLite.
+//! nf-sqldb against the runs that nf-sqldb 0.7.1 recorded with Nextflow 26.04.6 on SQLite,
+//! and against PostgreSQL in a local container.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod common;
 
 use std::path::Path;
+use std::process::Command;
+use std::time::{Duration, Instant};
 
 const INCLUDE: &str = "include { fromQuery; sqlInsert; sqlExecute } from 'plugin/nf-sqldb'\n";
 
@@ -290,6 +293,120 @@ fn queries_rows() {
             "row [2, beta, null, 0, 2, null] [Integer, String, null, Integer, Integer, null]",
             "row [3, gamma, 3.0, null, 3, 2024-03-04] [Integer, String, Double, null, Integer, \
              String]",
+        ]
+    );
+}
+
+/// A container that `docker rm -f` stops when the test ends.
+struct Container(String);
+
+impl Drop for Container {
+    fn drop(&mut self) {
+        let _ = Command::new("docker").args(["rm", "-f", &self.0]).output();
+    }
+}
+
+/// PostgreSQL 17 in a container on a random local port, only when Docker has the image; the
+/// test never pulls it.
+fn postgres() -> Option<(Container, u16)> {
+    let image = "postgres:17";
+    let present = Command::new("docker")
+        .args(["image", "inspect", image])
+        .output();
+    if !present.is_ok_and(|output| output.status.success()) {
+        eprintln!("skipped: Docker or its {image} image is not available");
+        return None;
+    }
+    let started = Command::new("docker")
+        .args([
+            "run",
+            "-d",
+            "--rm",
+            "--pull",
+            "never",
+            "-e",
+            "POSTGRES_PASSWORD=secret",
+        ])
+        .args(["-p", "127.0.0.1::5432", image])
+        .output()
+        .expect("runs docker");
+    assert!(started.status.success(), "{started:?}");
+    let container = Container(String::from_utf8_lossy(&started.stdout).trim().to_owned());
+    let port = Command::new("docker")
+        .args(["port", &container.0, "5432/tcp"])
+        .output()
+        .expect("runs docker");
+    let text = String::from_utf8_lossy(&port.stdout);
+    let port = text
+        .trim()
+        .rsplit(':')
+        .next()
+        .and_then(|port| port.parse().ok());
+    let port = port.expect("a published port");
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let ready = Command::new("docker")
+            .args([
+                "exec",
+                &container.0,
+                "pg_isready",
+                "-h",
+                "127.0.0.1",
+                "-U",
+                "postgres",
+            ])
+            .output()
+            .is_ok_and(|output| output.status.success());
+        if ready {
+            return Some((container, port));
+        }
+        assert!(Instant::now() < deadline, "PostgreSQL did not start");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+#[test]
+fn uses_postgres() {
+    let Some((_container, port)) = postgres() else {
+        return;
+    };
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    let config = format!(
+        "plugins {{ id 'nf-sqldb@0.7.1' }}\nsql {{ db {{ pg {{\n  url = \
+         'jdbc:postgresql://127.0.0.1:{port}/postgres?sslmode=disable'\n  user = 'postgres'\n  \
+         password = 'secret'\n}} }} }}\n"
+    );
+    std::fs::write(folder.join("nextflow.config"), config).expect("writes the config");
+    let script = format!(
+        "{INCLUDE}workflow {{\n  println sqlExecute(db: 'pg', statement: 'CREATE TABLE t (id \
+         INT, name TEXT, score NUMERIC(6,2), ok BOOLEAN, day DATE, at TIMESTAMP, big BIGINT)')\n  \
+         println sqlExecute(db: 'pg', statement: \"INSERT INTO t VALUES (1, 'a', 12.34, true, \
+         '2024-01-02', '2024-01-02 03:04:05.12', 9007199254740993)\")\n  \
+         channel.of([2, 'b'], [3, 'c']).sqlInsert(db: 'pg', into: 't', columns: 'id, \
+         name').count().view {{ \"inserted ${{it}}\" }}\n  \
+         channel.fromQuery('select * from t where id = 1', db: 'pg', emitColumns: true)\n    \
+         .view {{ r -> \"row ${{r}} ${{r.collect {{ it?.getClass()?.simpleName }}}}\" }}\n}}\n"
+    );
+    std::fs::write(folder.join("main.nf"), script).expect("writes the script");
+    let (execution, printed) = common::run(folder, "postgres");
+    assert!(
+        execution.error.is_none(),
+        "{:?}\n{printed}",
+        execution.error
+    );
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort();
+    assert_eq!(
+        lines,
+        [
+            "[success:true, result:1]",
+            "[success:true, result:null]",
+            "inserted 2",
+            "row [1, a, 12.34, true, 2024-01-02, 2024-01-02 03:04:05.12, 9007199254740993] \
+             [Integer, String, BigDecimal, Boolean, Date, Timestamp, Long]",
+            "row [id, name, score, ok, day, at, big] [String, String, String, String, String, \
+             String, String]",
         ]
     );
 }

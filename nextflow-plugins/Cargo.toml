@@ -13,6 +13,7 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
+chrono.workspace = true
 flate2.workspace = true
 hdf5-pure.workspace = true
 jiff.workspace = true

@@ -181,14 +181,16 @@ impl Connection for Open {
                         let mut query = query(AssertSqlSafe(numbered(statement)));
                         for value in row {
                             query = match value.clone() {
-                                Datum::Null => query.bind(None::<i32>),
+                                Datum::Null | Datum::List(_) => query.bind(None::<i32>),
                                 Datum::Boolean(value) => query.bind(value),
                                 Datum::Integer(value) => query.bind(value),
                                 Datum::Long(value) => query.bind(value),
                                 Datum::Float(value) => query.bind(value),
                                 Datum::Double(value) => query.bind(value),
                                 Datum::Bytes(value) => query.bind(value),
-                                Datum::Decimal(text) | Datum::Text(text) => query.bind(text),
+                                Datum::Decimal(text)
+                                | Datum::Text(text)
+                                | Datum::Typed(_, text) => query.bind(text),
                             };
                         }
                         query.execute(&mut *transaction).await?;
@@ -247,7 +249,68 @@ fn postgres_row(row: &PgRow) -> Result<Vec<Datum>, String> {
             "INT8" => Datum::Long(row.try_get(index).map_err(failed)?),
             "FLOAT4" => Datum::Float(row.try_get(index).map_err(failed)?),
             "FLOAT8" => Datum::Double(row.try_get(index).map_err(failed)?),
+            "NUMERIC" => Datum::Decimal(numeric(raw.as_bytes().map_err(|e| e.to_string())?)?),
             "BYTEA" => Datum::Bytes(row.try_get(index).map_err(failed)?),
+            "DATE" => {
+                let date: chrono::NaiveDate = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Date", date.format("%Y-%m-%d").to_string())
+            }
+            "TIMESTAMP" => {
+                let time: chrono::NaiveDateTime = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Timestamp", timestamp(time))
+            }
+            "TIMESTAMPTZ" => {
+                let time: chrono::DateTime<chrono::Utc> = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Timestamp", timestamp(time.naive_utc()))
+            }
+            "TIME" => {
+                let time: chrono::NaiveTime = row.try_get(index).map_err(failed)?;
+                Datum::Typed("java.sql.Time", time.format("%H:%M:%S").to_string())
+            }
+            "JSON" | "JSONB" => {
+                let json: serde_json::Value = row.try_get(index).map_err(failed)?;
+                Datum::Text(json.to_string())
+            }
+            "UUID" => Datum::Typed(
+                "java.util.UUID",
+                uuid(raw.as_bytes().map_err(|e| e.to_string())?),
+            ),
+            "INT2[]" | "INT4[]" => {
+                let items: Vec<Option<i32>> = row.try_get(index).map_err(failed)?;
+                Datum::List(
+                    items
+                        .into_iter()
+                        .map(|item| item.map_or(Datum::Null, Datum::Integer))
+                        .collect(),
+                )
+            }
+            "INT8[]" => {
+                let items: Vec<Option<i64>> = row.try_get(index).map_err(failed)?;
+                Datum::List(
+                    items
+                        .into_iter()
+                        .map(|item| item.map_or(Datum::Null, Datum::Long))
+                        .collect(),
+                )
+            }
+            "FLOAT8[]" => {
+                let items: Vec<Option<f64>> = row.try_get(index).map_err(failed)?;
+                Datum::List(
+                    items
+                        .into_iter()
+                        .map(|item| item.map_or(Datum::Null, Datum::Double))
+                        .collect(),
+                )
+            }
+            "TEXT[]" | "VARCHAR[]" => {
+                let items: Vec<Option<String>> = row.try_get(index).map_err(failed)?;
+                Datum::List(
+                    items
+                        .into_iter()
+                        .map(|item| item.map_or(Datum::Null, Datum::Text))
+                        .collect(),
+                )
+            }
             _ => Datum::Text(get_text().map_err(|_| {
                 format!(
                     "uwe cannot read the PostgreSQL type {kind} of column {}",
@@ -260,9 +323,111 @@ fn postgres_row(row: &PgRow) -> Result<Vec<Datum>, String> {
     Ok(values)
 }
 
+/// The text of `java.sql.Timestamp`: the fraction as stored, at least one digit.
+fn timestamp(time: chrono::NaiveDateTime) -> String {
+    let base = time.format("%Y-%m-%d %H:%M:%S").to_string();
+    let nanos = format!("{:09}", chrono::Timelike::nanosecond(&time) % 1_000_000_000);
+    let fraction = nanos.trim_end_matches('0');
+    format!(
+        "{base}.{}",
+        if fraction.is_empty() { "0" } else { fraction }
+    )
+}
+
+/// The text of a PostgreSQL `numeric` in its binary form: digit count, weight of the first
+/// base-10000 digit, sign and display scale, then the digits.
+fn numeric(bytes: &[u8]) -> Result<String, String> {
+    let word = |at: usize| match bytes.get(at..at + 2) {
+        Some(pair) => Ok(i16::from_be_bytes([pair[0], pair[1]])),
+        None => Err("a short numeric value".to_owned()),
+    };
+    let (count, weight, sign, scale) = (word(0)?, word(2)?, word(4)?, word(6)?);
+    let negative = match sign as u16 {
+        0x0000 => false,
+        0x4000 => true,
+        0xD000 => return Ok("Infinity".to_owned()),
+        0xF000 => return Ok("-Infinity".to_owned()),
+        _ => return Ok("NaN".to_owned()),
+    };
+    let digits: Vec<i16> = (0..usize::try_from(count).unwrap_or(0))
+        .map(|index| word(8 + 2 * index))
+        .collect::<Result<_, _>>()?;
+    let digit = |at: i32| {
+        let found = usize::try_from(at).ok().and_then(|at| digits.get(at));
+        found.copied().unwrap_or(0)
+    };
+    let mut whole = String::new();
+    for at in 0..=i32::from(weight) {
+        match whole.is_empty() {
+            true => whole = digit(at).to_string(),
+            false => whole.push_str(&format!("{:04}", digit(at))),
+        }
+    }
+    if whole.is_empty() {
+        whole.push('0');
+    }
+    let scale = usize::try_from(scale).unwrap_or(0);
+    let mut fraction = String::new();
+    let mut group = 1;
+    while fraction.len() < scale {
+        fraction.push_str(&format!("{:04}", digit(i32::from(weight) + group)));
+        group += 1;
+    }
+    fraction.truncate(scale);
+    let sign = if negative { "-" } else { "" };
+    Ok(match fraction.is_empty() {
+        true => format!("{sign}{whole}"),
+        false => format!("{sign}{whole}.{fraction}"),
+    })
+}
+
+fn uuid(bytes: &[u8]) -> String {
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    match hex.len() {
+        32 => format!(
+            "{}-{}-{}-{}-{}",
+            &hex[..8],
+            &hex[8..12],
+            &hex[12..16],
+            &hex[16..20],
+            &hex[20..]
+        ),
+        _ => hex,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn encoded(words: &[i16]) -> Vec<u8> {
+        words.iter().flat_map(|word| word.to_be_bytes()).collect()
+    }
+
+    #[test]
+    fn reads_numeric() {
+        // 12.34: two digits 12 and 3400, weight 0, scale 2.
+        assert_eq!(
+            numeric(&encoded(&[2, 0, 0, 2, 12, 3400])),
+            Ok("12.34".into())
+        );
+        // -0.01: one digit 100 at weight -1, scale 2.
+        assert_eq!(
+            numeric(&encoded(&[1, -1, 0x4000, 2, 100])),
+            Ok("-0.01".into())
+        );
+        // 123456789: digits 1, 2345, 6789 at weight 2.
+        assert_eq!(
+            numeric(&encoded(&[3, 2, 0, 0, 1, 2345, 6789])),
+            Ok("123456789".into())
+        );
+        // 0.00005: digit 5000 at weight -2, scale 5.
+        assert_eq!(
+            numeric(&encoded(&[1, -2, 0, 5, 5000])),
+            Ok("0.00005".into())
+        );
+        assert_eq!(numeric(&encoded(&[0, 0, 0, 0])), Ok("0".into()));
+    }
 
     #[test]
     fn numbers_placeholders() {
@@ -271,5 +436,15 @@ mod tests {
             numbered(statement),
             "insert into t ( a,b ) values ( $1,'?' || $2 )"
         );
+    }
+
+    #[test]
+    fn formats_timestamps() {
+        let time = chrono::NaiveDate::from_ymd_opt(2024, 1, 2)
+            .and_then(|day| day.and_hms_milli_opt(3, 4, 5, 120))
+            .expect("a time");
+        assert_eq!(timestamp(time), "2024-01-02 03:04:05.12");
+        let whole = chrono::Timelike::with_nanosecond(&time, 0).expect("a time");
+        assert_eq!(timestamp(whole), "2024-01-02 03:04:05.0");
     }
 }

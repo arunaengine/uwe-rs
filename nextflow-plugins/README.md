@@ -76,22 +76,24 @@ Validates the JSON text of an instance against the JSON text of a schema, as
 instance is valid, else the violation as everit's `ValidationException.toJSON()` gives
 it: one problem, or a violation of the whole instance that lists them.
 
-## src/nf_schema/mod.rs:173
+## src/nf_schema/mod.rs:415
 
 The errors of an instance, in nf-schema's words, by the path of the value they concern.
 Missing required fields become one error of the object, like `Missing required field(s):
 a, b`; `what` names the fields, like `field` or `parameter`. With `lenient`, types are
-checked leniently.
+checked leniently. The `errorMessage` of the failing schema is added in brackets.
 
-## src/nf_schema/params.rs:12
+## src/nf_schema/params.rs:13
 
-`validateParameters`: checks the params against the schema. Params that the schema does
-not know give a warning, unless the config ignores them. Ignored params that the schema
-knows are checked like the others, but as in nf-schema, the errors that start with the
-name of an ignored param are dropped. Text from the command line stays text, so `--n 7`
-is not an integer.
+`validateParameters`: checks the params against the schema. When they are valid, the
+params that no keyword of the schema evaluates, nested ones as `a.b`, are reported as
+`validation.logging.unrecognisedParams` asks (a warning by default), unless the config
+ignores them; a core Nextflow option given with two hyphens fails. Ignored params that the
+schema knows are checked like the others, but as in nf-schema, the errors that start with
+the name of an ignored param are dropped. Before 2.7.2, text from the command line stays
+text, so `--n 7` is not an integer.
 
-## src/nf_schema/samplesheet.rs:433
+## src/nf_schema/samplesheet.rs:618
 
 The samplesheet as a structure: YAML and JSON as they are, CSV and TSV as a list of
 maps when the schema's items have properties, else of lists, or of single values for

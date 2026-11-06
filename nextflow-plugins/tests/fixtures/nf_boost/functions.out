@@ -1,0 +1,29 @@
+fromJson path => [a:1, b:[1, 2.5, x], c:[d:null, e:true]] (org.apache.groovy.json.internal.LazyMap)
+fromJson text => [1, 2.0, 1E+3, 12345678901234, s, null] (java.util.ArrayList)
+fromJson types => [Integer, BigDecimal, BigDecimal, Long, Long] (java.util.ArrayList)
+fromJson bad !! java.lang.reflect.InvocationTargetException / groovy.json.JsonException: expecting '}' or ',' but got current char 'b' with an int value of 98
+
+The current character read is 'b' with an int value of 98
+expecting '}' or ',' but got current char 'b' with an int value of 98
+line number 1
+index number 1
+{bad
+.^
+toJson => "{\"a\":1,\"b\":[1,2.5,\"x\"],\"c\":{\"d\":null,\"e\":true},\"f\":\"q\\\"\\n/\\u00e9\"}" (java.lang.String)
+toJson pretty => "{\n    \"a\": 1,\n    \"b\": [\n        1,\n        2\n    ],\n    \"c\": {\n        \n    },\n    \"d\": [\n        \n    ]\n}" (java.lang.String)
+toJson scalar => "x" (java.lang.String)
+fromYaml path => [a:1, b:[x, 2], c:[d:null], when:2024-01-02, yes_word:true] (org.apache.groovy.json.internal.LazyMap)
+fromYaml types => [a:Integer, b:ArrayList, c:LazyMap, when:String, yes_word:Boolean] (java.util.LinkedHashMap)
+fromYaml text multi => [[a:1], [b:2]] (java.util.ArrayList)
+toYaml map => "a: 1\nb: [1, x]\nc: {d: null, e: true}\ns: |-\n  multi\n  line\nq: 'yes'\nn: 1.5\n" (java.lang.String)
+toYaml list => "[a, b]\n" (java.lang.String)
+toYaml nested list => "- {a: 1}\n- b: {c: 2}\n" (java.lang.String)
+toYaml scalar => "x\n" (java.lang.String)
+mergeCsv empty !! java.lang.reflect.InvocationTargetException / java.lang.IllegalArgumentException: In `mergeCsv` function -- at least one record must be provided
+mergeCsv returns => null (null)
+mergeText keepHeader skip 0 !! java.lang.reflect.InvocationTargetException / java.lang.IllegalArgumentException: In function `mergeText` -- `skip` must be greater than zero when `keepHeader` is specified
+mergeText empty !! java.lang.reflect.InvocationTargetException / java.lang.IllegalArgumentException: In `mergeText` function -- at least one item must be provided
+mergeText bad item !! java.lang.reflect.InvocationTargetException / java.lang.IllegalArgumentException: In function `mergeText` -- invalid item [java.lang.Integer]: 1
+template path => "Hello W! [1][2] 3\n" (java.lang.String)
+template text => "1-two" (java.lang.String)
+template missing var !! java.lang.reflect.InvocationTargetException / groovy.lang.MissingPropertyException: No such property: zz for class: groovy.lang.Binding

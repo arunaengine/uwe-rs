@@ -1,0 +1,1 @@
+Hello ${name}! <% items.each { %>[${it}]<% } %> <%= 1 + 2 %>

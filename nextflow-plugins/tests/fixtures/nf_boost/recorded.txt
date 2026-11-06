@@ -1,0 +1,1 @@
+functions.nf is the probe script of the nf-boost 0.8.0 spec without its scan lines and its toJson of a path, which overflowed the stack; functions.out is what it printed with Nextflow 26.04.6 and the plugin, offline, up to the scan include error; written/ holds the files it wrote.

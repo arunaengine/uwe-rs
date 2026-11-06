@@ -26,17 +26,22 @@ impl Host for Output {
 /// What the script prints when it runs in a folder with these files, or the error.
 fn run(script: &str, files: &[(&str, &str)]) -> Result<String, String> {
     let root = tempfile::tempdir().expect("a temporary directory");
+    run_in(root.path(), script, files)
+}
+
+/// What the script prints when it runs in this folder with these files, or the error.
+fn run_in(root: &Path, script: &str, files: &[(&str, &str)]) -> Result<String, String> {
     for (name, text) in files.iter().chain(&[("main.nf", script)]) {
-        let path = root.path().join(name);
+        let path = root.join(name);
         std::fs::create_dir_all(path.parent().unwrap_or(Path::new("/"))).expect("a folder");
         std::fs::write(path, text).expect("writes");
     }
     let module = Loader::default()
-        .load(&root.path().join("main.nf"))
+        .load(&root.join("main.nf"))
         .map_err(|error| error.to_string())?;
     let mut output = Output {
         text: String::new(),
-        launch: root.path().display().to_string(),
+        launch: root.display().to_string(),
     };
     nextflow_runtime::run(&module, &mut output).map_err(|error| error.to_string())?;
     Ok(output.text)
@@ -190,10 +195,14 @@ fn pregex_probe(name: &str) -> (String, String) {
     (output, read(format!("{name}.out")))
 }
 
-/// The text without the lines from the one that starts with `first` to the one before `next`.
+/// The text without the lines from the one that starts with `first` to the one before `next`,
+/// or to the end when `next` is empty.
 fn without(text: &str, first: &str, next: &str) -> String {
     let start = text.find(first).expect("the first line");
-    let end = text[start..].find(next).expect("the next line") + start;
+    let end = match next {
+        "" => text.len(),
+        next => text[start..].find(next).expect("the next line") + start,
+    };
     format!("{}{}", &text[..start], &text[end..])
 }
 
@@ -228,4 +237,79 @@ fn runs_pregex_methods() {
         run(script, &[]).expect("runs"),
         "java.lang.IllegalArgumentException: Count must be non-negative\n"
     );
+}
+
+#[test]
+fn runs_boost_functions() {
+    let folder = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../nextflow-plugins/tests/fixtures/nf_boost"
+    );
+    let read = |name: &str| std::fs::read_to_string(format!("{folder}/{name}")).expect("reads");
+    let inputs = [
+        "in.json", "in.yaml", "t1.csv", "t2.csv", "t3.txt", "tpl.txt",
+    ];
+    let files: Vec<(&str, String)> = inputs.iter().map(|name| (*name, read(name))).collect();
+    let files: Vec<(&str, &str)> = files.iter().map(|(n, t)| (*n, t.as_str())).collect();
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let output = run_in(root.path(), &read("functions.nf"), &files).expect("runs");
+    // uwe's JSON parser and template engine have their own map class and error wording.
+    let recorded = read("functions.out").replace(
+        "org.apache.groovy.json.internal.LazyMap",
+        "java.util.LinkedHashMap",
+    );
+    let recorded = recorded.replace("c:LazyMap", "c:LinkedHashMap");
+    let parsing =
+        "fromJson bad !! java.lang.reflect.InvocationTargetException / groovy.json.JsonException: ";
+    assert!(output.contains(parsing), "{output}");
+    let output = without(&output, "fromJson bad", "toJson =>");
+    let recorded = without(&recorded, "fromJson bad", "toJson =>");
+    let missing = "template missing var !! java.lang.reflect.InvocationTargetException / \
+                   groovy.lang.MissingPropertyException: No such";
+    assert!(output.contains(missing), "{output}");
+    let output = without(&output, "template missing var", "");
+    assert_eq!(output, without(&recorded, "template missing var", ""));
+    for written in std::fs::read_dir(format!("{folder}/written")).expect("lists") {
+        let name = written.expect("an entry").file_name();
+        let name = name.to_string_lossy();
+        let made = std::fs::read(root.path().join("out").join(&*name)).expect("written");
+        let recorded = std::fs::read(format!("{folder}/written/{name}")).expect("reads");
+        assert_eq!(
+            String::from_utf8_lossy(&made),
+            String::from_utf8_lossy(&recorded),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn scans_channels() {
+    let cases = [
+        (
+            "channel.of(1, 2, 3, 4).scan { acc, v -> acc + v }.collect()",
+            "[1, 3, 6, 10]\n",
+        ),
+        (
+            "channel.of(1, 2, 3).scan(10) { acc, v -> acc + v }.collect()",
+            "[11, 13, 16]\n",
+        ),
+        (
+            "channel.of('a', 'b').scan([]) { acc, v -> acc + [v] }",
+            "[a]\n[a, b]\n",
+        ),
+        (
+            "channel.empty().scan(0) { acc, v -> acc + v }.collect()",
+            "",
+        ),
+        (
+            "channel.of(5).scan(null) { acc, v -> acc + v }.collect()",
+            "[5]\n",
+        ),
+    ];
+    for (body, expected) in cases {
+        let script = format!(
+            "include {{ scan }} from 'plugin/nf-boost'\nworkflow {{\n    {body}.view()\n}}\n"
+        );
+        assert_eq!(run(&script, &[]).expect("runs"), expected, "{body}");
+    }
 }

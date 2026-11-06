@@ -1,0 +1,7 @@
+a: 1
+b:
+  - x
+  - 2
+c: {d: null}
+when: 2024-01-02
+yes_word: yes

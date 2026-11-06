@@ -43,6 +43,7 @@ HEADER_HASH_NAMES = frozenset({".dockerignore", ".gitignore", "Dockerfile", "jus
 HEADER_HASH_SUFFIXES = (".env", ".example", ".sh", ".toml", ".ttl", ".yaml", ".yml")
 HEADER_EXCEPTIONS = {
     "Cargo.lock": "generated lockfile; Cargo rewrites it",
+    "nextflow-plugins/tests/fixtures/nf_boost/in.yaml": "nf-boost probe input copied byte for byte",
     "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_COWPY.sh": "native Nextflow stub script compared byte for byte",
     "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE1_PE.sh": "native Nextflow stub script compared byte for byte",
     "uwe/tests/fixtures/oracle/stub/demo/NFCORE_DEMO_DEMO_FASTQC_SAMPLE2_PE.sh": "native Nextflow stub script compared byte for byte",

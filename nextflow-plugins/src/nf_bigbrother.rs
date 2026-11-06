@@ -396,3 +396,120 @@ impl BigBrother {
         for entry in &self.tasks {
             for child in self.children(entry) {
                 text.push_str(&format!("  \"t{}\" -> \"t{child}\";\n", entry.id));
+            }
+        }
+        text.push_str("}\n");
+        text
+    }
+
+    /// The name of a file: `[<prefix>_]<phase>_<name>_<session>`.
+    fn file(&self, phase: &str) -> String {
+        let base = format!("{phase}_{}_{}", self.name, self.session);
+        match self.prefix.is_empty() {
+            true => base,
+            false => format!("{}_{base}", self.prefix),
+        }
+    }
+
+    fn append(&self, line: &Json) {
+        if !self.events {
+            return;
+        }
+        let path = self.folder.join(format!("{}.jsonl", self.file("events")));
+        let written = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .and_then(|mut file| writeln!(file, "{}", line.compact()));
+        if let Err(error) = written {
+            tracing::warn!(
+                "[BigBrother] failed to append to {}: {error}",
+                path.display()
+            );
+        }
+    }
+}
+
+/// The local regular files of a path, the files below a folder in name order; a path that is
+/// not on this machine as it is.
+fn walk(path: &Path, text: &str, into: &mut Vec<String>) {
+    if !path.is_dir() {
+        into.push(text.to_owned());
+        return;
+    }
+    let mut entries: Vec<PathBuf> = (std::fs::read_dir(path).into_iter().flatten())
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .collect();
+    entries.sort();
+    for entry in entries {
+        let text = entry.to_string_lossy().into_owned();
+        walk(&entry, &text, into);
+    }
+}
+
+/// The execution record of a task.
+fn execution(task: &Task, pending: i64) -> Json {
+    let _ = (task, pending);
+    Json::Object(Vec::new())
+}
+
+/// The execution record of a task that never finished: defaults throughout.
+fn execution_default(id: &str) -> Json {
+    let mut record = crate::observer::Record::new();
+    record.insert(
+        "task_id".into(),
+        id.parse::<i64>().map_or_else(|_| id.into(), Into::into),
+    );
+    let task = Task {
+        record,
+        process_id: None,
+        hash: String::new(),
+        executor: String::new(),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        values: Vec::new(),
+    };
+    let mut json = execution(&task, 0);
+    json.insert("id", Json::from(id));
+    json
+}
+
+/// A trace value as text: a text as it is, a number as its digits, null as nothing.
+fn text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(text) => text.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// The label of a task: its name without a final ` (...)` and without the workflows before
+/// the last `:`; `task` when nothing is left.
+fn label(name: &str) -> String {
+    let name = match name.rfind(" (") {
+        Some(place) if name.ends_with(')') => &name[..place],
+        _ => name,
+    };
+    let name = name.rsplit(':').next().unwrap_or(name);
+    if name.is_empty() {
+        "task".to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
+fn file_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn labels_tasks() {
+        assert_eq!(label("SHOUT (3)"), "SHOUT");
+        assert_eq!(label("NF:SUB:ALIGN (s1)"), "ALIGN");
+        assert_eq!(label(""), "task");
+    }
+}

@@ -144,6 +144,11 @@ const CLASSES: &[(&str, &str, &str)] = &[
         "IOException",
     ),
     ("EOFException", "java.io.EOFException", "IOException"),
+    (
+        "FileNotFoundException",
+        "java.io.FileNotFoundException",
+        "IOException",
+    ),
     ("ZipException", "java.util.zip.ZipException", "IOException"),
     ("ParseException", "java.text.ParseException", "Exception"),
     (

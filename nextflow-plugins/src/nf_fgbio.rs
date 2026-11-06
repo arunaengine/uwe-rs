@@ -1,4 +1,4 @@
-//! nf-fgbio 1.0.1: fgbio read structures, as fgbio's Scala objects.
+//! nf-fgbio 1.0.1: fgbio read structures and Illumina sample sheets, as fgbio's Scala objects.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -6,21 +6,34 @@ use std::rc::Rc;
 
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
-use nextflow_evaluator::value::{Native, Value};
+use nextflow_evaluator::number::Number;
+use nextflow_evaluator::value::{Native, Object, PathValue, State as ObjectState, Value};
 
 use crate::catalogue::{Kind, Plugin, State};
 use crate::{Context, native, object};
 
 pub(crate) const PLUGIN: Plugin = Plugin {
-    functions: &["readStructure"],
+    functions: &["fromSampleSheet", "readStructure"],
     call: Some(call),
     methods: Some(methods),
+    factories: &["fromSampleSheet"],
     ..Plugin::new("nf-fgbio", Kind::Functions, State::Implemented)
 };
 
-fn call(name: &str, arguments: Vec<Value>, _: &mut Context) -> Result<Value, Error> {
+fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error> {
     match (name, arguments.as_slice()) {
         ("readStructure", [text]) => read_structure(&text.to_string()),
+        ("fromSampleSheet", [Value::Path(path)]) => {
+            let message = format!(
+                "Missing process or function fromSampleSheet([{}])",
+                path.text()
+            );
+            Err(thrown(Exception::new("MissingMethodException", message)))
+        }
+        ("fromSampleSheet", [path]) => sample_sheet(None, path, context),
+        ("fromSampleSheet", [options @ Value::Map(_), path]) => {
+            sample_sheet(Some(options), path, context)
+        }
         _ => Err(Error::Unsupported {
             message: format!("the function `{name}` of the plugin `nf-fgbio` with these arguments"),
             span: Default::default(),
@@ -65,6 +78,9 @@ enum Fgbio {
         qualities: Option<String>,
         segment: Segment,
     },
+    Sample(Rc<Sample>),
+    /// The extended attributes of a sample, as `Map` or `HashMap` prints them.
+    Attributes(Rc<Attributes>),
 }
 
 impl Native for Fgbio {
@@ -90,6 +106,8 @@ impl Native for Fgbio {
                 qualities: Some(qualities),
                 segment,
             } => format!("SubReadWithQuals({bases},{qualities},{})", segment.text()),
+            Fgbio::Sample(sample) => sample.text(),
+            Fgbio::Attributes(attributes) => attributes.text(),
         }
     }
 
@@ -123,6 +141,11 @@ impl Fgbio {
                 qualities: None, ..
             } => "com.fulcrumgenomics.util.SubReadWithoutQuals",
             Fgbio::SubRead { .. } => "com.fulcrumgenomics.util.SubReadWithQuals",
+            Fgbio::Sample(_) => "com.fulcrumgenomics.illumina.Sample",
+            Fgbio::Attributes(attributes) if attributes.hashed => {
+                "scala.collection.immutable.HashMap"
+            }
+            Fgbio::Attributes(_) => "scala.collection.immutable.Map",
         }
     }
 
@@ -133,6 +156,10 @@ impl Fgbio {
 
 fn option(value: Option<Value>) -> Value {
     Fgbio::Option(value).value()
+}
+
+fn text_option(text: &Option<String>) -> Value {
+    option(text.as_deref().map(Value::string))
 }
 
 fn joined(items: &[Value]) -> String {
@@ -192,6 +219,10 @@ fn methods(
         }
         (Fgbio::SubRead { segment, .. }, "segment", []) => Fgbio::Segment(segment.clone()).value(),
         (Fgbio::SubRead { segment, .. }, "kind", []) => Fgbio::Kind(segment.kind).value(),
+        (Fgbio::Sample(sample), name, arguments) => return sample.method(name, arguments),
+        (Fgbio::Attributes(attributes), name, arguments) => {
+            return attributes.method(name, arguments);
+        }
         _ => return Ok(None),
     }))
 }
@@ -440,4 +471,355 @@ fn thrown(exception: Exception) -> Error {
         exception: Rc::new(exception),
         span: Default::default(),
     }
+}
+
+/// A sample of a sample sheet, `com.fulcrumgenomics.illumina.Sample`.
+#[derive(Debug)]
+struct Sample {
+    ordinal: i32,
+    id: String,
+    name: String,
+    library: String,
+    project: Option<String>,
+    description: Option<String>,
+    lane: Option<i32>,
+    i7: Option<String>,
+    i5: Option<String>,
+    attributes: Rc<Attributes>,
+}
+
+/// The columns of a sample that fgbio does not know, by upper-case name.
+#[derive(Debug)]
+struct Attributes {
+    /// Whether it prints as `HashMap`, which Scala gives maps of more than four entries,
+    /// counting all columns of the sheet.
+    hashed: bool,
+    entries: Vec<(String, String)>,
+}
+
+impl Attributes {
+    fn text(&self) -> String {
+        if self.entries.is_empty() {
+            return "Map()".into();
+        }
+        let mut entries: Vec<&(String, String)> = self.entries.iter().collect();
+        // Scala's `HashMap` iterates in the order of its hash trie. uwe orders by the bits of
+        // Java's string hash from the lowest up, which matches the recorded sheet.
+        if self.hashed {
+            entries.sort_by_key(|(key, _)| trie_order(java_hash(key)));
+        }
+        let texts: Vec<String> = entries.iter().map(|(k, v)| format!("{k} -> {v}")).collect();
+        let name = if self.hashed { "HashMap" } else { "Map" };
+        format!("{name}({})", texts.join(", "))
+    }
+
+    fn get(&self, key: &str) -> Option<&str> {
+        let found = self.entries.iter().find(|(name, _)| *name == key);
+        found.map(|(_, value)| value.as_str())
+    }
+
+    fn method(&self, name: &str, arguments: &[Value]) -> Result<Option<Value>, Error> {
+        Ok(Some(match (name, arguments) {
+            ("size", []) => Value::integer(self.entries.len() as i32),
+            ("isEmpty", []) => Value::Boolean(self.entries.is_empty()),
+            ("contains", [key]) => Value::Boolean(self.get(&key.to_string()).is_some()),
+            ("get", [key]) => option(self.get(&key.to_string()).map(Value::string)),
+            ("apply", [key]) => match self.get(&key.to_string()) {
+                Some(value) => Value::string(value),
+                None => {
+                    let message = format!("key not found: {key}");
+                    return Err(thrown(Exception::new("NoSuchElementException", message)));
+                }
+            },
+            _ => return Ok(None),
+        }))
+    }
+}
+
+impl Sample {
+    fn text(&self) -> String {
+        let text = |value: &Option<String>| match value {
+            Some(value) => format!("Some({value})"),
+            None => "None".into(),
+        };
+        let lane = self.lane.map(|lane| lane.to_string());
+        format!(
+            "Sample({},{},{},{},{},{},{},{},{},{})",
+            self.ordinal,
+            self.id,
+            self.name,
+            self.library,
+            text(&self.project),
+            text(&self.description),
+            text(&lane),
+            text(&self.i7),
+            text(&self.i5),
+            self.attributes.text()
+        )
+    }
+
+    fn method(&self, name: &str, arguments: &[Value]) -> Result<Option<Value>, Error> {
+        let barcodes = || -> Vec<&str> {
+            let indexes = [self.i7.as_deref(), self.i5.as_deref()];
+            indexes
+                .into_iter()
+                .flatten()
+                .filter(|bases| !bases.is_empty())
+                .collect()
+        };
+        Ok(Some(match (name, arguments) {
+            ("sampleOrdinal", []) => Value::integer(self.ordinal),
+            ("sampleId", []) => Value::string(self.id.as_str()),
+            ("sampleName", []) => Value::string(self.name.as_str()),
+            ("libraryId", []) => Value::string(self.library.as_str()),
+            ("project", []) => text_option(&self.project),
+            ("description", []) => text_option(&self.description),
+            ("lane", []) => option(self.lane.map(Value::integer)),
+            ("i7IndexBases", []) => text_option(&self.i7),
+            ("i5IndexBases", []) => text_option(&self.i5),
+            ("extendedAttributes", []) => Fgbio::Attributes(self.attributes.clone()).value(),
+            ("extendedAttribute", [key]) => {
+                let key = key.to_string().to_uppercase();
+                let value = self.attributes.get(&key).filter(|value| !value.is_empty());
+                option(value.map(Value::string))
+            }
+            ("sampleBarcodes" | "sampleBarcodeBases", []) => {
+                let items = vec![text_option(&self.i7), text_option(&self.i5)];
+                Fgbio::Sequence("List", items).value()
+            }
+            ("sampleBarcodeString", []) => Value::string(barcodes().join("-")),
+            ("sampleBarcodeBytes", []) => Value::Object(Rc::new(std::cell::RefCell::new(Object {
+                class: "[B",
+                state: ObjectState::Bytes(barcodes().concat().into_bytes().into()),
+            }))),
+            _ => return Ok(None),
+        }))
+    }
+}
+
+/// Java's `String.hashCode`.
+fn java_hash(text: &str) -> u32 {
+    let units = text.encode_utf16();
+    units.fold(0u32, |hash, unit| {
+        hash.wrapping_mul(31).wrapping_add(u32::from(unit))
+    })
+}
+
+/// The groups of five bits of a hash from the lowest, as a trie by hash visits them.
+fn trie_order(hash: u32) -> [u32; 7] {
+    std::array::from_fn(|level| (hash >> (5 * level)) & 31)
+}
+
+/// `channel.fromSampleSheet([lane: n,] path)`: the samples of the `[Data]` section of an
+/// Illumina Experiment Manager sample sheet, in file order.
+fn sample_sheet(
+    options: Option<&Value>,
+    path: &Value,
+    context: &mut Context,
+) -> Result<Value, Error> {
+    let mut lane = None;
+    if let Some(Value::Map(options)) = options {
+        for (key, value) in options.borrow().entries.iter() {
+            let key = key.0.to_string();
+            if key != "lane" {
+                let message = format!(
+                    "Unknown argument '{key}' for operator 'fromSampleSheet' -- Possible arguments: lane"
+                );
+                return Err(failure(&message));
+            }
+            match value {
+                Value::Number(Number::Integer(number)) => lane = Some(*number).filter(|n| *n != 0),
+                other => {
+                    let message = format!(
+                        "Value '{other}' cannot be used in in parameter 'lane' for operator \
+                         'fromSampleSheet' -- Value don't match: class java.lang.Integer"
+                    );
+                    return Err(failure(&message));
+                }
+            }
+        }
+    }
+    let given = path.to_string();
+    let file = PathValue::parse(&given, &context.host.launch_dir());
+    if context.host.metadata(&file)?.is_none() {
+        let message = format!("{given} (No such file or directory)");
+        return Err(thrown(Exception::new("FileNotFoundException", message)));
+    }
+    let bytes = context.host.read(&file)?;
+    let samples = samples(&String::from_utf8_lossy(&bytes), lane).map_err(thrown)?;
+    Ok(Value::list(
+        samples
+            .into_iter()
+            .map(|s| Fgbio::Sample(Rc::new(s)).value())
+            .collect(),
+    ))
+}
+
+/// The fields of a line, split at commas outside double quotes, which stay in the fields.
+fn fields(line: &str) -> Vec<String> {
+    let mut fields = vec![String::new()];
+    let mut quoted = false;
+    for c in line.chars() {
+        match c {
+            '"' => quoted = !quoted,
+            ',' if !quoted => {
+                fields.push(String::new());
+                continue;
+            }
+            _ => {}
+        }
+        if let Some(field) = fields.last_mut() {
+            field.push(c);
+        }
+    }
+    fields
+}
+
+const STANDARD: [&str; 8] = [
+    "SAMPLE_ID",
+    "SAMPLE_NAME",
+    "LIBRARY_ID",
+    "SAMPLE_PROJECT",
+    "DESCRIPTION",
+    "LANE",
+    "INDEX",
+    "INDEX2",
+];
+
+/// The samples of a sheet, of one lane when `lane` is given.
+fn samples(text: &str, lane: Option<i32>) -> Result<Vec<Sample>, Exception> {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.iter().position(|line| line.starts_with("[Data]"));
+    let Some(header) = start.and_then(|start| lines.get(start + 1)) else {
+        let message = "Could not find the header for sample data.";
+        return Err(Exception::illegal_argument(message));
+    };
+    let first = start.unwrap_or_default() + 2;
+    let header: Vec<String> = fields(header)
+        .iter()
+        .map(|f| f.trim().to_uppercase())
+        .collect();
+    let empty = |line: &str| fields(line).iter().all(|field| field.trim().is_empty());
+    let mut rows = &lines[first.min(lines.len())..];
+    while rows.last().is_some_and(|line| empty(line)) {
+        rows = &rows[..rows.len() - 1];
+    }
+    let mut samples = Vec::new();
+    for (row, line) in rows.iter().enumerate() {
+        if empty(line) {
+            let message = format!(
+                "Found empty line on row {} of the sample data section.",
+                row + 1
+            );
+            return Err(Exception::illegal_argument(message));
+        }
+        let raw = fields(line);
+        if raw.len() != header.len() {
+            let message = format!(
+                "Found a line with a mismatching number of columns on line #{}: {}",
+                first + row + 1,
+                raw.join(",")
+            );
+            return Err(Exception::illegal_argument(message));
+        }
+        let cell = |name: &str| {
+            let found = header.iter().position(|column| column == name);
+            found.map(|index| raw[index].trim().to_owned())
+        };
+        let present = |name: &str| cell(name).filter(|value| !value.is_empty());
+        let sample_lane = match present("LANE") {
+            Some(text) => match text.parse::<i32>() {
+                Ok(number) => Some(number),
+                Err(_) => return Err(Exception::number_format(&text)),
+            },
+            None => None,
+        };
+        if lane.is_some() && sample_lane != lane {
+            continue;
+        }
+        let ordinal = samples.len() as i32 + 1;
+        let required = |name: &str, column: &str| {
+            present(column).ok_or_else(|| {
+                let message = format!("Sample at ordinal #{ordinal} is missing: {name}");
+                Exception::illegal_argument(message)
+            })
+        };
+        let name = required("Sample_Name", "SAMPLE_NAME")?;
+        let id = required("Sample_ID", "SAMPLE_ID")?;
+        let attributes = (header.iter().zip(&raw))
+            .filter(|(column, _)| !STANDARD.contains(&column.as_str()))
+            .map(|(column, value)| (column.clone(), value.trim().to_owned()))
+            .collect();
+        samples.push(Sample {
+            ordinal,
+            library: present("LIBRARY_ID").unwrap_or_else(|| id.clone()),
+            id,
+            name,
+            project: present("SAMPLE_PROJECT"),
+            description: present("DESCRIPTION"),
+            lane: sample_lane,
+            i7: present("INDEX"),
+            i5: present("INDEX2"),
+            attributes: Rc::new(Attributes {
+                hashed: header.len() > 4,
+                entries: attributes,
+            }),
+        });
+    }
+    unique(&samples)?;
+    Ok(samples)
+}
+
+/// Checks that the samples of each lane, with those without a lane, and the samples without
+/// a lane have unique ids and unique names with library ids.
+fn unique(samples: &[Sample]) -> Result<(), Exception> {
+    let mut lanes: Vec<Option<i32>> = Vec::new();
+    for sample in samples {
+        if sample.lane.is_some() && !lanes.contains(&sample.lane) {
+            lanes.push(sample.lane);
+        }
+    }
+    lanes.push(None);
+    for lane in lanes {
+        let group: Vec<&Sample> = (samples.iter())
+            .filter(|sample| sample.lane.is_none() || sample.lane == lane)
+            .collect();
+        let ids = repeated(group.iter().map(|sample| sample.id.clone()));
+        if !ids.is_empty() {
+            let message = format!(
+                "requirement failed: Sample identifiers were not unique: {}",
+                ids.join(", ")
+            );
+            return Err(Exception::illegal_argument(message));
+        }
+        let keys = repeated(group.iter().map(|sample| match sample.lane {
+            Some(lane) => format!("{} {} {lane}", sample.name, sample.library),
+            None => format!("{} {}", sample.name, sample.library),
+        }));
+        if !keys.is_empty() {
+            let message = format!(
+                "requirement failed: Sample name and library identifier combinations were not \
+                 unique: {}",
+                keys.join(", ")
+            );
+            return Err(Exception::illegal_argument(message));
+        }
+    }
+    Ok(())
+}
+
+/// The values that occur more than once, each once, in the order they first repeat.
+fn repeated(values: impl Iterator<Item = String>) -> Vec<String> {
+    let mut seen = Vec::new();
+    let mut repeated = Vec::new();
+    for value in values {
+        if seen.contains(&value) {
+            if !repeated.contains(&value) {
+                repeated.push(value);
+            }
+        } else {
+            seen.push(value);
+        }
+    }
+    repeated
 }

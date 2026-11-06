@@ -4185,6 +4185,7 @@ dependencies = [
  "nextflow-parser",
  "nextflow-runtime",
  "parquet",
+ "reqwest",
  "rusqlite",
  "serde_json",
  "sha1",

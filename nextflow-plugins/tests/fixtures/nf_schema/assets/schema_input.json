@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/probe/assets/schema_input.json",
+  "title": "probe samplesheet",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "sample": {"type": "string", "pattern": "^\\S+$", "errorMessage": "Sample name must not contain spaces", "meta": ["id"]},
+      "reference": {"type": "string", "description": "A reference text"},
+      "count": {"type": "integer", "meta": ["count"]}
+    },
+    "required": ["sample"]
+  }
+}

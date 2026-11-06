@@ -39,6 +39,11 @@ pub fn executor(
     backend.trusted = !setup.hosted;
     backend.references = executors.kubernetes_references.clone();
     backend.pod = executors.kubernetes_pod.clone();
+    if let Some(cws) = &executors.kubernetes_cws {
+        let scheduler = serde_json::json!({"schedulerName": cws.scheduler_name});
+        backend.pod.add(&scheduler)?;
+        backend.cws = Some(kubernetes_executor::cws::Client::new(cws.clone(), run));
+    }
     if let Volumes::Under { root, .. } = &executors.kubernetes_volumes
         && !backend.scratch.starts_with(root)
     {

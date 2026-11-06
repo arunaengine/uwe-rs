@@ -1,5 +1,5 @@
-//! Fills executor settings that uwe's config file leaves unset from a Nextflow config: `nomad`,
-//! `k8s`, `slurm_no_memory`, `ospool`, `tes`, `tencentcloud`, `wr` and nf-jarvice's settings.
+//! Fills executor settings that uwe's config file leaves unset from the executor scopes of a
+//! Nextflow config, like `nomad`, `k8s`, `cws`, `wr`, `tes` and nf-jarvice's process settings.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -327,7 +327,41 @@ pub(crate) fn kubernetes(
             "uwe runs each task as a Kubernetes Job, also with k8s.computeResourceType = 'Pod'"
         );
     }
+    cws(&scope, executors);
     Ok(())
+}
+
+/// Fills the Common Workflow Scheduler from nf-cws's `cws` scope, when it names a running one
+/// with `dns`; uwe starts no scheduler pod of its own.
+fn cws(scope: &Scope<'_>, executors: &mut crate::setup::Executors) {
+    if scope.get(&["k8s", "scheduler"]).is_some() {
+        tracing::warn!(
+            "uwe starts no CWS pod for k8s.scheduler; it uses the one that cws.dns names"
+        );
+    }
+    let key = |name: &'static str| ["cws", name];
+    let Some(address) = scope.text(&key("dns")) else {
+        return;
+    };
+    executors.kubernetes_cws.get_or_insert_with(|| {
+        let mut settings = kubernetes_executor::cws::Settings::new(&address);
+        settings.strategy = scope.text(&key("strategy")).unwrap_or(settings.strategy);
+        settings.cost_function = scope.text(&key("costFunction"));
+        settings
+    });
+    let why = "uwe tells CWS of each task by itself, without memory prediction or WOW";
+    for name in [
+        "batchSize",
+        "memoryPredictor",
+        "minMemory",
+        "maxMemory",
+        "maxCopyTasksPerNode",
+        "maxWaitingCopyTasksPerNode",
+    ] {
+        if scope.get(&key(name)).is_some() {
+            tracing::warn!("uwe ignores cws.{name}: {why}");
+        }
+    }
 }
 
 /// Where the values of a Nextflow config come from, for errors of secrets.
@@ -748,6 +782,13 @@ mod tests {
         };
         assert_eq!(root, Path::new("/data"));
         assert_eq!(source["persistentVolumeClaim"]["claimName"], "work");
+        let text = "cws {\n dns = 'http://127.0.0.1:8080/'\n strategy = 'rank_max-fair'\n \
+                    batchSize = 2\n}\n";
+        let mut executors = crate::setup::Executors::default();
+        super::kubernetes(&loaded(text), &mut executors).expect("a mapping");
+        let cws = executors.kubernetes_cws.expect("a scheduler");
+        assert_eq!(cws.address, "http://127.0.0.1:8080");
+        assert_eq!(cws.strategy, "rank_max-fair");
         let refused = loaded("k8s.pod = [privileged: true]\n");
         let error = super::kubernetes(&refused, &mut crate::setup::Executors::default());
         assert!(error.is_err_and(|error| error.contains("never starts privileged")));

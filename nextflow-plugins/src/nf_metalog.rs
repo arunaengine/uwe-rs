@@ -5,9 +5,11 @@
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use nextflow_config::Config;
 use nextflow_evaluator::value::Value;
+use rusqlite::Connection;
 
 use crate::catalogue::{Kind, Plugin, State};
 use crate::observer::{End, Event, Observer, Start, Task};
@@ -129,7 +131,11 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
         get(path).map_or(default.to_owned(), |value| value.to_string())
     };
     let launch = std::env::current_dir().map_err(|error| error.to_string())?;
-    let store = Store::Memory(Vec::new());
+    let backend = text(&["storageBackend"], "memory");
+    let store = match backend.as_str() {
+        "memory" => Store::Memory(Vec::new()),
+        _ => Store::Sqlite(launch.join(text(&["sqlite", "file"], "metalog.db")), None),
+    };
     Ok(Some(Box::new(Metalog {
         key: text(&["groupKey"], "id"),
         csv: launch.join(text(&["report", "csvFile"], "metalog.csv")),
@@ -141,9 +147,11 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
     })))
 }
 
-/// Where the rows are kept: in memory in the order of their first event.
+/// Where the rows are kept: in memory in the order of their first event, or in a SQLite file
+/// that may hold the rows of several runs.
 enum Store {
     Memory(Vec<(String, Row)>),
+    Sqlite(PathBuf, Option<Connection>),
 }
 
 struct Metalog {
@@ -179,11 +187,28 @@ impl Metalog {
     fn started(&mut self, start: &Start) {
         self.run_name = start.run_name.clone();
         self.start = Some(Box::new(start.clone()));
-        tracing::info!(
-            "Metalog observer initialized with memory backend: runName={}, groupBy={}",
-            self.run_name,
-            self.key
-        );
+        match &mut self.store {
+            Store::Memory(_) => tracing::info!(
+                "Metalog observer initialized with memory backend: runName={}, groupBy={}",
+                self.run_name,
+                self.key
+            ),
+            Store::Sqlite(path, connection) => {
+                match open(path) {
+                    Ok(opened) => *connection = Some(opened),
+                    Err(error) => {
+                        tracing::error!(%error, "Metalog: {} cannot be opened", path.display())
+                    }
+                }
+                tracing::info!(
+                    "Metalog observer initialized with SQLite backend: runName={}, groupBy={}, \
+                     dbFile={}",
+                    self.run_name,
+                    self.key,
+                    path.display()
+                );
+            }
+        }
         tracing::info!("Metalog: Workflow created");
     }
 
@@ -235,22 +260,50 @@ impl Metalog {
             row.push((column.to_owned(), text(value)));
         }
         let id = task.record.get("task_id").map(text).unwrap_or_default();
-        let Store::Memory(rows) = &mut self.store;
-        match rows.iter_mut().find(|(known, _)| *known == id) {
-            Some(entry) => entry.1 = row,
-            None => rows.push((id, row)),
+        match &mut self.store {
+            Store::Memory(rows) => match rows.iter_mut().find(|(known, _)| *known == id) {
+                Some(entry) => entry.1 = row,
+                None => rows.push((id, row)),
+            },
+            Store::Sqlite(_, Some(connection)) => {
+                if let Err(error) = upsert(connection, &row) {
+                    tracing::error!(%error, "Metalog: the record of task {name} was not stored");
+                }
+            }
+            Store::Sqlite(_, None) => {}
         }
     }
 
     /// Writes the CSV and the HTML report from the rows of this run, then closes the store.
     fn report(&mut self, end: &End) {
-        let Store::Memory(rows) = &mut self.store;
-        let rows = memory_order(
-            std::mem::take(rows)
-                .into_iter()
-                .map(|(_, row)| row)
-                .collect(),
-        );
+        let rows = match &mut self.store {
+            Store::Memory(rows) => {
+                let rows = std::mem::take(rows)
+                    .into_iter()
+                    .map(|(_, row)| row)
+                    .collect();
+                memory_order(rows)
+            }
+            Store::Sqlite(_, connection) => {
+                tracing::info!("Metalog: closing the db connection.");
+                match connection
+                    .take()
+                    .map(|connection| read(&connection, &self.run_name))
+                {
+                    Some(Ok(rows)) => rows,
+                    Some(Err(error)) => {
+                        tracing::error!(%error, "Error generating and writing the nf-metalog report");
+                        return;
+                    }
+                    None => {
+                        tracing::warn!(
+                            "Metalog: storage backend already closed, skipping report generation."
+                        );
+                        return;
+                    }
+                }
+            }
+        };
         let columns: Vec<String> = rows
             .first()
             .map(|row| row.iter().map(|(key, _)| key.clone()).collect())
@@ -436,6 +489,66 @@ fn memory_order(rows: Vec<Row>) -> Vec<Row> {
             row
         })
         .collect()
+}
+
+fn open(path: &Path) -> rusqlite::Result<Connection> {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let connection = Connection::open(path)?;
+    connection.busy_timeout(Duration::from_secs(10))?;
+    connection.pragma_update(None, "journal_mode", "WAL")?;
+    let columns: Vec<String> = (FIELDS.iter())
+        .map(|(name, kind)| format!("{name} {kind}"))
+        .collect();
+    connection.execute(
+        &format!(
+            "CREATE TABLE IF NOT EXISTS metalog (run_name TEXT NOT NULL, group_id TEXT NOT NULL, {})",
+            columns.join(", ")
+        ),
+        [],
+    )?;
+    Ok(connection)
+}
+
+/// Stores a row in place of the row of the same task; fields without a column are left out.
+fn upsert(connection: &Connection, row: &Row) -> rusqlite::Result<()> {
+    let known = |key: &str| {
+        key == "run_name" || key == "group_id" || FIELDS.iter().any(|(name, _)| *name == key)
+    };
+    let row: Vec<&(String, String)> = row.iter().filter(|(key, _)| known(key)).collect();
+    let names: Vec<&str> = row.iter().map(|(key, _)| key.as_str()).collect();
+    let marks: Vec<String> = (1..=row.len()).map(|index| format!("?{index}")).collect();
+    let sql = format!(
+        "INSERT OR REPLACE INTO metalog ({}) VALUES ({})",
+        names.join(", "),
+        marks.join(", ")
+    );
+    let values: Vec<&str> = row.iter().map(|(_, value)| value.as_str()).collect();
+    connection.execute(&sql, rusqlite::params_from_iter(values))?;
+    Ok(())
+}
+
+/// The rows of a run in the order of the table's columns, without the empty ones.
+fn read(connection: &Connection, run_name: &str) -> rusqlite::Result<Vec<Row>> {
+    let mut statement = connection.prepare("SELECT * FROM metalog WHERE run_name = ?1")?;
+    let names: Vec<String> = statement.column_names().map(str::to_owned).collect();
+    let rows = statement.query_map([run_name], |found| {
+        let mut row = Row::new();
+        for (index, name) in names.iter().enumerate() {
+            let value: rusqlite::types::Value = found.get(index)?;
+            let text = match value {
+                rusqlite::types::Value::Null => continue,
+                rusqlite::types::Value::Integer(number) => number.to_string(),
+                rusqlite::types::Value::Real(number) => number.to_string(),
+                rusqlite::types::Value::Text(text) => text,
+                rusqlite::types::Value::Blob(_) => continue,
+            };
+            row.push((name.clone(), text));
+        }
+        Ok(row)
+    })?;
+    rows.collect()
 }
 
 /// A trace value as plain text: a text as it is, a number as its digits.

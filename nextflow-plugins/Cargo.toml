@@ -22,6 +22,7 @@ md-5.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
+rusqlite.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 storage.workspace = true

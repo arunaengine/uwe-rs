@@ -109,7 +109,13 @@ fn prepares_installed_preset() {
     for name in ["slurm", "htcondor", "pbs", "nomad"] {
         assert_eq!(executors[name], json!(["offline"]), "{name}");
     }
-    for name in ["aws-batch", "google-batch", "azure-batch"] {
+    for name in [
+        "aws-batch",
+        "google-batch",
+        "azure-batch",
+        "flyte",
+        "snowflake",
+    ] {
         assert_eq!(executors[name], json!([]), "{name}");
     }
 }

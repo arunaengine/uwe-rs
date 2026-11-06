@@ -349,7 +349,7 @@ fn old_archives(
 
 /// The folders in the scratch folder where the executors other than the local one keep the
 /// folders of their attempts.
-const EXECUTOR_FOLDERS: [&str; 9] = [
+const EXECUTOR_FOLDERS: [&str; 11] = [
     "tes",
     "kubernetes",
     "slurm",
@@ -359,6 +359,8 @@ const EXECUTOR_FOLDERS: [&str; 9] = [
     "nomad",
     "htcondor",
     "pbs",
+    "flyte",
+    "snowflake",
 ];
 
 fn remote_attempts_finished(scratch: &Path) -> Result<(), Failure> {

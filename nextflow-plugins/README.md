@@ -271,3 +271,13 @@ always moves through presigned addresses, so `transferMode = 'physical_path'` an
 `allowedSchemaBucketsForLinking` only warn; `connectTimeout` is uwe's own 30 seconds; the
 staging link sends the ETag of the upload as `checksum`; a ref is used as given, without the
 plugin's branch, tag and commit lookups; deleting a `lakefs://` path is not supported.
+
+## src/nf_lamin.rs
+
+nf-lamin 0.9.0 is partly implemented: its `lamin` scope (`api_key`, `api.supabase_api_url`,
+`api.supabase_anon_key`, `features.manage_s3_credentials`) goes to the LaminDB provider of the
+`storage` crate, which then reads `lamin://` paths for every language. The run is not recorded
+in LaminDB yet, with one warning. The prod hub's anon key is not shipped with uwe, so it must
+come from the scope or `SUPABASE_ANON_KEY`; `lamin.env` other than `prod` needs
+`api.supabase_api_url`. A 401 answer does not fetch a new token, and S3 session credentials are
+not renewed during a run.

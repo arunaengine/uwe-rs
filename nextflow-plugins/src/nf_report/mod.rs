@@ -1,4 +1,5 @@
 //! nf-report 1.1.1: writes the execution, task status and sample status reports of a run as
+//! JSON, TSV and HTML, during the run and at its end; nf-crg-report adds costs to them.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -13,10 +14,13 @@ use nextflow_config::Config;
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
+pub(crate) use entries::Finished;
+use entries::{STATUSES, event_cell, filtered, sample, samples, status, task_entry};
 use settings::{Kind as Report, Settings};
 
 use crate::Context;
 use crate::catalogue::{Kind, Plugin, State};
+use crate::nf_crg_report::Costs;
 use crate::observer::{End, Event, Observer, Start};
 use crate::report_format::Json;
 
@@ -28,7 +32,16 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-report", Kind::Observer, State::Partial)
 };
 
+/// The functions of nf-report and nf-crg-report.
 pub(crate) const FUNCTIONS: &[&str] = &["getReportConfig", "isReportEnabled", "getReportsDir"];
+
+/// The plugin whose reports a run writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Flavour {
+    Report,
+    /// nf-crg-report 1.1.10: costs, and the run start in the default file names.
+    Crg,
+}
 
 pub(crate) fn call(
     name: &str,
@@ -60,6 +73,14 @@ pub(crate) fn call(
 }
 
 fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+    activate_as(config, Flavour::Report)
+}
+
+/// The observer of nf-report or nf-crg-report; `None` when the scope turns the plugin off.
+pub(crate) fn activate_as(
+    config: &Config,
+    flavour: Flavour,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let settings = Settings::of(config);
     if !settings.enabled {
         tracing::info!("nf-report plugin is disabled");
@@ -69,7 +90,9 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
         "nf-report plugin initialized with {} reports",
         settings.reports.len()
     );
+    let costs = (flavour == Flavour::Crg).then(|| Costs::of(config));
     Ok(Some(Box::new(Reporter {
+        flavour,
         settings,
         launch: PathBuf::new(),
         start: None,
@@ -77,11 +100,13 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
         tasks: Vec::new(),
         latest: HashMap::new(),
         end: None,
+        costs,
     })))
 }
 
 /// What the reports know of the run so far.
 struct Reporter {
+    flavour: Flavour,
     settings: Settings,
     launch: PathBuf,
     start: Option<Box<Start>>,
@@ -90,6 +115,7 @@ struct Reporter {
     /// The latest attempt of each task, by its id, as uwe gives retries a new hash.
     latest: HashMap<String, i64>,
     end: Option<End>,
+    costs: Option<Costs>,
 }
 
 impl Observer for Reporter {
@@ -161,7 +187,21 @@ impl Reporter {
             .collect()
     }
 
+    /// The path of a report file, with the default suffix of nf-crg-report: the run start.
     fn path(&self, report: &settings::Report, format: &str) -> PathBuf {
+        let suffix = report
+            .suffix
+            .clone()
+            .unwrap_or_else(|| match (self.flavour, report.kind) {
+                (Flavour::Crg, Report::Execution | Report::Task) => {
+                    let start = self
+                        .start
+                        .as_ref()
+                        .map_or_else(crate::report_format::now, |start| start.start);
+                    format!("-{}", crate::nf_crg_report::stamp(start))
+                }
+                _ => String::new(),
+            });
         let name = format!("{}{}{suffix}.{format}", report.prefix, report.name);
         self.launch.join(&report.folder).join(name)
     }
@@ -214,6 +254,12 @@ impl Reporter {
             .map(|status| (*status, Vec::new()))
             .collect();
         for (task, status) in self.tasks.iter().zip(&statuses) {
+            let extra = self
+                .costs
+                .as_ref()
+                .map(|costs| costs.task(task))
+                .unwrap_or_default();
+            let entry = task_entry(task, extra);
             // The plugin filters the fields of finished tasks but not of cached ones.
             let entry = if task.cached {
                 entry
@@ -225,6 +271,7 @@ impl Reporter {
             }
         }
         let count = |status: &str| statuses.iter().filter(|known| **known == status).count() as i64;
+        let mut summary = Json::object([
             ("total_tasks", Json::from(statuses.len() as i64)),
             ("completed", Json::from(count("COMPLETED"))),
             ("cached", Json::from(count("CACHED"))),
@@ -237,6 +284,18 @@ impl Reporter {
             ("report_type", Json::from(Report::Task.name())),
             ("generated_at", Json::from(files::now())),
         ]);
+        if let Some(costs) = &self.costs {
+            let start = self.start.as_ref().map(|start| start.start);
+            let end = self.end.as_ref().map(|end| end.end);
+            let (extra, processes) = costs.totals(&self.tasks, start, end);
+            for (key, value) in extra {
+                summary.insert(&key, value);
+            }
+            data.insert("summary", summary);
+            data.insert("costs_by_process", processes);
+        } else {
+            data.insert("summary", summary);
+        }
         data.insert(
             "tasks_by_status",
             Json::Object(
@@ -329,6 +388,12 @@ impl Reporter {
             Report::Task => {
                 let entries: Vec<Json> = (self.tasks.iter())
                     .map(|task| {
+                        let extra = self
+                            .costs
+                            .as_ref()
+                            .map(|costs| costs.task(task))
+                            .unwrap_or_default();
+                        let entry = task_entry(task, extra);
                         if task.cached {
                             entry
                         } else {

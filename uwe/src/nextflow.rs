@@ -377,6 +377,7 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("nomad", "nomad"),
     ("slurm", "slurm"),
     ("slurm_no_memory", "slurm"),
+    ("tencentcloud-omics", "tes"),
     ("tes", "tes"),
 ];
 
@@ -393,9 +394,9 @@ pub fn pipeline_executor(
     let named = arguments.executor.as_deref();
     let batch = matches!(
         named,
-        Some("aws-batch" | "google-batch" | "azure-batch" | "nomad" | "slurm")
+        Some("aws-batch" | "google-batch" | "azure-batch" | "nomad" | "slurm" | "tes")
     );
-    if language != Language::Nextflow || (chosen && !batch) {
+    if language != Language::Nextflow {
         return Ok(None);
     }
     let mut console = console(true, setup);
@@ -403,6 +404,13 @@ pub fn pipeline_executor(
     let Ok(config) = nextflow_runtime::driver::config(&launch.target, launch, &mut console) else {
         return Ok(None);
     };
+    // nf-tencentcloud's `cos://` addresses work with every executor.
+    if let Some(cos) = crate::scopes::cos(&config) {
+        setup.storage = setup.storage.with_providers(vec![cos]);
+    }
+    if chosen && !batch {
+        return Ok(None);
+    }
     let picked = match chosen {
         true => None,
         false => {
@@ -427,6 +435,10 @@ pub fn pipeline_executor(
     }
     if named == Some("slurm") || picked.as_deref() == Some("slurm") {
         crate::scopes::slurm(&config, &mut setup.executors);
+    }
+    if named == Some("tes") || picked.as_deref() == Some("tes") {
+        crate::scopes::tes(&config, &mut setup.executors)
+            .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
     }
     Ok(picked)
 }

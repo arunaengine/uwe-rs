@@ -324,11 +324,13 @@ pub fn driver(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
+                | Some("flyte")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
+                | Some("flyte")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),
@@ -373,6 +375,7 @@ pub(crate) const EXECUTORS: &[(&str, &str)] = &[
     ("awsbatch", "aws-batch"),
     ("azurebatch", "azure-batch"),
     ("condor", "htcondor"),
+    ("flyte", "flyte"),
     ("google-batch", "google-batch"),
     ("k8s", "kubernetes"),
     ("nomad", "nomad"),
@@ -399,7 +402,7 @@ pub fn pipeline_executor(
         named,
         Some(
             "aws-batch" | "google-batch" | "azure-batch" | "kubernetes" | "nomad" | "slurm" | "tes"
-        ) | Some("htcondor" | "pbs")
+        ) | Some("htcondor" | "pbs" | "flyte")
     );
     if language != Language::Nextflow {
         return Ok(None);
@@ -440,6 +443,9 @@ pub fn pipeline_executor(
     }
     if named == Some("htcondor") || picked.as_deref() == Some("htcondor") {
         crate::scopes::ospool(&config);
+    }
+    if named == Some("flyte") || picked.as_deref() == Some("flyte") {
+        crate::scopes::flyte(&config, &mut setup.executors.flyte);
     }
     if named == Some("slurm") || picked.as_deref() == Some("slurm") {
         crate::scopes::slurm(&config, &mut setup.executors);

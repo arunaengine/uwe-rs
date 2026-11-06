@@ -18,6 +18,7 @@ mod conda_backend;
 mod detect;
 mod failure;
 mod fetched;
+mod flyte;
 mod git;
 mod google_batch;
 mod grid;

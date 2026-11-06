@@ -47,6 +47,7 @@ pub(crate) const EXECUTORS: &[&str] = &[
     "nomad",
     "htcondor",
     "pbs",
+    "flyte",
 ];
 
 /// What the config files set up for a command; the default is what no config file sets up.
@@ -155,6 +156,8 @@ pub struct Executors {
     /// `[executor.htcondor]` and `[executor.pbs]`: the jobs, their staging and helper.
     pub htcondor: crate::grid::Config,
     pub pbs: crate::grid::Config,
+    /// `[executor.flyte]`: the control plane, the runs, their staging and helper.
+    pub flyte: crate::flyte::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -188,6 +191,7 @@ impl Executors {
             "nomad",
             "htcondor",
             "pbs",
+            "flyte",
         ];
         section.only(&keys)?;
         if let Some(batch) = section.table("aws-batch")? {
@@ -207,6 +211,9 @@ impl Executors {
         }
         if let Some(pbs) = section.table("pbs")? {
             settings.pbs = crate::grid::Config::read(&pbs, true)?;
+        }
+        if let Some(flyte) = section.table("flyte")? {
+            settings.flyte = crate::flyte::Config::read(&flyte)?;
         }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;

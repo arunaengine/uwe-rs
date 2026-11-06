@@ -503,6 +503,54 @@ pub(crate) fn ospool(config: &Config) {
     }
 }
 
+/// Fills the Flyte settings that `[executor.flyte]` leaves unset from nf-flyte's `flyte` scope,
+/// and the staging root from an object-store work dir.
+pub(crate) fn flyte(config: &Config, flyte: &mut crate::flyte::Config) {
+    let scope = Scope(config);
+    let settings = &mut flyte.settings;
+    for (slot, key) in [
+        (&mut settings.endpoint, "endpoint"),
+        (&mut settings.org, "org"),
+        (&mut settings.project, "project"),
+        (&mut settings.domain, "domain"),
+        (&mut settings.queue, "queue"),
+    ] {
+        if slot.is_none() {
+            *slot = scope.text(&["flyte", key]);
+        }
+    }
+    let poll = scope.duration(&["flyte", "pollInterval"]);
+    if let Some(poll) = poll.filter(|poll| poll.as_secs() >= 1) {
+        settings.poll = poll;
+    }
+    let joined = "uwe makes one Flyte run for each task attempt";
+    for (key, why) in [
+        ("runName", joined),
+        ("parentAction", joined),
+        ("runOutputBase", joined),
+        ("heartbeatTimeout", joined),
+        ("rootImage", joined),
+        ("cache", "uwe keeps its own cache of task results"),
+        (
+            "authCommand",
+            "uwe signs in with the API key of FLYTE_API_KEY or api_key",
+        ),
+    ] {
+        if scope.get(&["flyte", key]).is_some() {
+            tracing::warn!("uwe ignores flyte.{key}: {why}");
+        }
+    }
+    let objects = ["s3://", "gs://", "az://"];
+    let work = scope.text(&["workDir"]);
+    let work = work.filter(|work| objects.iter().any(|scheme| work.starts_with(scheme)));
+    if flyte.staging.root.is_none()
+        && let Some(work) = work
+    {
+        flyte.staging.root = Some(work);
+        flyte.staging.mode = crate::staging::Mode::ObjectStore;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -669,5 +717,27 @@ mod tests {
         let mut executors = crate::setup::Executors::default();
         super::slurm(&loaded("process.executor = 'slurm'\n"), &mut executors);
         assert_eq!(executors.slurm_cpu_memory, None);
+    }
+
+    #[test]
+    fn maps_flyte_scope() {
+        let text = "workDir = 's3://runs/work'\nflyte {\n endpoint = 'flyte.example.org'\n \
+                    project = 'flows'\n domain = 'development'\n queue = 'gpu'\n \
+                    pollInterval = '2s'\n runName = 'r1'\n}\n";
+        let mut flyte = crate::flyte::Config::default();
+        flyte.settings.project = Some("mine".into());
+        super::flyte(&loaded(text), &mut flyte);
+        let settings = &flyte.settings;
+        assert_eq!(settings.endpoint.as_deref(), Some("flyte.example.org"));
+        assert_eq!(
+            settings.project.as_deref(),
+            Some("mine"),
+            "uwe's own setting wins"
+        );
+        assert_eq!(settings.domain.as_deref(), Some("development"));
+        assert_eq!(settings.queue.as_deref(), Some("gpu"));
+        assert_eq!(settings.poll, Duration::from_secs(2));
+        assert_eq!(flyte.staging.root.as_deref(), Some("s3://runs/work"));
+        assert_eq!(flyte.staging.mode, crate::staging::Mode::ObjectStore);
     }
 }

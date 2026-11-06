@@ -125,6 +125,31 @@ pub(crate) fn size_memory(container: &Container, script: String, bytes: Option<u
     script.replace(&command, &format!("{command} '--shm-size={bytes}'"))
 }
 
+/// Changes `options` for a cluster that gives each CPU a fixed memory and refuses memory
+/// requests: no `--mem`, and enough CPUs for the memory at `gb` GB of 2^30 bytes per CPU.
+pub fn per_cpu_memory(options: &mut Vec<String>, gb: f64) {
+    let memory = (options.iter()).find_map(|option| {
+        option
+            .strip_prefix("--mem=")?
+            .strip_suffix('M')?
+            .parse::<u64>()
+            .ok()
+    });
+    options.retain(|option| !option.starts_with("--mem="));
+    let Some(memory) = memory else {
+        return;
+    };
+    let needed = (memory as f64 / (gb * 1024.0)).ceil() as u32;
+    for option in options.iter_mut() {
+        let cpus = option
+            .strip_prefix("--cpus-per-task=")
+            .and_then(|cpus| cpus.parse().ok());
+        if let Some(cpus) = cpus {
+            *option = format!("--cpus-per-task={}", needed.max(cpus));
+        }
+    }
+}
+
 /// What the job that pulls an image into a SIF file asks for. Very large images may need more
 /// than the default of 2 CPUs, 4 GB and one hour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -684,6 +709,59 @@ esac
             options.contains(&"--time=1-01:11:01".to_owned()),
             "{options:?}"
         );
+    }
+
+    /// The CPUs of nf-slurm-no-memory's recorded jobs, at its default of 4 GB per CPU and at
+    /// 8, and never a memory option.
+    #[test]
+    fn trades_memory_cpus() {
+        let spec = spec(None);
+        let staging = Staging::default();
+        let root = Path::new("/shared/scratch/run-P-1-1");
+        let tasks = [
+            ("BIG_MEMORY", 2, Some(10u64 << 30)),
+            ("MANY_CPUS", 4, Some(2 << 30)),
+            ("NO_MEMORY", 1, None),
+            ("ODD_MEMORY", 1, Some(4097 << 20)),
+        ];
+        let recorded = [
+            (4.0, include_str!("../tests/fixtures/nf_slurm_default.txt")),
+            (
+                8.0,
+                include_str!("../tests/fixtures/nf_slurm_per_core_8.txt"),
+            ),
+        ];
+        for (gb, text) in recorded {
+            for (process, cpus, memory) in tasks {
+                let placement = Placement {
+                    cpus,
+                    memory_bytes: memory,
+                    ..Placement::default()
+                };
+                let job = Job {
+                    name: process,
+                    spec: &spec,
+                    staging: &staging,
+                    placement: &placement,
+                };
+                let mut options = sbatch_options(job, root, 0, &[]);
+                per_cpu_memory(&mut options, gb);
+                let header = format!("#SBATCH -J nf-{process}\n");
+                let block = text.split("== ").find(|block| block.contains(&header));
+                let block = block.expect("a recorded job");
+                // Nextflow writes no `-c` line for one CPU.
+                let asked = (block.lines())
+                    .find_map(|line| line.strip_prefix("#SBATCH -c "))
+                    .map_or(1, |count| count.parse().expect("a count"));
+                let expected = format!("--cpus-per-task={asked}");
+                assert!(
+                    options.contains(&expected),
+                    "{process} at {gb}: {options:?}"
+                );
+                assert!(!options.iter().any(|option| option.starts_with("--mem")));
+                assert!(!block.contains("--mem"));
+            }
+        }
     }
 
     #[test]

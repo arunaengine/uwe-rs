@@ -28,7 +28,7 @@ use crate::queue::{Look, Queue};
 use crate::remote::{NodeStaging, records};
 use crate::script::{
     CONTAINER_EXIT, Container, ENGINE_EXIT, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT,
-    container_script, job_script, pull_options, sbatch_options,
+    container_script, job_script, per_cpu_memory, pull_options, sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
@@ -114,6 +114,9 @@ pub struct SlurmBackend {
     /// Where the archives of images that tasks name by image ID, `sha256:<hex>`, are saved as
     /// `sha256-<hex>.tar`, like those of CWL tools.
     pub archives: Option<PathBuf>,
+    /// For a cluster that gives each CPU a fixed memory and refuses memory requests: the GB
+    /// per CPU. The jobs then ask for no memory but enough CPUs.
+    pub cpu_memory_gb: Option<f64>,
     queue: Queue,
     made: Images,
     recovery: Mutex<executor::history::Scan>,
@@ -176,6 +179,7 @@ impl SlurmBackend {
             remote: None,
             staging_time: STAGING_TIME,
             archives: None,
+            cpu_memory_gb: None,
             scratch,
             container,
             options: Vec::new(),
@@ -747,6 +751,9 @@ impl SlurmBackend {
     /// The options of the job of an attempt, whose time is that of its task plus `margin`.
     async fn job_options(&self, job: Job<'_>, root: &Path, margin: u64) -> Vec<String> {
         let mut options = sbatch_options(job, root, margin, &self.options);
+        if let Some(gb) = self.cpu_memory_gb {
+            per_cpu_memory(&mut options, gb);
+        }
         if self.remote.is_some() {
             // The node has no scratch folder; the job keeps its log in the folder of the node.
             for option in &mut options {
@@ -904,9 +911,11 @@ impl SlurmBackend {
         };
         let script = pull_script(program, &source, path, &control.join(CONTAINER_EXIT));
         tokio::fs::write(control.join(SCRIPT), script).await?;
-        let options = self
-            .with_excluded(pull_options(&name, &root, &self.pull, &self.options))
-            .await;
+        let mut options = pull_options(&name, &root, &self.pull, &self.options);
+        if let Some(gb) = self.cpu_memory_gb {
+            per_cpu_memory(&mut options, gb);
+        }
+        let options = self.with_excluded(options).await;
         let script = control.join(SCRIPT);
         let ended = match self.submit(options, &script, &root, None, cancel).await? {
             Submission::Taken(job) => {

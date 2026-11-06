@@ -75,6 +75,8 @@ pub struct KubernetesBackend {
     /// How long a pod may find no node before it fails with the reason of the scheduler. Each
     /// new scale-up of the cluster for it starts the time again.
     pub unschedulable_time: Duration,
+    /// The pod options of every Job, before those of its task.
+    pub pod: crate::PodOptions,
     /// The label value of the Jobs of this backend.
     label: String,
     pub(crate) pods: Pods,
@@ -115,6 +117,7 @@ impl KubernetesBackend {
             staging_time: STAGING_TIME,
             start_grace: GRACE,
             unschedulable_time: UNSCHEDULABLE_TIME,
+            pod: crate::PodOptions::default(),
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
             warned: AtomicBool::new(false),
@@ -516,6 +519,11 @@ impl KubernetesBackend {
                 "kubernetes.io/arch": parts.next().unwrap_or_default(),
             });
         }
+        let mut options = self.pod.clone();
+        if let Some(list) = job.placement.options.get("pod") {
+            options.add(list).map_err(ExecutorError::Unsupported)?;
+        }
+        (options.apply(&mut manifest, job.placement)).map_err(ExecutorError::Unsupported)?;
         let resources = manifest["spec"]["template"]["spec"]["resources"].clone();
         if !resources.is_null() {
             manifest["spec"]["suspend"] = serde_json::json!(true);

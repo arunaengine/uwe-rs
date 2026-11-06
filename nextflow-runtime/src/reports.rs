@@ -401,6 +401,8 @@ impl Reports {
                 inputs: Vec::new(),
                 outputs: Vec::new(),
                 values: Vec::new(),
+                stdout: String::new(),
+                stderr: String::new(),
             };
         };
         let short = details
@@ -432,6 +434,12 @@ impl Reports {
             inputs,
             outputs,
             values: details.values.clone(),
+            stdout: outcome
+                .map(|outcome| outcome.stdout.clone())
+                .unwrap_or_default(),
+            stderr: outcome
+                .map(|outcome| outcome.stderr.clone())
+                .unwrap_or_default(),
         }
     }
 

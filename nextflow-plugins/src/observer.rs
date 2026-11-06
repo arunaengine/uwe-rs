@@ -64,6 +64,10 @@ pub struct Task {
     pub outputs: Vec<File>,
     /// The values of its inputs, one per input declaration; a tuple is a list.
     pub values: Vec<serde_json::Value>,
+    /// The standard output and error of an attempt that ended, as far as the executor kept
+    /// them; empty before it ended.
+    pub stdout: String,
+    pub stderr: String,
 }
 
 /// A file of a task.

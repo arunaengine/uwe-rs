@@ -557,6 +557,8 @@ fn execution_default(id: &str) -> Json {
         inputs: Vec::new(),
         outputs: Vec::new(),
         values: Vec::new(),
+        stdout: String::new(),
+        stderr: String::new(),
     };
     let mut json = execution(&task, 0);
     json.insert("id", Json::from(id));

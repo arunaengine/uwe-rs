@@ -1,0 +1,332 @@
+//! Fills executor settings that the config file of uwe leaves unset from the scopes of a
+//! Nextflow config: `nomad` with nf-nomad-s5cmd's `nomad.s5cmd`.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+use config_file::{Origin, Secret};
+use nextflow_config::Config;
+use nextflow_evaluator::value::Value;
+use serde_json::Value as Json;
+use storage::settings::{Kind, ProviderSettings, S3};
+
+use crate::nextflow::text;
+
+/// Reads the values of a Nextflow config by their path.
+struct Scope<'a>(&'a Config);
+
+impl Scope<'_> {
+    fn get(&self, path: &[&str]) -> Option<Value> {
+        (self.0.get(path)).filter(|value| !matches!(value, Value::Null))
+    }
+
+    fn text(&self, path: &[&str]) -> Option<String> {
+        self.get(path).as_ref().and_then(text)
+    }
+
+    fn flag(&self, path: &[&str]) -> Option<bool> {
+        self.text(path).map(|text| text == "true")
+    }
+
+    fn number(&self, path: &[&str]) -> Option<u64> {
+        self.text(path).and_then(|text| text.trim().parse().ok())
+    }
+
+    fn texts(&self, path: &[&str]) -> Vec<String> {
+        match self.get(path) {
+            Some(Value::List(list)) => list.borrow().items.iter().filter_map(text).collect(),
+            Some(value) => text(&value)
+                .map(|text| text.split(',').map(|part| part.trim().to_owned()).collect())
+                .unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+
+    /// A duration, from Nextflow's duration values or text like `30 sec`.
+    fn duration(&self, path: &[&str]) -> Option<Duration> {
+        let millis = match self.get(path)? {
+            Value::Duration(millis) => millis,
+            value => nextflow_evaluator::units::parse_duration(&text(&value)?).ok()?,
+        };
+        u64::try_from(millis).ok().map(Duration::from_millis)
+    }
+
+    /// The value as JSON; `None` without one, `Some(Null)` for a closure, which has no JSON.
+    fn json(&self, path: &[&str]) -> Option<Json> {
+        self.get(path)
+            .map(|value| nextflow_runtime::inputs::to_json(&value))
+    }
+}
+
+/// Fills the Nomad settings from the `nomad` scope of nf-nomad, and nf-nomad-s5cmd's staging
+/// from `nomad.s5cmd`; gives the S3 provider of the staging bucket that `nomad.s5cmd.s3` names.
+/// Privileged containers are refused.
+pub(crate) fn nomad(
+    config: &Config,
+    nomad: &mut crate::nomad::Config,
+) -> Result<Option<ProviderSettings>, String> {
+    use nomad_executor::{Cleanup, CpuMode, Hidden, PRIVILEGED};
+    let scope = Scope(config);
+    let jobs = |key: &'static str| ["nomad", "jobs", key];
+    let client = |key: &'static str| ["nomad", "client", key];
+    if scope.flag(&jobs("privileged")) == Some(true) {
+        return Err(format!("nomad.jobs.privileged: {PRIVILEGED}"));
+    }
+    let settings = &mut nomad.settings;
+    let fill = |slot: &mut Option<String>, path: &[&str]| {
+        if slot.is_none() {
+            *slot = scope.text(path);
+        }
+    };
+    fill(&mut settings.address, &client("address"));
+    fill(&mut settings.namespace, &jobs("namespace"));
+    fill(&mut settings.region, &jobs("region"));
+    fill(&mut settings.node_pool, &jobs("nodePool"));
+    fill(&mut settings.network_mode, &jobs("networkMode"));
+    if settings.token.is_none() {
+        settings.token = scope.text(&client("token")).map(Hidden::Text);
+    }
+    if settings.datacenters.is_empty() {
+        settings.datacenters = scope.texts(&jobs("datacenters"));
+    }
+    let wrong = |path: &[&str], message: String| format!("{}: {message}", path.join("."));
+    if let Some(driver) = scope
+        .text(&jobs("driver"))
+        .filter(|_| settings.driver == "docker")
+    {
+        let path = jobs("driver");
+        settings.driver =
+            nomad_executor::driver_name(&driver).map_err(|text| wrong(&path, text))?;
+    }
+    if let Some(mode) = scope
+        .text(&jobs("cpuMode"))
+        .filter(|_| settings.cpu_mode == CpuMode::Cores)
+    {
+        let path = jobs("cpuMode");
+        settings.cpu_mode = nomad_executor::cpu_mode(&mode).map_err(|text| wrong(&path, text))?;
+    }
+    if let Some(device) = scope.text(&jobs("acceleratorDeviceName")) {
+        settings.device = device;
+    }
+    if let Some(Json::Object(meta)) = scope.json(&jobs("meta")) {
+        for (key, value) in meta {
+            let value = value
+                .as_str()
+                .map_or_else(|| value.to_string(), str::to_owned);
+            settings.meta.entry(key).or_insert(value);
+        }
+    }
+    let rules = [
+        (
+            "constraints",
+            nomad_executor::constraint as nomad_executor::Rule,
+        ),
+        ("affinities", nomad_executor::affinity),
+        ("spreads", nomad_executor::spread),
+    ];
+    for (key, read) in rules {
+        let slot = match key {
+            "constraints" => &mut settings.constraints,
+            "affinities" => &mut settings.affinities,
+            _ => &mut settings.spreads,
+        };
+        match scope.json(&jobs(key)) {
+            _ if !slot.is_empty() => {}
+            None => {}
+            Some(Json::Null) => tracing::warn!(
+                "uwe ignores nomad.jobs.{key} given as a closure; give them as a list of maps \
+                 with attribute, operator and value, or in [executor.nomad]"
+            ),
+            Some(list) => {
+                let path = jobs(key);
+                *slot =
+                    nomad_executor::rules(Some(list), read).map_err(|text| wrong(&path, text))?;
+            }
+        }
+    }
+    if settings.volumes.is_empty()
+        && let Some(volumes) = scope.json(&jobs("volumes"))
+    {
+        let path = jobs("volumes");
+        settings.volumes =
+            nomad_executor::volume_list(&volumes).map_err(|text| wrong(&path, text))?;
+    }
+    if let Some(count) = scope.number(&jobs("restartAttempts")) {
+        settings.restart_attempts = u32::try_from(count).unwrap_or(u32::MAX);
+    }
+    if let Some(count) = scope.number(&jobs("rescheduleAttempts")) {
+        settings.reschedule_attempts = u32::try_from(count).unwrap_or(u32::MAX);
+    }
+    if let Some(cleanup) = scope.text(&jobs("cleanup")) {
+        let path = jobs("cleanup");
+        settings.cleanup =
+            nomad_executor::cleanup_mode(&cleanup).map_err(|text| wrong(&path, text))?;
+    } else if let Some(delete) = scope.flag(&jobs("deleteOnCompletion")) {
+        settings.cleanup = if delete {
+            Cleanup::Always
+        } else {
+            Cleanup::Never
+        };
+    }
+    settings.fail_unplaced |= scope.flag(&jobs("failOnPlacementFailure")) == Some(true);
+    if let Some(timeout) = scope.duration(&jobs("placementFailureTimeout")) {
+        settings.placement = timeout.max(Duration::from_secs(1));
+    }
+    if let Some(poll) = scope
+        .duration(&client("pollInterval"))
+        .filter(|poll| poll.as_secs() >= 1)
+    {
+        settings.poll = poll;
+    }
+    for (key, why) in [
+        ("secrets", "it gives tasks the secrets of the run itself"),
+        ("dockerVolume", "it mounts the volumes of `volumes`"),
+    ] {
+        if scope.get(&jobs(key)).is_some() {
+            tracing::warn!("uwe ignores nomad.jobs.{key}: {why}");
+        }
+    }
+    if scope.get(&["nomad", "debug"]).is_some() {
+        tracing::warn!("uwe ignores nomad.debug: it keeps its own records of each attempt");
+    }
+    s5cmd(&scope, nomad)
+}
+
+/// The staging root and S3 provider of nf-nomad-s5cmd's distributed work dir, which uwe's
+/// object-store staging and helper replace; the `s5cmd` program is not needed.
+fn s5cmd(
+    scope: &Scope<'_>,
+    nomad: &mut crate::nomad::Config,
+) -> Result<Option<ProviderSettings>, String> {
+    let key = |path: &[&'static str]| {
+        let mut full = vec!["nomad", "s5cmd"];
+        full.extend_from_slice(path);
+        full
+    };
+    if scope.flag(&key(&["enabled"])) != Some(true) {
+        return Ok(None);
+    }
+    tracing::warn!(
+        "uwe stages the files of Nomad jobs with its own helper through the staging root, not \
+         with s5cmd: it uses nomad.s5cmd.workDir and nomad.s5cmd.s3, and ignores the other \
+         nomad.s5cmd settings and the s5cmd host volume"
+    );
+    let bucket = scope.text(&key(&["workDir", "bucket"]));
+    let distributed = scope.flag(&key(&["workDir", "enabled"])) == Some(true);
+    let Some(bucket) = bucket.filter(|_| distributed) else {
+        // File staging mode: uwe's providers read `s3://` inputs themselves.
+        return Ok(None);
+    };
+    let bucket = bucket
+        .trim_start_matches("s3://")
+        .trim_end_matches('/')
+        .to_owned();
+    let prefix = scope.text(&key(&["workDir", "prefix"])).unwrap_or_default();
+    let prefix = prefix.trim_matches('/');
+    if nomad.staging.root.is_none() {
+        nomad.staging.root = Some(match prefix.is_empty() {
+            true => format!("s3://{bucket}"),
+            false => format!("s3://{bucket}/{prefix}"),
+        });
+        nomad.staging.mode = crate::staging::Mode::ObjectStore;
+        if nomad.settings.helper.is_none() && nomad.helper_file.is_none() {
+            nomad.helper_file = std::env::current_exe().ok();
+        }
+    }
+    let s3 = |name: &'static str| scope.text(&key(&["s3", name]));
+    let origin = Origin {
+        file: Arc::from(Path::new("nextflow.config")),
+        line: 0,
+    };
+    let secret = |name: &'static str| s3(name).map(|value| Secret::written(value, origin.clone()));
+    let settings = S3 {
+        endpoint: s3("endpoint"),
+        region: s3("region").or_else(|| Some("us-east-1".into())),
+        path_style: scope.flag(&key(&["s3", "usePathStyle"])),
+        access_key_id: secret("accessKeyId"),
+        secret_access_key: secret("secretAccessKey"),
+        ..S3::default()
+    };
+    Ok(Some(ProviderSettings {
+        name: "nomad.s5cmd".into(),
+        prefixes: vec![format!("s3://{bucket}/")],
+        kind: Kind::S3(settings),
+        origin,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A host that prints nothing.
+    struct Quiet;
+
+    impl nextflow_evaluator::interpreter::Host for Quiet {
+        fn print(&mut self, _: &str) {}
+    }
+
+    /// The config of a pipeline whose `nextflow.config` is `text`.
+    pub(crate) fn loaded(text: &str) -> Config {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("nextflow.config");
+        std::fs::write(&file, text).expect("writes the config");
+        let options = nextflow_config::Options {
+            profiles: None,
+            params: Value::map([]),
+            project_dir: "/project".into(),
+            launch_dir: "/launch".into(),
+            work_dir: "/work".into(),
+        };
+        nextflow_config::load(&[file], &options, &mut Quiet).expect("a config")
+    }
+
+    #[test]
+    fn maps_nomad_scope() {
+        let text = "nomad {\n client {\n  address = 'http://127.0.0.1:4646'\n  token = 't'\n  \
+                    pollInterval = '5s'\n }\n jobs {\n  datacenters = ['dc1', 'dc2']\n  \
+                    namespace = 'lab'\n  cleanup = 'never'\n  cpuMode = 'cpu'\n  \
+                    meta = [owner: 'team-x']\n  \
+                    spreads = [[name: 'node.datacenter', weight: 50]]\n  \
+                    volumes = [[type: 'csi', name: 'work', path: '/work', workDir: true]]\n  \
+                    failOnPlacementFailure = true\n  placementFailureTimeout = '5m'\n }\n \
+                    s5cmd {\n  enabled = true\n  workDir {\n   enabled = true\n   \
+                    bucket = 's3://runs'\n   prefix = 'nomad/'\n  }\n  s3 {\n   \
+                    endpoint = 'http://127.0.0.1:9000'\n   usePathStyle = true\n  }\n }\n}\n";
+        let mut nomad = crate::nomad::Config::default();
+        nomad.settings.namespace = Some("mine".into());
+        let provider = super::nomad(&loaded(text), &mut nomad).expect("a mapping");
+        let settings = &nomad.settings;
+        assert_eq!(settings.address.as_deref(), Some("http://127.0.0.1:4646"));
+        assert!(settings.token.is_some());
+        assert_eq!(
+            settings.namespace.as_deref(),
+            Some("mine"),
+            "uwe's own setting wins"
+        );
+        assert_eq!(settings.datacenters, ["dc1", "dc2"]);
+        assert_eq!(settings.cleanup, nomad_executor::Cleanup::Never);
+        assert_eq!(settings.cpu_mode, nomad_executor::CpuMode::Megahertz);
+        assert_eq!(settings.meta["owner"], "team-x");
+        assert_eq!(settings.spreads[0]["Attribute"], "${node.datacenter}");
+        assert_eq!(settings.volumes[0].kind, "csi");
+        assert!(settings.fail_unplaced);
+        assert_eq!(settings.placement, Duration::from_secs(300));
+        assert_eq!(settings.poll, Duration::from_secs(5));
+        assert_eq!(nomad.staging.root.as_deref(), Some("s3://runs/nomad"));
+        assert_eq!(nomad.staging.mode, crate::staging::Mode::ObjectStore);
+        let provider = provider.expect("a provider of the bucket");
+        assert_eq!(provider.prefixes, ["s3://runs/"]);
+        let Kind::S3(s3) = provider.kind else {
+            panic!("an S3 provider");
+        };
+        assert_eq!(s3.endpoint.as_deref(), Some("http://127.0.0.1:9000"));
+        assert_eq!(s3.path_style, Some(true));
+        let refused = loaded("nomad.jobs.privileged = true\n");
+        let error = super::nomad(&refused, &mut crate::nomad::Config::default());
+        assert!(error.is_err_and(|error| error.contains("never starts privileged")));
+    }
+}

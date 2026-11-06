@@ -390,7 +390,10 @@ pub fn pipeline_executor(
 ) -> Result<Option<String>, crate::Failure> {
     let chosen = arguments.executor.is_some() && !arguments.executor_default;
     let named = arguments.executor.as_deref();
-    let batch = matches!(named, Some("aws-batch" | "google-batch" | "azure-batch"));
+    let batch = matches!(
+        named,
+        Some("aws-batch" | "google-batch" | "azure-batch" | "nomad")
+    );
     if language != Language::Nextflow || (chosen && !batch) {
         return Ok(None);
     }
@@ -415,6 +418,11 @@ pub fn pipeline_executor(
     if named == Some("azure-batch") || picked.as_deref() == Some("azure-batch") {
         azure_scope(&config, &mut setup.executors.azure_batch)
             .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
+    }
+    if named == Some("nomad") || picked.as_deref() == Some("nomad") {
+        let provider = crate::scopes::nomad(&config, &mut setup.executors.nomad)
+            .map_err(|message| crate::Failure::usage(format!("uwe: {message}")))?;
+        setup.storage = setup.storage.with_providers(provider.into_iter().collect());
     }
     Ok(picked)
 }
@@ -847,7 +855,7 @@ fn azure_scope(
 }
 
 /// The text of a config value, without quotes; `None` for one without text.
-fn text(value: &Value) -> Option<String> {
+pub(crate) fn text(value: &Value) -> Option<String> {
     match value {
         Value::Null => None,
         Value::String(text) | Value::GString(text) => Some(text.to_string()),

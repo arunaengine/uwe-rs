@@ -13,7 +13,7 @@ mod settings;
 pub use backend::NomadBackend;
 pub use client::{Client, NomadError};
 pub use settings::{
-    ADDRESS, Cleanup, CpuMode, Hidden, Settings, Volume, affinity, cleanup_mode, constraint,
+    ADDRESS, Cleanup, CpuMode, Hidden, Rule, Settings, Volume, affinity, cleanup_mode, constraint,
     cpu_mode, driver_name, rules, spread, volume_list,
 };
 

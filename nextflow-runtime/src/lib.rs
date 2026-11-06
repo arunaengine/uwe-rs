@@ -322,6 +322,10 @@ impl Run {
                 }
             }
         }
+        drop(interpreter);
+        if !on_error {
+            session.finish_plugins(&self.workflow);
+        }
         match failure {
             Some(error) => Err(error),
             None => Ok(()),

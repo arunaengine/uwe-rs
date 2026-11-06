@@ -38,6 +38,13 @@ impl Session<'_> {
     pub(crate) fn start_plugins(&mut self) -> Result<(), Error> {
         nextflow_plugins::start(&mut self.plugin_context())
     }
+
+    /// Runs what the plugins of the config do at the end of a run, like nf-bactopia's summary.
+    pub(crate) fn finish_plugins(&mut self, workflow: &Value) {
+        let mut context = self.plugin_context();
+        context.workflow = workflow.clone();
+        nextflow_plugins::finish(&mut context);
+    }
 }
 
 impl Host for Session<'_> {

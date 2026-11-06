@@ -80,6 +80,9 @@ pub(crate) enum Datum {
     Decimal(String),
     Text(String),
     Bytes(Vec<u8>),
+    /// A value of a Java class that is known by its text, like `java.sql.Timestamp`.
+    Typed(&'static str, String),
+    List(Vec<Datum>),
 }
 
 /// The result of a query: its column names and its rows.
@@ -483,6 +486,8 @@ pub(crate) fn value(datum: Datum) -> Value {
         },
         Datum::Text(text) => Value::string(text),
         Datum::Bytes(bytes) => object("[B", ObjectState::Bytes(bytes.into())),
+        Datum::Typed(class, text) => object(class, ObjectState::Text(text.into())),
+        Datum::List(items) => Value::list(items.into_iter().map(value).collect()),
     }
 }
 

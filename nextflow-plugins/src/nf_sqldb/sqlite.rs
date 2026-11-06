@@ -89,17 +89,19 @@ fn datum(value: ValueRef<'_>) -> Datum {
     }
 }
 
-/// A parameter; a missing one is null.
+/// A parameter; a missing one is null. Lists only come from reading, never as parameters.
 fn stored(value: Option<&Datum>) -> Stored {
     match value {
-        None | Some(Datum::Null) => Stored::Null,
+        None | Some(Datum::Null | Datum::List(_)) => Stored::Null,
         Some(Datum::Boolean(value)) => Stored::Integer(i64::from(*value)),
         Some(Datum::Integer(value)) => Stored::Integer(i64::from(*value)),
         Some(Datum::Long(value)) => Stored::Integer(*value),
         Some(Datum::Float(value)) => Stored::Real(f64::from(*value)),
         Some(Datum::Double(value)) => Stored::Real(*value),
         Some(Datum::Bytes(bytes)) => Stored::Blob(bytes.clone()),
-        Some(Datum::Decimal(text) | Datum::Text(text)) => Stored::Text(text.clone()),
+        Some(Datum::Decimal(text) | Datum::Text(text) | Datum::Typed(_, text)) => {
+            Stored::Text(text.clone())
+        }
     }
 }
 

@@ -91,6 +91,7 @@ boa_engine = { version = "0.22.0", default-features = false, features = [
 ] }
 bytes = "1.12.1"
 calamine = "0.38.0"
+chrono = { version = "0.4.45", default-features = false, features = ["alloc"] }
 fancy-regex = "0.20.0"
 flate2 = "1.1.10"
 futures-util = { version = "0.3.34", default-features = false }
@@ -182,8 +183,9 @@ sha2 = "0.11.0"
 sqlx-core = { version = "0.9.0", default-features = false, features = [
     "_rt-tokio",
     "_tls-rustls-aws-lc-rs",
+    "json",
 ] }
-sqlx-postgres = { version = "0.9.0", default-features = false }
+sqlx-postgres = { version = "0.9.0", default-features = false, features = ["chrono", "json"] }
 suppaftp = { version = "12.1.1", default-features = false, features = [
     "tokio",
 ] }

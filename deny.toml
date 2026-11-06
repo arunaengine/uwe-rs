@@ -13,6 +13,8 @@ ignore = [
     { id = "RUSTSEC-2026-0195", reason = "quick-xml 0.37 is pinned by oxrdfxml, which has no release for 0.41. The 16 MiB input limit on local ontology files in cwl-runtime bounds the memory the namespace resolver can use." },
     { id = "RUSTSEC-2023-0071", reason = "No fixed rsa release exists. The crate comes from reqsign and only signs JWTs with a service account key, it never decrypts, and the signing time is not exposed to an attacker." },
     { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml comes from serde_yaml in rattler_conda_types, which has no release without it. uwe parses only conda environment files that the user supplies." },
+    { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is unmaintained without a fixed release. It comes from rattler_package_streaming, whose newest release 0.28.5 still needs it; uwe only unpacks conda packages from the channels a run names." },
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils is unmaintained without a fixed release. It comes only through wasmtimer, which rattler_repodata_gateway uses on wasm32, a target uwe does not build." },
 ]
 
 [licenses]

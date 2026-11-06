@@ -1,0 +1,30 @@
+# Manifest of nomad-executor, which runs tasks as HashiCorp Nomad batch jobs.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "nomad-executor"
+description = "Runs tasks as HashiCorp Nomad batch jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+config-file.workspace = true
+executor.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+storage.workspace = true
+task-model.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "sync", "time"] }
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+content-store.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

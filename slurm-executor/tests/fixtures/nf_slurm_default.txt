@@ -1,0 +1,30 @@
+== <probe>/work/7c/5022700169efe81112e05fdf7b7026
+#SBATCH -J nf-MANY_CPUS
+#SBATCH -o <probe>/work/7c/5022700169efe81112e05fdf7b7026/.command.log
+#SBATCH --no-requeue
+#SBATCH --signal B:USR2@30
+#SBATCH -c 4
+#SBATCH -A lab01
+== <probe>/work/10/5dd9d32d13c66020f120e1afcbe564
+#SBATCH -J nf-ODD_MEMORY
+#SBATCH -o <probe>/work/10/5dd9d32d13c66020f120e1afcbe564/.command.log
+#SBATCH --no-requeue
+#SBATCH --signal B:USR2@30
+#SBATCH -c 2
+#SBATCH -A lab01
+== <probe>/work/9c/3f75be2e75fdd6d3f2718894ab98de
+#SBATCH -J nf-NO_MEMORY
+#SBATCH -o <probe>/work/9c/3f75be2e75fdd6d3f2718894ab98de/.command.log
+#SBATCH --no-requeue
+#SBATCH --signal B:USR2@30
+#SBATCH -A lab01
+== <probe>/work/c5/1a1718e9ac9994be1466b95d238c4f
+#SBATCH -J nf-BIG_MEMORY
+#SBATCH -o <probe>/work/c5/1a1718e9ac9994be1466b95d238c4f/.command.log
+#SBATCH --no-requeue
+#SBATCH --signal B:USR2@30
+#SBATCH -c 3
+#SBATCH -t 02:00:00
+#SBATCH -p short
+#SBATCH --qos=normal
+#SBATCH -A lab01

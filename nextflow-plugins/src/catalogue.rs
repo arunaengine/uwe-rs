@@ -153,7 +153,6 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-trino", Kind::Functions),
     // Observers that write local files.
     planned("nf-arts", Kind::Observer),
-    planned("nf-bigbrother", Kind::Observer),
     planned("nf-cgroup-metrics", Kind::Observer),
     crate::nf_co2footprint::PLUGIN,
     planned("nf-emoji", Kind::Observer),

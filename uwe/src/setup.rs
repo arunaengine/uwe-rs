@@ -137,6 +137,11 @@ pub struct Executors {
     /// `[executor.kubernetes] kubedal_data_node` and the other kubedal settings, for
     /// `staging = "kubedal"`.
     pub kubernetes_kubedal: Option<kubernetes_executor::Kubedal>,
+    /// `[executor.kubernetes] context`: the context of the kubeconfig, else its current one.
+    pub kubernetes_context: Option<String>,
+    /// `[executor.kubernetes] service_account` and `pod`: the service account and the pod
+    /// options of every Job, as Nextflow's `pod` directive takes them.
+    pub kubernetes_pod: kubernetes_executor::PodOptions,
     /// `[executor.aws-batch]`: the jobs, their staging root and their helper.
     pub aws_batch: crate::aws_batch::Config,
     /// `[executor.google-batch]`: the jobs, their staging root and their helper.
@@ -302,12 +307,22 @@ impl Executors {
                 "kubedal_upload_minutes",
                 "unschedulable_minutes",
                 "start_grace_seconds",
+                "context",
+                "service_account",
+                "pod",
             ]);
             keys.extend(crate::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
             settings.kubernetes_in_cluster = kubernetes.flag("in_cluster")?.unwrap_or(false);
+            settings.kubernetes_context = kubernetes.text("context")?;
+            settings.kubernetes_pod.service_account = kubernetes.text("service_account")?;
+            if let Some(pod) = kubernetes.json("pod")? {
+                let pods = &mut settings.kubernetes_pod;
+                pods.add(&pod)
+                    .map_err(|message| kubernetes.invalid("pod", message))?;
+            }
             if let Some(references) = kubernetes.table("references")? {
                 for reference in references.tables()? {
                     reference.only(&["path", "claim", "nfs_server", "nfs_path"])?;
@@ -1028,6 +1043,20 @@ mod tests {
         let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
         assert_eq!(settings.slurm_query, Some(120));
         assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());
+        let text = "[executor.kubernetes]\ncontext = 'lab'\nservice_account = 'runner'\n\
+                    pod = [{ nodeSelector = 'disktype=ssd' }]\n";
+        let settings = read(text).expect("settings");
+        assert_eq!(settings.kubernetes_context.as_deref(), Some("lab"));
+        assert_eq!(
+            settings.kubernetes_pod.service_account.as_deref(),
+            Some("runner")
+        );
+        let error = read("[executor.kubernetes]\npod = [{ privileged = true }]\n");
+        assert!(
+            error
+                .expect_err("refused")
+                .contains("never starts privileged")
+        );
         let settings = read("[executor.slurm]\nmemory_per_cpu_gb = 4.5\n").expect("settings");
         assert_eq!(settings.slurm_cpu_memory, Some(4.5));
         assert!(read("[executor.slurm]\nmemory_per_cpu_gb = 0\n").is_err());

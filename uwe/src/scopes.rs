@@ -1,9 +1,9 @@
 //! Fills executor settings that the config file of uwe leaves unset from the scopes of a
-//! Nextflow config: `nomad`, `slurm_no_memory`, `tes` and `tencentcloud`.
+//! Nextflow config: `nomad`, `k8s`, `slurm_no_memory`, `tes` and `tencentcloud`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -254,6 +254,82 @@ fn s5cmd(
     }))
 }
 
+/// Fills the Kubernetes settings from Nextflow's `k8s` scope: namespace, context, service
+/// account, pod options and a shared claim. Privileged pods are refused.
+pub(crate) fn kubernetes(
+    config: &Config,
+    executors: &mut crate::setup::Executors,
+) -> Result<(), String> {
+    let scope = Scope(config);
+    let key = |name: &'static str| ["k8s", name];
+    if executors.kubernetes_namespace.is_none() {
+        executors.kubernetes_namespace = scope.text(&key("namespace"));
+    }
+    if executors.kubernetes_context.is_none() {
+        executors.kubernetes_context = scope.text(&key("context"));
+    }
+    let pod = &mut executors.kubernetes_pod;
+    if pod.service_account.is_none() {
+        pod.service_account = scope.text(&key("serviceAccount"));
+    }
+    let mut options = Vec::new();
+    if let Some(list) = scope.json(&key("pod")) {
+        options.push(list);
+    }
+    if let Some(policy) = scope.text(&key("imagePullPolicy")) {
+        options.push(serde_json::json!({"imagePullPolicy": policy}));
+    }
+    if let Some(user) = scope.number(&key("runAsUser")) {
+        options.push(serde_json::json!({"runAsUser": user}));
+    }
+    if let Some(context @ Json::Object(_)) = scope.json(&key("securityContext")) {
+        options.push(serde_json::json!({"securityContext": context}));
+    }
+    for list in options {
+        pod.add(&list)
+            .map_err(|message| format!("k8s: {message}"))?;
+    }
+    let shared = executors.kubernetes_staging.mode == crate::staging::Mode::SharedPath;
+    let host = matches!(
+        executors.kubernetes_volumes,
+        kubernetes_executor::Volumes::Host
+    );
+    if let Some(claim) = scope
+        .text(&key("storageClaimName"))
+        .filter(|_| shared && host)
+    {
+        let path = scope
+            .text(&key("storageMountPath"))
+            .unwrap_or_else(|| "/workspace".into());
+        executors.kubernetes_volumes = kubernetes_executor::Volumes::Under {
+            root: PathBuf::from(path),
+            source: serde_json::json!({"persistentVolumeClaim": {"claimName": claim}}),
+        };
+    }
+    for (name, why) in [
+        ("client", "it reads the cluster from the kubeconfig"),
+        (
+            "storageSubPath",
+            "it mounts the claim of storageClaimName whole",
+        ),
+    ] {
+        if scope.get(&key(name)).is_some() {
+            tracing::warn!("uwe ignores k8s.{name}: {why}");
+        }
+    }
+    if scope.flag(&key("autoMountHostPaths")) == Some(true) {
+        tracing::warn!(
+            "uwe ignores k8s.autoMountHostPaths: it mounts the files of each task itself"
+        );
+    }
+    if scope.text(&key("computeResourceType")).as_deref() == Some("Pod") {
+        tracing::warn!(
+            "uwe runs each task as a Kubernetes Job, also with k8s.computeResourceType = 'Pod'"
+        );
+    }
+    Ok(())
+}
+
 /// Where the values of a Nextflow config come from, for errors of secrets.
 fn origin() -> Origin {
     Origin {
@@ -467,6 +543,31 @@ mod tests {
         assert_eq!(s3.path_style, Some(true));
         let refused = loaded("nomad.jobs.privileged = true\n");
         let error = super::nomad(&refused, &mut crate::nomad::Config::default());
+        assert!(error.is_err_and(|error| error.contains("never starts privileged")));
+    }
+
+    #[test]
+    fn maps_kubernetes_scope() {
+        let text = "process.executor = 'k8s'\nk8s {\n namespace = 'lab'\n context = 'gpu'\n \
+                    serviceAccount = 'runner'\n storageClaimName = 'work'\n \
+                    storageMountPath = '/data'\n imagePullPolicy = 'Always'\n \
+                    pod = [[nodeSelector: 'disktype=ssd'], [label: 'tier', value: 'batch']]\n}\n";
+        let mut executors = crate::setup::Executors::default();
+        super::kubernetes(&loaded(text), &mut executors).expect("a mapping");
+        assert_eq!(executors.kubernetes_namespace.as_deref(), Some("lab"));
+        assert_eq!(executors.kubernetes_context.as_deref(), Some("gpu"));
+        assert_eq!(
+            executors.kubernetes_pod.service_account.as_deref(),
+            Some("runner")
+        );
+        let kubernetes_executor::Volumes::Under { root, source } = &executors.kubernetes_volumes
+        else {
+            panic!("a shared claim");
+        };
+        assert_eq!(root, Path::new("/data"));
+        assert_eq!(source["persistentVolumeClaim"]["claimName"], "work");
+        let refused = loaded("k8s.pod = [privileged: true]\n");
+        let error = super::kubernetes(&refused, &mut crate::setup::Executors::default());
         assert!(error.is_err_and(|error| error.contains("never starts privileged")));
     }
 

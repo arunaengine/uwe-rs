@@ -43,6 +43,7 @@ members = [
     "task-runner",
     "tes-executor",
     "workflow-graph",
+    "wr-executor",
 ]
 
 [workspace.package]

@@ -39,6 +39,7 @@ mod nf_prov;
 mod nf_python;
 mod nf_quilt;
 mod nf_r_ipc;
+mod nf_report;
 mod nf_runinsights;
 mod nf_schema;
 mod nf_slack;

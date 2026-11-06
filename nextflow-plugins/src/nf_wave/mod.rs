@@ -13,6 +13,13 @@ use nextflow_config::Config;
 
 use settings::Settings;
 
+use crate::catalogue::{Kind, Plugin, State};
+
+pub(crate) const PLUGIN: Plugin = Plugin {
+    scopes: &["wave"],
+    ..Plugin::new("nf-wave", Kind::Other, State::Partial)
+};
+
 /// What uwe says once when `wave.enabled` alone would send every image to the service.
 const LOCAL: &str = "Wave is not contacted: uwe builds Conda images and pulls images itself; \
                      set wave.endpoint, wave.freeze, wave.mirror, wave.scan.mode or \

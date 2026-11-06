@@ -195,7 +195,9 @@ pub const PLUGINS: &[Plugin] = &[
     Plugin::new("nf-codecommit", Kind::Other, State::Partial),
     planned("nf-diff", Kind::Other),
     planned("nf-kuberun", Kind::Executor),
-    planned("nf-wave", Kind::Other),
+    // nf-wave: Wave images for the `container` and `conda` directives when a Wave-only
+    // setting or an endpoint asks; no module bundles, layers, Singularity, Fusion or commands.
+    crate::nf_wave::PLUGIN,
     // Cloud batch executors. nf-amazon: S3, SES mail and the `aws-batch` executor; no Fusion,
     // array jobs or machine details. nf-google: GCS and the `google-batch` executor; no Fusion,
     // array jobs or machine types per process.

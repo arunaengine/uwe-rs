@@ -389,10 +389,10 @@ impl Host for Builder<'_> {
             .map(|_| self.network.channel(singleton))
             .collect();
         let node = ProcessNode {
-            conda_enabled: self
-                .config
-                .get(&["conda", "enabled"])
-                .is_some_and(|v| v.truth()),
+            // Wave builds the `conda` packages of tasks as Conda does.
+            conda_enabled: ["conda", "wave"]
+                .iter()
+                .any(|scope| (self.config.get(&[scope, "enabled"])).is_some_and(|v| v.truth())),
             spack_enabled: self
                 .config
                 .get(&["spack", "enabled"])

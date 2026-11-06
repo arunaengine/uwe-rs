@@ -9,6 +9,7 @@ mod nf_bactopia;
 mod nf_bids;
 mod nf_boost;
 mod nf_cmgg;
+mod nf_co2footprint;
 mod nf_core_utils;
 mod nf_dotenv;
 mod nf_fgbio;

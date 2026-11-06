@@ -155,7 +155,7 @@ pub const PLUGINS: &[Plugin] = &[
     planned("nf-arts", Kind::Observer),
     planned("nf-bigbrother", Kind::Observer),
     planned("nf-cgroup-metrics", Kind::Observer),
-    planned("nf-co2footprint", Kind::Observer),
+    crate::nf_co2footprint::PLUGIN,
     planned("nf-emoji", Kind::Observer),
     planned("nf-fairscape", Kind::Observer),
     planned("nf-flowviewer", Kind::Observer),

@@ -398,3 +398,6 @@ mod tests {
             refused,
             "Could not connect: Invalid connection parameter(s): The Athena endpoint \
              \"http://127.0.0.1:9\" is not an HTTPS endpoint;"
+        );
+    }
+}

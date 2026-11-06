@@ -4,6 +4,9 @@
 
 use std::path::Path;
 
+use nextflow_evaluator::interpreter::Host;
+
+use super::athena::Athena;
 use super::server::{Engine, Server, Tls};
 use super::{Connection, Source};
 
@@ -13,22 +16,43 @@ pub(crate) enum Target {
     /// A SQLite file, an in-memory database for `None`, or a `file:` URI.
     Sqlite(Option<String>),
     Server(Server),
+    Athena(Athena),
 }
 
 /// The URL forms that uwe connects to, for the message of a refused URL.
+const SUPPORTED: &str =
+    "jdbc:sqlite:, jdbc:postgresql:, jdbc:mysql:, jdbc:mariadb: and jdbc:awsathena:";
 
 /// Opens a connection to the database of a source.
+pub(crate) fn connect(source: &Source, host: &dyn Host) -> Result<Box<dyn Connection>, String> {
+    let variable = |name: &str| host.environment(name);
+    match target(source, &host.launch_dir(), &variable)? {
         Target::Sqlite(place) => Ok(Box::new(super::sqlite::open(place.as_deref())?)),
         Target::Server(server) => Ok(Box::new(super::server::open(server)?)),
+        Target::Athena(athena) => Ok(Box::new(athena)),
     }
 }
 
 /// Whether uwe refuses the URL, rather than failing to connect.
 pub(crate) fn refused(url: &str) -> bool {
     let word = url.split(':').nth(1).unwrap_or_default();
+    let known = [
+        "sqlite",
+        "postgresql",
+        "mysql",
+        "mariadb",
+        "awsathena",
+        "athena",
+    ];
+    !known.contains(&word)
 }
 
 /// The target of a source's URL; the user and password of the config win over those of the URL.
+pub(crate) fn target(
+    source: &Source,
+    launch: &str,
+    variable: &dyn Fn(&str) -> Option<String>,
+) -> Result<Target, String> {
     let url = &source.url;
     let rest = url.strip_prefix("jdbc:").unwrap_or(url);
     let (word, address) = rest.split_once(':').unwrap_or((rest, ""));
@@ -36,6 +60,11 @@ pub(crate) fn refused(url: &str) -> bool {
         "sqlite" => Ok(Target::Sqlite(sqlite_place(address, launch))),
         "postgresql" => server(Engine::Postgres, address, source),
         "mysql" | "mariadb" => server(Engine::Mysql, address, source),
+        "awsathena" | "athena" => {
+            let keys = source.password.as_ref().and(source.user.clone());
+            let athena = super::athena::workgroup(address, keys, source.password.clone(), variable);
+            athena.map(Target::Athena)
+        }
         "h2" => Err(format!(
             "H2 is a Java database, which uwe cannot run: {url}. uwe connects to {SUPPORTED} \
              URLs; set sql.db.<name>.url to one of them"
@@ -166,6 +195,7 @@ mod tests {
                 None,
             ),
             "/",
+            &|_| None,
         );
         let Ok(Target::Server(server)) = found else {
             panic!("a server: {found:?}")
@@ -182,11 +212,13 @@ mod tests {
             (server.user.as_deref(), server.tls),
             (Some("u"), Tls::Require)
         );
+        let found = target(&source("jdbc:mysql://[::1]/x", Some("sa")), "/", &|_| None);
         let Ok(Target::Server(server)) = found else {
             panic!("a server: {found:?}")
         };
         assert_eq!((server.host.as_str(), server.port), ("::1", 3306));
         assert_eq!(server.user.as_deref(), Some("sa"));
+        let found = target(&source("jdbc:postgresql:lab", Some("me")), "/", &|_| None);
         let Ok(Target::Server(server)) = found else {
             panic!("a server: {found:?}")
         };
@@ -196,6 +228,7 @@ mod tests {
 
     #[test]
     fn refuses_java_drivers() {
+        let place = |url: &str| target(&source(url, None), "/launch", &|_| None);
         assert_eq!(place("jdbc:sqlite:"), Ok(Target::Sqlite(None)));
         assert_eq!(place("jdbc:sqlite::memory:"), Ok(Target::Sqlite(None)));
         assert_eq!(

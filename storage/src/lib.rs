@@ -267,6 +267,33 @@ impl Storage {
         }
     }
 
+    /// The same storage with more providers, which serve what the providers before them do
+    /// not, like those that a Nextflow config names.
+    pub fn with_providers(&self, providers: Vec<settings::ProviderSettings>) -> Storage {
+        let mut configured: Vec<Provider> = (self.inner.configured.iter())
+            .map(|provider| Provider::new(provider.source.clone(), provider.prefixes.clone()))
+            .collect();
+        for provider in providers {
+            let prefixes = provider.prefixes.clone();
+            configured.push(Provider::new(
+                Source::Configured(Box::new(provider)),
+                prefixes,
+            ));
+        }
+        Storage {
+            inner: Arc::new(Inner {
+                configured: Arc::new(configured),
+                built_in: self.inner.built_in.clone(),
+                store: self.inner.store.clone(),
+                local_store: self.inner.local_store.clone(),
+                journal: journal::Journal::default(),
+                downloading: Mutex::default(),
+                observed: Mutex::default(),
+                held: Mutex::default(),
+            }),
+        }
+    }
+
     /// The providers and the store of the config file.
     pub fn from_config(config: &ConfigFile) -> Result<Storage, ConfigError> {
         Ok(Storage::new(Settings::from_config(config)?))

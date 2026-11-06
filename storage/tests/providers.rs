@@ -127,6 +127,30 @@ fn lists_s3_providers() {
     );
 }
 
+/// Providers from a Nextflow config come after those of the config file, which keep theirs.
+#[test]
+fn adds_providers() {
+    let storage = storage("[storage.lab]\ntype = \"s3\"\nprefixes = [\"s3://lab-data/\"]\n");
+    let cos = storage::settings::ProviderSettings {
+        name: "tencentcloud".into(),
+        prefixes: vec!["cos://".into()],
+        kind: Kind::S3(storage::settings::S3 {
+            endpoint: Some("https://cos.ap-guangzhou.myqcloud.com".into()),
+            ..storage::settings::S3::default()
+        }),
+        origin: config_file::Origin {
+            file: Arc::from(Path::new("nextflow.config")),
+            line: 0,
+        },
+    };
+    let more = storage.with_providers(vec![cos]);
+    let names: Vec<String> = (more.s3_providers().into_iter())
+        .map(|(name, ..)| name)
+        .collect();
+    assert_eq!(names, ["lab", "tencentcloud"]);
+    assert_eq!(storage.s3_providers().len(), 1);
+}
+
 #[test]
 fn gives_https_accounts() {
     let storage = Storage::from_config(&config(

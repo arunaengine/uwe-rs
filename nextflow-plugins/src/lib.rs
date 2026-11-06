@@ -12,6 +12,7 @@ mod nf_boost;
 mod nf_cmgg;
 mod nf_co2footprint;
 mod nf_core_utils;
+mod nf_csvext;
 mod nf_dotenv;
 mod nf_fgbio;
 mod nf_logsaver;

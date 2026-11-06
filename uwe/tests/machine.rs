@@ -16,6 +16,7 @@ fn check_machine(directory: &Path, arguments: &[&str]) -> (i32, String) {
         .env("UWE_ENGINE", directory.join("docker.sock"))
         .env("PATH", directory)
         .env_remove("UWE_TES_TOKEN")
+        .env_remove("NOMAD_ADDR")
         .current_dir(directory)
         .output()
         .expect("runs uwe");
@@ -61,8 +62,17 @@ fn explains_missing_engine() {
         line(&stdout, "run database"),
         format!("ready      run database: {}, 0 runs", database.display())
     );
-    for part in ["executor tes", "executor slurm", "executor kubernetes"] {
-        assert!(line(&stdout, part).starts_with("not set up "), "{stdout}");
+    let executors = [
+        "tes",
+        "slurm",
+        "kubernetes",
+        "aws-batch",
+        "google-batch",
+        "azure-batch",
+    ];
+    for name in executors.into_iter().chain(["nomad", "htcondor", "pbs"]) {
+        let part = format!("executor {name}");
+        assert!(line(&stdout, &part).starts_with("not set up "), "{stdout}");
     }
     assert!(
         stdout.ends_with(
@@ -188,5 +198,61 @@ fn requires_selected_kubeconfig() {
     assert!(
         line(&stdout, "executor kubernetes").starts_with("not set up "),
         "{stdout}"
+    );
+}
+
+/// The newer executors are built as a run builds them, which asks no service: their tools,
+/// staging root, address and credentials.
+#[test]
+fn checks_newer_executors() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    for name in ["qsub", "qstat", "qdel"] {
+        let path = directory.path().join(name);
+        std::fs::write(&path, "#!/bin/sh\n").expect("writes a tool");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("makes it executable");
+    }
+    let (code, stdout) = check_machine(directory.path(), &["-executor", "htcondor"]);
+    assert_eq!(code, 3, "{stdout}");
+    assert_eq!(
+        line(&stdout, "executor htcondor"),
+        "missing    executor htcondor: -executor htcondor needs `condor_submit`, `condor_q`, \
+         `condor_rm` on the PATH; run uwe on an HTCondor access point"
+    );
+    assert_eq!(
+        line(&stdout, "executor pbs"),
+        "ready      executor pbs: the PBS tools are on the PATH; the jobs run tasks with apptainer"
+    );
+    assert_eq!(
+        line(&stdout, "executor nomad"),
+        "not set up executor nomad: no Nomad agent named; name one with `address` in \
+         [executor.nomad] or NOMAD_ADDR"
+    );
+    let (code, stdout) = check_machine(directory.path(), &["-executor", "aws-batch"]);
+    assert_eq!(code, 3, "{stdout}");
+    assert!(
+        line(&stdout, "executor aws-batch")
+            .starts_with("missing    executor aws-batch: AWS Batch jobs share no folders"),
+        "{stdout}"
+    );
+    let config = format!(
+        "[executor.aws-batch]\nregion = 'eu-west-1'\nstaging = 'object-store'\n\
+         staging_root = '{}'\nhelper_path = '/opt/uwe'\n\n\
+         [executor.nomad]\naddress = 'http://127.0.0.1:1'\n",
+        directory.path().join("staging").display()
+    );
+    std::fs::write(directory.path().join("lab.toml"), config).expect("writes the config file");
+    let arguments = ["-uwe-config", "lab.toml", "-executor", "aws-batch"];
+    let (_, stdout) = check_machine(directory.path(), &arguments);
+    assert_eq!(
+        line(&stdout, "executor aws-batch"),
+        "ready      executor aws-batch: the settings, staging root and credentials of AWS Batch \
+         are complete; uwe asks AWS Batch only when a run starts"
+    );
+    assert_eq!(
+        line(&stdout, "executor nomad"),
+        "ready      executor nomad: the jobs go to the Nomad agent at http://127.0.0.1:1; uwe \
+         asks it only when a run starts"
     );
 }

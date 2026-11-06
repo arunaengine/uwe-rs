@@ -557,6 +557,7 @@ fn execution_default(id: &str) -> Json {
         inputs: Vec::new(),
         outputs: Vec::new(),
         values: Vec::new(),
+        declared: Vec::new(),
         stdout: String::new(),
         stderr: String::new(),
     };

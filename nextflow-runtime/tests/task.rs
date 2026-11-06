@@ -35,6 +35,7 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
         directives,
         staged: vec![(PathValue::parse("/data/x.gz", "/"), "x.gz".into())],
         values: Vec::new(),
+        declared: Vec::new(),
         input_environment: Vec::new(),
         stdin: None,
         output_patterns: vec!["out.txt".into()],

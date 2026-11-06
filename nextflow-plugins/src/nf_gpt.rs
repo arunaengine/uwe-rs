@@ -15,6 +15,7 @@ use crate::catalogue::{Kind, Plugin, State};
 use crate::nf_schema::entries;
 use crate::nf_sqldb::{split_options, thrown};
 use crate::report_format::{Json, ordered_json};
+use crate::service::safe_url;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &[
@@ -89,7 +90,8 @@ impl Settings {
         let endpoint = text("endpoint").unwrap_or("https://api.openai.com".to_owned());
         if endpoint.ends_with('/') {
             return Err(thrown(format!(
-                "Endpoint url must not end with a slash - offending value: {endpoint}"
+                "Endpoint url must not end with a slash - offending value: {}",
+                safe_url(&endpoint)
             )));
         }
         let number = |key: &str| text(key).and_then(|value| value.parse::<f64>().ok());
@@ -273,7 +275,7 @@ fn send(settings: &Settings, body: &Json) -> Result<serde_json::Value, Error> {
     let unreachable = || {
         thrown(format!(
             "Unable to connect ChatGPT service: {}",
-            settings.endpoint
+            safe_url(&settings.endpoint)
         ))
     };
     let client = storage::http_client().map_err(|_| unreachable())?;

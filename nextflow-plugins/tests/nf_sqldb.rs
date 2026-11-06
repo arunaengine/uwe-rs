@@ -6,7 +6,7 @@ mod common;
 
 use std::path::Path;
 
-const INCLUDE: &str = "include { fromQuery; sqlExecute } from 'plugin/nf-sqldb'\n";
+const INCLUDE: &str = "include { fromQuery; sqlInsert; sqlExecute } from 'plugin/nf-sqldb'\n";
 
 /// Runs a workflow body with the database `foo` at `url`; gives the error and the printed text.
 fn run(folder: &Path, url: &str, body: &str) -> (Option<String>, String) {
@@ -97,9 +97,126 @@ fn executes_statements() {
     assert_eq!(table(folder, "t2"), ["1|z", "2|z"]);
 }
 
+fn owned(rows: &[&str]) -> Vec<String> {
+    rows.iter().map(|row| row.to_string()).collect()
+}
+
+#[test]
+fn inserts_items() {
+    let cases = [
+        (
+            "channel.of(['a',1],['b',2]).sqlInsert(into: 'ins', columns: ['NAME','LEN'], db: 'foo').view()",
+            "[a, 1]\n[b, 2]\n",
+            owned(&["a|1", "b|2"]),
+        ),
+        (
+            "channel.of([NAME:'m', LEN:3],[LEN:4, NAME:'n']).sqlInsert(into: 'ins', db: 'foo').view()",
+            "[NAME:m, LEN:3]\n[LEN:4, NAME:n]\n",
+            owned(&["m|3", "n|4"]),
+        ),
+        (
+            "channel.of([name:'m', len:3]).sqlInsert(into: 'ins', db: 'foo').view()",
+            "[name:m, len:3]\n",
+            owned(&["|"]),
+        ),
+        (
+            "channel.of([NAME:'k', LEN:5, EXTRA:1]).sqlInsert(into: 'ins', columns: 'NAME,LEN', db: 'foo').view()",
+            "[NAME:k, LEN:5, EXTRA:1]\n",
+            owned(&["k|5"]),
+        ),
+        (
+            "channel.of('only').sqlInsert(into: 'ins', columns: 'NAME', db: 'foo').view()",
+            "only\n",
+            owned(&["only|"]),
+        ),
+        (
+            "channel.value(['v',1]).sqlInsert(into: 'ins', columns: 'NAME,LEN', db: 'foo').view()",
+            "[v, 1]\n",
+            owned(&["v|1"]),
+        ),
+        (
+            "channel.of(['x',9]).sqlInsert(into: 'ins', db: 'foo').view()",
+            "[x, 9]\n",
+            owned(&["x|9"]),
+        ),
+        (
+            "channel.of(['a',1]).sqlInsert(into: 'ins', columns: 'NAME,LEN', batchSize: 0, db: 'foo').view()",
+            "[a, 1]\n",
+            owned(&["a|1"]),
+        ),
+        (
+            "channel.of('single').sqlInsert(statement: 'insert into ins(NAME) values (?)', db: 'foo', batchSize: 1).view { \"single ${it}\" }",
+            "single single\n",
+            owned(&["single|"]),
+        ),
+        (
+            "channel.of(['a',1]).sqlInsert(into: 'ins', columns: 'NAME,LEN', batch: 5, db: 'foo').view()",
+            "WARN: The option 'batch' for the 'sqlInsert' operator has been deprecated - Use \
+             'batchSize' instead\n[a, 1]\n",
+            owned(&["a|1"]),
+        ),
+        (
+            "channel.of(1..25).map { [\"n$it\", it] }.sqlInsert(into: 'ins', db: 'foo', batchSize: 7).count().view()",
+            "25\n",
+            (1..=25).map(|n| format!("n{n}|{n}")).collect(),
+        ),
+    ];
+    for (body, printed_text, rows) in cases {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let folder = directory.path();
+        let url = database(folder);
+        let (error, printed) = run(folder, &url, body);
+        assert_eq!(error, None, "{body}\n{printed}");
+        assert_eq!(printed, printed_text, "{body}");
+        assert_eq!(table(folder, "ins"), rows, "{body}");
+    }
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    let url = database(folder);
+    let body = "channel.of(['a',1]).sqlInsert(into: 'newt', columns: 'NAME,LEN', setup: 'CREATE \
+                TABLE IF NOT EXISTS newt (NAME TEXT, LEN INT)', db: 'foo').view()";
+    let (error, _) = run(folder, &url, body);
+    assert_eq!(error, None);
+    assert_eq!(table(folder, "newt"), ["a|1"]);
+}
+
 #[test]
 fn reports_errors() {
     let cases = [
+        (
+            "channel.of(['a',1]).sqlInsert(into: 'ins', foo: 1, db: 'foo').view()",
+            "Unknown argument 'foo' for operator 'sqlInsert' -- Possible arguments: db, into, \
+             columns, statement, batch, batchSize, setup",
+        ),
+        (
+            "channel.of(['a',1]).sqlInsert(columns: 'NAME,LEN', db: 'foo').view()",
+            "Missing sqlInsert target table - Use 'into' option to specify it",
+        ),
+        (
+            "channel.of(null).sqlInsert(into: 'ins', columns: 'NAME', db: 'foo').view()",
+            "Invalid sqlInsert entry - It must be a non-null value",
+        ),
+        (
+            "channel.of(['a',1,2]).sqlInsert(into: 'ins', columns: 'NAME,LEN', db: 'foo').view()",
+            "Index 2 out of bounds for length 2",
+        ),
+        (
+            "channel.of([NAME:'m', FOO:3]).sqlInsert(into: 'ins', db: 'foo').view()",
+            "Unknown columns for table 'ins': FOO - Offending record: [NAME:m, FOO:3]",
+        ),
+        (
+            "channel.of(['a',1]).sqlInsert(into: 'ins', columns: 'NAME,LEN', db: 'nope').view()",
+            "Unknown db name: nope - Available databases: foo",
+        ),
+        (
+            "channel.of(['a',1]).sqlInsert(into: 'ins', columns: 'NAME,LEN', batchSize: -1, db: 'foo').view()",
+            "SQL batch option must be greater than zero: -1",
+        ),
+        (
+            "channel.of(['a',1]).sqlInsert(into: 'ins', columns: 5, db: 'foo').view()",
+            "Value '5' cannot be used in in parameter 'columns' for operator 'sqlInsert' -- \
+             Possible values: interface java.lang.CharSequence, interface java.util.List",
+        ),
         (
             "println sqlExecute(db: 'foo', statement: 'select 1', foo: 2)",
             "Unknown argument 'foo' for operator 'sqlExecute' -- Possible arguments: db, statement",

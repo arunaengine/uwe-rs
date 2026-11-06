@@ -1,7 +1,8 @@
-//! nf-sqldb 0.7.1: `fromQuery` and `sqlExecute` on the databases of `sql.db`.
+//! nf-sqldb 0.7.1: `fromQuery`, `sqlInsert` and `sqlExecute` on the databases of `sql.db`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod insert;
 mod sqlite;
 pub(crate) mod target;
 
@@ -11,15 +12,17 @@ use std::time::Duration;
 use nextflow_config::Config;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
-use nextflow_evaluator::number::Number;
+use nextflow_evaluator::number::{BigDecimal, Number};
 use nextflow_evaluator::value::{Object, State as ObjectState, Value};
 
 use crate::Context;
 use crate::catalogue::{Kind, Plugin, State};
 
 pub(crate) const PLUGIN: Plugin = Plugin {
-    functions: &["fromQuery", "sqlExecute"],
+    functions: &["fromQuery", "sqlInsert", "sqlExecute"],
     call: Some(call),
+    methods: Some(insert::methods),
+    script: Some(include_str!("operators.nf")),
     factories: &["fromQuery"],
     scopes: &["sql"],
     ..Plugin::new("nf-sqldb", Kind::Functions, State::Partial)
@@ -36,7 +39,7 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
     run(Flavour::Sqldb, name, arguments, context)
 }
 
-/// Runs `fromQuery` and `sqlExecute`.
+/// Runs `fromQuery`, `sqlExecute` and `sqlWriter`, the helper of the `sqlInsert` script.
 pub(crate) fn run(
     flavour: Flavour,
     name: &str,
@@ -46,6 +49,7 @@ pub(crate) fn run(
     match name {
         "fromQuery" => from_query(flavour, arguments, context),
         "sqlExecute" => sql_execute(flavour, arguments, context),
+        "sqlWriter" => insert::writer(flavour, arguments, context),
         _ => Err(Error::Unsupported {
             message: format!("the function `{name}` of the plugin `nf-sqldb`"),
             span: Default::default(),
@@ -62,14 +66,17 @@ pub(crate) struct Source {
     pub password: Option<String>,
 }
 
-/// The value of a database row, apart from uwe's values so that it can cross to the thread of
-/// a network client.
+/// The value of a database row or an insert parameter, apart from uwe's values so that it can
+/// cross to the thread of a network client.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Datum {
     Null,
+    Boolean(bool),
     Integer(i32),
     Long(i64),
+    Float(f32),
     Double(f64),
+    Decimal(String),
     Text(String),
     Bytes(Vec<u8>),
 }
@@ -86,6 +93,10 @@ pub(crate) trait Connection {
     fn query(&mut self, sql: &str) -> Result<Table, String>;
     /// Runs a statement and gives the number of rows it changed; 0 for a query.
     fn execute(&mut self, sql: &str) -> Result<u64, String>;
+    /// The columns of a table, in table order.
+    fn columns(&mut self, table: &str) -> Result<Vec<String>, String>;
+    /// Runs the statement once for each row, in one transaction that it commits.
+    fn insert(&mut self, statement: &str, rows: &[Vec<Datum>]) -> Result<(), String>;
 }
 
 /// `channel.fromQuery(query, [db:, emitColumns:, batchSize:, batchDelay:])`: the rows as lists
@@ -361,6 +372,7 @@ pub(crate) enum Type {
     Text,
     Integer,
     Boolean,
+    TextOrList,
 }
 
 /// Fails for an option the operator does not know, or a value of the wrong kind, with the
@@ -385,6 +397,7 @@ pub(crate) fn check_options(
                 matches!(value, Value::Number(Number::Integer(_) | Number::Long(_)))
             }
             Type::Boolean => matches!(value, Value::Boolean(_)),
+            Type::TextOrList => text || matches!(value, Value::List(_)),
         };
         if fits || matches!(value, Value::Null) {
             continue;
@@ -393,6 +406,9 @@ pub(crate) fn check_options(
             Type::Text => "Value don't match: interface java.lang.CharSequence",
             Type::Integer => "Value don't match: class java.lang.Integer",
             Type::Boolean => "Value don't match: class java.lang.Boolean",
+            Type::TextOrList => {
+                "Possible values: interface java.lang.CharSequence, interface java.util.List"
+            }
         };
         return Err(thrown(format!(
             "Value '{value}' cannot be used in in parameter '{name}' for operator \
@@ -455,11 +471,35 @@ fn row_value(row: Vec<Datum>) -> Value {
 pub(crate) fn value(datum: Datum) -> Value {
     match datum {
         Datum::Null => Value::Null,
+        Datum::Boolean(value) => Value::Boolean(value),
         Datum::Integer(value) => Value::Number(Number::Integer(value)),
         Datum::Long(value) => Value::Number(Number::Long(value)),
+        Datum::Float(value) => Value::Number(Number::Float(value)),
         Datum::Double(value) => Value::Number(Number::Double(value)),
+        Datum::Decimal(text) => match BigDecimal::parse(&text) {
+            Some(decimal) => Value::Number(Number::BigDecimal(decimal)),
+            None => Value::string(text),
+        },
         Datum::Text(text) => Value::string(text),
         Datum::Bytes(bytes) => object("[B", ObjectState::Bytes(bytes.into())),
+    }
+}
+
+/// The database value of a uwe value, for an insert parameter.
+pub(crate) fn datum(value: &Value) -> Datum {
+    match value {
+        Value::Null => Datum::Null,
+        Value::Boolean(value) => Datum::Boolean(*value),
+        Value::Number(Number::Integer(value)) => Datum::Integer(*value),
+        Value::Number(Number::Long(value)) => Datum::Long(*value),
+        Value::Number(Number::Float(value)) => Datum::Float(*value),
+        Value::Number(Number::Double(value)) => Datum::Double(*value),
+        Value::Number(number) => Datum::Decimal(number.to_string()),
+        Value::Object(object) => match &object.borrow().state {
+            ObjectState::Bytes(bytes) => Datum::Bytes(bytes.to_vec()),
+            _ => Datum::Text(value.to_string()),
+        },
+        other => Datum::Text(other.to_string()),
     }
 }
 

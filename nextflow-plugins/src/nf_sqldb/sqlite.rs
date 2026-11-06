@@ -2,8 +2,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use rusqlite::OpenFlags;
-use rusqlite::types::ValueRef;
+use rusqlite::types::{Value as Stored, ValueRef};
+use rusqlite::{OpenFlags, params_from_iter};
 
 use super::{Connection, Datum, Table};
 
@@ -46,6 +46,32 @@ impl Connection for Sqlite {
         let changed = statement.raw_execute().map_err(text)?;
         Ok(u64::try_from(changed).unwrap_or(0))
     }
+
+    fn columns(&mut self, table: &str) -> Result<Vec<String>, String> {
+        let sql = "SELECT name FROM pragma_table_info(?1)";
+        let mut statement = self.0.prepare(sql).map_err(text)?;
+        let names = statement.query_map([table], |row| row.get::<_, String>(0));
+        names
+            .map_err(text)?
+            .map(|name| name.map_err(text))
+            .collect()
+    }
+
+    fn insert(&mut self, statement: &str, rows: &[Vec<Datum>]) -> Result<(), String> {
+        let transaction = self.0.transaction().map_err(text)?;
+        {
+            let mut prepared = transaction.prepare(statement).map_err(text)?;
+            let count = prepared.parameter_count();
+            for row in rows {
+                if row.len() > count {
+                    return Err(format!("Index {count} out of bounds for length {count}"));
+                }
+                let values = (0..count).map(|index| stored(row.get(index)));
+                prepared.execute(params_from_iter(values)).map_err(text)?;
+            }
+        }
+        transaction.commit().map_err(text)
+    }
 }
 
 /// The value as sqlite-jdbc gives it: integers that fit as `Integer`, else `Long`; dates and
@@ -60,6 +86,20 @@ fn datum(value: ValueRef<'_>) -> Datum {
         ValueRef::Real(value) => Datum::Double(value),
         ValueRef::Text(bytes) => Datum::Text(String::from_utf8_lossy(bytes).into_owned()),
         ValueRef::Blob(bytes) => Datum::Bytes(bytes.to_vec()),
+    }
+}
+
+/// A parameter; a missing one is null.
+fn stored(value: Option<&Datum>) -> Stored {
+    match value {
+        None | Some(Datum::Null) => Stored::Null,
+        Some(Datum::Boolean(value)) => Stored::Integer(i64::from(*value)),
+        Some(Datum::Integer(value)) => Stored::Integer(i64::from(*value)),
+        Some(Datum::Long(value)) => Stored::Integer(*value),
+        Some(Datum::Float(value)) => Stored::Real(f64::from(*value)),
+        Some(Datum::Double(value)) => Stored::Real(*value),
+        Some(Datum::Bytes(bytes)) => Stored::Blob(bytes.clone()),
+        Some(Datum::Decimal(text) | Datum::Text(text)) => Stored::Text(text.clone()),
     }
 }
 

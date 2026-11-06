@@ -1,5 +1,5 @@
-//! The cleanup of nf-gc frees the run's own files once no task can read them, while later tasks
-//! still read theirs; task results and resumed runs stay intact.
+//! nf-gc and nf-boost's cleanup free the run's own files once no task can read them, while
+//! later tasks still read theirs; task results and resumed runs stay intact.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -198,7 +198,11 @@ fn frees_unread_files() {
         );
     }
     // A resumed run takes the results of the first run, which the cleanup leaves alone.
-    let (seen, left) = run(launch, "plugins { id 'nf-gc@0.3.0' }\n", true);
+    let (seen, left) = run(
+        launch,
+        "plugins { id 'nf-boost' }\nboost.cleanup = 'v1'\n",
+        true,
+    );
     assert!(seen.inputs["SECOND"].iter().all(|(_, there)| *there));
     assert!(left.is_empty(), "{left:?}");
     for output in ["early.out", "first.out", "second.out"] {

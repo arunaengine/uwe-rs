@@ -1,5 +1,5 @@
-//! The cleanup switch of nf-gc's `nfGc.gc_mode`, with the errors that stop a run before it
-//! starts.
+//! The cleanup switch of nf-gc's `nfGc.gc_mode` and nf-boost's `boost.cleanup`, with the errors
+//! that stop a run before it starts.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -41,6 +41,10 @@ fn switches_cleanup() {
             "plugins { id 'nf-gc@0.3.0' }\nnfGc { gc_mode = 'artifact' }",
             true,
         ),
+        ("plugins { id 'nf-boost' }\nboost.cleanup = 'v2'", true),
+        ("plugins { id 'nf-boost' }\nboost.cleanup = true", true),
+        ("plugins { id 'nf-boost' }\nboost.cleanup = false", false),
+        ("plugins { id 'nf-boost' }", false),
         ("boost.cleanup = true\nnfGc.gc_mode = 'artifact'", false),
     ];
     for (text, on) in cases {

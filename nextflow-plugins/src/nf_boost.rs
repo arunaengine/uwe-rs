@@ -1,4 +1,4 @@
-//! nf-boost 0.8.0: `toYaml`, `request` and the cleanup config; `nf_boost.nf` has the rest.
+//! nf-boost 0.8.0: `toYaml`, `request` and the cleanup switch; `nf_boost.nf` has the rest.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -33,27 +33,26 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     script: Some(include_str!("nf_boost.nf")),
     scopes: &["boost"],
     observer: Some(activate),
-    ..Plugin::new("nf-boost", Kind::Functions, State::Partial)
+    ..Plugin::new("nf-boost", Kind::Functions, State::Implemented)
 };
 
-/// Checks `boost.cleanup`. uwe keeps task results in a store that other runs, the cache and
-/// published outputs share, so it never deletes them during a run and skips the cleanup.
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
-    let on = match config.get(&["boost", "cleanup"]) {
-        None | Some(Value::Null | Value::Boolean(false)) => false,
-        Some(Value::Boolean(true)) => true,
+/// Whether `boost.cleanup` turns the cleanup on, which the runtime does (see nf-gc): `true`,
+/// `'v1'` and `'v2'` do, `false` and none do not.
+pub(crate) fn cleanup(config: &Config) -> Result<bool, String> {
+    match config.get(&["boost", "cleanup"]) {
+        None | Some(Value::Null | Value::Boolean(false)) => Ok(false),
+        Some(Value::Boolean(true)) => Ok(true),
         Some(other) => match other.to_string().as_str() {
-            "false" => false,
-            "true" | "v1" | "v2" => true,
-            value => return Err(format!("Invalid `boost.cleanup` value -- {value}")),
+            "false" => Ok(false),
+            "true" | "v1" | "v2" => Ok(true),
+            value => Err(format!("Invalid `boost.cleanup` value -- {value}")),
         },
-    };
-    if on {
-        tracing::warn!(
-            "The automatic cleanup of nf-boost (`boost.cleanup`) is skipped: uwe keeps task \
-             results in a store that other runs share"
-        );
     }
+}
+
+/// Checks `boost.cleanup`.
+fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+    cleanup(config)?;
     Ok(None)
 }
 

@@ -5,7 +5,10 @@
 
 mod auth;
 mod client;
+pub mod outcome;
+pub mod run;
 mod settings;
 
 pub use client::{Client, FlyteError};
+pub use run::Project;
 pub use settings::{ApiKey, KEY_VARIABLES, Settings, address};

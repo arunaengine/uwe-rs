@@ -104,6 +104,17 @@ impl FakeAzure {
         self.lock().pools.insert(id.to_owned(), pool);
     }
 
+    /// Adds an active job of another run on the pool `pool`.
+    pub fn add_job(&self, id: &str, pool: &str) {
+        let job = json!({"id": id, "state": "active", "poolInfo": {"poolId": pool}});
+        self.lock().jobs.insert(id.to_owned(), job);
+    }
+
+    /// Whether the pool `id` exists.
+    pub fn has_pool(&self, id: &str) -> bool {
+        self.lock().pools.contains_key(id)
+    }
+
     /// Takes the nodes of a pool away after a failed resize; its tasks wait.
     pub fn break_pool(&self, id: &str, code: &str) {
         let mut state = self.lock();
@@ -213,10 +224,16 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
             match state.jobs.contains_key(&id) {
                 true => error(409, "JobExists"),
                 false => {
-                    state.jobs.insert(id, json.clone());
+                    let mut job = json.clone();
+                    job["state"] = json!("active");
+                    state.jobs.insert(id, job);
                     (201, Value::Null)
                 }
             }
+        }
+        ("GET", ["jobs"]) => {
+            let active = (state.jobs.values()).filter(|job| job["state"] == "active");
+            (200, json!({"value": active.cloned().collect::<Vec<_>>()}))
         }
         ("GET", ["jobs", id]) => match state.jobs.get(*id) {
             Some(job) => (200, job.clone()),
@@ -352,12 +369,9 @@ fn unsigned(request: &Request) -> Option<String> {
         text.push_str(&format!("{name}:{}\n", value.trim()));
     }
     text.push_str(&format!("/{ACCOUNT}{route}"));
-    let mut pairs: Vec<(String, String)> = (query.split('&'))
-        .filter(|pair| !pair.is_empty())
-        .map(|pair| {
-            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-            (name.to_lowercase(), value.replace("%20", " "))
-        })
+    let url = reqwest::Url::parse(&format!("http://fake/?{query}")).expect("a query");
+    let mut pairs: Vec<(String, String)> = (url.query_pairs())
+        .map(|(name, value)| (name.to_lowercase(), value.into_owned()))
         .collect();
     pairs.sort();
     for (name, value) in pairs {

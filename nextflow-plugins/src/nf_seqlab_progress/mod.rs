@@ -59,7 +59,7 @@ fn interactive() -> bool {
         )
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     registry::clear();
     let params = config.params();
     let param = |name: &str| {

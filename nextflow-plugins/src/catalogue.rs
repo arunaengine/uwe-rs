@@ -55,7 +55,7 @@ pub type Call = fn(&str, Vec<Value>, &mut Context) -> Result<Value, Error>;
 pub type Methods = fn(&Value, &str, Vec<Value>, &mut Context) -> Result<Option<Value>, Error>;
 
 /// Makes the run observer of a plugin from the config, `None` when the config turns it off.
-pub type Activate = fn(&Config) -> Result<Option<Box<dyn Observer>>, String>;
+pub type Activate = fn(&Config, &std::path::Path) -> Result<Option<Box<dyn Observer>>, String>;
 
 /// A plugin, as the `plugins` block of a config and `include ... from 'plugin/<id>'` name it.
 #[derive(Clone, Copy, Debug)]
@@ -423,12 +423,16 @@ pub fn warnings(config: &Config) -> Vec<String> {
 }
 
 /// The run observers of the plugins of the config that have one and that the config turns on.
-pub fn observers(config: &Config) -> Result<Vec<Box<dyn Observer>>, String> {
+/// Their relative paths start from the launch folder `launch`.
+pub fn observers(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Vec<Box<dyn Observer>>, String> {
     let mut observers = Vec::new();
     for id in configured(config) {
         let activate = find(&id).and_then(|plugin| plugin.observer);
         if let Some(observer) = activate
-            .map(|activate| activate(config))
+            .map(|activate| activate(config, launch))
             .transpose()?
             .flatten()
         {
@@ -437,7 +441,7 @@ pub fn observers(config: &Config) -> Result<Vec<Box<dyn Observer>>, String> {
     }
     // Nextflow loads nf-tower without a `plugins` line when the config turns it on.
     if !configured(config).iter().any(|id| id == "nf-tower")
-        && let Some(observer) = crate::nf_tower::implied(config)?
+        && let Some(observer) = crate::nf_tower::implied(config, launch)?
     {
         observers.push(observer);
     }

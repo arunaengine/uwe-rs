@@ -42,7 +42,7 @@ thread_local! {
     static QUEUE: RefCell<Option<Queue>> = const { RefCell::new(None) };
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     QUEUE.with(|slot| slot.borrow_mut().take());
     let Some(settings) = Settings::read(config) else {
         return Ok(None);

@@ -35,7 +35,7 @@ struct Settings {
     worksheets: Vec<String>,
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let settings = Settings::read(config);
     if !settings.done && !settings.sheets {
         return Ok(None);

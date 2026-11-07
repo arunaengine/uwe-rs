@@ -57,7 +57,10 @@ struct Report {
 
 /// Reads the `prov` scope and checks the report files before any task runs: an existing
 /// file stops the run, unless `overwrite` lets the plugin delete it.
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
     if matches!(
         config.get(&["prov", "enabled"]),
         Some(Value::Boolean(false))
@@ -67,7 +70,7 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
     if config.get(&["prov", "formats", "legacy"]).is_some() {
         tracing::warn!("The `legacy` provenance format is no longer supported");
     }
-    let launch = std::env::current_dir().map_err(|error| error.to_string())?;
+    let launch = launch.to_path_buf();
     let output_dir = (config.get(&["outputDir"]).map(|value| value.to_string()))
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "results".to_owned());

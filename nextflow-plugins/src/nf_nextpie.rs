@@ -57,7 +57,7 @@ struct Nextpie {
 
 /// Turns the plugin on when the run writes a trace and names its pipeline; else it warns and
 /// stays off, where Nextflow stops the run without a name.
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |path: &[&str]| {
         (config.get(path))
             .filter(|value| !matches!(value, Value::Null))

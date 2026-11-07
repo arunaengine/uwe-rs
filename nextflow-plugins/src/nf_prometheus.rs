@@ -76,7 +76,10 @@ const FAMILIES: [(&str, &str, &str); 8] = [
     ),
 ];
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |key: &str| {
         (config.get(&["prometheus", key])).filter(|value| !matches!(value, Value::Null))
     };
@@ -84,7 +87,7 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
         return Ok(None);
     }
     let text = |key: &str| get(key).map(|value| value.to_string());
-    let launch = std::env::current_dir().unwrap_or_default();
+    let launch = launch.to_path_buf();
     let path = launch.join(text("path").unwrap_or_else(|| "nf-prometheus.prom".into()));
     let push = (text("pushgateway")).map(|url| url.trim_end_matches('/').to_owned());
     let port = (text("httpPort")).and_then(|port| port.parse::<u16>().ok());

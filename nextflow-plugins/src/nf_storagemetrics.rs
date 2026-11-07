@@ -41,7 +41,7 @@ pub(crate) fn say_hello(
     Ok(Value::Null)
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let file = config.get(&["storagemetrics", "file"]);
     let file = file
         .filter(|value| !matches!(value, Value::Null))

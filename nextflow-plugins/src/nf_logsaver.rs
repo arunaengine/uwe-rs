@@ -20,7 +20,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 /// The folder below the output directory that holds the copies.
 const FOLDER: &str = "logsaver_command_files";
 
-fn activate(_: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(_: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     Ok(Some(Box::new(LogSaver {
         folder: PathBuf::new(),
     })))

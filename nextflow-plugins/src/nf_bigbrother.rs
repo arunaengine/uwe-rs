@@ -28,14 +28,17 @@ const COLOURS: [&str; 12] = [
     "#d9d9d9", "#bc80bd", "#ccebc5", "#ffed6f",
 ];
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |key: &str| {
         config
             .get(&["bigbrother", key])
             .filter(|value| !matches!(value, Value::Null))
     };
     let flag = |key: &str, default: bool| get(key).map_or(default, |value| value.truth());
-    let launch = std::env::current_dir().map_err(|error| error.to_string())?;
+    let launch = launch.to_path_buf();
     let folder =
         get("outputDir").map_or_else(|| "bigbrother".to_owned(), |value| value.to_string());
     let every = match get("snapshotEvery") {

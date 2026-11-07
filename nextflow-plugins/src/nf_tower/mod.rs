@@ -32,7 +32,7 @@ const TICK: Duration = Duration::from_millis(100);
 /// How long the end of the run waits for the last requests, as `terminateTimeout` does.
 const WAIT: Duration = Duration::from_secs(120);
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let Some(settings) = Settings::read(config, &|name| std::env::var(name).ok())? else {
         return Ok(None);
     };
@@ -53,8 +53,11 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
 
 /// The observer for a config without a `plugins` line for nf-tower, which Nextflow loads by
 /// itself when `tower.enabled` is true or Seqera Platform launched the run.
-pub(crate) fn implied(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
-    activate(config)
+pub(crate) fn implied(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
+    activate(config, launch)
 }
 
 /// The run observer: hands the events to the worker and lets a failed report fail the run.

@@ -49,7 +49,8 @@ fn switches_cleanup() {
     ];
     for (text, on) in cases {
         let config = loaded(text);
-        let observers = catalogue::observers(&config).expect("a valid config");
+        let observers =
+            catalogue::observers(&config, std::path::Path::new("/launch")).expect("a valid config");
         assert!(observers.is_empty(), "{text}");
         assert_eq!(nextflow_plugins::cleanup(&config), on, "{text}");
     }
@@ -69,7 +70,7 @@ fn rejects_gc_settings() {
     ];
     for (text, message) in cases {
         let config = loaded(&format!("plugins {{ id 'nf-gc@0.3.0' }}\n{text}\n"));
-        let error = catalogue::observers(&config).err();
+        let error = catalogue::observers(&config, std::path::Path::new("/launch")).err();
         assert_eq!(error.as_deref(), Some(message), "{text}");
         assert!(!nextflow_plugins::cleanup(&config), "{text}");
     }

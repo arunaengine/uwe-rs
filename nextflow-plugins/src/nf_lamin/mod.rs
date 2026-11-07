@@ -99,7 +99,7 @@ fn shared(session: &str) -> Arc<Shared> {
     runs.entry(session.to_owned()).or_default().clone()
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     storage::lamin::use_scope(options(config));
     let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
     let Some(settings) = Settings::read(config, &variable)? else {

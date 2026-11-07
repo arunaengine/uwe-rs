@@ -544,7 +544,7 @@ impl Driver for Nextflow {
             for warning in nextflow_plugins::catalogue::warnings(config) {
                 self.settings.host.print(&format!("WARN: {warning}\n"));
             }
-            let observers = nextflow_plugins::catalogue::observers(config);
+            let observers = nextflow_plugins::catalogue::observers(config, &launch_dir);
             let script = loaded.script.to_string_lossy();
             let mut reports = Reports::of(config, &launch_dir, &script);
             reports.observe(observers.map_err(DriverError::new)?);

@@ -473,6 +473,7 @@ fn typed_params(
 ) -> Result<(), Error> {
     for parameter in &module.typed_parameters {
         let class = parameter.class.as_deref().unwrap_or("Object");
+        let launch = interpreter.host().launch_dir();
         let value = match tree::get(params, &[&parameter.name]) {
             Some(Value::Null) | None => match &parameter.default {
                 Some(code) => interpreter.evaluate(code, module)?,
@@ -489,7 +490,7 @@ fn typed_params(
                     });
                 }
             },
-            Some(Value::String(text)) => typed_value(&text, class).ok_or_else(|| {
+            Some(Value::String(text)) => typed_value(&text, class, &launch).ok_or_else(|| {
                 let message = format!(
                     "Parameter `{}` with type {class} cannot be assigned to '{text}'",
                     parameter.name
@@ -507,8 +508,9 @@ fn typed_params(
     Ok(())
 }
 
-/// Text as a value of a declared param type, or `None` when it does not fit.
-fn typed_value(text: &str, class: &str) -> Option<Value> {
+/// Text as a value of a declared param type, or `None` when it does not fit. A relative
+/// `Path` starts from the launch folder.
+fn typed_value(text: &str, class: &str, launch: &str) -> Option<Value> {
     use nextflow_evaluator::number::{BigDecimal, Number};
     use nextflow_evaluator::units::{parse_duration, parse_memory};
     Some(match class {
@@ -523,10 +525,7 @@ fn typed_value(text: &str, class: &str) -> Option<Value> {
         "Boolean" if text.eq_ignore_ascii_case("false") => Value::Boolean(false),
         "Boolean" => return None,
         "Path" => Value::Path(Rc::new(nextflow_evaluator::value::PathValue::parse(
-            text,
-            &std::env::current_dir()
-                .unwrap_or_default()
-                .to_string_lossy(),
+            text, launch,
         ))),
         "Duration" => Value::Duration(parse_duration(text).ok()?),
         "MemoryUnit" => Value::MemoryUnit(parse_memory(text).ok()?),

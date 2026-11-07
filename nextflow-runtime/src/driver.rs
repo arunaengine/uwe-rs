@@ -280,7 +280,7 @@ impl Nextflow {
         Ok(Inputs {
             schema,
             values,
-            base: std::env::current_dir().unwrap_or_default(),
+            base: launch_folder(self.settings.host.as_ref()),
             read: Some(read),
             assumes_values: false,
             // Nextflow holds no param to a schema; a pipeline does when its code checks them.
@@ -309,7 +309,7 @@ impl Nextflow {
             title: title(&config, &loaded.project),
             description: manifest(&config, "description"),
         };
-        let base = std::env::current_dir().unwrap_or_default();
+        let base = launch_folder(self.settings.host.as_ref());
         Ok(crate::inputs::declared(&declared, &base))
     }
 
@@ -454,7 +454,7 @@ impl Driver for Nextflow {
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
         if !self.launch.simulated {
-            let launch_dir = std::env::current_dir().unwrap_or_default();
+            let launch_dir = launch_folder(self.settings.host.as_ref());
             let script = loaded.script.to_string_lossy();
             let reports = Reports::of(config, &launch_dir, &script);
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
@@ -727,8 +727,7 @@ fn load_config(
     host: &mut dyn Host,
     typed: bool,
 ) -> Result<(Config, Vec<PathBuf>), DriverError> {
-    let launch_dir =
-        std::env::current_dir().map_err(|error| DriverError::new(error.to_string()))?;
+    let launch_dir = launch_folder(host);
     let project = std::path::absolute(project).unwrap_or_else(|_| project.to_owned());
     let files = nextflow_config::files(&project, &launch_dir, &launch.configs);
     let options = nextflow_config::Options {
@@ -743,6 +742,12 @@ fn load_config(
         message: error.to_string(),
     })?;
     Ok((config, files))
+}
+
+/// The launch folder of a run, which its host gives, so that runs in one process can have
+/// folders of their own.
+fn launch_folder(host: &dyn Host) -> PathBuf {
+    PathBuf::from(host.launch_dir())
 }
 
 /// The params of a launch as nested maps: those of the params file (`-params-file`, JSON or

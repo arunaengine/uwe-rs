@@ -44,7 +44,7 @@ pub use downloads::{download_name, hold_downloads};
 pub use error::StorageError;
 pub use journal::Fetched;
 pub use settings::Settings;
-pub use web::{config_proxy, http_client, trust_mozilla_roots, use_proxy};
+pub use web::{config_proxy, http_client, origin_client, trust_mozilla_roots, use_proxy};
 
 /// Whether a file exists as a file or a directory, its size, and its version.
 #[derive(Clone, Debug, PartialEq, Eq)]

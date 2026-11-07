@@ -1,5 +1,5 @@
 //! Sends the requests of the plugins that report to network services from their worker
-//! threads, with the one HTTP client of the process.
+//! threads, with the shared HTTP client that keeps their credentials on the first origin.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -24,7 +24,7 @@ pub(crate) struct Sender {
 impl Sender {
     /// A sender for the calling thread, which must not run inside an async runtime.
     pub(crate) fn new() -> Result<Sender, String> {
-        let client = storage::http_client()?;
+        let client = storage::origin_client()?;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()

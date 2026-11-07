@@ -61,7 +61,7 @@ pub(super) fn narrate(access: &Access, model: &str, data: &str) -> Result<String
                     .with("content", format!("{INSTRUCTION}\n\nDATA:\n{data}")),
             ],
         );
-    let client = storage::http_client()?;
+    let client = storage::origin_client()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

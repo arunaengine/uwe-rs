@@ -124,7 +124,7 @@ impl Intensity {
 
 /// The latest value of a zone: its time in milliseconds since 1970 and the intensity.
 fn fetch(address: &str, zone: &str, token: &str) -> Result<(i64, f64), String> {
-    let client = storage::http_client()?;
+    let client = storage::origin_client()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -192,6 +192,23 @@ mod tests {
             request
         });
         (address, server)
+    }
+
+    /// A redirect to another origin does not take the token along.
+    #[test]
+    fn keeps_token_home() {
+        let elsewhere = TcpListener::bind("127.0.0.1:0").expect("a local port");
+        elsewhere.set_nonblocking(true).expect("non-blocking");
+        let address = elsewhere.local_addr().expect("an address");
+        let moved = format!("302 Found\r\nlocation: http://{address}/latest");
+        let (address, server) = serve(&moved, "");
+        let answer = fetch(&address, "DE", "secret-token");
+        server.join().expect("the server ends");
+        assert!(answer.is_err(), "{answer:?}");
+        assert!(
+            elsewhere.accept().is_err(),
+            "the other origin heard nothing"
+        );
     }
 
     #[test]

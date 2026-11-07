@@ -173,6 +173,11 @@ impl Session {
             }
             _ => return Err(Problem::fixed(format!("{address} is not an iRODS server"))),
         }
+        if account.login == Login::PamPassword && !tls {
+            let message =
+                "the iRODS PAM password scheme needs TLS; set the TLS policy to CS_NEG_REQUIRE";
+            return Err(Problem::fixed(message));
+        }
         let stream: Box<dyn Stream> = match tls {
             true => upgrade(tcp, &account.host).await?,
             false => Box::new(tcp),

@@ -273,6 +273,14 @@ impl Native for CompositeKey {
 fn encoded(values: &[Value]) -> String {
     let part = |value: &Value| match value {
         Value::List(list) => format!("[{}]", encoded(&list.borrow().items)),
+        // Maps are equal whatever their order, so their entries are sorted.
+        Value::Map(map) => {
+            let mut entries: Vec<String> = (map.borrow().entries.iter())
+                .map(|(key, value)| encoded(&[key.0.clone(), value.clone()]))
+                .collect();
+            entries.sort();
+            format!("{{{}}}", entries.concat())
+        }
         other => {
             let text = other.to_string();
             format!("{}:{}:{text}", other.java_class_name(), text.len())
@@ -403,6 +411,22 @@ mod tests {
             Value::list(vec![key(&["A, B", "C"]), Value::integer(1)]),
             Value::list(vec![key(&["A", "B, C"]), Value::integer(2)]),
             Value::list(vec![key(&["A", "B, C"]), Value::integer(3)]),
+        ];
+        let groups = items(&grouped(&pairs, 0, true));
+        let sizes: Vec<usize> = groups
+            .iter()
+            .map(|group| items(&pair(group).1).len())
+            .collect();
+        assert_eq!(sizes, [1, 2]);
+        let map = |entries: &[(&str, &str)]| {
+            let entries =
+                (entries.iter()).map(|(key, value)| (Value::string(*key), Value::string(*value)));
+            CompositeKey(vec![Value::map(entries)]).value()
+        };
+        let pairs = [
+            Value::list(vec![map(&[("a", "b, c:d")]), Value::integer(1)]),
+            Value::list(vec![map(&[("a", "b"), ("c", "d")]), Value::integer(2)]),
+            Value::list(vec![map(&[("c", "d"), ("a", "b")]), Value::integer(3)]),
         ];
         let groups = items(&grouped(&pairs, 0, true));
         let sizes: Vec<usize> = groups

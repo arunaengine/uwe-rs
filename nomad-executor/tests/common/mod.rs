@@ -43,6 +43,8 @@ struct State {
     jobs: BTreeMap<String, Arc<Mutex<Job>>>,
     /// Whether no node fits the jobs registered from now on.
     unplaceable: bool,
+    /// Whether requests for evaluations are refused.
+    refused: bool,
 }
 
 #[derive(Default)]
@@ -87,6 +89,11 @@ impl FakeNomad {
     /// Lets no node take the jobs registered from now on.
     pub fn unplaceable(&self) {
         self.lock().unplaceable = true;
+    }
+
+    /// Refuses the requests for evaluations from now on.
+    pub fn refuse_evaluations(&self) {
+        self.lock().refused = true;
     }
 
     /// Whether the command of the job `id` runs.
@@ -151,6 +158,9 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
             Some(job) => (200, allocations(id, &lock(job))),
             None => (404, json!("job not found")),
         },
+        ("GET", ["v1", "job", _, "evaluations"]) if state.refused => {
+            (403, json!("Permission denied"))
+        }
         ("GET", ["v1", "job", id, "evaluations"]) => match state.jobs.get(*id) {
             Some(job) if !lock(job).placed => {
                 let metrics = json!({"NodesEvaluated": 2, "NodesFiltered": 2,

@@ -49,6 +49,20 @@ settings.default_time = Some(std::time::Duration::from_secs(24 * 60 * 60));
 let run = uwe::RunRequest::new(settings).run().await?;
 ```
 
+## Steps that never use the cache
+
+Set `run::Settings.no_cache_steps` to the names of steps whose tasks must not use the cache. Such a task looks up no stored result and keeps none, like a Nextflow process with `cache false`. So it runs on every run, also with `-resume`. Its outputs still reach the steps after it, and those steps can still come from the cache. On the command line this is `-no-cache-steps a,b`.
+
+A name matches a step as the step graph names it, like the step of `Event::Task`: by its full name, or by the last part after `:` or `/`. So `FASTQC` matches the Nextflow process `NFCORE_DEMO:DEMO:FASTQC`, and `sort` matches the step `align/sort` of a CWL subworkflow. Snakemake rules and Argo templates have names of one part. Names are not patterns.
+
+The setting only makes the cache stricter. A task whose workflow keeps it from the cache, like a CWL tool with `enableReuse: false`, stays so. Cache keys do not change, so the other steps still find the results of earlier runs. The setting does not change what a language plans: Snakemake still skips a job whose outputs are up to date, and `-forcerun` runs it again.
+
+```rust
+let mut settings = uwe::run::Settings::new("nf-core/demo");
+settings.no_cache_steps = vec!["FASTQC".into()];
+let run = uwe::RunRequest::new(settings).run().await?;
+```
+
 ## Standard output
 
 An embedded run writes nothing to the standard output of the host. What a Nextflow workflow prints, its banner too, goes to standard error. The CWL output object is not printed. Log messages still go through `tracing`.

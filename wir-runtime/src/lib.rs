@@ -5,6 +5,7 @@
 
 mod child;
 pub mod cwl;
+mod inputs;
 mod plan;
 mod state;
 

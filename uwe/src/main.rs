@@ -140,8 +140,9 @@ options:
                                       slurm as SLURM batch jobs, kubernetes as Kubernetes Jobs,
                                       aws-batch, google-batch and azure-batch as jobs of these
                                       cloud services, nomad as Nomad jobs, htcondor and pbs as
-                                      HTCondor and PBS jobs, flyte as Flyte runs and snowflake
-                                      as Snowflake job services
+                                      HTCondor and PBS jobs, flyte as Flyte runs, snowflake as
+                                      Snowflake job services, jarvice as JARVICE batch jobs and
+                                      wr as jobs of a wr manager
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step

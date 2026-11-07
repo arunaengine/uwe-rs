@@ -15,6 +15,7 @@ fn check_machine(directory: &Path, arguments: &[&str]) -> (i32, String) {
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .env("UWE_ENGINE", directory.join("docker.sock"))
         .env("PATH", directory)
+        .env("HOME", directory)
         .env_remove("UWE_TES_TOKEN")
         .env_remove("NOMAD_ADDR")
         .current_dir(directory)
@@ -70,7 +71,15 @@ fn explains_missing_engine() {
         "google-batch",
         "azure-batch",
     ];
-    let newer = ["nomad", "htcondor", "pbs", "flyte", "snowflake"];
+    let newer = [
+        "nomad",
+        "htcondor",
+        "pbs",
+        "flyte",
+        "snowflake",
+        "jarvice",
+        "wr",
+    ];
     for name in executors.into_iter().chain(newer) {
         let part = format!("executor {name}");
         assert!(line(&stdout, &part).starts_with("not set up "), "{stdout}");
@@ -243,9 +252,20 @@ fn checks_newer_executors() {
          [executor.nomad]\naddress = 'http://127.0.0.1:1'\n\n\
          [executor.flyte]\nendpoint = 'http://127.0.0.1:1'\norg = 'lab'\nproject = 'flows'\n\
          domain = 'development'\nstaging = 'object-store'\nstaging_root = '{0}'\n\
-         helper_path = '/opt/uwe'\n",
+         helper_path = '/opt/uwe'\n\n\
+         [executor.jarvice]\napi_url = 'http://127.0.0.1:1'\nusername = 'lab'\n\
+         api_key = 'not-a-real-key'\nstaging = 'object-store'\nstaging_root = '{0}'\n\
+         helper_path = '/opt/uwe'\n\n\
+         [executor.wr]\nendpoint = 'https://127.0.0.1:1'\ntoken_file = 'wr.token'\n\
+         ca_file = 'wr.pem'\n",
         directory.path().join("staging").display()
     );
+    std::fs::write(directory.path().join("wr.token"), "not-a-real-token\n").expect("writes");
+    let key = rcgen::KeyPair::generate().expect("a key");
+    let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).expect("parameters");
+    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    let ca = params.self_signed(&key).expect("a CA").pem();
+    std::fs::write(directory.path().join("wr.pem"), ca).expect("writes the CA");
     std::fs::write(directory.path().join("lab.toml"), config).expect("writes the config file");
     let arguments = ["-uwe-config", "lab.toml", "-executor", "aws-batch"];
     let (_, stdout) = check_machine(directory.path(), &arguments);
@@ -263,5 +283,15 @@ fn checks_newer_executors() {
         line(&stdout, "executor flyte"),
         "ready      executor flyte: the settings, staging root and credentials of Flyte are \
          complete; uwe asks Flyte only when a run starts"
+    );
+    assert_eq!(
+        line(&stdout, "executor jarvice"),
+        "ready      executor jarvice: the jobs go to the JARVICE API at http://127.0.0.1:1; uwe \
+         asks it only when a run starts"
+    );
+    assert_eq!(
+        line(&stdout, "executor wr"),
+        "ready      executor wr: the token and CA certificate of the wr manager are readable; \
+         the jobs run tasks with apptainer; uwe asks wr only when a run starts"
     );
 }

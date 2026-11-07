@@ -401,6 +401,8 @@ mod executors {
             "pbs",
             "flyte",
             "snowflake",
+            "jarvice",
+            "wr",
         ];
         let store = (setup.store(arguments))
             .map_err(|failure| failure.message.trim_start_matches("uwe: ").to_owned());
@@ -480,6 +482,26 @@ mod executors {
             "snowflake" => {
                 crate::snowflake::executor(store, &scratch, run, image, setup)?;
                 cloud("Snowflake")
+            }
+            "jarvice" => {
+                crate::jarvice::executor(store, &scratch, run, image, setup)?;
+                let address = &executors.jarvice.settings.api_url;
+                format!(
+                    "the jobs go to the JARVICE API at {address}; uwe asks it only when a run starts"
+                )
+            }
+            "wr" => {
+                crate::wr::executor(store, &scratch, run, image, setup)?;
+                let runtime = executors
+                    .wr
+                    .jobs
+                    .container
+                    .as_deref()
+                    .unwrap_or("apptainer");
+                format!(
+                    "the token and CA certificate of the wr manager are readable; the jobs run \
+                     tasks with {runtime}; uwe asks wr only when a run starts"
+                )
             }
             _ => {
                 crate::grid::pbs(store, &scratch, run, image, setup)?;

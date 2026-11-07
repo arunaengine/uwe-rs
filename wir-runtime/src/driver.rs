@@ -507,7 +507,9 @@ impl Driver for WirDriver {
                 count => format!("{first}; and {} more ops failed", count - 1),
             }));
         }
-        let results = self.progress.outputs().map_err(DriverError::new)?;
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        let ports = entry.map_or(&[][..], |graph| &graph.outputs);
+        let results = self.progress.outputs(ports).map_err(DriverError::new)?;
         if !self.launch.simulated {
             let mut results = Json::Object(results);
             let root = self.output_root();

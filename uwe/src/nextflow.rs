@@ -17,6 +17,7 @@ use crate::arguments::Arguments;
 use crate::setup::Setup;
 
 /// Prints what the workflow prints, and downloads remote files into a cache.
+#[derive(Clone)]
 struct Console {
     downloads: PathBuf,
     /// Prints to standard error instead of standard output, which then holds only the graph.
@@ -28,9 +29,20 @@ struct Console {
     /// Where operators like `collectFile` keep their files: the folder of the run, which the
     /// driver removes. `None` keeps them in the system temporary folder.
     operators: Option<PathBuf>,
+    /// The launch folder of a native block of a wir run; `None` launches in the working
+    /// directory of the process.
+    launch: Option<PathBuf>,
 }
 
 impl Host for Console {
+    fn launch_dir(&self) -> String {
+        let folder = self.launch.clone().or_else(|| std::env::current_dir().ok());
+        folder.map_or_else(
+            || "/".into(),
+            |folder| folder.to_string_lossy().into_owned(),
+        )
+    }
+
     fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
         SecretSource(&self.secrets).secret(name)
     }
@@ -299,7 +311,39 @@ fn console(quiet: bool, setup: &Setup) -> Console {
         storage: setup.storage.blocking(),
         secrets: setup.secrets.clone(),
         operators: None,
+        launch: None,
     }
+}
+
+/// The settings of the Nextflow blocks of a wir run: those of a Nextflow run of `run`, each
+/// launched in the folder of its block.
+pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::nextflow::Options {
+    let console = Console {
+        print: !arguments.no_print,
+        ..console(false, setup)
+    };
+    let engine = setup.engine_kind(arguments);
+    // As for a Nextflow run: only executors on this machine inject secrets and pass options.
+    let local = !matches!(
+        arguments.executor.as_deref(),
+        Some("tes" | "slurm" | "kubernetes")
+    );
+    let run = run.to_owned();
+    wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
+        let console = Console {
+            operators: Some(run_folder(&launch.scratch, &run)),
+            launch: Some(folder.to_owned()),
+            ..console.clone()
+        };
+        Settings {
+            host: Box::new(console),
+            container_engine: Some(engine.clone()),
+            run_name: run.clone(),
+            command_line: std::env::args().collect::<Vec<_>>().join(" "),
+            secret_env: local,
+            local_options: local,
+        }
+    })
 }
 
 /// The Nextflow driver of a launch. `quiet` sends what the workflow prints to standard error.

@@ -154,6 +154,7 @@ pub(crate) fn driver(
         Language::Wir => {
             let settings = wir_runtime::Settings {
                 cwl: cwl_options(arguments, setup, cancel),
+                nextflow: nextflow::blocks(run, arguments, setup),
                 print: !arguments.no_print,
             };
             let downloads = cache_directory().join("downloads");

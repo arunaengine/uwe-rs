@@ -28,7 +28,7 @@ Reserved op kinds, like `map` or `branch`, verify but do not run: uwe stops with
 
 ## Task ops
 
-A `task` op becomes one uwe task, with the op path as its step and name. It runs in its image in the working folder `/work`. Each File or Directory input is staged at `inputs/<port>/<basename>`, an item of an array at `inputs/<port>/<index>/<basename>`, with its secondary files beside it. The command is built as the wir README says, without a shell; a `stdout` or `stderr` capture runs it through `/bin/sh` with the stream written to `<output>.stdout` or `<output>.stderr`.
+A `task` op becomes one uwe task, with the op path as its step and name. It runs in its image in the working folder `/work`. Each File or Directory input is staged at `inputs/<port>/<basename>`, an item of an array at `inputs/<port>/<index>/<basename>`, with its secondary files beside it. The command is built as the wir README says, without a shell; a `stdout` or `stderr` capture, or a stream file the task names, runs it through `/bin/sh` with the stream written to that file, else to `<output>.stdout` or `<output>.stderr`.
 
 An attempt is accepted only when its exit code is in `success_codes` (only 0 when empty) and every capture fits its output: a glob matches one file for a File or a Directory, any number for an array, none only for an optional output. An attempt that is not accepted runs again while `retry` allows; then the op fails. A task that could not run, and no machine retry can mend, errors. The attributes `resources` and `time` set what the task asks for and `cache: never` keeps it from the cache; none of them enters its cache key. A task op runs without network, so runs can share its results, unless it sets `network: true`, like a CWL tool with `NetworkAccess`.
 

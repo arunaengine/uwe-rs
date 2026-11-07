@@ -85,6 +85,13 @@ pub struct Task {
     /// Since wir 0.3.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub network: bool,
+    /// The file in the working folder that standard output goes to, like CWL `stdout`; a
+    /// `stdout` capture then reads it. Since wir 0.4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stdout: Option<String>,
+    /// The file that standard error goes to, like CWL `stderr`. Since wir 0.4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stderr: Option<String>,
 }
 
 /// One command argument: literal text, or the value of a task input.

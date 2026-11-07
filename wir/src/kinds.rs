@@ -30,6 +30,16 @@ impl<'d> Checker<'d> {
             let feature = "the network of a task".into();
             self.report(at, Problem::Later(feature, "0.3".into()));
         }
+        let streams = [&task.stdout, &task.stderr];
+        let named: Vec<&String> = streams.into_iter().flatten().collect();
+        if !named.is_empty() && matches!(self.document.wir_version.as_str(), "0.1" | "0.2" | "0.3")
+        {
+            let feature = "the stream files of a task".into();
+            self.report(at, Problem::Later(feature, "0.4".into()));
+        }
+        for name in named.into_iter().filter(|name| !inside(name)) {
+            self.report(at, Problem::Outside(name.clone()));
+        }
         let used = task.command.iter().filter_map(|argument| match argument {
             Argument::Input { input } => Some(input),
             Argument::Text(_) => None,
@@ -152,6 +162,11 @@ impl<'d> Checker<'d> {
         });
         found
     }
+}
+
+/// Whether a path is relative and stays inside the working folder.
+fn inside(path: &str) -> bool {
+    !path.is_empty() && !path.starts_with('/') && !path.split('/').any(|part| part == "..")
 }
 
 /// Glob captures fill File, Directory or arrays of them; stdout and stderr fill a File.

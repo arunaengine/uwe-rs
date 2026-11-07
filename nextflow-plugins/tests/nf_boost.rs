@@ -54,6 +54,7 @@ fn server(requests: usize) -> String {
             .to_string();
             let status = match (method, path) {
                 (_, "/missing") => "404 Not Found",
+                (_, path) if path.starts_with("/fail") => "500 Internal Server Error",
                 ("POST", _) => "201 Created",
                 _ => "200 OK",
             };
@@ -174,6 +175,24 @@ fn sends_requests() {
         )),
         "ProtocolException: Invalid HTTP method: PATCH"
     );
+}
+
+#[test]
+fn hides_credentials() {
+    let base = server(1).replace("http://", "http://user:secret@");
+    let failed = request(format!("{base}/fail?token=hidden"), Vec::new()).expect("a connection");
+    let printed = failed.to_string();
+    let message = member(&failed, "getInputStream", Vec::new());
+    assert!(message.starts_with("IOException: Server returned HTTP response code: 500"));
+    let closed = TcpListener::bind("127.0.0.1:0").expect("a free port");
+    let address = closed.local_addr().expect("an address");
+    drop(closed);
+    let url = format!("http://user:secret@{address}/x?token=hidden");
+    let refused = request(url, Vec::new()).expect("a connection");
+    let unsent = member(&refused, "getResponseCode", Vec::new());
+    for text in [printed, message, unsent] {
+        assert!(!text.contains("secret") && !text.contains("hidden"), "{text}");
+    }
 }
 
 /// A config that loads this text.

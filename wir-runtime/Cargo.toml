@@ -1,0 +1,18 @@
+# Manifest of wir-runtime, which runs wir documents through the execution graph of uwe.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "wir-runtime"
+description = "Runs wir documents in uwe: native blocks of other languages as child drivers, and task ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+input-schema.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+workflow-graph.workspace = true

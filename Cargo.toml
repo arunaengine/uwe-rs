@@ -34,6 +34,7 @@ members = [
     "task-runner",
     "tes-executor",
     "wir",
+    "wir-runtime",
     "workflow-graph",
 ]
 

@@ -13,8 +13,8 @@ use crate::pending::{End, Pending, Slot, Take};
 use crate::queue::Queue;
 use crate::recorder::Recorder;
 use crate::{
-    Driver, DriverError, Event, ExecutionGraph, Files, Note, Observer, Outcome, RunOptions, Task,
-    TaskId,
+    Driver, DriverError, Event, ExecutionGraph, Files, Note, Observer, Outcome, Reuse, RunOptions,
+    Task, TaskId,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -112,6 +112,7 @@ pub struct Engine<'a> {
     cancel: CancellationToken,
     retries: u32,
     retry_delay: Duration,
+    no_cache_steps: Vec<String>,
     /// The number of attempts of each task so far.
     attempts: HashMap<TaskId, u32>,
     task_cancel: HashMap<TaskId, CancellationToken>,
@@ -128,6 +129,7 @@ impl<'a> Engine<'a> {
             cancel: CancellationToken::new(),
             retries: MACHINE_RETRIES,
             retry_delay: Duration::from_secs(1),
+            no_cache_steps: Vec::new(),
             attempts: HashMap::new(),
             task_cancel: HashMap::new(),
         }
@@ -159,6 +161,13 @@ impl<'a> Engine<'a> {
     /// The base pause for machine retries, doubled per attempt and capped at one minute.
     pub fn retry_delay(mut self, delay: Duration) -> Self {
         self.retry_delay = delay;
+        self
+    }
+
+    /// Steps whose tasks neither read nor write cached results, like Nextflow's `cache false`.
+    /// A name matches a step by its full name or by the last part of a nested name.
+    pub fn no_cache_steps(mut self, steps: Vec<String>) -> Self {
+        self.no_cache_steps = steps;
         self
     }
 
@@ -225,11 +234,15 @@ impl<'a> Engine<'a> {
     /// Records a task that the driver asked for and queues it.
     fn request(
         &mut self,
-        task: Task,
+        mut task: Task,
         recorder: &mut Recorder,
         queue: &mut Queue,
         completed: Option<TaskId>,
     ) -> Result<(), ExecuteError> {
+        // Only the reuse changes, which no cache key covers, and it only gets stricter.
+        if (self.no_cache_steps.iter()).any(|name| names_step(name, &task.step)) {
+            task.reuse = Reuse::Disabled;
+        }
         let edges = recorder.add(&task, completed)?;
         self.task_cancel
             .entry(task.id)
@@ -525,6 +538,12 @@ impl<'a> Engine<'a> {
             });
         }
     }
+}
+
+/// Whether `name` is the full name of `step` or the last part of it, like `FASTQC` for the
+/// Nextflow process `NFCORE:DEMO:FASTQC` or `sort` for the CWL step `align/sort`.
+fn names_step(name: &str, step: &str) -> bool {
+    name == step || step.rsplit([':', '/']).next() == Some(name)
 }
 
 fn retry_pause(base: Duration, attempt: u32) -> Duration {

@@ -38,18 +38,21 @@ Not lowered the same way: a lowered tool ignores a `cwl.output.json` that it wri
 
 ### Coverage
 
-`cwl-lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. On 2026-11-07 (suite commit `97908339`):
+`cwl-lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-07 (a checkout of suite commit `97908339` with its data files, and the CWL JavaScript helper image):
 
 | Outcome | Tests |
 | --- | --- |
-| lowers fully | 24 |
-| lowers partly: some ops stay native | 311 |
-| does not lower: the parser refuses it, or a native op cannot hold an `Any` or `null` type | 43 |
-| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 315 |
+| lowers fully | 49 |
+| lowers partly: some ops stay native | 289 |
+| does not lower: the parser refuses it, or a native op cannot hold an `Any` or `null` type | 40 |
+| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 310 |
+| both succeed with equal outputs | 286 |
 
-What keeps most tests partly native, by the first reason of each: an input default (80), a requirement such as `InitialWorkDirRequirement`, `EnvVarRequirement`, `ShellCommandRequirement` or `SchemaDefRequirement` (75), an expression in a tool (32), `outputEval` or `loadContents` of an output (32), an ExpressionTool or Operation (24), several sources or `pickValue` (21), `stdin` (10), secondary files or a format of an input (8), a requirement set by an expression (7) and command line bindings (5).
+Without the helper image, 323 lowered runs end as the native run does and 167 give equal outputs: JavaScript then fails in both runs, apart from two tools with a JavaScript `valueFrom` on an input, whose lowered run fails while the simulated native run succeeds.
 
-Where the runs end differently, the lowered run refuses a job key that the document does not take, which CWL ignores (`metadata`, `wf_wc_nomultiple`), and job requirements (`cwl:requirements`); a simulated native op makes up values that do not fit their types, and a simulated glob of folders makes up files. These are differences of wir runs and of the simulator, not of lowered tasks.
+What keeps most tests partly native, by the first reason of each: `outputEval` or `loadContents` of an output (89), a requirement (74: `InitialWorkDirRequirement` 42, `ShellCommandRequirement` 26, `EnvVarRequirement` 5), an expression in an argument (36), `stdin` (20), a `run` that the document defines twice (13), command line bindings (10), a resource or time limit set by an expression (8) and secondary files or a format of an input (7).
+
+Where the runs end differently, the lowered run refuses a job key that the document does not take, which CWL ignores (`wf_wc_nomultiple`, `listing_outputBinding_loadListing`), and job requirements (`cwl:requirements`); a simulated native op makes up values that do not fit their types, like the `int` of an ExpressionTool that loads the contents of its input (`step_input_default_value`), and a simulated glob of folders makes up files. These are differences of wir runs and of the simulator, not of lowered ops.
 
 ## Detection
 
@@ -143,7 +146,7 @@ The run database records a wir run with the language `wir`, and its run crate na
 
 ## Not yet
 
-- Lowering CWL input defaults, `valueFrom`, several sources and `pickValue` (with `select`), ExpressionTools, and tools with requirements such as `InitialWorkDirRequirement`; they stay native ops.
+- Lowering CWL tools with `InitialWorkDirRequirement`, `ShellCommandRequirement` or `EnvVarRequirement`, secondary files and formats of inputs, `outputEval`, expressions in arguments, and `valueFrom` on bindings with a prefix or on optional inputs; they stay native ops.
 - Equal cache keys of a lowered tool and the same tool run as CWL, which need a wir task with the working folder, variables and staging places of the CWL driver.
 
 - `uwe resume` of the suspended steps of an Argo block.

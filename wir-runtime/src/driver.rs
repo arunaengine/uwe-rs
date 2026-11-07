@@ -187,6 +187,14 @@ impl WirDriver {
         })
     }
 
+    /// The values of the outputs of the entry graph once the run ended, also of a simulated
+    /// run, whose results stay unset.
+    pub fn outputs(&self) -> Option<Json> {
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        let ports = entry.map_or(&[][..], |graph| &graph.outputs);
+        self.progress.outputs(ports).ok().map(Json::Object)
+    }
+
     /// Starts every node that can start, until a native block ends; the tasks they ask for.
     fn advance(&mut self) -> Result<Vec<Task>, DriverError> {
         let mut tasks = Vec::new();

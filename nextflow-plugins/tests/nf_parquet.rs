@@ -241,13 +241,17 @@ fn bad_last_row(path: &Path) {
     use parquet::data_type::Int64Type;
     use parquet::file::writer::SerializedFileWriter;
     let schema = "message rows { required int64 at (TIMESTAMP(MILLIS, false)); }";
-    let schema = std::sync::Arc::new(parquet::schema::parser::parse_message_type(schema).expect("a schema"));
+    let schema =
+        std::sync::Arc::new(parquet::schema::parser::parse_message_type(schema).expect("a schema"));
     let file = std::fs::File::create(path).expect("creates the file");
     let mut writer = SerializedFileWriter::new(file, schema, Default::default()).expect("a writer");
     let mut group = writer.next_row_group().expect("a row group");
     let mut column = group.next_column().expect("a column").expect("the column");
     let values = [1, 2, i64::MAX];
-    column.typed::<Int64Type>().write_batch(&values, None, None).expect("writes");
+    column
+        .typed::<Int64Type>()
+        .write_batch(&values, None, None)
+        .expect("writes");
     column.close().expect("closes the column");
     group.close().expect("closes the row group");
     writer.close().expect("closes the file");

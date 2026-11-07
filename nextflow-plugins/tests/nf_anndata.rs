@@ -25,7 +25,11 @@ impl Host for Console {
 
     /// Refuses whole reads of `.h5ad` files, which the plugin must open file-backed.
     fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
-        assert!(!path.path.ends_with(".h5ad"), "a whole read of {}", path.path);
+        assert!(
+            !path.path.ends_with(".h5ad"),
+            "a whole read of {}",
+            path.path
+        );
         Ok(std::fs::read(&path.path).expect("reads"))
     }
 }

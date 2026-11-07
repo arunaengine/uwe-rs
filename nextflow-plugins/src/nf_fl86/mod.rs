@@ -461,7 +461,8 @@ fn follow(action: &Action, start: &Start, access: &Access) {
         (None, Some(launch)) => Some(launch.clone()),
         (None, None) => {
             let folder = outdir(&start.params, &start.config, Path::new(&start.launch_dir));
-            let input = |folder: PathBuf| serde_json::json!({ "input_dir": folder.to_string_lossy() });
+            let input =
+                |folder: PathBuf| serde_json::json!({ "input_dir": folder.to_string_lossy() });
             folder.ok().map(input)
         }
     };

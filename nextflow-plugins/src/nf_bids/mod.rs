@@ -405,7 +405,10 @@ mod tests {
             Value::list(vec![key(&["A", "B, C"]), Value::integer(3)]),
         ];
         let groups = items(&grouped(&pairs, 0, true));
-        let sizes: Vec<usize> = groups.iter().map(|group| items(&pair(group).1).len()).collect();
+        let sizes: Vec<usize> = groups
+            .iter()
+            .map(|group| items(&pair(group).1).len())
+            .collect();
         assert_eq!(sizes, [1, 2]);
     }
 }

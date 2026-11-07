@@ -451,7 +451,14 @@ mod executors {
                 cloud("Google Batch")
             }
             "azure-batch" => {
-                crate::azure_batch::executor(store, &scratch, run, image, setup)?;
+                crate::azure_batch::executor(
+                    store,
+                    &scratch,
+                    run,
+                    image,
+                    setup,
+                    &arguments.secrets,
+                )?;
                 cloud("Azure Batch")
             }
             "nomad" => {

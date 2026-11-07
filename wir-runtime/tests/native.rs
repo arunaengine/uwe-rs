@@ -347,3 +347,59 @@ fn waits_for_deliveries() {
     assert!(second[0].name.starts_with("second: "), "{}", second[0].name);
     assert_eq!(driver.wake_at(), None);
 }
+
+/// A source at a repository address with a `git:` digest runs from the checkout of that
+/// commit, which the run fetches; a run that cannot fetch says so.
+#[test]
+fn fetches_pinned_repositories() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    std::fs::write(root.join("job.json"), "{}").unwrap();
+    let commit = "32893afef8076a03a2767a020b3f0cab2e0b40b2";
+    let document = json!({
+        "wir_version": "0.3",
+        "sources": [{
+            "id": "hello", "language": "cwl", "location": "https://example.org/demo/hello",
+            "digest": format!("git:{commit}")
+        }],
+        "graphs": [{
+            "name": "main",
+            "ops": [{"path": "block", "kind": {"native": {"source": "hello", "language": "cwl"}}}]
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).unwrap();
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = asked.clone();
+    let fetching = Settings {
+        repositories: wir_runtime::Repositories::new(move |location: &str, commit: &str| {
+            seen.lock()
+                .unwrap()
+                .push((location.to_owned(), commit.to_owned()));
+            Ok(demos().join("hello_world.cwl"))
+        }),
+        ..settings()
+    };
+    let launch = launch(root, target.clone(), root.join("job.json"), true);
+    let mut driver = WirDriver::new(&launch, fetching).unwrap();
+    let mut simulator = Simulator::new(root.join("simulator"));
+    let ran = execute("hello", &mut driver, &mut simulator)
+        .into_result()
+        .unwrap();
+    assert_eq!(ran.nodes.len(), 1);
+    let expected = (
+        "https://example.org/demo/hello".to_owned(),
+        commit.to_owned(),
+    );
+    assert_eq!(*asked.lock().unwrap(), [expected]);
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let mut simulator = Simulator::new(root.join("other"));
+    let error = execute("hello", &mut driver, &mut simulator)
+        .into_result()
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("cannot fetch repositories"),
+        "{error}"
+    );
+}

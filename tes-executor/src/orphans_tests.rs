@@ -204,3 +204,127 @@ async fn stops_running_tasks() {
     );
     assert_eq!(known.lock().unwrap().requests.len(), asked);
 }
+
+#[tokio::test]
+async fn keeps_other_attempts() {
+    let folder = tempfile::tempdir().unwrap();
+    let tasks = ["prefixed", "second", "legacy", "live", "token"].map(|id| (id, "RUNNING"));
+    let known = Known::with(&tasks);
+    let address = serve(known.clone());
+    let scratch = folder.path().join("scratch");
+    let backend = backend(&address, None, &scratch);
+    // A run whose id starts with `first-`, another run, and a journal of no named run.
+    let others = [
+        leave(&backend, "first-2-sort-1-1", Some("first-2"), "prefixed"),
+        leave(&backend, "second-sort-1-1", Some("second"), "second"),
+        leave(&backend, "first-old-1-1", None, "legacy"),
+    ];
+    // An attempt whose uwe process still holds its lock.
+    let live = leave(&backend, "first-live-1-1", Some("first"), "live");
+    let lock = File::options()
+        .write(true)
+        .open(live.join("remote.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    // An attempt with credentials that the call does not have.
+    let foreign = leave(
+        &self::backend(&address, Some("other-token"), &scratch),
+        "first-token-1-1",
+        Some("first"),
+        "token",
+    );
+    let roots = [&others[..], &[live.clone(), foreign]].concat();
+    let before: Vec<String> = (roots.iter())
+        .map(|root| std::fs::read_to_string(root.join("remote.json")).unwrap())
+        .collect();
+    let peers = [&backend];
+    let report = backend.report_run("first", &peers).await.unwrap();
+    let foreign = "another TES server or token owns the task";
+    let unnamed = "the journal names no run, so it may belong to another";
+    let mut expected = [
+        found(
+            "first-live-1-1",
+            "live",
+            Some(State::Running),
+            Outcome::Running,
+        ),
+        found(
+            "first-old-1-1",
+            "legacy",
+            None,
+            Outcome::Unclear(unnamed.into()),
+        ),
+        found(
+            "first-token-1-1",
+            "token",
+            None,
+            Outcome::Unclear(foreign.into()),
+        ),
+    ];
+    assert_eq!(report, expected);
+    let stopped = backend.stop_run("first", &peers).await.unwrap();
+    expected[0].outcome = Outcome::Kept("the uwe process of the attempt still runs".into());
+    expected[1].outcome = Outcome::Kept(unnamed.into());
+    expected[2].outcome = Outcome::Kept(foreign.into());
+    assert_eq!(stopped, expected);
+    let known = known.lock().unwrap();
+    assert!(
+        known.canceled().is_empty(),
+        "canceled {:?}",
+        known.canceled()
+    );
+    let asked: Vec<String> = known
+        .requests
+        .iter()
+        .map(|(line, _)| task_id(line))
+        .collect();
+    assert!(asked.iter().all(|id| id == "live"), "asked about {asked:?}");
+    for (root, text) in roots.iter().zip(before) {
+        assert_eq!(
+            std::fs::read_to_string(root.join("remote.json")).unwrap(),
+            text
+        );
+    }
+}
+
+#[tokio::test]
+async fn uses_journal_token() {
+    let folder = tempfile::tempdir().unwrap();
+    let known = Known::with(&[("running", "RUNNING")]);
+    let address = serve(known.clone());
+    let scratch = folder.path().join("scratch");
+    let mine = backend(&address, Some("token-of-first"), &scratch);
+    let theirs = backend(&address, Some("token-of-second"), &scratch);
+    let root = leave(&mine, "first-sort-1-1", Some("first"), "running");
+    let kept = theirs.stop_run("first", &[&theirs]).await.unwrap();
+    assert!(matches!(
+        kept[..],
+        [Orphan {
+            outcome: Outcome::Kept(_),
+            ..
+        }]
+    ));
+    assert!(known.lock().unwrap().requests.is_empty());
+    let stopped = theirs.stop_run("first", &[&theirs, &mine]).await.unwrap();
+    assert_eq!(
+        stopped,
+        [found(
+            "first-sort-1-1",
+            "running",
+            Some(State::Canceled),
+            Outcome::Canceled
+        )]
+    );
+    assert!(!root.join("remote.json").exists());
+    let known = known.lock().unwrap();
+    assert_eq!(known.canceled(), ["running"]);
+    let tokens: Vec<&str> = known
+        .requests
+        .iter()
+        .map(|(_, token)| token.as_str())
+        .collect();
+    assert!(
+        tokens.iter().all(|token| *token == "Bearer token-of-first"),
+        "a request had another token"
+    );
+}

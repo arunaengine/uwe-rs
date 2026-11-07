@@ -81,7 +81,7 @@ pub(crate) fn rules(
                 None => DeliveryMode::Link,
             };
             rules.push(Rule {
-                path: absolute(&path_text(&target)),
+                path: absolute(&path_text(&target), &interpreter.host().launch_dir()),
                 mode,
                 pattern: get("pattern").map(|pattern| pattern.to_string()),
                 save_as: get("saveAs").filter(|save_as| !matches!(save_as, Value::Null)),
@@ -168,11 +168,12 @@ fn path_text(value: &Value) -> String {
 
 /// A local path taken from the launch directory; an address, like `s3://bucket/results`, as
 /// it is, for a storage provider.
-fn absolute(path: &str) -> PathBuf {
+fn absolute(path: &str, launch: &str) -> PathBuf {
     if path.contains("://") {
         return PathBuf::from(path);
     }
-    std::path::absolute(Path::new(path)).unwrap_or_else(|_| PathBuf::from(path))
+    let path = Path::new(launch).join(path);
+    std::path::absolute(&path).unwrap_or(path)
 }
 
 fn thrown(message: &str) -> Error {

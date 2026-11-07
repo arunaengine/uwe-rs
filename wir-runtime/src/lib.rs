@@ -7,6 +7,7 @@ mod child;
 pub mod cwl;
 mod driver;
 mod inputs;
+pub mod nextflow;
 mod plan;
 mod state;
 mod task;

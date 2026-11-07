@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
-use crate::op::{Argument, CaptureRule, Kind, Native, Op, Task};
-use crate::types::{Type, TypeDef, resolve};
+use crate::op::{Argument, CaptureRule, Kind, Map, Native, Op, Scatter, Task};
+use crate::types::{ArrayType, Type, TypeDef, resolve};
 
 impl<'d> Checker<'d> {
     pub(super) fn kind(&mut self, at: &str, op: &Op) {
@@ -15,7 +15,7 @@ impl<'d> Checker<'d> {
             Kind::Task(task) => self.task(at, op, task),
             Kind::Call(call) => self.call(at, op, &call.graph),
             Kind::Native(native) => self.native(at, op, native),
-            Kind::Map(map) => self.inputs(at, op, map.over.iter()),
+            Kind::Map(map) => self.map(at, op, map),
             Kind::Branch(branch) => self.inputs(at, op, [&branch.condition]),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
             _ => {}
@@ -96,6 +96,70 @@ impl<'d> Checker<'d> {
                             graph: name.to_owned(),
                         },
                     );
+                }
+            }
+        }
+    }
+
+    /// The op's ports must be the body's ports: an input in `over` is an array of what the
+    /// body takes, and each output an array, nested per input for `nested_cross`, of what it gives.
+    fn map(&mut self, at: &str, op: &Op, map: &Map) {
+        self.inputs(at, op, map.over.iter());
+        if map.over.is_empty() {
+            self.report(at, Problem::Empty("over".into()));
+        }
+        if matches!(self.document.wir_version.as_str(), "0.1" | "0.2" | "0.3") {
+            self.report(at, Problem::Later("a map".into(), "0.4".into()));
+        }
+        let Some(body) = self.graph(&map.body) else {
+            return;
+        };
+        let depth = match map.mode {
+            Scatter::NestedCross => map.over.len(),
+            _ => 1,
+        };
+        let sides = [
+            ("input", &op.inputs, &body.inputs),
+            ("output", &op.outputs, &body.outputs),
+        ];
+        for (side, ours, theirs) in sides {
+            let names: BTreeSet<&str> =
+                ours.iter().chain(theirs).map(|p| p.name.as_str()).collect();
+            for port in names {
+                let mine = ours.iter().find(|item| item.name == port);
+                let other = theirs.iter().find(|item| item.name == port);
+                let fits = match (side, mine, other) {
+                    ("input", Some(mine), Some(other)) if map.over.iter().any(|n| n == port) => {
+                        match resolve(&mine.r#type, self.defs) {
+                            Some(Type::Array(array)) => {
+                                other.r#type.accepts(&array.items, self.defs)
+                            }
+                            _ => false,
+                        }
+                    }
+                    ("input", Some(mine), Some(other)) => {
+                        other.r#type.accepts(&mine.r#type, self.defs)
+                    }
+                    (_, Some(mine), Some(other)) => {
+                        let mut made = other.r#type.clone();
+                        for _ in 0..depth {
+                            made = Type::Array(ArrayType {
+                                items: Box::new(made),
+                                nonempty: false,
+                            });
+                        }
+                        mine.r#type.accepts(&made, self.defs)
+                    }
+                    _ => false,
+                };
+                let flows = [mine, other]
+                    .iter()
+                    .flatten()
+                    .all(|item| item.flow.is_value());
+                if !fits || !flows {
+                    let port = format!("{side} {port}");
+                    let graph = map.body.clone();
+                    self.report(at, Problem::CallPort { port, graph });
                 }
             }
         }

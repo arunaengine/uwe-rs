@@ -28,7 +28,7 @@ The JSON form uses snake_case keys and leaves out fields that hold their default
 
 `wir_version` is `<major>.<minor>`; this crate reads `0.1` to `0.4`, and `wir::VERSION` is `0.4`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
 
-Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
+Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops and defines `map`. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
 
 - While the major version is 0, every change to the form or the semantics raises the minor version.
 - From 1.0, a minor version only adds optional fields, op kinds, or semantics for reserved op kinds; a reader then accepts its own major version up to its own minor. Any other change raises the major version.
@@ -96,6 +96,14 @@ The task succeeds when its exit code is in `success_codes` (only 0 when empty) a
 
 **`native`** runs a source document as a whole in its own language runtime, such as a complete CWL workflow. `source` names a document source with the same `language`, and `entry` what to run inside it. `profiles` lists profiles of the language, like Nextflow `-profile`, and `configs` names document sources of the same language that configure the run, like Nextflow `-c` files, both in order. The op's ports are the boundary: inputs go in by name, and outputs are exported by name and checked against their port types. These types must not contain `dynamic`, except the outputs of a Nextflow block: Nextflow emits have no types, so a block declares the output `dynamic` to take what an emit gives as it is. The block keeps its own acceptance rules and its own task cache keys, and its tasks are recorded under the op path. A failed or missing required output fails the op.
 
+**`map`** runs its `body` graph once per round. The inputs named in `over` are arrays; each round takes one item of each, and every other input as it is, so the body has the op's port names with the item type for an `over` input. The rounds of `mode`:
+
+- `dot` (the default): round i takes item i of every `over` input. The inputs must have equal lengths, or the op fails before any round starts.
+- `flat_cross`: one round per combination of items, the first `over` input varying slowest.
+- `nested_cross`: the rounds of `flat_cross`, with every output nested one level per `over` input, in their order.
+
+Each output is the array of the values that the rounds gave for it, in round order, whatever the order in which the rounds end; a round that gives null puts null at its place. An empty `over` input gives no rounds and empty arrays; for `nested_cross` the levels of the inputs before it stay, so lengths 2 and 0 give `[[], []]`. The op succeeds when every round succeeds; a failed round fails the op and binds no output, and a failure inside a round is the failure of the op. Rounds start as their inputs allow, like calls; round i of the op `p` runs its ops at `p/<i>/<op>`, and a task keeps the path without the round numbers as its step. `parallelism` and `min_success` stay reserved: a runner of this version refuses a `map` that sets them.
+
 **`after` dependencies** name another op of the same graph and the statuses that satisfy it: `succeeded`, `failed` (ran and not accepted), `errored` (could not run), `skipped` (its own condition was false) and `omitted` (did not run because a dependency did not hold). All dependencies of an op must hold. Data edges and dependencies together must not form a cycle.
 
 **Effects** declare what an op does beyond its outputs: `{"publish": target}`, `{"external": target}` and `"nondeterministic"`. Removing ops whose outputs nobody needs keeps every op with an effect. Effectful work stays in `task` and `native` ops.
@@ -109,7 +117,6 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 | Op | Fields | Open |
 | --- | --- | --- |
 | `expr` | `language`, `code` | languages beyond `js`, `python`, `groovy`; numeric overflow; how File values look; stays pure |
-| `map` | `body`, `over`, `mode`, `parallelism`, `min_success` | each scatter mode; per-round reads of streams and Nextflow `each`; output order; failures with `min_success` |
 | `collect` | none | order; an error inside the stream |
 | `filter` | `body` | order; end of stream |
 | `flatten` | none | depth; empty arrays |
@@ -135,7 +142,7 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - every input and graph output has at most one producer, and every required one has a producer;
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
-- a call matches the called graph's ports;
+- a call matches the called graph's ports, and a map the ports of its body, with arrays for the `over` inputs and the outputs;
 - a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
 - the stream files of a task are relative paths that stay inside the working folder;
 - a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 before 0.3, none of 0.4 before 0.4.

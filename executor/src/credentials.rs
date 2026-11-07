@@ -88,9 +88,9 @@ fn same_auth(
     first: &BTreeMap<String, RegistryAuth>,
     second: &BTreeMap<String, RegistryAuth>,
 ) -> bool {
+    // Each request can give its own value for a variable, so the values decide.
     let same = |first: &config_file::Secret, second: &config_file::Secret| {
-        first.variable() == second.variable()
-            && (first.variable().is_some() || first.reveal().ok() == second.reveal().ok())
+        first.reveal().ok() == second.reveal().ok()
     };
     first.len() == second.len()
         && first
@@ -323,11 +323,28 @@ mod tests {
         );
         release.send(()).unwrap();
         worker.await.unwrap();
-        let _scope = second.enter().unwrap();
+        let scope = second.enter().unwrap();
         assert!(matches!(
             lookup("private.example").unwrap().credential,
             Some(Credential::Bearer(token)) if token == "second"
         ));
+        drop(scope);
+        // Requests that give different values for the same variable use different credentials.
+        let given = |value: &str| {
+            let mut secrets = config_file::SecretValues::default();
+            secrets.insert("REGISTRY_TOKEN", value).unwrap();
+            secrets.allow_environment(false);
+            let text =
+                "[registry.\"private.example\"]\ntoken = { environment = \"REGISTRY_TOKEN\" }";
+            let config = ConfigFile::parse(text, Path::new("given.toml")).unwrap();
+            Registry::from_config(&config.with_secrets(secrets)).unwrap()
+        };
+        let _scope = given("first").enter().unwrap();
+        drop(given("first").enter().unwrap());
+        assert!(
+            given("second").enter().is_err(),
+            "an overlapping request with another value for the same variable must be refused"
+        );
     }
 
     #[test]

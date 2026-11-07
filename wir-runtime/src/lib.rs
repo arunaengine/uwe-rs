@@ -9,6 +9,7 @@ mod driver;
 mod inputs;
 mod plan;
 mod state;
+mod task;
 
 pub use child::{Block, Child};
 pub use driver::{Settings, WirDriver, driver};

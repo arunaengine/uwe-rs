@@ -36,6 +36,10 @@ fn fixtures(root: &Path) {
     let text = json!({"class": "File", "location": "text.txt"});
     std::fs::write(root.join("count.json"), json!({"text": text}).to_string()).expect("writes");
     std::fs::write(root.join("message.yml"), "message: hello\n").expect("writes the job");
+    let messages = json!({"messages": ["a", "b", "c"]});
+    std::fs::write(root.join("messages.json"), messages.to_string()).expect("writes the job");
+    let lists = json!({"messages": ["a", "b"], "lists": [["x"], ["y", "z"]]});
+    std::fs::write(root.join("lists.json"), lists.to_string()).expect("writes the job");
 }
 
 /// The language of the latest run and its tasks with their fingerprints, by step.
@@ -69,12 +73,10 @@ fn prints_lowered_documents() {
         document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"],
         "out.txt"
     );
-    let (code, _, errors) = uwe(root, &cache, &["lower", "scatter.cwl"]);
+    let (code, _, errors) = uwe(root, &cache, &["lower", "environment.cwl"]);
     assert_eq!(code, 0, "{errors}");
-    assert_eq!(
-        errors,
-        "uwe: op scatter stays a native CWL op: step say: scatter\n"
-    );
+    let kept = "uwe: op environment stays a native CWL op: the requirement EnvVarRequirement\n";
+    assert_eq!(errors, kept);
 }
 
 /// The jobs of the fixtures whose tools all lower.
@@ -125,6 +127,39 @@ fn matches_native_steps() {
             );
             assert!(reused.is_some(), "{document}: {} is resumed", one.step);
         }
+    }
+}
+
+#[test]
+fn matches_scatter_steps() {
+    for (document, job, count) in [
+        ("scatter.cwl", "messages.json", 3),
+        ("cross.cwl", "lists.json", 4),
+    ] {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let (root, cache) = (folder.path(), folder.path().join("cache"));
+        fixtures(root);
+        let native = ["run", "-executor", "simulator", document, "-inputs", job];
+        let (code, _, errors) = uwe(root, &cache, &native);
+        assert_eq!(code, 0, "{document}: {errors}");
+        let (_, alone) = latest(&cache);
+        let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
+        let (code, _, errors) = uwe(root, &cache, &lowered);
+        assert_eq!(code, 0, "{document}: {errors}");
+        let (_, through) = latest(&cache);
+        assert_eq!((alone.len(), through.len()), (count, count), "{document}");
+        let mut names: Vec<(&str, &str)> = (alone.iter().zip(&through))
+            .map(|((one, _, _), (other, _, _))| (one.step.as_str(), other.step.as_str()))
+            .collect();
+        names.dedup();
+        // The task of a round keeps the path of the map and of the op of its body.
+        assert_eq!(names, [("say", "say/say")], "{document}");
+        let mut rounds: Vec<&str> = through
+            .iter()
+            .map(|(task, _, _)| task.name.as_str())
+            .collect();
+        rounds.sort();
+        assert_eq!(rounds[0], "say/0/say", "{document}");
     }
 }
 

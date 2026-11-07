@@ -400,7 +400,7 @@ A task runs like this:
 1. uwe registers the job `uwe-<attempt>` with `POST /v1/jobs`: the image and command of the task, its CPUs as cores (or MHz), its memory in MiB (1024 when it names none) also as `MemoryMaxMB`, its GPUs as devices, the datacenters, node pool, priority, `Meta`, constraints, affinities, spreads and volumes of the settings and of the task, and the restart and reschedule policies.
 2. uwe reads the allocations of the job every `poll_seconds`. Without an allocation, it reads the latest evaluation: with `fail_unplaced`, a job that every node was filtered out for fails at once; a job that waits only for busy nodes waits on. A job without a node after `placement_minutes` fails.
 3. A job ends when its task is `dead` or its allocation `complete`, `failed` or `lost`. The exit code that the wrapper recorded wins; else the exit code of the task's last `Terminated` event. A task that Nomad stopped for lack of memory gets a note. A job that could not run its task shows the end of its standard error, read through the client file system API.
-4. uwe purges the job as `cleanup` says. A cancelled task stops its job.
+4. uwe stops a job whose allocation failed, so that Nomad does not place it again after the attempt ended, and purges the job as `cleanup` says. A cancelled task stops its job.
 
 Limits:
 

@@ -449,6 +449,12 @@ impl Driver for WirDriver {
         (self.owner(task)).is_ok_and(|index| self.children[index].1.handles_error(task, error))
     }
 
+    fn started(&mut self, task: TaskId, attempt: u32) {
+        if let Ok(index) = self.owner(task) {
+            self.children[index].1.started(task, attempt);
+        }
+    }
+
     fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
         if self.tasks.contains_key(&task) {
             return self.accepted.remove(&(task, attempt));

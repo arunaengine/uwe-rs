@@ -148,6 +148,13 @@ impl Child {
         self.accepted.remove(&(task, attempt))
     }
 
+    /// Tells the child that an attempt of a task, by parent id, began.
+    pub fn started(&mut self, task: TaskId, attempt: u32) {
+        if let Some(child) = self.children.get(&task) {
+            self.driver.started(*child, attempt);
+        }
+    }
+
     /// What the child noticed, with the tasks that notes name under their parent ids.
     pub fn notes(&mut self) -> Vec<Note> {
         let notes = self.driver.notes();

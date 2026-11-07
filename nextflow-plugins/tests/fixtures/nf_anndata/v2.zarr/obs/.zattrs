@@ -1,0 +1,10 @@
+{
+  "_index": "cell_id",
+  "column-order": [
+    "kind",
+    "flag",
+    "small",
+    "score",
+    "count"
+  ]
+}

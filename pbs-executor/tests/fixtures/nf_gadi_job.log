@@ -1,0 +1,13 @@
+======================================================================================
+                  Resource Usage on 2026-11-06 14:10:01:
+   Job Id:             140000001.gadi-pbs
+   Project:            ab12
+   Exit Status:        0
+   Service Units:      0.01
+   NCPUs Requested:    2                      NCPUs Used: 2
+                                           CPU Time Used: 00:00:01
+   Memory Requested:   1.0GB                 Memory Used: 11.5MB
+   GPU Memory Used:    99.0GB
+   Walltime Requested: 01:00:00            Walltime Used: 00:00:02
+   JobFS Requested:    100.0MB                JobFS Used: 0B
+======================================================================================

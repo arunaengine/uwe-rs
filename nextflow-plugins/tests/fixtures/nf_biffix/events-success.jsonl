@@ -1,0 +1,9 @@
+{"schema_version":1,"ts":1.793967366215E9,"run_id":"run-demo-0001","kind":"run_started","session_id":"74626202-5183-40cd-bb96-70f1d24bea9b"}
+{"schema_version":1,"ts":1.793967366994E9,"run_id":"run-demo-0001","kind":"task_created","task_key":"SAY (a) #1","group":"SAY"}
+{"schema_version":1,"ts":1.793967367003E9,"run_id":"run-demo-0001","kind":"task_created","task_key":"SAY (b) #2","group":"SAY"}
+{"schema_version":1,"ts":1.793967367045E9,"run_id":"run-demo-0001","kind":"task_succeeded","task_key":"SAY (a) #1","attempt":1,"execution_id":"1"}
+{"schema_version":1,"ts":1.793967367046E9,"run_id":"run-demo-0001","kind":"task_succeeded","task_key":"SAY (b) #2","attempt":1,"execution_id":"2"}
+{"schema_version":1,"ts":1.793967367064E9,"run_id":"run-demo-0001","kind":"task_created","task_key":"JOIN","group":"JOIN","deps":["SAY (a) #1","SAY (b) #2"]}
+{"schema_version":1,"ts":1.793967367084E9,"run_id":"run-demo-0001","kind":"task_succeeded","task_key":"JOIN","attempt":1,"execution_id":"3"}
+{"schema_version":1,"ts":1.793967367201E9,"run_id":"run-demo-0001","kind":"run_dag","dag":{"nodes":[{"id":"SAY"},{"id":"JOIN"}],"edges":[{"from":"SAY","to":"JOIN"}]}}
+{"schema_version":1,"ts":1.793967367202E9,"run_id":"run-demo-0001","kind":"run_succeeded"}

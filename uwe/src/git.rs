@@ -227,10 +227,73 @@ fn remote<'a>(repository: &'a gix::Repository, fetch: &Fetch) -> Result<gix::Rem
 
 /// The account for the URL of a fetch, only over HTTPS, so that none goes in clear text.
 fn account_of(fetch: &Fetch) -> Result<Option<(String, String)>, String> {
-    match &fetch.accounts {
-        Some(accounts) if fetch.url.starts_with("https://") => (accounts.0)(&fetch.url),
-        _ => Ok(None),
+    account(&fetch.url, fetch.accounts.as_ref())
+}
+
+/// The account for a URL, only over HTTPS; AWS CodeCommit gets one derived from AWS keys.
+pub(crate) fn account(
+    url: &str,
+    accounts: Option<&Accounts>,
+) -> Result<Option<(String, String)>, String> {
+    if !url.starts_with("https://") {
+        return Ok(None);
     }
+    let given = match accounts {
+        Some(accounts) => (accounts.0)(url)?,
+        None => None,
+    };
+    if !codecommit(url)? {
+        return Ok(given);
+    }
+    let variable = |name: &str| std::env::var(name).ok();
+    codecommit_account(url, given, &variable, jiff::Timestamp::now()).map(Some)
+}
+
+/// Whether the URL names an AWS CodeCommit repository, whose host must name its region.
+fn codecommit(url: &str) -> Result<bool, String> {
+    let host = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let host = host.split(['/', ':']).next().unwrap_or_default();
+    let Some(middle) =
+        (host.strip_prefix("git-codecommit.")).and_then(|rest| rest.strip_suffix(".amazonaws.com"))
+    else {
+        return Ok(false);
+    };
+    if middle.is_empty()
+        || !middle
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        return Err(format!("Invalid AWS CodeCommit hostname: '{host}'"));
+    }
+    Ok(true)
+}
+
+/// The CodeCommit account at `time`: a user and password of the settings are the AWS access
+/// key and secret, else AWS's default credential chain finds the keys.
+fn codecommit_account(
+    url: &str,
+    given: Option<(String, String)>,
+    variable: &dyn Fn(&str) -> Option<String>,
+    time: jiff::Timestamp,
+) -> Result<(String, String), String> {
+    use storage::aws;
+    let credentials = match given {
+        Some((id, secret)) => aws::Credentials::Keys(aws::Keys {
+            id,
+            secret,
+            token: None,
+        }),
+        None => aws::Credentials::Chain {
+            environment: (aws::VARIABLES.iter())
+                .filter_map(|name| Some((name.to_string(), variable(name)?)))
+                .collect(),
+            home: variable("HOME").map(Into::into),
+        },
+    };
+    let keys = aws::resolve(&credentials)
+        .map_err(|error| format!("Unable to retrieve AWS Credentials - {error}"))?;
+    aws::git_account(url, &keys, time)
+        .map_err(|error| format!("Error calculating AWS CodeCommit password - {error}"))
 }
 
 /// Answers the questions of the server for an account: only the account of the settings, never
@@ -490,6 +553,41 @@ mod tests {
             asked,
             ["https://git.example.org/x.git", "https://other-host/x.git"]
         );
+    }
+
+    #[test]
+    fn derives_codecommit_account() {
+        let url = "https://git-codecommit.us-east-2.amazonaws.com/v1/repos/MyDemoRepo";
+        assert_eq!(codecommit(url), Ok(true));
+        assert_eq!(codecommit("https://git.example.org/x.git"), Ok(false));
+        assert_eq!(
+            codecommit("https://git-codecommit.a.b.amazonaws.com/v1/repos/x"),
+            Err("Invalid AWS CodeCommit hostname: 'git-codecommit.a.b.amazonaws.com'".into())
+        );
+        let time: jiff::Timestamp = "2026-11-06T11:22:33Z".parse().unwrap();
+        let expected =
+            "20261106T112233Z058a08801f361d45784a3678fc492bcf211059e494a161875ad1077a4986fc10";
+        let keys = (
+            "AKIAIOSFODNN7EXAMPLE".to_owned(),
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
+        );
+        let none = |_: &str| None;
+        let (user, password) = codecommit_account(url, Some(keys), &none, time).unwrap();
+        assert_eq!(
+            (user.as_str(), password.as_str()),
+            ("AKIAIOSFODNN7EXAMPLE", expected)
+        );
+        // Without keys in the settings, the chain reads them from the environment.
+        let environment = |name: &str| match name {
+            "AWS_ACCESS_KEY_ID" => Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
+            "AWS_SECRET_ACCESS_KEY" => Some("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned()),
+            "AWS_SESSION_TOKEN" => Some("session".to_owned()),
+            "AWS_EC2_METADATA_DISABLED" => Some("true".to_owned()),
+            _ => None,
+        };
+        let (user, password) = codecommit_account(url, None, &environment, time).unwrap();
+        assert_eq!(user, "AKIAIOSFODNN7EXAMPLE%session");
+        assert_eq!(password, expected);
     }
 
     #[test]

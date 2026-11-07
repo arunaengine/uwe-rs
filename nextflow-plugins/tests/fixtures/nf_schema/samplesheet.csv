@@ -1,0 +1,6 @@
+sample,reference,count
+S1,${params.ref},4
+S2,${params.tool.name},5
+S3,${params.missing},6
+S4,${params.nothere.deep},7
+S5,plain,8

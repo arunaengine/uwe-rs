@@ -1,0 +1,4 @@
+A2="x"y
+A3=x # c
+A4=x #c
+FOO=bar

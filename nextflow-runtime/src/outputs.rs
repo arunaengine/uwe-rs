@@ -34,6 +34,8 @@ pub(crate) struct Publish {
     pub overwrite: bool,
     /// The values that were published, with the files at their new places, for the index.
     pub published: Vec<Value>,
+    /// The targets of the files that were published, for run observers.
+    pub targets: Vec<String>,
 }
 
 impl Behaviour for Publish {
@@ -48,6 +50,16 @@ impl Behaviour for Publish {
             }
         }
         Ok(State::Running)
+    }
+
+    fn output(&self) -> Option<nextflow_plugins::observer::Output> {
+        let index = self.options.index("path");
+        let index = index.map(|path| self.directory.join(path.to_string()));
+        Some(nextflow_plugins::observer::Output {
+            name: self.name.to_string(),
+            files: self.targets.clone(),
+            index: index.map(|index| index.to_string_lossy().into_owned()),
+        })
     }
 }
 
@@ -92,6 +104,7 @@ impl Publish {
                 overwrite: self.overwrite,
             });
         }
+        (self.targets).extend(deliveries.iter().map(|delivery| delivery.target.clone()));
         context.deliver(deliveries);
         if self.options.index("path").is_some() {
             self.published.push(normalized(&value, &places));
@@ -384,6 +397,7 @@ mod tests {
                 mode: DeliveryMode::Copy,
                 overwrite: true,
                 published: Vec::new(),
+                targets: Vec::new(),
             })),
         );
         network.ignite(&mut Interpreter::new(&mut Silent)).unwrap();

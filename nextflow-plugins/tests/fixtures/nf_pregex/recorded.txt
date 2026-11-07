@@ -1,0 +1,1 @@
+builders.nf and methods.nf are the probe scripts of the nf-pregex 1.1.0 spec; the .out files hold what they printed with Nextflow 26.04.6 and the plugin, offline, without the lines of Nextflow itself.

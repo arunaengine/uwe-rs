@@ -60,6 +60,7 @@ const OPERATORS: &[&str] = &[
     "multiMap",
     "randomSample",
     "reduce",
+    "scan",
     "set",
     "splitCsv",
     "splitFasta",
@@ -203,6 +204,15 @@ impl Host for Builder<'_> {
         self.base.plugin_function(plugin, name, arguments)
     }
 
+    fn plugin_method(
+        &mut self,
+        object: &Value,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        self.base.plugin_method(object, name, arguments)
+    }
+
     /// A workflow output publishes the files of the values of its channel, with the options
     /// of the `output { }` block over those of the config's `workflow.output` scope.
     fn publish(&mut self, name: &str, channel: Value, options: OutputOptions) -> Result<(), Error> {
@@ -241,6 +251,7 @@ impl Host for Builder<'_> {
             mode,
             overwrite,
             published: Vec::new(),
+            targets: Vec::new(),
         };
         self.network.add(&label, &[channel], Box::new(node));
         Ok(())
@@ -326,13 +337,20 @@ impl Host for Builder<'_> {
                 other => vec![other],
             })
             .collect();
-        if arguments.len() != process.inputs.len() {
-            let message = format!(
-                "Process `{name}` declares {} input channels but {} were given",
-                process.inputs.len(),
-                arguments.len()
-            );
+        let (declared, given) = (process.inputs.len(), arguments.len());
+        if declared != given {
+            let message = match process.agent {
+                Some(_) => format!(
+                    "Agent `{name}` expects {declared} input channel(s) but received {given}"
+                ),
+                None => format!(
+                    "Process `{name}` declares {declared} input channels but {given} were given"
+                ),
+            };
             return Err(thrown(message));
+        }
+        if process.agent.is_some() {
+            crate::agent::refuse(process, self.config)?;
         }
         let mut inputs = Vec::new();
         let mut queue_inputs = false;
@@ -364,13 +382,16 @@ impl Host for Builder<'_> {
         }
         // Selectors match the definition name, the alias and the fully qualified name.
         let alias = name.rsplit(':').next().unwrap_or(name);
-        let settings = self
-            .config
-            .process_settings(&[&process.name, alias, name], &labels(process))
-            .map_err(|exception| Error::Thrown {
-                exception: Rc::new(exception),
-                span: process.span,
-            })?;
+        let names = [&*process.name, alias, name];
+        // Agents take no settings from the `process` scope, only from the `agent` scope.
+        let settings = match process.agent {
+            Some(_) => self.config.agent_settings(&names, &labels(process)),
+            None => self.config.process_settings(&names, &labels(process)),
+        };
+        let settings = settings.map_err(|exception| Error::Thrown {
+            exception: Rc::new(exception),
+            span: process.span,
+        })?;
         let singleton = singleton(process, queue_inputs);
         let outputs: Vec<ChannelId> = process
             .outputs
@@ -378,10 +399,10 @@ impl Host for Builder<'_> {
             .map(|_| self.network.channel(singleton))
             .collect();
         let node = ProcessNode {
-            conda_enabled: self
-                .config
-                .get(&["conda", "enabled"])
-                .is_some_and(|v| v.truth()),
+            // Wave builds the `conda` packages of tasks as Conda does.
+            conda_enabled: ["conda", "wave"]
+                .iter()
+                .any(|scope| (self.config.get(&[scope, "enabled"])).is_some_and(|v| v.truth())),
             spack_enabled: self
                 .config
                 .get(&["spack", "enabled"])
@@ -574,6 +595,15 @@ impl Host for Builder<'_> {
                     Kind::Each(Each::Take(if count < 0 { -1 } else { count })),
                     false,
                 )
+            }
+            ("scan", [Value::Closure(closure)]) => {
+                let running = Value::Null;
+                let closure = closure.clone();
+                (Kind::Each(Each::Scan { closure, running }), same_kind)
+            }
+            ("scan", [seed, Value::Closure(closure)]) => {
+                let (closure, running) = (closure.clone(), seed.clone());
+                (Kind::Each(Each::Scan { closure, running }), same_kind)
             }
             ("until", [Value::Closure(closure)]) => {
                 (Kind::Each(Each::Until(closure.clone())), same_kind)

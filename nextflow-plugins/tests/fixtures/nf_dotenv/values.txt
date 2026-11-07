@@ -1,0 +1,31 @@
+# comment line
+FOO=bar
+SPACED = spaced value  
+DQ="double quoted"
+SQ='single quoted'
+INLINE=value # trailing comment
+DQ_INLINE="quoted # not comment" # comment
+EMPTY=
+HASH=a#b
+MULTI="line1
+line2"
+ESC="a\nb"
+REF=${FOO}
+DUP=one
+DUP=two
+EQ=a=b
+  INDENT=x
+TAB=	tabbed	
+A1= "lead space"
+A3='x' # c
+A5="x"#c
+A6=" x "
+a.b-c=dots
+
+   
+//// slash comment
+A8=  
+A9=x\
+A10="#"
+A11=#start
+A12="a\"b"

@@ -1,0 +1,1 @@
+{"text": "slack $runName success=$success version=$version", "fields": [<% out << summary.collect{ k,v -> "{\"title\": \"$k\", \"value\": \"$v\"}" }.join(",") %>], "commandLine": "$commandLine"}

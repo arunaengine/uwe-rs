@@ -3,11 +3,16 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::rc::Rc;
+
 use nextflow_evaluator::interpreter::{Error, parse_json, parse_yaml};
 use nextflow_evaluator::number::{BigDecimal, Number};
 use nextflow_evaluator::value::{PathValue, Value};
 
-use super::{entries, errors, get, json, path, plain, read, schema, thrown};
+use super::settings::{Settings, report};
+use super::{
+    Order, Schema, cut, entries, errors, get, json, load, locate, path, read, shown, since, thrown,
+};
 use crate::Context;
 
 const PATH_FORMATS: &[&str] = &["file-path", "path", "directory-path", "file-path-pattern"];
@@ -21,9 +26,21 @@ pub(super) fn to_list(
     _options: Option<&Value>,
     context: &mut Context,
 ) -> Result<Value, Error> {
+    let settings = Settings::read(context);
     let launch = context.host.launch_dir();
     let file = path(samplesheet, &launch);
-    let schema = schema(schema_path, context)?;
+    let schema_file = locate(schema_path, None, context);
+    if !exists(&schema_file, context) {
+        let message = format!("JSON schema file {} does not exist", schema_file.uri());
+        return Err(thrown(message));
+    }
+    let schema = load(&Value::Path(Rc::new(schema_file)), context)?;
+    if !exists(&file, context) {
+        return Err(thrown(format!(
+            "Samplesheet file {} does not exist",
+            file.uri()
+        )));
+    }
     reject_nested_ids(&schema.tree, true)?;
     let mut converter = Converter {
         launch,
@@ -32,9 +49,33 @@ pub(super) fn to_list(
     };
     let root = converter.resolve(&schema.tree)?;
     let items = get(&root, "items").unwrap_or(Value::Null);
-    let text = read(&file, context)?;
-    let object = file_object(&file, &text, &root, &converter)?;
-    check(&schema.json, &without_nulls(json(&object)), &file, context)?;
+    let Some(object) = sheet(&file, &root, &converter, context)? else {
+        // Before 3.0.0 nf-schema reads the samplesheet twice, once to check and once to convert.
+        if !since(context, [3, 0, 0]) {
+            sheet(&file, &root, &converter, context)?;
+        }
+        return Ok(Value::list(Vec::new()));
+    };
+    let object = match settings.substitution {
+        true => substitute(&object, context),
+        false => object,
+    };
+    let lines = sheet_errors(&schema, &without_nulls(json(&object)), &settings, context)?;
+    if !lines.is_empty() {
+        context
+            .host
+            .print("ERROR ~ Validation of samplesheet failed!\n");
+        // The recordings of 2.7.3 and later end the message with a blank line.
+        let end = match since(context, [2, 7, 3]) {
+            true => "\n\n",
+            false => "\n",
+        };
+        return Err(thrown(format!(
+            "The following errors have been detected in {}:\n\n{}{end}",
+            file.uri(),
+            lines.join("\n")
+        )));
+    }
     let Value::List(list) = &object else {
         return Err(thrown(format!(
             "The samplesheet {} is not a list",
@@ -60,13 +101,157 @@ pub(super) fn to_list(
             .iter()
             .map(|header| format!("\t- {header}"))
             .collect();
-        context.host.print(&format!(
-            "WARN: Found the following unidentified headers in {}:\n{}\n\n",
+        let message = format!(
+            "Found the following unidentified headers in {}:\n{}\n\n",
             file.uri(),
             headers.join("\n")
-        ));
+        );
+        report(context, settings.headers_level, &message)?;
     }
     Ok(Value::list(result))
+}
+
+fn exists(file: &PathValue, context: &mut Context) -> bool {
+    matches!(context.host.metadata(file), Ok(Some(_)))
+}
+
+/// The error lines of the samplesheet that a `schema` keyword of a param names, like
+/// `-> Entry 1: ...`; none when the file is missing or valid, as `exists` checks that.
+pub(super) fn nested(
+    name: &str,
+    value: &str,
+    base: Option<&str>,
+    context: &mut Context,
+) -> Vec<String> {
+    let file = PathValue::parse(value, &context.host.launch_dir());
+    let schema_file = locate(&Value::string(name), base, context);
+    if !matches!(context.host.metadata(&file), Ok(Some(metadata)) if !metadata.directory)
+        || !exists(&schema_file, context)
+    {
+        return Vec::new();
+    }
+    let settings = Settings::read(context);
+    let checked = (|| {
+        let schema = load(&Value::Path(Rc::new(schema_file)), context)?;
+        let converter = Converter {
+            launch: context.host.launch_dir(),
+            root: schema.tree.clone(),
+            unrecognised: Vec::new(),
+        };
+        let root = converter.resolve(&schema.tree)?;
+        let Some(object) = sheet(&file, &root, &converter, context)? else {
+            return Ok(Vec::new());
+        };
+        let object = match settings.substitution {
+            true => substitute(&object, context),
+            false => object,
+        };
+        sheet_errors(&schema, &without_nulls(json(&object)), &settings, context)
+    })();
+    checked.unwrap_or_else(|error| vec![error.to_string()])
+}
+
+/// The samplesheet as a structure, or `None` after logging the error of nf-schema 2.7.3 and
+/// later for a file whose type its extension does not tell.
+fn sheet(
+    file: &PathValue,
+    root: &Value,
+    converter: &Converter,
+    context: &mut Context,
+) -> Result<Option<Value>, Error> {
+    let text = read(file, context)?;
+    let strict =
+        super::version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 3].as_slice());
+    let Some(kind) = file_type(file, &text, strict) else {
+        context.host.print(&format!(
+            "ERROR ~ Could not derive file type from {}. Please specify the file extension \
+             (CSV, TSV, YML, YAML and JSON are supported).\n",
+            file.uri()
+        ));
+        return Ok(None);
+    };
+    file_object(file, kind, &text, root, converter).map(Some)
+}
+
+/// From 3.0.0 on with `validation.allowParamsSubstitution`: `${params.a.b}` in the texts of
+/// the samplesheet becomes the text of that param. A missing last part gives `null`; a missing
+/// part before it leaves the text as it is.
+fn substitute(value: &Value, context: &mut Context) -> Value {
+    match value {
+        Value::Map(_) => Value::map(
+            entries(value)
+                .into_iter()
+                .map(|(key, value)| (Value::string(key), substitute(&value, context)))
+                .collect::<Vec<_>>(),
+        ),
+        Value::List(list) => {
+            let items = list.borrow().items.clone();
+            Value::list(items.iter().map(|item| substitute(item, context)).collect())
+        }
+        Value::String(text) if text.contains("${") => Value::string(replaced(text, context)),
+        other => other.clone(),
+    }
+}
+
+fn replaced(text: &str, context: &mut Context) -> String {
+    let mut output = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("${") {
+        output.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let name = after.find('}').map(|end| &after[..end]);
+        let Some(name) = name.filter(|name| reference(name)) else {
+            output.push_str("${");
+            rest = after;
+            continue;
+        };
+        let whole = &rest[start..start + name.len() + 3];
+        rest = &after[name.len() + 1..];
+        let mut parts = name.split('.');
+        if parts.next() != Some("params") {
+            output.push_str(whole);
+            continue;
+        }
+        let parts: Vec<&str> = parts.collect();
+        let mut current = context.params.clone();
+        let mut found = true;
+        for (index, part) in parts.iter().enumerate() {
+            let next = get(&current, part);
+            if next.is_none() && index == 0 {
+                context.host.print(&format!(
+                    "WARN: Access to undefined parameter `{part}` -- Initialise it to a default \
+                     value eg. `params.{part} = some_value`\n"
+                ));
+            }
+            match next {
+                Some(next) => current = next,
+                None if index + 1 == parts.len() => current = Value::Null,
+                None => {
+                    found = false;
+                    break;
+                }
+            }
+        }
+        match found {
+            true => output.push_str(&current.to_string()),
+            false => output.push_str(whole),
+        }
+    }
+    output.push_str(rest);
+    output
+}
+
+/// Whether text is a dotted name of letters, digits and `_`, each part not starting with a
+/// digit, with at least one dot.
+fn reference(name: &str) -> bool {
+    name.contains('.')
+        && name.split('.').all(|part| {
+            let mut characters = part.chars();
+            characters
+                .next()
+                .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+                && characters.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
 }
 
 struct Converter {
@@ -434,11 +619,11 @@ fn unsupported(message: impl Into<String>) -> Error {
 /// Schema item properties select maps; CSV and TSV scalars become numbers, booleans, or null.
 fn file_object(
     file: &PathValue,
+    kind: &str,
     text: &str,
     schema: &Value,
     converter: &Converter,
 ) -> Result<Value, Error> {
-    let kind = file_type(file, text);
     let items = get(schema, "items")
         .map(|items| converter.resolve(&items))
         .transpose()?;
@@ -481,22 +666,22 @@ fn file_object(
     parsed.map_err(|exception| thrown(exception.message))
 }
 
-/// `csv`, `tsv`, `yaml` or `json` by the extension, else by the separator the first line
-/// has more of.
-fn file_type(file: &PathValue, text: &str) -> &'static str {
+/// `csv`, `tsv`, `yaml` or `json` by the extension. Without one of these, `strict` gives none,
+/// as nf-schema 2.7.3 and later do, else the separator the first line has more of decides.
+fn file_type(file: &PathValue, text: &str, strict: bool) -> Option<&'static str> {
     let name = file.name();
     let extension = name.rsplit_once('.').map_or("", |(_, extension)| extension);
-    match extension {
-        "csv" => "csv",
-        "tsv" => "tsv",
-        "yml" | "yaml" => "yaml",
-        "json" => "json",
+    match extension.to_ascii_lowercase().as_str() {
+        "csv" => Some("csv"),
+        "tsv" => Some("tsv"),
+        "yml" | "yaml" => Some("yaml"),
+        "json" => Some("json"),
+        _ if strict => None,
         _ => {
             let first = text.lines().next().unwrap_or_default();
-            if first.matches(',').count() > first.matches('\t').count() {
-                "csv"
-            } else {
-                "tsv"
+            match first.matches(',').count() > first.matches('\t').count() {
+                true => Some("csv"),
+                false => Some("tsv"),
             }
         }
     }
@@ -619,23 +804,29 @@ fn without_nulls(value: serde_json::Value) -> serde_json::Value {
     }
 }
 
-/// Checks the samplesheet against the schema.
-fn check(
-    schema: &serde_json::Value,
+/// The errors of a samplesheet against its schema, one line each, like
+/// `-> Entry 1: Error for field 'sample' (S 1): ...`.
+fn sheet_errors(
+    schema: &Schema,
     instance: &serde_json::Value,
-    file: &PathValue,
+    settings: &Settings,
     context: &mut Context,
-) -> Result<(), Error> {
-    let validator = super::paths::validator(schema, instance, context, false)
+) -> Result<Vec<String>, Error> {
+    let check = super::check(context, schema);
+    let validator = super::paths::checker(&schema.json, instance, context, &check)
         .map_err(|error| thrown(format!("Invalid samplesheet schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, instance, "field", context, None)
+    let order = Order::Sheet(&schema.tree);
+    let found = errors(&validator, instance, &schema.json, "field", context, order);
+    let lines = found
         .into_iter()
         .map(|(location, message)| {
             let mut parts = location.trim_start_matches('/').splitn(2, '/');
             let entry = parts.next().and_then(|index| index.parse::<usize>().ok());
             match (entry, parts.next()) {
                 (Some(index), Some(field)) => {
-                    let value = instance[index].get(field).map(plain).unwrap_or_default();
+                    let value = (instance[index].get(field))
+                        .map(|value| cut(&shown(value), settings.size))
+                        .unwrap_or_default();
                     format!(
                         "-> Entry {}: Error for field '{field}' ({value}): {message}",
                         index + 1
@@ -646,14 +837,7 @@ fn check(
             }
         })
         .collect();
-    if errors.is_empty() {
-        return Ok(());
-    }
-    Err(thrown(format!(
-        "The following errors have been detected in {}:\n\n{}\n",
-        file.uri(),
-        errors.join("\n")
-    )))
+    Ok(lines)
 }
 
 /// The fields of one line; double quotes group text with separators and `""` is a quote.

@@ -110,12 +110,6 @@ impl Database {
             return Ok(None);
         };
         let recorded = self.files(run, Some(task))?;
-        if recorded.iter().any(|file| {
-            file.role == "input"
-                && (file.directory || std::path::Path::new(&file.location).is_dir())
-        }) {
-            return Ok(None);
-        }
         let inputs = recorded
             .iter()
             .filter(|file| file.role == "input")

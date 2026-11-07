@@ -1,0 +1,37 @@
+===== summary map
+{
+    "Input/output options": {
+        "input": "samplesheet.csv",
+        "outdir": "results",
+        "tool": null
+    },
+    "Generic options": {
+        "mode": "move",
+        "tool": {
+            "level": "5"
+        },
+        "mixed": "7"
+    },
+    "Other parameters": {
+        "loose": "free",
+        "tool": null
+    },
+    "Core Nextflow options": {
+        "runName": "compassionate_fermat",
+        "container": "quay.io/biocontainers/fastqc:0.12.1",
+        "launchDir": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema",
+        "workDir": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/work",
+        "projectDir": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema",
+        "userName": "<user>",
+        "profile": "standard",
+        "configFiles": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/t2.8.0.config"
+    }
+}
+===== summary log
+!! org.codehaus.groovy.runtime.typehandling.GroovyCastException: Cannot cast object 'quay.io/biocontainers/fastqc:0.12.1' with class 'java.lang.String' to class 'java.util.Map'
+===== summary log options
+!! org.codehaus.groovy.runtime.typehandling.GroovyCastException: Cannot cast object 'quay.io/biocontainers/fastqc:0.12.1' with class 'java.lang.String' to class 'java.util.Map'
+[PIPELINE] sum2.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

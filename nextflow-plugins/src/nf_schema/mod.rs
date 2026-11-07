@@ -3,16 +3,22 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod help;
 mod params;
 pub(crate) mod paths;
 mod samplesheet;
+mod settings;
+mod summary;
 
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{Error, parse_json};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{Key, PathValue, State, Value};
+
+pub(crate) use settings::start;
 
 use crate::Context;
 
@@ -22,7 +28,10 @@ pub(crate) fn call(
     context: &mut Context,
 ) -> Result<Value, Error> {
     // Named arguments come first as a map; nf-schema also takes a map of options as the last
-    // argument of `samplesheetToList`.
+    // argument of `samplesheetToList`. From 3.0.0 on, summaries take the workflow of the run
+    // and help takes its param as an option.
+    let modern = since(context, [3, 0, 0]);
+    let workflow = context.workflow.clone();
     match (name, arguments.as_slice()) {
         ("samplesheetToList", [sheet, schema]) => {
             samplesheet::to_list(sheet, schema, None, context)
@@ -31,28 +40,61 @@ pub(crate) fn call(
         | ("samplesheetToList", [sheet, schema, options]) => {
             samplesheet::to_list(sheet, schema, Some(options), context)
         }
-        ("validate", [options @ Value::Map(_), input, schema]) => {
+        ("validate", [options @ Value::Map(_), input, schema])
+        | ("validate", [input, schema, options @ Value::Map(_)]) => {
             validate(Some(options), input, schema, context)
         }
         ("validate", [input, schema]) => validate(None, input, schema, context),
         ("validateParameters", []) => params::validate(None, context),
         ("validateParameters", [options]) => params::validate(Some(options), context),
-        ("paramsSummaryMap", [workflow]) => params::summary(None, workflow, context),
-        ("paramsSummaryMap", [options, workflow]) => {
-            params::summary(Some(options), workflow, context)
+        ("paramsSummaryMap", []) if modern => summary::map(None, &workflow, context),
+        ("paramsSummaryMap", [options @ Value::Map(_)]) if modern => {
+            summary::map(Some(options), &workflow, context)
         }
-        ("paramsSummaryLog", [workflow]) => params::summary_log(None, workflow, context),
-        ("paramsSummaryLog", [options, workflow]) => {
-            params::summary_log(Some(options), workflow, context)
+        ("paramsSummaryMap", [workflow]) if !modern => summary::map(None, workflow, context),
+        ("paramsSummaryMap", [options, workflow]) if !modern => {
+            summary::map(Some(options), workflow, context)
         }
-        ("paramsHelp", []) => params::help(None, context),
-        ("paramsHelp", [options @ Value::Map(_), ..]) => params::help(Some(options), context),
+        ("paramsSummaryLog", []) if modern => summary::log(None, &workflow, context),
+        ("paramsSummaryLog", [options @ Value::Map(_)]) if modern => {
+            summary::log(Some(options), &workflow, context)
+        }
+        ("paramsSummaryLog", [workflow]) if !modern => summary::log(None, workflow, context),
+        ("paramsSummaryLog", [options, workflow]) if !modern => {
+            summary::log(Some(options), workflow, context)
+        }
+        ("paramsHelp", []) => help::text(None, None, context),
+        ("paramsHelp", [options @ Value::Map(_)]) => help::text(Some(options), None, context),
+        ("paramsHelp", [parameter @ Value::String(_)]) if !modern => {
+            help::text(None, Some(parameter.to_string()), context)
+        }
+        ("paramsHelp", [options @ Value::Map(_), parameter]) if !modern => {
+            help::text(Some(options), Some(parameter.to_string()), context)
+        }
+        ("paramsHelp" | "paramsSummaryMap" | "paramsSummaryLog", _) => {
+            Err(no_signature(name, &arguments))
+        }
         _ => Err(Error::Unsupported {
             message: format!(
                 "the function `{name}` of the plugin `nf-schema` with these arguments"
             ),
             span: Default::default(),
         }),
+    }
+}
+
+/// Groovy's `MissingMethodException` for a call whose arguments fit no form of the function.
+fn no_signature(name: &str, arguments: &[Value]) -> Error {
+    let types: Vec<&str> = arguments.iter().map(Value::class_name).collect();
+    let values: Vec<String> = arguments.iter().map(Value::to_string).collect();
+    let message = format!(
+        "No signature of method: {name}() is applicable for argument types: ({}) values: [{}]",
+        types.join(", "),
+        values.join(", ")
+    );
+    Error::Thrown {
+        exception: Rc::new(Exception::new("MissingMethodException", message)),
+        span: Default::default(),
     }
 }
 
@@ -67,24 +109,186 @@ fn validate(
     let exit = options
         .and_then(|options| get(options, "exitOnError"))
         .is_none_or(|exit| exit.truth());
-    let schema = schema(schema_path, context)?;
+    let size = settings::Settings::read(context).size;
+    let schema = load(schema_path, context)?;
     let instance = json(input);
-    let validator = paths::validator(&schema.json, &instance, context, false)
+    let check = check(context, &schema);
+    let validator = paths::checker(&schema.json, &instance, context, &check)
         .map_err(|error| thrown(format!("Invalid JSON schema: {error}")))?;
-    let errors: Vec<String> = errors(&validator, &instance, "object", context, None)
+    let found = errors(
+        &validator,
+        &instance,
+        &schema.json,
+        "object",
+        context,
+        Order::Crate,
+    );
+    let mut errors: Vec<String> = found
         .into_iter()
         .map(|(location, message)| {
-            let value = instance.pointer(&location).map(plain).unwrap_or_default();
+            let value = (instance.pointer(&location))
+                .map(|value| cut(&shown(value), size))
+                .unwrap_or_default();
             match location.as_str() {
                 "" => format!("({value}): {message}"),
                 location => format!("{location} ({value}): {message}"),
             }
         })
         .collect();
+    // nf-schema's validator also reports the root `allOf` with the indexes that failed. The
+    // crate gives errors of custom keywords their place in the schema, not the way there.
+    let branches: Vec<String> = (schema.json.get("allOf").and_then(|all| all.as_array()))
+        .into_iter()
+        .flatten()
+        .map(|branch| {
+            let reference = branch.get("$ref").and_then(|reference| reference.as_str());
+            let pointer = reference.and_then(|reference| reference.strip_prefix('#'));
+            pointer.map_or(String::new(), |pointer| format!("{pointer}/"))
+        })
+        .collect();
+    let failing: BTreeSet<usize> = (validator.iter_errors(&instance))
+        .filter_map(|error| {
+            let location = error.evaluation_path().to_string();
+            let index = location
+                .strip_prefix("/allOf/")
+                .and_then(|rest| rest.split('/').next().and_then(|index| index.parse().ok()));
+            let keyword = error.schema_path().to_string();
+            index.or_else(|| {
+                (branches.iter())
+                    .position(|branch| !branch.is_empty() && keyword.starts_with(branch.as_str()))
+            })
+        })
+        .collect();
+    if !failing.is_empty() {
+        let indexes: Vec<String> = failing.iter().map(usize::to_string).collect();
+        errors.push(format!(
+            "({}): Value does not match against the schemas at indexes [{}]",
+            cut(&shown(&instance), size),
+            indexes.join(", ")
+        ));
+    }
     if exit && !errors.is_empty() {
         return Err(thrown(format!("{}\n", errors.join("\n"))));
     }
     Ok(Value::list(errors.into_iter().map(Value::string).collect()))
+}
+
+/// Whether the selected nf-schema is this version or newer. Without a pin it is 3.0.0, the
+/// latest release; 3.1.0 runs only when a config pins it.
+pub(crate) fn since(context: &Context, wanted: [u32; 3]) -> bool {
+    match version(context) {
+        Some(mut parts) => {
+            parts.resize(3.max(parts.len()), 0);
+            parts.as_slice() >= wanted.as_slice()
+        }
+        None => wanted <= [3, 0, 0],
+    }
+}
+
+/// The path a schema name stands for: the name as given from the launch directory when that
+/// exists, else from the project directory. From 3.1.0 on, a relative name first tries the
+/// folder of the schema that names it, `base`.
+pub(crate) fn locate(value: &Value, base: Option<&str>, context: &mut Context) -> PathValue {
+    let launch = context.host.launch_dir();
+    let given = path(value, &launch);
+    let exists = |path: &PathValue, context: &mut Context| {
+        matches!(context.host.metadata(path), Ok(Some(_)))
+    };
+    if let (Some(base), Value::String(name)) = (base, value)
+        && since(context, [3, 1, 0])
+        && !name.starts_with('/')
+        && !name.contains("://")
+    {
+        let beside = PathValue::parse(name, base);
+        if exists(&beside, context) {
+            return beside;
+        }
+    }
+    if exists(&given, context) {
+        return given;
+    }
+    path(value, context.project_dir)
+}
+
+/// Reads a schema of nf-schema. A file that is not JSON fails as the selected version words it.
+pub(crate) fn load(value: &Value, context: &mut Context) -> Result<Schema, Error> {
+    let file = locate(value, None, context);
+    let text = read(&file, context)?;
+    let parsed = parse_json(&text)
+        .map_err(|exception| exception.message)
+        .and_then(|tree| {
+            let json = serde_json::from_str(&text).map_err(|error| error.to_string())?;
+            let base = (file.prefix.is_none().then(|| file.parent()).flatten())
+                .map(|folder| folder.text().to_owned());
+            Ok(Schema { json, tree, base })
+        });
+    parsed.map_err(|message| match since(context, [3, 0, 0]) {
+        true => Error::Thrown {
+            exception: Rc::new(Exception::new("JSONException", message)),
+            span: Default::default(),
+        },
+        false => thrown(format!(
+            "Failed to load JSON schema ({value}):\n    {message}\n\n"
+        )),
+    })
+}
+
+/// What nf-schema checks besides JSON Schema, for a schema read from `schema`'s folder.
+pub(crate) fn check(context: &Context, schema: &Schema) -> paths::Check {
+    paths::Check {
+        keywords: true,
+        newer: since(context, [2, 8, 0]),
+        base: schema.base.clone(),
+        ..paths::Check::default()
+    }
+}
+
+/// A text cut to `size` characters as nf-schema's `maxErrValSize` asks: the first and the last
+/// half around `...`; -1 keeps it whole.
+pub(crate) fn cut(text: &str, size: i64) -> String {
+    let characters: Vec<char> = text.chars().collect();
+    match usize::try_from(size) {
+        Ok(size) if characters.len() > size => {
+            let half = size / 2;
+            let start: String = characters[..half].iter().collect();
+            let end: String = characters[characters.len() - half..].iter().collect();
+            format!("{start}...{end}")
+        }
+        _ => text.to_owned(),
+    }
+}
+
+/// A value in an error line: text as it is, lists and maps as JSON in Java hash order, as
+/// org.json writes them.
+pub(crate) fn shown(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Object(map) => {
+            let names: Vec<String> = map.keys().cloned().collect();
+            let mut order = names.clone();
+            order.sort_by_key(|name| hash_position(&names, name));
+            let fields: Vec<String> = (order.iter())
+                .map(|name| {
+                    let key = serde_json::Value::String(name.clone()).to_string();
+                    format!("{key}:{}", json_text(&map[name]))
+                })
+                .collect();
+            format!("{{{}}}", fields.join(","))
+        }
+        serde_json::Value::Array(items) => {
+            let items: Vec<String> = items.iter().map(json_text).collect();
+            format!("[{}]", items.join(","))
+        }
+        other => other.to_string(),
+    }
+}
+
+/// A value inside JSON text: text quoted.
+fn json_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(_) => value.to_string(),
+        other => shown(other),
+    }
 }
 
 /// The value of a key of a map, or a property of the `workflow` object.
@@ -124,6 +328,8 @@ pub(crate) fn path(value: &Value, base: &str) -> PathValue {
 pub(crate) struct Schema {
     pub json: serde_json::Value,
     pub tree: Value,
+    /// The folder of a local schema file, where its `schema` keywords look first from 3.1.0.
+    pub base: Option<String>,
 }
 
 /// Reads a schema. A relative path starts at the project directory, as nf-schema does.
@@ -133,7 +339,11 @@ pub(crate) fn schema(value: &Value, context: &mut Context) -> Result<Schema, Err
     let tree = parse_json(&text).map_err(|exception| thrown(exception.message))?;
     let json = serde_json::from_str(&text)
         .map_err(|error| thrown(format!("Invalid JSON schema {}: {error}", path.uri())))?;
-    Ok(Schema { json, tree })
+    Ok(Schema {
+        json,
+        tree,
+        base: None,
+    })
 }
 
 pub(crate) fn read(path: &PathValue, context: &mut Context) -> Result<String, Error> {
@@ -191,37 +401,55 @@ pub(crate) fn lenient(context: &Context) -> bool {
         .is_some_and(|value| value.truth())
 }
 
+/// The order that errors come in.
+pub(crate) enum Order<'a> {
+    /// The order of the `jsonschema` crate.
+    Crate,
+    /// The order of nf-schema for params: the schema and the names of the params in the order
+    /// they were set.
+    Params(&'a Value, &'a [String]),
+    /// The root keywords of a samplesheet schema in Java hash order, then the crate's order.
+    Sheet(&'a Value),
+}
+
 /// Returns nf-schema errors by value path; missing fields form one object error. `what` labels
-/// the fields; the config may relax type checking. With the schema and the names of the params
-/// in the order they were set as `order`, the errors come in the order of nf-schema.
+/// the fields; the config may relax type checking. An `errorMessage` of the schema that fails
+/// is added to its errors in brackets.
 pub(crate) fn errors(
     validator: &jsonschema::Validator,
     instance: &serde_json::Value,
+    schema: &serde_json::Value,
     what: &str,
     context: &Context,
-    order: Option<(&Value, &[String])>,
+    order: Order,
 ) -> Vec<(String, String)> {
     use jsonschema::error::{TypeKind, ValidationErrorKind as Kind};
     let lenient = lenient(context);
     // From 2.7.3 on, a newer validator words patterns and enums without extra brackets.
     let bare = version(context).is_none_or(|parts| parts.as_slice() >= [2, 7, 3].as_slice());
+    let note = |keyword: &str| {
+        let parent = keyword.rsplit_once('/').map_or("", |(parent, _)| parent);
+        let note = schema.pointer(parent)?.get("errorMessage")?.as_str()?;
+        Some(format!(" ({note})"))
+    };
     // Each error with the schema location that reports it.
     let mut errors: Vec<(String, String, String)> = Vec::new();
     // Missing fields by the value and the `required` keyword that asks for them.
-    let mut missing: Vec<(String, String, Vec<String>)> = Vec::new();
+    let mut missing: Vec<(String, String, Vec<String>, String)> = Vec::new();
     for error in validator.iter_errors(instance) {
         let path = error.instance_path().to_string();
         let location = error.evaluation_path().to_string();
+        let added = note(&error.schema_path().to_string()).unwrap_or_default();
         let value = error.instance();
         let message = match error.kind() {
             Kind::Required { property } => {
                 let property = property.as_str().unwrap_or_default().to_owned();
                 let group = missing
                     .iter_mut()
-                    .find(|(at, by, _)| *at == path && *by == location);
+                    .find(|(at, by, _, _)| *at == path && *by == location);
                 match group {
-                    Some((_, _, names)) => names.push(property),
-                    None => missing.push((path, location, vec![property])),
+                    Some((_, _, names, _)) => names.push(property),
+                    None => missing.push((path, location, vec![property], added)),
                 }
                 continue;
             }
@@ -275,20 +503,30 @@ pub(crate) fn errors(
             }
             _ => error.to_string(),
         };
-        errors.push((location, path, message));
+        errors.push((location, path, format!("{message}{added}")));
     }
-    for (path, location, names) in missing {
+    for (path, location, names, added) in missing {
         // The validator collects the missing names in a Java hash set.
         let mut order: Vec<(usize, String)> = (names.iter())
             .map(|name| (hash_position(&names, name), name.clone()))
             .collect();
         order.sort();
         let names: Vec<String> = order.into_iter().map(|(_, name)| name).collect();
-        let message = format!("Missing required {what}(s): {}", names.join(", "));
+        let message = format!("Missing required {what}(s): {}{added}", names.join(", "));
         errors.push((location, path, message));
     }
-    if let Some((schema, names)) = order {
-        errors.sort_by_cached_key(|(location, _, _)| java_order(schema, names, location));
+    match order {
+        Order::Crate => {}
+        Order::Params(schema, names) => {
+            errors.sort_by_cached_key(|(location, _, _)| java_order(schema, names, location));
+        }
+        Order::Sheet(schema) => {
+            let keys: Vec<String> = entries(schema).into_iter().map(|(key, _)| key).collect();
+            errors.sort_by_cached_key(|(location, _, _)| {
+                let keyword = location.split('/').nth(1).unwrap_or_default();
+                hash_position(&keys, keyword)
+            });
+        }
     }
     errors
         .into_iter()

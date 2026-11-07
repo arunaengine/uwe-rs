@@ -1,0 +1,60 @@
+
+---------------------------------------------
+  bactopia/bactopia v9.9.9
+  Probe workflow 
+---------------------------------------------
+Required Parameters
+  sample     : S1
+  r1         : data/S1_R1.fastq.gz
+  r2         : data/S1_R2.fastq.gz
+  outdir     : 5
+
+Core Nextflow options
+  runName    : gigantic_majorana
+  launchDir  : <probe-dir>
+  workDir    : <probe-dir>/work
+  projectDir : <probe-dir>
+  userName   : <user>
+  profile    : standard
+  configFiles: <probe-dir>/nextflow.config
+
+!! Only displaying parameters that differ from the defaults !!
+--------------------------------------------------------------------
+
+validate => data=paired-end hasErrors=false
+validate logs =>
+
+[PIPELINE] bactopia/bactopia 9.9.9 | profile=standard
+[WORKDIR] <probe-dir>/work
+
+[SUCCESS] completed=0 failed=0 cached=0
+
+--------------------------------------------------------------------
+
+Bactopia Execution Summary
+-------------------------------
+Workflow         : bactopia
+Bactopia Version : 9.9.9
+Nextflow Version : 26.04.6
+Command Line     : nextflow -q run main.nf -ansi-log false --sample S1 --r1 data/S1_R1.fastq.gz --r2 data/S1_R2.fastq.gz --outdir 5 --unknown_param x
+Launch Dir       : <probe-dir>
+Profile          : standard
+Completed At     : 2026-11-06T10:03:37.558858194+01:00
+Duration         : 499ms
+Resumed          : false
+Success          : true
+Merged Results   : 5/null
+
+
+Further analyze your samples using Bactopia Tools, with the following command:
+--------------------------------------------------------------------------------
+bactopia -profile standard --bactopia 5 --wf <REPLACE_WITH_BACTOPIA_TOOL_NAME>
+
+Examples:
+bactopia -profile standard --bactopia 5 --wf pangenome
+bactopia -profile standard --bactopia 5 --wf merlin
+bactopia -profile standard --bactopia 5 --wf sccmec
+
+See the full list of available Bactopia Tools: bactopia --list_wfs
+
+[exit code 0]

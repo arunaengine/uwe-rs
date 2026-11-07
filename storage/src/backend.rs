@@ -8,16 +8,25 @@ use base64::Engine;
 use config_file::{ConfigError, Origin, Secret};
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
+use crate::cas::{self, Cas};
+use crate::drs::{self, Drs};
 use crate::error::Problem;
 use crate::folder::Folder;
 use crate::ftp::Ftp;
+use crate::irods::{self, Irods};
+use crate::lakefs::{self, Lakefs};
+use crate::lamin::{self, Lamin};
 use crate::objects::{Objects, Service};
+use crate::oci::{self, Oci};
 use crate::public::PublicBuckets;
+use crate::quilt::{self, Quilt};
 use crate::settings::{self, Kind, ProviderSettings};
+use crate::synapse::{self, Synapse};
 use crate::web::Web;
 use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
 /// Where a provider comes from.
+#[derive(Clone)]
 pub(crate) enum Source {
     /// A provider of the config file.
     Configured(Box<ProviderSettings>),
@@ -30,6 +39,22 @@ pub(crate) enum Source {
     /// `ftp` addresses that no provider serves: read as the user `anonymous`, or as the user
     /// and password that the address names, as Nextflow reads them.
     Ftp,
+    /// `drs` addresses that no provider serves, with the `drs` scope of a Nextflow config.
+    Drs,
+    /// `syn` addresses that no provider serves, with the `synapse` scope of a Nextflow config.
+    Synapse,
+    /// `irods` addresses that no provider serves, with the `irods` scope of a Nextflow config.
+    Irods,
+    /// `oci` addresses that no provider serves, with the `oci` scope of a Nextflow config.
+    Oci,
+    /// `lakefs` addresses that no provider serves, with the `lakefs` scope of a Nextflow config.
+    Lakefs,
+    /// `lamin` addresses that no provider serves, with the `lamin` scope of a Nextflow config.
+    Lamin,
+    /// `quilt+s3` addresses that no provider serves, with the AWS settings of the environment.
+    Quilt,
+    /// `cas` addresses that no provider serves, with the `cas` scope of a Nextflow config.
+    Cas,
 }
 
 impl Source {
@@ -42,6 +67,14 @@ impl Source {
                     Source::PublicBuckets => "public-buckets",
                     Source::Files => "files",
                     Source::Ftp => "ftp",
+                    Source::Drs => "drs",
+                    Source::Synapse => "synapse",
+                    Source::Irods => "irods",
+                    Source::Oci => "oci",
+                    Source::Lakefs => "lakefs",
+                    Source::Lamin => "lamin",
+                    Source::Quilt => "quilt",
+                    Source::Cas => "cas",
                     Source::Configured(_) => unreachable!(),
                 }
                 .into(),
@@ -86,6 +119,53 @@ impl Source {
             Kind::Https(value) => vec!["https".into(), value.user.clone().unwrap_or_default()],
             Kind::Ftp(value) => vec!["ftp".into(), value.user.clone().unwrap_or_default()],
             Kind::Folder(value) => vec!["folder".into(), value.path.to_string_lossy().into_owned()],
+            Kind::Drs(value) => vec![
+                "drs".into(),
+                value.authentication.clone().unwrap_or_default(),
+            ],
+            Kind::Irods(value) => vec![
+                "irods".into(),
+                value.host.clone().unwrap_or_default(),
+                value.port.map(|port| port.to_string()).unwrap_or_default(),
+                value.user.clone().unwrap_or_default(),
+                value.zone.clone().unwrap_or_default(),
+            ],
+            Kind::Synapse(value) => {
+                vec!["synapse".into(), value.endpoint.clone().unwrap_or_default()]
+            }
+            Kind::Lakefs(value) => vec![
+                "lakefs".into(),
+                value.endpoint.clone().unwrap_or_default(),
+                value.access_key.clone().unwrap_or_default(),
+            ],
+            Kind::Cas(value) => {
+                let mut identity =
+                    vec!["cas".to_owned(), value.writable.clone().unwrap_or_default()];
+                identity.extend(
+                    value
+                        .stores
+                        .iter()
+                        .map(|(alias, location)| format!("{alias}={location}")),
+                );
+                identity
+            }
+            Kind::Quilt(value) => vec![
+                "quilt".into(),
+                value
+                    .endpoint
+                    .as_deref()
+                    .map(crate::address::redacted)
+                    .unwrap_or_default(),
+                value.region.clone().unwrap_or_default(),
+            ],
+            Kind::Lamin(value) => vec!["lamin".into(), value.hub.clone().unwrap_or_default()],
+            Kind::Oci(value) => vec![
+                "oci".into(),
+                value.profile.clone().unwrap_or_default(),
+                value.region.clone().unwrap_or_default(),
+                value.user.clone().unwrap_or_default(),
+                value.endpoint.clone().unwrap_or_default(),
+            ],
         });
         identity
     }
@@ -100,6 +180,14 @@ impl Source {
             Source::Ftp => {
                 "an FTP server, as the user anonymous or the user of the address".to_owned()
             }
+            Source::Drs => "a DRS server, with the credential of the environment".to_owned(),
+            Source::Synapse => "Synapse, with the token of the environment".to_owned(),
+            Source::Irods => "an iRODS zone, with the account of the environment".to_owned(),
+            Source::Oci => "OCI Object Storage, with the API key of the environment".to_owned(),
+            Source::Lakefs => "lakeFS, with the lakefs scope of the Nextflow config".to_owned(),
+            Source::Lamin => "LaminDB, with the API key of the environment".to_owned(),
+            Source::Quilt => "Quilt packages, with the AWS settings of the environment".to_owned(),
+            Source::Cas => "the content-addressed stores of the cas scope".to_owned(),
         }
     }
 }
@@ -111,6 +199,14 @@ pub(crate) enum Backend {
     Objects(Objects),
     Folder(Folder),
     Ftp(Ftp),
+    Drs(Drs),
+    Synapse(Synapse),
+    Irods(Irods),
+    Oci(Oci),
+    Lakefs(Lakefs),
+    Lamin(Lamin),
+    Quilt(Quilt),
+    Cas(Cas),
 }
 
 /// A provider's client and the secrets that its messages must not show.
@@ -131,6 +227,14 @@ impl Connection {
                 root: PathBuf::from("/"),
             }),
             Source::Ftp => Backend::Ftp(Ftp::public()),
+            Source::Drs => Backend::Drs(Drs::new(drs::scope()).map_err(failed)?),
+            Source::Synapse => Backend::Synapse(Synapse::new(synapse::scope()).map_err(failed)?),
+            Source::Irods => Backend::Irods(Irods::new(irods::scope()).map_err(failed)?),
+            Source::Oci => Backend::Oci(Oci::new(oci::scope()).map_err(failed)?),
+            Source::Lakefs => Backend::Lakefs(Lakefs::new(lakefs::scope()).map_err(failed)?),
+            Source::Lamin => Backend::Lamin(Lamin::new(lamin::scope()).map_err(failed)?),
+            Source::Quilt => Backend::Quilt(Quilt::new(quilt::environment()).map_err(failed)?),
+            Source::Cas => Backend::Cas(Cas::new(cas::scope()).map_err(failed)?),
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
@@ -170,8 +274,92 @@ impl Connection {
                 Kind::Folder(folder) => Backend::Folder(Folder {
                     root: folder.path.clone(),
                 }),
+                Kind::Drs(settings) => {
+                    let options = drs::Options {
+                        authentication: settings.authentication.clone(),
+                        credential: secrets.reveal(&settings.credential)?,
+                        variable: None,
+                        token_path: settings.token_path.clone(),
+                        protocol: settings.access_protocol.clone(),
+                        plain_http: settings.plain_http.clone(),
+                    };
+                    Backend::Drs(Drs::new(options).map_err(failed)?)
+                }
+                Kind::Synapse(settings) => {
+                    let options = synapse::Options {
+                        endpoint: settings.endpoint.clone(),
+                        token: secrets.reveal(&settings.token)?,
+                    };
+                    Backend::Synapse(Synapse::new(options).map_err(failed)?)
+                }
+                Kind::Irods(settings) => {
+                    let options = irods::Options {
+                        host: settings.host.clone(),
+                        port: settings.port,
+                        user: settings.user.clone(),
+                        zone: settings.zone.clone(),
+                        password: secrets.reveal(&settings.password)?,
+                        authentication: settings.authentication.clone(),
+                        negotiation: settings.negotiation.clone(),
+                    };
+                    Backend::Irods(Irods::new(options).map_err(failed)?)
+                }
+                Kind::Oci(settings) => {
+                    let options = oci::Options {
+                        profile: settings.profile.clone(),
+                        region: settings.region.clone(),
+                        tenancy: settings.tenancy.clone(),
+                        user: settings.user.clone(),
+                        fingerprint: settings.fingerprint.clone(),
+                        private_key: secrets.reveal(&settings.private_key)?,
+                        endpoint: settings.endpoint.clone(),
+                    };
+                    Backend::Oci(Oci::new(options).map_err(failed)?)
+                }
+                Kind::Lakefs(settings) => {
+                    let options = lakefs::Options {
+                        endpoint: settings.endpoint.clone(),
+                        access_key: settings.access_key.clone(),
+                        secret_key: secrets.reveal(&settings.secret_key)?,
+                        create_branches: settings.create_branches,
+                        branch_source: settings.branch_source.clone(),
+                        timeout: None,
+                    };
+                    Backend::Lakefs(Lakefs::new(options).map_err(failed)?)
+                }
+                Kind::Cas(settings) => {
+                    let options = cas::Options {
+                        stores: settings.stores.clone(),
+                        resolve: settings.resolve.clone(),
+                        writable: settings.writable.clone(),
+                    };
+                    Backend::Cas(Cas::new(options).map_err(failed)?)
+                }
+                Kind::Quilt(s3) => {
+                    let service = s3_service(s3, settings, &mut secrets)?;
+                    Backend::Quilt(Quilt::new(service).map_err(failed)?)
+                }
+                Kind::Lamin(settings) => {
+                    let options = lamin::Options {
+                        api_key: secrets.reveal(&settings.api_key)?,
+                        hub: settings.hub.clone(),
+                        anon_key: secrets.reveal(&settings.anon_key)?,
+                        hub_credentials: settings.hub_credentials,
+                    };
+                    Backend::Lamin(Lamin::new(options).map_err(failed)?)
+                }
             },
         };
+        // Credentials that a client found in the environment are secrets too.
+        match &backend {
+            Backend::Drs(client) => secrets.0.extend(client.secrets()),
+            Backend::Synapse(client) => secrets.0.extend(client.secrets()),
+            Backend::Irods(client) => secrets.0.extend(client.secrets()),
+            Backend::Oci(client) => secrets.0.extend(client.secrets()),
+            Backend::Lakefs(client) => secrets.0.extend(client.secrets()),
+            Backend::Lamin(client) => secrets.0.extend(client.secrets()),
+            _ => {}
+        }
         Ok(Connection {
             backend,
             secrets: secrets.0,
@@ -185,7 +373,17 @@ impl Connection {
 
     /// Whether the provider can write files.
     pub fn writes(&self) -> bool {
-        matches!(self.backend, Backend::Objects(_) | Backend::Folder(_))
+        matches!(
+            self.backend,
+            Backend::Objects(_)
+                | Backend::Folder(_)
+                | Backend::Synapse(_)
+                | Backend::Irods(_)
+                | Backend::Oci(_)
+                | Backend::Lakefs(_)
+                | Backend::Quilt(_)
+                | Backend::Cas(_)
+        )
     }
 
     pub async fn stat(&self, prefix: &str, target: &str) -> Result<Option<Metadata>, Problem> {
@@ -195,6 +393,14 @@ impl Connection {
             Backend::Objects(objects) => objects.stat(target).await,
             Backend::Folder(folder) => folder.stat(&folder.path(prefix, target)?).await,
             Backend::Ftp(ftp) => ftp.stat(target).await,
+            Backend::Drs(drs) => drs.stat(target).await,
+            Backend::Synapse(synapse) => synapse.stat(target).await,
+            Backend::Irods(irods) => irods.stat(target).await,
+            Backend::Oci(oci) => oci.stat(target).await,
+            Backend::Lakefs(lakefs) => lakefs.stat(target).await,
+            Backend::Lamin(lamin) => lamin.stat(target).await,
+            Backend::Quilt(quilt) => quilt.stat(target).await,
+            Backend::Cas(cas) => cas.stat(target).await,
         }
     }
 
@@ -205,6 +411,16 @@ impl Connection {
             Backend::Objects(objects) => objects.list(target).await,
             Backend::Folder(folder) => folder.list(&folder.path(prefix, target)?).await,
             Backend::Ftp(ftp) => ftp.list(target).await,
+            // DRS objects are single files, so a listing is empty.
+            Backend::Drs(_) => Ok(Vec::new()),
+            // Synapse lists nothing, so that cleanups of `syn://` folders find nothing to do.
+            Backend::Synapse(_) => Ok(Vec::new()),
+            Backend::Irods(irods) => irods.list(target).await,
+            Backend::Oci(oci) => oci.list(target).await,
+            Backend::Lakefs(lakefs) => lakefs.list(target).await,
+            Backend::Lamin(lamin) => lamin.list(target).await,
+            Backend::Quilt(quilt) => quilt.list(target).await,
+            Backend::Cas(cas) => cas.list(target).await,
         }
     }
 
@@ -222,6 +438,14 @@ impl Connection {
             Backend::Objects(objects) => objects.download(target, file, offset).await,
             Backend::Folder(folder) => folder.download(&folder.path(prefix, target)?, file).await,
             Backend::Ftp(ftp) => ftp.download(target, file, offset).await,
+            Backend::Drs(drs) => drs.download(target, file).await,
+            Backend::Synapse(synapse) => synapse.download(target, file).await,
+            Backend::Irods(irods) => irods.download(target, file).await,
+            Backend::Oci(oci) => oci.download(target, file, offset).await,
+            Backend::Lakefs(lakefs) => lakefs.download(target, file).await,
+            Backend::Lamin(lamin) => lamin.download(target, file).await,
+            Backend::Quilt(quilt) => quilt.download(target, file).await,
+            Backend::Cas(cas) => cas.download(target, file).await,
         }
     }
 
@@ -234,6 +458,12 @@ impl Connection {
         match &self.backend {
             Backend::Objects(objects) => objects.upload(file, target).await,
             Backend::Folder(folder) => folder.upload(file, &folder.path(prefix, target)?).await,
+            Backend::Synapse(synapse) => synapse.upload(file, target).await,
+            Backend::Irods(irods) => irods.upload(file, target).await,
+            Backend::Oci(oci) => oci.upload(file, target).await,
+            Backend::Lakefs(lakefs) => lakefs.upload(file, target).await,
+            Backend::Quilt(quilt) => quilt.upload(file, target).await,
+            Backend::Cas(cas) => cas.upload(file, target).await,
             _ => Err(Problem::fixed("the provider only reads")),
         }
     }

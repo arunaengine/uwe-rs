@@ -1,0 +1,4 @@
+x:
+  named_set:
+    a: {direction: dir-AP}
+  required: [b]

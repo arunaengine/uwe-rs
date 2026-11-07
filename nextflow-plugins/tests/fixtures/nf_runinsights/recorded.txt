@@ -1,0 +1,3 @@
+Recorded 2026-11-06 with Nextflow 26.04.6 and nf-runinsights 0.2.0, local executor, from the CRUNCH probe of the plugin spec: two tasks with `memory '2 GB'`, first `sleep 1`, then `--nap 4`.
+report-run1.md and report-run2.md: the reports of the two runs.
+run1.json and run2.json: the history files of the two runs, renamed from <stamp>-<run name>.json.

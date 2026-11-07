@@ -442,7 +442,7 @@ fn directory(key: &str) -> String {
 
 /// An error of OpenDAL in plain words. Its full text lists the request and the answer, which
 /// only helps to debug OpenDAL itself.
-fn problem(error: opendal::Error) -> Problem {
+pub(crate) fn problem(error: opendal::Error) -> Problem {
     let message = match error.kind() {
         ErrorKind::NotFound => return Problem::missing(),
         ErrorKind::ConditionNotMatch | ErrorKind::AlreadyExists => {

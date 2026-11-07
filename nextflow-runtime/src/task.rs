@@ -190,6 +190,26 @@ pub fn container(request: &TaskRequest) -> Option<String> {
     }
 }
 
+/// What a task gives the Wave service: its `container` directive with the engine's registry,
+/// and its `conda` and `arch` directives.
+pub fn wave_sources(
+    request: &TaskRequest,
+    registry: Option<&str>,
+    channels: &[String],
+) -> nextflow_plugins::WaveSources {
+    let text = |name: &str| {
+        let value = directive(&request.directives, name).filter(Value::truth);
+        value.map(|value| value.to_string())
+    };
+    nextflow_plugins::WaveSources {
+        process: request.process.to_string(),
+        container: text("container").map(|image| with_registry(&image, registry)),
+        conda: text("conda"),
+        platform: text("arch"),
+        channels: channels.to_vec(),
+    }
+}
+
 /// Prepends the engine registry unless the image's first part contains a dot or colon.
 /// For example, docker.registry = 'quay.io' qualifies biocontainers/fastqc.
 pub fn with_registry(image: &str, registry: Option<&str>) -> String {
@@ -275,7 +295,61 @@ pub fn resources(request: &TaskRequest) -> Result<Resources, String> {
         disk_bytes: number("disk")?,
         time_seconds: number("time")?,
         gpus: number("accelerator")?.map(|count| count as u32),
+        queue: directive(directives, "queue")
+            .filter(|value| !matches!(value, Value::Null))
+            .map(|value| value.to_string())
+            .filter(|queue| !queue.is_empty()),
+        labels: match directive(directives, "resourceLabels") {
+            Some(Value::Map(labels)) => (labels.borrow().entries.iter())
+                .map(|(name, value)| (name.0.to_string(), value.to_string()))
+                .collect(),
+            _ => Default::default(),
+        },
+        options: executor_options(directives),
     })
+}
+
+/// The options of executors that the directives of a task give: all `pod` options in one list,
+/// the last `nomadOptions`, `clusterOptions` and `machineType`, and the named options of
+/// `accelerator`.
+fn executor_options(
+    directives: &[TaskDirective],
+) -> std::collections::BTreeMap<String, serde_json::Value> {
+    use serde_json::Value as Json;
+    let mut options = std::collections::BTreeMap::new();
+    let mut pod = Vec::new();
+    for directive in directives
+        .iter()
+        .filter(|directive| &*directive.name == "pod")
+    {
+        for value in &directive.arguments {
+            match crate::inputs::to_json(value) {
+                Json::Array(items) => pod.extend(items),
+                Json::Null => {}
+                item => pod.push(item),
+            }
+        }
+    }
+    if !pod.is_empty() {
+        options.insert("pod".to_owned(), Json::Array(pod));
+    }
+    for name in ["nomadOptions", "clusterOptions", "machineType"] {
+        if let Some(value) = directive(directives, name) {
+            let value = crate::inputs::to_json(&value);
+            if !value.is_null() {
+                options.insert(name.to_owned(), value);
+            }
+        }
+    }
+    let accelerator = (directives.iter().rev())
+        .find(|directive| &*directive.name == "accelerator")
+        .and_then(|directive| {
+            (directive.arguments.iter()).find(|value| matches!(value, Value::Map(_)))
+        });
+    if let Some(named) = accelerator {
+        options.insert("accelerator".to_owned(), crate::inputs::to_json(named));
+    }
+    options
 }
 
 /// Java's truncating `longValue`, but without wrapping large integers or saturating floats.

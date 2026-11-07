@@ -144,14 +144,17 @@ fn calls_included_plugins() {
     let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
     let error = error.to_string();
     assert!(
-        error.ends_with("main.nf:3:5: NoSuchFileException: /schema.json"),
+        error.ends_with(
+            "main.nf:3:5: SchemaValidationException: JSON schema file /schema.json does not exist"
+        ),
         "{error}"
     );
     write(
         root.path(),
         "other.nf",
         "include { fromCatalogue } from 'plugin/nf-unknown'\n\
-         include { nothing } from 'plugin/nf-schema'\nworkflow {\n}\n",
+         include { nothing } from 'plugin/nf-schema'\n\
+         include { anything } from 'plugin/nf-agent-pi'\nworkflow {\n}\n",
     );
     let error = Loader::default()
         .load(&root.path().join("other.nf"))
@@ -164,8 +167,12 @@ fn calls_included_plugins() {
     assert_eq!(
         lines,
         [
-            "1:11: Plugins are not supported yet: plugin/nf-unknown",
-            "2:11: `nothing` is not a function of the plugin `nf-schema`"
+            "1:11: Plugins are not supported yet: plugin/nf-unknown (the plugin `nf-unknown` \
+             is not known to uwe)",
+            "2:11: `nothing` is not a function of the plugin `nf-schema`",
+            "3:11: Plugins are not supported yet: plugin/nf-agent-pi (the plugin `nf-agent-pi` \
+             is planned in uwe but not implemented yet (deferred until the Nextflow agent \
+             feature leaves preview; needs a container talking gRPC))"
         ]
     );
 }
@@ -225,26 +232,27 @@ fn loads_plugin_scripts() {
         .expect("loads");
     let mut output = Output::default();
     nextflow_runtime::run(&module, &mut output).expect("runs");
+    // A run without a custom config gets nf-core-utils' warning since 0.6.0.
+    let (start, end) = output.0.split_once("pipeline.\n \n").expect("the warning");
+    assert!(start.starts_with("v1.0-gabcdef1\nWARN: [] You are attempting to run"));
     assert_eq!(
-        output.0,
-        "v1.0-gabcdef1\nfalse\nB:\n  y: '2'\nFASTQC:\n  fastqc: 0.12.1\n\
+        end,
+        "false\nB:\n  y: '2'\nFASTQC:\n  fastqc: 0.12.1\n\
          Workflow:\n    unknown: \n    Nextflow: 26.04.6\n"
     );
     write(
         root.path(),
-        "email.nf",
-        "include { completionEmail } from 'plugin/nf-core-utils'\n\
-         workflow {\n    completionEmail([:], 'a@b.c', null, false, 'out', true, [])\n}\n",
+        "pinned.nf",
+        "include { getReferencesFile } from 'plugin/nf-core-utils'\n\
+         workflow {\n    getReferencesFile([], null, 'fasta', '/base')\n}\n",
     );
     let module = Loader::default()
-        .load(&root.path().join("email.nf"))
+        .load(&root.path().join("pinned.nf"))
         .expect("loads");
     let error = nextflow_runtime::run(&module, &mut Output::default()).unwrap_err();
     let error = error.to_string();
     assert!(
-        error.ends_with(
-            "email.nf:3:5: Not supported yet: the function `completionEmail` of the plugin `nf-core-utils`"
-        ),
+        error.ends_with("`getReferencesFile` is not a function of nf-core-utils 0.7.0"),
         "{error}"
     );
 }

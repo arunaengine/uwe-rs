@@ -97,8 +97,75 @@ impl Blocking {
     }
 }
 
+/// The answer of a web server: status code, reason phrase, headers in order and body.
+#[derive(Clone, Debug)]
+pub struct Answer {
+    pub status: u16,
+    pub reason: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+/// Sends one request with the HTTP client of the process and waits for the whole answer, as
+/// scripts that call a web service do. There are no retries.
+pub fn exchange(
+    method: &str,
+    url: &str,
+    headers: &[(String, String)],
+    body: Option<Vec<u8>>,
+) -> Result<Answer, StorageError> {
+    let failed = |message: String| StorageError::Failed {
+        action: "send a request to",
+        address: url.to_owned(),
+        provider: "web".to_owned(),
+        message,
+        retryable: false,
+    };
+    let client = crate::http_client().map_err(StorageError::Unsupported)?;
+    let method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|error| failed(error.to_string()))?;
+    let mut request = client.request(method, url);
+    for (name, value) in headers {
+        request = request.header(name, value);
+    }
+    if let Some(body) = body {
+        request = request.body(body);
+    }
+    let (address, request) = (
+        url.to_owned(),
+        request.build().map_err(|e| failed(e.to_string()))?,
+    );
+    run(async move {
+        let failed = |message: String| StorageError::Failed {
+            action: "send a request to",
+            address: address.clone(),
+            provider: "web".to_owned(),
+            message,
+            retryable: false,
+        };
+        let response = client
+            .execute(request)
+            .await
+            .map_err(|e| failed(e.to_string()))?;
+        let status = response.status();
+        let headers = (response.headers().iter())
+            .map(|(name, value)| {
+                let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
+                (name.to_string(), value)
+            })
+            .collect();
+        let body = response.bytes().await.map_err(|e| failed(e.to_string()))?;
+        Ok(Answer {
+            status: status.as_u16(),
+            reason: status.canonical_reason().unwrap_or_default().to_owned(),
+            headers,
+            body: body.to_vec(),
+        })
+    })
+}
+
 /// Runs a request on the runtime of the storage crate and waits for its end.
-fn run<T: Send + 'static>(
+pub(crate) fn run<T: Send + 'static>(
     request: impl Future<Output = Result<T, StorageError>> + Send + 'static,
 ) -> Result<T, StorageError> {
     let runtime = runtime()?;

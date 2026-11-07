@@ -72,6 +72,7 @@ pub fn build(id: TaskId, path: &str, op: &Op, spec: &wir::Task, bound: &Map<Stri
             disk_bytes: wanted.disk,
             time_seconds: attributes.time,
             gpus: wanted.gpus,
+            ..Resources::default()
         },
         reuse: match attributes.cache {
             Some(wir::Cache::Never) => Reuse::Disabled,

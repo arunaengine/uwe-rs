@@ -1,0 +1,31 @@
+# HELP nf_task_cpus_requested_total Sum of CPUs requested by completed tasks, by process
+# TYPE nf_task_cpus_requested_total counter
+nf_task_cpus_requested_total{run_name="scruffy_meninsky",process="JOIN"} 1
+nf_task_cpus_requested_total{run_name="scruffy_meninsky",process="SAY"} 2
+# HELP nf_task_peak_rss_bytes_max Maximum peak RSS observed among tasks, by process
+# TYPE nf_task_peak_rss_bytes_max gauge
+nf_task_peak_rss_bytes_max{run_name="scruffy_meninsky",process="JOIN"} 0
+nf_task_peak_rss_bytes_max{run_name="scruffy_meninsky",process="SAY"} 6991872
+# HELP nf_task_queue_seconds_total Total time tasks spent queued (submit to start), by process
+# TYPE nf_task_queue_seconds_total counter
+nf_task_queue_seconds_total{run_name="scruffy_meninsky",process="JOIN"} 0.056
+nf_task_queue_seconds_total{run_name="scruffy_meninsky",process="SAY"} 0.185
+# HELP nf_task_realtime_seconds_total Total task execution wall time, by process
+# TYPE nf_task_realtime_seconds_total counter
+nf_task_realtime_seconds_total{run_name="scruffy_meninsky",process="JOIN"} 0.007
+nf_task_realtime_seconds_total{run_name="scruffy_meninsky",process="SAY"} 8.016
+# HELP nf_tasks_total Tasks by process and final status
+# TYPE nf_tasks_total counter
+nf_tasks_total{run_name="scruffy_meninsky",process="JOIN",status="completed"} 1
+nf_tasks_total{run_name="scruffy_meninsky",process="JOIN",status="submitted"} 1
+nf_tasks_total{run_name="scruffy_meninsky",process="SAY",status="completed"} 2
+nf_tasks_total{run_name="scruffy_meninsky",process="SAY",status="submitted"} 2
+# HELP nf_workflow_duration_seconds Wall clock duration of the workflow run
+# TYPE nf_workflow_duration_seconds gauge
+nf_workflow_duration_seconds{run_name="scruffy_meninsky"} 5.35
+# HELP nf_workflow_info Workflow run information (always 1)
+# TYPE nf_workflow_info gauge
+nf_workflow_info{run_name="scruffy_meninsky",session_id="bfb28839-ad0d-42d3-9b50-991af6215c2f"} 1
+# HELP nf_workflow_status Workflow status: 0=running 1=complete 2=error
+# TYPE nf_workflow_status gauge
+nf_workflow_status{run_name="scruffy_meninsky"} 1

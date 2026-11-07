@@ -1,0 +1,11 @@
+universe = vanilla
+executable = <probe>/ospool-work/17/658aa4005369dbfeb36d94a41ecfcd/.command.run
+log = <probe>/ospool-probe/submit/17/658aa4005369dbfeb36d94a41ecfcd/.condor.log
+request_cpus = 2
+machine_count = 1
+request_memory = 4 GB
+request_disk = 10 GB
+periodic_remove = (RemoteWallClockTime - CumulativeSuspensionTime) > 3600
+HasCHTCStaging=true
++ProjectName = "probe"
+queue

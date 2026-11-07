@@ -28,7 +28,7 @@ use crate::queue::{Look, Queue};
 use crate::remote::{NodeStaging, records};
 use crate::script::{
     CONTAINER_EXIT, Container, ENGINE_EXIT, LOG, NOT_SEEN, PullResources, SCRIPT, TIMED_OUT,
-    container_script, job_script, pull_options, sbatch_options,
+    container_script, job_script, per_cpu_memory, pull_options, sbatch_options,
 };
 
 /// How often the queue is asked about the jobs, by default.
@@ -114,6 +114,9 @@ pub struct SlurmBackend {
     /// Where the archives of images that tasks name by image ID, `sha256:<hex>`, are saved as
     /// `sha256-<hex>.tar`, like those of CWL tools.
     pub archives: Option<PathBuf>,
+    /// For a cluster that gives each CPU a fixed memory and refuses memory requests: the GB
+    /// per CPU. The jobs then ask for no memory but enough CPUs.
+    pub cpu_memory_gb: Option<f64>,
     queue: Queue,
     made: Images,
     recovery: Mutex<executor::history::Scan>,
@@ -176,6 +179,7 @@ impl SlurmBackend {
             remote: None,
             staging_time: STAGING_TIME,
             archives: None,
+            cpu_memory_gb: None,
             scratch,
             container,
             options: Vec::new(),
@@ -536,7 +540,7 @@ impl SlurmBackend {
                         root,
                         &extra,
                         &files,
-                        &records(),
+                        &records(LOG),
                         access.hand_back.is_some(),
                     )
                     .await?;
@@ -577,7 +581,7 @@ impl SlurmBackend {
                     ..links
                 };
                 let time = job.placement.time_seconds;
-                crate::remote::job_script(&self.container, &run, remote, gpus, time, links)
+                crate::remote::job_script(&self.container, &run, remote, gpus, time, links, LOG)
             }
             (None, true) => {
                 let wrapper = run.wrapper(spec);
@@ -691,7 +695,7 @@ impl SlurmBackend {
                 (ended, _) => break ended,
             }
         };
-        let names = records();
+        let names = records(LOG);
         if let (Some(remote), Some(prefix)) = (&self.remote, prefix)
             && let Err(error) =
                 executor::remote::patiently(|| remote.stage.collect(prefix, root, &names)).await
@@ -747,6 +751,9 @@ impl SlurmBackend {
     /// The options of the job of an attempt, whose time is that of its task plus `margin`.
     async fn job_options(&self, job: Job<'_>, root: &Path, margin: u64) -> Vec<String> {
         let mut options = sbatch_options(job, root, margin, &self.options);
+        if let Some(gb) = self.cpu_memory_gb {
+            per_cpu_memory(&mut options, gb);
+        }
         if self.remote.is_some() {
             // The node has no scratch folder; the job keeps its log in the folder of the node.
             for option in &mut options {
@@ -904,9 +911,11 @@ impl SlurmBackend {
         };
         let script = pull_script(program, &source, path, &control.join(CONTAINER_EXIT));
         tokio::fs::write(control.join(SCRIPT), script).await?;
-        let options = self
-            .with_excluded(pull_options(&name, &root, &self.pull, &self.options))
-            .await;
+        let mut options = pull_options(&name, &root, &self.pull, &self.options);
+        if let Some(gb) = self.cpu_memory_gb {
+            per_cpu_memory(&mut options, gb);
+        }
+        let options = self.with_excluded(options).await;
         let script = control.join(SCRIPT);
         let ended = match self.submit(options, &script, &root, None, cancel).await? {
             Submission::Taken(job) => {
@@ -945,7 +954,7 @@ impl SlurmBackend {
         };
         let pulled = match pulled {
             Ok(path) => Ok(path),
-            Err(message) => Err(machine(explain(message, &root, true).await)),
+            Err(message) => Err(machine(explain(message, &root, LOG, true).await)),
         };
         if root.join("remote.json").try_exists()? {
             let journal = serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
@@ -1238,7 +1247,7 @@ impl SlurmBackend {
             let mut stage = remote.stage.clone();
             stage.cleanup = staging["cleanup"].as_bool().unwrap_or(stage.cleanup);
             if journal["collect"] == true {
-                stage.collect(prefix, root, &records()).await?;
+                stage.collect(prefix, root, &records(LOG)).await?;
                 let mut journal = journal.clone();
                 journal["collect"] = serde_json::json!(false);
                 journal_at(root, &journal)?;
@@ -1645,7 +1654,7 @@ async fn finish(
     };
     let (exit_code, note) = match outcome(recorded, &ended, time) {
         Ok(outcome) => outcome,
-        Err(message) => return Err(machine(explain(message, &root, shared).await)),
+        Err(message) => return Err(machine(explain(message, &root, LOG, shared).await)),
     };
     if let Some(note) = note {
         use tokio::io::AsyncWriteExt;
@@ -1681,7 +1690,7 @@ async fn finish(
 /// The exit code that the wrapper of a task recorded in a container that ended well. The node
 /// wrote it before the record of the container, but a shared file system may show it to this
 /// machine later, so it is looked for again for a while before the attempt counts as failed.
-async fn record(spec: &task_model::TaskSpec, control: &Path) -> Option<i32> {
+pub(crate) async fn record(spec: &task_model::TaskSpec, control: &Path) -> Option<i32> {
     let since = Instant::now();
     let mut pause = Duration::from_millis(100);
     loop {
@@ -1699,7 +1708,7 @@ async fn record(spec: &task_model::TaskSpec, control: &Path) -> Option<i32> {
 /// Syncs every file in a folder, and in its folders, but not the files that links point to: on
 /// a shared file system like CephFS, a file that one machine wrote and did not sync may show
 /// empty or short on another machine for a while.
-fn sync_files(folder: &Path) -> std::io::Result<()> {
+pub(crate) fn sync_files(folder: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(folder)? {
         let entry = entry?;
         let kind = entry.file_type()?;
@@ -1761,8 +1770,8 @@ fn too_long(time: Option<u64>) -> String {
 /// A failure of the machine with the end of the job's log, or a hint when the job left none.
 /// A job on a node without the `shared` folders keeps its log beside its folder on the node
 /// when it could not send it back.
-async fn explain(message: String, root: &Path, shared: bool) -> String {
-    let log = tokio::fs::read_to_string(root.join(CONTROL).join(LOG)).await;
+pub(crate) async fn explain(message: String, root: &Path, log_file: &str, shared: bool) -> String {
+    let log = tokio::fs::read_to_string(root.join(CONTROL).join(log_file)).await;
     if log.is_err() && !shared {
         return format!(
             "{message}, and sent back no log; look for uwe-{}.*.log in the node folder \
@@ -1783,7 +1792,7 @@ async fn explain(message: String, root: &Path, shared: bool) -> String {
     }
 }
 
-async fn read_number(path: &Path) -> Option<i32> {
+pub(crate) async fn read_number(path: &Path) -> Option<i32> {
     let text = tokio::fs::read_to_string(path).await.ok()?;
     text.trim().parse().ok()
 }
@@ -1920,7 +1929,7 @@ esac"#,
     async fn names_node_folder() {
         let folder = tempfile::tempdir().unwrap();
         let root = folder.path().join("run-P-1-1");
-        let text = explain("the job failed".into(), &root, false).await;
+        let text = explain("the job failed".into(), &root, LOG, false).await;
         let hint = "look for uwe-run-P-1-1.*.log in the node folder";
         assert!(text.contains(hint), "{text}");
     }

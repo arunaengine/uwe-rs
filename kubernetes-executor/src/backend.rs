@@ -75,6 +75,10 @@ pub struct KubernetesBackend {
     /// How long a pod may find no node before it fails with the reason of the scheduler. Each
     /// new scale-up of the cluster for it starts the time again.
     pub unschedulable_time: Duration,
+    /// The pod options of every Job, before those of its task.
+    pub pod: crate::PodOptions,
+    /// The Common Workflow Scheduler that learns of each task before its Job, if any.
+    pub cws: Option<crate::cws::Client>,
     /// The label value of the Jobs of this backend.
     label: String,
     pub(crate) pods: Pods,
@@ -115,6 +119,8 @@ impl KubernetesBackend {
             staging_time: STAGING_TIME,
             start_grace: GRACE,
             unschedulable_time: UNSCHEDULABLE_TIME,
+            pod: crate::PodOptions::default(),
+            cws: None,
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
             warned: AtomicBool::new(false),
@@ -516,6 +522,11 @@ impl KubernetesBackend {
                 "kubernetes.io/arch": parts.next().unwrap_or_default(),
             });
         }
+        let mut options = self.pod.clone();
+        if let Some(list) = job.placement.options.get("pod") {
+            options.add(list).map_err(ExecutorError::Unsupported)?;
+        }
+        (options.apply(&mut manifest, job.placement)).map_err(ExecutorError::Unsupported)?;
         let resources = manifest["spec"]["template"]["spec"]["resources"].clone();
         if !resources.is_null() {
             manifest["spec"]["suspend"] = serde_json::json!(true);
@@ -574,6 +585,21 @@ impl KubernetesBackend {
             return Err(ExecutorError::Unsupported(
                 "Kubernetes admission changed aggregate task caps".into(),
             ));
+        }
+        if let Some(cws) = &self.cws {
+            let (namespace, work) = (self.cluster.namespace(), root.join(executor::WORK));
+            let copied = self.remote.is_some();
+            // CWS knows a task by its pod, which the Job controller names.
+            let registered = match self.pod_name(&name, cancel).await {
+                Ok(pod) => (cws.task(job, &pod, namespace, &work, copied).await).map_err(machine),
+                Err(error) => Err(error),
+            };
+            if let Err(error) = registered {
+                Self::stop(&self.cluster, self.poll, root, &journal, CANCEL_GRACE).await?;
+                Self::settle(self.remote.as_ref(), root, &journal).await?;
+                *prepared = None;
+                return Err(error);
+            }
         }
         if daemon.is_some() {
             return self
@@ -934,6 +960,34 @@ impl KubernetesBackend {
                 }
             }
             _ => Submitted::Unclear("the cluster cannot tell"),
+        }
+    }
+
+    /// The name of the pod of the Job `name` once it exists, waiting at most as long as a pod
+    /// may wait for a node.
+    async fn pod_name(
+        &self,
+        name: &str,
+        cancel: &CancellationToken,
+    ) -> Result<String, ExecutorError> {
+        let (pods, started) = (self.cluster.pods(), Instant::now());
+        let selector = ListParams::default().labels(&format!("job-name={name}"));
+        loop {
+            let listed = tokio::time::timeout(REQUEST_GRACE, pods.list(&selector)).await;
+            let first =
+                (listed.ok().and_then(Result::ok)).and_then(|list| list.items.into_iter().next());
+            if let Some(pod) = first.and_then(|pod| pod.metadata.name) {
+                return Ok(pod);
+            }
+            if started.elapsed() >= self.unschedulable_time {
+                return Err(machine(format!(
+                    "the Job {name} made no pod for CWS to place"
+                )));
+            }
+            tokio::select! {
+                () = tokio::time::sleep(self.poll) => {}
+                () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+            }
         }
     }
 

@@ -77,6 +77,11 @@ pub struct Resources {
     pub ram_gb: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disk_gb: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preemptible: Option<bool>,
+    /// Settings of the server's backend, like a GPU type, which it may ignore.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub backend_parameters: BTreeMap<String, String>,
 }
 
 /// One executor of a task: a command in an image.
@@ -187,6 +192,11 @@ pub struct Client {
     /// A bearer token for the server, when it needs one.
     token: Option<String>,
     basic: Option<(String, String)>,
+    /// An API key: its parameter name, the key, and whether it goes in a header rather than
+    /// the query.
+    api_key: Option<(String, String, bool)>,
+    /// How long one request may take.
+    timeout: Duration,
     polling: Arc<tokio::sync::Semaphore>,
     pub(crate) history: Arc<tokio::sync::Mutex<executor::history::Scan>>,
 }
@@ -202,7 +212,8 @@ impl std::fmt::Debug for Client {
 
 impl Client {
     /// A client of the server at `server`, like `http://localhost:8000`; the API path
-    /// `/ga4gh/tes/v1` is added unless the address has it.
+    /// `/ga4gh/tes/v1` is added unless the address ends with it or with `/v1`, as an address
+    /// from Nextflow's `tes.endpoint` does.
     pub fn new(server: &str, token: Option<String>) -> Result<Client, TesError> {
         let address = reqwest::Url::parse(server)
             .map_err(|_| TesError::Answer("TES server must be an HTTP address".into()))?;
@@ -217,7 +228,7 @@ impl Client {
             ));
         }
         let server = server.trim_end_matches('/');
-        let base = match server.ends_with("/ga4gh/tes/v1") {
+        let base = match server.ends_with("/v1") {
             true => server.to_owned(),
             false => format!("{server}/ga4gh/tes/v1"),
         };
@@ -230,6 +241,8 @@ impl Client {
             http,
             token,
             basic: None,
+            api_key: None,
+            timeout: Duration::from_secs(120),
             polling: Arc::new(tokio::sync::Semaphore::new(16)),
             history: Default::default(),
         })
@@ -237,6 +250,18 @@ impl Client {
 
     pub fn with_basic(mut self, user: String, password: String) -> Self {
         self.basic = Some((user, password));
+        self
+    }
+
+    /// Sends the API key `key` as the query parameter `name`, or with `header` as the header.
+    pub fn with_api_key(mut self, name: String, key: String, header: bool) -> Self {
+        self.api_key = Some((name, key, header));
+        self
+    }
+
+    /// Gives each request at most `timeout`.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
         self
     }
 
@@ -255,7 +280,8 @@ impl Client {
         {
             text = text.replace(value, "[secret]");
         }
-        for secret in self.token.iter().chain(
+        let key = self.api_key.iter().map(|(_, key, _)| key);
+        for secret in self.token.iter().chain(key).chain(
             self.basic
                 .iter()
                 .flat_map(|(user, password)| [user, password]),
@@ -272,8 +298,12 @@ impl Client {
     }
 
     pub(crate) fn identity(&self) -> String {
-        let bytes =
-            serde_json::to_vec(&(&self.token, &self.basic)).expect("authentication strings encode");
+        // Without an API key the fingerprint stays as before, so older journals still match.
+        let bytes = match &self.api_key {
+            None => serde_json::to_vec(&(&self.token, &self.basic)),
+            Some(key) => serde_json::to_vec(&(&self.token, &self.basic, key)),
+        };
+        let bytes = bytes.expect("authentication strings encode");
         task_model::Digest::sha256(&bytes).hex().to_owned()
     }
 
@@ -374,17 +404,34 @@ impl Client {
         mut request: reqwest::RequestBuilder,
         url: &str,
     ) -> Result<T, TesError> {
-        request = request.timeout(Duration::from_secs(120));
+        request = request.timeout(self.timeout);
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         } else if let Some((user, password)) = &self.basic {
             request = request.basic_auth(user, Some(password));
         }
+        if let Some((name, key, true)) = &self.api_key {
+            request = request.header(name.as_str(), key.as_str());
+        }
         let failed = |error: reqwest::Error| TesError::Request {
             url: url.to_owned(),
             message: self.redact(&cause(&error)),
         };
-        let response = request.send().await.map_err(failed)?;
+        let mut request = request.build().map_err(failed)?;
+        if let Some((name, key, false)) = &self.api_key {
+            request.url_mut().query_pairs_mut().append_pair(name, key);
+        }
+        // reqwest keeps a key header on a redirect to another host; this client stops there.
+        let http = match &self.api_key {
+            Some((_, _, true)) => {
+                storage::origin_client().map_err(|message| TesError::Request {
+                    url: url.to_owned(),
+                    message,
+                })?
+            }
+            _ => self.http,
+        };
+        let response = http.execute(request).await.map_err(failed)?;
         let status = response.status();
         let text = response.text().await.map_err(failed)?;
         if !status.is_success() {
@@ -462,6 +509,86 @@ mod tests {
         assert!(requests[0].contains("view=MINIMAL"));
         assert!(requests[1].contains("view=MINIMAL"));
         assert!(requests[2].contains("view=FULL"));
+    }
+
+    /// Answers one request with `reply` and sends its head first.
+    fn answer_once(
+        listener: std::net::TcpListener,
+        reply: String,
+    ) -> std::sync::mpsc::Receiver<String> {
+        use std::io::{BufRead, BufReader, Write};
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut head = String::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+                head.push_str(&line);
+            }
+            let _ = sender.send(head);
+            let _ = reader.get_mut().write_all(reply.as_bytes());
+        });
+        receiver
+    }
+
+    #[test]
+    fn keeps_key_home() {
+        let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let target = format!("http://{}/service-info", other.local_addr().unwrap());
+        let ok = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+        let reached = answer_once(other, ok.to_owned());
+        let first = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", first.local_addr().unwrap());
+        let moved = format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: {target}\r\nContent-Length: 0\r\n\
+             Connection: close\r\n\r\n"
+        );
+        let _first = answer_once(first, moved);
+        let client = Client::new(&address, None).unwrap().with_api_key(
+            "X-Api-Key".into(),
+            "made-up-key".into(),
+            true,
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let answer = runtime.block_on(client.service_info());
+        let leaked = reached.try_recv().unwrap_or_default().to_lowercase();
+        assert!(
+            !leaked.contains("x-api-key"),
+            "the key went to another host"
+        );
+        assert!(matches!(answer, Err(TesError::Status { status: 307, .. })));
+    }
+
+    #[test]
+    fn separates_key_identities() {
+        let plain = Client::new("http://localhost:1", None).unwrap();
+        let keyed = |name: &str, key: &str, header: bool| {
+            let client = Client::new("http://localhost:1", None).unwrap();
+            client
+                .with_api_key(name.into(), key.into(), header)
+                .identity()
+        };
+        let first = keyed("X-Api-Key", "made-up-one", true);
+        assert_ne!(first, keyed("X-Api-Key", "made-up-two", true));
+        assert_ne!(first, keyed("X-Other-Key", "made-up-one", true));
+        assert_ne!(first, keyed("X-Api-Key", "made-up-one", false));
+        assert_ne!(first, plain.identity());
+        assert!(!first.contains("made-up"));
+        let before = serde_json::to_vec(&(None::<String>, None::<(String, String)>)).unwrap();
+        let before = task_model::Digest::sha256(&before).hex().to_owned();
+        assert_eq!(
+            plain.identity(),
+            before,
+            "journals without a key keep their identity"
+        );
     }
 
     #[test]

@@ -1,0 +1,6 @@
+
+[FAILED] completed=0 failed=0 cached=0
+[ERROR] ERROR ~ Configuration file not found: nope.yaml
+
+ -- Check script 'main.nf' at line: 22 or see '.nextflow.log' file for more details
+[exit code 1]

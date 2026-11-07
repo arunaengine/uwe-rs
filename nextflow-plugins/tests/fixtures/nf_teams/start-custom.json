@@ -1,0 +1,1 @@
+{"type":"message","text":"Run ${session.workflowMetadata.runName} of ${session.manifest.name} by ${session.workflowMetadata.userName}, params ${session.params.size()}"}

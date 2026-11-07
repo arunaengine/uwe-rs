@@ -88,6 +88,11 @@ const CLASSES: &[(&str, &str, &str)] = &[
         "RuntimeException",
     ),
     (
+        "HdfException",
+        "io.jhdf.exceptions.HdfException",
+        "RuntimeException",
+    ),
+    (
         "IllegalArgumentException",
         "java.lang.IllegalArgumentException",
         "RuntimeException",
@@ -95,6 +100,11 @@ const CLASSES: &[(&str, &str, &str)] = &[
     (
         "NumberFormatException",
         "java.lang.NumberFormatException",
+        "IllegalArgumentException",
+    ),
+    (
+        "PatternSyntaxException",
+        "java.util.regex.PatternSyntaxException",
         "IllegalArgumentException",
     ),
     (
@@ -144,6 +154,16 @@ const CLASSES: &[(&str, &str, &str)] = &[
         "IOException",
     ),
     ("EOFException", "java.io.EOFException", "IOException"),
+    (
+        "ProtocolException",
+        "java.net.ProtocolException",
+        "IOException",
+    ),
+    (
+        "FileNotFoundException",
+        "java.io.FileNotFoundException",
+        "IOException",
+    ),
     ("ZipException", "java.util.zip.ZipException", "IOException"),
     ("ParseException", "java.text.ParseException", "Exception"),
     (

@@ -138,6 +138,55 @@ fn reports_run_insight() {
 }
 
 #[test]
+fn writes_comparison_report() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path();
+    workflow(path);
+    for note in ["first", "second"] {
+        let run = ["run", "-executor", "simulator", "main.nf", "--note", note];
+        let (code, output) = uwe(path, &run);
+        assert_eq!(code, 0, "{output}");
+    }
+    let [second, first] = runs(path).try_into().expect("two runs");
+    let compare = [
+        "compare",
+        &first,
+        &second,
+        "-report",
+        "diff.json",
+        "-fail-on-change",
+    ];
+    let (code, output) = uwe(path, &compare);
+    assert_eq!(code, 3, "{output}");
+    assert!(output.contains("diff.json (json)"), "{output}");
+    let text = std::fs::read_to_string(path.join("diff.json")).expect("the report");
+    let report: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(report["identical"], false);
+    assert_eq!(report["runA"]["runName"], first.as_str());
+    assert_eq!(report["summary"]["tasksChanged"], 1);
+    assert_eq!(report["summary"]["tasksUnchanged"], 1);
+    assert_eq!(report["params"][0]["field"], "--note");
+    let task = &report["tasks"][0];
+    assert_eq!(task["process"], "COUNT");
+    let fields: Vec<&str> = (task["fields"].as_array().expect("fields").iter())
+        .filter_map(|field| field["field"].as_str())
+        .collect();
+    assert_eq!(fields, ["script"]);
+    for (file, start) in [
+        ("diff.md", "# Run comparison report"),
+        ("diff.html", "<!doctype html>"),
+    ] {
+        let (code, output) = uwe(path, &["compare", &first, &second, "-report", file]);
+        assert_eq!(code, 0, "{output}");
+        let text = std::fs::read_to_string(path.join(file)).expect("the report");
+        assert!(text.starts_with(start) && text.contains("COUNT"), "{text}");
+    }
+    let same = ["compare", &first, &first, "-fail-on-change"];
+    let (code, output) = uwe(path, &same);
+    assert_eq!(code, 0, "{output}");
+}
+
+#[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
 fn replays_recorded_container() {
     let directory = tempfile::tempdir().expect("a temporary directory");

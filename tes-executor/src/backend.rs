@@ -239,6 +239,7 @@ impl TesBackend {
             ));
         }
         task.tags.extend(self.settings.tags.clone());
+        platform(&mut task, job, self.settings.platform);
         if let Some(tag) = &self.settings.idempotency_tag {
             task.tags.insert(tag.clone(), attempt_key);
         }
@@ -931,6 +932,7 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
         disk_gb: placement
             .disk_bytes
             .map(|bytes| bytes as f64 / crate::client::GB),
+        ..Resources::default()
     };
     Ok(Task {
         name: job.name.to_owned(),
@@ -954,6 +956,54 @@ fn task(job: Job<'_>, root: &Path) -> Result<Task, ExecutorError> {
         ],
         tags: BTreeMap::from([("uwe-attempt".to_owned(), job.name.to_owned())]),
     })
+}
+
+/// What the placement of a task and the platform of the server add to it: spot VMs, and for
+/// the Tencent Omics platform its tags and the GPUs of resource labels or accelerators.
+fn platform(task: &mut Task, job: Job<'_>, platform: Option<crate::Platform>) {
+    let placement = job.placement;
+    let resources = task.resources.get_or_insert_with(Resources::default);
+    if placement.preemptible {
+        resources.preemptible = Some(true);
+    }
+    if platform != Some(crate::Platform::TencentOmics) {
+        return;
+    }
+    let labels = &placement.labels;
+    if labels.get("preemptible").map(String::as_str) == Some("true") {
+        resources.preemptible = Some(true);
+    }
+    let count: u32 = placement.accelerators.iter().map(|gpu| gpu.count).sum();
+    let kind = (placement
+        .accelerators
+        .iter()
+        .find_map(|gpu| gpu.kind.clone()))
+    .or_else(|| {
+        let named = placement.options.get("accelerator");
+        named
+            .and_then(|named| named["type"].as_str())
+            .map(str::to_owned)
+    });
+    let count = (count > 0).then(|| count.to_string());
+    for (key, value) in [("gpuType", kind), ("gpuCount", count)] {
+        if let Some(value) = labels.get(key).cloned().or(value) {
+            resources.backend_parameters.insert(key.to_owned(), value);
+        }
+    }
+    // The platform sets RUN_ID for the runs that it starts, as nf-tencentcloud reads it.
+    if let Ok(run) = std::env::var("RUN_ID") {
+        task.tags.insert("runUuid".into(), run);
+    }
+    if let Some(folder) = task
+        .executors
+        .first()
+        .and_then(|first| first.workdir.clone())
+    {
+        task.tags.insert("WorkingDir".into(), folder);
+    }
+    if let Some(output) = task.outputs.first() {
+        task.tags.insert("DestDir".into(), output.url.clone());
+    }
 }
 
 /// Whether a command runs the wrapper of the task with a shell, plainly or under a timer.

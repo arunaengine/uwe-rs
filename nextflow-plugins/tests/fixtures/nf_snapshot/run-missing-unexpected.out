@@ -1,0 +1,10 @@
+[WORKDIR] /LAUNCH/work
+[PROCESS e3/78bec4] MAKE
+[WARN] WARN: nf-snapshot: files not in /LAUNCH/tests/snapshot.json unexpected: make/fixed.txt Set `snapshot.failOnUnexpected = true` to fail on these
+[ERROR] ERROR ~ nf-snapshot: outputs differ from /LAUNCH/tests/snapshot.json
+  missing:    make/gone.txt
+Re-run with NXF_SNAPSHOT_UPDATE=true to accept the changes
+
+ -- Check '.nextflow.log' file for details
+
+[FAILED] completed=1 failed=0 cached=0

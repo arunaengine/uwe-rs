@@ -1,0 +1,2 @@
+Recorded 2026-11-06 with Nextflow 26.04.6 and nf-emoji 0.2.0, theme ocean, with LC_ALL=C.UTF-8.
+main.nf: the probe pipeline; stdout.txt: what the run printed on standard output, Nextflow's own lines among them, the launch folder replaced by /LAUNCH.

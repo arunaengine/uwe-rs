@@ -1,0 +1,11 @@
+
+[FAILED] completed=0 failed=0 cached=0
+[ERROR] ERROR ~ Configuration validation failed for bad/order.yaml:
+ERRORS:
+  Suffix 'x' sequential_set: 'order' must be 'hierarchical' or 'flat', got 'weird'
+
+WARNINGS:
+  Suffix 'x' sequential_set: 'by_entities' has only one entity, consider using 'by_entity' instead
+
+ -- Check script 'main.nf' at line: 22 or see '.nextflow.log' file for more details
+[exit code 1]

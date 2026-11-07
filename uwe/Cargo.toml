@@ -19,12 +19,19 @@ content-store.workspace = true
 cwl-runtime.workspace = true
 executor.workspace = true
 flate2.workspace = true
+flyte-executor.workspace = true
+futures-util = { workspace = true, features = ["io"] }
 gix.workspace = true
 input-schema.workspace = true
 jiff.workspace = true
+k8s-openapi.workspace = true
+kube.workspace = true
+nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
+nextflow-plugins.workspace = true
 nextflow-runtime.workspace = true
+nomad-executor.workspace = true
 run-crate.workspace = true
 run-database.workspace = true
 run-page.workspace = true
@@ -34,12 +41,20 @@ rustix = { workspace = true, features = ["fs", "pipe", "rand", "stdio", "termios
 serde.workspace = true
 serde_json.workspace = true
 snakemake-runtime.workspace = true
+snowflake-executor.workspace = true
 storage.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 kubernetes-executor.workspace = true
+aws-batch-executor.workspace = true
+azure-batch-executor.workspace = true
+google-batch-executor.workspace = true
+htcondor-executor.workspace = true
+pbs-executor.workspace = true
+jarvice-executor.workspace = true
+wr-executor.workspace = true
 slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }
@@ -50,4 +65,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 fancy-regex.workspace = true
+hmac.workspace = true
+rcgen.workspace = true
+sha2.workspace = true
+tokio-rustls.workspace = true

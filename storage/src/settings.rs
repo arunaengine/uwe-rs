@@ -42,6 +42,15 @@ pub enum Kind {
     Https(Https),
     Ftp(Ftp),
     Folder(Folder),
+    Drs(Drs),
+    Synapse(Synapse),
+    Irods(Irods),
+    Oci(Oci),
+    Lakefs(Lakefs),
+    Lamin(Lamin),
+    /// Quilt packages in S3 buckets, with the settings of an S3 provider.
+    Quilt(S3),
+    Cas(Cas),
 }
 
 /// AWS S3, or a service that speaks its API: MinIO, Ceph, Cloudflare R2, RustFS and others.
@@ -102,6 +111,93 @@ pub struct Ftp {
     pub password: Option<Secret>,
 }
 
+/// GA4GH DRS servers, for inputs. Unset values come from the environment.
+#[derive(Clone, Debug, Default)]
+pub struct Drs {
+    /// `gen3`, `bearer` or `none`.
+    pub authentication: Option<String>,
+    /// The Gen3 API key or the bearer token; else `GEN3_API_KEY` of the environment.
+    pub credential: Option<Secret>,
+    /// For `gen3`: the path of the token exchange on the DRS server.
+    pub token_path: Option<String>,
+    /// The `type` of access method to prefer, like `s3` or `https`.
+    pub access_protocol: Option<String>,
+    /// Servers, as `host:port`, that serve plain HTTP instead of HTTPS.
+    pub plain_http: Vec<String>,
+}
+
+/// Synapse, for inputs and outputs. Unset values come from the environment.
+#[derive(Clone, Debug, Default)]
+pub struct Synapse {
+    /// The address of the REST API; Synapse itself without one.
+    pub endpoint: Option<String>,
+    /// A personal access token; else `SYNAPSE_AUTH_TOKEN` of the environment.
+    pub token: Option<Secret>,
+}
+
+/// iRODS zones, over the iRODS protocol. Unset values come from the environment.
+#[derive(Clone, Debug, Default)]
+pub struct Irods {
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub user: Option<String>,
+    pub zone: Option<String>,
+    pub password: Option<Secret>,
+    /// `native`, or `pam_password` for a PAM password.
+    pub authentication: Option<String>,
+    /// The TLS policy: `CS_NEG_REQUIRE`, `CS_NEG_DONT_CARE` or `CS_NEG_REFUSE`.
+    pub negotiation: Option<String>,
+}
+
+/// Oracle Cloud Object Storage, with the API key of a user. Unset values come from the
+/// environment and the OCI config file.
+#[derive(Clone, Debug, Default)]
+pub struct Oci {
+    pub profile: Option<String>,
+    pub region: Option<String>,
+    pub tenancy: Option<String>,
+    pub user: Option<String>,
+    pub fingerprint: Option<String>,
+    /// The API key as PEM text.
+    pub private_key: Option<Secret>,
+    pub endpoint: Option<String>,
+}
+
+/// lakeFS repositories, through its REST API and presigned addresses.
+#[derive(Clone, Debug, Default)]
+pub struct Lakefs {
+    /// The base of the API, like `https://lakefs.example.org/api/v1`.
+    pub endpoint: Option<String>,
+    pub access_key: Option<String>,
+    pub secret_key: Option<Secret>,
+    /// Whether writing to a missing branch makes it, from `branch_source`.
+    pub create_branches: bool,
+    pub branch_source: Option<String>,
+}
+
+/// LaminDB artifacts, found through LaminHub, for inputs. Unset values come from the
+/// environment.
+#[derive(Clone, Debug, Default)]
+pub struct Lamin {
+    pub api_key: Option<Secret>,
+    /// The address of LaminHub, `https://hub.lamin.ai` by default.
+    pub hub: Option<String>,
+    /// The public anon key of LaminHub.
+    pub anon_key: Option<Secret>,
+    /// Whether S3 is read with the session credentials of LaminHub, true by default.
+    pub hub_credentials: Option<bool>,
+}
+
+/// Content-addressed stores of nf-blocks: local folders or S3 prefixes by alias.
+#[derive(Clone, Debug, Default)]
+pub struct Cas {
+    pub stores: Vec<(String, String)>,
+    /// The aliases in the order reads look in.
+    pub resolve: Vec<String>,
+    /// The alias that publishing writes to.
+    pub writable: Option<String>,
+}
+
 /// A folder on this machine, which holds the objects of the addresses it serves, like a mirror
 /// of a bucket.
 #[derive(Clone, Debug)]
@@ -110,13 +206,21 @@ pub struct Folder {
 }
 
 /// The `type` of each kind of provider.
-const TYPES: [&str; 6] = [
+const TYPES: [&str; 14] = [
     "s3",
     "google-cloud-storage",
     "azure-blob-storage",
     "https",
     "ftp",
     "folder",
+    "drs",
+    "synapse",
+    "irods",
+    "oci",
+    "lakefs",
+    "lamin",
+    "quilt",
+    "cas",
 ];
 
 impl Settings {
@@ -256,6 +360,19 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
             &["s3", "http", "https"],
             |table| Ok(Kind::S3(s3(table)?)),
         ),
+        "quilt" => (
+            &[
+                "endpoint",
+                "region",
+                "path_style",
+                "access_key_id",
+                "secret_access_key",
+                "session_token",
+                "anonymous",
+            ],
+            &["quilt+s3"],
+            |table| Ok(Kind::Quilt(s3(table)?)),
+        ),
         "google-cloud-storage" => (
             &["endpoint", "credential_file", "token", "anonymous"],
             &["gs", "http", "https"],
@@ -278,6 +395,113 @@ fn kind_of(name: &str) -> Option<(&'static [&'static str], &'static [&'static st
             }))
         }),
         "folder" => (&["path"], &[], |table| Ok(Kind::Folder(folder(table)?))),
+        "drs" => (
+            &[
+                "authentication",
+                "credential",
+                "token_path",
+                "access_protocol",
+                "plain_http",
+            ],
+            &["drs"],
+            |table| {
+                Ok(Kind::Drs(Drs {
+                    authentication: table.text("authentication")?,
+                    credential: table.secret("credential")?,
+                    token_path: table.text("token_path")?,
+                    access_protocol: table.text("access_protocol")?,
+                    plain_http: table.texts("plain_http")?.unwrap_or_default(),
+                }))
+            },
+        ),
+        "irods" => (
+            &[
+                "host",
+                "port",
+                "user",
+                "zone",
+                "password",
+                "authentication",
+                "negotiation",
+            ],
+            &["irods"],
+            |table| Ok(Kind::Irods(irods(table)?)),
+        ),
+        "oci" => (
+            &[
+                "profile",
+                "region",
+                "tenancy",
+                "user",
+                "fingerprint",
+                "private_key",
+                "endpoint",
+            ],
+            &["oci"],
+            |table| {
+                Ok(Kind::Oci(Oci {
+                    profile: table.text("profile")?,
+                    region: table.text("region")?,
+                    tenancy: table.text("tenancy")?,
+                    user: table.text("user")?,
+                    fingerprint: table.text("fingerprint")?,
+                    private_key: table.secret("private_key")?,
+                    endpoint: web_address(table, "endpoint")?,
+                }))
+            },
+        ),
+        "lakefs" => (
+            &[
+                "endpoint",
+                "access_key",
+                "secret_key",
+                "create_branches",
+                "branch_source",
+            ],
+            &["lakefs"],
+            |table| {
+                Ok(Kind::Lakefs(Lakefs {
+                    endpoint: web_address(table, "endpoint")?,
+                    access_key: table.text("access_key")?,
+                    secret_key: table.secret("secret_key")?,
+                    create_branches: table.flag("create_branches")?.unwrap_or(false),
+                    branch_source: table.text("branch_source")?,
+                }))
+            },
+        ),
+        "lamin" => (
+            &["api_key", "hub", "anon_key", "hub_credentials"],
+            &["lamin"],
+            |table| {
+                Ok(Kind::Lamin(Lamin {
+                    api_key: table.secret("api_key")?,
+                    hub: web_address(table, "hub")?,
+                    anon_key: table.secret("anon_key")?,
+                    hub_credentials: table.flag("hub_credentials")?,
+                }))
+            },
+        ),
+        "cas" => (&["stores", "resolve", "writable"], &["cas"], |table| {
+            let mut stores = Vec::new();
+            if let Some(table) = table.table("stores")? {
+                for alias in table.keys() {
+                    if let Some(location) = table.text(alias)? {
+                        stores.push((alias.to_owned(), location));
+                    }
+                }
+            }
+            Ok(Kind::Cas(Cas {
+                stores,
+                resolve: table.texts("resolve")?.unwrap_or_default(),
+                writable: table.text("writable")?,
+            }))
+        }),
+        "synapse" => (&["endpoint", "token"], &["syn"], |table| {
+            Ok(Kind::Synapse(Synapse {
+                endpoint: web_address(table, "endpoint")?,
+                token: table.secret("token")?,
+            }))
+        }),
         _ => return None,
     };
     Some(kind)
@@ -359,6 +583,25 @@ fn https(table: &Table<'_>) -> Result<Https, ConfigError> {
         return Err(table.missing("user", "which goes with `password`"));
     }
     Ok(settings)
+}
+
+fn irods(table: &Table<'_>) -> Result<Irods, ConfigError> {
+    let port = match table.integer("port")? {
+        None => None,
+        Some(port) => Some(
+            u16::try_from(port)
+                .map_err(|_| table.invalid("port", "must be a port number, like 1247"))?,
+        ),
+    };
+    Ok(Irods {
+        host: table.text("host")?,
+        port,
+        user: table.text("user")?,
+        zone: table.text("zone")?,
+        password: table.secret("password")?,
+        authentication: table.text("authentication")?,
+        negotiation: table.text("negotiation")?,
+    })
 }
 
 fn folder(table: &Table<'_>) -> Result<Folder, ConfigError> {

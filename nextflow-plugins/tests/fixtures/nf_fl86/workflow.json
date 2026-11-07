@@ -1,0 +1,29 @@
+{
+    "manifest": {
+        "author": null,
+        "contributors": [
+            
+        ],
+        "defaultBranch": null,
+        "description": null,
+        "docsUrl": null,
+        "doi": null,
+        "gitmodules": null,
+        "homePage": null,
+        "icon": null,
+        "license": null,
+        "mainScript": "main.nf",
+        "name": "fl86-probe",
+        "nextflowVersion": null,
+        "organization": null,
+        "recurseSubmodules": false,
+        "version": null
+    },
+    "commandLine": "nextflow run main.nf -name probe_NGSRUN123_x -ansi-log false",
+    "commitId": null,
+    "start": "2026-11-06T11:44:44.957582258+01:00",
+    "complete": "2026-11-06T11:44:45.729527972+01:00",
+    "runName": "probe_NGSRUN123_x",
+    "resume": false,
+    "nextflowVersion": "26.04.6"
+}

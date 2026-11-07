@@ -1,0 +1,14 @@
+WARN: Unrecognized config option 'emoji.theme'
+🧪
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] /LAUNCH/work
+[🔢 counts] 1
+[🔢 counts] 2
+[PROCESS 23/9bf71f] HI (2)
+[PROCESS b8/c58880] HI (1)
+🧬 hi 1
+
+🧬 hi 2
+
+
+[SUCCESS] completed=2 failed=0 cached=0

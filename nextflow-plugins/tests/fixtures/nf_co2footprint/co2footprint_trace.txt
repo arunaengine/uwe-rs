@@ -1,0 +1,4 @@
+task_id	status	name	energy_consumption	CO2e	CO2e_market	raw_energy_processor	raw_energy_memory	carbon_intensity	%cpu	memory	realtime	cpus	powerdraw_cpu	cpu_model
+3	COMPLETED	WORK (3)	175.71 uWh	58.65 ug	-	63.83 uWh	111.88 uWh	333.77 gCO₂e/kWh	2 %	1.07 GB	1s 7ms	1	11.41 W	AMD Ryzen 9 7945HX with Radeon Graphics
+2	COMPLETED	WORK (2)	175.71 uWh	58.65 ug	-	63.83 uWh	111.88 uWh	333.77 gCO₂e/kWh	2 %	1.07 GB	1s 7ms	1	11.41 W	AMD Ryzen 9 7945HX with Radeon Graphics
+1	COMPLETED	WORK (1)	175.54 uWh	58.59 ug	-	63.77 uWh	111.77 uWh	333.77 gCO₂e/kWh	2 %	1.07 GB	1s 6ms	1	11.41 W	AMD Ryzen 9 7945HX with Radeon Graphics

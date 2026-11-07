@@ -1,0 +1,36 @@
+digraph "dagvariant" {
+  rankdir=LR;
+  ranksep=0.4;
+  // Inputs
+  subgraph inputs {
+    rank = same;
+    o0 [shape=point,label="",fixedsize=true,width=0.1,tooltip="External data input"];
+    o1 [shape=point,label="",fixedsize=true,width=0.1,tooltip="External data input"];
+  }
+  // Vertices
+  subgraph "cluster_a" {
+    label="a";
+    style="rounded";
+    p0 [label="",shape=point,width=0.2,tooltip="SAY (a)
+    Inputs: 1 file 10B
+    Outputs: 1 file 18B",style=filled,fillcolor="#45e6e6"];
+
+  }
+  subgraph "cluster_b" {
+    label="b";
+    style="rounded";
+    p1 [label="",shape=point,width=0.2,tooltip="SAY (b)
+    Inputs: 1 file 10B
+    Outputs: 1 file 18B",style=filled,fillcolor="#45e6e6"];
+
+  }
+  p2 [label="",shape=point,width=0.2,tooltip="JOIN
+  Inputs: 2 files 36B
+  Outputs: 1 file 36B",style=filled,fillcolor="#e64545"];
+
+  // Edges
+  o0 -> p0 [label="",tooltip="1 file 10B",penwidth=5.0844444448,color="#45e6e6"];
+  o1 -> p1 [label="",tooltip="1 file 10B",penwidth=5.0844444448,color="#45e6e6"];
+  p0 -> p2 [label="",tooltip="1 file 18B",penwidth=8.64,color="#e64545"];
+  p1 -> p2 [label="",tooltip="1 file 18B",penwidth=8.64,color="#e64545"];
+}

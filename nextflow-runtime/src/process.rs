@@ -12,13 +12,15 @@ use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::{
     Error, Interpreter, RenderedOutput, RenderedPart, TaskDirective, TaskFrame,
 };
+use nextflow_evaluator::lower::AGENT_DIRECTIVES;
 use nextflow_evaluator::lowered::{Input, Module, Process};
 use nextflow_evaluator::units::{parse_duration, parse_memory};
 use nextflow_evaluator::value::{ChannelId, Key, ListKind, MapKind, PathValue, Value};
 use nextflow_parser::ast::BodyKind;
+use nextflow_plugins::observer::Part;
 
 use crate::channel::Message;
-use crate::network::{Behaviour, Context, State};
+use crate::network::{Behaviour, Context, Definition, State};
 use crate::publish;
 use crate::strategy::{self, Strategy};
 
@@ -41,7 +43,12 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "maxForks",
     "maxRetries",
     "memory",
+    // The executors that take pod options get them, like Kubernetes.
+    "pod",
     "publishDir",
+    // The executor that has queues and job labels takes them, like AWS Batch and SLURM.
+    "queue",
+    "resourceLabels",
     "resourceLimits",
     "secret",
     "shell",
@@ -53,19 +60,17 @@ const HANDLED_DIRECTIVES: &[&str] = &[
     "time",
 ];
 
-const REFUSED_DIRECTIVES: &[&str] = &["hints", "maxErrors", "module", "spack"];
+const REFUSED_DIRECTIVES: &[&str] = &["maxErrors", "module", "spack"];
 
 const HINT_DIRECTIVES: &[&str] = &[
     "arch",
     "array",
     "clusterOptions",
     "executor",
+    "hints",
     "machineType",
     "maxSubmitAwait",
     "penv",
-    "pod",
-    "queue",
-    "resourceLabels",
     "scratch",
 ];
 
@@ -94,6 +99,10 @@ pub struct TaskRequest {
     pub directives: Vec<TaskDirective>,
     /// Each input file and the name it is staged under.
     pub staged: Vec<(PathValue, String)>,
+    /// The value of each input declaration, for run observers.
+    pub values: Vec<Value>,
+    /// The parts of each output declaration, for run observers.
+    pub declared: Vec<Vec<Part>>,
     pub input_environment: Vec<(Rc<str>, Value)>,
     pub stdin: Option<Value>,
     /// The glob patterns of the output files, relative to the task directory.
@@ -107,6 +116,8 @@ pub struct TaskRequest {
     /// The files that an `exec:` section made in its `task.workDir`, by their names there. Such
     /// a task ran in the interpreter already; the engine only records it.
     pub made: Option<Vec<(String, PathValue)>>,
+    /// The model call of an agent task, which the driver makes; the engine only records it.
+    pub agent: Option<Box<crate::agent::Call>>,
 }
 
 /// What a finished task produced.
@@ -193,6 +204,13 @@ impl Behaviour for ProcessNode {
         Ok(State::Running)
     }
 
+    fn definition(&self) -> Option<Definition> {
+        Some(Definition {
+            name: self.process.name.clone(),
+            script: self.module.path.borrow().clone(),
+        })
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         if self
             .max_forks
@@ -244,10 +262,21 @@ impl Behaviour for ProcessNode {
         context: &mut Context,
         mut outcome: TaskOutcome,
     ) -> Result<State, Error> {
-        let Some(flight) = self.pending.remove(&outcome.id) else {
+        let Some(mut flight) = self.pending.remove(&outcome.id) else {
             return Ok(State::Running);
         };
         context.accept(outcome.id, false);
+        if outcome.failure.is_none()
+            && let Some(structured) =
+                (self.process.agent.as_ref()).and_then(|a| a.structured.as_ref())
+        {
+            let simulated = context.interpreter.host().simulated();
+            let staged = &flight.frame.staged;
+            match crate::agent::bind(structured, &outcome.stdout, staged, &self.name, simulated) {
+                Ok(value) => flight.outputs[0].parts = vec![RenderedPart::Value(value)],
+                Err(error) => outcome.failure = Some(error),
+            }
+        }
         if outcome.exit_status != 0 || outcome.failure.is_some() {
             let failure = if outcome.exit_status == 0 {
                 outcome.failure.take()
@@ -291,7 +320,6 @@ impl Behaviour for ProcessNode {
         )?;
         context.deliver(deliveries);
         // Typed outputs compute their values from their parts in the frame of the task.
-        let mut flight = flight;
         for (output, value) in flight.outputs.iter().zip(values.iter_mut()) {
             if let (Some(typed), Some(Value::List(parts))) = (&output.typed, value.as_ref()) {
                 let parts = parts.borrow().items.clone();
@@ -394,8 +422,17 @@ impl ProcessNode {
         base: &Value,
     ) -> Result<Vec<TaskDirective>, Error> {
         let mut directives = interpreter.directives(frame, &self.process, base)?;
+        // The directives of an agent's definition win over its config, as the agent docs say.
+        let agent = self.process.agent.is_some();
+        let own: Vec<Rc<str>> = match agent {
+            true => directives
+                .iter()
+                .map(|directive| directive.name.clone())
+                .collect(),
+            false => Vec::new(),
+        };
         for (name, value) in &self.settings.selected {
-            if &**name != "ext" {
+            if &**name != "ext" && !own.contains(name) {
                 let value = setting(interpreter, frame, name, value, base)?;
                 directives.retain(|directive| directive.name != *name);
                 directives.extend(value);
@@ -415,6 +452,12 @@ impl ProcessNode {
                 ("maxErrors", _) => true,
                 ("conda", _) if !self.conda_enabled => false,
                 ("spack", _) if !self.spack_enabled => false,
+                // nf-nomad's setting of the process config, which the Nomad executor reads.
+                ("nomadOptions", _) => false,
+                // nf-jarvice's settings of the process config, which the JARVICE executor reads.
+                ("apiUrl" | "vault" | "user", _) => false,
+                ("clusterOptions", _) if takes_cluster(&directives) => false,
+                (name, _) if agent && AGENT_DIRECTIVES.contains(&name) => false,
                 (name, _) if HINT_DIRECTIVES.contains(&name) => !scheduling_hint(directive),
                 (name, _) if REFUSED_DIRECTIVES.contains(&name) => {
                     directive.arguments.iter().any(Value::truth)
@@ -485,8 +528,11 @@ impl ProcessNode {
         let directives = self.directives(interpreter, &mut frame, &base)?;
         if index == 1 && attempt == 1 {
             for directive in &directives {
+                let used = (&*directive.name == "clusterOptions" && takes_cluster(&directives))
+                    || (&*directive.name == "machineType" && takes_machine(&directives));
                 if HINT_DIRECTIVES.contains(&directive.name.as_ref())
                     && directive.arguments.iter().any(Value::truth)
+                    && !used
                 {
                     interpreter.print(&format!(
                         "INFO: process directive `{}` is ignored for process `{}`; \
@@ -500,7 +546,8 @@ impl ProcessNode {
                 .find(|directive| &*directive.name == "maxForks")
                 .and_then(|directive| directive.arguments.last())
                 .and_then(|value| value.to_string().parse().ok())
-                .filter(|limit| *limit > 0);
+                .filter(|limit| *limit > 0)
+                .or(self.process.agent.as_ref().map(|_| crate::agent::FORKS));
             self.fair = (directives.iter())
                 .find(|directive| &*directive.name == "fair")
                 .and_then(|directive| directive.arguments.last())
@@ -544,14 +591,31 @@ impl ProcessNode {
             }
         };
         let id = id.unwrap_or_else(|| context.task_id());
+        let agent = match &self.process.agent {
+            Some(agent) => Some(Box::new(crate::agent::call(
+                &self.process,
+                agent,
+                &directives,
+                &values,
+                &frame.staged,
+                &rendered.script,
+            )?)),
+            None => None,
+        };
         let mut request = TaskRequest {
             id,
             attempt,
             process: self.name.clone(),
             name: display_name(&self.name, &directives, index, self.singleton),
-            script: rendered.script,
+            // The prompt of an agent goes to the model only, not into traces and reports.
+            script: match agent {
+                Some(_) => String::new(),
+                None => rendered.script,
+            },
             directives,
             staged: frame.staged.clone(),
+            values: values.clone(),
+            declared: rendered.outputs.iter().map(declared).collect(),
             input_environment: frame.input_environment.clone(),
             stdin: frame.stdin.clone(),
             output_patterns: Vec::new(),
@@ -567,6 +631,7 @@ impl ProcessNode {
                 })?),
                 None => None,
             },
+            agent,
         };
         for part in rendered.outputs.iter().flat_map(|output| &output.parts) {
             match part {
@@ -874,13 +939,42 @@ impl ProcessNode {
     }
 }
 
+/// The parts of an output declaration as run observers see them.
+fn declared(output: &RenderedOutput) -> Vec<Part> {
+    let parts = output.parts.iter();
+    (parts.map(|part| match part {
+        RenderedPart::Value(value) => Part::Value(crate::inputs::to_json(value)),
+        RenderedPart::Path { patterns, .. } | RenderedPart::Files { patterns, .. } => {
+            Part::Files(patterns.clone())
+        }
+        _ => Part::Other,
+    }))
+    .collect()
+}
+
+/// Whether the task's executor is HTCondor or PBS Pro, whose uwe executors take all cluster
+/// options of their schedulers.
+fn takes_cluster(directives: &[TaskDirective]) -> bool {
+    let executor = (directives.iter().rev())
+        .find(|directive| &*directive.name == "executor")
+        .and_then(|directive| directive.arguments.last());
+    matches!(executor, Some(Value::String(name)) if matches!(&**name, "condor" | "ospool" | "pbspro"))
+}
+
+/// Whether the executor of the process is nf-jarvice's, which takes the machine type of a task.
+fn takes_machine(directives: &[TaskDirective]) -> bool {
+    let executor = (directives.iter().rev())
+        .find(|directive| &*directive.name == "executor")
+        .and_then(|directive| directive.arguments.last());
+    matches!(executor, Some(Value::String(name)) if &**name == "jarvice")
+}
+
 fn scheduling_hint(directive: &TaskDirective) -> bool {
     directive
         .arguments
         .iter()
         .all(|value| match &*directive.name {
             "clusterOptions" => cluster_hint(value),
-            "pod" => placement_hint(value, &["nodeSelector", "affinity", "toleration"]),
             "arch" if matches!(value, Value::Map(_)) => placement_hint(value, &["name"]),
             _ => true,
         })

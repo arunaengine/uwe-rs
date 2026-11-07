@@ -1,0 +1,35 @@
+== stream types/request.arrows
+schema: section:string, protocol_version:int32, call_id:string, function:string, script_mode:string, script_ref:string, payload_kind:string, status:string, result_kind:string, error_class:string, error_message:string, value_id:int64, parent_id:int64, key:string, index:int32, tag:string, v_string:string, v_int64:int64, v_float64:double, v_bool:bool
+batches/rows: 32
+{'section': '__nfr_control__', 'protocol_version': 1, 'call_id': <uuid>', 'function': 'f', 'script_mode': 'inline', 'script_ref': '<inline>', 'payload_kind': 'value_graph'}
+{'section': '__nfr_data__', 'value_id': 1, 'tag': 'map'}
+{'section': '__nfr_data__', 'value_id': 2, 'parent_id': 1, 'key': 'sample', 'tag': 'string', 'v_string': 'S1'}
+{'section': '__nfr_data__', 'value_id': 3, 'parent_id': 1, 'key': 'n', 'tag': 'int64', 'v_int64': 3}
+{'section': '__nfr_data__', 'value_id': 4, 'parent_id': 1, 'key': 'x', 'tag': 'float64', 'v_float64': 1.5}
+{'section': '__nfr_data__', 'value_id': 5, 'parent_id': 1, 'key': 'bd', 'tag': 'float64', 'v_float64': 2.25}
+{'section': '__nfr_data__', 'value_id': 6, 'parent_id': 1, 'key': 'flag', 'tag': 'bool', 'v_bool': True}
+{'section': '__nfr_data__', 'value_id': 7, 'parent_id': 1, 'key': 'nothing', 'tag': 'null'}
+{'section': '__nfr_data__', 'value_id': 8, 'parent_id': 1, 'key': 'values', 'tag': 'list'}
+{'section': '__nfr_data__', 'value_id': 9, 'parent_id': 8, 'index': 0, 'tag': 'int64', 'v_int64': 1}
+{'section': '__nfr_data__', 'value_id': 10, 'parent_id': 8, 'index': 1, 'tag': 'int64', 'v_int64': 2}
+{'section': '__nfr_data__', 'value_id': 11, 'parent_id': 8, 'index': 2, 'tag': 'int64', 'v_int64': 3}
+{'section': '__nfr_data__', 'value_id': 12, 'parent_id': 1, 'key': 'meta', 'tag': 'map'}
+{'section': '__nfr_data__', 'value_id': 13, 'parent_id': 12, 'key': 'batch', 'tag': 'string', 'v_string': 'B1'}
+{'section': '__nfr_data__', 'value_id': 14, 'parent_id': 12, 'key': 'flags', 'tag': 'list'}
+{'section': '__nfr_data__', 'value_id': 15, 'parent_id': 14, 'index': 0, 'tag': 'bool', 'v_bool': True}
+{'section': '__nfr_data__', 'value_id': 16, 'parent_id': 14, 'index': 1, 'tag': 'bool', 'v_bool': False}
+{'section': '__nfr_data__', 'value_id': 17, 'parent_id': 14, 'index': 2, 'tag': 'null'}
+{'section': '__nfr_data__', 'value_id': 18, 'parent_id': 1, 'key': 'rows', 'tag': 'list'}
+{'section': '__nfr_data__', 'value_id': 19, 'parent_id': 18, 'index': 0, 'tag': 'map'}
+{'section': '__nfr_data__', 'value_id': 20, 'parent_id': 19, 'key': 'sample', 'tag': 'string', 'v_string': 'S1'}
+{'section': '__nfr_data__', 'value_id': 21, 'parent_id': 19, 'key': 'x', 'tag': 'int64', 'v_int64': 1}
+{'section': '__nfr_data__', 'value_id': 22, 'parent_id': 18, 'index': 1, 'tag': 'map'}
+{'section': '__nfr_data__', 'value_id': 23, 'parent_id': 22, 'key': 'sample', 'tag': 'string', 'v_string': 'S2'}
+{'section': '__nfr_data__', 'value_id': 24, 'parent_id': 22, 'key': 'x', 'tag': 'int64', 'v_int64': 2}
+{'section': '__nfr_data__', 'value_id': 26, 'parent_id': 1, 'key': 'cols', 'tag': 'data_frame'}
+{'section': '__nfr_data__', 'value_id': 27, 'parent_id': 26, 'key': 'a', 'tag': 'list'}
+{'section': '__nfr_data__', 'value_id': 28, 'parent_id': 27, 'index': 0, 'tag': 'int64', 'v_int64': 1}
+{'section': '__nfr_data__', 'value_id': 29, 'parent_id': 27, 'index': 1, 'tag': 'int64', 'v_int64': 2}
+{'section': '__nfr_data__', 'value_id': 30, 'parent_id': 26, 'key': 'b', 'tag': 'list'}
+{'section': '__nfr_data__', 'value_id': 31, 'parent_id': 30, 'index': 0, 'tag': 'string', 'v_string': 'x'}
+{'section': '__nfr_data__', 'value_id': 32, 'parent_id': 30, 'index': 1, 'tag': 'string', 'v_string': 'y'}

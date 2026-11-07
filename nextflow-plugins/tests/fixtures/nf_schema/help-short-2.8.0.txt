@@ -1,0 +1,31 @@
+CFG-BEFORETypical pipeline command:
+
+  nextflow run probe --input x.csv
+
+--loose        [string]          An ungrouped parameter. 
+--help         [boolean, string] Show the help message for all top level parameters. When a parameter is given to `--help`, the full 
+help message of that parameter will be printed. 
+--helpFull     [boolean]         Show the help message for all non-hidden parameters. 
+--showHidden   [boolean]         Show all hidden parameters in the help message. This needs to be used in combination with `--help` 
+or `--helpFull`. 
+
+Input/output options
+  --input      [string] Path to comma-separated file containing information about the samples. 
+  --outdir     [string] The output directory where the results will be saved. 
+  --report     [string] Report file. [default: ${params.outdir}/report.html] 
+  --assets_dir [string] Assets folder. [default: ${projectDir}/assets] 
+
+Generic options
+  --mode       [string]          Method used to save pipeline results to output directory.  (accepted: symlink, rellink, link, copy, 
+copyNoFollow, move) [default: copy] 
+  --threads    [integer]         Number of threads. [default: 2] 
+  --tool       [object]          Tool settings. (This parameter has sub-parameters. Use '--help tool' to see all sub-parameters) 
+  --mixed      [string, integer] A value of two types. 
+
+ !! Hiding 1 param(s), use the `--showHidden` parameter to show them !!
+------------------------------------------------------
+CFG-AFTERExecution cancelled -- Finishing pending tasks before exit===== workflow body ran
+[PIPELINE] helpcfg.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[FAILED] completed=0 failed=0 cached=0

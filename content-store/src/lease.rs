@@ -99,6 +99,8 @@ enum Hold {
     /// Dropping it stops the renewal, which then removes the object.
     Object {
         _renewal: oneshot::Sender<()>,
+        /// The renewal task, which ends once it removed the object.
+        renewing: tokio::task::JoinHandle<()>,
         operator: Operator,
         location: String,
         token: String,
@@ -107,6 +109,18 @@ enum Hold {
 }
 
 impl Lease {
+    /// Gives the lease back and waits until the store shows it free, which dropping it does
+    /// not wait for.
+    pub async fn release(self) {
+        if let Hold::Object {
+            _renewal, renewing, ..
+        } = self._hold
+        {
+            drop(_renewal);
+            let _ = renewing.await;
+        }
+    }
+
     /// Whether this lease is held by a non-expiring local file lock.
     pub fn is_local(&self) -> bool {
         matches!(&self._hold, Hold::File { .. })
@@ -412,16 +426,9 @@ fn renewed(operator: Operator, location: &str, mut record: Record) -> Lease {
     let (stop, mut stopped) = oneshot::channel::<()>();
     let location = location.to_owned();
     let lost = Arc::new(AtomicBool::new(false));
-    let lease = Lease {
-        _hold: Hold::Object {
-            _renewal: stop,
-            operator: operator.clone(),
-            location: location.clone(),
-            token: record.token.clone(),
-            lost: lost.clone(),
-        },
-    };
-    tokio::spawn(async move {
+    let (hold_operator, hold_location) = (operator.clone(), location.clone());
+    let (hold_token, hold_lost) = (record.token.clone(), lost.clone());
+    let renewing = tokio::spawn(async move {
         loop {
             tokio::select! {
                 _ = &mut stopped => break,
@@ -462,7 +469,16 @@ fn renewed(operator: Operator, location: &str, mut record: Record) -> Lease {
             let _ = delete_record(&operator, &location, tag.as_deref()).await;
         }
     });
-    lease
+    Lease {
+        _hold: Hold::Object {
+            _renewal: stop,
+            renewing,
+            operator: hold_operator,
+            location: hold_location,
+            token: hold_token,
+            lost: hold_lost,
+        },
+    }
 }
 
 fn lease_backend(operator: &Operator) -> Result<(), StoreError> {
@@ -751,6 +767,7 @@ mod tests {
         let lease = Lease {
             _hold: Hold::Object {
                 _renewal: stop,
+                renewing: tokio::spawn(async {}),
                 operator,
                 location: location.into(),
                 token: "owner".into(),

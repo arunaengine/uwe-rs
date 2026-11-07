@@ -1,0 +1,118 @@
+===== help short
+
+--loose        [string]          An ungrouped parameter. 
+help message of that parameter will be printed. 
+or `--helpFull`. 
+
+Input/output options
+  --input      [string] Path to comma-separated file containing information about the samples. 
+  --outdir     [string] The output directory where the results will be saved. 
+  --report     [string] Report file. [default: ${params.outdir}/report.html] 
+  --assets_dir [string] Assets folder. [default: ${projectDir}/assets] 
+
+Generic options
+  --mode       [string]          Method used to save pipeline results to output directory.  (accepted: symlink, rellink, link, copy, 
+copyNoFollow, move) [default: copy] 
+  --threads    [integer]         Number of threads. [default: 2] 
+  --tool       [object]          Tool settings. (This parameter has sub-parameters. Use '--help tool' to see all sub-parameters) 
+  --mixed      [string, integer] A value of two types. 
+ !! Hiding 1 param(s), use the `--showHidden` parameter to show them !!
+------------------------------------------------------
+
+
+===== help full
+
+--loose        [string]          An ungrouped parameter. 
+help message of that parameter will be printed. 
+or `--helpFull`. 
+
+Input/output options
+  --input      [string] Path to comma-separated file containing information about the samples. 
+  --outdir     [string] The output directory where the results will be saved. 
+  --report     [string] Report file. [default: ${params.outdir}/report.html] 
+  --assets_dir [string] Assets folder. [default: ${projectDir}/assets] 
+
+Generic options
+  --mode       [string]          Method used to save pipeline results to output directory.  (accepted: symlink, rellink, link, copy, 
+copyNoFollow, move) [default: copy] 
+  --threads    [integer]         Number of threads. [default: 2] 
+  --tool.level [integer]         Tool level. [default: 3] 
+  --tool.name  [string]          Tool name. 
+  --mixed      [string, integer] A value of two types. 
+ !! Hiding 1 param(s), use the `--showHidden` parameter to show them !!
+------------------------------------------------------
+
+
+===== help parameter tool
+
+--tool
+    description: Tool settings.
+    options    : 
+      --tool.level [integer] Tool level. [default: 3] 
+      --tool.name  [string]  Tool name. 
+------------------------------------------------------
+
+
+===== help parameter input
+
+--input
+    type       : string
+    format     : file-path
+    exists     : true
+    schema     : assets/schema_input.json
+    mimetype   : text/csv
+    pattern    : ^\S+\.csv$
+    description: Path to comma-separated file containing information about the samples.
+== Top-level schema below ==
+Title: probe samplesheet
+Fields:
+    reference  [string]   A reference text
+    count      [integer] 
+    sample     [string]   [required] (pattern: ^\S+$)
+      Note: Sample name must not contain spaces
+------------------------------------------------------
+
+
+===== help missing
+!! nextflow.validation.exceptions.SchemaValidationException: Unable to create help message: Specified param 'nope' does not exist in JSON schema.
+===== help texts
+BEFORE
+Typical pipeline command:
+
+  nextflow run probe --input x.csv
+
+--loose         [string]          An ungrouped parameter. 
+help message of that parameter will be printed. 
+or `--helpFull`. 
+
+Input/output options
+  --input       [string] Path to comma-separated file containing information about the samples. 
+  --outdir      [string] The output directory where the results will be saved. 
+  --report      [string] Report file. [default: ${params.outdir}/report.html] 
+  --assets_dir  [string] Assets folder. [default: ${projectDir}/assets] 
+
+Generic options
+  --mode        [string]          Method used to save pipeline results to output directory.  (accepted: symlink, rellink, link, copy, 
+copyNoFollow, move) [default: copy] 
+  --threads     [integer]         Number of threads. [default: 2] 
+  --secret_flag [boolean]         A hidden flag. 
+  --tool        [object]          Tool settings. (This parameter has sub-parameters. Use '--help tool' to see all sub-parameters) 
+  --mixed       [string, integer] A value of two types. 
+------------------------------------------------------
+AFTER
+
+===== summary map
+!! java.lang.NullPointerException: Cannot invoke "String.contains(java.lang.CharSequence)" because "value" is null
+===== summary log
+!! java.lang.NullPointerException: Cannot invoke "String.contains(java.lang.CharSequence)" because "value" is null
+===== summary log texts
+!! java.lang.NullPointerException: Cannot invoke "String.contains(java.lang.CharSequence)" because "value" is null
+===== validate
+[WARN] WARN: The following invalid input values have been detected: * --ref: genome.fa
+valid
+===== samplesheet
+[[[id:S1, count:4], ${params.ref}], [[id:S2, count:5], ${params.tool.name}], [[id:S3, count:6], ${params.missing}], [[id:S4, count:7], ${params.nothere.deep}], [[id:S5, count:8], plain]]
+[PIPELINE] main3.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

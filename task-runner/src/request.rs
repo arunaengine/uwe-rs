@@ -169,6 +169,9 @@ pub fn request(
                 .map(|count| vec![Accelerator { count, kind: None }])
                 .unwrap_or_default(),
             offline: task.network == Network::Denied,
+            queue: resources.queue.clone(),
+            labels: resources.labels.clone(),
+            options: resources.options.clone(),
             ..Placement::default()
         },
     }
@@ -207,6 +210,8 @@ mod tests {
             resources: Resources {
                 cpus: Some(2.0),
                 gpus: Some(1),
+                queue: Some("long".into()),
+                labels: [("team".to_owned(), "genomics".to_owned())].into(),
                 ..Resources::default()
             },
             ..Task::default()
@@ -235,6 +240,8 @@ mod tests {
         assert_eq!(tagged.spec.stdin, stdin);
         assert_eq!(tagged.placement.cpus, 2);
         assert_eq!(tagged.placement.accelerators[0].count, 1);
+        assert_eq!(tagged.placement.queue.as_deref(), Some("long"));
+        assert_eq!(tagged.placement.labels["team"], "genomics");
         assert_eq!(
             tagged.spec.environment["A"],
             EnvironmentValue::Literal("1".into())

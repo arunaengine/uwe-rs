@@ -1,0 +1,4 @@
+sample_id	status	total_tasks	completed_tasks	cached_tasks	failed_tasks	aborted_tasks	retried_failures	ignored_failures
+S3	FAILED	1	0	0	0	0	0	1
+S1	COMPLETED	1	1	0	0	0	0	0
+S2	COMPLETED	2	1	0	0	0	1	0

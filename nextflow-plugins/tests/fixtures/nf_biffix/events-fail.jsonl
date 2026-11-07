@@ -1,0 +1,7 @@
+{"schema_version":1,"ts":1.793967423187E9,"run_id":"run-demo-0001","kind":"run_started","session_id":"934e0da6-5e72-4368-8849-2bc9d6e8a575"}
+{"schema_version":1,"ts":1.793967423748E9,"run_id":"run-demo-0001","kind":"task_created","task_key":"SLOW","group":"SLOW"}
+{"schema_version":1,"ts":1.793967424775E9,"run_id":"run-demo-0001","kind":"task_succeeded","task_key":"SLOW","attempt":1,"execution_id":"1"}
+{"schema_version":1,"ts":1.793967424781E9,"run_id":"run-demo-0001","kind":"task_created","task_key":"BAD","group":"BAD"}
+{"schema_version":1,"ts":1.79396742483E9,"run_id":"run-demo-0001","kind":"task_failed","task_key":"BAD","attempt":1,"execution_id":"2"}
+{"schema_version":1,"ts":1.793967424859E9,"run_id":"run-demo-0001","kind":"run_dag","dag":{"nodes":[{"id":"SLOW"},{"id":"BAD"}],"edges":[{"from":"SLOW","to":"BAD"}]}}
+{"schema_version":1,"ts":1.79396742486E9,"run_id":"run-demo-0001","kind":"run_failed"}

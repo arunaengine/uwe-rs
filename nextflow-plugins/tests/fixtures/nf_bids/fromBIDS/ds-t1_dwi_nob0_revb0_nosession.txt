@@ -1,0 +1,7 @@
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] <probe-dir>/work
+items: 1
+{"meta":{"subject":"sub-01","session":"NA","run":"NA"},"dwi_full":{"AP":{"bval":["Path:<ds>/sub-01/dwi/sub-01_dir-AP_dwi.bval"],"bvec":["Path:<ds>/sub-01/dwi/sub-01_dir-AP_dwi.bvec"],"json":["Path:<ds>/sub-01/dwi/sub-01_dir-AP_dwi.json"],"nii":["Path:<ds>/sub-01/dwi/sub-01_dir-AP_dwi.nii.gz"]}},"epi_full":{"pa":{"json":["Path:<ds>/sub-01/fmap/sub-01_dir-PA_epi.json"],"nii":["Path:<ds>/sub-01/fmap/sub-01_dir-PA_epi.nii.gz"]}},"T1w":{"json":"Path:<ds>/sub-01/anat/sub-01_T1w.json","nii":"Path:<ds>/sub-01/anat/sub-01_T1w.nii.gz"}}
+
+[SUCCESS] completed=0 failed=0 cached=0
+[exit code 0]

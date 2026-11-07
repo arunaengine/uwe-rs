@@ -47,11 +47,24 @@ impl Cluster {
     /// `namespace`, else in the namespace of that context, else in `default`. The client runs
     /// on the Tokio runtime that calls this.
     pub async fn connect(file: &Path, namespace: Option<String>) -> Result<Cluster, String> {
+        Cluster::connect_context(file, namespace, None).await
+    }
+
+    /// The cluster of the context `context` of the kubeconfig `file`, or of its current
+    /// context, as [`Cluster::connect`] finds it.
+    pub async fn connect_context(
+        file: &Path,
+        namespace: Option<String>,
+        context: Option<String>,
+    ) -> Result<Cluster, String> {
         let failed = |error: &dyn fmt::Display| {
             format!("cannot use the kubeconfig {}: {error}", file.display())
         };
         let kubeconfig = Kubeconfig::read_from(file).map_err(|error| failed(&error))?;
-        let options = KubeConfigOptions::default();
+        let options = KubeConfigOptions {
+            context,
+            ..KubeConfigOptions::default()
+        };
         let config = Config::from_custom_kubeconfig(kubeconfig, &options)
             .await
             .map_err(|error| failed(&error))?;
@@ -67,6 +80,10 @@ impl Cluster {
 
     pub fn server(&self) -> &str {
         &self.server
+    }
+
+    pub fn client(&self) -> Client {
+        self.client.clone()
     }
 
     pub fn jobs(&self) -> Api<Job> {

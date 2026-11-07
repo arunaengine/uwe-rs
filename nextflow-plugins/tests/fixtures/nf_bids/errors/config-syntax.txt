@@ -1,0 +1,14 @@
+
+[FAILED] completed=0 failed=0 cached=0
+[ERROR] ERROR ~ Failed to load BIDS configuration from bad/syntax.yaml: while parsing a block mapping
+ in 'reader', line 1, column 1:
+    : bad yaml [
+    ^
+expected <block end>, but found ':'
+ in 'reader', line 1, column 1:
+    : bad yaml [
+    ^
+
+
+ -- Check script 'main.nf' at line: 22 or see '.nextflow.log' file for more details
+[exit code 1]

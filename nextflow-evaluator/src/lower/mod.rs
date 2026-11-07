@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod agent;
 mod class;
 mod criteria;
 mod dsl1;
@@ -28,6 +29,7 @@ use crate::lowered::{
 use crate::value::Value;
 use scope::{Earlier, Scopes};
 
+pub use agent::AGENT_DIRECTIVES;
 pub use class::simple_type;
 pub use names::DIRECTIVES as PROCESS_DIRECTIVES;
 
@@ -184,6 +186,12 @@ pub fn lower_script(
     lowering.types = typed::enabled(script);
     lowering.declare_definitions(script, imports, &mut module);
     lowering.declare_classes(script, imports);
+    let records: agent::Records = (script.items.iter())
+        .filter_map(|item| match item {
+            Item::Record { name, fields, .. } => Some((name.text.as_str(), fields.as_slice())),
+            _ => None,
+        })
+        .collect();
     let statements: Vec<&ast::Statement> = script
         .items
         .iter()
@@ -228,6 +236,12 @@ pub fn lower_script(
                 let process = lowering.process(process);
                 module.processes.push(Rc::new(process));
             }
+            Item::Agent(agent) => {
+                let process = lowering.agent(agent, &records);
+                module.processes.push(Rc::new(process));
+            }
+            // A record definition only names a type, which agent outputs answer.
+            Item::Record { .. } => {}
             Item::Workflow(workflow) => {
                 let workflow = lowering.workflow(workflow);
                 module.workflows.push(Rc::new(workflow));
@@ -535,6 +549,7 @@ impl<'a> Lowering<'a> {
                     continue;
                 }
                 Item::Process(process) => (&process.name, DefinitionKind::Process),
+                Item::Agent(agent) => (&agent.name, DefinitionKind::Process),
                 Item::Workflow(workflow) => {
                     // Legacy syntax: includes inside the body, which Nextflow 21.04 takes.
                     for statement in &workflow.main.statements {

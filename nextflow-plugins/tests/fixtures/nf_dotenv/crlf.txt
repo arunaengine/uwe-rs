@@ -1,0 +1,2 @@
+CR=crlf
+FOO=bar

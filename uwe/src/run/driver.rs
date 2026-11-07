@@ -151,6 +151,14 @@ pub(crate) fn driver(
             };
             argo_runtime::driver_with(launch, services)
         }
+        Language::Wdl => {
+            let options = wdl_runtime::Options {
+                image: (arguments.default_image.clone())
+                    .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
+                print: !arguments.no_print,
+            };
+            wdl_runtime::driver_with(launch, options)
+        }
         Language::Wir => {
             let settings = wir_runtime::Settings {
                 cwl: cwl_options(arguments, setup, cancel),

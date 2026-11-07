@@ -185,6 +185,11 @@ fn describes_native_forms() {
             "main.yaml",
             "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata:\n  name: form\nspec:\n  entrypoint: main\n  arguments:\n    parameters:\n      - name: count\n        value: '3'\n  templates:\n    - name: main\n      inputs:\n        parameters:\n          - name: count\n      container:\n        image: alpine:3.23\n        command: [echo]\n        args: ['{{inputs.parameters.count}}']\n",
         ),
+        (
+            Language::Wdl,
+            "main.wdl",
+            "version 1.2\nworkflow form {\n  input {\n    Int count = 3\n  }\n}\n",
+        ),
     ];
     for (language, name, text) in files {
         let target = root.path().join(name);
@@ -199,6 +204,7 @@ fn describes_native_forms() {
             Language::Snakemake => snakemake_runtime::driver(&launch),
             Language::Cwl => cwl_runtime::driver(&launch),
             Language::Argo => argo_runtime::driver(&launch),
+            Language::Wdl => wdl_runtime::driver(&launch),
             Language::Wir => unreachable!("the list holds no wir document"),
         }
         .expect("a native driver");

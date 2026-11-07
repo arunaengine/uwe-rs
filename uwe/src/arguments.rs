@@ -319,7 +319,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-lang" => {
                 let name = value()?;
                 parsed.language = Some(language(&name).ok_or(format!(
-                    "unknown language `{name}`; use nextflow, snakemake, cwl, argo or wir"
+                    "unknown language `{name}`; use nextflow, snakemake, cwl, argo, wdl or wir"
                 ))?);
             }
             "-executor" => parsed.executor = Some(value()?),
@@ -620,7 +620,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "-lang <nextflow|snakemake|cwl|argo>",
+        "-lang <nextflow|snakemake|cwl|argo|wdl>",
         &["run", "graph", "check", "inputs", "outputs", "check-order"],
     ),
     ("-profile <a,b>", WORKFLOW),
@@ -811,13 +811,16 @@ fn engine_option(option: &str, language: Option<Language>) -> Option<&'static st
     })
 }
 
-/// Takes a job file after a CWL document as its inputs, as cwltool does in
+/// Takes a job file after a CWL or WDL document as its inputs, as cwltool does in
 /// `cwltool tool.cwl job.yml`. Other words after the target name a process of a packed
 /// document.
 fn take_job_file(parsed: &mut Arguments) {
-    let cwl = parsed.language == Some(Language::Cwl)
-        || (parsed.target.as_ref())
-            .is_some_and(|target| target.extension() == Some("cwl".as_ref()));
+    let extension = |name: &str| {
+        (parsed.target.as_ref()).is_some_and(|target| target.extension() == Some(name.as_ref()))
+    };
+    let cwl = matches!(parsed.language, Some(Language::Cwl | Language::Wdl))
+        || extension("cwl")
+        || extension("wdl");
     let job = |word: &String| {
         [".json", ".yml", ".yaml"]
             .iter()
@@ -870,6 +873,7 @@ fn language(name: &str) -> Option<Language> {
         "snakemake" | "smk" => Language::Snakemake,
         "cwl" => Language::Cwl,
         "argo" => Language::Argo,
+        "wdl" => Language::Wdl,
         "wir" => Language::Wir,
         _ => return None,
     })
@@ -1363,7 +1367,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_options() {
-        let arguments = ["-lang".to_owned(), "wdl".to_owned()];
+        let arguments = ["-lang".to_owned(), "galaxy".to_owned()];
         assert!(parse(&arguments).is_err());
         assert!(parse(&["-x".to_owned()]).is_err());
     }

@@ -8,6 +8,7 @@ mod op;
 pub mod reserved;
 mod types;
 mod value;
+mod verify;
 
 pub use document::{
     Document, Edge, Endpoint, Graph, Language, ParseError, Port, Source, VERSION, parse,
@@ -21,3 +22,4 @@ pub use types::{
     ArrayType, Field, FileType, KeyType, MapType, SecondaryFile, Type, TypeDef, resolve,
 };
 pub use value::{DirectoryValue, Entry, FileValue, fits, secondary_name};
+pub use verify::{Problem, VerifyError, verify};

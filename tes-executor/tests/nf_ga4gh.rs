@@ -127,6 +127,7 @@ fn run(
 ) -> Vec<Request> {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let backend = TesBackend {
+        run: String::new(),
         client,
         scratch: folder.path().join("scratch"),
         staging: None,

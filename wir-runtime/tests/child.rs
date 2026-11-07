@@ -1,5 +1,5 @@
-//! Checks the child driver adapter: task ids across retries, acceptance, deliveries, inputs
-//! and a single finish.
+//! Checks the child driver adapter: task ids across retries, acceptance, starts, deliveries,
+//! inputs and a single finish.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -20,6 +20,7 @@ struct Seen {
     finishes: u32,
     acknowledged: Vec<Delivery>,
     used: Option<Json>,
+    started: Vec<(TaskId, u32)>,
 }
 
 /// A child that asks for tasks 10 and 11 (after 10), retries 10 once after a failure, and
@@ -99,6 +100,10 @@ impl Driver for Script {
         self.accepted.remove(&(task, attempt))
     }
 
+    fn started(&mut self, task: TaskId, attempt: u32) {
+        self.seen.borrow_mut().started.push((task, attempt));
+    }
+
     fn cancellations(&mut self) -> Vec<TaskId> {
         vec![TaskId(11), TaskId(99)]
     }
@@ -164,6 +169,13 @@ fn retries_keep_ids() {
         "a retried task keeps its parent id"
     );
     assert!(!child.take_acceptance(TaskId(100), 1));
+    child.started(TaskId(100), 2);
+    child.started(TaskId(7), 1);
+    assert_eq!(
+        seen.borrow().started,
+        [(TaskId(10), 2)],
+        "a start reaches the child by its own id"
+    );
     assert_eq!(
         child.cancellations(),
         [TaskId(101)],

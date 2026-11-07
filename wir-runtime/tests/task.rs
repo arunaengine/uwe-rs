@@ -1,0 +1,191 @@
+//! Runs the task ops of `wir/examples/two-tools.json`: their tasks, success, failure with a
+//! retry, a missing output and success codes.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::{Path, PathBuf};
+
+use serde_json::{Value as Json, json};
+use wir_runtime::{Settings, WirDriver};
+use workflow_graph::{
+    Attempt, EdgeKind, Execution, Executor, Launch, Outcome, OutputFile, Running, Simulator, Task,
+    execute,
+};
+
+/// The example in `root`, changed by `change`, with a text file and its inputs file.
+fn example(root: &Path, change: impl FnOnce(&mut Json)) -> Launch {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../wir/examples/two-tools.json");
+    let mut document: Json = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    change(&mut document);
+    std::fs::write(root.join("two-tools.json"), document.to_string()).unwrap();
+    std::fs::write(root.join("text.txt"), "b\nc\na\n").unwrap();
+    let format = "http://edamontology.org/format_2330";
+    let text = json!({"class": "File", "location": "text.txt", "format": format});
+    let inputs = json!({"text": text, "lines": 2});
+    std::fs::write(root.join("inputs.json"), inputs.to_string()).unwrap();
+    Launch {
+        target: root.join("two-tools.json"),
+        inputs: Some(root.join("inputs.json")),
+        scratch: root.join("scratch"),
+        output_dir: Some(root.join("out")),
+        ..Launch::default()
+    }
+}
+
+fn driver(launch: &Launch) -> WirDriver {
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    WirDriver::new(launch, settings).unwrap()
+}
+
+/// Ends each attempt with `exit_code`, and, when `files` is set, with one file of the given
+/// text for each output of the task.
+struct Scripted {
+    root: PathBuf,
+    exit_code: fn(&Task) -> i32,
+    files: bool,
+    attempts: Vec<String>,
+}
+
+impl Executor for Scripted {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let task = &attempt.task;
+        self.attempts.push(task.name.clone());
+        let work = self.root.join(format!("{}-{}", task.id, attempt.number));
+        std::fs::create_dir_all(&work).unwrap();
+        let files = (task.outputs.iter())
+            .filter(|_| self.files)
+            .map(|path| {
+                std::fs::write(work.join(path), "a\n").unwrap();
+                OutputFile {
+                    path: path.clone(),
+                    location: work.join(path).to_string_lossy().into_owned(),
+                    size: Some(2),
+                    ..OutputFile::default()
+                }
+            })
+            .collect();
+        let outcome = Outcome {
+            id: task.id,
+            exit_code: (self.exit_code)(task),
+            files,
+            ..Outcome::default()
+        };
+        Running::ended(Ok(outcome))
+    }
+}
+
+fn scripted(root: &Path, exit_code: fn(&Task) -> i32, files: bool) -> Scripted {
+    Scripted {
+        root: root.join("work"),
+        exit_code,
+        files,
+        attempts: Vec::new(),
+    }
+}
+
+#[test]
+fn builds_task_commands() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = example(folder.path(), |_| {});
+    let mut driver = driver(&Launch {
+        simulated: true,
+        ..launch
+    });
+    let mut simulator = Simulator::new(folder.path().join("simulator"));
+    let graph = execute("two-tools", &mut driver, &mut simulator)
+        .into_result()
+        .unwrap();
+    let [sort, head] = &graph.nodes[..] else {
+        panic!("two tasks: {graph:?}");
+    };
+    let (sort, head) = (&sort.task, &head.task);
+    assert_eq!((sort.step.as_str(), head.step.as_str()), ("sort", "head"));
+    assert_eq!(
+        sort.image.as_deref(),
+        Some("docker.io/library/debian:12-slim")
+    );
+    let script = "exec > 'sorted.stdout'\n'sort' 'inputs/text/text.txt'";
+    assert_eq!(sort.command, ["/bin/sh", "-c", script]);
+    assert_eq!(sort.inputs[0].path, "inputs/text/text.txt");
+    assert_eq!(sort.outputs, ["sorted.stdout"]);
+    assert_eq!(sort.resources.memory_bytes, Some(268_435_456));
+    assert!(head.command[2].ends_with("'head' '-n' '2' 'inputs/sorted/sorted.stdout'"));
+    let edge = &graph.edges[0];
+    let file = EdgeKind::File {
+        path: "inputs/sorted/sorted.stdout".into(),
+    };
+    assert_eq!((edge.from, edge.to, &edge.kind), (sort.id, head.id, &file));
+}
+
+/// Runs the example on a scripted executor.
+fn run(
+    root: &Path,
+    executor: &mut Scripted,
+    change: impl FnOnce(&mut Json),
+) -> (WirDriver, Execution) {
+    let mut driver = driver(&example(root, change));
+    let execution = execute("two-tools", &mut driver, executor);
+    (driver, execution)
+}
+
+#[test]
+fn binds_task_outputs() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut executor = scripted(folder.path(), |_| 0, true);
+    let (driver, execution) = run(folder.path(), &mut executor, |_| {});
+    let graph = execution.into_result().unwrap();
+    assert!(graph.nodes.iter().all(|node| node.accepted == Some(true)));
+    let top = &workflow_graph::Driver::results(&driver).unwrap()["top"];
+    assert_eq!(
+        (top["class"].as_str(), top["basename"].as_str()),
+        (Some("File"), Some("top.stdout"))
+    );
+    assert_eq!(top["size"], 2);
+    let location = top["location"].as_str().unwrap();
+    assert!(
+        location.ends_with("/out/top.stdout"),
+        "delivered to the output folder: {location}"
+    );
+}
+
+#[test]
+fn retries_failed_tasks() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut executor = scripted(folder.path(), |_| 1, true);
+    let (_, execution) = run(folder.path(), &mut executor, |_| {});
+    let error = execution.into_result().unwrap_err().to_string();
+    assert_eq!(error, "op sort: the command ended with exit code 1");
+    assert_eq!(
+        executor.attempts,
+        ["sort", "sort"],
+        "sort has one retry, head never runs"
+    );
+}
+
+#[test]
+fn fails_missing_outputs() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut executor = scripted(folder.path(), |_| 0, false);
+    let (_, execution) = run(folder.path(), &mut executor, |_| {});
+    let error = execution.into_result().unwrap_err().to_string();
+    assert_eq!(error, "op sort: output sorted: no file matched");
+}
+
+#[test]
+fn accepts_success_codes() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut executor = scripted(
+        folder.path(),
+        |task| if task.step == "head" { 3 } else { 0 },
+        true,
+    );
+    let codes = |document: &mut Json| {
+        document["graphs"][0]["ops"][1]["kind"]["task"]["success_codes"] = json!([0, 3]);
+    };
+    let (_, execution) = run(folder.path(), &mut executor, codes);
+    execution.into_result().unwrap();
+    assert_eq!(executor.attempts, ["sort", "head"]);
+}

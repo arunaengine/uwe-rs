@@ -319,7 +319,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-lang" => {
                 let name = value()?;
                 parsed.language = Some(language(&name).ok_or(format!(
-                    "unknown language `{name}`; use nextflow, snakemake, cwl or argo"
+                    "unknown language `{name}`; use nextflow, snakemake, cwl, argo or wir"
                 ))?);
             }
             "-executor" => parsed.executor = Some(value()?),
@@ -870,6 +870,7 @@ fn language(name: &str) -> Option<Language> {
         "snakemake" | "smk" => Language::Snakemake,
         "cwl" => Language::Cwl,
         "argo" => Language::Argo,
+        "wir" => Language::Wir,
         _ => return None,
     })
 }

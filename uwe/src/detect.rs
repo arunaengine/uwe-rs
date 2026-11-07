@@ -14,8 +14,8 @@ const SNAKEFILES: [&str; 4] = [
     "workflow/snakefile",
 ];
 
-/// Detects Nextflow projects, Snakefiles and CWL or Argo documents.
-/// CWL uses `cwlVersion`; Argo uses `apiVersion: argoproj.io`.
+/// Detects Nextflow projects, Snakefiles and CWL, Argo or wir documents.
+/// CWL uses `cwlVersion`; Argo uses `apiVersion: argoproj.io`; wir is JSON with `wir_version`.
 pub fn language(target: &Path) -> Result<Language, String> {
     let shown = target.display();
     if target.is_dir() {
@@ -70,7 +70,7 @@ pub fn main_file(target: &Path, language: Language) -> Option<PathBuf> {
     let (names, extension): (&[&str], &str) = match language {
         Language::Nextflow => (&["main.nf"], "nf"),
         Language::Snakemake => (&SNAKEFILES, "smk"),
-        Language::Cwl | Language::Argo => return None,
+        Language::Cwl | Language::Argo | Language::Wir => return None,
     };
     if let Some(name) = names.iter().find(|name| target.join(name).is_file()) {
         return Some(target.join(name));
@@ -102,6 +102,9 @@ fn json_language(text: &str) -> Option<Language> {
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
     if value.get("cwlVersion").is_some() {
         return Some(Language::Cwl);
+    }
+    if value.get("wir_version").is_some() {
+        return Some(Language::Wir);
     }
     let api = value.get("apiVersion")?.as_str()?;
     api.starts_with("argoproj.io/").then_some(Language::Argo)
@@ -171,6 +174,8 @@ mod tests {
         assert_eq!(file("hello.yaml", argo), Ok(Language::Argo));
         let argo = r#"{"apiVersion": "argoproj.io/v1alpha1", "kind": "WorkflowTemplate"}"#;
         assert_eq!(file("template.json", argo), Ok(Language::Argo));
+        let wir = r#"{"wir_version": "0.1", "graphs": [], "entry": "main"}"#;
+        assert_eq!(file("run.wir.json", wir), Ok(Language::Wir));
         let other = "apiVersion: v1\nkind: ConfigMap\n";
         assert!(file("map.yaml", other).is_err());
         assert!(file("job.json", r#"{"reads": "a.fq"}"#).is_err());

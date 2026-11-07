@@ -103,34 +103,7 @@ pub(crate) fn driver(
         ),
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
-            let options = cwl_runtime::Options {
-                image: arguments
-                    .default_image
-                    .clone()
-                    .unwrap_or_else(|| cwl_runtime::tool::DEFAULT_IMAGE.into()),
-                javascript: cwl_runtime::JavaScriptSettings::from_binary(
-                    setup.engine(),
-                    cancel.clone(),
-                ),
-                local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
-                    .then(|| setup.engine()),
-                registry: setup.cwl_registry.clone(),
-                software: setup.conda.is_some(),
-                shm: match arguments.executor.as_deref().unwrap_or("local") {
-                    "local" | "kubernetes" => true,
-                    "slurm" => matches!(setup.slurm_container(arguments), "docker" | "podman"),
-                    _ => false,
-                },
-                // Apptainer on SLURM runs a saved image archive; it needs no registry.
-                archives: (arguments.executor.as_deref() == Some("slurm")
-                    && matches!(
-                        setup.slurm_container(arguments),
-                        "apptainer" | "singularity"
-                    ))
-                .then(crate::cwl_archives),
-                print: !arguments.no_print,
-                ..cwl_runtime::Options::default()
-            };
+            let options = cwl_options(arguments, setup, cancel);
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => {
@@ -178,6 +151,47 @@ pub(crate) fn driver(
             };
             argo_runtime::driver_with(launch, services)
         }
+        Language::Wir => {
+            let settings = wir_runtime::Settings {
+                cwl: cwl_options(arguments, setup, cancel),
+                print: !arguments.no_print,
+            };
+            let downloads = cache_directory().join("downloads");
+            wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
+        }
+    }
+}
+
+/// The options of CWL runs, and of the CWL blocks of wir runs.
+fn cwl_options(
+    arguments: &Arguments,
+    setup: &Setup,
+    cancel: &CancellationToken,
+) -> cwl_runtime::Options {
+    cwl_runtime::Options {
+        image: arguments
+            .default_image
+            .clone()
+            .unwrap_or_else(|| cwl_runtime::tool::DEFAULT_IMAGE.into()),
+        javascript: cwl_runtime::JavaScriptSettings::from_binary(setup.engine(), cancel.clone()),
+        local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
+            .then(|| setup.engine()),
+        registry: setup.cwl_registry.clone(),
+        software: setup.conda.is_some(),
+        shm: match arguments.executor.as_deref().unwrap_or("local") {
+            "local" | "kubernetes" => true,
+            "slurm" => matches!(setup.slurm_container(arguments), "docker" | "podman"),
+            _ => false,
+        },
+        // Apptainer on SLURM runs a saved image archive; it needs no registry.
+        archives: (arguments.executor.as_deref() == Some("slurm")
+            && matches!(
+                setup.slurm_container(arguments),
+                "apptainer" | "singularity"
+            ))
+        .then(crate::cwl_archives),
+        print: !arguments.no_print,
+        ..cwl_runtime::Options::default()
     }
 }
 

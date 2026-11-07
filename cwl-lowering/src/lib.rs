@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod defaults;
+mod expression;
 mod group;
 mod links;
 mod requirements;
@@ -126,6 +127,18 @@ impl Scope {
         inner
     }
 
+    /// The `expressionLib` of the innermost `InlineJavascriptRequirement`.
+    pub fn library(&self) -> Vec<String> {
+        (self.requirements.iter().rev())
+            .find_map(|entry| match &entry.class {
+                RequirementClass::InlineJavascript { expression_lib } => {
+                    Some(expression_lib.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
     /// The innermost requirement that `pick` takes, else the innermost hint.
     pub fn find<'s, T>(&'s self, pick: impl Fn(&'s RequirementClass) -> Option<T>) -> Option<T> {
         (self.requirements.iter().rev())
@@ -163,7 +176,8 @@ impl Lowerer {
                 })
             }
             Class::Workflow(workflow) => self.call(process, workflow, &scope, path),
-            _ => Err("this process class has no lowering yet".into()),
+            Class::ExpressionTool(tool) => self.expression(process, tool, &scope, path),
+            Class::Operation => Err("this process class has no lowering yet".into()),
         };
         match lowered {
             Ok(mut op) => {

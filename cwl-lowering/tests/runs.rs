@@ -127,3 +127,11 @@ fn links_match_native() {
     assert_eq!(native.tasks.len(), 5, "{native:?}");
     assert_eq!(lowered, native);
 }
+
+#[test]
+#[ignore = "needs the CWL JavaScript helper image, which `just test` builds"]
+fn expressions_match_native() {
+    let (native, lowered) = both("sum.cwl", json!({"a": 1}));
+    assert_eq!(native.outputs, json!({"sum": 3, "both": [1, 2]}));
+    assert_eq!(lowered, native);
+}

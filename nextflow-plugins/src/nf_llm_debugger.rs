@@ -83,6 +83,7 @@ struct Settings {
 fn activate(
     config: &Config,
     launch: &std::path::Path,
+    environment: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
     let param = |name: &str| {
         (config.get(&["params", name]))
@@ -96,7 +97,7 @@ fn activate(
     if !enabled {
         return Ok(None);
     }
-    let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+    let variable = |name: &str| environment(name).filter(|value| !value.is_empty());
     let launch = launch.to_path_buf();
     let settings = Settings::read(&param, &variable, &launch);
     let mut sender = None;

@@ -65,15 +65,17 @@ struct Settings {
     sample: usize,
 }
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |key: &str| config.get(&["flowViewer", key]).filter(Value::truth);
     let sample = text("artifactMaxSize")
         .and_then(|value| value.to_string().parse::<usize>().ok())
         .filter(|size| *size > 0)
         .unwrap_or(512);
-    let run_by = std::env::var("FLOWVIEWER_RUN_BY")
-        .ok()
-        .filter(|it| !it.is_empty());
+    let run_by = environment("FLOWVIEWER_RUN_BY").filter(|it| !it.is_empty());
     let settings = Settings {
         server: text("serverUrl").map_or_else(|| "null".into(), |url| url.to_string()),
         workflow: text("workflowName")

@@ -27,8 +27,8 @@ pub(super) struct Access {
 impl Access {
     /// From `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`; `None`
     /// without a key or a token.
-    pub(super) fn from_environment() -> Option<Access> {
-        let read = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+    pub(super) fn from_environment(variable: &crate::catalogue::Environment) -> Option<Access> {
+        let read = |name: &str| variable(name).filter(|value| !value.is_empty());
         let access = Access {
             base: read("ANTHROPIC_BASE_URL").unwrap_or_else(|| "https://api.anthropic.com".into()),
             key: read("ANTHROPIC_API_KEY"),

@@ -27,7 +27,11 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 /// How long the price service may take to connect and to answer.
 const LIMIT: Duration = Duration::from_secs(5);
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     activate_as(config, Flavour::Crg)
 }
 

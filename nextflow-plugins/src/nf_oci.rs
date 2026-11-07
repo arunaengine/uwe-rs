@@ -16,7 +16,11 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 
 /// Hands the `oci` scope to the provider that serves `oci://` paths; the plugin hears no run
 /// events.
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     storage::oci::use_scope(options(config));
     Ok(None)
 }

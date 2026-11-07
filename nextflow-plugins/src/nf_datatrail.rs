@@ -48,6 +48,7 @@ struct Plot {
 fn activate(
     config: &Config,
     launch: &std::path::Path,
+    _: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
     let launch = launch.to_path_buf();
     let Some(settings) = Settings::read(config, &launch)? else {

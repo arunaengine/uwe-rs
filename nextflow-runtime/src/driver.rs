@@ -531,10 +531,10 @@ impl Driver for Nextflow {
         self.registry = config
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
-        self.images = nextflow_plugins::image_map(config);
         let launch_dir = launch_folder(self.settings.host.as_ref());
         let host = &self.settings.host;
         let variable = |name: &str| host.environment(name);
+        self.images = nextflow_plugins::image_map(config, &variable);
         self.wave = nextflow_plugins::wave(config, &variable, self.launch.simulated)
             .map_err(DriverError::new)?;
         if let Some(note) = self.wave.as_ref().and_then(nextflow_plugins::Wave::note) {
@@ -544,7 +544,9 @@ impl Driver for Nextflow {
             for warning in nextflow_plugins::catalogue::warnings(config) {
                 self.settings.host.print(&format!("WARN: {warning}\n"));
             }
-            let observers = nextflow_plugins::catalogue::observers(config, &launch_dir);
+            let host = &self.settings.host;
+            let variable = |name: &str| host.environment(name);
+            let observers = nextflow_plugins::catalogue::observers(config, &launch_dir, &variable);
             let script = loaded.script.to_string_lossy();
             let mut reports = Reports::of(config, &launch_dir, &script);
             reports.observe(observers.map_err(DriverError::new)?);

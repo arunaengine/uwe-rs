@@ -16,7 +16,7 @@ use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::value::Value;
 
 use crate::Context;
-use crate::catalogue::{Kind, Plugin, State};
+use crate::catalogue::{Environment, Kind, Plugin, State};
 use crate::observer::{Background, Event, Observer};
 use client::Client;
 use settings::Settings;
@@ -99,9 +99,13 @@ fn shared(session: &str) -> Arc<Shared> {
     runs.entry(session.to_owned()).or_default().clone()
 }
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
-    storage::lamin::use_scope(options(config));
-    let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
+    storage::lamin::use_scope(options(config, environment));
+    let variable = |name: &str| environment(name).filter(|value| !value.is_empty());
     let Some(settings) = Settings::read(config, &variable)? else {
         return Ok(None);
     };
@@ -164,7 +168,12 @@ impl Observer for Lamin {
 
 /// The functions of `plugin/nf-lamin`.
 fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error> {
-    let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+    let variable = |name: &str| {
+        context
+            .host
+            .environment(name)
+            .filter(|value| !value.is_empty())
+    };
     let instance = settings::instance(context.config, &variable);
     let session = crate::nf_schema::get(&context.workflow, "sessionId")
         .map(|id| id.to_string())
@@ -248,7 +257,7 @@ fn collect(value: &Value, paths: &mut Vec<String>) {
     }
 }
 
-fn options(config: &Config) -> storage::lamin::Options {
+fn options(config: &Config, variable: &Environment) -> storage::lamin::Options {
     let text = |path: &[&str]| {
         (config.get(path))
             .filter(|value| !matches!(value, Value::Null))
@@ -256,7 +265,7 @@ fn options(config: &Config) -> storage::lamin::Options {
             .filter(|text| !text.is_empty())
     };
     let hub = text(&["lamin", "api", "supabase_api_url"]);
-    let environment = text(&["lamin", "env"]).or_else(|| std::env::var("LAMIN_ENV").ok());
+    let environment = text(&["lamin", "env"]).or_else(|| variable("LAMIN_ENV"));
     if hub.is_none() && environment.as_deref().is_some_and(|name| name != "prod") {
         tracing::warn!(
             "nf-lamin: uwe knows only the prod hub; set lamin.api.supabase_api_url for another"
@@ -300,7 +309,7 @@ mod tests {
             work_dir: "/work".into(),
         };
         let config = nextflow_config::load(&[file], &settings, &mut Quiet).expect("loads");
-        let found = options(&config);
+        let found = options(&config, &|_| None);
         assert_eq!(
             (
                 found.api_key,

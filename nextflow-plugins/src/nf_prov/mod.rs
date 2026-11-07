@@ -12,7 +12,7 @@ mod gexf;
 mod people;
 mod wrroc;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
 use nextflow_config::Config;
@@ -60,6 +60,7 @@ struct Report {
 fn activate(
     config: &Config,
     launch: &std::path::Path,
+    environment: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
     if matches!(
         config.get(&["prov", "enabled"]),
@@ -119,9 +120,24 @@ fn activate(
         Some(Value::List(list)) => list.borrow().items.iter().map(Value::to_string).collect(),
         _ => Vec::new(),
     };
+    let names = [
+        "prov",
+        "formats",
+        "bco",
+        "execution_domain",
+        "environment_variables",
+    ];
+    let variables = match config.get(&names) {
+        Some(Value::List(list)) => (list.borrow().items.iter())
+            .map(Value::to_string)
+            .filter_map(|name| Some((name.clone(), environment(&name)?)))
+            .collect(),
+        _ => BTreeMap::new(),
+    };
     Ok(Some(Box::new(Provenance {
         reports,
         patterns,
+        variables,
         output_dir,
         start: None,
         tasks: Vec::new(),
@@ -178,6 +194,8 @@ fn clear(file: &Path, overwrite: bool) -> Result<(), String> {
 struct Provenance {
     reports: Vec<Report>,
     patterns: Vec<String>,
+    /// The variables that the BCO report names, read from the environment of the run.
+    variables: BTreeMap<String, String>,
     output_dir: PathBuf,
     start: Option<Box<Start>>,
     tasks: Vec<Task>,
@@ -240,6 +258,7 @@ impl Provenance {
             outputs,
             output_dir: &self.output_dir,
             steps: steps(start),
+            variables: &self.variables,
         };
         for report in &self.reports {
             let pointer = format!("/prov/formats/{}", report.format.key());
@@ -274,6 +293,7 @@ struct Run<'a> {
     output_dir: &'a Path,
     /// The process step of each process, by its number.
     steps: HashMap<u32, u32>,
+    variables: &'a BTreeMap<String, String>,
 }
 
 impl Run<'_> {

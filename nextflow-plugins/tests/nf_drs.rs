@@ -34,8 +34,10 @@ fn scope_reaches_storage() {
         "plugins { id 'nf-drs@0.1.0' }\ndrs {\n    authProvider = 'bearer'\n    \
          authSecret = 'UWE_TEST_UNSET_DRS_TOKEN'\n}\n",
     );
-    let observers = catalogue::observers(&config, std::path::Path::new("/launch"))
-        .expect("an activated plugin");
+    let observers = catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+        std::env::var(name).ok()
+    })
+    .expect("an activated plugin");
     assert!(observers.is_empty());
     let storage = storage::Storage::default().blocking();
     let error = storage
@@ -45,7 +47,10 @@ fn scope_reaches_storage() {
     assert!(error.contains("UWE_TEST_UNSET_DRS_TOKEN"), "{error}");
     assert!(error.contains("bearer token"), "{error}");
     let config = loaded("plugins { id 'nf-drs' }\ndrs.authProvider = 'kerberos'\n");
-    catalogue::observers(&config, std::path::Path::new("/launch")).expect("an activated plugin");
+    catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+        std::env::var(name).ok()
+    })
+    .expect("an activated plugin");
     let storage = storage::Storage::default().blocking();
     let error = storage
         .stat("drs://127.0.0.1:9/object")

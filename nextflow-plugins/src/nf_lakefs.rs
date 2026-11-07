@@ -25,7 +25,11 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 
 /// Hands the `lakefs` scope to the provider of `lakefs://` paths. With `autoCreateBranch` or
 /// `autoCommit` and a `lakefs://` `outputDir`, an observer makes and commits its branch.
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |key| {
         (config.get(&["lakefs", key]))
             .filter(|value| !matches!(value, Value::Null))

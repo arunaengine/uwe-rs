@@ -417,7 +417,17 @@ impl Client {
         if let Some((name, key, false)) = &self.api_key {
             request.url_mut().query_pairs_mut().append_pair(name, key);
         }
-        let response = self.http.execute(request).await.map_err(failed)?;
+        // reqwest keeps a key header on a redirect to another host; this client stops there.
+        let http = match &self.api_key {
+            Some((_, _, true)) => {
+                storage::origin_client().map_err(|message| TesError::Request {
+                    url: url.to_owned(),
+                    message,
+                })?
+            }
+            _ => self.http,
+        };
+        let response = http.execute(request).await.map_err(failed)?;
         let status = response.status();
         let text = response.text().await.map_err(failed)?;
         if !status.is_success() {
@@ -495,6 +505,62 @@ mod tests {
         assert!(requests[0].contains("view=MINIMAL"));
         assert!(requests[1].contains("view=MINIMAL"));
         assert!(requests[2].contains("view=FULL"));
+    }
+
+    /// Answers one request with `reply` and sends its head first.
+    fn answer_once(
+        listener: std::net::TcpListener,
+        reply: String,
+    ) -> std::sync::mpsc::Receiver<String> {
+        use std::io::{BufRead, BufReader, Write};
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut head = String::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim().is_empty() {
+                    break;
+                }
+                head.push_str(&line);
+            }
+            let _ = sender.send(head);
+            let _ = reader.get_mut().write_all(reply.as_bytes());
+        });
+        receiver
+    }
+
+    #[test]
+    fn keeps_key_home() {
+        let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let target = format!("http://{}/service-info", other.local_addr().unwrap());
+        let ok = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+        let reached = answer_once(other, ok.to_owned());
+        let first = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", first.local_addr().unwrap());
+        let moved = format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: {target}\r\nContent-Length: 0\r\n\
+             Connection: close\r\n\r\n"
+        );
+        let _first = answer_once(first, moved);
+        let client = Client::new(&address, None).unwrap().with_api_key(
+            "X-Api-Key".into(),
+            "made-up-key".into(),
+            true,
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let answer = runtime.block_on(client.service_info());
+        let leaked = reached.try_recv().unwrap_or_default().to_lowercase();
+        assert!(
+            !leaked.contains("x-api-key"),
+            "the key went to another host"
+        );
+        assert!(matches!(answer, Err(TesError::Status { status: 307, .. })));
     }
 
     #[test]

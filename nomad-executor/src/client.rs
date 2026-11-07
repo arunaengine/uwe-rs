@@ -196,7 +196,12 @@ impl Client {
             operation: operation.to_owned(),
             message,
         };
-        let client = storage::http_client().map_err(failed)?;
+        // reqwest keeps the token header on a redirect to another host; this client stops there.
+        let client = match self.token {
+            Some(_) => storage::origin_client(),
+            None => storage::http_client(),
+        };
+        let client = client.map_err(failed)?;
         let mut words: Vec<(&str, &str)> = query.to_vec();
         if let Some(namespace) = &self.namespace {
             words.push(("namespace", namespace));
@@ -240,4 +245,60 @@ fn cause(error: &reqwest::Error) -> String {
         cause = source;
     }
     cause.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    use super::*;
+
+    /// Answers one request with `reply` and sends its head first.
+    fn answer_once(listener: TcpListener, reply: String) -> mpsc::Receiver<String> {
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("a request");
+            let mut reader = BufReader::new(stream);
+            let mut head = String::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).expect("reads the head");
+                if line.trim().is_empty() {
+                    break;
+                }
+                head.push_str(&line);
+            }
+            let _ = sender.send(head);
+            let _ = reader.get_mut().write_all(reply.as_bytes());
+        });
+        receiver
+    }
+
+    #[tokio::test]
+    async fn keeps_token_home() {
+        let other = TcpListener::bind("127.0.0.1:0").expect("a free port");
+        let target = format!(
+            "http://{}/v1/job/x/allocations",
+            other.local_addr().expect("ok")
+        );
+        let ok = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]";
+        let reached = answer_once(other, ok.to_owned());
+        let first = TcpListener::bind("127.0.0.1:0").expect("a free port");
+        let address = format!("http://{}", first.local_addr().expect("an address"));
+        let moved = format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: {target}\r\nContent-Length: 0\r\n\
+             Connection: close\r\n\r\n"
+        );
+        let _first = answer_once(first, moved);
+        let client = Client::new(&address, Some("made-up-token".into()), None, None);
+        let answer = client.allocations("x").await;
+        let leaked = reached.try_recv().unwrap_or_default().to_lowercase();
+        assert!(
+            !leaked.contains("x-nomad-token"),
+            "the token went to another host"
+        );
+        assert_eq!(answer.err().and_then(|error| error.status()), Some(307));
+    }
 }

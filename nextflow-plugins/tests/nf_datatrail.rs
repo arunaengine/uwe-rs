@@ -181,7 +181,9 @@ fn files_follow_launch() {
         work_dir: launch.join("work").to_string_lossy().into_owned(),
     };
     let config = nextflow_config::load(&[file], &options, &mut Quiet).expect("loads");
-    let observers = nextflow_plugins::catalogue::observers(&config, &launch).expect("activates");
+    let observers =
+        nextflow_plugins::catalogue::observers(&config, &launch, &|name| std::env::var(name).ok())
+            .expect("activates");
     assert_eq!(observers.len(), 1);
     assert!(
         launch.join("inputs.csv").is_file(),

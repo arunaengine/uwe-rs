@@ -53,8 +53,10 @@ fn scope_reaches_storage() {
         "plugins {{ id 'nf-irods@0.1.2' }}\nirods {{\n    host = '127.0.0.1'\n    port = {port}\n    \
          username = 'rods'\n    password = 'rods'\n    zone = 'tempZone'\n}}\n"
     ));
-    let observers = catalogue::observers(&config, std::path::Path::new("/launch"))
-        .expect("an activated plugin");
+    let observers = catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+        std::env::var(name).ok()
+    })
+    .expect("an activated plugin");
     assert!(observers.is_empty());
     let storage = storage::Storage::default().blocking();
     let error = storage
@@ -68,7 +70,10 @@ fn scope_reaches_storage() {
         "{startup}"
     );
     let config = loaded("plugins { id 'nf-irods' }\nirods.sslNegotiationPolicy = 'CS_NEG_MAYBE'\n");
-    catalogue::observers(&config, std::path::Path::new("/launch")).expect("an activated plugin");
+    catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+        std::env::var(name).ok()
+    })
+    .expect("an activated plugin");
     let storage = storage::Storage::default().blocking();
     let error = storage
         .stat("irods:///tempZone/a.txt")

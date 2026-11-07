@@ -237,13 +237,17 @@ fn checks_cleanup_setting() {
         let config = loaded(&format!(
             "plugins {{ id 'nf-boost' }}\nboost.cleanup = {value}\n"
         ));
-        let observers = catalogue::observers(&config, std::path::Path::new("/launch"))
-            .expect("a valid setting");
+        let observers = catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+            std::env::var(name).ok()
+        })
+        .expect("a valid setting");
         assert!(observers.is_empty(), "{value}");
     }
     let config = loaded("plugins { id 'nf-boost' }\nboost.cleanup = 'v3'\n");
-    let error = catalogue::observers(&config, std::path::Path::new("/launch"))
-        .err()
-        .expect("an invalid setting");
+    let error = catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+        std::env::var(name).ok()
+    })
+    .err()
+    .expect("an invalid setting");
     assert_eq!(error, "Invalid `boost.cleanup` value -- v3");
 }

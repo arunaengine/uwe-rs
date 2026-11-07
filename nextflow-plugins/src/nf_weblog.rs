@@ -32,7 +32,11 @@ const WAIT: Duration = Duration::from_secs(60);
 /// The exit status of a task that has not ended, Java's largest `int`.
 const UNKNOWN_EXIT: i64 = 2_147_483_647;
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let setting =
         |key: &str| (config.get(&["weblog", key])).filter(|value| !matches!(value, Value::Null));
     if !setting("enabled").is_some_and(|value| value.truth()) {

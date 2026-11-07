@@ -35,6 +35,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 fn activate(
     config: &Config,
     launch: &std::path::Path,
+    _: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
     let settings = settings::read(config, launch)?;
     Ok(Some(Box::new(Footprint {

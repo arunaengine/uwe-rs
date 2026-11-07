@@ -1,5 +1,5 @@
-//! The plugin catalogue: every registry plugin with its state, and the warnings for the
-//! plugins of a config that a run skips.
+//! The plugin catalogue: every registry plugin with its state, the warnings for the plugins
+//! of a config that a run skips, and the environment that observers read.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -60,8 +60,10 @@ fn warns_skipped_plugins() {
             "The plugin `nf-unknown` is not known to uwe; its features are skipped",
         ]
     );
-    let observers = catalogue::observers(&config, std::path::Path::new("/launch"))
-        .expect("no plugin config fails");
+    let observers = catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+        std::env::var(name).ok()
+    })
+    .expect("no plugin config fails");
     assert!(observers.is_empty());
     assert!(catalogue::warnings(&loaded("params.x = 1\n")).is_empty());
 }
@@ -102,5 +104,34 @@ fn lists_registry_plugins() {
     assert_eq!(
         capabilities["nf-nim"]["reason"],
         "it ignores the task's inputs and always sends the same downloaded file"
+    );
+}
+
+/// Set in the child process of `observers_read_run`, which has a token of its own.
+const CHILD: &str = "NF_PLUGINS_ENVIRONMENT_CHILD";
+
+#[test]
+fn observers_read_run() {
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().expect("the test"))
+            .args(["--exact", "observers_read_run", "--test-threads=1"])
+            .env(CHILD, "1")
+            .env("TOWER_ACCESS_TOKEN", "process-token")
+            .output()
+            .expect("runs the child");
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{text}");
+        return;
+    }
+    let config = loaded("tower { enabled = true; endpoint = 'http://127.0.0.1:9' }\n");
+    let launch = std::path::Path::new("/launch");
+    let given = |name: &str| (name == "TOWER_ACCESS_TOKEN").then(|| "run-token".to_owned());
+    let observers = catalogue::observers(&config, launch, &given).expect("the token of the run");
+    assert_eq!(observers.len(), 1);
+    let error = catalogue::observers(&config, launch, &|_| None).err();
+    let error = error.expect("no token without a value of the run");
+    assert!(
+        error.starts_with("Missing Seqera Platform access token"),
+        "{error}"
     );
 }

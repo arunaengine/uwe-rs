@@ -54,8 +54,12 @@ pub type Call = fn(&str, Vec<Value>, &mut Context) -> Result<Value, Error>;
 /// Calls a method of an object of a plugin, `None` when the object has no such method.
 pub type Methods = fn(&Value, &str, Vec<Value>, &mut Context) -> Result<Option<Value>, Error>;
 
+/// Reads a variable of the environment of the run, as the host of the run gives it.
+pub type Environment<'a> = dyn Fn(&str) -> Option<String> + 'a;
+
 /// Makes the run observer of a plugin from the config, `None` when the config turns it off.
-pub type Activate = fn(&Config, &std::path::Path) -> Result<Option<Box<dyn Observer>>, String>;
+pub type Activate =
+    fn(&Config, &std::path::Path, &Environment) -> Result<Option<Box<dyn Observer>>, String>;
 
 /// A plugin, as the `plugins` block of a config and `include ... from 'plugin/<id>'` name it.
 #[derive(Clone, Copy, Debug)]
@@ -423,16 +427,18 @@ pub fn warnings(config: &Config) -> Vec<String> {
 }
 
 /// The run observers of the plugins of the config that have one and that the config turns on.
-/// Their relative paths start from the launch folder `launch`.
+/// Their relative paths start from the launch folder `launch`, and they read the environment
+/// of the run through `environment`.
 pub fn observers(
     config: &Config,
     launch: &std::path::Path,
+    environment: &Environment,
 ) -> Result<Vec<Box<dyn Observer>>, String> {
     let mut observers = Vec::new();
     for id in configured(config) {
         let activate = find(&id).and_then(|plugin| plugin.observer);
         if let Some(observer) = activate
-            .map(|activate| activate(config, launch))
+            .map(|activate| activate(config, launch, environment))
             .transpose()?
             .flatten()
         {
@@ -441,7 +447,7 @@ pub fn observers(
     }
     // Nextflow loads nf-tower without a `plugins` line when the config turns it on.
     if !configured(config).iter().any(|id| id == "nf-tower")
-        && let Some(observer) = crate::nf_tower::implied(config, launch)?
+        && let Some(observer) = crate::nf_tower::implied(config, launch, environment)?
     {
         observers.push(observer);
     }

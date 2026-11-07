@@ -55,9 +55,15 @@ struct Settings {
     include_failed: bool,
     /// The model of the AI section, when it is on.
     model: Option<String>,
+    /// How to reach the model, read from the environment of the run when the section is on.
+    access: Option<Access>,
 }
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let value = |path: &[&str]| config.get(&[&["runinsights"], path].concat());
     let flag = |path: &[&str]| value(path).is_some_and(|value| value.truth());
     let text = |path: &[&str]| {
@@ -65,11 +71,15 @@ fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Obser
             .filter(Value::truth)
             .map(|value| value.to_string())
     };
+    let model = flag(&["ai", "enabled"])
+        .then(|| text(&["ai", "model"]).unwrap_or_else(|| "claude-opus-5".into()));
     let settings = Settings {
         history: text(&["history"]).unwrap_or_else(|| "~/.nf-runinsights/history".into()),
         include_failed: flag(&["includeFailed"]),
-        model: flag(&["ai", "enabled"])
-            .then(|| text(&["ai", "model"]).unwrap_or_else(|| "claude-opus-5".into())),
+        access: model
+            .as_ref()
+            .and_then(|_| Access::from_environment(environment)),
+        model,
     };
     let mut insights = Insights {
         settings,
@@ -185,13 +195,13 @@ impl Insights {
         let mut report = report(start, &pipeline, &ts, &processes, &prior, &found);
         if let Some(model) = &self.settings.model {
             let payload = payload(start, &pipeline, &processes, &prior, &found);
-            match Access::from_environment() {
+            match &self.settings.access {
                 None => lines.push(
                     "nf-runinsights: AI analysis skipped: set ANTHROPIC_API_KEY in the launch \
                      environment"
                         .into(),
                 ),
-                Some(access) => match ai::narrate(&access, model, &ai::data(&payload)) {
+                Some(access) => match ai::narrate(access, model, &ai::data(&payload)) {
                     Ok(text) => {
                         report.push_str(&format!(
                             "\n## AI analysis\n\n{text}\n\n_Written by {model} from the \

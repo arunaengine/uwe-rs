@@ -115,8 +115,27 @@ impl Builder<'_> {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::copy(source, target).map(|_| ())
+        copy_tree(source, &target, &self.folder)
     }
+}
+
+/// Copies a file, or a folder with all it holds, leaving out the crate folder `skip` and
+/// linked folders.
+fn copy_tree(source: &Path, target: &Path, skip: &Path) -> std::io::Result<()> {
+    if !source.is_dir() {
+        return std::fs::copy(source, target).map(|_| ());
+    }
+    std::fs::create_dir_all(target)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let path = entry.path();
+        let linked_folder = entry.file_type()?.is_symlink() && path.is_dir();
+        if linked_folder || path.canonicalize().ok() == skip.canonicalize().ok() {
+            continue;
+        }
+        copy_tree(&path, &target.join(entry.file_name()), skip)?;
+    }
+    Ok(())
 }
 
 /// The config as Nextflow's canonical config printer writes it: scopes sorted by name, three
@@ -179,5 +198,24 @@ fn config_value(value: &Value) -> String {
             format!("[{}]", entries.join(", "))
         }
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// A folder input lands in the crate with its files, without the crate inside it.
+    #[test]
+    fn copies_folders() {
+        let project = tempfile::tempdir().expect("a folder");
+        let input = project.path().join("reads");
+        std::fs::create_dir_all(input.join("lane")).expect("makes folders");
+        std::fs::write(input.join("lane/a.fq"), "@a\n").expect("writes");
+        let crate_folder = input.join("crate");
+        std::fs::create_dir_all(&crate_folder).expect("makes the crate");
+        let target = crate_folder.join("reads");
+        super::copy_tree(&input, &target, &crate_folder).expect("copies");
+        let copied = std::fs::read_to_string(target.join("lane/a.fq")).expect("the copy");
+        assert_eq!(copied, "@a\n");
+        assert!(!target.join("crate").exists());
     }
 }

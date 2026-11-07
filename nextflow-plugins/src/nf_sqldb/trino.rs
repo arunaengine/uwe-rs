@@ -120,6 +120,14 @@ impl Trino {
             let Some(next) = answer["nextUri"].as_str().map(str::to_owned) else {
                 return Ok((table, answer["updateCount"].as_u64()));
             };
+            // The credentials go with every page, so only to the coordinator itself.
+            if !crate::service::same_origin(&self.base, &next) {
+                let shown = crate::service::safe_url(&next);
+                return Err(format!(
+                    "Trino named a next page on another address, {shown}, which uwe does not \
+                     send the credentials to"
+                ));
+            }
             answer = self.send("GET", &next, None)?;
         }
     }
@@ -251,6 +259,11 @@ fn decoded(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use super::*;
 
     #[test]
@@ -296,5 +309,54 @@ mod tests {
         assert!(refused.is_err());
         let secure = coordinator("//db?SSL=true", None, Some("pw".into())).expect("TLS");
         assert_eq!(secure.base, "https://db:443");
+    }
+
+    /// Answers one request on a free local port with `reply`, and marks when it does.
+    fn serve(reply: String, heard: Arc<AtomicBool>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("binds a free port");
+        let address = format!("http://{}", listener.local_addr().expect("an address"));
+        std::thread::spawn(move || {
+            let Ok((stream, _)) = listener.accept() else {
+                return;
+            };
+            heard.store(true, Ordering::SeqCst);
+            let mut reader = BufReader::new(&stream);
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                    break;
+                }
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+            }
+            let _ = reader.read_exact(&mut vec![0; length]);
+            let text = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+            let _ = (&stream).write_all(text.as_bytes());
+        });
+        address
+    }
+
+    #[test]
+    fn stays_on_coordinator() {
+        let elsewhere = Arc::new(AtomicBool::new(false));
+        let other = serve(r#"{"id":"q1"}"#.to_owned(), elsewhere.clone());
+        let next = format!(r#"{{"id":"q1","nextUri":"{other}/v1/statement/q1/1"}}"#);
+        let trino = Trino {
+            base: serve(next, Arc::new(AtomicBool::new(false))),
+            headers: vec![("Authorization".into(), "Bearer not-a-real-token".into())],
+        };
+        let error = trino
+            .run("SELECT 1")
+            .expect_err("a page on another address fails");
+        assert!(error.contains("another address"), "{error}");
+        assert!(
+            !elsewhere.load(Ordering::SeqCst),
+            "the other address got a request"
+        );
     }
 }

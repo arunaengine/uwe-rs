@@ -110,6 +110,14 @@ pub(crate) fn safe_url(url: &str) -> String {
     format!("{scheme}{host}{path}")
 }
 
+/// Whether two addresses share scheme, host and port.
+pub(crate) fn same_origin(url: &str, other: &str) -> bool {
+    match (reqwest::Url::parse(url), reqwest::Url::parse(other)) {
+        (Ok(url), Ok(other)) => url.origin() == other.origin(),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

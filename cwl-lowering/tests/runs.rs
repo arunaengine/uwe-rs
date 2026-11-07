@@ -135,3 +135,14 @@ fn expressions_match_native() {
     assert_eq!(native.outputs, json!({"sum": 3, "both": [1, 2]}));
     assert_eq!(lowered, native);
 }
+
+#[test]
+fn bindings_match_native() {
+    let (native, lowered) = both("shout.cwl", json!({"message": "hi"}));
+    let words = ["exec", ">", "out.txt", "echo", "hi!", "hi", "2"];
+    assert_eq!(
+        native.tasks,
+        [("shout".to_owned(), words.map(str::to_owned).to_vec())]
+    );
+    assert_eq!(lowered, native);
+}

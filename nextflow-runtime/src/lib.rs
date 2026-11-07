@@ -141,7 +141,9 @@ impl Run {
             operator_directory: &mut operator_directory,
         };
         let started = (|| {
-            session.start_plugins()?;
+            if !session.start_plugins()? {
+                return Ok(Vec::new());
+            }
             {
                 let mut builder = build::Builder {
                     network: &mut network,

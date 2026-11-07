@@ -221,8 +221,9 @@ pub struct Context<'a> {
 }
 
 /// Runs what the plugins of the config do when a run starts, before its script: nf-schema
-/// checks its config, and may print help and end the run instead.
-pub fn start(context: &mut Context) -> Result<(), Error> {
+/// checks its config, and may print help and end the run instead. `false` ends the run with
+/// success before its script, like nf-bactopia after its help.
+pub fn start(context: &mut Context) -> Result<bool, Error> {
     if catalogue::configured(context.config)
         .iter()
         .any(|id| id == "nf-schema")
@@ -232,8 +233,9 @@ pub fn start(context: &mut Context) -> Result<(), Error> {
     if catalogue::configured(context.config)
         .iter()
         .any(|id| id == "nf-bactopia")
+        && !nf_bactopia::start(context)
     {
-        nf_bactopia::start(context)?;
+        return Ok(false);
     }
     if catalogue::configured(context.config)
         .iter()
@@ -247,7 +249,7 @@ pub fn start(context: &mut Context) -> Result<(), Error> {
     {
         nf_jev::start(context)?;
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Runs what the plugins of the config do when a run ends, after its `onComplete` handlers;

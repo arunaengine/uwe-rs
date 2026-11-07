@@ -162,8 +162,12 @@ fn prints_run_summary() {
 
 #[test]
 fn prints_help() {
-    check("prints.nf", &[("help", "true")], "help.out");
-    check("prints.nf", &[("help_all", "true")], "help-all.out");
+    for (name, recording) in [("help", "help.out"), ("help_all", "help-all.out")] {
+        check("prints.nf", &[(name, "true")], recording);
+        let recorded = std::fs::read_to_string(fixtures().join(recording)).expect("reads");
+        let (_, _, result) = run("prints.nf", &[(name, "true")], &recorded);
+        result.unwrap_or_else(|error| panic!("the help ends the run well: {error}"));
+    }
 }
 
 #[test]

@@ -326,7 +326,7 @@ fn mapped() -> Json {
 }
 
 #[test]
-fn expr_needs_one_output() {
+fn single_expr_output() {
     let mut document = base();
     let expr = json!({
         "path": "pick",

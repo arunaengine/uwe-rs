@@ -137,6 +137,8 @@ fn sends_discovered_outputs() {
     .unwrap();
     std::fs::write(root.join("work/declared"), "declared").unwrap();
     std::fs::write(root.join("work/.hidden"), "hidden").unwrap();
+    let program = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(root.join("work/.hidden"), program).unwrap();
     std::fs::write(root.join("work/result/.child"), "child").unwrap();
     std::fs::write(root.join("work/unrelated"), "not selected").unwrap();
     std::fs::write(
@@ -166,7 +168,7 @@ fn sends_discovered_outputs() {
         files: (1..=4)
             .map(|number| request("PUT", &store.path().join(number.to_string())))
             .collect(),
-        records: ["manifest", "objects"]
+        records: ["manifest", "objects", "executables"]
             .into_iter()
             .map(|name| Record {
                 name: name.into(),
@@ -183,6 +185,8 @@ fn sends_discovered_outputs() {
     );
     assert_eq!(std::fs::read(store.path().join("3")).unwrap(), b"hidden");
     assert_eq!(std::fs::read(store.path().join("4")).unwrap(), b"child");
+    let programs = std::fs::read_to_string(store.path().join("executables"));
+    assert_eq!(programs.unwrap(), "3\n", "the discovered program is listed");
     assert!(!index.contains("input"));
     assert!(!index.contains("unrelated"));
     let manifest = std::fs::read_to_string(store.path().join("manifest")).unwrap();

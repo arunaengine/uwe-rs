@@ -895,7 +895,7 @@ impl Session {
             workflow: self.workflow.clone(),
         };
         let result = match name {
-            "start" => nextflow_plugins::start(&mut context).map(|()| Value::Null),
+            "start" => nextflow_plugins::start(&mut context).map(|_| Value::Null),
             name => call("nf-schema", name, arguments, &mut context),
         };
         (printed(result), host.printed)

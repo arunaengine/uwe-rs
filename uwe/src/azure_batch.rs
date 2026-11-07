@@ -45,6 +45,7 @@ pub fn executor(
     run: &str,
     default_image: Option<String>,
     setup: &crate::setup::Setup,
+    secrets: &config_file::SecretValues,
 ) -> Result<RunnerExecutor<crate::conda_backend::Remote<AzureBackend>>, String> {
     let config = &setup.executors.azure_batch;
     let stage = config.staging.stage(&setup.storage)?.ok_or(
@@ -54,7 +55,7 @@ pub fn executor(
     let variable = |name: &str| std::env::var(name).ok();
     let settings = config.settings.clone();
     let (endpoint, account) = address(&settings, variable)?;
-    let credentials = Credentials::find(&settings, &account, variable)?;
+    let credentials = Credentials::find(&settings, &account, |name| secrets.get(name))?;
     let api = settings.api_version.clone();
     let client = Client::new(endpoint, account, api, credentials);
     let upload = match (&settings.helper, &config.helper_file) {

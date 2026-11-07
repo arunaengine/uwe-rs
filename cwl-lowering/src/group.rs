@@ -85,7 +85,7 @@ impl Lowerer {
             op.origin.clone(),
         );
         condition.inputs = (step.inputs.iter())
-            .filter(|input| !input.source.is_empty())
+            .filter(|input| !input.source.is_empty() || input.default.is_some())
             .map(|input| port(short_name(&input.id), Type::Dynamic))
             .collect();
         condition.outputs = vec![port("out", Type::Bool)];
@@ -228,8 +228,9 @@ fn port(name: &str, r#type: Type) -> Port {
     }
 }
 
-/// A port whose type is an array `depth` times.
+/// A port whose type is an array `depth` times, without the default of its items.
 fn array(mut port: Port, depth: usize) -> Port {
+    port.default = None;
     for _ in 0..depth {
         port.r#type = Type::Array(ArrayType {
             items: Box::new(port.r#type),

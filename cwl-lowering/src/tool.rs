@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cmp::Ordering;
+use std::path::Path;
 
 use cwl_parser::model::{
     Argument as CwlArgument, CommandLineBinding, CommandLineTool, Dynamic, Expression, Part,
@@ -11,6 +12,7 @@ use cwl_parser::model::{
 use wir::{Argument, Attributes, Capture, CaptureRule, FileType, Port, Task, Type};
 
 use crate::Scope;
+use crate::defaults;
 use crate::requirements;
 use crate::types::convert;
 
@@ -25,8 +27,14 @@ pub struct Lowered {
     pub attributes: Attributes,
 }
 
-/// The task of a tool, or the first thing it uses that a task cannot say the same way.
-pub fn lower(process: &Process, tool: &CommandLineTool, scope: &Scope) -> Result<Lowered, String> {
+/// The task of a tool, or the first thing it uses that a task cannot say the same way. File
+/// defaults are relative to `base`.
+pub fn lower(
+    process: &Process,
+    tool: &CommandLineTool,
+    scope: &Scope,
+    base: &Path,
+) -> Result<Lowered, String> {
     let mut task = Task {
         image: Some(DEFAULT_IMAGE.to_owned()),
         command: Vec::new(),
@@ -70,9 +78,6 @@ pub fn lower(process: &Process, tool: &CommandLineTool, scope: &Scope) -> Result
     let mut inputs = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
-        if input.default.is_some() {
-            return Err(format!("the default of input {name}"));
-        }
         if !input.secondary_files.is_empty() || !input.format.is_empty() {
             return Err(format!("the secondary files or format of input {name}"));
         }
@@ -85,12 +90,17 @@ pub fn lower(process: &Process, tool: &CommandLineTool, scope: &Scope) -> Result
             words.push((key, bound(binding, &input.value_type, &name)?));
         }
         let r#type = convert(&input.value_type).map_err(|why| format!("input {name}: {why}"))?;
-        inputs.push(Port {
+        let mut port = Port {
             name,
             r#type,
             flow: wir::Flow::Value,
             default: None,
-        });
+        };
+        if let Some(default) = &input.default {
+            defaults::set(&mut port, default, base)
+                .map_err(|why| format!("input {}: {why}", port.name))?;
+        }
+        inputs.push(port);
     }
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();

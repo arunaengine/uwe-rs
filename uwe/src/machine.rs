@@ -447,7 +447,14 @@ mod executors {
                 cloud("AWS Batch")
             }
             "google-batch" => {
-                crate::google_batch::executor(store, &scratch, run, image, setup)?;
+                crate::google_batch::executor(
+                    store,
+                    &scratch,
+                    run,
+                    image,
+                    setup,
+                    &arguments.secrets,
+                )?;
                 cloud("Google Batch")
             }
             "azure-batch" => {

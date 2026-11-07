@@ -8587,6 +8587,7 @@ dependencies = [
  "storage",
  "tempfile",
  "tracing",
+ "wdl-runtime",
  "wir",
  "workflow-graph",
 ]

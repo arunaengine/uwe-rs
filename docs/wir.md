@@ -34,7 +34,7 @@ An attempt is accepted only when its exit code is in `success_codes` (only 0 whe
 
 ## Native blocks
 
-A `native` op runs a whole document of another language with the driver that uwe has for that language. This version runs CWL, Nextflow, Snakemake and Argo blocks. The op's inputs become the job of the CWL run, by port name, and the CWL output object becomes the op's outputs, by port name; each output must fit its port type, or the op fails. The block keeps its own rules: its tasks, cache keys, resume fingerprints, acceptance, retries, timers and deliveries are those of the same CWL document run alone. Its tasks keep their step names, so `-no-cache-steps echo` works as it does for the CWL document, and their names start with the op path, like `block: echo`.
+A `native` op runs a whole document of another language with the driver that uwe has for that language. This version runs CWL, Nextflow, Snakemake, Argo and WDL blocks. The op's inputs become the job of the CWL run, by port name, and the CWL output object becomes the op's outputs, by port name; each output must fit its port type, or the op fails. The block keeps its own rules: its tasks, cache keys, resume fingerprints, acceptance, retries, timers and deliveries are those of the same CWL document run alone. Its tasks keep their step names, so `-no-cache-steps echo` works as it does for the CWL document, and their names start with the op path, like `block: echo`.
 
 The `source` location of a block is relative to the wir document, or a URL. `entry` names the process of a packed CWL document, like `main`. A block delivers its output files to a folder of its own, the op path below the output folder of the run (`-output-dir`, else the current folder), so two blocks do not overwrite each other's files. The job file of a block is written below the scratch folder of uwe. No block changes the working directory of the process.
 
@@ -78,6 +78,16 @@ Output folder: the output artifacts of the steps are delivered to `<output folde
 
 Results: when the block has finished, each op output takes the output of the same name, as `uwe outputs` names them: the output parameters and artifacts of the entrypoint, then the global outputs by their `globalName`. An output parameter is a string. An output artifact is a File, or a Directory when it is a folder, named by the basename of its path in the container, like `loud.txt` for `/tmp/loud.txt`; an artifact that the workflow holds as raw text gives null. An output that the workflow does not give is null, and fails the op unless its type is optional. In a simulated run the parameters read from made-up files are empty.
 
+## WDL blocks
+
+A WDL block runs the workflow of a WDL document, or the task of a document without one, as `uwe run` runs it alone. `entry` names the workflow or task to run. WDL has neither profiles nor config files: a block with `profiles` or `configs` stops the run with exit code 33. Its tasks, cache keys and resume fingerprints are those of the same run alone, with `-output-dir` set to the folder of the block.
+
+Inputs: the op inputs become the input object of the run, like an inputs file: the input `x` sets the input `x` of the workflow, as `<workflow>.x` does, and an input whose name has a dot, like `align.threads`, sets the input `threads` of the call `align`. A File or a Directory becomes its path, arrays, maps and structs keep their shape with paths for their files, and a null input stays out, so the default of the workflow holds. A `Pair` input takes a record of `left` and `right`.
+
+Output folder: the files of the outputs are delivered to `<output folder>/<op path>/<output>/`, numbered for arrays, as a run alone delivers them to `-output-dir`.
+
+Results: when the block has finished, each op output takes the workflow output of the same name, without the name of the workflow: `all` for `scatter_names.all`. A File or a Directory is at its delivered path, a pair is an array of two, so a wir tuple of two takes it, and the other values keep the JSON form of WDL. An output that the workflow does not give is null, and fails the op unless its type is optional; the value must fit the output type.
+
 ## Outputs
 
 A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
@@ -88,7 +98,6 @@ The run database records a wir run with the language `wir`, and its run crate na
 
 ## Not yet
 
-- Native blocks of WDL.
 - `uwe resume` of the suspended steps of an Argo block.
 - Several targets in one Snakemake block; a rule that asks for them can stand in.
 - Workflow outputs of the `output { }` block of Nextflow as op outputs by their names; their files count as published files below their folder.

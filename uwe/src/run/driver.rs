@@ -95,14 +95,7 @@ pub(crate) fn driver(
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
-        Language::Wdl => {
-            let options = wdl_runtime::Options {
-                image: (arguments.default_image.clone())
-                    .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
-                print: !arguments.no_print,
-            };
-            wdl_runtime::driver_with(launch, options)
-        }
+        Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments)),
         Language::Wir => {
             let settings = wir_runtime::Settings {
                 // A block runs no `uwe resume` requests: they name the steps of a whole run.
@@ -116,6 +109,7 @@ pub(crate) fn driver(
                     settings: snakemake(arguments, setup, cancel),
                     run: snakemake_options(arguments, setup),
                 },
+                wdl: wdl_options(arguments),
                 print: !arguments.no_print,
             };
             let downloads = cache_directory().join("downloads");
@@ -166,6 +160,15 @@ fn argo_services(run: &str, setup: &Setup) -> argo_runtime::Services {
         endpoints,
         resume: Some(resume_folder(run)),
         git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),
+    }
+}
+
+/// The options of WDL runs, and of the WDL blocks of wir runs.
+fn wdl_options(arguments: &Arguments) -> wdl_runtime::Options {
+    wdl_runtime::Options {
+        image: (arguments.default_image.clone())
+            .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
+        print: !arguments.no_print,
     }
 }
 

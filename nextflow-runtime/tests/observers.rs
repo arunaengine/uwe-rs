@@ -385,6 +385,14 @@ fn hears_workflow_outputs() {
     let execution = Engine::new(&mut Making).run("main.nf", &mut driver);
     assert!(execution.error.is_none(), "{:?}", execution.error);
     let events = events.borrow();
+    let Some(Event::RunStarted(start)) = events.first() else {
+        panic!("the run starts first");
+    };
+    let results = directory.path().join("results");
+    assert_eq!(
+        start.config["outputDir"],
+        results.to_string_lossy().as_ref()
+    );
     let target = directory.path().join("results/texts/made.txt");
     let target = target.to_string_lossy().into_owned();
     let published: Vec<&str> = (events.iter())

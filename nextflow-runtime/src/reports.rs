@@ -248,7 +248,14 @@ impl Reports {
             profile: options.profile.clone(),
             config_files: options.config_files.clone(),
             params: crate::inputs::to_json(&options.config.params()),
-            config: crate::inputs::to_json(&options.config.tree),
+            config: {
+                let mut config = crate::inputs::to_json(&options.config.tree);
+                // `-output-dir` sets `outputDir`, as in Nextflow.
+                if let Some(folder) = &options.output_dir {
+                    config["outputDir"] = folder.as_str().into();
+                }
+                config
+            },
             manifest: manifest.map_or(serde_json::json!({}), |manifest| {
                 crate::inputs::to_json(&manifest)
             }),

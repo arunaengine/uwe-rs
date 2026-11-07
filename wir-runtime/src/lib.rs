@@ -9,6 +9,7 @@ mod driver;
 mod inputs;
 pub mod nextflow;
 mod plan;
+pub mod snakemake;
 mod state;
 mod task;
 

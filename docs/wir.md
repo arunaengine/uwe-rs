@@ -34,7 +34,7 @@ An attempt is accepted only when its exit code is in `success_codes` (only 0 whe
 
 ## Native blocks
 
-A `native` op runs a whole document of another language with the driver that uwe has for that language. This version runs CWL and Nextflow blocks. The op's inputs become the job of the CWL run, by port name, and the CWL output object becomes the op's outputs, by port name; each output must fit its port type, or the op fails. The block keeps its own rules: its tasks, cache keys, resume fingerprints, acceptance, retries, timers and deliveries are those of the same CWL document run alone. Its tasks keep their step names, so `-no-cache-steps echo` works as it does for the CWL document, and their names start with the op path, like `block: echo`.
+A `native` op runs a whole document of another language with the driver that uwe has for that language. This version runs CWL, Nextflow and Snakemake blocks. The op's inputs become the job of the CWL run, by port name, and the CWL output object becomes the op's outputs, by port name; each output must fit its port type, or the op fails. The block keeps its own rules: its tasks, cache keys, resume fingerprints, acceptance, retries, timers and deliveries are those of the same CWL document run alone. Its tasks keep their step names, so `-no-cache-steps echo` works as it does for the CWL document, and their names start with the op path, like `block: echo`.
 
 The `source` location of a block is relative to the wir document, or a URL. `entry` names the process of a packed CWL document, like `main`. A block delivers its output files to a folder of its own, the op path below the output folder of the run (`-output-dir`, else the current folder), so two blocks do not overwrite each other's files. The job file of a block is written below the scratch folder of uwe. No block changes the working directory of the process.
 
@@ -56,6 +56,18 @@ Results: when the block has finished, each op output takes its value by its name
 
 The value must then fit the output type, or the op fails. Nextflow emits have no types, so an output that takes any value has the type `dynamic`; wir allows `dynamic` only on the outputs of Nextflow blocks. In a simulated run the files of emits are made up, and the published files are the targets of the publish rules, which nothing writes.
 
+## Snakemake blocks
+
+A Snakemake block runs a Snakefile, or the Snakefile of a project folder, as `uwe run` runs it alone. `entry` names one target, a rule or a file, like a target on the command line; without it the first rule is the target. `configs` name sources whose files are read like `--configfile` files, in order, and `profiles` name profiles: an absolute path, a path below the block's own folder (the op path below the output folder of the run), else a workflow profile that Snakemake finds as it finds `--workflow-profile <name>`, in the working folder, its `profiles` folder or the `profiles` folder beside the Snakefile. Its tasks, cache keys and resume fingerprints are those of the same run alone, started in the same folder.
+
+Config: the op inputs become a config file, read after the `configs` like a last `--configfile`, so they win. Each input becomes the key of its name: a File or a Directory becomes its path, arrays and records keep their shape with paths for their files, and a null input stays out, so the default of the Snakefile holds.
+
+Working folder: a block of a Snakefile works in its own folder, the op path below the output folder of the run (`-output-dir`, else the current folder), as if Snakemake was started there. Relative paths of the Snakefile start there, and its files, its `.snakemake` folder and its lock are there. A block of a project folder works in that folder, as `uwe run <folder>` does, so two blocks of one project folder share it. No block changes the working directory of the process.
+
+Results: when the block has finished, each op output takes the files of the target that `uwe outputs` names alike. For a target rule these are its named outputs, or its named inputs when it has no outputs, like those of `all`; every other file of the targets, and a target file, goes into the output `targets`. A name that one item takes once is a File, or a Directory where the Snakefile marks it `directory()`; a name of several files, like `expand(...)`, is an array of them, in the order of the rule. So `rule all: input: reports=expand("results/{s}.txt", s=SAMPLES)` gives the output `reports`, an array of Files. The files are at their paths in the working folder. An output that the targets do not name is null, and fails the op unless its type is optional; the value must fit the output type. In a simulated run the files are named but not made.
+
+Checkpoints work inside a block: the block plans again when a checkpoint has run, and ends only when the jobs of that plan have run.
+
 ## Outputs
 
 A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
@@ -66,7 +78,8 @@ The run database records a wir run with the language `wir`, and its run crate na
 
 ## Not yet
 
-- Native blocks of Snakemake, Argo and WDL.
+- Native blocks of Argo and WDL.
+- Several targets in one Snakemake block; a rule that asks for them can stand in.
 - Workflow outputs of the `output { }` block of Nextflow as op outputs by their names; their files count as published files below their folder.
 - A remote output folder for Nextflow blocks, and the launch folder in `${launchDir}` of include paths and in relative `conda` files, which still start from the working directory.
 - The attributes `place` of every op and `retry` and `time` of native ops; `cache: resume`.

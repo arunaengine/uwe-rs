@@ -8582,6 +8582,7 @@ dependencies = [
  "nextflow-evaluator",
  "nextflow-runtime",
  "serde_json",
+ "snakemake-runtime",
  "storage",
  "tempfile",
  "tracing",

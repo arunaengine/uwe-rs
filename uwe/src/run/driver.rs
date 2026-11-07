@@ -87,19 +87,7 @@ pub(crate) fn driver(
         Language::Snakemake => snakemake_runtime::driver_with_options(
             launch,
             snakemake(arguments, setup, cancel),
-            snakemake_runtime::RunSettings {
-                image: arguments.default_image.clone(),
-                offline: super::backend::network_rule(arguments, setup).offline(
-                    &workflow_graph::Task {
-                        step: "command".into(),
-                        ..Default::default()
-                    },
-                ),
-                rerun_triggers: arguments.rerun_triggers.clone(),
-                conda: setup.conda.is_some(),
-                shared_workdir: shared_workdir(arguments, setup),
-                local: arguments.executor.as_deref().unwrap_or("local") == "local",
-            },
+            snakemake_options(arguments, setup),
         ),
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
@@ -163,6 +151,10 @@ pub(crate) fn driver(
             let settings = wir_runtime::Settings {
                 cwl: cwl_options(arguments, setup, cancel),
                 nextflow: nextflow::blocks(run, arguments, setup),
+                snakemake: wir_runtime::snakemake::Options {
+                    settings: snakemake(arguments, setup, cancel),
+                    run: snakemake_options(arguments, setup),
+                },
                 print: !arguments.no_print,
             };
             let downloads = cache_directory().join("downloads");
@@ -201,6 +193,22 @@ fn cwl_options(
         .then(crate::cwl_archives),
         print: !arguments.no_print,
         ..cwl_runtime::Options::default()
+    }
+}
+
+/// The options of Snakemake runs, and of the Snakemake blocks of wir runs.
+fn snakemake_options(arguments: &Arguments, setup: &Setup) -> snakemake_runtime::RunSettings {
+    snakemake_runtime::RunSettings {
+        image: arguments.default_image.clone(),
+        offline: super::backend::network_rule(arguments, setup).offline(&workflow_graph::Task {
+            step: "command".into(),
+            ..Default::default()
+        }),
+        rerun_triggers: arguments.rerun_triggers.clone(),
+        conda: setup.conda.is_some(),
+        shared_workdir: shared_workdir(arguments, setup),
+        local: arguments.executor.as_deref().unwrap_or("local") == "local",
+        workdir: None,
     }
 }
 

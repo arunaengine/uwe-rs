@@ -385,15 +385,15 @@ async fn writes_data_objects() {
 }
 
 #[tokio::test]
-async fn pam_signs_in() {
+async fn pam_needs_tls() {
     let server = server("CS_NEG_DONT_CARE");
     let extra = "password = \"pam-pass\"\nauthentication = \"pam_password\"\n";
     let storage = storage(&server, "CS_NEG_REFUSE", extra);
-    let found = storage
+    let error = storage
         .stat("irods:///tempZone/home")
         .await
-        .expect("a stat");
-    assert!(found.expect("a collection").directory);
+        .expect_err("no PAM password over plain TCP");
+    assert!(error.to_string().contains("needs TLS"), "{error}");
 }
 
 #[tokio::test]

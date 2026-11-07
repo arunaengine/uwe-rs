@@ -141,6 +141,35 @@ fn matches_recorded_pods() {
 }
 
 #[test]
+fn requested_user_wins() {
+    let mut options = PodOptions::default();
+    let requested = json!([{"runAsUser": 2000}, {"securityContext": {"runAsGroup": 3000}}]);
+    options.add(&requested).expect("read");
+    let mut manifest = train(&PodOptions::default()).expect("a Job");
+    let pod = &mut manifest["spec"]["template"]["spec"];
+    pod["securityContext"] = json!({"fsGroup": 100});
+    pod["initContainers"] = json!([{"name": "stage", "securityContext": {"runAsUser": 1000}}]);
+    options
+        .apply(&mut manifest, &Placement::default())
+        .expect("applies");
+    let pod = &manifest["spec"]["template"]["spec"];
+    assert_eq!(
+        pod["securityContext"],
+        json!({"fsGroup": 100, "runAsUser": 2000, "runAsGroup": 3000})
+    );
+    for container in [&pod["initContainers"][0], &pod["containers"][0]] {
+        let context = &container["securityContext"];
+        assert_eq!(
+            (&context["runAsUser"], &context["runAsGroup"]),
+            (&json!(2000), &json!(3000))
+        );
+    }
+    let context = &pod["containers"][0]["securityContext"];
+    assert_eq!(context["allowPrivilegeEscalation"], false);
+    assert_eq!(context["capabilities"]["drop"], json!(["ALL"]));
+}
+
+#[test]
 fn refuses_privileged_pods() {
     for wrong in [
         json!({"privileged": true}),

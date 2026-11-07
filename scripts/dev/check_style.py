@@ -86,6 +86,7 @@ ASSET_LAYOUTS = {
     "containers/cwl-js": "Docker build context for the native CWL helper image",
     "demo/cwl": "upstream CWL example layout",
     "demo/snakemake": "upstream Snakemake example layout",
+    "demo/wdl": "one WDL demo per workflow construct",
     "nextflow-config/tests/fixtures/profiles": "native profile oracle layout",
     "nextflow-evaluator/tests/fixtures/oracle/groovy_methods": "native Groovy oracle layout",
     "nextflow-evaluator/tests/fixtures/oracle/gunzip": "native Nextflow oracle layout",

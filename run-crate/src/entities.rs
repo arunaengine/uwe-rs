@@ -82,6 +82,7 @@ pub(crate) fn language(language: &str) -> Value {
         "nextflow" => ("Nextflow", "https://www.nextflow.io/"),
         "snakemake" => ("Snakemake", "https://snakemake.readthedocs.io/"),
         "cwl" => ("Common Workflow Language", "https://www.commonwl.org/"),
+        "wdl" => ("Workflow Description Language", "https://openwdl.org/"),
         // wir has no public home page yet, so its id is also its address.
         "wir" => ("wir", WIR),
         _ => ("Argo Workflows", "https://argoproj.github.io/workflows/"),

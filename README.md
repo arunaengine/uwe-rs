@@ -8,7 +8,7 @@
 
 <h1 align="center">A <ins>U</ins>niversal <ins>W</ins>orkflow <ins>E</ins>xecutor</h1>
 
-uwe (Universal Workflow Executor) runs [Nextflow](https://www.nextflow.io), [Snakemake](https://snakemake.github.io), [CWL](https://www.commonwl.org) and [Argo](https://argoproj.github.io/workflows/) workflows from a single Rust binary. It reads all four languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
+uwe (Universal Workflow Executor) runs [Nextflow](https://www.nextflow.io), [Snakemake](https://snakemake.github.io), [CWL](https://www.commonwl.org), [Argo](https://argoproj.github.io/workflows/) and [WDL](https://openwdl.org) workflows from a single Rust binary. It reads all five languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
 
 The machine that runs uwe needs no Python, Groovy, JavaScript or Java. A static Linux build is a single file.
 
@@ -46,6 +46,7 @@ So far it looks like it can. A Snakemake rule and a Nextflow process that run th
 | [Snakemake](https://snakemake.github.io) | Rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which use the CWL runtime of uwe. Python is evaluated in Rust. |
 | [CWL](https://www.commonwl.org) | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
 | [Argo Workflows](https://argoproj.github.io/workflows/) | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
+| [WDL](https://openwdl.org) 1.0 to 1.2 | Tasks, workflows, calls of tasks and subworkflows, imports, scatter, `if`, structs, `runtime` and `requirements`, and most of the standard library. Parsing and type checks use Sprocket's `wdl-analysis`; expressions are evaluated by uwe. |
 | [wir](wir/README.md) | The workflow intermediate representation of uwe: graphs of container `task` ops, `call` ops and `native` ops that run whole CWL documents with the cache keys of the CWL run. See [Running wir documents](docs/wir.md). |
 
 Each language is a native subset, not a wrapper around the original engine. `uwe check` tells you before a run whether a workflow uses something uwe does not support.
@@ -157,6 +158,16 @@ uwe run demo/argo/dag-diamond.yaml
 ```
 
 Workflow parameters are given as `--name value`, like `--message "hola mundo"`.
+
+### WDL
+
+```sh
+uwe run demo/wdl/hello.wdl
+uwe run demo/wdl/scatter.wdl inputs.json
+uwe run demo/wdl/conditional.wdl --loud false --text psst
+```
+
+The input file is the JSON of other WDL engines, with keys like `hello.greeting`; `--name value` sets one input. `-entry` picks a workflow or task of the document. A task without a container runs in the `-default-image`. Output files go to `<output>/` in the current folder, or in `-output-dir FOLDER`, and uwe prints the outputs as JSON.
 
 ### Where tasks run
 

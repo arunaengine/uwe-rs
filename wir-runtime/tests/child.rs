@@ -128,3 +128,133 @@ impl Driver for Script {
 
     fn finish(&mut self) -> Result<(), DriverError> {
         self.seen.borrow_mut().finishes += 1;
+        Ok(())
+    }
+}
+
+impl Block for Script {
+    fn exported(&self) -> Option<Json> {
+        Some(json!({"out": 1}))
+    }
+}
+
+/// A counter of parent ids from 100.
+fn counter() -> impl FnMut() -> TaskId {
+    let mut next = 99;
+    move || {
+        next += 1;
+        TaskId(next)
+    }
+}
+
+#[test]
+fn retries_keep_ids() {
+    let seen = Rc::new(RefCell::new(Seen::default()));
+    let mut child = Child::new(Box::new(Script::new(&seen)));
+    let mut next = counter();
+    let first = child.start(&mut next).unwrap();
+    let ids: Vec<u64> = first.iter().map(|task| task.id.0).collect();
+    assert_eq!(ids, [100, 101]);
+    assert_eq!(first[1].after, [TaskId(100)], "after names the parent id");
+    let retry = child.complete(outcome(100, 1, 1), &mut next).unwrap();
+    assert_eq!(retry.len(), 1);
+    assert_eq!(
+        retry[0].id,
+        TaskId(100),
+        "a retried task keeps its parent id"
+    );
+    assert!(!child.take_acceptance(TaskId(100), 1));
+    assert_eq!(
+        child.cancellations(),
+        [TaskId(101)],
+        "unknown ids are dropped"
+    );
+    let notes = child.notes();
+    assert!(matches!(&notes[0], Note::Mark(TaskId(101), _)), "{notes:?}");
+    assert!(matches!(&notes[1], Note::Read(_)), "{notes:?}");
+    assert!(
+        child
+            .complete(outcome(100, 2, 0), &mut next)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(child.take_acceptance(TaskId(100), 2));
+    assert!(
+        !child.take_acceptance(TaskId(100), 2),
+        "acceptance is taken once"
+    );
+    assert!(child.busy(), "task 101 has not ended");
+    child.complete(outcome(101, 1, 0), &mut next).unwrap();
+    assert!(!child.busy());
+    assert_eq!(child.finish().unwrap(), Some(json!({"out": 1})));
+    assert!(child.finish().is_err(), "a child finishes once");
+    assert_eq!(seen.borrow().finishes, 1);
+    assert!(child.owns(TaskId(101)) && !child.owns(TaskId(102)));
+}
+
+#[test]
+fn errors_keep_acceptance() {
+    let seen = Rc::new(RefCell::new(Seen::default()));
+    let mut script = Script::new(&seen);
+    script.broken = true;
+    let mut child = Child::new(Box::new(script));
+    let mut next = counter();
+    child.start(&mut next).unwrap();
+    assert!(child.complete(outcome(101, 1, 0), &mut next).is_err());
+    assert!(child.take_acceptance(TaskId(101), 1));
+    assert!(
+        child.complete(outcome(7, 1, 0), &mut next).is_err(),
+        "not a task of the child"
+    );
+}
+
+#[test]
+fn routes_deliveries() {
+    let seen = Rc::new(RefCell::new(Seen::default()));
+    let mut first = Script::new(&seen);
+    first.deliveries = vec![delivery("a")];
+    let other = Rc::new(RefCell::new(Seen::default()));
+    let mut second = Script::new(&other);
+    second.deliveries = vec![delivery("b")];
+    let (mut first, mut second) = (Child::new(Box::new(first)), Child::new(Box::new(second)));
+    assert_eq!(first.deliveries(), [delivery("a")]);
+    assert_eq!(second.deliveries(), [delivery("b")]);
+    assert!(first.delivered(&delivery("b")).is_none());
+    assert!(second.delivered(&delivery("b")).unwrap().is_ok());
+    assert!(first.delivered(&delivery("a")).unwrap().is_ok());
+    assert!(
+        first.delivered(&delivery("a")).is_none(),
+        "acknowledged once"
+    );
+    assert_eq!(seen.borrow().acknowledged, [delivery("a")]);
+    assert_eq!(other.borrow().acknowledged, [delivery("b")]);
+}
+
+#[test]
+fn checks_child_inputs() {
+    let schema = json!({
+        "type": "object",
+        "properties": {"lines": {"type": "integer"}},
+        "required": ["lines"]
+    });
+    let seen = Rc::new(RefCell::new(Seen::default()));
+    let mut script = Script::new(&seen);
+    script.inputs = Some(Inputs {
+        schema: schema.clone(),
+        values: json!({"lines": "three"}),
+        ..Inputs::default()
+    });
+    let mut child = Child::new(Box::new(script));
+    let error = child.prepare(None, None, false).unwrap_err();
+    assert!(error.message.contains("lines"), "{error}");
+    assert_eq!(seen.borrow().used, None);
+    let mut script = Script::new(&seen);
+    script.inputs = Some(Inputs {
+        schema,
+        values: json!({"lines": 3}),
+        ..Inputs::default()
+    });
+    let mut child = Child::new(Box::new(script));
+    child.prepare(None, None, false).unwrap();
+    assert_eq!(seen.borrow().used, Some(json!({"lines": 3})));
+}

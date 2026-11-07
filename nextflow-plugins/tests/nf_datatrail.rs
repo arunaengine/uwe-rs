@@ -144,6 +144,16 @@ fn refuses_existing_file() {
         )),
         "{error}"
     );
+    let dot = directory.path().join("graph.dot");
+    std::fs::write(&dot, "old").expect("writes");
+    let scope = format!(
+        "  plot.file = '{}'\n",
+        directory.path().join("graph.png").display()
+    );
+    let (_, error) = run(&scope, "dot_run");
+    let error = error.expect("the run stops before the DOT file is replaced");
+    let expected = format!("DAG file already exists: {}", dot.display());
+    assert!(error.contains(&expected), "{error}");
     let (_, error) = run("  input = '{out}/inputs.txt'\n", "csv_run");
     assert!(error.is_some_and(|error| error.contains("Input file must be a CSV file:")));
 }

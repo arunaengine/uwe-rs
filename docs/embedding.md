@@ -71,6 +71,12 @@ The returned `Run` holds the CWL output object in `outputs`, as JSON, with the l
 
 Set `run::Settings.print` to `true` to write to standard output what `uwe run` writes there. `Settings::new` leaves it `false`. The command line sets it `true`.
 
+## JSON key order
+
+The JSON objects of uwe keep their keys in the order in which they were added, also in `Run.outputs`, the run database and the files that plugins write. An object read from a file keeps the order of that file. Where a format needs sorted keys, like a digest or the file of a tool that sorts its keys, uwe sorts them itself. Help texts list the inputs of a group by name.
+
+This is the `preserve_order` feature of serde_json. The WDL front end needs it, and Cargo turns a feature on for every crate of a build, so the workspace declares it for all crates. A host that builds uwe into its program gets the same order for its own `serde_json` values.
+
 ## Following a run live
 
 Set `run::Settings.listener` to a `run::Listener`, which is an `Arc<dyn Fn(run::Event) + Send + Sync>`. uwe calls it for every change of the run and its tasks:

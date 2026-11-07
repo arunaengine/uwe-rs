@@ -221,7 +221,9 @@ rustls-platform-verifier = "0.7.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"
 sha1 = { version = "0.11.0", default-features = false }
-serde_json = "1.0.151"
+# JSON objects keep the order in which keys were added. wdl-analysis needs wdl-modules, which
+# turns this on anyway, so every crate gets it; code that needs sorted keys sorts them itself.
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
 sha2 = "0.11.0"
 # PostgreSQL and MySQL clients in Rust for nf-sqldb, without the sqlx facade, whose optional
 # SQLite driver clashes with rusqlite's SQLite. No RSA, so MySQL passwords need TLS.

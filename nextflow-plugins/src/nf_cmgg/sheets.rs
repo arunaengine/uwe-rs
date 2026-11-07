@@ -405,6 +405,20 @@ fn read_rows(path: &Path, filetype: &str) -> Result<Vec<Value>, String> {
 
 /// The rows of the input sample sheet, with the rows of the sheets that `sample_info` names.
 fn read_sheet(path: &Path) -> Vec<Value> {
+    read_linked(path, &mut Vec::new())
+}
+
+/// The rows of a sheet and of the sheets it names; `active` holds the sheets being read, so
+/// that a sheet that names itself again is refused.
+fn read_linked(path: &Path, active: &mut Vec<PathBuf>) -> Vec<Value> {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    if active.contains(&canonical) {
+        tracing::error!(
+            "Samplesheet {} names itself through sample_info, skipping it",
+            path.display()
+        );
+        return Vec::new();
+    }
     let extension = path
         .extension()
         .map(|e| e.to_string_lossy().into_owned())
@@ -421,14 +435,16 @@ fn read_sheet(path: &Path) -> Vec<Value> {
         }
     };
     let mut extra = Vec::new();
+    active.push(canonical);
     for row in &rows {
         if let Some(info) = map_get(row, "sample_info").map(|info| info.to_string())
             && !info.is_empty()
         {
             let base = path.parent().unwrap_or(Path::new("/"));
-            extra.extend(read_sheet(&base.join(info)));
+            extra.extend(read_linked(&base.join(info), active));
         }
     }
+    active.pop();
     rows.extend(extra);
     rows
 }
@@ -460,7 +476,27 @@ fn as_map(entry: &Entry) -> Value {
 mod tests {
     use nextflow_evaluator::value::Value;
 
-    use super::{Entry, expand};
+    use super::{Entry, expand, read_sheet};
+
+    #[test]
+    fn stops_sheet_cycles() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let write = |name: &str, info: &str| {
+            let text = format!("sample,sample_info\n{name},{info}\n");
+            std::fs::write(folder.path().join(name), text).expect("writes");
+        };
+        write("a.csv", "b.csv");
+        write("b.csv", "a.csv");
+        write("c.csv", "c.csv");
+        let ids = |name: &str| -> Vec<String> {
+            let rows = read_sheet(&folder.path().join(name));
+            (rows.iter())
+                .filter_map(|row| super::map_get(row, "sample").map(|id| id.to_string()))
+                .collect()
+        };
+        assert_eq!(ids("a.csv"), ["a.csv", "b.csv"]);
+        assert_eq!(ids("c.csv"), ["c.csv"]);
+    }
 
     #[test]
     fn expands_file_lists() {

@@ -265,3 +265,87 @@ fn matches_native_outputs() {
     assert_eq!(delivered.len(), 2, "{delivered:?}");
     assert_eq!(texts(&root.join("wir/block")), delivered);
 }
+
+/// `wir/examples/two-tools.json` in `root`, with tasks in `image`, and its inputs file.
+fn two_tools(root: &Path, image: &str) -> (String, String) {
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../wir/examples/two-tools.json");
+    let mut document: Json =
+        serde_json::from_str(&std::fs::read_to_string(example).expect("reads")).expect("JSON");
+    for op in document["graphs"][0]["ops"].as_array_mut().expect("ops") {
+        op["kind"]["task"]["image"] = json!(image);
+    }
+    let format = "http://edamontology.org/format_2330";
+    let text = json!({"class": "File", "location": "text.txt", "format": format});
+    std::fs::write(root.join("text.txt"), "b\nc\na\n").expect("writes the text");
+    let inputs = root.join("inputs.json");
+    std::fs::write(&inputs, json!({"text": text, "lines": 2}).to_string()).expect("writes");
+    let target = root.join("two-tools.json");
+    std::fs::write(&target, document.to_string()).expect("writes the document");
+    let shown = |path: PathBuf| path.to_string_lossy().into_owned();
+    (shown(target), shown(inputs))
+}
+
+#[test]
+fn records_task_ops() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = two_tools(root, "debian:stable-slim");
+    let words = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
+    let (code, output) = uwe(root, &cache, &words);
+    assert_eq!(code, 0, "{output}");
+    let (first, language, tasks) = latest(&cache);
+    assert_eq!(language, "wir");
+    let steps: Vec<&str> = tasks.iter().map(|item| item.task.step.as_str()).collect();
+    assert_eq!(steps, ["sort", "head"]);
+    let resumed: Vec<&str> = words.iter().copied().chain(["-resume"]).collect();
+    let (code, output) = uwe(root, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, again) = latest(&cache);
+    for (one, other) in tasks.iter().zip(&again) {
+        assert_eq!(one.fingerprint, other.fingerprint);
+        assert_eq!(
+            other.reused.as_deref(),
+            Some(first.as_str()),
+            "{}",
+            other.task.name
+        );
+    }
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn runs_task_ops() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = two_tools(root, "debian:stable-slim");
+    let words = ["run", &target, "-inputs", &inputs, "-output-dir", "out"];
+    let (code, output) = uwe(root, &cache, &words);
+    assert_eq!(code, 0, "{output}");
+    let top = std::fs::read_to_string(root.join("out/top.stdout")).expect("the delivered output");
+    assert_eq!(top, "a\nb\n");
+    let (first, _, tasks) = latest(&cache);
+    assert!(
+        tasks.iter().all(|item| item.reused.is_none()),
+        "the first run runs every task"
+    );
+    let (code, output) = uwe(root, &cache, &words);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, again) = latest(&cache);
+    for item in &again {
+        assert_eq!(
+            item.reused.as_deref(),
+            Some("cache"),
+            "{} is cached",
+            item.task.name
+        );
+    }
+    // A real run resumes only results of digest-pinned images; others come from the cache.
+    let resumed: Vec<&str> = words.iter().copied().chain(["-resume", &first]).collect();
+    let (code, output) = uwe(root, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, last) = latest(&cache);
+    assert!(
+        last.iter().all(|item| item.reused.is_some()),
+        "nothing runs again"
+    );
+}

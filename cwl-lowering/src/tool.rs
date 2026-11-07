@@ -76,6 +76,10 @@ pub fn lower(process: &Process, tool: &CommandLineTool, scope: &Scope) -> Result
         if !input.secondary_files.is_empty() || !input.format.is_empty() {
             return Err(format!("the secondary files or format of input {name}"));
         }
+        // CWL reads the contents and refuses files over 64 KiB, which a task does not.
+        if input.load_contents == Some(true) {
+            return Err(format!("loadContents of input {name}"));
+        }
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
             words.push((key, bound(binding, &input.value_type, &name)?));

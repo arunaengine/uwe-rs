@@ -637,7 +637,21 @@ fn numbers_retried_tasks() {
     assert_eq!(flaky[0], flaky[1], "the retry keeps its task_id");
 }
 
-/// A task that exits with 0 without its declared output failed, for observers too.
+/// Answers every task from the cache, without the files it declares.
+struct Emptied;
+
+impl Executor for Emptied {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            cached: true,
+            ..Outcome::default()
+        }))
+    }
+}
+
+/// A task that exits with 0 without its declared output failed, for observers too, also
+/// when its result came from the cache.
 #[test]
 fn hears_missing_outputs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
@@ -663,6 +677,20 @@ fn hears_missing_outputs() {
         .collect();
     assert_eq!(ended.len(), 1, "{ended:?}");
     assert!(ended[0].starts_with("failed"), "{ended:?}");
+    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: Arc::default(),
+    }));
+    let execution = Engine::new(&mut Emptied).run("main.nf", &mut driver);
+    assert!(execution.error.is_some(), "the cached output is missing");
+    let ended: Vec<String> = (events.borrow().iter())
+        .filter(|event| !matches!(event, Event::RunStarted(_) | Event::RunEnded(_)))
+        .filter(|event| !matches!(event, Event::TaskSubmitted(_) | Event::TaskStarted(_)))
+        .map(summary)
+        .collect();
+    assert_eq!(ended, ["failed MISSING"]);
 }
 
 /// Fails every task, with only the end of its error stream in the outcome and the whole

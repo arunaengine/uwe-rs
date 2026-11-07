@@ -642,9 +642,10 @@ impl Reports {
 impl Row {
     fn status(&self) -> &'static str {
         match (self.cached, self.exit, self.rejected) {
-            (true, _, _) => "CACHED",
+            (_, _, true) => "FAILED",
+            (true, _, false) => "CACHED",
             (false, 0, false) => "COMPLETED",
-            (false, _, _) => "FAILED",
+            (false, _, false) => "FAILED",
         }
     }
 

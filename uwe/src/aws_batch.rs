@@ -49,6 +49,7 @@ pub fn executor(
     run: &str,
     default_image: Option<String>,
     setup: &crate::setup::Setup,
+    secrets: &config_file::SecretValues,
 ) -> Result<RunnerExecutor<crate::conda_backend::Remote<BatchBackend>>, String> {
     let config = &setup.executors.aws_batch;
     let stage = config.staging.stage(&setup.storage)?.ok_or(
@@ -59,7 +60,11 @@ pub fn executor(
     let mut settings = config.settings.clone();
     let region = settings.region(variable)?;
     settings.region = Some(region.clone());
-    let client = Client::new(&region, settings.credentials(variable), PACE);
+    let client = Client::new(
+        &region,
+        settings.credentials(|name| secrets.get(name)),
+        PACE,
+    );
     let upload = match (&settings.helper, &config.helper_file) {
         (None, Some(file)) => Some(
             executor::binary::Binary::open(file)

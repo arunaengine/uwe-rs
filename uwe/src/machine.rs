@@ -443,7 +443,7 @@ mod executors {
         let executors = &setup.executors;
         Ok(match name {
             "aws-batch" => {
-                crate::aws_batch::executor(store, &scratch, run, image, setup)?;
+                crate::aws_batch::executor(store, &scratch, run, image, setup, &arguments.secrets)?;
                 cloud("AWS Batch")
             }
             "google-batch" => {

@@ -45,7 +45,11 @@ struct Settings {
     summarize: Option<Vec<String>>,
 }
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let Some(Value::Object(scope)) = config.get(&["quilt"]).map(|value| json_of(&value)) else {
         return Ok(Some(Box::new(Packages::new(Settings::read(Map::new())))));
     };

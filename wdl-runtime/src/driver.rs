@@ -72,10 +72,14 @@ impl WdlDriver {
             simulated: launch.simulated,
             files: Arc::new(LocalFiles),
         };
-        let scratch = match launch.scratch.as_os_str().is_empty() {
+        let base = match launch.scratch.as_os_str().is_empty() {
             true => std::env::temp_dir().join("uwe-wdl"),
             false => launch.scratch.join("wdl"),
         };
+        // Blocks and runs can share the scratch folder, so each driver writes in its own.
+        let scratch = std::fs::create_dir_all(&base)
+            .and_then(|()| tempfile::Builder::new().prefix("driver-").tempdir_in(&base))
+            .map_err(|error| DriverError::new(format!("cannot make a scratch folder: {error}")))?;
         Ok(WdlDriver {
             launch: launch.clone(),
             unit,
@@ -140,18 +144,27 @@ impl WdlDriver {
                     _ => format!("{folder}/{name}/{index}/{base}"),
                 };
                 index += 1;
-                self.deliveries.push(Delivery {
-                    location: path.clone(),
-                    target: target.clone(),
-                    mode: DeliveryMode::Copy,
-                    overwrite: true,
-                });
+                // A copy onto its own source would remove it first.
+                if !same_file(path, &target) {
+                    self.deliveries.push(Delivery {
+                        location: path.clone(),
+                        target: target.clone(),
+                        mode: DeliveryMode::Copy,
+                        overwrite: true,
+                    });
+                }
                 *path = target;
             });
             delivered.insert(name.clone(), value);
         }
         delivered
     }
+}
+
+/// Whether two local paths name one file, also through links.
+fn same_file(source: &str, target: &str) -> bool {
+    let resolved = |path: &str| std::fs::canonicalize(path).or_else(|_| std::path::absolute(path));
+    matches!((resolved(source), resolved(target)), (Ok(source), Ok(target)) if source == target)
 }
 
 /// The call of a workflow with a name, also inside scatters and conditionals.

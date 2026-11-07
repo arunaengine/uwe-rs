@@ -55,7 +55,11 @@ const COLUMNS: [&str; 11] = [
     "exitCode",
 ];
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |key: &str| match config.get(&["gadi", key]) {
         None | Some(Value::Null) => None,
         Some(value) => Some(value.to_string()),

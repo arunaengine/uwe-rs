@@ -54,7 +54,7 @@ Results: when the block has finished, each op output takes its value by its name
 2. Else the files that the block published below the folder that the op input of the same name names, like `outdir`, from the launch folder: a Directory output gets that folder, an array of Files every file published below it, sorted by path, and a File output the one file published there. An optional output is null when nothing was published; otherwise publishing nothing, or several files for a File, fails the op.
 3. Else the op fails with a message that the output is neither an emit nor the folder of an input.
 
-The value must then fit the output type, or the op fails. Nextflow emits have no types, so an output that takes any value has the type `dynamic`; wir allows `dynamic` only on the outputs of Nextflow blocks. In a simulated run the files of emits are made up, and the published files are the targets of the publish rules, which nothing writes.
+The value must then fit the output type, or the op fails. Nextflow emits have no types, so an output that takes any value has the type `dynamic`; wir allows `dynamic` only on the outputs of Nextflow blocks. A `dynamic` value must fit the type of each op input and graph output that it reaches, or that op fails, or the run fails for an output of the entry graph. In a simulated run the files of emits are made up, and the published files are the targets of the publish rules, which nothing writes.
 
 ## Snakemake blocks
 
@@ -90,7 +90,7 @@ Results: when the block has finished, each op output takes the workflow output o
 
 ## Outputs
 
-A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
+A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. When two different files or folders would get the same place there, the run fails before it delivers anything, and names that place. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
 
 ## Provenance
 

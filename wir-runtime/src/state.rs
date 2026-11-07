@@ -24,6 +24,8 @@ enum Readiness {
     Wait,
     Omit,
     Ready(Map<String, Json>),
+    /// A `dynamic` value does not fit the type of the input it reaches.
+    Refuse(String),
 }
 
 /// The run of a plan.
@@ -88,6 +90,10 @@ impl Progress {
                         return Some((at, bound));
                     }
                     Readiness::Ready(_) => {}
+                    Readiness::Refuse(why) => {
+                        self.end(at, Status::Failed, Map::new(), Some(why));
+                        changed = true;
+                    }
                 }
             }
             if !changed {
@@ -118,17 +124,34 @@ impl Progress {
     }
 
     /// The values of the outputs of the entry graph, or the first one that has none.
-    pub fn outputs(&self) -> Result<Map<String, Json>, String> {
+    /// A `dynamic` value must fit the type of its port in `ports`.
+    pub fn outputs(&self, ports: &[wir::Port]) -> Result<Map<String, Json>, String> {
         let mut values = Map::new();
         for (port, source) in &self.plan.outputs {
             match self.value(source) {
                 Ok(Some(value)) => {
+                    let typed = ports.iter().find(|item| item.name == *port);
+                    if let Some(typed) = typed.filter(|_| self.unchecked(source))
+                        && !wir::fits(&value, &typed.r#type, &self.defs)
+                    {
+                        return Err(format!("the output {port} does not fit its type"));
+                    }
                     values.insert(port.clone(), value);
                 }
                 _ => return Err(format!("the output {port} has no value")),
             }
         }
         Ok(values)
+    }
+
+    /// Whether a source gives values that nothing checked: those of `dynamic` ports.
+    fn unchecked(&self, source: &Source) -> bool {
+        let Source::Output(node, port) = source else {
+            return false;
+        };
+        let ports = &self.node(*node).op.outputs;
+        let typed = ports.iter().find(|item| item.name == *port);
+        typed.is_some_and(|item| holds_dynamic(&item.r#type, &self.defs))
     }
 
     fn readiness(&self, at: usize) -> Readiness {
@@ -155,7 +178,16 @@ impl Progress {
                 Err(()) => return Readiness::Omit,
             };
             let value = match node.op.inputs.iter().find(|item| item.name == *port) {
-                Some(item) => widen(value, &item.r#type, &self.defs),
+                Some(item) => {
+                    let value = widen(value, &item.r#type, &self.defs);
+                    if self.unchecked(source) && !wir::fits(&value, &item.r#type, &self.defs) {
+                        let path = &node.path;
+                        return Readiness::Refuse(format!(
+                            "op {path}: input {port} does not fit its type"
+                        ));
+                    }
+                    value
+                }
                 None => value,
             };
             bound.insert(port.clone(), value);
@@ -196,13 +228,26 @@ impl Progress {
             }
         }
         let mut values = Map::new();
+        let mut unfit = None;
         for (port, source) in &self.node(at).exports {
             match self.value(source) {
                 Ok(Some(value)) => {
+                    let ports = &self.node(at).op.outputs;
+                    let typed = ports.iter().find(|item| item.name == *port);
+                    if let Some(typed) = typed.filter(|_| self.unchecked(source))
+                        && !wir::fits(&value, &typed.r#type, &self.defs)
+                    {
+                        let path = &self.node(at).path;
+                        unfit = Some(format!("op {path}: output {port} does not fit its type"));
+                    }
                     values.insert(port.clone(), value);
                 }
                 _ => failed = true,
             }
+        }
+        if let Some(why) = unfit {
+            self.end(at, Status::Failed, Map::new(), Some(why));
+            return true;
         }
         match failed {
             false => self.end(at, Status::Succeeded, values, None),
@@ -222,6 +267,23 @@ impl Progress {
             }
         }
         true
+    }
+}
+
+/// Whether values of a type can hold parts of type `dynamic`.
+fn holds_dynamic(r#type: &Type, defs: &[TypeDef]) -> bool {
+    match resolve(r#type, defs) {
+        Some(Type::Dynamic) => true,
+        Some(Type::Optional(inner)) => holds_dynamic(inner, defs),
+        Some(Type::Array(array)) => holds_dynamic(&array.items, defs),
+        Some(Type::Map(map)) => holds_dynamic(&map.value, defs),
+        Some(Type::Record(fields)) => {
+            (fields.iter()).any(|field| holds_dynamic(&field.r#type, defs))
+        }
+        Some(Type::Union(items) | Type::Tuple(items)) => {
+            items.iter().any(|item| holds_dynamic(item, defs))
+        }
+        _ => false,
     }
 }
 
@@ -256,9 +318,13 @@ pub fn widen(value: Json, r#type: &Type, defs: &[TypeDef]) -> Json {
                 )
                 .collect(),
         ),
+        // Extra items stay, so that the check of the value still sees its length.
         (Type::Tuple(types), Json::Array(items)) => Json::Array(
-            (items.into_iter().zip(types))
-                .map(|(item, want)| widen(item, want, defs))
+            (items.into_iter().enumerate())
+                .map(|(index, item)| match types.get(index) {
+                    Some(want) => widen(item, want, defs),
+                    None => item,
+                })
                 .collect(),
         ),
         (_, value) => value,

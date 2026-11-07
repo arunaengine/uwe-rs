@@ -50,7 +50,8 @@ fn activate(launch: &Path, extra: &str) -> Vec<Box<dyn Observer>> {
         work_dir: launch.join("work").to_string_lossy().into_owned(),
     };
     let config = nextflow_config::load(&[file], &settings, &mut Quiet).expect("loads");
-    nextflow_plugins::catalogue::observers(&config, launch).expect("activates")
+    nextflow_plugins::catalogue::observers(&config, launch, &|name| std::env::var(name).ok())
+        .expect("activates")
 }
 
 /// Runs the events of the probe: each sample publishes its BAM and reads, then the metrics.

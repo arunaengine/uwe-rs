@@ -119,6 +119,7 @@ type Row = Vec<(String, String)>;
 fn activate(
     config: &Config,
     launch: &std::path::Path,
+    _: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |path: &[&str]| {
         let mut full = vec!["metalog"];

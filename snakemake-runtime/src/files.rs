@@ -44,6 +44,8 @@ pub struct WorkflowFiles {
     /// Snakemake's Python writes files while it plans. A simulated run keeps them in memory.
     on_disk: std::cell::Cell<bool>,
     pub lifecycle: std::cell::Cell<Option<&'static str>>,
+    /// The environment of the run; `None` for the environment of the process.
+    pub(crate) environment: Option<Vec<(String, String)>>,
 }
 
 impl WorkflowFiles {
@@ -60,6 +62,7 @@ impl WorkflowFiles {
             task_files: RefCell::new(Arc::default()),
             on_disk: std::cell::Cell::new(false),
             lifecycle: std::cell::Cell::new(None),
+            environment: None,
         }
     }
 
@@ -297,7 +300,10 @@ impl Host for WorkflowFiles {
     }
 
     fn environment(&self) -> Vec<(String, String)> {
-        self.local.environment()
+        match &self.environment {
+            Some(environment) => environment.clone(),
+            None => self.local.environment(),
+        }
     }
 
     fn run_command(&self, command: &Command) -> Result<CommandOutcome, Error> {

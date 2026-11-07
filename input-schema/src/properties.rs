@@ -16,7 +16,7 @@ pub struct Property<'a> {
 }
 
 /// The inputs of a schema, each once: those of the groups that `allOf` joins, in that order,
-/// then those of its own `properties`.
+/// then those of its own `properties`. Each group lists its inputs by name.
 pub fn properties(schema: &Json) -> Vec<Property<'_>> {
     let mut found = Vec::new();
     if let Some(Json::Array(parts)) = schema.get("allOf") {
@@ -54,6 +54,8 @@ fn collect<'a>(schema: &'a Json, group: Option<&'a str>, found: &mut Vec<Propert
     let Some(Json::Object(properties)) = schema.get("properties") else {
         return;
     };
+    let mut properties: Vec<_> = properties.iter().collect();
+    properties.sort_by_key(|(name, _)| *name);
     for (name, definition) in properties {
         if found.iter().any(|known| known.name == name) {
             continue;

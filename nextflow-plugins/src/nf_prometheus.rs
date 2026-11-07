@@ -79,6 +79,7 @@ const FAMILIES: [(&str, &str, &str); 8] = [
 fn activate(
     config: &Config,
     launch: &std::path::Path,
+    _: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |key: &str| {
         (config.get(&["prometheus", key])).filter(|value| !matches!(value, Value::Null))

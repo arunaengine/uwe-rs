@@ -16,7 +16,11 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 
 /// Hands the `drs` scope to the DRS provider that serves `drs://` paths; the plugin hears no
 /// run events.
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |key| {
         (config.get(&["drs", key]))
             .filter(|value| !matches!(value, Value::Null))

@@ -32,8 +32,12 @@ const TICK: Duration = Duration::from_millis(100);
 /// How long the end of the run waits for the last requests, as `terminateTimeout` does.
 const WAIT: Duration = Duration::from_secs(120);
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
-    let Some(settings) = Settings::read(config, &|name| std::env::var(name).ok())? else {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
+    let Some(settings) = Settings::read(config, environment)? else {
         return Ok(None);
     };
     let shared = Arc::new(Shared::default());
@@ -56,8 +60,9 @@ fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Obser
 pub(crate) fn implied(
     config: &Config,
     launch: &std::path::Path,
+    environment: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
-    activate(config, launch)
+    activate(config, launch, environment)
 }
 
 /// The run observer: hands the events to the worker and lets a failed report fail the run.

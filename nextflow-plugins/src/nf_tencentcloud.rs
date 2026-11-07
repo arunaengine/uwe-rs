@@ -23,7 +23,11 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 /// The file of the metadata when the config names none, in the launch directory.
 const FILE: &str = "metadata.json";
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let setting = |key: &str| {
         (config.get(&["tencentcloud", "metadata", key]))
             .filter(|value| !matches!(value, Value::Null))

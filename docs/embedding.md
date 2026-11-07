@@ -71,6 +71,12 @@ The returned `Run` holds the CWL output object in `outputs`, as JSON, with the l
 
 Set `run::Settings.print` to `true` to write to standard output what `uwe run` writes there. `Settings::new` leaves it `false`. The command line sets it `true`.
 
+## JSON key order
+
+The JSON objects of uwe keep their keys in the order in which they were added, also in `Run.outputs`, the run database and the files that plugins write. An object read from a file keeps the order of that file. Where a format needs sorted keys, like a digest or the file of a tool that sorts its keys, uwe sorts them itself. Help texts list the inputs of a group by name.
+
+This is the `preserve_order` feature of serde_json. The WDL front end needs it, and Cargo turns a feature on for every crate of a build, so the workspace declares it for all crates. A host that builds uwe into its program gets the same order for its own `serde_json` values.
+
 ## Following a run live
 
 Set `run::Settings.listener` to a `run::Listener`, which is an `Arc<dyn Fn(run::Event) + Send + Sync>`. uwe calls it for every change of the run and its tasks:
@@ -110,9 +116,13 @@ uwe takes a given value first, wherever a run reads one of these names:
 
 - the `{ environment = "NAME" }` secrets of the config files that the run reads, like storage keys, the TES token, user and password, registry credentials, telemetry headers, the page token and the `[secrets]` section,
 - `UWE_TES_TOKEN`,
-- the repository tokens `NXF_GITHUB_ACCESS_TOKEN`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `BITBUCKET_TOKEN` and `GITEA_TOKEN`.
+- the repository tokens `NXF_GITHUB_ACCESS_TOKEN`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `BITBUCKET_TOKEN` and `GITEA_TOKEN`,
+- what a Nextflow workflow reads from its environment: `env('NAME')`, `System.getenv('NAME')`, names of the environment in config files and scripts, and the tokens and settings that plugins read, like `TOWER_ACCESS_TOKEN` of nf-tower, `OPENAI_API_KEY` of nf-gpt, `ANTHROPIC_API_KEY` of nf-runinsights, the `LAMIN_` variables of nf-lamin, the `BIFFIX_` variables of nf-biffix, the variables of nf-llm-debugger and nf-fl86, `NXF_CLOUDCACHE_PATH`, and the variables that the BCO report of nf-prov records,
+- what a Snakemake workflow reads from its environment: `os.environ` and the `envvars` of the workflow and its profile, also when a job gets their values as it starts.
 
-A name without a given value is read from the environment, as on the command line. Call `allow_environment(false)` to stop that. Then such a secret fails the run with "the host gave no value for the secret NAME", and a token without a value is not sent.
+A name without a given value is read from the environment, as on the command line. Call `allow_environment(false)` to stop that. Then such a secret fails the run with "the host gave no value for the secret NAME", and a token without a value is not sent. A workflow or plugin sees such a name as not set: `env('NAME')` gives `null`, nf-gpt stops with "Missing ChatGPT API key", and Snakemake stops on an `envvars` name that is not set.
+
+The workflow can read every value that the host gives its run, and can write it to its outputs. So give a run only the values that its workflow may see.
 
 ```rust
 let mut settings = uwe::run::Settings::new("/srv/workflows/main.cwl");
@@ -125,7 +135,15 @@ let run = uwe::RunRequest::new(settings).run().await?;
 
 The same settings work for `RunRequest::describe` and for a run on the simulator. uwe writes the given values to neither the run database, the recorded command line nor the RO-Crate. `Debug` of `SecretValues` shows only the names.
 
-A host that passes its own `setup` made the secrets in it itself, so those do not take the given values. `UWE_TES_TOKEN` and the repository tokens still do. What a workflow reads from the environment itself, like the `envvars` of a Snakemake rule or `env('NAME')` in Nextflow, still comes from the environment of the process.
+A host that passes its own `setup` made the secrets in it itself, so those do not take the given values. `UWE_TES_TOKEN`, the repository tokens and what workflows read still do.
+
+These still come from the environment of the process, for every run alike:
+
+- the default sources of storage credentials, like the `AWS_` variables and files and `IRODS_ENVIRONMENT_FILE`, sign-in to AWS CodeCommit repositories, and the credentials of cloud metadata services,
+- `UWE_ENGINE` and the other settings of uwe itself,
+- the user and home of the process: `HOME` and `USER`, as `workflow.homeDir`, `workflow.userName` and `System.getProperty` give them and as plugins like nf-quilt, nf-teams, nf-fairscape and nf-report write them, and `NXF_ASSETS` of nf-lamin,
+- where the Nextflow secret store is: `NXF_HOME`, `HOME` and `NXF_SECRETS_FILE`,
+- the terminal: `TERM` and `NXF_AGENT_MODE`, which nf-seqlab-progress reads.
 
 ## The hosted policy
 

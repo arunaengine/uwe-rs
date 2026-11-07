@@ -45,8 +45,12 @@ struct Settings {
     attempt: u32,
 }
 
-fn activate(_: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
-    let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+fn activate(
+    _: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
+    let variable = |name: &str| environment(name).filter(|value| !value.is_empty());
     let Some(settings) = Settings::read(&variable) else {
         return Ok(None);
     };

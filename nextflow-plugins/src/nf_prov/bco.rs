@@ -164,7 +164,7 @@ fn execution(run: &Run, options: &Value) -> Json {
     let names = options.pointer("/execution_domain/environment_variables");
     let variables = (names.and_then(Value::as_array).into_iter().flatten())
         .filter_map(Value::as_str)
-        .filter_map(|name| Some((name, Json::from(std::env::var(name).ok()?))));
+        .filter_map(|name| Some((name, Json::from(run.variables.get(name)?.clone()))));
     Json::object([
         ("script", Json::list([Json::object([("uri", script)])])),
         ("script_driver", "nextflow".into()),

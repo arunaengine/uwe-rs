@@ -157,6 +157,15 @@ impl SecretValues {
         std::env::var(name).ok().filter(|value| !value.is_empty())
     }
 
+    /// The value of the variable `name` as a workflow reads its environment: the given one,
+    /// else the variable of the process when allowed, also when it is empty.
+    pub fn variable(&self, name: &str) -> Option<String> {
+        if let Some(value) = self.values.get(name) {
+            return Some(value.clone());
+        }
+        self.environment.then(|| std::env::var(name).ok()).flatten()
+    }
+
     /// The names that have a given value, in order.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.values.keys().map(String::as_str)

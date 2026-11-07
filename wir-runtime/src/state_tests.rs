@@ -1,4 +1,5 @@
-//! Checks the state of a run: calls, `after` dependencies, failures, draining and widening.
+//! Checks the state of a run: calls, `after` dependencies, failures, draining, widening and
+//! the check of `dynamic` values.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -77,7 +78,7 @@ fn calls_bind_outputs() {
     );
     assert_eq!(progress.next(false), None);
     assert_eq!(progress.states[at(&progress, "cleanup/work")], omitted);
-    assert_eq!(progress.outputs().unwrap()["y"], json!(7));
+    assert_eq!(progress.outputs(&[]).unwrap()["y"], json!(7));
     assert!(progress.failures.is_empty());
 }
 
@@ -111,7 +112,7 @@ fn handles_failed_dependencies() {
         progress.failures.is_empty(),
         "cleanup handles the failure of first"
     );
-    assert!(progress.outputs().is_err());
+    assert!(progress.outputs(&[]).is_err());
 }
 
 #[test]
@@ -158,4 +159,60 @@ fn widening_keeps_items() {
         !wir::fits(&widened, &pair, &[]),
         "three items do not fit a pair"
     );
+}
+
+/// A Nextflow block whose `dynamic` output feeds an `int` input and an `int` graph output,
+/// with the output ports of the graph.
+fn dynamic_progress() -> (Progress, Vec<wir::Port>) {
+    let main = json!({"name": "main", "inputs": [], "outputs": [{"name": "z", "type": "int"}],
+        "ops": [{"path": "emit", "kind": {"native": {"source": "n", "language": "nextflow"}},
+                "inputs": [], "outputs": [{"name": "y", "type": "dynamic"}]},
+            {"path": "use", "kind": {"native": {"source": "c", "language": "cwl"}},
+                "inputs": [{"name": "x", "type": "int"}], "outputs": []}],
+        "edges": [{"from": {"op": "emit", "port": "y"}, "to": {"op": "use", "port": "x"}},
+            {"from": {"op": "emit", "port": "y"}, "to": {"port": "z"}}]});
+    let document = json!({"wir_version": "0.3",
+        "sources": [{"id": "n", "language": "nextflow", "location": "main.nf"},
+            {"id": "c", "language": "cwl", "location": "c.cwl"}],
+        "graphs": [main], "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    wir::verify(&document).unwrap();
+    let ports = document.graphs[0].outputs.clone();
+    (Progress::new(plan(&document).unwrap(), Vec::new()), ports)
+}
+
+#[test]
+fn checks_dynamic_values() {
+    let (mut progress, ports) = dynamic_progress();
+    let (emit, _) = progress.next(false).unwrap();
+    progress.end(
+        emit,
+        Status::Succeeded,
+        Map::from_iter([("y".into(), json!("7"))]),
+        None,
+    );
+    assert_eq!(progress.next(false), None, "use gets no text for its int");
+    let failed = State::Ended(Status::Failed, Map::new());
+    assert_eq!(progress.states[at(&progress, "use")], failed);
+    assert!(
+        progress.failures[0].contains("input x does not fit"),
+        "{:?}",
+        progress.failures
+    );
+    let error = progress.outputs(&ports).unwrap_err();
+    assert!(error.contains("output z does not fit"), "{error}");
+    let (mut progress, ports) = dynamic_progress();
+    let (emit, _) = progress.next(false).unwrap();
+    progress.end(
+        emit,
+        Status::Succeeded,
+        Map::from_iter([("y".into(), json!(7))]),
+        None,
+    );
+    let (used, bound) = progress.next(false).unwrap();
+    assert_eq!(
+        (progress.node(used).path.as_str(), &bound["x"]),
+        ("use", &json!(7))
+    );
+    assert_eq!(progress.outputs(&ports).unwrap()["z"], json!(7));
 }

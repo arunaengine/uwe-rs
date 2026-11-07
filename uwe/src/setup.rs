@@ -72,6 +72,9 @@ pub struct Setup {
     pub network: NetworkRule,
     pub conda: Option<crate::conda::Config>,
     pub secrets: std::collections::BTreeMap<String, Secret>,
+    /// The values of the run for the variables that its jobs get, like the `envvars` of
+    /// Snakemake; the process environment unless the run gives its own.
+    pub variables: config_file::SecretValues,
     /// `[cwl] registry`: where images that CWL tools build go for remote executors.
     pub cwl_registry: Option<String>,
 }

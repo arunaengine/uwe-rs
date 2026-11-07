@@ -20,6 +20,8 @@ pub struct Local {
     pub holder: Holder,
     pub preparing: Arc<Semaphore>,
     pub secrets: std::collections::BTreeMap<String, config_file::Secret>,
+    /// Where the values of the variables that a job names come from.
+    pub variables: config_file::SecretValues,
 }
 
 impl Local {
@@ -179,10 +181,11 @@ impl Local {
 }
 
 /// The spec of a task with the values of the variables that it names in
-/// `snakemake_runtime::ENVIRONMENT_NAMES`, read from this environment as the job starts, so
-/// that only the names are part of its records and its key.
+/// `snakemake_runtime::ENVIRONMENT_NAMES`, read from the values of the run as the job starts,
+/// so that only the names are part of its records and its key.
 fn with_environment(
     spec: &task_model::TaskSpec,
+    variables: &config_file::SecretValues,
 ) -> Result<Option<task_model::TaskSpec>, ExecutorError> {
     let Some(task_model::EnvironmentValue::Literal(names)) =
         spec.environment.get(snakemake_runtime::ENVIRONMENT_NAMES)
@@ -196,7 +199,7 @@ fn with_environment(
     spec.environment
         .remove(snakemake_runtime::ENVIRONMENT_NAMES);
     for name in names {
-        let value = std::env::var(&name).map_err(|_| {
+        let value = variables.variable(&name).ok_or_else(|| {
             failed(format!(
                 "The environment variable {name} that the workflow requests is not set"
             ))
@@ -216,7 +219,7 @@ impl Backend for Local {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        let filled = with_environment(job.spec)?;
+        let filled = with_environment(job.spec, &self.variables)?;
         let job = Job {
             spec: filled.as_ref().unwrap_or(job.spec),
             ..job
@@ -267,6 +270,7 @@ pub struct Remote<B> {
     scratch: std::path::PathBuf,
     holder: Holder,
     local: tokio::sync::OnceCell<Local>,
+    variables: config_file::SecretValues,
 }
 
 impl<B> Remote<B> {
@@ -285,6 +289,7 @@ impl<B> Remote<B> {
             scratch: scratch.to_owned(),
             holder: Holder::new(run, "Conda image publication"),
             local: Default::default(),
+            variables: setup.variables.clone(),
         }
     }
 }
@@ -320,6 +325,7 @@ impl<B: Backend> Backend for Remote<B> {
                     holder: self.holder.clone(),
                     preparing: Arc::new(Semaphore::new(1)),
                     secrets: Default::default(),
+                    variables: Default::default(),
                 })
             })
             .await?;
@@ -331,7 +337,7 @@ impl<B: Backend> Backend for Remote<B> {
         job: Job<'_>,
         cancel: &CancellationToken,
     ) -> Result<Finished, ExecutorError> {
-        let filled = with_environment(job.spec)?;
+        let filled = with_environment(job.spec, &self.variables)?;
         let job = Job {
             spec: filled.as_ref().unwrap_or(job.spec),
             ..job
@@ -371,17 +377,33 @@ mod tests {
             replaces_entrypoint: false,
             run_as: None,
         };
-        assert!(with_environment(&spec).unwrap().is_none());
+        let process = config_file::SecretValues::default();
+        assert!(with_environment(&spec, &process).unwrap().is_none());
         let names = task_model::EnvironmentValue::Literal(r#"["HOME"]"#.into());
         let key = snakemake_runtime::ENVIRONMENT_NAMES.to_owned();
         spec.environment.insert(key.clone(), names);
-        let filled = with_environment(&spec).unwrap().expect("a filled spec");
+        let filled = with_environment(&spec, &process)
+            .unwrap()
+            .expect("a filled spec");
         let home = task_model::EnvironmentValue::Literal(std::env::var("HOME").unwrap());
         assert_eq!(filled.environment.get("HOME"), Some(&home));
         assert!(!filled.environment.contains_key(&key));
+        // A run with values of its own reads neither more nor other values of the process.
+        let mut given = config_file::SecretValues::default();
+        given.allow_environment(false);
+        let error = with_environment(&spec, &given)
+            .err()
+            .map(|error| error.to_string());
+        assert!(error.is_some_and(|error| error.contains("HOME that the workflow requests")));
+        given.insert("HOME", "/run/home").unwrap();
+        let filled = with_environment(&spec, &given)
+            .unwrap()
+            .expect("a filled spec");
+        let home = task_model::EnvironmentValue::Literal("/run/home".into());
+        assert_eq!(filled.environment.get("HOME"), Some(&home));
         let unset = r#"["UWE_SURELY_UNSET_VARIABLE"]"#.into();
         spec.environment
             .insert(key, task_model::EnvironmentValue::Literal(unset));
-        assert!(with_environment(&spec).is_err());
+        assert!(with_environment(&spec, &process).is_err());
     }
 }

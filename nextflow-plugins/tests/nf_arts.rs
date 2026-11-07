@@ -174,3 +174,14 @@ fn rejects_bad_settings() {
         assert!(error.contains(message), "{settings}: {error}");
     }
 }
+
+/// An empty `colors` list draws with the palette.
+#[test]
+fn ignores_empty_colors() {
+    let launch = tempfile::tempdir().expect("a folder");
+    let file = launch.path().join("art.svg");
+    let settings = format!("colors = []; file = '{}'", file.display());
+    assert_eq!(run(launch.path(), &settings), None);
+    let drawn = std::fs::read_to_string(&file).expect("a picture");
+    assert!(drawn.contains("stroke=\"#5b2a86\""), "{drawn}");
+}

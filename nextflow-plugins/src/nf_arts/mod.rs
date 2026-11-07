@@ -145,6 +145,8 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
         Some(other) => Some(vec![color(&other.to_string())?]),
         None => None,
     };
+    // An empty list leaves the palette in place.
+    let colors = colors.filter(|colors: &Vec<Color>| !colors.is_empty());
     let background = value("background")
         .map(|it| color(&it.to_string()))
         .transpose()?;

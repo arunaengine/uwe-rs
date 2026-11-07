@@ -139,21 +139,29 @@ pub(crate) fn redacted(config: &serde_json::Value) -> serde_json::Value {
                 .collect(),
         ),
         Json::Array(items) => Json::Array(items.iter().map(redacted).collect()),
-        Json::String(text) if leaks(text) => Json::String(safe_url(text)),
+        Json::String(text) if leaks(text) => {
+            Json::String(safe_url(text.split(';').next().unwrap_or_default()))
+        }
         other => other.clone(),
     }
 }
 
-/// Whether an address holds a user name or password, or a query value of a credential, as in
-/// `jdbc:postgresql://db/app?password=secret`.
+/// Whether an address holds a user name or password, or a query or `;` property value of a
+/// credential, as in `jdbc:postgresql://db/app?password=secret` or `jdbc:databricks://h;PWD=t`.
 fn leaks(url: &str) -> bool {
     let Some((_, rest)) = url.split_once("://") else {
         return false;
     };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let authority = rest.split(['/', '?', '#', ';']).next().unwrap_or_default();
     let query = rest.split_once('?').map_or("", |(_, query)| query);
-    let named = |pair: &str| secret(pair.split('=').next().unwrap_or_default());
-    authority.contains('@') || query.split(['&', ';']).any(named)
+    let named = |pair: &str| {
+        let name = pair.split('=').next().unwrap_or_default();
+        secret(name) || name.eq_ignore_ascii_case("pwd")
+    };
+    let properties = rest.split(';').skip(1);
+    authority.contains('@')
+        || query.split(['&', ';']).any(named)
+        || properties.into_iter().any(named)
 }
 
 /// Whether two addresses share scheme, host and port.
@@ -183,6 +191,7 @@ mod tests {
         let config = serde_json::json!({
             "sql": {"db": {"default": {"url": "jdbc:postgresql://db/app?password=secret"}}},
             "work": ["s3://user:pw@bucket/run", "https://example.org/a?page=2"],
+            "bricks": "jdbc:databricks://host/default;AuthMech=3;PWD=token",
         });
         let hidden = redacted(&config);
         assert_eq!(
@@ -191,6 +200,7 @@ mod tests {
         );
         assert_eq!(hidden["work"][0], "s3://bucket/run");
         assert_eq!(hidden["work"][1], "https://example.org/a?page=2");
+        assert_eq!(hidden["bricks"], "jdbc:databricks://host/default");
     }
 
     #[test]

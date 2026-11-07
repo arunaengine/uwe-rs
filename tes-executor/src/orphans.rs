@@ -2,45 +2,16 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::fs::{File, TryLockError};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use executor::ExecutorError;
+pub use executor::orphans::{Orphan, Outcome, journals};
+use executor::orphans::{held, read};
 use executor::poll::REQUEST_GRACE;
 use serde_json::Value;
 
 use crate::TesBackend;
-pub use crate::client::State;
-
-/// The TES task of one attempt of a run, as its journal and its server tell.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct Orphan {
-    /// The attempt, like `<run>-<task>-<attempt>`: the name of its scratch folder.
-    pub attempt: String,
-    /// The id of the task on the server, once the journal knows it.
-    pub id: Option<String>,
-    /// What the server last said of the task: `None` when it was not asked or did not answer.
-    pub state: Option<State>,
-    pub outcome: Outcome,
-}
-
-/// What became of the task of an attempt.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-#[serde(tag = "outcome", content = "reason", rename_all = "snake_case")]
-pub enum Outcome {
-    /// The task has not ended. Only `report_run` gives this.
-    Running,
-    /// The task had ended, or the server never took it.
-    Ended,
-    /// `stop_run` canceled the task, and the server confirmed that it ended.
-    Canceled,
-    /// The state of the task is not known, for this reason.
-    Unclear(String),
-    /// `stop_run` left the task as it was, for this reason. A later call tries again.
-    Kept(String),
-    /// Stopping the task failed with this error. Its journal stays for a later call.
-    Failed(String),
-}
+use crate::client::State;
 
 /// Whose journal one is, as far as a call for a run can tell.
 enum Owner<'a> {
@@ -101,7 +72,7 @@ impl TesBackend {
                     Some(id) => {
                         let status = tokio::time::timeout(REQUEST_GRACE, backend.client.status(id));
                         if let Ok(Ok(status)) = status.await {
-                            orphan.state = Some(status.state);
+                            orphan.state = named(status.state);
                         }
                         Outcome::Canceled
                     }
@@ -117,7 +88,8 @@ impl TesBackend {
     async fn inspect(&self, root: &Path, journal: &Value) -> Orphan {
         if journal["stopped"] == true {
             let mut found = orphan(root, journal, Outcome::Ended);
-            found.state = serde_json::from_value(journal["status"]["state"].clone()).ok();
+            let state = serde_json::from_value(journal["status"]["state"].clone()).ok();
+            found.state = state.and_then(named);
             return found;
         }
         let mut found = orphan(root, journal, Outcome::Unclear(String::new()));
@@ -127,7 +99,7 @@ impl TesBackend {
         };
         found.outcome = match tokio::time::timeout(REQUEST_GRACE, self.client.status(&id)).await {
             Ok(Ok(status)) => {
-                found.state = Some(status.state);
+                found.state = named(status.state);
                 match status.state.is_final() {
                     true => Outcome::Ended,
                     false => Outcome::Running,
@@ -138,36 +110,6 @@ impl TesBackend {
         };
         found
     }
-}
-
-/// The scratch folders under `scratch` with a journal of the run `run`, by name: journals that
-/// name it, and older journals that name no run but whose folder starts with `<run>-`.
-pub fn journals(scratch: &Path, run: &str) -> Result<Vec<PathBuf>, ExecutorError> {
-    let prefix = format!("{run}-");
-    let entries = match std::fs::read_dir(scratch) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error.into()),
-    };
-    let mut found = Vec::new();
-    for entry in entries {
-        let root = entry?.path();
-        let named = root.file_name().and_then(|name| name.to_str());
-        if !named.is_some_and(|name| name.starts_with(&prefix)) {
-            continue;
-        }
-        if read(&root).is_some_and(|journal| journal["run"].is_null() || journal["run"] == run) {
-            found.push(root);
-        }
-    }
-    found.sort();
-    Ok(found)
-}
-
-/// The journal in `root`, when it is there and can be read.
-fn read(root: &Path) -> Option<Value> {
-    let bytes = std::fs::read(root.join("remote.json")).ok()?;
-    serde_json::from_slice(&bytes).ok()
 }
 
 /// The backend of `peers` that owns a journal of the run `run`, as recovery picks it.
@@ -189,22 +131,20 @@ fn owner<'a>(peers: &[&'a TesBackend], run: &str, journal: &Value) -> Owner<'a> 
 }
 
 fn orphan(root: &Path, journal: &Value, outcome: Outcome) -> Orphan {
-    Orphan {
-        attempt: (root.file_name().unwrap_or_default().to_string_lossy()).into_owned(),
-        id: (journal["id"].as_str())
-            .filter(|id| !id.is_empty())
-            .map(str::to_owned),
-        state: None,
-        outcome,
-    }
+    executor::orphans::orphan(root, journal["id"].as_str(), outcome)
+}
+
+/// The name of a state as the TES server gives it, like `RUNNING`.
+fn named(state: State) -> Option<String> {
+    serde_json::to_value(state)
+        .ok()?
+        .as_str()
+        .map(str::to_owned)
 }
 
 /// Why recovery left the journal in `root`.
 fn kept(root: &Path) -> String {
-    let lock = File::options().write(true).open(root.join("remote.lock"));
-    if let Ok(lock) = lock
-        && let Err(TryLockError::WouldBlock) = lock.try_lock()
-    {
+    if held(root) {
         return "the uwe process of the attempt still runs".into();
     }
     match read(root).is_some_and(|journal| journal["id"].as_str().is_none_or(str::is_empty)) {

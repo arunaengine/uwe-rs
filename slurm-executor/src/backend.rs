@@ -117,6 +117,8 @@ pub struct SlurmBackend {
     /// For a cluster that gives each CPU a fixed memory and refuses memory requests: the GB
     /// per CPU. The jobs then ask for no memory but enough CPUs.
     pub cpu_memory_gb: Option<f64>,
+    /// The id of the run, which the comment of each job and each journal names.
+    pub run: String,
     queue: Queue,
     made: Images,
     recovery: Mutex<executor::history::Scan>,
@@ -162,9 +164,9 @@ enum Submission {
 }
 
 #[derive(Clone)]
-struct Scheduled {
-    id: String,
-    cluster: Option<String>,
+pub(crate) struct Scheduled {
+    pub(crate) id: String,
+    pub(crate) cluster: Option<String>,
 }
 
 impl SlurmBackend {
@@ -180,6 +182,7 @@ impl SlurmBackend {
             staging_time: STAGING_TIME,
             archives: None,
             cpu_memory_gb: None,
+            run: String::new(),
             scratch,
             container,
             options: Vec::new(),
@@ -204,7 +207,7 @@ impl SlurmBackend {
             .collect()
     }
 
-    fn command(&self, name: &str) -> PathBuf {
+    pub(crate) fn command(&self, name: &str) -> PathBuf {
         match &self.commands {
             Some(folder) => folder.join(name),
             None => PathBuf::from(name),
@@ -751,6 +754,11 @@ impl SlurmBackend {
     /// The options of the job of an attempt, whose time is that of its task plus `margin`.
     async fn job_options(&self, job: Job<'_>, root: &Path, margin: u64) -> Vec<String> {
         let mut options = sbatch_options(job, root, margin, &self.options);
+        // The options of the user come last, so a comment of theirs wins.
+        if !self.run.is_empty() {
+            let at = options.len().saturating_sub(self.options.len());
+            options.insert(at, format!("--comment={}", comment(&self.run)));
+        }
         if let Some(gb) = self.cpu_memory_gb {
             per_cpu_memory(&mut options, gb);
         }
@@ -993,7 +1001,7 @@ impl SlurmBackend {
         let mut journal = serde_json::json!({"backend":"SLURM", "commands":self.commands,
             "options":options, "working_directory":std::path::absolute(root)?, "id":null, "cluster":clusters(&options),
             "owner":std::process::id(), "host":host, "started":started, "locked":true,
-            "script":script, "identity":null, "configuration":self.configuration(),
+            "script":script, "identity":null, "configuration":self.configuration(), "run":self.run,
             "engine":matches!(&self.container, Container::Engine(_))});
         if let Some(staged) = staged {
             journal["collect"] = serde_json::json!(true);
@@ -1068,11 +1076,11 @@ impl SlurmBackend {
 
     /// How long the end of a job may take to confirm: a few queries, which a slow controller
     /// each answers late, and the time that SLURM takes to stop a job.
-    fn settle(&self) -> Duration {
+    pub(crate) fn settle(&self) -> Duration {
         CANCEL_GRACE.max(self.query_grace * 4)
     }
 
-    fn configuration(&self) -> serde_json::Value {
+    pub(crate) fn configuration(&self) -> serde_json::Value {
         let conf = std::env::var("SLURM_CONF").ok();
         let digest = std::fs::read(conf.as_deref().unwrap_or("/etc/slurm/slurm.conf"))
             .ok()
@@ -1229,7 +1237,7 @@ impl SlurmBackend {
     }
 
     /// Removes the objects in the staging root that the journal of an attempt names.
-    async fn settle_journal(
+    pub(crate) async fn settle_journal(
         &self,
         root: &Path,
         journal: &serde_json::Value,
@@ -1263,7 +1271,7 @@ impl SlurmBackend {
     /// Finds the job of a journal whose submission left no scheduler identity: by its recorded
     /// id, or else by its name and script, which only this attempt has, among the jobs of the
     /// owner of its folder. The job must have the name and script of the journal.
-    async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
+    pub(crate) async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
         let age = self.poll * 4 + self.query_grace + self.submit_grace;
         if !executor::poll::old_enough(&root.join("remote.json"), age) {
             return Submitted::Unclear("the submission is too recent to tell");
@@ -1413,7 +1421,7 @@ impl SlurmBackend {
     }
 
     /// Records termination after an independent query, retaining pending data obligations.
-    async fn stop(
+    pub(crate) async fn stop(
         &self,
         id: &str,
         root: &Path,
@@ -1522,7 +1530,7 @@ impl SlurmBackend {
         Ok(())
     }
 
-    async fn engine_stopped(
+    pub(crate) async fn engine_stopped(
         &self,
         root: &Path,
         journal: &serde_json::Value,
@@ -1565,13 +1573,18 @@ impl SlurmBackend {
 }
 
 /// What became of a submission whose answer was lost.
-enum Submitted {
+pub(crate) enum Submitted {
     /// The job with this id and identity.
     Found(Scheduled, serde_json::Value),
     /// SLURM has no such job: it never took it, or it ended long ago.
     Absent,
     /// The queue cannot tell yet, for this reason.
     Unclear(&'static str),
+}
+
+/// The comment of the jobs of the run `run`, which tells the run of a job to whoever lists it.
+pub(crate) fn comment(run: &str) -> String {
+    format!("uwe run {run}")
 }
 
 fn clusters(options: &[String]) -> Option<String> {
@@ -1592,7 +1605,7 @@ fn clusters(options: &[String]) -> Option<String> {
 
 /// The lock of an attempt. It lets go of the lock before it closes the file, as a process that
 /// this one starts holds a copy of the file, and so the lock, until it runs its program.
-struct Owned(File);
+pub(crate) struct Owned(pub(crate) File);
 
 impl Drop for Owned {
     fn drop(&mut self) {
@@ -1627,7 +1640,7 @@ fn unresolved(root: &Path, error: impl std::fmt::Display) -> ExecutorError {
     .into()
 }
 
-fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorError> {
+pub(crate) fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorError> {
     use std::io::Write;
     let path = root.join("remote.json.next");
     let mut file = std::fs::File::create(&path)?;

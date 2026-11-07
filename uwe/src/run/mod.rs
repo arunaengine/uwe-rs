@@ -10,9 +10,9 @@ pub(crate) mod support;
 
 pub use config_file::SecretValues;
 pub use events::{Event, Listener, TaskEvent, TaskState};
+pub use executor::orphans;
 pub use settings::Settings;
 pub use task_runner::NetworkRule;
-pub use tes_executor::orphans;
 pub use workflow_graph::Language;
 
 use crate::application::{self, Description, Policy};
@@ -97,8 +97,9 @@ impl RunRequest {
         .map_err(|error| Failure::setup(format!("uwe: discovery worker failed: {error}")))?
     }
 
-    /// The TES tasks that the run `settings.run_id` left, with what their servers say of them.
-    /// Changes nothing. The settings give the config file, the cache and the secrets of the run.
+    /// The TES tasks, Kubernetes Jobs and SLURM jobs that the run `settings.run_id` left, with
+    /// what their servers say of them. Changes nothing. The settings give the config file, the
+    /// cache and the secrets of the run.
     pub async fn remote_tasks(self) -> Result<Vec<orphans::Orphan>, Failure> {
         let settings = self.settings;
         tokio::task::spawn_blocking(move || remote_tasks(settings, false))
@@ -106,8 +107,9 @@ impl RunRequest {
             .map_err(|error| Failure::setup(format!("uwe: task worker failed: {error}")))?
     }
 
-    /// Cancels the TES tasks that the run `settings.run_id` left and waits until their servers
-    /// confirm that they ended. It keeps the tasks of an attempt whose uwe process still runs.
+    /// Cancels the remote tasks that the run `settings.run_id` left and waits until their
+    /// servers confirm that they ended. It keeps the tasks of an attempt whose uwe process
+    /// still runs.
     pub async fn stop_tasks(self) -> Result<Vec<orphans::Orphan>, Failure> {
         let settings = self.settings;
         tokio::task::spawn_blocking(move || remote_tasks(settings, true))
@@ -116,12 +118,12 @@ impl RunRequest {
     }
 }
 
-/// The TES tasks of the run of `settings`, found with the config and cache that a run with
+/// The remote tasks of the run of `settings`, found with the config and cache that a run with
 /// these settings uses, and stopped with `stop`.
 fn remote_tasks(settings: Settings, stop: bool) -> Result<Vec<orphans::Orphan>, Failure> {
     let _cache = support::CacheScope::new(false);
     let run = (settings.run_id.clone())
-        .ok_or_else(|| Failure::usage("uwe: set run_id to the run whose TES tasks to find"))?;
+        .ok_or_else(|| Failure::usage("uwe: set run_id to the run whose remote tasks to find"))?;
     settings::check_id(&run)?;
     let cache = match &settings.hosted {
         Some(hosted) => Some(hosted.check(settings.preset.as_deref())?.join("cache")),
@@ -144,7 +146,10 @@ fn remote_tasks(settings: Settings, stop: bool) -> Result<Vec<orphans::Orphan>, 
     if let Some(folder) = cache {
         crate::use_cache_folder(folder);
     }
-    crate::tes::orphans(&arguments, &setup, &run, stop)
+    let mut found = crate::tes::orphans(&arguments, &setup, &run, stop)?;
+    found.extend(crate::kubernetes::orphans(&arguments, &setup, &run, stop)?);
+    found.extend(crate::slurm::orphans(&arguments, &setup, &run, stop)?);
+    Ok(found)
 }
 
 /// Runs the target with its language's driver and the chosen executor, and records the run

@@ -215,7 +215,7 @@ async fn leave(operator: &Operator, objects: &Store, task: &Value) -> Vec<Value>
             "/uwe/control/stderr" => vec![("", "")],
             "/uwe/control/start" => vec![("", "1700000000\n")],
             "/uwe/control/end" => vec![("", "1700000001\n")],
-            "/uwe/control/usage" => vec![("", "")],
+            "/uwe/control/usage" | "/uwe/control/executables" => vec![("", "")],
             "/uwe/transfer/*" => vec![("1", "alpha beta\n"), ("2", "hidden\n")],
             _ => vec![("a.txt", "alpha beta\n")],
         };

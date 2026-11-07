@@ -7,7 +7,7 @@ use std::path::Path;
 
 use k8s_openapi::api::batch::v1::Job;
 use k8s_openapi::api::core::v1::{Event, Pod};
-use kube::config::{KubeConfigOptions, Kubeconfig};
+use kube::config::{AuthInfo, KubeConfigOptions, Kubeconfig};
 use kube::{Api, Client, Config};
 
 /// An authenticated cluster client, its server identity and the namespace of the Jobs.
@@ -16,6 +16,7 @@ pub struct Cluster {
     client: Client,
     namespace: String,
     server: String,
+    identity: Option<String>,
 }
 
 impl fmt::Debug for Cluster {
@@ -31,6 +32,7 @@ impl Cluster {
             client,
             namespace,
             server,
+            identity: None,
         }
     }
 
@@ -39,8 +41,9 @@ impl Cluster {
         let config = Config::incluster().map_err(|error| error.to_string())?;
         let namespace = namespace.unwrap_or_else(|| config.default_namespace.clone());
         let server = config.cluster_url.to_string();
+        let identity = fingerprint(&config.auth_info);
         let client = Client::try_from(config).map_err(|error| error.to_string())?;
-        Ok(Self::new(client, namespace, server))
+        Ok(Self::new(client, namespace, server).with_identity(identity))
     }
 
     /// The cluster of the current context of the kubeconfig `file`, with the Jobs in
@@ -70,8 +73,9 @@ impl Cluster {
             .map_err(|error| failed(&error))?;
         let namespace = namespace.unwrap_or_else(|| config.default_namespace.clone());
         let server = config.cluster_url.to_string();
+        let identity = fingerprint(&config.auth_info);
         let client = Client::try_from(config).map_err(|error| failed(&error))?;
-        Ok(Self::new(client, namespace, server))
+        Ok(Self::new(client, namespace, server).with_identity(identity))
     }
 
     pub fn namespace(&self) -> &str {
@@ -80,6 +84,17 @@ impl Cluster {
 
     pub fn server(&self) -> &str {
         &self.server
+    }
+
+    /// A digest of the credentials of the client, which the journals keep, so that only the
+    /// same identity stops a Job; `None` for a client that the host made.
+    pub fn identity(&self) -> Option<&str> {
+        self.identity.as_deref()
+    }
+
+    fn with_identity(mut self, identity: String) -> Cluster {
+        self.identity = Some(identity);
+        self
     }
 
     pub fn client(&self) -> Client {
@@ -97,4 +112,10 @@ impl Cluster {
     pub fn events(&self) -> Api<Event> {
         Api::namespaced(self.client.clone(), &self.namespace)
     }
+}
+
+/// The SHA-256 of the user entry of a kubeconfig: its token, certificate or command.
+fn fingerprint(user: &AuthInfo) -> String {
+    let bytes = serde_json::to_vec(user).unwrap_or_default();
+    task_model::Digest::sha256(&bytes).hex().to_owned()
 }

@@ -2677,3 +2677,129 @@ async fn schedules_with_cws() {
         assert_eq!(pod["schedulerName"], "workflow-scheduler");
     }
 }
+
+#[tokio::test]
+async fn stops_left_jobs() {
+    use executor::orphans::Outcome;
+    let root = tempfile::tempdir().unwrap();
+    let (mut backend, state) = backend(root.path()).await;
+    backend.run = "run1".into();
+    let mut other = KubernetesBackend::new(backend.cluster.clone(), backend.scratch.clone());
+    other.configs =
+        ImageConfigs::known([("debian:stable-slim".to_owned(), ImageConfig::default())]);
+    other.run = "run1-b".into();
+    // Three attempts start together, and their processes stop once the cluster took them.
+    let spec = spec("debian:stable-slim", "sleep 30");
+    let (staging, placement, cancel) = (Staging::default(), placement(), CancellationToken::new());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let (left, live, foreign) = ["run1-sort-1-1", "run1-live-1-1", "run1-b-sort-1-1"]
+        .map(|name| backend.scratch.join(name))
+        .into();
+    tokio::select! {
+        results = async { tokio::join!(
+            backend.run(job("run1-sort-1-1"), &cancel),
+            backend.run(job("run1-live-1-1"), &cancel),
+            other.run(job("run1-b-sort-1-1"), &cancel),
+        ) } => panic!("{results:?}"),
+        () = until(|| [&left, &live, &foreign].iter().all(|root| accepted(&root.join("remote.json")))) => {}
+    }
+    // An attempt whose process still runs holds the lock of its journal.
+    let lock = std::fs::File::options()
+        .write(true)
+        .open(live.join("remote.lock"))
+        .unwrap();
+    lock.lock().unwrap();
+    // A journal from before the journals named their run.
+    let old = backend.scratch.join("run1-old-1-1");
+    std::fs::create_dir_all(&old).unwrap();
+    let mut record: Value =
+        serde_json::from_slice(&std::fs::read(left.join("remote.json")).unwrap()).unwrap();
+    record.as_object_mut().unwrap().remove("run");
+    std::fs::write(old.join("remote.json"), record.to_string()).unwrap();
+    let submitted = state.lock().unwrap().submitted.clone();
+    let run = |name: &str| {
+        let job = submitted.iter().find(|job| job["metadata"]["name"] == name);
+        job.unwrap()["metadata"]["annotations"]["uwe.dev/run"].clone()
+    };
+    assert_eq!(run("uwe-run1-sort-1-1"), "run1");
+    assert_eq!(run("uwe-run1-b-sort-1-1"), "run1-b");
+
+    let outcomes = |found: &[executor::orphans::Orphan]| -> Vec<(String, Outcome)> {
+        (found.iter())
+            .map(|orphan| (orphan.attempt.clone(), orphan.outcome.clone()))
+            .collect()
+    };
+    let unclear = Outcome::Unclear("the journal names no run, so it may belong to another".into());
+    let report = backend.report_run("run1").await.unwrap();
+    assert_eq!(
+        outcomes(&report),
+        [
+            ("run1-live-1-1".into(), Outcome::Running),
+            ("run1-old-1-1".into(), unclear),
+            ("run1-sort-1-1".into(), Outcome::Running),
+        ]
+    );
+    assert_eq!(report[2].id.as_deref(), Some("uwe-run1-sort-1-1"));
+    assert!(state.lock().unwrap().jobs.values().all(|job| !job.deleted));
+
+    // A client of another identity may not stop them.
+    let file = kube::config::Kubeconfig::read_from(root.path().join("kubeconfig")).unwrap();
+    let options = kube::config::KubeConfigOptions::default();
+    let config = kube::Config::from_custom_kubeconfig(file, &options).await;
+    let client = kube::Client::try_from(config.unwrap()).unwrap();
+    let mut stranger = KubernetesBackend::new(
+        Cluster::new(client, NAMESPACE.into(), backend.cluster.server().into()),
+        backend.scratch.clone(),
+    );
+    stranger.run = "run1".into();
+    let refused = stranger.stop_run("run1").await.unwrap();
+    assert!(
+        refused
+            .iter()
+            .all(|orphan| matches!(orphan.outcome, Outcome::Kept(_)))
+    );
+    assert!(state.lock().unwrap().jobs.values().all(|job| !job.deleted));
+
+    let stopped = backend.stop_run("run1").await.unwrap();
+    let kept = |reason: &str| Outcome::Kept(reason.into());
+    let expected = [
+        (
+            "run1-live-1-1".to_owned(),
+            kept("the uwe process of the attempt still runs"),
+        ),
+        (
+            "run1-old-1-1".into(),
+            kept("the journal names no run, so it may belong to another"),
+        ),
+        ("run1-sort-1-1".into(), Outcome::Canceled),
+    ];
+    assert_eq!(outcomes(&stopped), expected);
+    assert!(!left.join("remote.json").exists());
+    {
+        let state = state.lock().unwrap();
+        assert!(state.jobs["uwe-run1-sort-1-1"].deleted);
+        assert!(!state.jobs["uwe-run1-live-1-1"].deleted);
+        assert!(!state.jobs["uwe-run1-b-sort-1-1"].deleted);
+    }
+    assert!(foreign.join("remote.json").exists());
+    // A second call finds no journal of the stopped Job, so it asks nothing about it.
+    let calls = state.lock().unwrap().calls.len();
+    let again = backend.stop_run("run1").await.unwrap();
+    assert_eq!(outcomes(&again), expected[..2]);
+    assert_eq!(state.lock().unwrap().calls.len(), calls);
+    lock.unlock().unwrap();
+    let rest: Vec<_> = (state.lock().unwrap().jobs.values())
+        .filter(|job| !job.deleted)
+        .map(|job| job.process)
+        .collect();
+    for process in rest {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", "--", &format!("-{process}")])
+            .status();
+    }
+}

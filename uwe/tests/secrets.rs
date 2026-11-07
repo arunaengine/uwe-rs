@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use uwe::RunRequest;
-use uwe::run::orphans::{Outcome, State};
+use uwe::run::orphans::Outcome;
 use uwe::run::{SecretValues, Settings};
 
 /// The name both runs give a value for. The process environment never has it.
@@ -126,7 +126,7 @@ fn stops_with_secrets() {
         let report = runtime.block_on(request().remote_tasks());
         let report = report.unwrap_or_else(|failure| panic!("run {run}: {}", failure.message));
         assert_eq!(report.len(), 1);
-        assert_eq!(report[0].state, Some(State::Canceled));
+        assert_eq!(report[0].state.as_deref(), Some("CANCELED"));
         assert_eq!(report[0].outcome, Outcome::Ended);
         assert!(
             attempt.join("remote.json").is_file(),

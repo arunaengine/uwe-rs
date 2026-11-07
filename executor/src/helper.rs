@@ -210,7 +210,7 @@ pub fn discover(folder: &Path, discovery: &Discovery, limit: usize) -> Result<()
             "the task has more than {limit} output files, which the plan allows"
         ));
     }
-    let mut empty = Vec::new();
+    let (mut empty, captured) = (Vec::new(), paths.len());
     for file in &finished.files[original..] {
         let source = if !file.path.starts_with('/')
             && let Some(work) = &discovery.work
@@ -251,7 +251,27 @@ pub fn discover(folder: &Path, discovery: &Discovery, limit: usize) -> Result<()
         folder.join(crate::CONTROL).join(crate::capture::INDEX),
         index,
     )
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    // The copies keep the mode of their source, so they tell which outputs are programs.
+    let list = folder
+        .join(crate::CONTROL)
+        .join(crate::capture::EXECUTABLES);
+    let opened = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(list);
+    let mut programs = opened.map_err(|error| error.to_string())?;
+    for number in captured + 1..=paths.len() {
+        let data = std::fs::metadata(transfer.join(number.to_string()));
+        let mode = data
+            .map_err(|error| error.to_string())?
+            .permissions()
+            .mode();
+        if mode & 0o111 != 0 {
+            writeln!(programs, "{number}").map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn flatten(

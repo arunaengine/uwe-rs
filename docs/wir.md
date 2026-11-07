@@ -10,13 +10,32 @@ wir is the workflow intermediate representation of uwe: one typed graph format t
 $ uwe run run.wir.json -inputs inputs.json
 ```
 
+## Lowering CWL
+
+`uwe lower` prints the wir document of a CWL file, with the source locations from the current folder, so the document belongs there:
+
+```console
+$ uwe lower workflow.cwl > workflow.wir.json
+uwe: op align stays a native CWL op: step align: scatter
+```
+
+`uwe run workflow.cwl -lowered` runs a CWL document through its lowered wir document, which uwe writes below its scratch folder; `uwe graph -lowered` shows its graph. The crate `cwl-lowering` does the lowering:
+
+- A CommandLineTool becomes a `task` op when the task builds the same command: literal base command and arguments, inputs on the command line as one word each (scalars, Files, Directories, enums, and arrays of them without a prefix), `stdout` and `stderr` files, outputs of `stdout` and `stderr` type and outputs read by one literal glob. `DockerRequirement` with `dockerPull` sets the image, else it is `debian:stable-slim`; `NetworkAccess` sets `network`; `ResourceRequirement`, `ToolTimeLimit` and `WorkReuse` set the attributes.
+- A Workflow becomes a graph: an op per step, at the path of the step id, and an edge per link with one source. A step that runs a Workflow becomes a `call` op with a graph of its own, so its tasks have paths like `inner/wc`, as in the CWL run.
+- Anything else stays a `native` CWL op that runs the process as a whole, and `uwe lower` names it with the first thing that has no lowering yet: expressions, input defaults, `valueFrom`, several sources, scatter, `when`, ExpressionTools, and requirements such as `InitialWorkDirRequirement`, `EnvVarRequirement` or `ShellCommandRequirement`. A workflow keeps its steps only when every step lowers; otherwise the whole workflow is one native op.
+
+A lowered tool runs as a wir task, not as the task of the CWL driver, so its cache key and resume fingerprint differ from those of the same tool run as CWL: the CWL driver works in `/var/spool/cwl`, sets `HOME` and `TMPDIR`, stages each input file in `/var/lib/cwl/inputs/<n>`, and asks for `cwl.output.json` in a real run, while a wir task works in `/work` with its inputs in `inputs/<port>`. The steps, the images and the outputs are the same, except where a tool prints the path of an input; `uwe/tests/lowering.rs` compares them on the simulator and in Docker. Two runs of the same lowered document share cache keys and resume fingerprints.
+
+Not lowered the same way: a lowered tool ignores a `cwl.output.json` that it writes, and its inputs have no format check and no secondary files that CWL would find beside them, so such inputs stay native.
+
 ## Detection
 
 uwe takes a file as a wir document when it is JSON and has a top-level `wir_version` key. The file name does not matter, but `<name>.wir.json` is the convention. `-lang wir` picks wir for any file. uwe parses the document, checks its version, runs the verifier and refuses the document with every problem the verifier found before any task starts.
 
 ## Inputs
 
-The inputs of the entry graph come from the JSON file of `-inputs` and from parameters like `--lines 3`. A parameter is read by the type of its port: text for a string, a number for an `int` or a `float`, a path for a File or a Directory, and JSON for anything else. File and Directory values use the JSON form of wir, `{"class": "File", "location": ...}`; a relative `location` or `path` in the inputs file starts from the folder of that file. An input without a value is null when its type is optional; otherwise the run stops before any task starts. An `int` that reaches a `float` port becomes a float.
+The inputs of the entry graph come from the JSON or YAML file of `-inputs` and from parameters like `--lines 3`. A parameter is read by the type of its port: text for a string, a number for an `int` or a `float`, a path for a File or a Directory, and JSON for anything else. File and Directory values use the JSON form of wir, `{"class": "File", "location": ...}`; a relative `location` or `path` in the inputs file starts from the folder of that file. An input without a value is null when its type is optional; otherwise the run stops before any task starts. An `int` that reaches a `float` port becomes a float.
 
 ## Ops
 

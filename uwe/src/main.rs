@@ -113,6 +113,7 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe reconcile <run> -reason <text> [-database <file>]
        uwe inputs <workflow file or directory> [-format json|text] [-check] [options]
        uwe outputs <workflow file or directory> [-format json|text] [options]
+       uwe lower <CWL file>
        uwe clean [-keep-days <n>] [-keep-run <run>]... [-keep-slower-than <time>] [-remove] [-front]
        uwe check-order <workflow file or directory> [options]
        uwe changes <run>
@@ -179,6 +180,7 @@ options:
   -default-image <image>              the image of tasks that name none, for real executors
   -python-image <image>               the image of the Python packages without a stand-in
   -stub                               runs the stubs of tasks
+  -lowered                            runs a CWL document through its lowered wir document
   -keep-going                         after a task failed, runs every task that does not
                                       depend on it, then fails; without it no more tasks
                                       start, as each language's engine does

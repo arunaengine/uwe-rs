@@ -27,6 +27,8 @@ pub struct Arguments {
     pub stub: bool,
     /// `-keep-going`: after a task failed, run every task that does not depend on it.
     pub keep_going: bool,
+    /// `-lowered`: run a CWL document through its lowered wir document.
+    pub lowered: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,
     /// `-uwe-config file`: a config file of uwe, read after the site-wide file and
@@ -285,6 +287,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             }
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
+            "-lowered" => parsed.lowered = true,
             "-strict-provenance" => parsed.strict_provenance = true,
             "-reason" => {
                 let reason = value()?;
@@ -604,6 +607,7 @@ pub const COMMANDS: &[&str] = &[
     "presets",
     "kuberun",
     "record",
+    "lower",
     "version",
 ];
 const WORKFLOW: &[&str] = &[
@@ -707,6 +711,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check", "check-order", "kuberun"],
     ),
     ("-keep-going", &["run", "graph", "check-order"]),
+    ("-lowered", &["run", "graph"]),
     (
         "-until <rules,files>",
         &["run", "graph", "check", "check-order"],
@@ -841,6 +846,7 @@ pub fn help(command: &str) -> Result<String, String> {
         "origin" => " <file>",
         "digest" => " <path>",
         "record" => " -- <command ...>",
+        "lower" => " <workflow.cwl>",
         _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
         "lock-environment" => " <environment.yml>",
         _ => " <run>",

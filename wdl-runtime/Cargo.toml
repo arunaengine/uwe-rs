@@ -15,7 +15,9 @@ publish.workspace = true
 indexmap.workspace = true
 regex.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 # Parsing, imports and type checking of WDL by the Sprocket project. Its engine crate keeps
 # expression evaluation private and always builds its own task backends, so uwe evaluates.
 wdl-analysis = "0.28.0"
 wdl-ast = "0.27.2"
+workflow-graph.workspace = true

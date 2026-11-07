@@ -22,3 +22,6 @@ tokio.workspace = true
 wdl-analysis = "0.28.0"
 wdl-ast = "0.27.2"
 workflow-graph.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

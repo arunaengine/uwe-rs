@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT or Apache-2.0
  */
 
-include { parquetCheck; parquetItems; parquetWriter } from 'plugin/nf-parquet'
+include { parquetCheck; parquetItems; parquetCount; parquetWriter } from 'plugin/nf-parquet'
 
 // Each row of each file as a map, or lists of `by` rows; `each` changes every item.
 def splitParquet(source, Map options = [:]) {
@@ -18,7 +18,7 @@ def splitParquet(source, Map options = [:]) {
 def countParquet(source, Map options = [:]) {
     parquetCheck(options)
     return source
-        .map { item -> parquetItems(item, options).size() }
+        .map { item -> parquetCount(item, options) }
         .reduce(0) { total, count -> total + count }
 }
 

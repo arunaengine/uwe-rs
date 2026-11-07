@@ -41,6 +41,7 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
     match (name, arguments.as_slice()) {
         ("parquetCheck", [options]) => check(options).map(|()| Value::Null),
         ("parquetItems", [item, options]) => items(item, options, context).map(Value::list),
+        ("parquetCount", [item, options]) => count(item, options, context),
         ("parquetWriter", [_, options]) => writer(options),
         _ => Err(Error::Unsupported {
             message: format!("the function `{name}` of the plugin `nf-parquet`"),
@@ -119,17 +120,62 @@ fn class_name(value: &Value) -> Option<String> {
     }
 }
 
-/// The items that one source item gives: its rows, or lists of `by` rows, at most `limit`
-/// rows per file; in a list item, the rows replace the file at `elem` or the first file.
-fn items(item: &Value, options: &Value, context: &mut Context) -> Result<Vec<Value>, Error> {
-    let number = |name: &str| match crate::nf_schema::entries(options)
-        .into_iter()
-        .find(|(key, _)| key == name)
-    {
+/// The file of a source item, and the list item it stands in when the item is a list.
+struct Source {
+    list: Option<Vec<Value>>,
+    index: usize,
+    path: PathValue,
+}
+
+/// A whole-number option of the splitter.
+fn number(options: &Value, name: &str) -> Option<i64> {
+    match (crate::nf_schema::entries(options).into_iter()).find(|(key, _)| key == name) {
         Some((_, Value::Number(Number::Integer(value)))) => Some(i64::from(value)),
         Some((_, Value::Number(Number::Long(value)))) => Some(value),
         _ => None,
+    }
+}
+
+/// The items that one source item gives: its rows, or lists of `by` rows, at most `limit`
+/// rows per file; in a list item, the rows replace the file at `elem` or the first file.
+fn items(item: &Value, options: &Value, context: &mut Context) -> Result<Vec<Value>, Error> {
+    let Source { list, index, path } = source(item, options, context)?;
+    let limit = number(options, "limit").and_then(|limit| usize::try_from(limit).ok());
+    let mut rows = Vec::new();
+    read(&path, limit, context, &mut |row| rows.push(row))?;
+    let parts = match number(options, "by").and_then(|by| usize::try_from(by).ok()) {
+        Some(by) if by > 0 => (rows.chunks(by))
+            .map(|chunk| Value::list(chunk.to_vec()))
+            .collect(),
+        _ => rows,
     };
+    Ok(match list {
+        Some(items) => (parts.into_iter())
+            .map(|part| {
+                let mut copy = items.clone();
+                copy[index] = part;
+                Value::list(copy)
+            })
+            .collect(),
+        None => parts,
+    })
+}
+
+/// The number of items that one source item gives, read without keeping its rows.
+fn count(item: &Value, options: &Value, context: &mut Context) -> Result<Value, Error> {
+    let path = source(item, options, context)?.path;
+    let limit = number(options, "limit").and_then(|limit| usize::try_from(limit).ok());
+    let mut rows = 0usize;
+    read(&path, limit, context, &mut |_| rows += 1)?;
+    let parts = match number(options, "by").and_then(|by| usize::try_from(by).ok()) {
+        Some(by) if by > 0 => rows.div_ceil(by),
+        _ => rows,
+    };
+    Ok(Value::integer(i32::try_from(parts).unwrap_or(i32::MAX)))
+}
+
+/// The file to split of a source item.
+fn source(item: &Value, options: &Value, context: &mut Context) -> Result<Source, Error> {
     let mut entries = crate::nf_schema::entries(options).into_iter();
     let record = entries.find(|(key, _)| key == "record");
     if let Some(class) = record.and_then(|(_, value)| class_name(&value)) {
@@ -138,7 +184,7 @@ fn items(item: &Value, options: &Value, context: &mut Context) -> Result<Vec<Val
     let (list, index) = match item {
         Value::List(list) => {
             let items = list.borrow().items.clone();
-            let index = match number("elem") {
+            let index = match number(options, "elem") {
                 Some(elem) => usize::try_from(elem).ok(),
                 None => items.iter().position(|item| matches!(item, Value::Path(_))),
             };
@@ -163,30 +209,17 @@ fn items(item: &Value, options: &Value, context: &mut Context) -> Result<Vec<Val
             )));
         }
     };
-    let mut rows = rows(&path, context)?;
-    if let Some(limit) = number("limit").and_then(|limit| usize::try_from(limit).ok()) {
-        rows.truncate(limit);
-    }
-    let parts = match number("by").and_then(|by| usize::try_from(by).ok()) {
-        Some(by) if by > 0 => (rows.chunks(by))
-            .map(|chunk| Value::list(chunk.to_vec()))
-            .collect(),
-        _ => rows,
-    };
-    Ok(match list {
-        Some(items) => (parts.into_iter())
-            .map(|part| {
-                let mut copy = items.clone();
-                copy[index] = part;
-                Value::list(copy)
-            })
-            .collect(),
-        None => parts,
-    })
+    Ok(Source { list, index, path })
 }
 
-/// The rows of a Parquet file, local or remote, each a map from column name to value.
-fn rows(path: &PathValue, context: &mut Context) -> Result<Vec<Value>, Error> {
+/// Hands each row of a Parquet file, local or remote, to `keep` as a map from column name to
+/// value, and stops after `limit` rows.
+fn read(
+    path: &PathValue,
+    limit: Option<usize>,
+    context: &mut Context,
+    keep: &mut dyn FnMut(Value),
+) -> Result<(), Error> {
     let bytes = context.host.read(path)?;
     let opened = SerializedFileReader::new(bytes::Bytes::from(bytes))
         .map_err(|error| thrown(format!("{} is not a Parquet file: {error}", path.uri())))?;
@@ -198,15 +231,15 @@ fn rows(path: &PathValue, context: &mut Context) -> Result<Vec<Value>, Error> {
     let failed = |error: parquet::errors::ParquetError| {
         thrown(format!("Error while reading Parquet file - cause: {error}"))
     };
-    let mut rows = Vec::new();
-    for row in opened.get_row_iter(None).map_err(failed)? {
+    let rows = opened.get_row_iter(None).map_err(failed)?;
+    for row in rows.take(limit.unwrap_or(usize::MAX)) {
         let row = row.map_err(failed)?;
         let entries = (row.get_column_iter().zip(&root))
             .map(|((name, field), kind)| Ok((Value::string(name.as_str()), value(field, kind)?)))
             .collect::<Result<Vec<_>, Error>>()?;
-        rows.push(Value::map(entries));
+        keep(Value::map(entries));
     }
-    Ok(rows)
+    Ok(())
 }
 
 /// Fails for a column that the plugin cannot read, or that Parquet's row reader does not know.

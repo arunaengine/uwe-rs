@@ -48,6 +48,8 @@ pub struct WdlDriver {
     print: bool,
     deliveries: Vec<Delivery>,
     results: Option<Json>,
+    /// The outputs of the finished run, at the paths they were delivered to.
+    outputs: Option<IndexMap<String, Value>>,
     acceptance: HashSet<(TaskId, u32)>,
 }
 
@@ -81,8 +83,17 @@ impl WdlDriver {
             print: options.print,
             deliveries: Vec::new(),
             results: None,
+            outputs: None,
             acceptance: HashSet::new(),
         })
+    }
+
+    /// The outputs of a finished run, also of a simulated one, by their names without the
+    /// name of the workflow, as [`Value::result_json`] gives them.
+    pub fn exported(&self) -> Option<Json> {
+        let outputs = self.outputs.as_ref()?;
+        let object = (outputs.iter()).map(|(name, value)| (name.clone(), value.result_json()));
+        Some(Json::Object(object.collect()))
     }
 
     /// The inputs of the main workflow or task, and of its calls, from the launch.
@@ -274,6 +285,7 @@ impl Driver for WdlDriver {
             );
         }
         self.results = Some(object);
+        self.outputs = Some(outputs);
         Ok(())
     }
 }

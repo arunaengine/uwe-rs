@@ -26,6 +26,10 @@ impl<'d> Checker<'d> {
         if task.command.is_empty() {
             self.report(at, Problem::Empty("command".into()));
         }
+        if task.network && matches!(self.document.wir_version.as_str(), "0.1" | "0.2") {
+            let feature = "the network of a task".into();
+            self.report(at, Problem::Later(feature, "0.3".into()));
+        }
         let used = task.command.iter().filter_map(|argument| match argument {
             Argument::Input { input } => Some(input),
             Argument::Text(_) => None,
@@ -134,7 +138,7 @@ impl<'d> Checker<'d> {
                 (dynamic, "a dynamic native output"),
             ];
             for (_, feature) in features.iter().filter(|(used, _)| *used) {
-                self.report(at, Problem::Later((*feature).into()));
+                self.report(at, Problem::Later((*feature).into(), "0.2".into()));
             }
         }
     }

@@ -534,3 +534,67 @@ fn tracks_directory_files() {
     assert!(execution.error.is_none(), "{:?}", execution.error);
     assert_eq!(executor.1, ["src", "make", "all"]);
 }
+
+#[test]
+fn exports_target_files() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let snakefile = folder.path().join("Snakefile");
+    let text = "rule all:\n    input: reports=expand(\"out/{s}.txt\", s=[\"a\", \"b\"]), \
+                total=\"sum.txt\"\n\nrule make:\n    output: \"out/{s}.txt\"\n    \
+                shell: \"echo {wildcards.s} > {output}\"\n\nrule sum:\n    \
+                input: expand(\"out/{s}.txt\", s=[\"a\", \"b\"])\n    output: \"sum.txt\"\n    \
+                shell: \"cat {input} > {output}\"\n";
+    std::fs::write(&snakefile, text).expect("writes the Snakefile");
+    let work = folder.path().join("work");
+    std::fs::create_dir(&work).expect("makes the folder");
+    let options = snakemake_runtime::RunSettings {
+        workdir: Some(work.clone()),
+        ..snakemake_runtime::RunSettings::default()
+    };
+    let at = |path: &str| work.join(path).to_string_lossy().into_owned();
+    for (targets, simulated) in [(Vec::new(), true), (vec!["sum.txt".to_owned()], false)] {
+        let launch = Launch {
+            target: snakefile.clone(),
+            targets: targets.clone(),
+            scratch: folder.path().join("scratch"),
+            simulated,
+            ..Launch::default()
+        };
+        let settings = snakemake_runtime::Settings::default();
+        let mut driver =
+            snakemake_runtime::spawn_driver(&launch, settings, options.clone()).expect("a driver");
+        let mut simulator = workflow_graph::Simulator::new(folder.path().join("simulator"));
+        let mut delivered = Targets(Vec::new(), work.canonicalize().unwrap_or(work.clone()));
+        let execution = Engine::new(&mut simulator)
+            .observer(&mut delivered)
+            .run("sum", &mut driver);
+        assert!(execution.error.is_none(), "{:?}", execution.error);
+        let exported = driver.exported().expect("the target files");
+        assert_eq!(
+            workflow_graph::Driver::results(&driver).is_some(),
+            !simulated,
+            "only a real run has results"
+        );
+        if targets.is_empty() {
+            let reports = exported["reports"].as_array().expect("a group");
+            let locations: Vec<&str> = reports
+                .iter()
+                .map(|file| file["location"].as_str().unwrap())
+                .collect();
+            assert_eq!(locations, [at("out/a.txt"), at("out/b.txt")], "{exported}");
+            assert_eq!(exported["total"]["location"], at("sum.txt"));
+            assert_eq!(exported["total"]["class"], "File");
+        } else {
+            assert_eq!(
+                exported["targets"][0]["location"],
+                at("sum.txt"),
+                "{exported}"
+            );
+            assert_eq!(
+                delivered.0,
+                ["out/a.txt", "out/b.txt", "sum.txt"],
+                "into its folder"
+            );
+        }
+    }
+}

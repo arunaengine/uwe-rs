@@ -93,3 +93,81 @@ fn delivers_output_artifacts() {
         )]
     );
 }
+
+const OUTPUTS: &str = r#"
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: outputs
+spec:
+  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - name: make
+        template: make
+    outputs:
+      parameters:
+      - name: word
+        valueFrom:
+          parameter: "{{steps.make.outputs.parameters.word}}"
+      artifacts:
+      - name: hello
+        from: "{{steps.make.outputs.artifacts.hello}}"
+  - name: make
+    container:
+      image: alpine:3.20
+      command: [sh, -c, "echo hi > /tmp/hello.txt && echo hi > /tmp/word.txt"]
+    outputs:
+      parameters:
+      - name: word
+        globalName: shared
+        valueFrom:
+          path: /tmp/word.txt
+      artifacts:
+      - name: hello
+        path: /tmp/hello.txt
+"#;
+
+#[test]
+fn exports_workflow_outputs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let file = folder.path().join("workflow.yaml");
+    std::fs::write(&file, OUTPUTS).expect("writes the workflow");
+    for simulated in [false, true] {
+        let launch = Launch {
+            target: file.clone(),
+            scratch: folder.path().join("scratch"),
+            output_dir: Some(folder.path().join("results")),
+            simulated,
+            ..Launch::default()
+        };
+        let services = argo_runtime::Services::default();
+        let mut driver = argo_runtime::load_driver(&launch, services).expect("a driver");
+        let execution =
+            Engine::new(&mut Maker(folder.path().to_owned())).run("outputs", &mut driver);
+        assert!(execution.error.is_none(), "{:?}", execution.error);
+        let exported = driver.exported().expect("the outputs");
+        let hello = &exported["hello"];
+        assert_eq!(
+            (hello["class"].as_str(), hello["basename"].as_str()),
+            (Some("File"), Some("hello.txt")),
+            "{exported}"
+        );
+        assert!(
+            hello["location"]
+                .as_str()
+                .is_some_and(|location| location.ends_with(".out")),
+            "{exported}"
+        );
+        assert_eq!(
+            exported["word"], exported["shared"],
+            "the global output by its name"
+        );
+        let results = workflow_graph::Driver::results(&driver);
+        assert_eq!(results.is_some(), !simulated, "only a real run has results");
+        if !simulated {
+            assert_eq!(exported["word"], "hi");
+        }
+    }
+}

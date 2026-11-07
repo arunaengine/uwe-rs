@@ -143,7 +143,7 @@ impl Lims {
                     answer.body
                 );
             }
-            Err(error) => tracing::warn!("Error updating LIMS status: {error}"),
+            Err(error) => tracing::warn!("Error updating LIMS status: {}", error.without_url()),
         }
         let Some(file) = param("lims_upload_file") else {
             return;
@@ -217,7 +217,7 @@ impl Upload {
         if let Some(auth) = auth {
             request = request.header("Authorization", auth);
         }
-        let answer = sender.send(request).map_err(|error| error.to_string())?;
+        let answer = (sender.send(request)).map_err(|error| error.without_url().to_string())?;
         match (200..300).contains(&answer.status) {
             true => tracing::info!(
                 "LIMS file upload response: SUCCESS ({}) - {}",
@@ -253,5 +253,35 @@ fn content_type(name: &str) -> &'static str {
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("svg") => "image/svg+xml",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hides_failed_address() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("binds a free port");
+        let port = listener.local_addr().expect("an address").port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                drop(stream);
+            }
+        });
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let file = directory.path().join("report.txt");
+        std::fs::write(&file, "report").expect("writes a file");
+        let upload = Upload {
+            url: format!("http://user:pw-secret@127.0.0.1:{port}/up?token=query-secret"),
+            method: "POST".into(),
+            binary: true,
+            field: "file".into(),
+        };
+        let sender = Sender::new().expect("a sender");
+        let error = upload
+            .send(&sender, &file, None)
+            .expect_err("the server hangs up");
+        assert!(!error.is_empty() && !error.contains("secret"), "{error}");
     }
 }

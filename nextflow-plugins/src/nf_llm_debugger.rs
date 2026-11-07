@@ -283,7 +283,7 @@ fn ended(settings: &Settings, end: &End, sender: &mut Option<Sender>) {
     };
     tracing::info!(
         "{ROBOT} Debug parameters: endpoint={}, address={}, model={}",
-        settings.endpoint,
+        service::safe_url(&settings.endpoint),
         service::safe_url(&settings.url),
         settings.model.as_deref().unwrap_or("null")
     );
@@ -372,7 +372,7 @@ fn chat(settings: &Settings, report: &str, sender: &Sender) -> Result<String, St
     let failed = |error: String| format!("[nf-llm-debugger] Error running LLM diagnosis: {error}");
     let answer = sender
         .send(request)
-        .map_err(|error| failed(error.to_string()))?;
+        .map_err(|error| failed(error.without_url().to_string()))?;
     if !(200..300).contains(&answer.status) {
         return Err(failed(format!(
             "HTTP status {}: {}",
@@ -428,6 +428,7 @@ fn proxy(settings: &Settings, report: &str, sender: &Sender) -> Result<Diagnosis
         request = request.bearer_auth(key);
     }
     let answer = sender.send(request).map_err(|error| {
+        let error = error.without_url();
         format!("[nf-llm-debugger] Error communicating with CRG LLM proxy: {error}")
     })?;
     if !(200..300).contains(&answer.status) {
@@ -498,6 +499,29 @@ mod tests {
             super::route("gemini", "", true),
             (Provider::Proxy, PROXY.into())
         );
+    }
+
+    #[test]
+    fn hides_failed_address() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("binds a free port");
+        let port = listener.local_addr().expect("an address").port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                drop(stream);
+            }
+        });
+        let endpoint = format!("http://user:pw-secret@127.0.0.1:{port}/v1?key=query-secret");
+        let param = |name: &str| (name == "llm_endpoint").then(|| endpoint.clone());
+        let settings = Settings::read(&param, &|_| None, Path::new("."));
+        let sender = Sender::new().expect("a sender");
+        let error = chat(&settings, "report", &sender).expect_err("the server hangs up");
+        let mut proxy = settings.clone();
+        proxy.url = settings.endpoint.clone();
+        let failed = super::proxy(&proxy, "report", &sender).expect_err("the server hangs up");
+        for error in [error, failed] {
+            assert!(error.starts_with("[nf-llm-debugger] Error"), "{error}");
+            assert!(!error.contains("secret"), "{error}");
+        }
     }
 
     #[test]

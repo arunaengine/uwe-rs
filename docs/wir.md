@@ -25,26 +25,34 @@ uwe: op align stays a native CWL op: step align: scatter
 - A Workflow becomes a graph: an op per step, at the path of the step id, and an edge per link with one source. A step that runs a Workflow becomes a `call` op with a graph of its own, so its tasks have paths like `inner/wc`, as in the CWL run.
 - A scattered step becomes a `map` op over the scattered inputs, with the mode of its `scatterMethod`, whose body graph runs the op of the step. Its tasks have paths like `say/0/say` and the step `say/say`, where the CWL driver names them `say[0]` with the step `say`.
 - A step with `when` becomes an `expr` op `<step>.when` that computes the condition from the step inputs, with the `expressionLib` in scope, and a `branch` op at the step path whose body graph runs the op of the step, so its task has the path and step `say/say`. A skipped step gives null outputs. With `scatter`, both are the body of the `map`, so the condition holds per round and a skipped round gives null at its place.
-- Anything else stays a `native` CWL op that runs the process as a whole, and `uwe lower` names it with the first thing that has no lowering yet: expressions in tools, input defaults, `valueFrom`, several sources, `pickValue`, ExpressionTools, and requirements such as `InitialWorkDirRequirement`, `EnvVarRequirement` or `ShellCommandRequirement`. A workflow keeps its steps only when every step lowers; otherwise the whole workflow is one native op.
+- The `default` of an input of a workflow, a tool or a step becomes the `default` of the input ports that take it; a step default wins over the default of its tool. A File default keeps its location, relative to the folder of the wir document when it lies below it.
+- The `valueFrom` of a step input becomes an `expr` op `<step>.<input>` before the op of the step, inside the `map` of a scatter and before the condition of `when`, as CWL orders them. It sees the step inputs as `inputs`, before any `valueFrom`, and the value of its own input as `self`; a Directory has no `listing` there.
+- The `valueFrom` of a tool input binding without a prefix or `itemSeparator`, on an input that is not optional, becomes an `expr` op `<tool>.<input>.valueFrom` that fills the task input `<input>.valueFrom` on the command line. It sees the tool inputs and the value of its input as `self`, and gives text, numbers or a list of them, which CWL and a task write alike; a bool or an object fails the op. Other bindings with `valueFrom` stay native.
+- A link with several sources, `linkMerge` or `pickValue`, of a step input or a workflow output, becomes ops `<step>.<input>.merge` or `<output>.merge`, then `.flatten` for `merge_flattened`, then `.select` for `pickValue`, in the order of uwe's CWL driver: several sources merge nested by default, and `pickValue` picks among the items of an array value.
+- An ExpressionTool becomes a `call` op of a graph with an `expr` op per output, at the path of the output, which takes its field of the object that the expression gives, or null when the object has none. As an `expr` reads no files, an input that loads its contents or listing keeps the tool native.
+- Anything else stays a `native` CWL op that runs the process as a whole, and `uwe lower` names it with the first thing that has no lowering yet: expressions in tools, other bindings with `valueFrom`, Operations, and requirements such as `InitialWorkDirRequirement`, `EnvVarRequirement` or `ShellCommandRequirement`. A workflow keeps its steps only when every step lowers; otherwise the whole workflow is one native op.
 
-A lowered tool runs as a wir task, not as the task of the CWL driver, so its cache key and resume fingerprint differ from those of the same tool run as CWL: the CWL driver works in `/var/spool/cwl`, sets `HOME` and `TMPDIR`, stages each input file in `/var/lib/cwl/inputs/<n>`, and asks for `cwl.output.json` in a real run, while a wir task works in `/work` with its inputs in `inputs/<port>`. The steps, the images and the outputs are the same, except where a tool prints the path of an input; `uwe/tests/lowering.rs` compares them on the simulator and in Docker. Two runs of the same lowered document share cache keys and resume fingerprints.
+A lowered tool runs as a wir task, not as the task of the CWL driver, so its cache key and resume fingerprint differ from those of the same tool run as CWL: the CWL driver works in `/var/spool/cwl`, sets `HOME` and `TMPDIR`, stages each input file in `/var/lib/cwl/inputs/<n>`, and asks for `cwl.output.json` in a real run, while a wir task works in `/work` with its inputs in `inputs/<port>`. The steps, the images and the outputs are the same, except where a tool prints the path of an input; `uwe/tests/lowering.rs` compares them on the simulator and in Docker, and `cwl-lowering/tests/runs.rs` compares the commands and outputs of both runs on the simulator. Two runs of the same lowered document share cache keys and resume fingerprints.
 
 Not lowered the same way: a lowered tool ignores a `cwl.output.json` that it writes, and its inputs have no format check and no secondary files that CWL would find beside them, so such inputs stay native.
 
 ### Coverage
 
-`cwl-lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. On 2026-11-07 (suite commit `97908339`):
+`cwl-lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-07 (a checkout of suite commit `97908339` with its data files, and the CWL JavaScript helper image):
 
 | Outcome | Tests |
 | --- | --- |
-| lowers fully | 24 |
-| lowers partly: some ops stay native | 311 |
-| does not lower: the parser refuses it, or a native op cannot hold an `Any` or `null` type | 43 |
-| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 315 |
+| lowers fully | 49 |
+| lowers partly: some ops stay native | 289 |
+| does not lower: the parser refuses it, or a native op cannot hold an `Any` or `null` type | 40 |
+| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 310 |
+| both succeed with equal outputs | 286 |
 
-What keeps most tests partly native, by the first reason of each: an input default (80), a requirement such as `InitialWorkDirRequirement`, `EnvVarRequirement`, `ShellCommandRequirement` or `SchemaDefRequirement` (75), an expression in a tool (32), `outputEval` or `loadContents` of an output (32), an ExpressionTool or Operation (24), several sources or `pickValue` (21), `stdin` (10), secondary files or a format of an input (8), a requirement set by an expression (7) and command line bindings (5).
+Without the helper image, 323 lowered runs end as the native run does and 167 give equal outputs: JavaScript then fails in both runs, apart from two tools with a JavaScript `valueFrom` on an input, whose lowered run fails while the simulated native run succeeds.
 
-Where the runs end differently, the lowered run refuses a job key that the document does not take, which CWL ignores (`metadata`, `wf_wc_nomultiple`), and job requirements (`cwl:requirements`); a simulated native op makes up values that do not fit their types, and a simulated glob of folders makes up files. These are differences of wir runs and of the simulator, not of lowered tasks.
+What keeps most tests partly native, by the first reason of each: `outputEval` or `loadContents` of an output (89), a requirement (74: `InitialWorkDirRequirement` 42, `ShellCommandRequirement` 26, `EnvVarRequirement` 5), an expression in an argument (36), `stdin` (20), a `run` that the document defines twice (13), command line bindings (10), a resource or time limit set by an expression (8) and secondary files or a format of an input (7).
+
+Where the runs end differently, the lowered run refuses a job key that the document does not take, which CWL ignores (`wf_wc_nomultiple`, `listing_outputBinding_loadListing`), and job requirements (`cwl:requirements`); a simulated native op makes up values that do not fit their types, like the `int` of an ExpressionTool that loads the contents of its input (`step_input_default_value`), and a simulated glob of folders makes up files. These are differences of wir runs and of the simulator, not of lowered ops.
 
 ## Detection
 
@@ -64,7 +72,7 @@ A `map` op makes its rounds when it starts: round i is a call of its body at `<m
 
 An `expr` op runs in uwe, without a task, with the CWL evaluator of uwe: parameter references directly, JavaScript in the helper that CWL runs use. A `branch` op runs its body like a call when its condition is true, else it ends skipped with null outputs and its tasks do not run.
 
-Reserved op kinds, like `select`, verify but do not run: uwe stops with exit code 33, and so do `map`, `expr` and `branch` in a document older than wir 0.4.
+`select`, `merge` and `flatten` run in uwe, without a task, as the wir README says; `merge` and `flatten` on streams stop the run with exit code 33. Reserved op kinds, like `collect`, verify but do not run: uwe stops with exit code 33, and so do `map`, `expr` and `branch` in a document older than wir 0.4, and `select`, `merge` and `flatten` in one older than wir 0.5.
 
 ## Task ops
 
@@ -138,7 +146,7 @@ The run database records a wir run with the language `wir`, and its run crate na
 
 ## Not yet
 
-- Lowering CWL input defaults, `valueFrom`, several sources and `pickValue` (with `select`), ExpressionTools, and tools with requirements such as `InitialWorkDirRequirement`; they stay native ops.
+- Lowering CWL tools with `InitialWorkDirRequirement`, `ShellCommandRequirement` or `EnvVarRequirement`, secondary files and formats of inputs, `outputEval`, expressions in arguments, and `valueFrom` on bindings with a prefix or on optional inputs; they stay native ops.
 - Equal cache keys of a lowered tool and the same tool run as CWL, which need a wir task with the working folder, variables and staging places of the CWL driver.
 
 - `uwe resume` of the suspended steps of an Argo block.

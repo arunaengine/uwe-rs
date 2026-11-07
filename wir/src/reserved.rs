@@ -1,4 +1,5 @@
-//! Reserved op kinds: their fields are fixed, their semantics are open. See the crate README.
+//! Op kinds whose fields are fixed and whose semantics stay open, apart from `select`, and
+//! `merge` and `flatten` on values. See the crate README.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -17,12 +18,14 @@ pub struct Filter {
     pub body: String,
 }
 
-/// Emits the items of each array item. Open: depth and empty arrays.
+/// Gives the items of each array item, one level deep, as the README defines for values.
+/// Open: the same on streams.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Flatten {}
 
-/// Combines several streams into one. Open: completion order against fair order.
+/// Gives the array of its input values, as the README defines for values. Open on streams:
+/// completion order against fair order.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Merge {}
@@ -66,7 +69,7 @@ pub struct Join {
     pub fail_on_duplicate: bool,
 }
 
-/// Picks among optional inputs, like CWL `pickValue`. Open: the error when nothing is set.
+/// Picks among the items of its one array input, like CWL `pickValue`; the README defines it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Select {

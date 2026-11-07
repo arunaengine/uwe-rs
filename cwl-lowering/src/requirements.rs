@@ -95,7 +95,7 @@ pub fn apply(scope: &Scope, task: &mut Task) -> Result<Attributes, String> {
 
 /// Requirements that a task can follow: they set its image, network or attributes, or
 /// change nothing without expressions.
-fn known(class: &RequirementClass) -> bool {
+pub fn known(class: &RequirementClass) -> bool {
     matches!(
         class,
         RequirementClass::InlineJavascript { .. }
@@ -112,7 +112,7 @@ fn known(class: &RequirementClass) -> bool {
     )
 }
 
-fn name(class: &RequirementClass) -> String {
+pub fn name(class: &RequirementClass) -> String {
     let text = format!("{class:?}");
     let end = text.find([' ', '(', '{']).unwrap_or(text.len());
     format!("{}Requirement", &text[..end])

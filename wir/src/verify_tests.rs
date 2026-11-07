@@ -138,6 +138,50 @@ fn required_inputs_bound() {
 }
 
 #[test]
+fn defaults_checked() {
+    let file = json!({"class": "File", "location": "a.txt"});
+    let mut document = base();
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .expect("edges")
+        .remove(0);
+    document["graphs"][0]["ops"][0]["inputs"][0]["default"] = file.clone();
+    assert_eq!(
+        problems(document),
+        Vec::new(),
+        "a default needs no producer"
+    );
+    let mut document = base();
+    document["graphs"][0]["inputs"][0]["type"] = json!({"optional": {"file": {}}});
+    let mismatch = problems(document.clone());
+    assert!(matches!(
+        mismatch[..],
+        [VerifyError {
+            problem: Problem::Mismatch { .. },
+            ..
+        }]
+    ));
+    document["graphs"][0]["ops"][0]["inputs"][0]["default"] = file.clone();
+    assert_eq!(
+        problems(document.clone()),
+        Vec::new(),
+        "a default takes null"
+    );
+    document["graphs"][0]["ops"][0]["inputs"][0]["default"] = json!(3);
+    let unfit = Problem::Unfit("input input".into());
+    assert_eq!(only(document), ("main/sort".into(), unfit));
+    let mut document = base();
+    document["graphs"][0]["outputs"][0]["default"] = file.clone();
+    let output = Problem::Default("graph output top".into());
+    assert_eq!(only(document), ("main".into(), output));
+    let mut document = base();
+    document["graphs"][0]["inputs"][0]["default"] = file;
+    document["wir_version"] = json!("0.4");
+    let later = Problem::Later("the default of a port".into(), "0.5".into());
+    assert_eq!(only(document), ("main".into(), later));
+}
+
+#[test]
 fn rejects_op_cycles() {
     let mut document = base();
     let back = json!({"op": "head", "on": ["succeeded"]});
@@ -469,4 +513,86 @@ fn rejects_recursive_types() {
             .any(|e| e.problem == Problem::NoType("Missing".into())),
         "{found:?}"
     );
+}
+
+/// A merge of the optional files `a` and `b` and a select of the first one that is set.
+fn picked() -> Json {
+    let optional = json!({"optional": {"file": {}}});
+    let list = json!({"array": {"items": optional}});
+    json!({
+        "wir_version": VERSION,
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "a", "type": optional}, {"name": "b", "type": optional}],
+            "outputs": [{"name": "first", "type": {"file": {}}}],
+            "ops": [{
+                "path": "both",
+                "kind": {"merge": {}},
+                "inputs": [{"name": "0", "type": optional}, {"name": "1", "type": optional}],
+                "outputs": [{"name": "out", "type": list}]
+            }, {
+                "path": "pick",
+                "kind": {"select": {"rule": "first"}},
+                "inputs": [{"name": "in", "type": list}],
+                "outputs": [{"name": "out", "type": {"file": {}}}]
+            }],
+            "edges": [
+                edge((None, "a"), (Some("both"), "0")),
+                edge((None, "b"), (Some("both"), "1")),
+                edge((Some("both"), "out"), (Some("pick"), "in")),
+                edge((Some("pick"), "out"), (None, "first"))
+            ]
+        }],
+        "entry": "main"
+    })
+}
+
+#[test]
+fn select_merge_checked() {
+    assert_eq!(problems(picked()), Vec::new());
+    let mut document = picked();
+    document["graphs"][0]["ops"][1]["kind"]["select"]["rule"] = json!("all");
+    let (at, problem) = only(document);
+    assert_eq!(at, "main/pick");
+    assert!(matches!(problem, Problem::Mismatch { port, .. } if port == "output out"));
+    let mut document = picked();
+    let extra = json!({"name": "more", "type": {"optional": "int"}});
+    document["graphs"][0]["ops"][1]["inputs"]
+        .as_array_mut()
+        .expect("inputs")
+        .push(extra);
+    let unary = Problem::Unary("a select".into());
+    assert_eq!(only(document), ("main/pick".into(), unary));
+    let mut document = picked();
+    document["graphs"][0]["ops"][0]["inputs"][1]["type"] = json!({"optional": "string"});
+    document["graphs"][0]["inputs"][1]["type"] = json!({"optional": "string"});
+    let (at, problem) = only(document);
+    assert_eq!(at, "main/both");
+    assert!(matches!(problem, Problem::Mismatch { port, .. } if port == "output out"));
+}
+
+#[test]
+fn flatten_checked() {
+    let list = |items: Json| json!({"array": {"items": items}});
+    let mut document = picked();
+    document["graphs"][0]["ops"][1] = json!({
+        "path": "pick",
+        "kind": {"flatten": {}},
+        "inputs": [{"name": "in", "type": list(list(json!("int"))), "default": [[1]]}],
+        "outputs": [{"name": "out", "type": list(json!("int"))}]
+    });
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .expect("edges")
+        .truncate(2);
+    document["graphs"][0]["outputs"] = json!([]);
+    assert_eq!(problems(document.clone()), Vec::new());
+    document["graphs"][0]["ops"][1]["outputs"][0]["type"] = list(json!("string"));
+    let (at, problem) = only(document.clone());
+    assert_eq!(at, "main/pick");
+    assert!(matches!(problem, Problem::Mismatch { port, .. } if port == "output out"));
+    document["graphs"][0]["ops"][1]["inputs"][0] =
+        json!({"name": "in", "type": "int", "default": 1});
+    let (_, problem) = only(document);
+    assert!(matches!(problem, Problem::Mismatch { port, .. } if port == "input in"));
 }

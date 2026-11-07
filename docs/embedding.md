@@ -145,6 +145,34 @@ These still come from the environment of the process, for every run alike:
 - where the Nextflow secret store is: `NXF_HOME`, `HOME` and `NXF_SECRETS_FILE`,
 - the terminal: `TERM` and `NXF_AGENT_MODE`, which nf-seqlab-progress reads.
 
+## Tasks of a run whose process is gone
+
+A TES run keeps a journal for each attempt in the scratch folder of the cache, `scratch/tes/<run>-<task>-<attempt>`. When the uwe process of the run stops, for example because the host restarts, its tasks can still run on the TES server. The next TES run on the same cache stops them. A host can also do it at once for one run, with the settings that the run used: the same `run_id`, `config_file`, `cache_folder`, `store` and `secrets`, or the same `setup`.
+
+- `RunRequest::remote_tasks` reports the tasks of the run with what their servers say now. It changes nothing.
+- `RunRequest::stop_tasks` cancels each task that has not ended, and waits until the server confirms that it ended. Then it removes the journal of the attempt, and the staged objects as `staging_cleanup` says. It gives up on one task after a minute, like the recovery of a run, and goes on with the next one.
+
+Both give one `run::orphans::Orphan` for each attempt: its name, the id of its TES task, the state that the server last gave and an `Outcome`. The outcome is `Running` or `Ended` for a task, and `Canceled` for a task that `stop_tasks` canceled. `Unclear` says why the state is not known, `Kept` says why `stop_tasks` left a task as it was, and `Failed` holds the error of a stop that failed. A task that was kept or failed keeps its journal, so a later call tries again. A call for a run without journals gives an empty list and asks no server.
+
+```rust
+let mut settings = uwe::run::Settings::new("");
+settings.run_id = Some("01JBXQ5Z7C2W9M".into());
+settings.config_file = Some("/srv/runs/01JBXQ5Z7C2W9M/uwe.toml".into());
+settings.cache_folder = Some("/srv/cache".into());
+settings.secrets.insert("LAB_TES_TOKEN", token)?;
+settings.secrets.allow_environment(false);
+for task in uwe::RunRequest::new(settings).stop_tasks().await? {
+    println!("{}: {:?}", task.attempt, task.outcome);
+}
+```
+
+These calls touch only the tasks of this run:
+
+- A journal belongs to the run only when it names the run. Journals from before uwe named the run in them are only reported, as `Unclear` or `Kept`, since the folder name of run `a` also fits a task of run `a-b`.
+- A task is stopped only with a backend whose server and token are the ones that started it, as in the recovery of a run. A task of another server or token is kept.
+- An attempt whose uwe process still holds the lock of its journal is kept.
+- A second call finds no journal of the stopped tasks, so it does nothing.
+
 ## The hosted policy
 
 The policy limits which presets are allowed and which cache, database and output paths a tenant gets. It also limits Argo host roots and volume mappings. Its authorization callback sees the merged inputs before planning, and the normalized inputs before execution.

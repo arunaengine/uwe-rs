@@ -46,7 +46,9 @@ A failed or errored op fails the run, unless an `after` dependency of another op
 
 A `map` op makes its rounds when it starts: round i is a call of its body at `<map>/<i>`, and the tasks inside keep the path without round numbers as their step, like `each/cat` for `each/0/cat`. A failed round fails the map. A `map` with `parallelism` or `min_success` stops the run with exit code 33.
 
-Reserved op kinds, like `branch`, verify but do not run: uwe stops with exit code 33.
+An `expr` op runs in uwe, without a task, with the CWL evaluator of uwe: parameter references directly, JavaScript in the helper that CWL runs use. A `branch` op runs its body like a call when its condition is true, else it ends skipped with null outputs and its tasks do not run.
+
+Reserved op kinds, like `select`, verify but do not run: uwe stops with exit code 33, and so do `map`, `expr` and `branch` in a document older than wir 0.4.
 
 ## Task ops
 

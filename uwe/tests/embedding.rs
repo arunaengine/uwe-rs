@@ -247,6 +247,7 @@ async fn records_target_controls() {
     request.settings.omit_from = vec!["absent".into()];
     request.settings.forcerun = vec!["make".into()];
     request.settings.forceall = true;
+    request.settings.no_cache_steps = vec!["make".into()];
     request.settings.cache_folder = Some(cache_folder());
     request.settings.setup = Some(Setup::default());
     let run = request.run().await.unwrap();
@@ -257,6 +258,7 @@ async fn records_target_controls() {
         ["-until", "out"],
         ["-omit-from", "absent"],
         ["-forcerun", "make"],
+        ["-no-cache-steps", "make"],
     ] {
         assert!(recorded.arguments.windows(2).any(|words| words == pair));
     }
@@ -523,4 +525,93 @@ fn printing(root: &std::path::Path, language: &str, print: bool) -> RunRequest {
     let mut request = RunRequest::new(settings);
     request.policy = uwe::application::Policy::Relaxed;
     request
+}
+
+/// A pipeline whose process `MAKE` sits in a subworkflow and passes its file to `USE`; `SIDE`
+/// depends on neither.
+const STEPS: &str = r#"
+process MAKE {
+    output:
+    path('made.txt')
+    script:
+    'echo made > made.txt'
+}
+
+process USE {
+    input:
+    path(made)
+    output:
+    path('used.txt')
+    script:
+    "cat ${made} > used.txt"
+}
+
+process SIDE {
+    output:
+    path('side.txt')
+    script:
+    'echo side > side.txt'
+}
+
+workflow PREPARE {
+    main:
+    MAKE()
+    emit:
+    made = MAKE.out
+}
+
+workflow {
+    USE(PREPARE().made)
+    SIDE()
+}
+"#;
+
+#[tokio::test]
+async fn reruns_uncached_steps() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("main.nf");
+    std::fs::write(&target, STEPS).unwrap();
+    let request = |steps: Vec<String>| {
+        let mut request = RunRequest::new(Settings::new(&target));
+        request.policy = uwe::application::Policy::Relaxed;
+        request.settings.executor = Some("simulator".into());
+        request.settings.database = Some(root.path().join("runs.sqlite"));
+        request.settings.cache_folder = Some(cache_folder());
+        request.settings.setup = Some(Setup::default());
+        request.settings.resume = Some(Resume::Last);
+        request.settings.no_cache_steps = steps;
+        request
+    };
+    let never = || vec!["MAKE".to_owned()];
+    let mut graphs = Vec::new();
+    for steps in [never(), Vec::new(), never()] {
+        let run = request(steps).run().await.unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        graphs.push(run.execution.graph);
+    }
+    let node = |graph: &workflow_graph::ExecutionGraph, step: &str| {
+        let found = graph.nodes.iter().find(|node| node.task.step == step);
+        found
+            .cloned()
+            .unwrap_or_else(|| panic!("no task of {step}"))
+    };
+    // The first run left no result of `MAKE` to resume, as with Nextflow's `cache false`.
+    let made = node(&graphs[1], "PREPARE:MAKE");
+    assert!(!made.reused);
+    assert_eq!(made.task.reuse, workflow_graph::Reuse::Allowed);
+    assert!(node(&graphs[1], "SIDE").reused);
+    let graph = &graphs[2];
+    let (made, used, side) = (
+        node(graph, "PREPARE:MAKE"),
+        node(graph, "USE"),
+        node(graph, "SIDE"),
+    );
+    assert!(!made.reused, "the named step runs again");
+    assert_eq!(made.task.reuse, workflow_graph::Reuse::Disabled);
+    assert!(side.reused, "the other steps come from the earlier run");
+    assert_eq!(side.task.reuse, workflow_graph::Reuse::Allowed);
+    // The file of the step that ran again reaches the step after it.
+    assert!(graph.edges.iter().any(|edge| edge.from == made.task.id
+        && edge.to == used.task.id
+        && matches!(edge.kind, workflow_graph::EdgeKind::File { .. })));
 }

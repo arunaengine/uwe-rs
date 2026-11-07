@@ -194,6 +194,7 @@ fn execute_with(
             ("-until", &arguments.until),
             ("-omit-from", &arguments.omit_from),
             ("-forcerun", &arguments.forcerun),
+            ("-no-cache-steps", &arguments.no_cache_steps),
         ] {
             for target in targets {
                 words.extend([option.into(), target.clone()]);
@@ -386,6 +387,7 @@ fn execute_with(
         ))
         .observer(observer)
         .cancel(interrupt.clone())
+        .no_cache_steps(arguments.no_cache_steps.clone())
         .run(&workflow, driver.as_mut());
     if !real {
         execution.graph.simulate();

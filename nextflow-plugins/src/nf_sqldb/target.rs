@@ -119,7 +119,10 @@ fn server(engine: Engine, address: &str, source: &Source) -> Result<Target, Stri
         .filter(|pair| !pair.is_empty())
         .map(|pair| {
             let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-            (key.to_owned(), value.to_owned())
+            (
+                storage::address::decode(key),
+                storage::address::decode(value),
+            )
         })
         .collect();
     let parameter = |name: &str| {
@@ -275,6 +278,23 @@ mod tests {
         assert_eq!(tls("useSSL=true"), Tls::Prefer);
         assert_eq!(tls("useSSL=false&requireSSL=true"), Tls::Disable);
         assert_eq!(tls(&format!("{strict}&sslMode=PREFERRED")), Tls::Prefer);
+    }
+
+    #[test]
+    fn decodes_credentials() {
+        let server =
+            |url: &str, user: Option<&str>| match target(&source(url, user), "/", &|_| None) {
+                Ok(Target::Server(server)) => server,
+                other => panic!("a server: {other:?}"),
+            };
+        let found = server("jdbc:postgresql://h/x?us%65r=a%40b&password=a%26b", None);
+        assert_eq!(found.user.as_deref(), Some("a@b"));
+        assert_eq!(found.password.as_deref(), Some("a&b"));
+        let found = server("jdbc:mysql://h/x?user=u&password=p%3D1", Some("me"));
+        assert_eq!(
+            (found.user.as_deref(), found.password.as_deref()),
+            (Some("me"), Some("p=1"))
+        );
     }
 
     #[test]

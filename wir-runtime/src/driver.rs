@@ -18,6 +18,7 @@ use workflow_graph::{
 use crate::child::Child;
 use crate::cwl;
 use crate::inputs;
+use crate::nextflow;
 use crate::plan::plan;
 use crate::state::{Progress, widen};
 use crate::task;
@@ -28,6 +29,8 @@ pub struct Settings {
     /// The options of CWL blocks. A block never prints its output object, and the launch
     /// says whether it is simulated.
     pub cwl: cwl_runtime::Options,
+    /// How the drivers of Nextflow blocks get their settings, with a launch folder each.
+    pub nextflow: nextflow::Options,
     /// Whether a real run prints the outputs of its graph, as JSON.
     pub print: bool,
 }
@@ -36,6 +39,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             cwl: cwl_runtime::Options::default(),
+            nextflow: nextflow::Options::default(),
             print: true,
         }
     }
@@ -67,6 +71,8 @@ pub struct WirDriver {
     children: Vec<(usize, Child)>,
     /// The child of each task, by its id in this run.
     owners: HashMap<TaskId, usize>,
+    /// The launch folder and the input values of each Nextflow block, by node.
+    launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
     /// The tasks of task ops, by id, with the node of each.
     tasks: HashMap<TaskId, (usize, Task)>,
     /// The attempts of task ops that their captures accepted.
@@ -105,6 +111,7 @@ impl WirDriver {
             progress,
             children: Vec::new(),
             owners: HashMap::new(),
+            launched: HashMap::new(),
             tasks: HashMap::new(),
             accepted: HashSet::new(),
             last: 0,
@@ -197,33 +204,51 @@ impl WirDriver {
         bound: Map<String, Json>,
     ) -> Result<Vec<Task>, DriverError> {
         let path = self.progress.node(at).path.clone();
-        let source = (self.document.sources.iter())
-            .find(|source| source.id == native.source)
-            .ok_or_else(|| DriverError::new(format!("no source {}", native.source)))?;
-        let target = match source.location.contains("://") {
-            true => PathBuf::from(&source.location),
-            false => self.base.join(&source.location),
-        };
+        let target = self.locate(&native.source)?;
+        let configs = (native.configs.iter())
+            .map(|id| self.locate(id))
+            .collect::<Result<Vec<_>, _>>()?;
         let folder = self.job_folder()?.join(&path);
-        let job = folder.join("job.json");
+        let (job, values) = match native.language {
+            Dialect::Nextflow => (folder.join("params.json"), nextflow::params(&bound)),
+            _ => (
+                folder.join("job.json"),
+                cwl::to_cwl(Json::Object(bound.clone())),
+            ),
+        };
         let written = std::fs::create_dir_all(&folder)
-            .and_then(|()| std::fs::write(&job, cwl::to_cwl(Json::Object(bound)).to_string()));
+            .and_then(|()| std::fs::write(&job, values.to_string()));
         written.map_err(|error| {
             DriverError::new(format!("cannot write {}: {error}", job.display()))
         })?;
-        let launch = Launch {
+        let output = self.output_root().join(&path);
+        let mut launch = Launch {
             target,
             inputs: Some(job),
+            profiles: native.profiles.clone(),
+            configs,
             targets: native.entry.iter().cloned().collect(),
             scratch: self.launch.scratch.clone(),
-            output_dir: Some(self.output_root().join(&path)),
+            output_dir: Some(output.clone()),
             stub: self.launch.stub,
             simulated: self.launch.simulated,
             keep_going: self.launch.keep_going,
             ..Launch::default()
         };
         let mut child = Child::new(match native.language {
+            Dialect::Cwl if !launch.profiles.is_empty() || !launch.configs.is_empty() => {
+                let message = format!("op {path}: CWL blocks take no profiles or configs");
+                return Err(DriverError::unsupported(message));
+            }
             Dialect::Cwl => cwl::block(&launch, &self.settings.cwl)?,
+            // A Nextflow block runs as if launched in its output folder, and keeps its own
+            // files in a scratch folder of its own, which its driver removes.
+            Dialect::Nextflow => {
+                (launch.output_dir, launch.scratch) = (None, folder);
+                let driver = nextflow::block(&launch, &output, &self.settings.nextflow)?;
+                self.launched.insert(at, (output, bound));
+                driver
+            }
             other => {
                 let message = format!("op {path}: uwe does not run {other:?} blocks yet");
                 return Err(DriverError::unsupported(message));
@@ -269,6 +294,17 @@ impl WirDriver {
         let finished = child.finish();
         let node = self.progress.node(at);
         let (path, defs) = (&node.path, &self.document.types);
+        let finished = match (finished, self.launched.get(&at)) {
+            (Ok(Some(emitted)), Some((folder, bound))) => {
+                let targets = child.targets();
+                let outputs = &node.op.outputs;
+                let values = nextflow::outputs(emitted, targets, outputs, bound, folder, defs);
+                values
+                    .map(|values| Some(Json::Object(values)))
+                    .map_err(DriverError::new)
+            }
+            (finished, _) => finished,
+        };
         let result = match finished {
             Ok(Some(Json::Object(results))) => (node.op.outputs.iter())
                 .map(|port| {
@@ -292,6 +328,17 @@ impl WirDriver {
                 .progress
                 .end(at, Status::Failed, Map::new(), Some(message)),
         }
+    }
+
+    /// Where the document source `id` is: a URL, or a path from the folder of the document.
+    fn locate(&self, id: &str) -> Result<PathBuf, DriverError> {
+        let source = (self.document.sources.iter())
+            .find(|source| source.id == id)
+            .ok_or_else(|| DriverError::new(format!("no source {id}")))?;
+        Ok(match source.location.contains("://") {
+            true => PathBuf::from(&source.location),
+            false => self.base.join(&source.location),
+        })
     }
 
     /// Where the job files of the native blocks of this run are written.

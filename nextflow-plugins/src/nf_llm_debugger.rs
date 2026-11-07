@@ -125,7 +125,8 @@ impl Settings {
         let (provider, url) = route(&endpoint, model.as_deref().unwrap_or_default(), forced);
         let default = |name: &str| Some(name.to_owned());
         // A vendor key from the environment goes only to the vendor's own address.
-        let vendor = |name: &str, home: &str| variable(name).filter(|_| same_origin(&url, home));
+        let vendor =
+            |name: &str, home: &str| variable(name).filter(|_| service::same_origin(&url, home));
         let (model, key) = match provider {
             Provider::Proxy => (model, None),
             Provider::Gemini => (
@@ -240,14 +241,6 @@ fn route(endpoint: &str, model: &str, forced: bool) -> (Provider, String) {
             .to_owned(),
     };
     (provider, url)
-}
-
-/// Whether two addresses share scheme, host and port.
-fn same_origin(url: &str, home: &str) -> bool {
-    match (reqwest::Url::parse(url), reqwest::Url::parse(home)) {
-        (Ok(url), Ok(home)) => url.origin() == home.origin(),
-        _ => false,
-    }
 }
 
 const PROXY: &str = "https://llm-proxy.hpc.crg.es/debug/nextflow";

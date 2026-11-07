@@ -321,3 +321,27 @@ fn refuses_existing_reports() {
     let (execution, _) = common::run(folder, "sad_marconi");
     assert!(execution.error.is_none(), "{:?}", execution.error);
 }
+
+/// A crate in the project folder never replaces the pipeline's own `nextflow.config`.
+#[test]
+fn keeps_project_config() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    common::copy(
+        &common::fixtures("nf_prov"),
+        folder,
+        &["main.nf", "input.txt"],
+    );
+    let config = format!(
+        "plugins {{ id 'nf-prov@1.8.0' }}\n\
+         params.input = '{}'\nparams.greeting = 'hello'\nparams.count = 2\n\
+         prov.formats.wrroc.file = '{}/ro-crate-metadata.json'\n",
+        folder.join("input.txt").display(),
+        folder.display(),
+    );
+    std::fs::write(folder.join("nextflow.config"), &config).expect("writes");
+    let (execution, _) = common::run(folder, "sad_marconi");
+    let kept = std::fs::read_to_string(folder.join("nextflow.config")).expect("the config");
+    assert_eq!(kept, config);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+}

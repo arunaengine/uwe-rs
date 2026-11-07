@@ -400,7 +400,14 @@ impl NomadBackend {
                 }
             };
             match seen(&allocations) {
-                Seen::Ended(ended) => return Ok(ended),
+                Seen::Ended(ended) => {
+                    // Nomad may place a failed job again by its reschedule policy, after the
+                    // attempt and its staging ended.
+                    if ended.failed {
+                        self.stop(id, false).await;
+                    }
+                    return Ok(ended);
+                }
                 Seen::Running | Seen::Pending => {
                     let started = *started.get_or_insert_with(Instant::now);
                     if limit.is_some_and(|limit| started.elapsed() > limit) {

@@ -427,3 +427,22 @@ async fn stops_unread_jobs() {
         "the job may not start after the attempt ended"
     );
 }
+
+/// A job whose allocation failed is stopped, so that Nomad does not place it again after the
+/// attempt ended. The task kills its own job, as Nomad would for lack of memory.
+#[tokio::test]
+async fn stops_failed_jobs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeNomad::start(&folder.path().join("fake"));
+    let backend = backend(folder.path(), settings(&fake), false);
+    let (placement, staging) = (Placement::default(), Staging::default());
+    let killed = spec("kill -KILL 0");
+    let failed = run(&backend, "run-FAIL-1-1", &killed, &placement, &staging).await;
+    assert!(failed.is_err(), "{failed:?}");
+    let stopped = fake.requests("DELETE /v1/job/uwe-run-fail-1-1");
+    assert_eq!(stopped.len(), 1, "Nomad may not reschedule the job");
+    assert!(
+        !stopped[0].path.contains("purge=true"),
+        "cleanup never keeps the job"
+    );
+}

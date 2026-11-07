@@ -24,6 +24,7 @@ use crate::plan::plan;
 use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
+use crate::wdl;
 
 /// How a run makes the drivers of native blocks, and what it shows.
 #[derive(Clone, Debug)]
@@ -37,6 +38,8 @@ pub struct Settings {
     pub nextflow: nextflow::Options,
     /// What the drivers of Snakemake blocks use; each starts in a folder of its own.
     pub snakemake: snakemake::Options,
+    /// The options of WDL blocks. A block never prints its outputs.
+    pub wdl: wdl_runtime::Options,
     /// Whether a real run prints the outputs of its graph, as JSON.
     pub print: bool,
 }
@@ -48,6 +51,7 @@ impl Default for Settings {
             cwl: cwl_runtime::Options::default(),
             nextflow: nextflow::Options::default(),
             snakemake: snakemake::Options::default(),
+            wdl: wdl_runtime::Options::default(),
             print: true,
         }
     }
@@ -222,6 +226,7 @@ impl WirDriver {
             // A Snakemake config file and an Argo parameter file take the values of params.
             Dialect::Snakemake => (folder.join("config.json"), nextflow::params(&bound)),
             Dialect::Argo => (folder.join("parameters.json"), nextflow::params(&bound)),
+            Dialect::Wdl => (folder.join("inputs.json"), nextflow::params(&bound)),
             _ => (
                 folder.join("job.json"),
                 cwl::to_cwl(Json::Object(bound.clone())),
@@ -272,10 +277,11 @@ impl WirDriver {
                 return Err(DriverError::unsupported(message));
             }
             Dialect::Argo => argo::block(&launch, &self.settings.argo)?,
-            other => {
-                let message = format!("op {path}: uwe does not run {other:?} blocks yet");
+            Dialect::Wdl if !launch.profiles.is_empty() || !launch.configs.is_empty() => {
+                let message = format!("op {path}: WDL blocks take no profiles or configs");
                 return Err(DriverError::unsupported(message));
             }
+            Dialect::Wdl => wdl::block(&launch, &self.settings.wdl)?,
         });
         child.prepare(
             self.files.clone(),

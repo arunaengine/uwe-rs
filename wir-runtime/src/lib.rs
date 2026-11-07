@@ -13,6 +13,7 @@ mod plan;
 pub mod snakemake;
 mod state;
 mod task;
+mod wdl;
 
 pub use child::{Block, Child};
 pub use driver::{Settings, WirDriver, driver};

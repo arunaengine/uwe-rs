@@ -128,7 +128,6 @@ fn inputs(words: &[&str], folder: &Path) -> Vec<Input> {
                         false => slug(value),
                     },
                     default: (!secret).then(|| default(value, kind)),
-                    format: kind.format(value),
                     kind,
                     binding: Binding::Position(index),
                 }
@@ -141,7 +140,6 @@ fn inputs(words: &[&str], folder: &Path) -> Vec<Input> {
                     kind,
                     default: Some(default(value, kind)),
                     binding: Binding::Prefix(word.to_owned()),
-                    format: kind.format(value),
                 }
             }
             _ => Input {
@@ -149,7 +147,6 @@ fn inputs(words: &[&str], folder: &Path) -> Vec<Input> {
                 kind: Kind::Boolean,
                 default: Some(Json::Bool(true)),
                 binding: Binding::Prefix(word.to_owned()),
-                format: None,
             },
         };
         inputs.push(input);

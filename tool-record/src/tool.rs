@@ -55,8 +55,6 @@ pub struct Input {
     /// The value of the recorded run, as CWL writes it: `{ class: File, location }` for files.
     pub default: Option<Json>,
     pub binding: Binding,
-    /// An `edam:` format of a file.
-    pub format: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -170,9 +168,8 @@ impl Tool {
     pub fn render(&self) -> String {
         let mut text = String::from("#!/usr/bin/env cwl-runner\ncwlVersion: v1.2\n");
         text.push_str("class: CommandLineTool\n");
-        let formats = (self.inputs.iter().map(|input| &input.format))
-            .chain(self.outputs.iter().map(|output| &output.format));
-        if formats.flatten().next().is_some() {
+        // Only outputs get a format: an input with one refuses files that have none.
+        if self.outputs.iter().any(|output| output.format.is_some()) {
             let _ = writeln!(text, "$namespaces:\n  edam: {}", scalar(EDAM));
         }
         if !self.arguments.is_empty() || !self.staged.is_empty() {
@@ -220,9 +217,6 @@ impl Tool {
                 key(&input.id),
                 input.kind.name()
             );
-            if let Some(format) = &input.format {
-                let _ = writeln!(text, "    format: {format}");
-            }
             match &input.default {
                 Some(Json::Object(fields)) => {
                     text.push_str("    default:\n");

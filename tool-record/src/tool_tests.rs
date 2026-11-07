@@ -13,7 +13,6 @@ fn input(id: &str, kind: Kind, default: Json, binding: Binding) -> Input {
         kind,
         default: Some(default),
         binding,
-        format: None,
     }
 }
 
@@ -97,7 +96,6 @@ fn renders_cwl_yaml() {
         vec![Output::found(Path::new("output.txt"), false)],
     );
     recorded.base_command = vec!["cat".into()];
-    recorded.inputs[0].format = Kind::File.format("input.txt");
     recorded.stdout = Some("output.txt".into());
     recorded.image = Some("docker.io/library/busybox:1.37.0".into());
     recorded.finish();
@@ -113,7 +111,6 @@ baseCommand: [cat]
 inputs:
   input_txt:
     type: File
-    format: edam:format_2330
     default:
       class: File
       location: input.txt

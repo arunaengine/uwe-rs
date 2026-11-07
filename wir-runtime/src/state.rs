@@ -256,9 +256,13 @@ pub fn widen(value: Json, r#type: &Type, defs: &[TypeDef]) -> Json {
                 )
                 .collect(),
         ),
+        // Extra items stay, so that the check of the value still sees its length.
         (Type::Tuple(types), Json::Array(items)) => Json::Array(
-            (items.into_iter().zip(types))
-                .map(|(item, want)| widen(item, want, defs))
+            (items.into_iter().enumerate())
+                .map(|(index, item)| match types.get(index) {
+                    Some(want) => widen(item, want, defs),
+                    None => item,
+                })
                 .collect(),
         ),
         (_, value) => value,

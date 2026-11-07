@@ -1,4 +1,4 @@
-//! Checks the state of a run: calls, `after` dependencies, failures and draining.
+//! Checks the state of a run: calls, `after` dependencies, failures, draining and widening.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -146,4 +146,16 @@ fn draining_starts_nothing() {
     let mut progress = progress();
     assert_eq!(progress.next(true), None);
     assert_eq!(progress.states[0], State::Waiting);
+}
+
+#[test]
+fn widening_keeps_items() {
+    let pair = Type::Tuple(vec![Type::Float, Type::Int]);
+    assert_eq!(widen(json!([1, 2]), &pair, &[]), json!([1.0, 2]));
+    let widened = widen(json!([1, 2, 3]), &pair, &[]);
+    assert_eq!(widened, json!([1.0, 2, 3]));
+    assert!(
+        !wir::fits(&widened, &pair, &[]),
+        "three items do not fit a pair"
+    );
 }

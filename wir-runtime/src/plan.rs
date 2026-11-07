@@ -172,7 +172,9 @@ fn instantiate(
     let (prefix, steps) = prefixes;
     let mut index = HashMap::new();
     for op in &graph.ops {
-        if op.kind.is_reserved() {
+        let later = matches!(op.kind, Kind::Map(_) | Kind::Expr(_) | Kind::Branch(_));
+        let older = matches!(document.wir_version.as_str(), "0.1" | "0.2" | "0.3");
+        if op.kind.is_reserved() || (later && older) {
             let message = format!("op {prefix}{}: uwe does not run this op kind yet", op.path);
             return Err(DriverError::unsupported(message));
         }
@@ -212,8 +214,13 @@ fn instantiate(
             .collect();
         nodes[at].inputs = inputs;
         nodes[at].after = after;
-        if let Kind::Call(called) = &op.kind {
-            let called = self::graph(document, &called.graph)?;
+        let body = match &op.kind {
+            Kind::Call(called) => Some(&called.graph),
+            Kind::Branch(branch) => Some(&branch.body),
+            _ => None,
+        };
+        if let Some(body) = body {
+            let called = self::graph(document, body)?;
             let inner = (
                 format!("{prefix}{}/", op.path),
                 format!("{steps}{}/", op.path),

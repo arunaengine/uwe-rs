@@ -213,6 +213,24 @@ impl WirDriver {
                 Ok(vec![task])
             }
             Kind::Call(_) => Ok(Vec::new()),
+            Kind::Branch(branch) => {
+                let node = self.progress.node(at);
+                match bound.get(&branch.condition) {
+                    Some(Json::Bool(true)) => {}
+                    Some(Json::Bool(false)) => {
+                        let nulls = (node.op.outputs.iter())
+                            .map(|port| (port.name.clone(), Json::Null))
+                            .collect();
+                        self.progress.end(at, Status::Skipped, nulls, None);
+                    }
+                    _ => {
+                        let message = format!("op {}: the condition is not a bool", node.path);
+                        self.progress
+                            .end(at, Status::Failed, Map::new(), Some(message));
+                    }
+                }
+                Ok(Vec::new())
+            }
             Kind::Expr(spec) => {
                 let node = self.progress.node(at);
                 let path = node.path.clone();

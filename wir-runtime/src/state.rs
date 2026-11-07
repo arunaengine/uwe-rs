@@ -82,7 +82,9 @@ impl Progress {
             for at in 0..self.plan.nodes.len() {
                 match &self.states[at] {
                     State::Waiting => {}
-                    State::Running(_) if matches!(self.node(at).op.kind, Kind::Call(_)) => {
+                    State::Running(_)
+                        if matches!(self.node(at).op.kind, Kind::Call(_) | Kind::Branch(_)) =>
+                    {
                         changed |= self.end_call(at);
                         continue;
                     }
@@ -220,7 +222,8 @@ impl Progress {
                 _ => Ok(None),
             },
             Source::Output(node, port) => match &self.states[*node] {
-                State::Ended(Status::Succeeded, values) => {
+                // A skipped branch binds null to its outputs.
+                State::Ended(Status::Succeeded | Status::Skipped, values) => {
                     Ok(Some(values.get(port).cloned().unwrap_or_default()))
                 }
                 State::Ended(..) => Err(()),

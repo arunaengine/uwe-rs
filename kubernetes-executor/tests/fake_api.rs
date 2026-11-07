@@ -758,8 +758,8 @@ async fn rejects_offline_tasks() {
     };
     let result = backend.run(job, &CancellationToken::new()).await;
     assert!(
-        matches!(result, Err(ExecutorError::Unsupported(_))),
-        "{result:?}"
+        matches!(&result, Err(ExecutorError::Unsupported(message)) if message.contains("allowed_steps")),
+        "the refusal names the setting that lets the step use the network: {result:?}"
     );
     assert!(state.lock().expect("the state").calls.is_empty());
     assert!(!backend.scratch.exists());

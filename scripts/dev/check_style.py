@@ -141,6 +141,7 @@ ASSET_LAYOUTS = {
     "nextflow-plugins/tests/fixtures/nf_validation": "native plugin oracle layout",
     "nextflow-plugins/tests/fixtures/params": "native plugin oracle layout",
     "nextflow-runtime/tests/fixtures/exec": "native Nextflow oracle layout",
+    "scripts/slurm": "Docker build context of the SLURM test container beside its run script",
     "snakemake-runtime/tests/fixtures/embedded/preambles": "recorded Snakemake script layout",
     "snakemake-runtime/tests/fixtures/embedded/real": "executable Snakemake workflow layout",
     "snakemake-runtime/tests/fixtures/embedded/real/scripts": "Snakemake script directive paths",

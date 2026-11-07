@@ -4,7 +4,7 @@
 
 [package]
 name = "uwe"
-description = "Runs Nextflow, Snakemake, CWL and Argo workflows in containers with a shared, content-addressed cache"
+description = "Runs Nextflow, Snakemake, CWL, Argo and WDL workflows in containers with a shared, content-addressed cache"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -95,9 +95,10 @@ impl Lowerer {
                     continue;
                 };
                 let port = short_name(&input.id);
-                let takers: Vec<String> = group.takers(port).map(str::to_owned).collect();
-                for op in group.ops.iter_mut().filter(|op| takers.contains(&op.path)) {
-                    let found = op.inputs.iter_mut().find(|item| item.name == port);
+                for (op, name) in group.takers(port) {
+                    let op = group.ops.iter_mut().find(|item| item.path == op);
+                    let found =
+                        op.and_then(|op| op.inputs.iter_mut().find(|item| item.name == name));
                     if let Some(item) = found {
                         defaults::set(item, default, &self.base)
                             .map_err(|why| format!("step {path}: input {port}: {why}"))?;
@@ -110,10 +111,10 @@ impl Lowerer {
                     continue;
                 };
                 // A step input that no op takes only serves expressions.
-                for op in group.takers(port) {
+                for (op, input) in group.takers(port) {
                     edges.push(Edge {
                         from: find(source)?,
-                        to: end(Some(op), port),
+                        to: end(Some(&op), &input),
                     });
                 }
             }
@@ -167,9 +168,6 @@ impl Lowerer {
 fn plain(step: &Step) -> Result<(), String> {
     for input in &step.inputs {
         let port = short_name(&input.id);
-        if input.value_from.is_some() {
-            return Err(format!("the valueFrom of input {port}"));
-        }
         if input.source.len() > 1 || input.link_merge.is_some() || input.pick_value.is_some() {
             return Err(format!("several sources for input {port}"));
         }

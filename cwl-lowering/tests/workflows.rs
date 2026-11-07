@@ -132,3 +132,43 @@ fn lowers_input_defaults() {
     let say = json!({"name": "greeting", "type": "string", "default": "hello"});
     assert_eq!(op("say")["inputs"][0], say, "the tool default");
 }
+
+#[test]
+fn lowers_step_values() {
+    let lowering = lowered("values.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let main = graph(&lowering, "main");
+    let ops = [
+        ("each".into(), "map".into()),
+        ("say.message".into(), "expr".into()),
+        ("say".into(), "task".into()),
+    ];
+    assert_eq!(kinds(&main), ops);
+    let value = &main["ops"][1];
+    assert_eq!(value["kind"]["expr"]["code"], "hello $(self)");
+    let names: Vec<&str> = (value["inputs"].as_array().unwrap().iter())
+        .map(|port| port["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["message", "self"], "the step inputs and self");
+    assert_eq!(
+        value["outputs"][0]["type"], "string",
+        "the type of the tool input"
+    );
+    let edges = main["edges"].as_array().unwrap();
+    for port in ["message", "self"] {
+        let edge = json!({"from": {"port": "name"}, "to": {"op": "say.message", "port": port}});
+        assert!(edges.contains(&edge), "{port} takes the source");
+    }
+    let round = graph(&lowering, "each");
+    let ops = [
+        ("each.message".into(), "expr".into()),
+        ("each".into(), "task".into()),
+    ];
+    assert_eq!(kinds(&round), ops, "valueFrom runs per round");
+    let greeting = json!({"name": "greeting", "type": "dynamic", "default": "hi"});
+    let map = main["ops"][0]["inputs"].as_array().unwrap();
+    assert!(
+        map.contains(&greeting),
+        "the map takes the default: {map:?}"
+    );
+}

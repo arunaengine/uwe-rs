@@ -1,5 +1,5 @@
-//! The ops of one workflow step: the op of its process, inside a branch for `when` and a map
-//! for `scatter`, with the edges between them.
+//! The ops of one workflow step: the op of its process, after expr ops of `valueFrom`, inside
+//! a branch for `when` and a map for `scatter`, with the edges between them.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -12,19 +12,49 @@ use crate::{Lowerer, Scope, blank};
 /// The input of a branch that holds the condition of `when`.
 const CONDITION: &str = "when";
 
+/// The input of a `valueFrom` expr that holds the value of its step input.
+const SELF: &str = "self";
+
 /// The ops of a step, the last at the path of the step, and the edges between them.
 pub(crate) struct Group {
     pub ops: Vec<Op>,
     pub edges: Vec<Edge>,
+    /// The `valueFrom` exprs by path, with the step input that their input `self` takes.
+    pub selves: Vec<(String, String)>,
 }
 
 impl Group {
-    /// The paths of the ops that take the step input `port` from outside the group.
-    pub fn takers<'g>(&'g self, port: &'g str) -> impl Iterator<Item = &'g str> + 'g {
-        (self.ops.iter())
-            .filter(move |op| op.inputs.iter().any(|item| item.name == port))
-            .filter(move |op| !self.edges.iter().any(|edge| fed(edge, &op.path, port)))
-            .map(|op| op.path.as_str())
+    /// A group of ops without edges between them.
+    pub fn of(ops: Vec<Op>) -> Group {
+        Group {
+            ops,
+            edges: Vec::new(),
+            selves: Vec::new(),
+        }
+    }
+
+    /// The ops and their inputs that take the step input `port` from outside the group.
+    pub fn takers(&self, port: &str) -> Vec<(String, String)> {
+        let mut found = Vec::new();
+        for op in &self.ops {
+            for input in &op.inputs {
+                if self.outer(&op.path, &input.name) == Some(port) {
+                    found.push((op.path.clone(), input.name.clone()));
+                }
+            }
+        }
+        found
+    }
+
+    /// The step input that an input of an op takes from outside the group, if it does.
+    fn outer<'g>(&'g self, op: &str, input: &'g str) -> Option<&'g str> {
+        if self.edges.iter().any(|edge| fed(edge, op, input)) {
+            return None;
+        }
+        match self.selves.iter().find(|(path, _)| path == op) {
+            Some((_, step)) if input == SELF => Some(step),
+            _ => Some(input),
+        }
     }
 
     /// The ports that the group takes from outside, by name, with the type of the op of the
@@ -33,9 +63,13 @@ impl Group {
         let mut ports: Vec<Port> = Vec::new();
         for op in self.ops.iter().rev() {
             for port in &op.inputs {
-                let taken = self.takers(&port.name).any(|path| path == op.path);
-                if taken && !ports.iter().any(|item| item.name == port.name) {
-                    ports.push(port.clone());
+                let Some(name) = self.outer(&op.path, &port.name) else {
+                    continue;
+                };
+                if !ports.iter().any(|item| item.name == name) {
+                    let mut taken = port.clone();
+                    taken.name = name.to_owned();
+                    ports.push(taken);
                 }
             }
         }
@@ -48,8 +82,8 @@ impl Group {
 }
 
 impl Lowerer {
-    /// The group of a step: its op alone, or for `when` an expr of the condition and a branch
-    /// that runs the op in a body graph of its own.
+    /// The group of a step: an expr per `valueFrom` before its op, and for `when` an expr of
+    /// the condition and a branch that runs the op in a body graph of its own.
     pub(crate) fn guarded(
         &mut self,
         step: &Step,
@@ -57,15 +91,6 @@ impl Lowerer {
         path: &str,
         scope: &Scope,
     ) -> Result<Group, String> {
-        let Some(when) = &step.when else {
-            return Ok(Group {
-                ops: vec![op],
-                edges: Vec::new(),
-            });
-        };
-        if op.inputs.iter().any(|port| port.name == CONDITION) {
-            return Err(format!("step {path}: an input named {CONDITION}"));
-        }
         let library = (scope.requirements.iter().rev())
             .find_map(|entry| match &entry.class {
                 RequirementClass::InlineJavascript { expression_lib } => {
@@ -74,6 +99,15 @@ impl Lowerer {
                 _ => None,
             })
             .unwrap_or_default();
+        let mut group = values(step, &op, path, &library)?;
+        let Some(when) = &step.when else {
+            group.edges = feeds(&group, &[&op]);
+            group.ops.push(op);
+            return Ok(group);
+        };
+        if op.inputs.iter().any(|port| port.name == CONDITION) {
+            return Err(format!("step {path}: an input named {CONDITION}"));
+        }
         let test = format!("{path}.{CONDITION}");
         let mut condition = blank(
             &test,
@@ -85,7 +119,9 @@ impl Lowerer {
             op.origin.clone(),
         );
         condition.inputs = (step.inputs.iter())
-            .filter(|input| !input.source.is_empty() || input.default.is_some())
+            .filter(|input| {
+                !input.source.is_empty() || input.default.is_some() || input.value_from.is_some()
+            })
             .map(|input| port(short_name(&input.id), Type::Dynamic))
             .collect();
         condition.outputs = vec![port("out", Type::Bool)];
@@ -103,21 +139,14 @@ impl Lowerer {
         branch.outputs = (op.outputs.iter())
             .map(|item| port(&item.name, crate::types::optional(item.r#type.clone())))
             .collect();
-        self.body(
-            body,
-            Group {
-                ops: vec![op],
-                edges: Vec::new(),
-            },
-            None,
-        );
-        Ok(Group {
-            edges: vec![Edge {
-                from: end(Some(&test), "out"),
-                to: end(Some(path), CONDITION),
-            }],
-            ops: vec![condition, branch],
-        })
+        self.body(body, Group::of(vec![op]), None);
+        group.edges = feeds(&group, &[&condition, &branch]);
+        group.edges.push(Edge {
+            from: end(Some(&test), "out"),
+            to: end(Some(path), CONDITION),
+        });
+        group.ops.extend([condition, branch]);
+        Ok(group)
     }
 
     /// A map op at `path` that runs the group of a scattered step once per round, in a body
@@ -171,10 +200,7 @@ impl Lowerer {
             .map(|port| array(port.clone(), depth))
             .collect();
         self.body(body, group, Some(inputs));
-        Ok(Group {
-            ops: vec![map],
-            edges: Vec::new(),
-        })
+        Ok(Group::of(vec![map]))
     }
 
     /// Adds the graph `name` that runs a group, with the ports it takes and those of its op.
@@ -183,10 +209,10 @@ impl Lowerer {
         let main = group.main();
         let mut edges = group.edges.clone();
         for port in &inputs {
-            for op in group.takers(&port.name) {
+            for (op, input) in group.takers(&port.name) {
                 edges.push(Edge {
                     from: end(None, &port.name),
-                    to: end(Some(op), &port.name),
+                    to: end(Some(&op), &input),
                 });
             }
         }
@@ -212,6 +238,57 @@ impl Lowerer {
         }
         name
     }
+}
+
+/// An expr op `<step>.<input>` for each `valueFrom` of the step: it sees the step inputs, as
+/// they are before any `valueFrom`, and the value of its own input as `self`.
+fn values(step: &Step, op: &Op, path: &str, library: &[String]) -> Result<Group, String> {
+    let mut group = Group::of(Vec::new());
+    for input in &step.inputs {
+        let Some(code) = &input.value_from else {
+            continue;
+        };
+        let name = short_name(&input.id);
+        if [SELF, CONDITION].contains(&name) {
+            return Err(format!(
+                "step {path}: the valueFrom of an input named {name}"
+            ));
+        }
+        let at = format!("{path}.{name}");
+        let kind = Kind::Expr(Expr {
+            language: "js".into(),
+            code: code.text.clone(),
+            library: library.to_vec(),
+        });
+        let mut expr = blank(&at, kind, op.origin.clone());
+        expr.inputs = (step.inputs.iter())
+            .map(|item| port(short_name(&item.id), Type::Dynamic))
+            .chain([port(SELF, Type::Dynamic)])
+            .collect();
+        let taken = op.inputs.iter().find(|item| item.name == name);
+        let r#type = taken.map_or(Type::Dynamic, |item| item.takes());
+        expr.outputs = vec![port("out", r#type)];
+        group.selves.push((at, name.to_owned()));
+        group.ops.push(expr);
+    }
+    Ok(group)
+}
+
+/// The edges from the `valueFrom` exprs of a group to the inputs of the same name of `ops`.
+fn feeds(group: &Group, ops: &[&Op]) -> Vec<Edge> {
+    let mut edges = Vec::new();
+    for (expr, name) in &group.selves {
+        for op in ops
+            .iter()
+            .filter(|op| op.inputs.iter().any(|item| item.name == *name))
+        {
+            edges.push(Edge {
+                from: end(Some(expr), "out"),
+                to: end(Some(&op.path), name),
+            });
+        }
+    }
+    edges
 }
 
 /// Whether an edge of the group feeds the input `port` of the op at `path`.

@@ -138,6 +138,11 @@ impl RunnerError {
         match self {
             RunnerError::Executor(error) => error.retryable(),
             RunnerError::Storage(error) => error.retryable(),
+            // A shared file system that never answered the read of an output, like CephFS
+            // waiting for read rights, may answer the next attempt in a new folder.
+            RunnerError::Store(StoreError::File { error, .. }) => {
+                error.kind() == std::io::ErrorKind::TimedOut
+            }
             _ => false,
         }
     }

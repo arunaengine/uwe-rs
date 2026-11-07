@@ -428,6 +428,9 @@ fn arithmetic(
                 _ => a.powf(b),
             }))
         }
+        // Inside a placeholder, joining a string with `None` gives `None`, which the
+        // placeholder writes as nothing.
+        (Value::None, _) | (_, Value::None) if operator == '+' => Ok(Value::None),
         (Value::String(_) | Value::File(_), _) | (_, Value::String(_)) if operator == '+' => {
             let joined = format!(
                 "{}{}",

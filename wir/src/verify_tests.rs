@@ -278,6 +278,20 @@ fn network_needs_version() {
 }
 
 #[test]
+fn stream_files_checked() {
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"] = json!("out.txt");
+    assert!(problems(document.clone()).is_empty());
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("../err.txt");
+    let outside = Problem::Outside("../err.txt".into());
+    assert_eq!(only(document.clone()), ("main/head".into(), outside));
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("err.txt");
+    document["wir_version"] = json!("0.3");
+    let later = Problem::Later("the stream files of a task".into(), "0.4".into());
+    assert_eq!(only(document), ("main/head".into(), later));
+}
+
+#[test]
 fn task_outputs_captured() {
     let mut document = base();
     document["graphs"][0]["ops"][1]["kind"]["task"]["captures"] = json!([]);

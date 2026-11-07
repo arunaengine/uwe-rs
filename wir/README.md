@@ -26,9 +26,9 @@ The JSON form uses snake_case keys and leaves out fields that hold their default
 
 ## Versioning
 
-`wir_version` is `<major>.<minor>`; this crate reads `0.1`, `0.2` and `0.3`, and `wir::VERSION` is `0.3`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
+`wir_version` is `<major>.<minor>`; this crate reads `0.1` to `0.4`, and `wir::VERSION` is `0.4`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
 
-Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
+Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
 
 - While the major version is 0, every change to the form or the semantics raises the minor version.
 - From 1.0, a minor version only adds optional fields, op kinds, or semantics for reserved op kinds; a reader then accepts its own major version up to its own minor. Any other change raises the major version.
@@ -88,6 +88,8 @@ No op of this version reads or writes streams. The rest of the stream contract b
 - `{"glob": pattern}`: paths in the working folder that match, sorted by path. One match fills a File or Directory output, all matches fill an array output. No match fills an optional output with null and fails the task otherwise; several matches fail a non-array output; an empty match fails a nonempty array.
 - `"stdout"` and `"stderr"`: a File with what the command wrote there.
 
+`stdout` and `stderr` name the files in the working folder that standard output and standard error go to, like CWL `stdout` and `stderr`; a stream capture reads that file, and a glob capture may match it too. Without a name, a stream capture writes to a file that the runner names.
+
 The task succeeds when its exit code is in `success_codes` (only 0 when empty) and every capture worked. Then all outputs are bound at once; otherwise it ends `failed` and binds none. A task that could not run at all, such as a missing image or a lost node, ends `errored`. The command runs without network unless the task sets `network: true`; this is part of the task and enters its cache key, so a task without network can share its results between runs. The attributes never enter its cache key.
 
 **`call`** runs a named graph of the same document. The op has exactly the graph's port names, with types the graph accepts on the input side and the op accepts on the output side. Its outputs are bound at once when the graph has finished and every graph output is bound; the call fails when an op inside fails. A graph must not call itself, directly or through other graphs.
@@ -135,6 +137,7 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
 - a call matches the called graph's ports;
 - a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
-- a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 in 0.1 or 0.2.
+- the stream files of a task are relative paths that stay inside the working folder;
+- a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 before 0.3, none of 0.4 before 0.4.
 
 Not yet: the readable text form, the runner, frontends and lowering passes.

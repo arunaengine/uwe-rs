@@ -143,6 +143,31 @@ fn denies_task_network() {
     );
 }
 
+#[test]
+fn names_stream_files() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = example(folder.path(), |document| {
+        document["wir_version"] = json!(wir::VERSION);
+        let sort = &mut document["graphs"][0]["ops"][0]["kind"]["task"];
+        sort["stdout"] = json!("sorted.txt");
+        sort["stderr"] = json!("log.txt");
+    });
+    let mut executor = scripted(folder.path(), |_| 0, true);
+    let mut driver = driver(&launch);
+    let graph = execute("two-tools", &mut driver, &mut executor)
+        .into_result()
+        .unwrap();
+    let sort = &graph.nodes[0].task;
+    let script = "exec > 'sorted.txt' 2> 'log.txt'\n'sort' 'inputs/text/text.txt'";
+    assert_eq!(sort.command, ["/bin/sh", "-c", script]);
+    assert_eq!(sort.outputs, ["sorted.txt", "log.txt"]);
+    let head = &graph.nodes[1].task;
+    assert!(
+        head.command[2].ends_with("'inputs/sorted/sorted.txt'"),
+        "the capture reads the named file"
+    );
+}
+
 /// Runs the example on a scripted executor.
 fn run(
     root: &Path,

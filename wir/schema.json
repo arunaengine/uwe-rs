@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "wir document",
-  "description": "The JSON form of a wir 0.1 document. It checks the shape and the name patterns; the wir verifier checks types, edges, producers, cycles and op fields.",
+  "description": "The JSON form of a wir 0.4 document. It checks the shape and the name patterns; the wir verifier checks types, edges, producers, cycles and op fields.",
   "type": "object",
   "additionalProperties": false,
   "required": ["wir_version", "graphs", "entry"],
   "properties": {
-    "wir_version": { "enum": ["0.1", "0.2", "0.3"] },
+    "wir_version": { "enum": ["0.1", "0.2", "0.3", "0.4"] },
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
     "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
@@ -414,7 +414,9 @@
           }
         },
         "success_codes": { "type": "array", "items": { "type": "integer" } },
-        "network": { "type": "boolean" }
+        "network": { "type": "boolean" },
+        "stdout": { "type": "string" },
+        "stderr": { "type": "string" }
       }
     }
   }

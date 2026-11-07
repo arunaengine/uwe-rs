@@ -22,11 +22,20 @@ fn run(driver: &mut dyn Driver, root: &Path, name: &str) -> Ran {
     let execution = execute(name, driver, &mut simulator);
     let graph = execution.into_result().expect("the run succeeds");
     let mut tasks: Vec<(String, Vec<String>)> = (graph.nodes.iter())
-        .map(|node| (node.task.step.clone(), words(&node.task)))
+        .map(|node| (step(&node.task.step), words(&node.task)))
         .collect();
     tasks.sort();
     let outputs = shown(driver.results().expect("a real run has results"));
     Ran { tasks, outputs }
+}
+
+/// A step without the op path that a map or a branch repeats, like `say` for `say/say`,
+/// which docs/wir.md names as a difference of the step names.
+fn step(path: &str) -> String {
+    match path.rsplit_once('/') {
+        Some((head, last)) if head.rsplit('/').next() == Some(last) => head.to_owned(),
+        _ => path.to_owned(),
+    }
 }
 
 /// The words of a command without the shell around it, with paths as their last segment, as
@@ -99,6 +108,14 @@ fn both(name: &str, job: Json) -> (Ran, Ran) {
 #[test]
 fn defaults_match_native() {
     let (native, lowered) = both("defaults.cwl", json!({}));
+    assert_eq!(native.tasks.len(), 3, "{native:?}");
+    assert_eq!(lowered, native);
+}
+
+#[test]
+fn values_match_native() {
+    let job = json!({"name": "you", "names": ["a", "b"]});
+    let (native, lowered) = both("values.cwl", job);
     assert_eq!(native.tasks.len(), 3, "{native:?}");
     assert_eq!(lowered, native);
 }

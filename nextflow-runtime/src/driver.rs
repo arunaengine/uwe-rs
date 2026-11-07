@@ -875,9 +875,10 @@ pub fn plugin_warnings(launch: &Launch, host: &mut dyn Host) -> Vec<String> {
     }
 }
 
-/// The config of a project directory, as `nextflow run` and `nextflow config` read it.
-pub fn config(project: &Path, launch: &Launch, host: &mut dyn Host) -> Result<Config, DriverError> {
-    load_config(project, launch, host, false).map(|(config, _)| config)
+/// The config of a project directory or of a script's folder, as `nextflow run` and `nextflow
+/// config` read it.
+pub fn config(target: &Path, launch: &Launch, host: &mut dyn Host) -> Result<Config, DriverError> {
+    load_config(&project_folder(target), launch, host, false).map(|(config, _)| config)
 }
 
 /// The config of a project directory and the files it came from, in the order read.

@@ -1,0 +1,231 @@
+//! Lowers CWL documents into wir. What has no lowering yet becomes a native CWL op, so every
+//! document lowers, partly or fully.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+mod types;
+
+use std::path::{Path, PathBuf};
+
+use cwl_parser::model::{Process, short_name};
+use wir::{
+    Document, Edge, Endpoint, Flow, Graph, Kind, Language, Native, Op, Origin, Port, Source, Type,
+};
+
+/// A lowered document, and the parts of it that stay native CWL ops.
+#[derive(Clone, Debug)]
+pub struct Lowering {
+    pub document: Document,
+    pub kept: Vec<Kept>,
+}
+
+/// An op that stays a native CWL op, and the first thing in it that has no lowering yet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Kept {
+    pub path: String,
+    pub reason: String,
+}
+
+impl Lowering {
+    /// Whether no part of the document stays native.
+    pub fn full(&self) -> bool {
+        self.kept.is_empty()
+    }
+}
+
+/// Lowers a loaded CWL document. Source locations are relative to `base`, the folder the wir
+/// document is meant for, when they lie below it. It fails only when not even a native op can
+/// hold the document, such as for an `Any` input of the whole document.
+pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, String> {
+    let mut lowerer = Lowerer {
+        base: base.to_owned(),
+        sources: Vec::new(),
+        kept: Vec::new(),
+    };
+    let process = &document.process;
+    let (inputs, outputs) = boundary(process)?;
+    let name = process_name(&process.id);
+    let op = lowerer.op(process, &name)?;
+    let mut edges = Vec::new();
+    for port in &inputs {
+        edges.push(edge((None, &port.name), (Some(&name), &port.name)));
+    }
+    for port in &outputs {
+        edges.push(edge((Some(&name), &port.name), (None, &port.name)));
+    }
+    let graph = Graph {
+        name: "main".into(),
+        inputs,
+        outputs,
+        ops: vec![op],
+        edges,
+    };
+    let document = Document {
+        wir_version: wir::VERSION.into(),
+        sources: lowerer.sources,
+        types: Vec::new(),
+        graphs: vec![graph],
+        entry: "main".into(),
+    };
+    if let Err(problems) = wir::verify(&document) {
+        let problems: Vec<String> = problems.iter().map(ToString::to_string).collect();
+        return Err(format!(
+            "the lowered document does not verify: {}",
+            problems.join("; ")
+        ));
+    }
+    Ok(Lowering {
+        document,
+        kept: lowerer.kept,
+    })
+}
+
+struct Lowerer {
+    base: PathBuf,
+    sources: Vec<Source>,
+    kept: Vec<Kept>,
+}
+
+impl Lowerer {
+    /// The op at `path` that runs a process: a native op until a lowering covers it.
+    fn op(&mut self, process: &Process, path: &str) -> Result<Op, String> {
+        let (source, entry) = self.source(process);
+        let origin = Some(Origin {
+            source: source.clone(),
+            at: entry.clone(),
+        });
+        let reason = String::from("this process class has no lowering yet");
+        if entry.as_deref().is_some_and(|entry| entry.contains('/')) {
+            return Err(format!(
+                "{path}: {reason}, and its inline process cannot run alone"
+            ));
+        }
+        let (inputs, outputs) = boundary(process)?;
+        if (inputs.iter().chain(&outputs)).any(|port| dynamic(&port.r#type)) {
+            return Err(format!(
+                "{path}: {reason}, and a native block cannot take Any"
+            ));
+        }
+        self.kept.push(Kept {
+            path: path.to_owned(),
+            reason,
+        });
+        Ok(Op {
+            path: path.to_owned(),
+            kind: Kind::Native(Native {
+                source,
+                language: Language::Cwl,
+                entry,
+                profiles: Vec::new(),
+                configs: Vec::new(),
+            }),
+            inputs,
+            outputs,
+            after: Vec::new(),
+            effects: Vec::new(),
+            attributes: Default::default(),
+            origin,
+        })
+    }
+
+    /// The id of the source that holds a process, added once per file, and the process's
+    /// fragment in that file.
+    fn source(&mut self, process: &Process) -> (String, Option<String>) {
+        let (file, fragment) = match process.id.split_once('#') {
+            Some((file, fragment)) => (file, Some(fragment.to_owned())),
+            None => (process.id.as_str(), None),
+        };
+        let location = match cwl_parser::iri::file_path(file) {
+            Some(path) => match path.strip_prefix(&self.base) {
+                Ok(relative) => relative.to_string_lossy().into_owned(),
+                Err(_) => path.to_string_lossy().into_owned(),
+            },
+            None => file.to_owned(),
+        };
+        if let Some(known) = self.sources.iter().find(|item| item.location == location) {
+            return (known.id.clone(), fragment);
+        }
+        let stem = process_name(file);
+        let mut id: String = (stem.chars())
+            .map(
+                |c| match c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.') {
+                    true => c,
+                    false => '_',
+                },
+            )
+            .collect();
+        if id.is_empty() || self.sources.iter().any(|item| item.id == id) {
+            id = format!("{id}-{}", self.sources.len() + 1);
+        }
+        self.sources.push(Source {
+            id: id.clone(),
+            language: Language::Cwl,
+            location,
+            version: Some(process.version.to_string()),
+            digest: None,
+        });
+        (id, fragment)
+    }
+}
+
+/// The ports of a process as a whole: an input with a default may be null.
+fn boundary(process: &Process) -> Result<(Vec<Port>, Vec<Port>), String> {
+    let port = |name: &str, r#type: Type| Port {
+        name: short_name(name).to_owned(),
+        r#type,
+        flow: Flow::Value,
+    };
+    let mut inputs = Vec::new();
+    for input in &process.inputs {
+        let r#type = types::convert(&input.value_type)
+            .map_err(|why| format!("input {}: {why}", short_name(&input.id)))?;
+        let r#type = match input.default {
+            Some(_) => types::optional(r#type),
+            None => r#type,
+        };
+        inputs.push(port(&input.id, r#type));
+    }
+    let mut outputs = Vec::new();
+    for output in &process.outputs {
+        let r#type = types::convert(&output.value_type)
+            .map_err(|why| format!("output {}: {why}", short_name(&output.id)))?;
+        outputs.push(port(&output.id, r#type));
+    }
+    Ok((inputs, outputs))
+}
+
+fn dynamic(r#type: &Type) -> bool {
+    match r#type {
+        Type::Dynamic => true,
+        Type::Optional(inner) => dynamic(inner),
+        Type::Array(array) => dynamic(&array.items),
+        Type::Map(map) => dynamic(&map.value),
+        Type::Record(fields) => fields.iter().any(|field| dynamic(&field.r#type)),
+        Type::Union(items) | Type::Tuple(items) => items.iter().any(dynamic),
+        _ => false,
+    }
+}
+
+fn edge(from: (Option<&str>, &str), to: (Option<&str>, &str)) -> Edge {
+    let end = |(op, port): (Option<&str>, &str)| Endpoint {
+        op: op.map(str::to_owned),
+        port: port.to_owned(),
+    };
+    Edge {
+        from: end(from),
+        to: end(to),
+    }
+}
+
+/// The name uwe's CWL driver gives the task of a process run alone: the fragment of its id,
+/// else the file name without its extension.
+pub fn process_name(id: &str) -> String {
+    if let Some((_, fragment)) = id.split_once('#') {
+        return short_name(fragment).to_owned();
+    }
+    let name = id.trim_end_matches('/').rsplit('/').next().unwrap_or(id);
+    match name.rsplit_once('.') {
+        Some((stem, _)) if !stem.is_empty() => stem.to_owned(),
+        _ => name.to_owned(),
+    }
+}

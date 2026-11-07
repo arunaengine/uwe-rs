@@ -12,6 +12,7 @@ members = [
     "conda-environment",
     "config-file",
     "content-store",
+    "cwl-lowering",
     "cwl-parser",
     "cwl-runtime",
     "executor",
@@ -66,6 +67,7 @@ azure-batch-executor = { path = "azure-batch-executor" }
 conda-environment = { path = "conda-environment" }
 config-file = { path = "config-file" }
 content-store = { path = "content-store" }
+cwl-lowering = { path = "cwl-lowering" }
 cwl-parser = { path = "cwl-parser" }
 cwl-runtime = { path = "cwl-runtime" }
 executor = { path = "executor" }

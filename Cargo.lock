@@ -1515,6 +1515,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cwl-lowering"
+version = "0.1.0"
+dependencies = [
+ "cwl-parser",
+ "serde_json",
+ "wir",
+]
+
+[[package]]
 name = "cwl-parser"
 version = "0.1.0"
 dependencies = [

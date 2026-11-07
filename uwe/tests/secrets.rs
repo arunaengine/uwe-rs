@@ -178,6 +178,77 @@ fn routes_workflow_environment() {
     assert_eq!(*tokens, [format!("Bearer {PROCESS_VALUE}")]);
 }
 
+/// Asks for `KEY` with `envvars` and compares the length of its value in `os.environ` with the
+/// config, so that no file holds the value.
+const SNAKEFILE: &str = "import os\nconfigfile: \"config.yaml\"\nenvvars: \"OPENAI_API_KEY\"\n\
+    if len(os.environ[\"OPENAI_API_KEY\"]) != config[\"length\"]:\n    raise ValueError(\"another value\")\n\
+    rule all:\n    output: \"done.txt\"\n    shell: \"touch done.txt\"\n";
+
+#[test]
+fn routes_snakemake_environment() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("routes_snakemake_environment");
+    }
+    let root = tempfile::tempdir().unwrap();
+    let requests = [0, 1].map(|run| {
+        let mut secrets = SecretValues::default();
+        secrets.insert(KEY, VALUES[run]).unwrap();
+        secrets.allow_environment(false);
+        let folder = root.path().join(run.to_string());
+        snakemake(&folder, VALUES[run].len(), secrets)
+    });
+    let [first, second] = requests;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (first, second) = runtime.block_on(async { tokio::join!(first.run(), second.run()) });
+    for (run, result) in [first, second].into_iter().enumerate() {
+        let ran = result.unwrap_or_else(|failure| panic!("run {run}: {}", failure.message));
+        assert!(
+            ran.execution.error.is_none(),
+            "run {run}: {:?}",
+            ran.execution.error
+        );
+    }
+    // Without a given value and without the environment, `envvars` finds the name unset.
+    let mut secrets = SecretValues::default();
+    secrets.allow_environment(false);
+    let unset = snakemake(&root.path().join("unset"), PROCESS_VALUE.len(), secrets);
+    let message = match runtime.block_on(unset.run()) {
+        Ok(ran) => (ran.execution.error)
+            .map(|error| error.to_string())
+            .unwrap_or_default(),
+        Err(failure) => failure.message,
+    };
+    assert!(
+        message.contains("requested by the workflow but undefined"),
+        "{message}"
+    );
+    // The command line reads the environment of the process.
+    let folder = root.path().join("process");
+    let process = snakemake(&folder, PROCESS_VALUE.len(), SecretValues::default());
+    let ran = runtime.block_on(process.run());
+    let ran = ran.unwrap_or_else(|failure| panic!("{}", failure.message));
+    assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+}
+
+/// A simulated run of the project `folder` with `SNAKEFILE`, whose config asks for a value of
+/// `length`.
+fn snakemake(folder: &Path, length: usize, secrets: SecretValues) -> RunRequest {
+    std::fs::create_dir_all(folder).unwrap();
+    std::fs::write(folder.join("Snakefile"), SNAKEFILE).unwrap();
+    std::fs::write(folder.join("config.yaml"), format!("length: {length}\n")).unwrap();
+    let mut settings = Settings::new(folder);
+    settings.executor = Some("simulator".into());
+    settings.database = Some(folder.join("runs.sqlite"));
+    settings.store = Some(folder.join("store").to_string_lossy().into_owned());
+    settings.output_dir = Some(folder.join("outputs"));
+    settings.cache = false;
+    settings.cache_folder = Some(folder.join("cache"));
+    settings.secrets = secrets;
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    request
+}
+
 /// A run of `SCRIPT` in `folder`, with nf-gpt asking `server`.
 fn nextflow(folder: &Path, server: &Server, secrets: SecretValues) -> RunRequest {
     std::fs::create_dir_all(folder).unwrap();

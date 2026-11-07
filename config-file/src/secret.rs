@@ -166,6 +166,22 @@ impl SecretValues {
         self.environment.then(|| std::env::var(name).ok()).flatten()
     }
 
+    /// The environment as a workflow sees it: the variables of the process when allowed, in
+    /// their order, with the given values in place of theirs or after them.
+    pub fn environment(&self) -> Vec<(String, String)> {
+        let mut variables: Vec<(String, String)> = match self.environment {
+            true => std::env::vars().collect(),
+            false => Vec::new(),
+        };
+        for (name, value) in self.values.iter() {
+            match variables.iter_mut().find(|(known, _)| known == name) {
+                Some(entry) => entry.1 = value.clone(),
+                None => variables.push((name.clone(), value.clone())),
+            }
+        }
+        variables
+    }
+
     /// The names that have a given value, in order.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.values.keys().map(String::as_str)

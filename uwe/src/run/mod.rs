@@ -159,6 +159,7 @@ fn execute_with(
         Some(setup) => setup,
         None => crate::setup::Setup::load(arguments)?,
     };
+    setup.variables = arguments.secrets.clone();
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();
     let (target, language) = target_and_language(arguments)?;

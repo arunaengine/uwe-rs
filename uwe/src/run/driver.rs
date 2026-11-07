@@ -249,6 +249,7 @@ fn snakemake(
         storage: setup.storage.clone(),
         cancel: cancel.clone(),
         git: Some(snakemake_git(setup)),
+        environment: Some(arguments.secrets.environment()),
     }
 }
 

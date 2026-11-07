@@ -31,6 +31,21 @@ A lowered tool runs as a wir task, not as the task of the CWL driver, so its cac
 
 Not lowered the same way: a lowered tool ignores a `cwl.output.json` that it writes, and its inputs have no format check and no secondary files that CWL would find beside them, so such inputs stay native.
 
+### Coverage
+
+`cwl-lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. On 2026-11-07 (suite commit `97908339`):
+
+| Outcome | Tests |
+| --- | --- |
+| lowers fully | 24 |
+| lowers partly: some ops stay native | 311 |
+| does not lower: the parser refuses it, or a native op cannot hold an `Any` or `null` type | 43 |
+| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 315 |
+
+What keeps most tests partly native, by the first reason of each: an input default (80), a requirement such as `InitialWorkDirRequirement`, `EnvVarRequirement`, `ShellCommandRequirement` or `SchemaDefRequirement` (75), an expression in a tool (32), `outputEval` or `loadContents` of an output (32), an ExpressionTool or Operation (24), several sources or `pickValue` (21), `stdin` (10), secondary files or a format of an input (8), a requirement set by an expression (7) and command line bindings (5).
+
+Where the runs end differently, the lowered run refuses a job key that the document does not take, which CWL ignores (`metadata`, `wf_wc_nomultiple`), and job requirements (`cwl:requirements`); a simulated native op makes up values that do not fit their types, and a simulated glob of folders makes up files. These are differences of wir runs and of the simulator, not of lowered tasks.
+
 ## Detection
 
 uwe takes a file as a wir document when it is JSON and has a top-level `wir_version` key. The file name does not matter, but `<name>.wir.json` is the convention. `-lang wir` picks wir for any file. uwe parses the document, checks its version, runs the verifier and refuses the document with every problem the verifier found before any task starts.

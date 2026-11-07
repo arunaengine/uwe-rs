@@ -1,13 +1,14 @@
-//! Lowers CWL documents into wir. What has no lowering yet becomes a native CWL op, so every
-//! document lowers, partly or fully.
+//! Lowers CWL documents into wir: tools into task ops, and what has no lowering yet into
+//! native CWL ops, so every document lowers, partly or fully.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod requirements;
 mod types;
 
 use std::path::{Path, PathBuf};
 
-use cwl_parser::model::{Process, short_name};
+use cwl_parser::model::{Process, Requirement, RequirementClass, short_name};
 use wir::{
     Document, Edge, Endpoint, Flow, Graph, Kind, Language, Native, Op, Origin, Port, Source, Type,
 };
@@ -45,7 +46,7 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
     let process = &document.process;
     let (inputs, outputs) = boundary(process)?;
     let name = process_name(&process.id);
-    let op = lowerer.op(process, &name)?;
+    let op = lowerer.op(process, &Scope::default(), &name)?;
     let mut edges = Vec::new();
     for port in &inputs {
         edges.push(edge((None, &port.name), (Some(&name), &port.name)));
@@ -80,6 +81,30 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
     })
 }
 
+/// The requirements and hints in effect, outer ones first, as uwe's CWL driver keeps them.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Scope {
+    pub requirements: Vec<Requirement>,
+    pub hints: Vec<Requirement>,
+}
+
+impl Scope {
+    /// The scope inside a process or step with these requirements and hints.
+    fn with(&self, requirements: &[Requirement], hints: &[Requirement]) -> Scope {
+        let mut inner = self.clone();
+        inner.requirements.extend(requirements.iter().cloned());
+        inner.hints.extend(hints.iter().cloned());
+        inner
+    }
+
+    /// The innermost requirement that `pick` takes, else the innermost hint.
+    pub fn find<'s, T>(&'s self, pick: impl Fn(&'s RequirementClass) -> Option<T>) -> Option<T> {
+        (self.requirements.iter().rev())
+            .find_map(|entry| pick(&entry.class))
+            .or_else(|| self.hints.iter().rev().find_map(|entry| pick(&entry.class)))
+    }
+}
+
 struct Lowerer {
     base: PathBuf,
     sources: Vec<Source>,
@@ -87,14 +112,28 @@ struct Lowerer {
 }
 
 impl Lowerer {
-    /// The op at `path` that runs a process: a native op until a lowering covers it.
-    fn op(&mut self, process: &Process, path: &str) -> Result<Op, String> {
+    /// The op at `path` that runs a process: lowered where it can be, else a native op.
+    fn op(&mut self, process: &Process, outer: &Scope, path: &str) -> Result<Op, String> {
+        let scope = outer.with(&process.requirements, &process.hints);
         let (source, entry) = self.source(process);
         let origin = Some(Origin {
             source: source.clone(),
             at: entry.clone(),
         });
-        let reason = String::from("this process class has no lowering yet");
+        // Until tools lower, a process stays native for its first unknown requirement.
+        let mut probe = wir::Task {
+            image: None,
+            command: Vec::new(),
+            captures: Vec::new(),
+            success_codes: Vec::new(),
+            network: false,
+            stdout: None,
+            stderr: None,
+        };
+        let reason = match requirements::apply(&scope, &mut probe) {
+            Err(reason) => reason,
+            Ok(_) => "this process class has no lowering yet".to_owned(),
+        };
         if entry.as_deref().is_some_and(|entry| entry.contains('/')) {
             return Err(format!(
                 "{path}: {reason}, and its inline process cannot run alone"

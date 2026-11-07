@@ -28,7 +28,7 @@ The JSON form uses snake_case keys and leaves out fields that hold their default
 
 `wir_version` is `<major>.<minor>`; this crate reads `0.1` to `0.5`, and `wir::VERSION` is `0.5`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
 
-Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops, defines `map`, `expr` and `branch`, and adds `library` to `expr`. Those three op kinds stay reserved in a document of an earlier version. Version 0.5 adds `default` to input ports. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
+Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops, defines `map`, `expr` and `branch`, and adds `library` to `expr`. Those three op kinds stay reserved in a document of an earlier version. Version 0.5 adds `default` to input ports, defines `select`, and defines `merge` and `flatten` on values; these three op kinds stay reserved in a document of an earlier version. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
 
 - While the major version is 0, every change to the form or the semantics raises the minor version.
 - From 1.0, a minor version only adds optional fields, op kinds, or semantics for reserved op kinds; a reader then accepts its own major version up to its own minor. Any other change raises the major version.
@@ -75,7 +75,7 @@ A `value` port is bound at most once and never changes. Any number of readers re
 
 A `stream` port carries items in the producer's order and then closes exactly once. Every reader sees every item from the first, in that order, however many readers there are. A stream that closes with no items is empty: it is neither null nor an error. A producer failure ends the stream with that error instead of a close. Items of different streams have no order between them unless an op defines one.
 
-No op of this version reads or writes streams. The rest of the stream contract belongs to the reserved ops: per-round reads of a process with several stream inputs, values reused in every round, Nextflow `each`, and completion order against fair order in `merge`.
+No op of this version reads or writes streams; `merge` and `flatten` are defined on values only. The rest of the stream contract belongs to the reserved ops: per-round reads of a process with several stream inputs, values reused in every round, Nextflow `each`, and completion order against fair order in `merge`.
 
 ## Defined ops
 
@@ -110,6 +110,16 @@ Each output is the array of the values that the rounds gave for it, in round ord
 
 **`branch`** runs its `body` graph when its input `condition`, a bool, is true. The body has the op's ports apart from the input `condition`; each output of the op holds the body's output or null. When the condition is true the op runs like a `call` of the body, and it succeeds, fails or errors as that call does. When it is false the body does not run: the op ends `skipped` and binds every output to null, so the ops that read them run with null; inside a `map` that round gives null at its place. A dependency on `succeeded` does not hold for a skipped op, one on `skipped` does. A null condition fails the op.
 
+**`select`** picks among the items of its one input, an array, like CWL `pickValue` and WDL `select_first` and `select_all`; an item is set when it is not null. Its one output, by `rule`:
+
+- `first`: the first item that is set. When none is set, also for an empty array, the op fails.
+- `only`: the one item that is set. When none or more than one is set, the op fails.
+- `all`: the array of the items that are set, in their order; it is empty when none is set.
+
+**`merge`** on value ports gives one array of its input values, in the order of its input ports, like CWL `merge_nested`: each input is one item, so an array input is one item and a null input a null item. **`flatten`** on a value port takes one array and gives the items of each item that is an array, then each other item as it is, in order, like CWL `merge_flattened` after a `merge`: one level deep, so an empty array adds nothing and a null item stays. A null input fails either op.
+
+The output of `select`, `merge` and `flatten` must fit its type, or the op fails. They run in the engine without a task and are pure, like `expr`. `merge` and `flatten` on stream ports stay reserved: a runner of this version refuses them.
+
 **`after` dependencies** name another op of the same graph and the statuses that satisfy it: `succeeded`, `failed` (ran and not accepted), `errored` (could not run), `skipped` (its own condition was false) and `omitted` (did not run because a dependency did not hold). All dependencies of an op must hold. Data edges and dependencies together must not form a cycle.
 
 **Effects** declare what an op does beyond its outputs: `{"publish": target}`, `{"external": target}` and `"nondeterministic"`. Removing ops whose outputs nobody needs keeps every op with an effect. Effectful work stays in `task` and `native` ops.
@@ -124,13 +134,12 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 | --- | --- | --- |
 | `collect` | none | order; an error inside the stream |
 | `filter` | `body` | order; end of stream |
-| `flatten` | none | depth; empty arrays |
-| `merge` | none | completion order against fair order |
+| `flatten` | none | on streams: the same rule for items of a stream |
+| `merge` | none | on streams: completion order against fair order |
 | `zip` | `remainder` | unequal lengths |
 | `cross` | none | order; empty input |
 | `group` | `by`, `size`, `remainder` | Nextflow `groupTuple` rules; order of groups |
 | `join` | `by`, `remainder`, `fail_on_mismatch`, `fail_on_duplicate` | duplicate keys; mismatch errors; order |
-| `select` | `rule` (`first`, `only`, `all`) | the error when nothing is set |
 | `loop` | `body`, `condition`, `carry` | the first check; outputs of every round; limits |
 | `dynamic` | `plan` | typed boundaries; stable instance ids; reconciling with finished work |
 
@@ -146,7 +155,7 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - every input and graph output has at most one producer, and every required one without a default has a producer;
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
-- an expr has one output; a branch has a bool condition, the body's other ports and optional outputs; a call matches the called graph's ports, and a map the ports of its body, with arrays for the `over` inputs and the outputs;
+- an expr has one output; a select and a flatten have one array input and one output, and a merge at least one input and one array output, each output accepting what the op gives; a branch has a bool condition, the body's other ports and optional outputs; a call matches the called graph's ports, and a map the ports of its body, with arrays for the `over` inputs and the outputs;
 - a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
 - the stream files of a task are relative paths that stay inside the working folder;
 - a default sits on an input port and fits its type;

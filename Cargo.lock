@@ -8055,6 +8055,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wdl-runtime",
  "workflow-graph",
 ]
 
@@ -8331,10 +8332,14 @@ name = "wdl-runtime"
 version = "0.1.0"
 dependencies = [
  "indexmap 2.14.2",
+ "input-schema",
  "regex",
  "serde_json",
+ "tempfile",
+ "tokio",
  "wdl-analysis",
  "wdl-ast",
+ "workflow-graph",
 ]
 
 [[package]]

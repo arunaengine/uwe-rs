@@ -1,4 +1,4 @@
-//! Lowers CWL tools into wir, as native ops until a lowering covers them.
+//! Lowers CWL tools into wir, and keeps tools with unknown requirements native.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -17,9 +17,9 @@ fn lowered(name: &str) -> Lowering {
 }
 
 #[test]
-fn keeps_processes_native() {
+fn keeps_requirements_native() {
     let lowering = lowered("environment.cwl");
-    let reason = "this process class has no lowering yet";
+    let reason = "the requirement EnvVarRequirement";
     assert_eq!(lowering.kept[0].reason, reason);
     assert!(wir::verify(&lowering.document).is_ok());
 }

@@ -9,10 +9,11 @@ use crate::op::Op;
 use crate::types::{Type, TypeDef};
 
 /// The wir version this crate writes. The README states the versioning rule.
-pub const VERSION: &str = "0.2";
+pub const VERSION: &str = "0.3";
 
-/// The versions this crate reads. Version 0.2 only adds to 0.1, so a 0.1 document reads as it is.
-pub(crate) const KNOWN: [&str; 2] = ["0.1", VERSION];
+/// The versions this crate reads. Each version only adds to the one before, so an older
+/// document reads as it is.
+pub(crate) const KNOWN: [&str; 3] = ["0.1", "0.2", VERSION];
 
 /// The JSON Schema (draft 2020-12) of the JSON form of this version.
 pub const SCHEMA: &str = include_str!("../schema.json");
@@ -111,7 +112,7 @@ pub enum ParseError {
     Json(#[from] serde_json::Error),
     #[error("the document has no wir_version string")]
     NoVersion,
-    #[error("wir version {found} is not known; this reader knows 0.1 and {VERSION}")]
+    #[error("wir version {found} is not known; this reader knows 0.1 to {VERSION}")]
     Version { found: String },
 }
 

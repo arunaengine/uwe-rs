@@ -80,6 +80,11 @@ pub struct Task {
     /// Exit codes that count as success; empty means only 0.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub success_codes: Vec<i32>,
+    /// Whether the command may use the network; without it the task runs without network,
+    /// so that runs can share its results. It is part of the task, unlike the attributes.
+    /// Since wir 0.3.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub network: bool,
 }
 
 /// One command argument: literal text, or the value of a task input.

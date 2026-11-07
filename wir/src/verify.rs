@@ -58,6 +58,20 @@ pub enum Problem {
     FlowMismatch(String),
     #[error("ops form a cycle through {0}")]
     Cycle(String),
+    #[error("native {0} needs a type without dynamic")]
+    Untyped(String),
+    #[error("language {found} differs from that of source {named}, {want}")]
+    Language {
+        named: String,
+        found: String,
+        want: String,
+    },
+    #[error("output {0} needs exactly one capture")]
+    Capture(String),
+    #[error("output {0} cannot hold what its capture reads")]
+    CaptureType(String),
+    #[error("{port} does not match graph {graph}")]
+    CallPort { port: String, graph: String },
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.
@@ -267,6 +281,7 @@ impl<'d> Checker<'d> {
                 self.report(&at, Problem::NoGraph(name.to_owned()));
             }
         }
+        self.kind(&at, op);
     }
 
     fn ports(&mut self, at: &str, side: &str, ports: &[Port]) {
@@ -478,6 +493,9 @@ fn valid_name(name: &str) -> bool {
 fn show(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
+
+#[path = "kinds.rs"]
+mod kinds;
 
 #[cfg(test)]
 #[path = "verify_tests.rs"]

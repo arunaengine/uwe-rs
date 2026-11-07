@@ -51,6 +51,8 @@ So far it looks like it can. A Snakemake rule and a Nextflow process that run th
 
 Each language is a native subset, not a wrapper around the original engine. `uwe check` tells you before a run whether a workflow uses something uwe does not support.
 
+Nextflow pipelines can use plugins of the Nextflow registry in the `plugins` block of their config. uwe implements their functions, reports, file systems and executors in Rust; for a plugin that it does not run, the run and `uwe check` warn once. See [What uwe supports](docs/support.md).
+
 Workflows can come straight from GitHub, GitLab, Bitbucket, Gitea or any Git server over HTTPS, pinned to a tag, branch or commit with `-r`.
 
 ### Executors
@@ -59,6 +61,7 @@ Workflows can come straight from GitHub, GitLab, Bitbucket, Gitea or any Git ser
 - **SLURM**, with Apptainer, Singularity, Podman or Docker on the nodes.
 - **Kubernetes** Jobs. `uwe kuberun` also runs uwe itself in a pod of the cluster.
 - **GA4GH TES** servers, such as Funnel.
+- **AWS Batch**, **Google Batch**, **Azure Batch**, **Nomad**, **HTCondor**, **PBS**, **Flyte**, **Snowflake**, **JARVICE** and **wr**. See [What uwe supports](docs/support.md).
 - A **simulator** that plans a whole workflow and makes placeholder outputs, without running any tool.
 
 Remote nodes can share a file system with uwe, or get their files through an object store, so no shared folder is needed. See [Remote executors and staging](docs/remote-executors.md).

@@ -47,7 +47,7 @@ So far it looks like it can. A Snakemake rule and a Nextflow process that run th
 | [CWL](https://www.commonwl.org) | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
 | [Argo Workflows](https://argoproj.github.io/workflows/) | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
 | [WDL](https://openwdl.org) 1.0 to 1.2 | Tasks, workflows, calls of tasks and subworkflows, imports, scatter, `if`, structs, `runtime` and `requirements`, and most of the standard library. Parsing and type checks use Sprocket's `wdl-analysis`; expressions are evaluated by uwe. |
-| [wir](wir/README.md) | The workflow intermediate representation of uwe: graphs of container `task` ops, `call` ops and `native` ops that run whole CWL documents with the cache keys of the CWL run. See [Running wir documents](docs/wir.md). |
+| [wir](wir/README.md) | The workflow intermediate representation of uwe: graphs of container `task` ops, `call` ops and `native` ops that run whole CWL documents and Nextflow pipelines with the cache keys of their own runs. See [Running wir documents](docs/wir.md). |
 
 Each language is a native subset, not a wrapper around the original engine. `uwe check` tells you before a run whether a workflow uses something uwe does not support.
 

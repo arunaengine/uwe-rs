@@ -8579,6 +8579,8 @@ dependencies = [
  "cwl-parser",
  "cwl-runtime",
  "input-schema",
+ "nextflow-evaluator",
+ "nextflow-runtime",
  "serde_json",
  "storage",
  "tempfile",

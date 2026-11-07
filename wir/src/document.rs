@@ -8,8 +8,11 @@ use crate::flow::Flow;
 use crate::op::Op;
 use crate::types::{Type, TypeDef};
 
-/// The wir version this crate reads and writes. The README states the versioning rule.
-pub const VERSION: &str = "0.1";
+/// The wir version this crate writes. The README states the versioning rule.
+pub const VERSION: &str = "0.2";
+
+/// The versions this crate reads. Version 0.2 only adds to 0.1, so a 0.1 document reads as it is.
+pub(crate) const KNOWN: [&str; 2] = ["0.1", VERSION];
 
 /// The JSON Schema (draft 2020-12) of the JSON form of this version.
 pub const SCHEMA: &str = include_str!("../schema.json");
@@ -108,7 +111,7 @@ pub enum ParseError {
     Json(#[from] serde_json::Error),
     #[error("the document has no wir_version string")]
     NoVersion,
-    #[error("wir version {found} is not known; this reader knows {VERSION}")]
+    #[error("wir version {found} is not known; this reader knows 0.1 and {VERSION}")]
     Version { found: String },
 }
 
@@ -117,7 +120,7 @@ pub enum ParseError {
 pub fn parse(text: &str) -> Result<Document, ParseError> {
     let json: serde_json::Value = serde_json::from_str(text)?;
     match json.get("wir_version").and_then(|value| value.as_str()) {
-        Some(VERSION) => Ok(serde_json::from_value(json)?),
+        Some(found) if KNOWN.contains(&found) => Ok(serde_json::from_value(json)?),
         Some(found) => Err(ParseError::Version {
             found: found.to_owned(),
         }),

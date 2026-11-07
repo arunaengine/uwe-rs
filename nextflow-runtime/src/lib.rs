@@ -5,6 +5,7 @@
 mod build;
 pub mod channel;
 pub mod driver;
+mod emits;
 mod files;
 mod hash;
 pub mod inputs;
@@ -100,6 +101,8 @@ pub struct Run {
     on_complete_called: bool,
     on_error_called: bool,
     operator_directory: Option<PathValue>,
+    /// What the entry workflow emits.
+    emits: Vec<emits::Emit>,
 }
 
 impl Run {
@@ -123,6 +126,7 @@ impl Run {
         network.keep_going(options.keep_going);
         let workflow = workflow::metadata(options, &host.launch_dir());
         let mut operator_directory = None;
+        let mut emits = Vec::new();
         let mut session = Session {
             base: host,
             options,
@@ -142,7 +146,7 @@ impl Run {
                 let mut interpreter = Interpreter::new(&mut builder);
                 set_globals(&mut interpreter, options, &workflow);
                 let params = options.config.params();
-                script_params(&mut interpreter, module, &params, &mut Vec::new())
+                let emitted = script_params(&mut interpreter, module, &params, &mut Vec::new())
                     .and_then(|()| typed_params(&mut interpreter, module, &params))
                     .and_then(|()| interpreter.start_statements(module))
                     .and_then(|()| match options.entry.as_deref() {
@@ -150,6 +154,7 @@ impl Run {
                         None => interpreter.run_entry(module),
                     })
                     .map_err(|error| interpreter.locate(error))?;
+                emits = emits::record(builder.network, &emitted);
             }
             let mut interpreter = Interpreter::new(&mut session);
             set_globals(&mut interpreter, options, &workflow);
@@ -166,6 +171,7 @@ impl Run {
             on_complete_called: false,
             on_error_called: false,
             operator_directory,
+            emits,
         };
         (run, started)
     }
@@ -203,6 +209,11 @@ impl Run {
     /// Whether the run ends once the running tasks have ended, after a failure.
     pub fn draining(&self) -> bool {
         self.network.draining()
+    }
+
+    /// What the entry workflow emitted so far, by emit name, as JSON; see [`emits::to_json`].
+    pub fn emitted(&self) -> Result<serde_json::Value, String> {
+        emits::to_json(&self.emits)
     }
 
     /// Checks that the run ended, then runs the `workflow.onComplete` handlers. No task may
@@ -473,6 +484,7 @@ fn typed_params(
 ) -> Result<(), Error> {
     for parameter in &module.typed_parameters {
         let class = parameter.class.as_deref().unwrap_or("Object");
+        let launch = interpreter.host().launch_dir();
         let value = match tree::get(params, &[&parameter.name]) {
             Some(Value::Null) | None => match &parameter.default {
                 Some(code) => interpreter.evaluate(code, module)?,
@@ -489,7 +501,7 @@ fn typed_params(
                     });
                 }
             },
-            Some(Value::String(text)) => typed_value(&text, class).ok_or_else(|| {
+            Some(Value::String(text)) => typed_value(&text, class, &launch).ok_or_else(|| {
                 let message = format!(
                     "Parameter `{}` with type {class} cannot be assigned to '{text}'",
                     parameter.name
@@ -507,8 +519,9 @@ fn typed_params(
     Ok(())
 }
 
-/// Text as a value of a declared param type, or `None` when it does not fit.
-fn typed_value(text: &str, class: &str) -> Option<Value> {
+/// Text as a value of a declared param type, or `None` when it does not fit. A relative
+/// `Path` starts from the launch folder.
+fn typed_value(text: &str, class: &str, launch: &str) -> Option<Value> {
     use nextflow_evaluator::number::{BigDecimal, Number};
     use nextflow_evaluator::units::{parse_duration, parse_memory};
     Some(match class {
@@ -523,10 +536,7 @@ fn typed_value(text: &str, class: &str) -> Option<Value> {
         "Boolean" if text.eq_ignore_ascii_case("false") => Value::Boolean(false),
         "Boolean" => return None,
         "Path" => Value::Path(Rc::new(nextflow_evaluator::value::PathValue::parse(
-            text,
-            &std::env::current_dir()
-                .unwrap_or_default()
-                .to_string_lossy(),
+            text, launch,
         ))),
         "Duration" => Value::Duration(parse_duration(text).ok()?),
         "MemoryUnit" => Value::MemoryUnit(parse_memory(text).ok()?),

@@ -16,8 +16,9 @@ use workflow_graph::{
 
 /// A language driver that a `native` op runs, with the result values it gives back.
 pub trait Block: Driver {
-    /// The result object of the block once it finished, by output name, as wir values.
-    fn exported(&self) -> Option<Json>;
+    /// The result object of the block once it finished, by output name, as wir values, or
+    /// why its results cannot be read.
+    fn exported(&self) -> Result<Option<Json>, DriverError>;
 }
 
 /// The driver of a native block inside a parent driver. The parent hands it every call of
@@ -35,6 +36,10 @@ pub struct Child {
     accepted: HashSet<(TaskId, u32)>,
     /// Deliveries handed to the parent and not acknowledged yet.
     delivering: Vec<Delivery>,
+    /// Deliveries taken from the child that the parent has not asked for yet.
+    held: Vec<Delivery>,
+    /// The target of every delivery the child gave, in order.
+    targets: Vec<String>,
     finished: bool,
 }
 
@@ -47,6 +52,8 @@ impl Child {
             running: HashSet::new(),
             accepted: HashSet::new(),
             delivering: Vec::new(),
+            held: Vec::new(),
+            targets: Vec::new(),
             finished: false,
         }
     }
@@ -157,9 +164,14 @@ impl Child {
     /// The child's deliveries since the last call. The child owns them until the parent
     /// acknowledges them with [`Child::delivered`].
     pub fn deliveries(&mut self) -> Vec<Delivery> {
-        let deliveries = self.driver.deliveries();
-        self.delivering.extend(deliveries.iter().cloned());
-        deliveries
+        self.collect();
+        std::mem::take(&mut self.held)
+    }
+
+    /// The target of every delivery the child gave, in order, like the files that a
+    /// Nextflow block publishes.
+    pub fn targets(&self) -> &[String] {
+        &self.targets
     }
 
     /// Acknowledges a delivery to the child that gave it; `None` when it is not the child's.
@@ -190,7 +202,9 @@ impl Child {
         }
         self.finished = true;
         self.driver.finish()?;
-        Ok(self.driver.exported())
+        // The deliveries of the last task are not handed out yet; its results may name them.
+        self.collect();
+        self.driver.exported()
     }
 
     /// Ends a child that did not finish when the run failed.
@@ -204,6 +218,16 @@ impl Child {
 
     pub fn draining(&self) -> bool {
         !self.finished && self.driver.draining()
+    }
+
+    /// Takes the new deliveries of the child, and keeps them until the parent acknowledges
+    /// them.
+    fn collect(&mut self) {
+        let deliveries = self.driver.deliveries();
+        self.targets
+            .extend(deliveries.iter().map(|item| item.target.clone()));
+        self.delivering.extend(deliveries.iter().cloned());
+        self.held.extend(deliveries);
     }
 
     /// Gives the tasks of the child parent ids: the same one again for a task it asked for

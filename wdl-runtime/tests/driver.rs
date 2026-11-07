@@ -203,3 +203,29 @@ fn plans_task_outputs() {
     );
     assert_eq!(run.patterns, [["*.csv", "a.csv", "b.csv"]]);
 }
+
+#[test]
+fn exports_typed_outputs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let launch = Launch {
+        scratch: folder.path().join("scratch"),
+        simulated: true,
+        ..launch("scatter.wdl")
+    };
+    let mut driver = WdlDriver::new(&launch, Options::default()).expect("a driver");
+    assert_eq!(driver.exported(), None, "no outputs before the run");
+    let mut simulator = Simulator::new(folder.path());
+    let options = RunOptions {
+        max_pending: 8,
+        order: Order::AsAsked,
+    };
+    let execution = execute_with("wdl", &mut driver, &mut simulator, &options);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let exported = driver.exported().expect("the outputs");
+    let all = &exported["all"];
+    assert_eq!(all["class"], "File", "{exported}");
+    assert_eq!(all["basename"], "all.txt");
+    let results = driver.results().expect("the results");
+    assert_eq!(all["location"], results["scatter_names.all"]);
+    assert!(exported["count"].is_i64(), "{exported}");
+}

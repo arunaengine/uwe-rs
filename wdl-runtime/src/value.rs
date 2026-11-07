@@ -195,6 +195,35 @@ impl Value {
         }
     }
 
+    /// The value as a result value of uwe: a File or a Directory as an object of its class,
+    /// location and basename, a pair as an array of two, the rest as [`Value::to_json`] has it.
+    pub fn result_json(&self) -> Json {
+        match self {
+            Value::File(path) | Value::Directory(path) => {
+                let class = match self {
+                    Value::File(_) => "File",
+                    _ => "Directory",
+                };
+                let trimmed = path.trim_end_matches('/');
+                let basename = trimmed.rsplit('/').next().unwrap_or(trimmed);
+                serde_json::json!({"class": class, "location": path, "basename": basename})
+            }
+            Value::Array(items) => Json::Array(items.iter().map(Value::result_json).collect()),
+            Value::Pair(left, right) => Json::Array(vec![left.result_json(), right.result_json()]),
+            Value::Map(entries) => Json::Object(
+                (entries.iter())
+                    .map(|(key, value)| (key.text().unwrap_or_default(), value.result_json()))
+                    .collect(),
+            ),
+            Value::Object(fields) => Json::Object(
+                (fields.iter())
+                    .map(|(name, value)| (name.clone(), value.result_json()))
+                    .collect(),
+            ),
+            other => other.to_json(),
+        }
+    }
+
     /// A value of the declared type from JSON. Relative file paths start at `base`.
     pub fn from_json(json: &Json, to: &Type, base: &Path) -> Result<Value, String> {
         let value = untyped(json, to, base);

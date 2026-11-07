@@ -69,3 +69,17 @@ fn formats_floats() {
     assert_eq!(Value::Float(1.5).text().as_deref(), Some("1.500000"));
     assert_eq!(Value::Array(vec![]).text(), None);
 }
+
+#[test]
+fn shapes_result_values() {
+    let pair = Value::Pair(
+        Box::new(Value::File("/out/a/x.txt".into())),
+        Box::new(Value::Directory("/out/d/".into())),
+    );
+    let expected = json!([
+        {"class": "File", "location": "/out/a/x.txt", "basename": "x.txt"},
+        {"class": "Directory", "location": "/out/d/", "basename": "d"}
+    ]);
+    assert_eq!(pair.result_json(), expected, "a pair as an array of two");
+    assert_eq!(Value::Int(3).result_json(), json!(3));
+}

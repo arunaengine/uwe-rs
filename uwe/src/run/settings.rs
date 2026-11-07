@@ -42,6 +42,9 @@ pub struct Settings {
     pub resume: Option<Resume>,
     /// Reuses and stores cached results when true, the default.
     pub cache: bool,
+    /// Steps whose tasks neither reuse nor store cached results, like Nextflow's `cache false`,
+    /// as `-no-cache-steps`. A name matches a step by its full name or the last part of it.
+    pub no_cache_steps: Vec<String>,
     pub targets: Vec<String>,
     pub until: Vec<String>,
     pub omit_from: Vec<String>,
@@ -102,6 +105,7 @@ impl Default for Settings {
             setup: None,
             resume: None,
             cache: true,
+            no_cache_steps: Vec::new(),
             targets: Vec::new(),
             until: Vec::new(),
             omit_from: Vec::new(),
@@ -191,6 +195,7 @@ impl Settings {
         arguments.executor = self.executor;
         arguments.resume = self.resume;
         arguments.no_cache = !self.cache;
+        arguments.no_cache_steps = self.no_cache_steps;
         arguments.targets = self.targets;
         arguments.until = self.until;
         arguments.omit_from = self.omit_from;

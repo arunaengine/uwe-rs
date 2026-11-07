@@ -733,3 +733,131 @@ fn layered_store_shares() {
     assert!(output.contains("sample has 3 words"), "{output}");
     assert_eq!(entries(&front), 2);
 }
+
+/// The cache keys of the entries in the store of a cache folder.
+fn keys(cache: &Path) -> std::collections::BTreeSet<String> {
+    let folder = cache.join("uwe/store/ac/v1/network-denied");
+    let entries = std::fs::read_dir(folder).map_or(Vec::new(), |entries| entries.collect());
+    (entries.iter().flatten())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".json"))
+        .collect()
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn uncached_process_reruns() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let cache = root.path().join("cache");
+    let folder = pipeline(root.path(), "second", SECOND);
+    let plain: &[&str] = &["run", "main.nf", "-executor", "local"];
+    let never: &[&str] = &[plain, &["-no-cache-steps", "WORDCOUNT"]].concat();
+    // The step runs and keeps no result; its file still reaches the step after it.
+    for (arguments, report, stored) in [
+        (never, "[done] REPORT (1)", 1),
+        (never, "[cached] REPORT (1)", 1),
+        (plain, "[cached] REPORT (1)", 2),
+    ] {
+        let (code, output) = uwe(&folder, &cache, arguments);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("[done] PREPARE:WORDCOUNT (1)"), "{output}");
+        assert!(output.contains(report), "{output}");
+        assert!(output.contains("sample has 3 words"), "{output}");
+        assert_eq!(entries(&cache), stored, "{output}");
+    }
+    let (code, output) = uwe(&folder, &cache, plain);
+    assert_eq!(code, 0, "{output}");
+    assert!(
+        output.contains("[cached] PREPARE:WORDCOUNT (1)"),
+        "{output}"
+    );
+    // The rule changed no cache key: a cache that never saw it holds the same entries.
+    let other = root.path().join("other");
+    assert_eq!(uwe(&folder, &other, plain).0, 0);
+    assert_eq!(keys(&cache), keys(&other));
+}
+
+/// A CWL workflow: the tool counts the words, and a second step writes a sentence with the count.
+const COUNTED: &str = r#"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+  text: File
+outputs:
+  report:
+    type: File
+    outputSource: report/report
+steps:
+  count:
+    run: count.cwl
+    in:
+      text: text
+    out: [count]
+  report:
+    run:
+      class: CommandLineTool
+      requirements:
+        DockerRequirement:
+          dockerPull: debian:stable-slim
+      baseCommand: [bash, -c]
+      arguments:
+        - echo "sample has `cat $(inputs.count.path)` words" > report.txt
+      inputs:
+        count: File
+      outputs:
+        report:
+          type: File
+          outputBinding:
+            glob: report.txt
+    in:
+      count: count/count
+    out: [report]
+"#;
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn uncached_step_reruns() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let cache = root.path().join("cache");
+    let folder = root.path();
+    std::fs::write(folder.join("sample.txt"), "one two three\n").expect("writes");
+    std::fs::write(folder.join("count.cwl"), TOOL).expect("writes");
+    std::fs::write(folder.join("main.cwl"), COUNTED).expect("writes");
+    std::fs::write(
+        folder.join("job.yml"),
+        "text:\n  class: File\n  path: sample.txt\n",
+    )
+    .expect("writes");
+    for (round, (never, report, stored)) in [
+        (true, "[done] report", 1),
+        (true, "[cached] report", 1),
+        (false, "[cached] report", 2),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let results = folder.join(format!("results-{round}"));
+        let mut arguments = vec![
+            "run",
+            "main.cwl",
+            "-inputs",
+            "job.yml",
+            "-executor",
+            "local",
+        ];
+        let results_text = results.to_string_lossy().into_owned();
+        arguments.extend(["-output-dir", &results_text]);
+        arguments.extend(
+            never
+                .then_some(["-no-cache-steps", "count"])
+                .into_iter()
+                .flatten(),
+        );
+        let (code, output) = uwe(folder, &cache, &arguments);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("[done] count"), "{output}");
+        assert!(output.contains(report), "{output}");
+        assert_eq!(delivered(&results), ["sample has 3 words\n"], "{output}");
+        assert_eq!(entries(&cache), stored, "{output}");
+    }
+}

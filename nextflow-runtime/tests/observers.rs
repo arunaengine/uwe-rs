@@ -550,3 +550,70 @@ fn hears_task_streams() {
         ("made\n", "warned\n")
     );
 }
+
+const RETRIED: &str = r#"
+process FLAKY {
+    errorStrategy 'retry'
+    maxRetries 1
+    script:
+    "true"
+}
+
+process STEADY {
+    script:
+    "true"
+}
+
+workflow {
+    FLAKY()
+    STEADY()
+}
+"#;
+
+/// Fails the first attempt of FLAKY and runs every other attempt.
+struct Flaky;
+
+impl Executor for Flaky {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let failed = attempt.task.name == "FLAKY" && attempt.number == 1;
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            exit_code: i32::from(failed),
+            ..Outcome::default()
+        }))
+    }
+}
+
+/// Every event of a retried task has the task's own number, as Nextflow's `task_id`.
+#[test]
+fn numbers_retried_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), RETRIED).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: Arc::default(),
+    }));
+    let execution = Engine::new(&mut Flaky).run("main.nf", &mut driver);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let submitted: Vec<(String, serde_json::Value)> = (events.borrow().iter())
+        .filter_map(|event| match event {
+            Event::TaskSubmitted(task) => Some(&task.record),
+            _ => None,
+        })
+        .map(|record| (record["name"].to_string(), record["task_id"].clone()))
+        .collect();
+    assert_eq!(submitted.len(), 3, "{submitted:?}");
+    let flaky: Vec<&serde_json::Value> = (submitted.iter())
+        .filter(|(name, _)| name.contains("FLAKY"))
+        .map(|(_, id)| id)
+        .collect();
+    assert_eq!(flaky.len(), 2, "two attempts of FLAKY: {submitted:?}");
+    assert_eq!(flaky[0], flaky[1], "the retry keeps its task_id");
+}

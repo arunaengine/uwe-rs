@@ -202,3 +202,11 @@ fn lowers_merged_links() {
         "of an array and a File"
     );
 }
+
+#[test]
+fn keeps_loaded_inputs() {
+    let lowering = lowered("contents.cwl");
+    let reason = "loadContents or loadListing of input text";
+    assert_eq!(lowering.kept.len(), 1, "{:?}", lowering.kept);
+    assert_eq!(lowering.kept[0].reason, reason, "an expr reads no files");
+}

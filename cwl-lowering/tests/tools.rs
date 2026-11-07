@@ -142,3 +142,11 @@ fn lowers_input_values() {
         json!({"from": {"port": "count"}, "to": {"op": "shout.count.valueFrom", "port": "self"}});
     assert!(graph["edges"].as_array().unwrap().contains(&edge));
 }
+
+#[test]
+fn keeps_required_any() {
+    let path = fixtures().join("twice.cwl");
+    let document = cwl_parser::load_file(&path, Default::default()).unwrap();
+    let error = lower(&document, &fixtures()).unwrap_err();
+    assert!(error.contains("the Any input value"), "{error}");
+}

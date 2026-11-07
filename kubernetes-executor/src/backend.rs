@@ -150,7 +150,10 @@ impl Backend for KubernetesBackend {
         }
         if job.placement.offline {
             return Err(ExecutorError::Unsupported(
-                "the Kubernetes executor cannot run a task without network".into(),
+                "the Kubernetes executor cannot run a task without network, like a CWL tool \
+                 without NetworkAccess; let its step use the network with `allowed_steps` in \
+                 `[network]` of the config file"
+                    .into(),
             ));
         }
         if !self.trusted && self.remote.as_ref().is_some_and(PodStaging::credentials) {

@@ -120,3 +120,26 @@ fn records_and_notifies() {
     );
     assert!(error.contains(&guard), "{error}\n{printed}");
 }
+
+#[test]
+fn refuses_remote_outdir() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    let script = "workflow {\n  channel.of(1).view()\n}\n";
+    std::fs::write(folder.join("main.nf"), script).expect("writes the script");
+    let config = format!(
+        "plugins {{ id 'nf-fl86@0.6.4' }}\nworkDir = '{}/work'\n\
+         params.outdir = 's3://bucket/run'\n",
+        folder.display()
+    );
+    std::fs::write(folder.join("nextflow.config"), config).expect("writes the config");
+    let (execution, printed) = common::run(folder, "remote");
+    let error = execution
+        .error
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    let expected = "nf-fl86 writes pipeline_info only to a local output folder, not s3://bucket/run";
+    assert!(error.contains(expected), "{error}\n{printed}");
+    // The run launches in the current folder, where the old code wrote `s3:/bucket/run`.
+    assert!(!std::path::Path::new("s3:").exists(), "a local remote folder");
+}

@@ -142,6 +142,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_crg_report::PLUGIN,
     crate::nf_csvext::PLUGIN,
     crate::nf_databricks::PLUGIN,
+    // nf-fl86: writes pipeline_info only to a local output folder; a remote one fails the run.
     crate::nf_fl86::PLUGIN,
     crate::nf_gpt::PLUGIN,
     crate::nf_jev::PLUGIN,

@@ -124,19 +124,21 @@ impl Settings {
             .is_some_and(|name| matches!(name.as_str(), "crg" | "crg-proxy" | "hpc"));
         let (provider, url) = route(&endpoint, model.as_deref().unwrap_or_default(), forced);
         let default = |name: &str| Some(name.to_owned());
+        // A vendor key from the environment goes only to the vendor's own address.
+        let vendor = |name: &str, home: &str| variable(name).filter(|_| same_origin(&url, home));
         let (model, key) = match provider {
             Provider::Proxy => (model, None),
             Provider::Gemini => (
                 model.or(default("gemini-1.5-flash")),
-                variable("GEMINI_API_KEY").or_else(|| variable("LLM_API_KEY")),
+                vendor("GEMINI_API_KEY", GEMINI).or_else(|| variable("LLM_API_KEY")),
             ),
             Provider::Claude => (
                 model.or(default("claude-3-5-sonnet-20241022")),
-                variable("ANTHROPIC_API_KEY").or_else(|| variable("LLM_API_KEY")),
+                vendor("ANTHROPIC_API_KEY", CLAUDE).or_else(|| variable("LLM_API_KEY")),
             ),
             Provider::OpenAi => (
                 model.or(default("gpt-4o-mini")),
-                variable("OPENAI_API_KEY").or_else(|| variable("LLM_API_KEY")),
+                vendor("OPENAI_API_KEY", OPENAI).or_else(|| variable("LLM_API_KEY")),
             ),
             Provider::Ollama => (model.or(default("llama3")), None),
             Provider::Local => (
@@ -238,6 +240,14 @@ fn route(endpoint: &str, model: &str, forced: bool) -> (Provider, String) {
             .to_owned(),
     };
     (provider, url)
+}
+
+/// Whether two addresses share scheme, host and port.
+fn same_origin(url: &str, home: &str) -> bool {
+    match (reqwest::Url::parse(url), reqwest::Url::parse(home)) {
+        (Ok(url), Ok(home)) => url.origin() == home.origin(),
+        _ => false,
+    }
 }
 
 const PROXY: &str = "https://llm-proxy.hpc.crg.es/debug/nextflow";
@@ -494,6 +504,30 @@ mod tests {
         assert_eq!(
             super::route("gemini", "", true),
             (Provider::Proxy, PROXY.into())
+        );
+    }
+
+    #[test]
+    fn vendor_key_stays() {
+        let variable = |name: &str| (name == "OPENAI_API_KEY").then(|| "sk-env".to_owned());
+        let read = |endpoint: &str| {
+            let param = |name: &str| match name {
+                "llm_endpoint" => Some(endpoint.to_owned()),
+                "llm_model" => Some("gpt-4o".to_owned()),
+                _ => None,
+            };
+            Settings::read(&param, &variable, Path::new("."))
+        };
+        let custom = read("http://127.0.0.1:9/v1");
+        assert_eq!(custom.provider, Provider::OpenAi);
+        assert_eq!(
+            custom.key, None,
+            "the OpenAI key must not go to another host"
+        );
+        assert_eq!(read("openai").key.as_deref(), Some("sk-env"));
+        assert_eq!(
+            read("https://api.openai.com/v1/").key.as_deref(),
+            Some("sk-env")
         );
     }
 }

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 pub use error::ConfigError;
 pub use node::Origin;
 pub use registry::{RegistryAuth, registry_auth};
-pub use secret::Secret;
+pub use secret::{Secret, SecretValues};
 pub use table::Table;
 
 use node::Node;
@@ -39,6 +39,8 @@ pub struct ConfigFile {
     /// Where the settings start: the first file, or nowhere without one.
     origin: Origin,
     files: Vec<PathBuf>,
+    /// The values that its environment secrets take first.
+    secrets: SecretValues,
 }
 
 impl Default for ConfigFile {
@@ -47,6 +49,7 @@ impl Default for ConfigFile {
             entries: BTreeMap::new(),
             origin: Origin::nowhere(),
             files: Vec::new(),
+            secrets: SecretValues::default(),
         }
     }
 }
@@ -93,6 +96,13 @@ impl ConfigFile {
         Ok(())
     }
 
+    /// Makes its `{ environment = "NAME" }` secrets take the values of `secrets` first, and
+    /// read the environment only when `secrets` allows it.
+    pub fn with_secrets(mut self, secrets: SecretValues) -> ConfigFile {
+        self.secrets = secrets;
+        self
+    }
+
     /// The files that were read, in the order they merged.
     pub fn files(&self) -> &[PathBuf] {
         &self.files
@@ -100,7 +110,7 @@ impl ConfigFile {
 
     /// The top level of the settings, whose tables are the sections.
     pub fn root(&self) -> Table<'_> {
-        Table::root(&self.entries, &self.origin)
+        Table::root(&self.entries, &self.origin, &self.secrets)
     }
 
     /// The section `name`, like `storage`; `None` when no file has it.

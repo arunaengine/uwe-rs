@@ -212,3 +212,23 @@ fn accepts_success_codes() {
     execution.into_result().unwrap();
     assert_eq!(executor.attempts, ["sort", "head"]);
 }
+
+#[test]
+fn refuses_output_clashes() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut executor = scripted(folder.path(), |_| 0, true);
+    let (driver, execution) = run(folder.path(), &mut executor, |document| {
+        let graph = &mut document["graphs"][0];
+        for op in graph["ops"].as_array_mut().unwrap() {
+            op["kind"]["task"]["captures"][0]["from"] = json!({"glob": "result.txt"});
+        }
+        let outputs = graph["outputs"].as_array_mut().unwrap();
+        outputs.push(json!({"name": "sorted", "type": {"file": {}}}));
+        let edge = json!({"from": {"op": "sort", "port": "sorted"}, "to": {"port": "sorted"}});
+        graph["edges"].as_array_mut().unwrap().push(edge);
+    });
+    let error = execution.into_result().unwrap_err().to_string();
+    assert!(error.contains("/out/result.txt"), "{error}");
+    assert!(workflow_graph::Driver::results(&driver).is_none());
+    assert!(!folder.path().join("out/result.txt").exists());
+}

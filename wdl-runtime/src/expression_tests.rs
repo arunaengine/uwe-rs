@@ -133,6 +133,55 @@ fn reads_files() {
 }
 
 #[test]
+fn combines_arrays() {
+    let mut env = Fixed::default();
+    assert_eq!(value("length(range(4))", &mut env), Ok(Value::Int(4)));
+    assert_eq!(
+        value("select_first([None, 2, 3])", &mut env),
+        Ok(Value::Int(2))
+    );
+    assert_eq!(
+        value("length(select_all([None, 2]))", &mut env),
+        Ok(Value::Int(1))
+    );
+    assert_eq!(
+        value("flatten([[1], [2, 3]])[2]", &mut env),
+        Ok(Value::Int(3))
+    );
+    assert_eq!(
+        value("zip([1], [\"a\"])[0].right", &mut env),
+        Ok(Value::String("a".into()))
+    );
+    assert_eq!(
+        value("length(cross([1, 2], [3, 4]))", &mut env),
+        Ok(Value::Int(4))
+    );
+    assert_eq!(
+        value("as_map([(\"k\", 1)])[\"k\"]", &mut env),
+        Ok(Value::Int(1))
+    );
+    assert_eq!(
+        value(
+            "collect_by_key([(\"k\", 1), (\"k\", 2)])[\"k\"][1]",
+            &mut env
+        ),
+        Ok(Value::Int(2))
+    );
+    assert_eq!(
+        value("write_lines([\"p\", \"q\"])", &mut env),
+        Ok(Value::File("written-0".into()))
+    );
+    assert_eq!(
+        env.files.get("written-0").map(String::as_str),
+        Some("p\nq\n")
+    );
+    assert!(matches!(
+        value("select_first([None])", &mut env),
+        Err(Error::Failed(_))
+    ));
+}
+
+#[test]
 fn lists_referenced_names() {
     let names = super::names(&parse("a + b.out[c] + length(d)"));
     let expected: Vec<&str> = vec!["a", "b", "c", "d"];

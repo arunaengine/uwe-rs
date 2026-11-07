@@ -110,7 +110,7 @@ impl Repository {
         }
     }
 
-    fn token(&self) -> Option<String> {
+    fn token(&self, secrets: &config_file::SecretValues) -> Option<String> {
         let names: &[&str] = match self.host {
             Host::Github => &["NXF_GITHUB_ACCESS_TOKEN", "GITHUB_TOKEN"],
             Host::Gitlab => &["GITLAB_TOKEN"],
@@ -118,9 +118,7 @@ impl Repository {
             Host::Gitea => &["GITEA_TOKEN"],
             Host::Git => &[],
         };
-        names
-            .iter()
-            .find_map(|name| std::env::var(name).ok().filter(|text| !text.is_empty()))
+        names.iter().find_map(|name| secrets.get(name))
     }
 
     async fn request(&self, url: &str, token: Option<&str>) -> Result<Response, Failure> {
@@ -403,7 +401,7 @@ pub(crate) fn prepare(
         }
         return repository.fetch_git(&cache, reference, latest, accounts);
     }
-    let token = repository.token();
+    let token = repository.token(&arguments.secrets);
     let fetched = runtime.block_on(repository.fetch(&cache, reference, latest, token.as_deref()));
     match fetched {
         // A server at `owner/name` that is no Gitea may still speak Git.

@@ -16,6 +16,9 @@ pub enum ConfigError {
     /// A value is wrong, missing or not allowed; the origin says where.
     #[error("{origin}: {message}")]
     Invalid { origin: Origin, message: String },
+    /// A secret value that a host gave is not allowed; the message names it, never its value.
+    #[error("{0}")]
+    Refused(String),
 }
 
 impl ConfigError {

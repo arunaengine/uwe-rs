@@ -15,7 +15,8 @@ use crate::{Failure, runs};
 /// like `/runs/<run>`. In a terminal, the browser opens it too.
 pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
     let config = config_file::ConfigFile::load(arguments.config_file.as_deref())
-        .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
+        .map_err(|error| Failure::setup(format!("uwe: {error}")))?
+        .with_secrets(arguments.secrets.clone());
     let token = (|| {
         let Some(page) = config.section("page")? else {
             return Ok(None);

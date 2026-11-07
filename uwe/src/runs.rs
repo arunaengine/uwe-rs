@@ -438,6 +438,7 @@ fn main_file(run: &Run, database: &Database) -> Result<PathBuf, Failure> {
         "nextflow" => Language::Nextflow,
         "snakemake" => Language::Snakemake,
         "cwl" => Language::Cwl,
+        "wdl" => Language::Wdl,
         "wir" => Language::Wir,
         _ => Language::Argo,
     };

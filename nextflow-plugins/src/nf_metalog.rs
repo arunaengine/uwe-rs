@@ -116,7 +116,10 @@ const HIDDEN: [&str; 16] = [
 /// A stored row: each column with its text.
 type Row = Vec<(String, String)>;
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |path: &[&str]| {
         let mut full = vec!["metalog"];
         full.extend_from_slice(path);
@@ -130,7 +133,7 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |path: &[&str], default: &str| {
         get(path).map_or(default.to_owned(), |value| value.to_string())
     };
-    let launch = std::env::current_dir().map_err(|error| error.to_string())?;
+    let launch = launch.to_path_buf();
     let backend = text(&["storageBackend"], "memory");
     let store = match backend.as_str() {
         "memory" => Store::Memory(Vec::new()),

@@ -60,7 +60,8 @@ fn warns_skipped_plugins() {
             "The plugin `nf-unknown` is not known to uwe; its features are skipped",
         ]
     );
-    let observers = catalogue::observers(&config).expect("no plugin config fails");
+    let observers = catalogue::observers(&config, std::path::Path::new("/launch"))
+        .expect("no plugin config fails");
     assert!(observers.is_empty());
     assert!(catalogue::warnings(&loaded("params.x = 1\n")).is_empty());
 }

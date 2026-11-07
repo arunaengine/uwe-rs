@@ -65,7 +65,7 @@ struct Settings {
     sample: usize,
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |key: &str| config.get(&["flowViewer", key]).filter(Value::truth);
     let sample = text("artifactMaxSize")
         .and_then(|value| value.to_string().parse::<usize>().ok())

@@ -29,7 +29,7 @@ pub(crate) fn enabled(config: &Config) -> bool {
         )
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     match enabled(config) {
         true => tracing::info!("Initializing CgroupMetricsObserver for session"),
         false => tracing::info!("Cgroup metrics plugin is disabled via configuration"),

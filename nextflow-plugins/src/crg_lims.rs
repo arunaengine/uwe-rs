@@ -31,7 +31,7 @@ const UPLOAD_LIMIT: Duration = Duration::from_secs(60);
 /// How long the end of the run waits for both requests.
 const WAIT: Duration = Duration::from_secs(120);
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let enabled = match config.get(&["params", "lims_enabled"]) {
         Some(Value::Null) | None => {
             (config.get(&["lims", "enabled"])).is_some_and(|value| value.truth())

@@ -37,7 +37,7 @@ const HEAP_MIN: i64 = 16 * MB;
 
 /// The scanner writes `.exitcode` files into task folders, which uwe's executors keep to
 /// themselves and whose exit status they decide; a config that sets it up is told so once.
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let set = ["patterns", "defaultPatterns", "maxLinesToScan"]
         .into_iter()
         .filter(|key| config.get(&["crukci", key]).is_some())

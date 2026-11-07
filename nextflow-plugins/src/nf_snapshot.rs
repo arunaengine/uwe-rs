@@ -22,7 +22,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-snapshot", Kind::Observer, State::Partial)
 };
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |key: &str| {
         config
             .get(&["snapshot", key])

@@ -166,7 +166,7 @@ struct Settings {
     rename: Vec<(String, String)>,
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     REGISTERED.with(|ids| ids.borrow_mut().clear());
     let settings = settings(config)?;
     Ok(Some(Box::new(Irida {

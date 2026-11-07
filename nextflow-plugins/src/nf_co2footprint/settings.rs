@@ -86,7 +86,7 @@ pub(super) struct Settings {
 
 /// Reads the `co2footprint` scope; a machine type that the plugin does not know is an error,
 /// which stops the run.
-pub(super) fn read(config: &Config) -> Result<Settings, String> {
+pub(super) fn read(config: &Config, launch: &std::path::Path) -> Result<Settings, String> {
     tracing::info!("nf-co2footprint plugin  ~  version 1.4.1");
     let get = |path: &[&str]| {
         let mut full = vec!["co2footprint"];
@@ -102,7 +102,7 @@ pub(super) fn read(config: &Config) -> Result<Settings, String> {
         None => None,
     };
     let flag = |path: &[&str], default: bool| get(path).map_or(default, |value| value.truth());
-    let launch = std::env::current_dir().map_err(|error| error.to_string())?;
+    let launch = launch.to_path_buf();
     let stamp = stamp(crate::report_format::now());
     let output = |name: &str, extension: &str, enabled: bool| {
         let text = text(&[name, "file"])
@@ -350,9 +350,17 @@ mod tests {
     /// A given `ci` wins over the live values of an API key.
     #[test]
     fn keeps_given_intensity() {
-        let given = read(&loaded("co2footprint { ci = 100; emApiKey = 'key' }")).expect("settings");
+        let given = read(
+            &loaded("co2footprint { ci = 100; emApiKey = 'key' }"),
+            Path::new("/launch"),
+        )
+        .expect("settings");
         assert_eq!((given.intensity, given.token), (100.0, None));
-        let live = read(&loaded("co2footprint { emApiKey = 'key' }")).expect("settings");
+        let live = read(
+            &loaded("co2footprint { emApiKey = 'key' }"),
+            Path::new("/launch"),
+        )
+        .expect("settings");
         assert_eq!(live.token.as_deref(), Some("key"));
     }
 

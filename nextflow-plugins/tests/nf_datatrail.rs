@@ -157,3 +157,34 @@ fn refuses_existing_file() {
     let (_, error) = run("  input = '{out}/inputs.txt'\n", "csv_run");
     assert!(error.is_some_and(|error| error.contains("Input file must be a CSV file:")));
 }
+
+struct Quiet;
+
+impl nextflow_evaluator::interpreter::Host for Quiet {
+    fn print(&mut self, _: &str) {}
+}
+
+#[test]
+fn files_follow_launch() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let launch = directory.path().join("block");
+    std::fs::create_dir(&launch).expect("makes the launch folder");
+    let file = launch.join("nextflow.config");
+    let text = "plugins { id 'nf-datatrail@0.0.1' }\ndatatrail {\n  input = 'inputs.csv'\n}\n";
+    std::fs::write(&file, text).expect("writes the config");
+    let folder = launch.to_string_lossy().into_owned();
+    let options = nextflow_config::Options {
+        profiles: None,
+        params: nextflow_evaluator::value::Value::map([]),
+        project_dir: folder.clone(),
+        launch_dir: folder,
+        work_dir: launch.join("work").to_string_lossy().into_owned(),
+    };
+    let config = nextflow_config::load(&[file], &options, &mut Quiet).expect("loads");
+    let observers = nextflow_plugins::catalogue::observers(&config, &launch).expect("activates");
+    assert_eq!(observers.len(), 1);
+    assert!(
+        launch.join("inputs.csv").is_file(),
+        "a relative file starts from the launch folder of the run"
+    );
+}

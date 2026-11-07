@@ -45,8 +45,11 @@ struct Plot {
     filter: Vec<Pattern>,
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
-    let launch = std::env::current_dir().map_err(|error| error.to_string())?;
+fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
+    let launch = launch.to_path_buf();
     let Some(settings) = Settings::read(config, &launch)? else {
         return Ok(None);
     };

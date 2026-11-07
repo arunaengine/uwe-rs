@@ -80,7 +80,10 @@ struct Settings {
     docs: Option<String>,
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let param = |name: &str| {
         (config.get(&["params", name]))
             .filter(|value| !matches!(value, Value::Null))
@@ -94,7 +97,7 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
         return Ok(None);
     }
     let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
-    let launch = std::env::current_dir().unwrap_or_default();
+    let launch = launch.to_path_buf();
     let settings = Settings::read(&param, &variable, &launch);
     let mut sender = None;
     let mut done = false;

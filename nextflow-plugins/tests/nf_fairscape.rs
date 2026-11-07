@@ -230,7 +230,8 @@ fn refuses_existing_crate() {
             work_dir: "/work".into(),
         };
         let config = nextflow_config::load(&[config], &options, &mut Quiet).expect("loads");
-        nextflow_plugins::catalogue::observers(&config).map(|observers| observers.len())
+        nextflow_plugins::catalogue::observers(&config, folder.path())
+            .map(|observers| observers.len())
     };
     let message = format!("Provenance file already exists: {}", file.display());
     assert_eq!(loaded(false), Err(message));

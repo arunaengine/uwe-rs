@@ -294,7 +294,7 @@ struct Settings {
     access: Access,
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |path: &[&str]| {
         let found = config
             .get(path)

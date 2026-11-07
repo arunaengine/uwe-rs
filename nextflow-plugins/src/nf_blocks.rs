@@ -31,7 +31,7 @@ const USAGE: &str = "`fromStore` takes `selection: <address>`, or `run: <ref>` w
 
 /// Hands the stores of the `cas` scope to the `cas://` provider, checks `outputDir`, and
 /// makes the observer that writes the blocks of the run.
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |path: &[&str]| {
         (config.get(path))
             .filter(|value| !matches!(value, Value::Null))

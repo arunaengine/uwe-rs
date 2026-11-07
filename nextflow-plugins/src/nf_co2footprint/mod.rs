@@ -32,8 +32,11 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-co2footprint", Kind::Observer, State::Partial)
 };
 /// Reads the config, and starts the estimate of the run.
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
-    let settings = settings::read(config)?;
+fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
+    let settings = settings::read(config, launch)?;
     Ok(Some(Box::new(Footprint {
         settings,
         intensity: None,

@@ -57,7 +57,7 @@ struct Settings {
     model: Option<String>,
 }
 
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let value = |path: &[&str]| config.get(&[&["runinsights"], path].concat());
     let flag = |path: &[&str]| value(path).is_some_and(|value| value.truth());
     let text = |path: &[&str]| {

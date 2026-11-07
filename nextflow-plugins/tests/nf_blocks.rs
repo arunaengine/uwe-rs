@@ -127,7 +127,7 @@ fn records_store_runs() {
     let loaded: Config =
         nextflow_config::load(&[folder.join("nextflow.config")], &options, &mut Quiet)
             .expect("loads");
-    let mut observers = catalogue::observers(&loaded).expect("an observer");
+    let mut observers = catalogue::observers(&loaded, folder).expect("an observer");
     let end = End {
         success: true,
         error: None,

@@ -16,7 +16,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 
 /// Hands the `synapse` scope to the Synapse provider that serves `syn://` paths; the plugin
 /// hears no run events.
-fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |key| {
         (config.get(&["synapse", key]))
             .filter(|value| !matches!(value, Value::Null))

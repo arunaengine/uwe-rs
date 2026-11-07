@@ -33,7 +33,10 @@ pub(super) struct Settings {
 
 /// Reads the config, checks the crate file as the plugin does at the start of a run, and warns
 /// once about the parts of the plugin that uwe leaves out.
-pub(super) fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
+pub(super) fn activate(
+    config: &Config,
+    launch: &std::path::Path,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let value = |key: &str| config.get(&["fairscape", key]);
     let flag = |key: &str, default: bool| match value(key) {
         Some(Value::Boolean(flag)) => flag,
@@ -55,7 +58,7 @@ pub(super) fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, Str
     if !flag("enabled", true) {
         return Ok(None);
     }
-    let launch = std::env::current_dir().unwrap_or_default();
+    let launch = launch.to_path_buf();
     let file = launch.join(text("file").unwrap_or_else(|| "ro-crate-metadata.json".into()));
     if file.exists() {
         if !flag("overwrite", false) {

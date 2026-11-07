@@ -110,6 +110,21 @@ pub(crate) fn safe_url(url: &str) -> String {
     format!("{scheme}{host}{path}")
 }
 
+/// Whether a setting holds a credential, by a word in its name in any case, as in `apiKey`,
+/// `api_key`, `privateKey`, `accessToken` or `password`.
+pub(crate) fn secret(name: &str) -> bool {
+    let name = name.to_lowercase();
+    let words = [
+        "key",
+        "secret",
+        "password",
+        "token",
+        "credential",
+        "private",
+    ];
+    words.iter().any(|word| name.contains(word))
+}
+
 /// Whether two addresses share scheme, host and port.
 pub(crate) fn same_origin(url: &str, other: &str) -> bool {
     match (reqwest::Url::parse(url), reqwest::Url::parse(other)) {

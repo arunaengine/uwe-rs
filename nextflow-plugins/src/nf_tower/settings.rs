@@ -180,21 +180,13 @@ fn write_block(tree: &Value, depth: usize, text: &mut String) {
             text.push_str(&format!("{indent}{key} {{\n"));
             write_block(value, depth + 1, text);
             text.push_str(&format!("{indent}}}\n"));
-        } else if secret(key) {
+        } else if crate::service::secret(key) {
             text.push_str(&format!("{indent}{key} = '[secret]'\n"));
         } else {
             text.push_str(&format!("{indent}{key} = {}\n", render(value)));
         }
         after_block = block;
     }
-}
-
-/// Whether a setting holds a secret, like `accessToken` or a password.
-fn secret(key: &str) -> bool {
-    let key = key.to_lowercase();
-    ["token", "password", "secret"]
-        .iter()
-        .any(|word| key.contains(word))
 }
 
 fn render(value: &Value) -> String {
@@ -276,5 +268,12 @@ mod tests {
             text,
             "plugins = ['nf-tower']\n\ntower {\n   enabled = true\n   accessToken = '[secret]'\n}\n"
         );
+        let keys =
+            "gpt.apiKey = 'a'\nlamin.api_key = 'b'\noci.privateKey = 'c'\naws.region = 'd'\n";
+        let text = config_text(&config(keys).tree);
+        for hidden in ["apiKey", "api_key", "privateKey"] {
+            assert!(text.contains(&format!("{hidden} = '[secret]'")), "{text}");
+        }
+        assert!(text.contains("region = 'd'"), "{text}");
     }
 }

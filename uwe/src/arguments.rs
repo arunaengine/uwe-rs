@@ -870,6 +870,7 @@ fn language(name: &str) -> Option<Language> {
         "snakemake" | "smk" => Language::Snakemake,
         "cwl" => Language::Cwl,
         "argo" => Language::Argo,
+        "wdl" => Language::Wdl,
         _ => return None,
     })
 }

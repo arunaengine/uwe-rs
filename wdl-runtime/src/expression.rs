@@ -472,6 +472,13 @@ fn member(target: Value, name: &str) -> Result<Value, Error> {
         (Value::Object(mut fields), _) => {
             (fields.shift_remove(name)).ok_or_else(|| Error::failed(format!("no member `{name}`")))
         }
+        // The analysis allows these only for calls: in a scatter they give an array of each
+        // output, in a skipped conditional `None`.
+        (Value::Array(items), _) => (items.into_iter())
+            .map(|item| member(item, name))
+            .collect::<Result<_, _>>()
+            .map(Value::Array),
+        (Value::None, _) => Ok(Value::None),
         (target, _) => Err(Error::failed(format!(
             "a {} has no member `{name}`",
             target.kind()

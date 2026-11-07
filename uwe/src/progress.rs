@@ -78,6 +78,7 @@ impl Header<'_> {
             Language::Snakemake => "Snakemake",
             Language::Cwl => "CWL",
             Language::Argo => "Argo",
+            Language::Wdl => "WDL",
         };
         format!(
             "uwe {}: running {} ({language}) on {}, run {}",

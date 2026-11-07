@@ -346,6 +346,7 @@ fn language_name(language: Language) -> &'static str {
         Language::Snakemake => "Snakemake",
         Language::Cwl => "CWL",
         Language::Argo => "Argo",
+        Language::Wdl => "WDL",
     }
 }
 

@@ -121,7 +121,7 @@ impl Catalogue {
         json!({
             "version": 1,
             "capabilities": {
-                "languages": ["nextflow", "snakemake", "cwl", "argo"],
+                "languages": ["nextflow", "snakemake", "cwl", "argo", "wdl"],
                 "executors": EXECUTORS.iter().map(|name| (name.to_string(), json!(features(name)))).collect::<Map<_, _>>(),
                 "nextflow": nextflow_runtime::capabilities()
             },

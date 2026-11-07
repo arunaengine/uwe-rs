@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use crate::node::{Node, Value};
-use crate::{ConfigError, Origin, Secret};
+use crate::{ConfigError, Origin, Secret, SecretValues};
 
 /// A table of settings and its full name, like `storage.lab`.
 #[derive(Clone, Debug)]
@@ -14,17 +14,23 @@ pub struct Table<'a> {
     name: String,
     entries: &'a BTreeMap<String, Node>,
     origin: &'a Origin,
+    secrets: &'a SecretValues,
 }
 
 /// The key that names the environment variable of a secret.
 const ENVIRONMENT: &str = "environment";
 
 impl<'a> Table<'a> {
-    pub(crate) fn root(entries: &'a BTreeMap<String, Node>, origin: &'a Origin) -> Table<'a> {
+    pub(crate) fn root(
+        entries: &'a BTreeMap<String, Node>,
+        origin: &'a Origin,
+        secrets: &'a SecretValues,
+    ) -> Table<'a> {
         Table {
             name: String::new(),
             entries,
             origin,
+            secrets,
         }
     }
 
@@ -160,7 +166,8 @@ impl<'a> Table<'a> {
                 reference.only(&[ENVIRONMENT])?;
                 match entries.get(ENVIRONMENT).map(|name| &name.value) {
                     Some(Value::Text(name)) if !name.is_empty() => {
-                        Ok(Some(Secret::environment(name.clone(), origin)))
+                        let given = self.secrets.clone();
+                        Ok(Some(Secret::environment(name.clone(), given, origin)))
                     }
                     _ => Err(ConfigError::at(
                         &origin,
@@ -205,6 +212,7 @@ impl<'a> Table<'a> {
                 name: self.full(key),
                 entries,
                 origin: &node.origin,
+                secrets: self.secrets,
             }),
             other => Err(self.wrong(key, node, "a table", other)),
         }

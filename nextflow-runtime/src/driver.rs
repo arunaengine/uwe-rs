@@ -643,10 +643,14 @@ impl Driver for Nextflow {
 
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
+        run.ready().map_err(error)?;
+        // A failed check turns the run into a failed one before the `onComplete` handlers
+        // see it, and `failed` then ends it.
+        if let Some(reports) = &mut self.reports {
+            reports.check().map_err(DriverError::new)?;
+        }
         run.finish(self.settings.host.as_mut()).map_err(error)?;
         if let Some(reports) = &mut self.reports {
-            // A failed check turns the run into a failed one, which `failed` then ends.
-            reports.check().map_err(DriverError::new)?;
             reports.run_ended(None, None, run.outputs());
         }
         self.write_reports()

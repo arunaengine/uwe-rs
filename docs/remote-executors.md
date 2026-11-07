@@ -822,6 +822,70 @@ uwe sets `uwe-attempt`, `uwe-submission` and the `idempotency_tag` itself. A tag
 
 Some TES servers stage input files as read-only and owned by another user, and run the task as a user without rights to change them. uwe makes executable inputs and the helper executable with `chmod +x`. When `chmod` fails, uwe copies the file next to itself, makes the copy executable and moves it over the original. This needs a folder the task user may write to. If the copy fails too, the task stops with an error, as before. When `chmod` works, nothing changes.
 
+## nf-core on a SLURM cluster with Apptainer and a web proxy
+
+On many clusters the nodes share a file system, run Apptainer, and reach the web only through a proxy. uwe then runs in a batch job of its own, the coordinator, and submits each task as another batch job from there. The coordinator needs few resources: 4 CPUs and 16 GB are enough for nf-core/rnaseq.
+
+Put the static uwe of `just release-binary` and the cache of uwe on the shared file system, so that the jobs see the store and scratch folders at the same paths (`shared-path` staging). This config gives the account and partition to every job:
+
+```toml
+[executor.slurm]
+container = "apptainer"                        # or "singularity"
+options = ["--account=lab", "--partition=main"]
+staging = "shared-path"
+```
+
+A coordinator job, here `uwe-run.sh`:
+
+```sh
+#!/bin/bash
+#SBATCH --job-name=uwe-coordinator
+#SBATCH --account=lab
+#SBATCH --partition=main
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=04:00:00
+#SBATCH --output=/shared/uwe/logs/%x-%j.out
+set -u
+base=/shared/uwe
+proxy=http://proxy.example.org:3128
+export http_proxy=$proxy https_proxy=$proxy HTTP_PROXY=$proxy HTTPS_PROXY=$proxy
+export no_proxy=.example.org,localhost,127.0.0.1 NO_PROXY=.example.org,localhost,127.0.0.1
+# The store, scratch and images of uwe, at the same path on every node.
+export XDG_CACHE_HOME=$base/cache
+export APPTAINER_CACHEDIR=$base/apptainer-cache
+run=$base/runs/$NAME-$SLURM_JOB_ID
+mkdir -p "$run" && cd "$run" || exit 1
+"$base/bin/uwe" run "$PIPELINE" -r "$REV" -profile "${PROFILE//:/,}" --outdir "$run/results" \
+  -executor slurm -uwe-config "$base/uwe.toml" > "$run/uwe.log" 2>&1
+```
+
+```sh
+sbatch --export=ALL,NAME=demo,PIPELINE=nf-core/demo,REV=32893afef8076a03a2767a020b3f0cab2e0b40b2,PROFILE=test:apptainer uwe-run.sh
+```
+
+- `sbatch --export` splits its value at commas, so the script takes the profiles with colons.
+- `sbatch` hands the environment of the coordinator to each job, and Apptainer keeps the proxy variables in the container, also with `--containall`. So the tasks reach the web as the coordinator does. Without the variables, `proxy` in `[network]` of the config file gives the jobs `HTTPS_PROXY` and `HTTP_PROXY`, but no `NO_PROXY`.
+- uwe calls only `sbatch`, `squeue`, `sacct` and `scancel`, never `srun`, so it starts no step inside the coordinator.
+- Apptainer pulls each image once into the images folder of the cache. `APPTAINER_CACHEDIR` keeps its layer cache off a small home folder.
+- `-profile test,docker` works as well: the jobs still run Apptainer, as `container` says.
+
+Tools that bring their own network code may ignore the proxy. On nodes with IPv6 only, `prefetch` of sra-tools 3.2.1 could not reach NCBI, neither directly nor through the proxy, also with `/http/proxy/path` in its settings. So nf-core/fetchngs fails for the ids that it must fetch with sra-tools (in its test list `SRR12848126`, `SRR14593545` and `SRR14709033`), and downloads the others from ENA.
+
+On CephFS, a read of a file that a job on another node wrote can wait for its read rights for a long time (Linux before 7.1.10). uwe wakes such a read every 10 seconds. A read that still gets no answer after 310 seconds fails the attempt as a failure of the machine, so the task runs again, up to `-machine-retries` times (default 2).
+
+On 2026-11-07, uwe ran these on a cluster of Debian 13 nodes with Slurm 24.11.5, Apptainer 1.4.5 and CephFS, with `-profile test,apptainer` and the commits of the curated templates of flowy:
+
+| uwe | Pipeline | Tasks | Time | Result |
+| --- | --- | --- | --- | --- |
+| fa34a72b | nf-core/demo | 8 | 77 s | complete |
+| fa34a72b | nf-core/fetchngs, whole test list | 35 | 6 min 49 s | 3 `SRATOOLS_PREFETCH` tasks failed, see above |
+| fa34a72b | nf-core/fetchngs, test list without the three sra-tools ids | 26 | 124 s | complete |
+| fa34a72b | nf-core/rnaseq | 179 | 10 min 48 s | failed: a CephFS read got no answer, and that did not retry yet |
+| 26f1209d | nf-core/rnaseq, `-no-cache` | 234 | 17 min 54 s | complete |
+
+The times include the first pull of every image.
+
 ## Trying the executors on one machine
 
 Two scripts run real workflows with the Kubernetes and SLURM executors on one Linux machine with Docker. Both need the static binary of `just release-binary` and network access for nf-core/demo and its images. They remove their cluster, containers and folders after the run; `KEEP_CLUSTER=1` keeps them.

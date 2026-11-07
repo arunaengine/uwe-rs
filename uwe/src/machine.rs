@@ -465,7 +465,7 @@ mod executors {
                                 [executor.nomad] or NOMAD_ADDR"
                         .into());
                 }
-                crate::nomad::executor(store, &scratch, run, image, setup)?;
+                crate::nomad::executor(store, &scratch, run, image, setup, &arguments.secrets)?;
                 let address = named.unwrap_or_else(|| nomad_executor::ADDRESS.into());
                 format!(
                     "the jobs go to the Nomad agent at {address}; uwe asks it only when a run starts"

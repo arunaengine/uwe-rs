@@ -138,6 +138,50 @@ fn required_inputs_bound() {
 }
 
 #[test]
+fn defaults_checked() {
+    let file = json!({"class": "File", "location": "a.txt"});
+    let mut document = base();
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .expect("edges")
+        .remove(0);
+    document["graphs"][0]["ops"][0]["inputs"][0]["default"] = file.clone();
+    assert_eq!(
+        problems(document),
+        Vec::new(),
+        "a default needs no producer"
+    );
+    let mut document = base();
+    document["graphs"][0]["inputs"][0]["type"] = json!({"optional": {"file": {}}});
+    let mismatch = problems(document.clone());
+    assert!(matches!(
+        mismatch[..],
+        [VerifyError {
+            problem: Problem::Mismatch { .. },
+            ..
+        }]
+    ));
+    document["graphs"][0]["ops"][0]["inputs"][0]["default"] = file.clone();
+    assert_eq!(
+        problems(document.clone()),
+        Vec::new(),
+        "a default takes null"
+    );
+    document["graphs"][0]["ops"][0]["inputs"][0]["default"] = json!(3);
+    let unfit = Problem::Unfit("input input".into());
+    assert_eq!(only(document), ("main/sort".into(), unfit));
+    let mut document = base();
+    document["graphs"][0]["outputs"][0]["default"] = file.clone();
+    let output = Problem::Default("graph output top".into());
+    assert_eq!(only(document), ("main".into(), output));
+    let mut document = base();
+    document["graphs"][0]["inputs"][0]["default"] = file;
+    document["wir_version"] = json!("0.4");
+    let later = Problem::Later("the default of a port".into(), "0.5".into());
+    assert_eq!(only(document), ("main".into(), later));
+}
+
+#[test]
 fn rejects_op_cycles() {
     let mut document = base();
     let back = json!({"op": "head", "on": ["succeeded"]});

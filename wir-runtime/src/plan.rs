@@ -26,6 +26,8 @@ pub struct Node {
     pub exports: Vec<(String, Source)>,
     /// For a map node that started: the number of items of each level of its outputs.
     pub shape: Vec<usize>,
+    /// For a call, a branch or a round: the defaults of the inputs of the graph it runs.
+    pub defaults: Map<String, Json>,
 }
 
 /// Where a value comes from.
@@ -83,6 +85,8 @@ pub fn rounds(
             graph: body.to_owned(),
         });
         op.after.clear();
+        // The map took its own defaults when it started; the items are not its inputs.
+        op.inputs.iter_mut().for_each(|port| port.default = None);
         let round = nodes.len();
         nodes.push(Node {
             path: path.clone(),
@@ -95,6 +99,7 @@ pub fn rounds(
             parent: Some(at),
             exports: Vec::new(),
             shape: Vec::new(),
+            defaults: defaults(graph),
         });
         let (inner, steps) = (format!("{path}/"), format!("{step}/"));
         nodes[round].exports = instantiate(document, graph, (&inner, &steps), Some(round), nodes)?;
@@ -188,6 +193,7 @@ fn instantiate(
             parent: call,
             exports: Vec::new(),
             shape: Vec::new(),
+            defaults: Map::new(),
         });
     }
     let source = |from: &Endpoint| match &from.op {
@@ -221,6 +227,7 @@ fn instantiate(
         };
         if let Some(body) = body {
             let called = self::graph(document, body)?;
+            nodes[at].defaults = defaults(called);
             let inner = (
                 format!("{prefix}{}/", op.path),
                 format!("{steps}{}/", op.path),
@@ -238,4 +245,11 @@ fn instantiate(
         ));
     }
     Ok(outputs)
+}
+
+/// The defaults of the inputs of a graph, by port name.
+fn defaults(graph: &Graph) -> Map<String, Json> {
+    (graph.inputs.iter())
+        .filter_map(|port| Some((port.name.clone(), port.default.clone()?)))
+        .collect()
 }

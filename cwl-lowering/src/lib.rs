@@ -256,6 +256,7 @@ fn boundary(process: &Process) -> Result<(Vec<Port>, Vec<Port>), String> {
         name: short_name(name).to_owned(),
         r#type,
         flow: Flow::Value,
+        default: None,
     };
     let mut inputs = Vec::new();
     for input in &process.inputs {

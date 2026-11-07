@@ -92,7 +92,7 @@ impl<'d> Checker<'d> {
                 let other = theirs.iter().find(|item| item.name == port);
                 let fits = match (side, mine, other) {
                     ("input", Some(mine), Some(other)) => {
-                        other.r#type.accepts(&mine.r#type, self.defs)
+                        other.takes().accepts(&mine.r#type, self.defs)
                     }
                     (_, Some(mine), Some(other)) => mine.r#type.accepts(&other.r#type, self.defs),
                     _ => false,
@@ -139,13 +139,13 @@ impl<'d> Checker<'d> {
                     ("input", Some(mine), Some(other)) if map.over.iter().any(|n| n == port) => {
                         match resolve(&mine.r#type, self.defs) {
                             Some(Type::Array(array)) => {
-                                other.r#type.accepts(&array.items, self.defs)
+                                other.takes().accepts(&array.items, self.defs)
                             }
                             _ => false,
                         }
                     }
                     ("input", Some(mine), Some(other)) => {
-                        other.r#type.accepts(&mine.r#type, self.defs)
+                        other.takes().accepts(&mine.r#type, self.defs)
                     }
                     (_, Some(mine), Some(other)) => {
                         let mut made = other.r#type.clone();
@@ -214,7 +214,7 @@ impl<'d> Checker<'d> {
                 let other = theirs.iter().find(|item| item.name == port);
                 let fits = match (side, mine, other) {
                     ("input", Some(mine), Some(other)) => {
-                        other.r#type.accepts(&mine.r#type, self.defs)
+                        other.takes().accepts(&mine.r#type, self.defs)
                     }
                     (_, Some(mine), Some(other)) => {
                         let made = Type::Optional(Box::new(other.r#type.clone()));

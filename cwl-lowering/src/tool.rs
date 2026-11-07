@@ -89,6 +89,7 @@ pub fn lower(process: &Process, tool: &CommandLineTool, scope: &Scope) -> Result
             name,
             r#type,
             flow: wir::Flow::Value,
+            default: None,
         });
     }
     words.sort_by(|a, b| compare(&a.0, &b.0));
@@ -106,6 +107,7 @@ pub fn lower(process: &Process, tool: &CommandLineTool, scope: &Scope) -> Result
             name,
             r#type,
             flow: wir::Flow::Value,
+            default: None,
         });
     }
     Ok(Lowered {

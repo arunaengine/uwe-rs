@@ -224,6 +224,7 @@ fn port(name: &str, r#type: Type) -> Port {
         name: name.to_owned(),
         r#type,
         flow: Flow::Value,
+        default: None,
     }
 }
 

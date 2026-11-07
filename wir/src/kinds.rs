@@ -16,6 +16,16 @@ impl<'d> Checker<'d> {
             Kind::Call(call) => self.call(at, op, &call.graph),
             Kind::Native(native) => self.native(at, op, native),
             Kind::Map(map) => self.map(at, op, map),
+            Kind::Expr(expr) => {
+                if op.outputs.len() != 1 {
+                    self.report(at, Problem::Single("an expr".into()));
+                }
+                let version = self.document.wir_version.as_str();
+                if !expr.library.is_empty() && matches!(version, "0.1" | "0.2" | "0.3") {
+                    let feature = "the library of an expr".into();
+                    self.report(at, Problem::Later(feature, "0.4".into()));
+                }
+            }
             Kind::Branch(branch) => self.inputs(at, op, [&branch.condition]),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
             _ => {}

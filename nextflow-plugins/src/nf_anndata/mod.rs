@@ -209,8 +209,12 @@ fn open(path: &PathValue, context: &mut Context) -> Result<Store, Failure> {
     }
     if name.ends_with(".h5ad") {
         let message = format!("Failed to open file '{shown}' . Is it a HDF5 file?");
-        let bytes = context.host.read(path).map_err(|_| Failure::hdf(message))?;
-        return Ok(Store::Hdf5(hdf5::open(bytes)?));
+        let local = match path.prefix {
+            Some(_) => context.host.download(path).ok(),
+            None => Some(PathBuf::from(&path.path)),
+        };
+        let local = local.filter(|local| local.is_file());
+        return Ok(Store::Hdf5(hdf5::open(&local.ok_or(Failure::hdf(message))?)?));
     }
     let directory = PathBuf::from(&path.path);
     if path.prefix.is_none() && (name.ends_with(".zarr") || zarr::is_store(&directory)) {

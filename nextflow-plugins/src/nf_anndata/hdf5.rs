@@ -2,18 +2,21 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::path::Path;
+
 use hdf5_pure::{AttrValue, Datatype, DatatypeByteOrder, File};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::Value;
 
 use super::{Array, ArrayKind, Attribute, Failure, Node};
 
-/// Opens the bytes of a file, which must have an HDF5 signature.
-pub(super) fn open(bytes: Vec<u8>) -> Result<File, Failure> {
-    if !hdf5_pure::is_hdf5_bytes(&bytes) {
-        return Err(Failure::hdf("No valid HDF5 signature found"));
+/// Opens a file, which must have an HDF5 signature, for reads of the parts that are asked for.
+pub(super) fn open(path: &Path) -> Result<File, Failure> {
+    match hdf5_pure::is_hdf5(path) {
+        Ok(true) => File::open_streaming(path).map_err(failed),
+        Ok(false) => Err(Failure::hdf("No valid HDF5 signature found")),
+        Err(error) => Err(Failure::hdf(error.to_string())),
     }
-    File::from_bytes(bytes).map_err(failed)
 }
 
 /// The direct children of a group, `""` for the root, in name order as HDF5 lists links.

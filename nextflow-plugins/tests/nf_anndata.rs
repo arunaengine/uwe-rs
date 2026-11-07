@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::{Loader, Options, Run};
 
 struct Console {
@@ -21,6 +21,12 @@ impl Host for Console {
 
     fn launch_dir(&self) -> String {
         self.launch.clone()
+    }
+
+    /// Refuses whole reads of `.h5ad` files, which the plugin must open file-backed.
+    fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
+        assert!(!path.path.ends_with(".h5ad"), "a whole read of {}", path.path);
+        Ok(std::fs::read(&path.path).expect("reads"))
     }
 }
 

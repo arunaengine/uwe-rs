@@ -87,87 +87,88 @@ pub(crate) fn driver(
         Language::Snakemake => snakemake_runtime::driver_with_options(
             launch,
             snakemake(arguments, setup, cancel),
-            snakemake_runtime::RunSettings {
-                image: arguments.default_image.clone(),
-                offline: super::backend::network_rule(arguments, setup).offline(
-                    &workflow_graph::Task {
-                        step: "command".into(),
-                        ..Default::default()
-                    },
-                ),
-                rerun_triggers: arguments.rerun_triggers.clone(),
-                conda: setup.conda.is_some(),
-                shared_workdir: shared_workdir(arguments, setup),
-                local: arguments.executor.as_deref().unwrap_or("local") == "local",
-            },
+            snakemake_options(arguments, setup),
         ),
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
             let options = cwl_options(arguments, setup, cancel);
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
-        Language::Argo => {
-            let endpoints = (setup.storage.s3_providers().into_iter())
-                .map(|(provider, prefixes, address)| argo_runtime::Endpoint {
-                    provider,
-                    prefixes,
-                    address,
-                })
-                .collect();
-            let storage = setup.storage.clone();
-            let git = move |source: &argo_runtime::GitSource, folder: &Path| {
-                if source.account && !source.repo.starts_with("https://") {
-                    return Err(format!(
-                        "{} signs in over plain HTTP, which would send the account in clear text; use https",
-                        source.repo
-                    ));
-                }
-                let storage = storage.clone();
-                let lookup =
-                    move |url: &str| storage.account(url).map_err(|error| error.to_string());
-                if source.account && lookup(&source.repo)?.is_none() {
-                    return Err(format!(
-                        "{} signs in; give it an account with an https storage provider of the config file",
-                        source.repo
-                    ));
-                }
-                let fetch = crate::git::Fetch {
-                    url: source.repo.clone(),
-                    reference: source.reference.clone(),
-                    depth: source.depth,
-                    refspecs: source.fetch.clone(),
-                    submodules: source.submodules,
-                    accounts: Some(crate::git::Accounts(std::sync::Arc::new(lookup))),
-                };
-                let stop = std::sync::atomic::AtomicBool::new(false);
-                crate::git::checkout(&fetch, folder, &stop).map(|_| ())
-            };
-            let services = argo_runtime::Services {
-                policy: setup.argo_policy.clone(),
-                locks: setup.argo_locks.clone(),
-                endpoints,
-                resume: Some(resume_folder(run)),
-                git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),
-            };
-            argo_runtime::driver_with(launch, services)
-        }
-        Language::Wdl => {
-            let options = wdl_runtime::Options {
-                image: (arguments.default_image.clone())
-                    .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
-                print: !arguments.no_print,
-            };
-            wdl_runtime::driver_with(launch, options)
-        }
+        Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
+        Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments)),
         Language::Wir => {
             let settings = wir_runtime::Settings {
+                // A block runs no `uwe resume` requests: they name the steps of a whole run.
+                argo: argo_runtime::Services {
+                    resume: None,
+                    ..argo_services(run, setup)
+                },
                 cwl: cwl_options(arguments, setup, cancel),
                 nextflow: nextflow::blocks(run, arguments, setup),
+                snakemake: wir_runtime::snakemake::Options {
+                    settings: snakemake(arguments, setup, cancel),
+                    run: snakemake_options(arguments, setup),
+                },
+                wdl: wdl_options(arguments),
                 print: !arguments.no_print,
             };
             let downloads = cache_directory().join("downloads");
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
         }
+    }
+}
+
+/// The services of Argo runs, and of the Argo blocks of wir runs.
+fn argo_services(run: &str, setup: &Setup) -> argo_runtime::Services {
+    let endpoints = (setup.storage.s3_providers().into_iter())
+        .map(|(provider, prefixes, address)| argo_runtime::Endpoint {
+            provider,
+            prefixes,
+            address,
+        })
+        .collect();
+    let storage = setup.storage.clone();
+    let git = move |source: &argo_runtime::GitSource, folder: &Path| {
+        if source.account && !source.repo.starts_with("https://") {
+            return Err(format!(
+                "{} signs in over plain HTTP, which would send the account in clear text; use https",
+                source.repo
+            ));
+        }
+        let storage = storage.clone();
+        let lookup = move |url: &str| storage.account(url).map_err(|error| error.to_string());
+        if source.account && lookup(&source.repo)?.is_none() {
+            return Err(format!(
+                "{} signs in; give it an account with an https storage provider of the config file",
+                source.repo
+            ));
+        }
+        let fetch = crate::git::Fetch {
+            url: source.repo.clone(),
+            reference: source.reference.clone(),
+            depth: source.depth,
+            refspecs: source.fetch.clone(),
+            submodules: source.submodules,
+            accounts: Some(crate::git::Accounts(std::sync::Arc::new(lookup))),
+        };
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        crate::git::checkout(&fetch, folder, &stop).map(|_| ())
+    };
+    argo_runtime::Services {
+        policy: setup.argo_policy.clone(),
+        locks: setup.argo_locks.clone(),
+        endpoints,
+        resume: Some(resume_folder(run)),
+        git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),
+    }
+}
+
+/// The options of WDL runs, and of the WDL blocks of wir runs.
+fn wdl_options(arguments: &Arguments) -> wdl_runtime::Options {
+    wdl_runtime::Options {
+        image: (arguments.default_image.clone())
+            .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
+        print: !arguments.no_print,
     }
 }
 
@@ -201,6 +202,22 @@ fn cwl_options(
         .then(crate::cwl_archives),
         print: !arguments.no_print,
         ..cwl_runtime::Options::default()
+    }
+}
+
+/// The options of Snakemake runs, and of the Snakemake blocks of wir runs.
+fn snakemake_options(arguments: &Arguments, setup: &Setup) -> snakemake_runtime::RunSettings {
+    snakemake_runtime::RunSettings {
+        image: arguments.default_image.clone(),
+        offline: super::backend::network_rule(arguments, setup).offline(&workflow_graph::Task {
+            step: "command".into(),
+            ..Default::default()
+        }),
+        rerun_triggers: arguments.rerun_triggers.clone(),
+        conda: setup.conda.is_some(),
+        shared_workdir: shared_workdir(arguments, setup),
+        local: arguments.executor.as_deref().unwrap_or("local") == "local",
+        workdir: None,
     }
 }
 

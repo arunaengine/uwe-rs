@@ -15,22 +15,31 @@ use workflow_graph::{
     Launch, Note, Outcome, Reuse, Task, TaskId,
 };
 
+use crate::argo;
 use crate::child::Child;
 use crate::cwl;
 use crate::inputs;
 use crate::nextflow;
 use crate::plan::plan;
+use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
+use crate::wdl;
 
 /// How a run makes the drivers of native blocks, and what it shows.
 #[derive(Clone, Debug)]
 pub struct Settings {
+    /// The services of Argo blocks, like the S3 providers of the config file.
+    pub argo: argo_runtime::Services,
     /// The options of CWL blocks. A block never prints its output object, and the launch
     /// says whether it is simulated.
     pub cwl: cwl_runtime::Options,
     /// How the drivers of Nextflow blocks get their settings, with a launch folder each.
     pub nextflow: nextflow::Options,
+    /// What the drivers of Snakemake blocks use; each starts in a folder of its own.
+    pub snakemake: snakemake::Options,
+    /// The options of WDL blocks. A block never prints its outputs.
+    pub wdl: wdl_runtime::Options,
     /// Whether a real run prints the outputs of its graph, as JSON.
     pub print: bool,
 }
@@ -38,8 +47,11 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
+            argo: argo_runtime::Services::default(),
             cwl: cwl_runtime::Options::default(),
             nextflow: nextflow::Options::default(),
+            snakemake: snakemake::Options::default(),
+            wdl: wdl_runtime::Options::default(),
             print: true,
         }
     }
@@ -211,6 +223,10 @@ impl WirDriver {
         let folder = self.job_folder()?.join(&path);
         let (job, values) = match native.language {
             Dialect::Nextflow => (folder.join("params.json"), nextflow::params(&bound)),
+            // A Snakemake config file and an Argo parameter file take the values of params.
+            Dialect::Snakemake => (folder.join("config.json"), nextflow::params(&bound)),
+            Dialect::Argo => (folder.join("parameters.json"), nextflow::params(&bound)),
+            Dialect::Wdl => (folder.join("inputs.json"), nextflow::params(&bound)),
             _ => (
                 folder.join("job.json"),
                 cwl::to_cwl(Json::Object(bound.clone())),
@@ -249,10 +265,23 @@ impl WirDriver {
                 self.launched.insert(at, (output, bound));
                 driver
             }
-            other => {
-                let message = format!("op {path}: uwe does not run {other:?} blocks yet");
+            // A Snakefile block starts in its output folder, a project folder in itself.
+            Dialect::Snakemake => {
+                std::fs::create_dir_all(&output).map_err(|error| {
+                    DriverError::new(format!("cannot make {}: {error}", output.display()))
+                })?;
+                snakemake::block(&launch, &output, &self.settings.snakemake)?
+            }
+            Dialect::Argo if !launch.profiles.is_empty() => {
+                let message = format!("op {path}: Argo blocks take no profiles");
                 return Err(DriverError::unsupported(message));
             }
+            Dialect::Argo => argo::block(&launch, &self.settings.argo)?,
+            Dialect::Wdl if !launch.profiles.is_empty() || !launch.configs.is_empty() => {
+                let message = format!("op {path}: WDL blocks take no profiles or configs");
+                return Err(DriverError::unsupported(message));
+            }
+            Dialect::Wdl => wdl::block(&launch, &self.settings.wdl)?,
         });
         child.prepare(
             self.files.clone(),

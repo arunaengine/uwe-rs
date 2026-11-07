@@ -261,10 +261,20 @@ fn nextflow_outputs_dynamic() {
     document["wir_version"] = json!("0.1");
     let found: Vec<Problem> = problems(document).into_iter().map(|e| e.problem).collect();
     let later = [
-        Problem::Later("native profiles".into()),
-        Problem::Later("a dynamic native output".into()),
+        Problem::Later("native profiles".into(), "0.2".into()),
+        Problem::Later("a dynamic native output".into(), "0.2".into()),
     ];
     assert_eq!(found, later);
+}
+
+#[test]
+fn network_needs_version() {
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["kind"]["task"]["network"] = json!(true);
+    assert!(problems(document.clone()).is_empty());
+    document["wir_version"] = json!("0.2");
+    let later = Problem::Later("the network of a task".into(), "0.3".into());
+    assert_eq!(only(document), ("main/head".into(), later));
 }
 
 #[test]

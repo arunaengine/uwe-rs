@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{
-    Attempt, EdgeKind, Execution, Executor, Launch, Outcome, OutputFile, Running, Simulator, Task,
-    execute,
+    Attempt, EdgeKind, Execution, Executor, Launch, Network, Outcome, OutputFile, Running,
+    Simulator, Task, execute,
 };
 
 /// The example in `root`, changed by `change`, with a text file and its inputs file.
@@ -118,6 +118,29 @@ fn builds_task_commands() {
         path: "inputs/sorted/sorted.stdout".into(),
     };
     assert_eq!((edge.from, edge.to, &edge.kind), (sort.id, head.id, &file));
+}
+
+#[test]
+fn denies_task_network() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = example(folder.path(), |document| {
+        document["wir_version"] = json!(wir::VERSION);
+        document["graphs"][0]["ops"][1]["kind"]["task"]["network"] = json!(true);
+    });
+    let mut driver = driver(&Launch {
+        simulated: true,
+        ..launch
+    });
+    let mut simulator = Simulator::new(folder.path().join("simulator"));
+    let graph = execute("two-tools", &mut driver, &mut simulator)
+        .into_result()
+        .unwrap();
+    let networks: Vec<Network> = graph.nodes.iter().map(|node| node.task.network).collect();
+    assert_eq!(
+        networks,
+        [Network::Denied, Network::Allowed],
+        "only head opts in"
+    );
 }
 
 /// Runs the example on a scripted executor.

@@ -30,7 +30,8 @@ struct Used {
     pools: HashMap<String, Pool>,
     /// The job of the run on each pool, by pool id.
     jobs: BTreeMap<String, String>,
-    /// The pools that uwe created, which it may delete at the end of the run.
+    /// The pools that uwe created, which it may delete at the end of the run when no other run
+    /// uses them.
     created: Vec<String>,
 }
 
@@ -195,7 +196,7 @@ impl Jobs {
     }
 
     /// Ends the jobs of the run once their tasks ended, deletes them when asked, and deletes
-    /// the pools that uwe created when asked.
+    /// the pools that uwe created when asked and no job of another run uses them.
     pub async fn release(&self, client: &Client, settings: &Settings) {
         let used = std::mem::take(&mut *self.used.lock().await);
         for job in used.jobs.values() {
@@ -212,6 +213,25 @@ impl Jobs {
             return;
         }
         for pool in &used.created {
+            // Another run finds an auto pool by the same id, so its jobs may still use the pool.
+            match client.pool_jobs(pool).await {
+                Ok(jobs)
+                    if jobs
+                        .iter()
+                        .any(|job| !used.jobs.values().any(|own| own == job)) =>
+                {
+                    tracing::info!(
+                        pool,
+                        "[AZURE BATCH] kept the pool, as jobs of another run use it"
+                    );
+                    continue;
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!("Unable to delete Azure Batch pool {pool} - Reason: {error}");
+                    continue;
+                }
+            }
             if let Err(error) = client.delete(&format!("/pools/{pool}")).await {
                 tracing::warn!("Unable to delete Azure Batch pool {pool} - Reason: {error}");
             }

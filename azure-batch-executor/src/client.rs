@@ -121,15 +121,31 @@ impl Client {
 
     /// Every image that pools of the account can use, page by page.
     pub async fn supported_images(&self) -> Result<Vec<Value>, BatchError> {
-        let mut images = Vec::new();
-        let mut next = Some("/supportedimages".to_owned());
+        self.list("list images", "/supportedimages").await
+    }
+
+    /// The ids of the jobs on the pool `id` that may still run tasks.
+    pub async fn pool_jobs(&self, id: &str) -> Result<Vec<String>, BatchError> {
+        let filter = "state eq 'active' or state eq 'disabling' or state eq 'disabled'";
+        let path = format!("/jobs?$filter={filter}&$select=id,poolInfo");
+        let jobs = self.list("list jobs", &path).await?;
+        let on_pool = jobs.iter().filter(|job| job["poolInfo"]["poolId"] == id);
+        Ok(on_pool
+            .filter_map(|job| job["id"].as_str().map(str::to_owned))
+            .collect())
+    }
+
+    /// The items of a list call, page by page.
+    async fn list(&self, operation: &str, first: &str) -> Result<Vec<Value>, BatchError> {
+        let mut items = Vec::new();
+        let mut next = Some(first.to_owned());
         while let Some(path) = next.take() {
-            let answer = self.send("list images", Method::GET, &path, None).await?;
+            let answer = self.send(operation, Method::GET, &path, None).await?;
             let page = answer.body["value"].as_array().cloned().unwrap_or_default();
-            images.extend(page);
+            items.extend(page);
             if let Some(link) = answer.body["odata.nextLink"].as_str() {
                 let url = Url::parse(link).map_err(|error| BatchError::Request {
-                    operation: "list images".into(),
+                    operation: operation.to_owned(),
                     message: format!("a next page that is not a URL: {error}"),
                 })?;
                 // The next page names its own api-version, which `send` adds again.
@@ -140,7 +156,7 @@ impl Client {
                 next = Some(format!("{}?{}", url.path(), query.join("&")));
             }
         }
-        Ok(images)
+        Ok(items)
     }
 
     pub async fn create_job(&self, body: &Value) -> Result<(), BatchError> {

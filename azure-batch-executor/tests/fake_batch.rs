@@ -296,6 +296,41 @@ async fn creates_auto_pools() {
     assert_eq!(fake.requests(&format!("DELETE /pools/{id}?")).len(), 1);
 }
 
+/// A pool that uwe created stays at the end of the run while a job of another run uses it.
+#[tokio::test]
+async fn keeps_shared_pools() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeAzure::start(&folder.path().join("fake"));
+    let mut backend = backend(folder.path(), &fake, shared_key());
+    let settings = &mut backend.settings;
+    (settings.allow_pool_creation, settings.delete_pools) = (true, true);
+    let spec = spec("echo shared > out.txt");
+    let placement = placement();
+    let staging = Staging::default();
+    let job = Job {
+        name: "run-SHARED-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = backend
+        .run(job, &CancellationToken::new())
+        .await
+        .expect("the task ends");
+    assert_eq!(finished.exit_code, Some(0));
+    assert_eq!(
+        fake.requests("POST /pools?").len(),
+        1,
+        "uwe creates the pool"
+    );
+    fake.add_job("uwe-0badcafe-small", "small");
+    backend.release().await;
+    assert!(fake.requests("DELETE /pools/").is_empty());
+    assert!(fake.has_pool("small"), "the other run keeps its pool");
+    let unsigned = fake.unsigned();
+    assert_eq!(unsigned, Vec::<String>::new(), "every signature matches");
+}
+
 /// A cancelled task is terminated, with a token from the managed identity of the machine.
 #[tokio::test]
 async fn cancels_running_tasks() {

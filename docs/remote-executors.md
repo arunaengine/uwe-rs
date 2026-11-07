@@ -337,7 +337,7 @@ A task runs like this:
 4. uwe adds the task `uwe-<attempt>`: the image of the task with `--cpu-shares` and `--memory`, the plan and the helper as resource files by their SAS URLs (Batch downloads them into the working folder before the task starts), its slots, a time limit of the task's time plus `staging_minutes`, and a task user without rights (or `run_as` of the pool). The command line runs `sh`, which checks the SHA-256 of a downloaded helper, stages the inputs in, runs the wrapper of the task within its time, and sends the outputs back. The script is in the environment variable `UWE_SCRIPT`, as a command line holds no newlines.
 5. uwe asks about the task every `poll_seconds`. While it waits for a node, uwe looks at its pool once a minute: a pool of fixed size with resize errors and no nodes fails the task, and an auto scaling pool whose errors are all `AllocationTimedout` or `AllocationFailed` gets a warning and the task waits. A cancelled task is terminated.
 6. The error of a failed task shows the end of its `stdout.txt` and `stderr.txt`. Then uwe deletes the task as `delete_tasks` says.
-7. At the end of the run, each job ends once its tasks ended (`terminate_jobs`), and uwe deletes the jobs and the pools it created when asked. It does not wait for the deletions.
+7. At the end of the run, each job ends once its tasks ended (`terminate_jobs`), and uwe deletes the jobs and the pools it created when asked. A pool that an active job of another run uses stays. uwe does not wait for the deletions.
 
 Limits:
 
@@ -345,7 +345,7 @@ Limits:
 - Containers never run privileged: `privileged` and `start_privileged` of a pool are refused, and so are Nextflow's `privileged` pools and `fusion.enabled = true`. Tasks and start scripts run as users without admin rights.
 - The container keeps the entrypoint of its image around the command line. The image needs `sh`, and `sha256sum` when the helper is downloaded (`helper_url` or the uploaded binary). With `helper_path`, the container sees the folder of the helper read-only.
 - Real Azure Batch downloads resource files over HTTP or HTTPS, so the staging root must be in an object store, like Azure Blob Storage or S3.
-- `delete_pools` deletes only the pools that uwe created in the run; Nextflow deletes every pool it used.
+- `delete_pools` deletes only the pools that uwe created in the run and that no active job of another run uses; Nextflow deletes every pool it used.
 - `staging_access = "credentials"` is refused; the tasks use presigned requests.
 - Tasks without network, tasks of several containers, tasks that run as a named user, and inputs at absolute paths are refused.
 - uwe ships no table of VM sizes: VM size patterns and the automatic choice of a VM size for auto pools are not supported, and creating a pool of another size than `Standard_D4a_v4` needs `vm_cpus`. Azure Files shares, output files of Batch, low priority nodes per task and Fusion are not supported either.

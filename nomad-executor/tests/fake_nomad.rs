@@ -245,6 +245,28 @@ async fn matches_recorded_jobs() {
     );
 }
 
+/// A task of a shared folder also gives the outputs that its JSON output manifest names.
+#[tokio::test]
+async fn reads_output_manifests() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeNomad::start(&folder.path().join("fake"));
+    let backend = backend(folder.path(), settings(&fake), false);
+    let manifest = r#"{"extra": {"class": "File", "path": "extra.txt"}}"#;
+    let mut spec = spec(&format!(
+        "echo out > out.txt; echo extra > extra.txt; echo '{manifest}' > cwl.output.json"
+    ));
+    spec.output_manifest = Some("cwl.output.json".into());
+    let (placement, staging) = (Placement::default(), Staging::default());
+    let finished = run(&backend, "run-JSON-1-1", &spec, &placement, &staging)
+        .await
+        .expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let paths: Vec<&str> = (finished.files.iter())
+        .map(|file| file.path.as_str())
+        .collect();
+    assert!(paths.contains(&"extra.txt"), "{paths:?}");
+}
+
 fn spec_small() -> TaskSpec {
     let mut small = spec("true");
     small.outputs.clear();

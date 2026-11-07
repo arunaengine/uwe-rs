@@ -229,6 +229,10 @@ impl NomadBackend {
         };
         let ended = self.submit(&shape, cancel).await?;
         let finished = finish(&ended, root.to_owned(), time, spec).await;
+        let finished = finished.and_then(|mut finished| {
+            finished.collect_outputs(spec, job.staging)?;
+            Ok(finished)
+        });
         self.end(&id, &ended, finished).await
     }
 

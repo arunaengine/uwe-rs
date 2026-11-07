@@ -195,6 +195,23 @@ fn hides_credentials() {
     }
 }
 
+#[test]
+fn dumps_multiline_text() {
+    let text = Value::string("first\nsecond");
+    let map = Value::map([(Value::string("script"), text.clone())]);
+    let list = Value::list(vec![text]);
+    for (value, expected) in [
+        (map, "script: |-\n  first\n  second\n"),
+        (list, "- |-\n  first\n  second\n"),
+    ] {
+        let dumped = with_context(|context| call("nf-boost", "toYaml", vec![value.clone()], context));
+        let dumped = dumped.expect("a dump").to_string();
+        assert_eq!(dumped, expected);
+        let read = nextflow_evaluator::interpreter::parse_yaml(&dumped).expect("reads");
+        assert_eq!(read.to_string(), value.to_string());
+    }
+}
+
 /// A config that loads this text.
 fn loaded(text: &str) -> Config {
     let folder = tempfile::tempdir().expect("a temporary directory");

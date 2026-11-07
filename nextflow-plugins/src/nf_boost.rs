@@ -296,9 +296,14 @@ fn members(value: &Value) -> Option<Vec<(Option<Value>, Value)>> {
     }
 }
 
-/// Whether a value is a collection that holds a collection, which goes in block style.
+/// Whether a value is a collection that holds a collection or a multi-line text, which goes
+/// in block style, as the literal block of such a text cannot stand in flow style.
 fn block(value: &Value) -> bool {
-    members(value).is_some_and(|members| members.iter().any(|(_, item)| members_of(item)))
+    let nested = |item: &Value| match item {
+        Value::String(text) | Value::GString(text) => text.contains('\n'),
+        other => members_of(other),
+    };
+    members(value).is_some_and(|members| members.iter().any(|(_, item)| nested(item)))
 }
 
 fn members_of(value: &Value) -> bool {

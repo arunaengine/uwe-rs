@@ -8331,6 +8331,7 @@ name = "wdl-runtime"
 version = "0.1.0"
 dependencies = [
  "indexmap 2.14.2",
+ "regex",
  "serde_json",
  "wdl-analysis",
  "wdl-ast",

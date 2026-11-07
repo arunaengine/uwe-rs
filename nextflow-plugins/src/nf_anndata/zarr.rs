@@ -319,14 +319,19 @@ fn decode(meta: &Meta, mut bytes: Vec<u8>, wanted: usize) -> Result<Vec<Value>, 
             Codec::Checksum => bytes[..bytes.len().saturating_sub(4)].to_vec(),
         };
     }
-    if meta.dtype == Dtype::Text {
-        return texts(&bytes);
+    let values = match meta.dtype {
+        Dtype::Text => texts(&bytes)?,
+        dtype => (bytes.chunks_exact(element_size(dtype)).take(wanted))
+            .map(|element| element_value(dtype, element))
+            .collect(),
+    };
+    match values.len() < wanted {
+        true => Err(format!(
+            "the chunk holds {} elements, {wanted} are wanted",
+            values.len()
+        )),
+        false => Ok(values),
     }
-    let size = element_size(meta.dtype);
-    let values = bytes.chunks_exact(size).take(wanted);
-    Ok(values
-        .map(|element| element_value(meta.dtype, element))
-        .collect())
 }
 
 fn read_all(mut reader: impl Read) -> Result<Vec<u8>, String> {
@@ -445,7 +450,23 @@ fn failed(file: &Path, error: std::io::Error) -> Failure {
 
 #[cfg(test)]
 mod tests {
-    use super::{Dtype, element_value, numpy_dtype, texts};
+    use super::{Dtype, Meta, decode, element_value, numpy_dtype, texts};
+
+    #[test]
+    fn rejects_short_chunks() {
+        let meta = Meta {
+            length: 4,
+            chunk: 4,
+            dtype: numpy_dtype("<i4").unwrap(),
+            fill: serde_json::Value::Null,
+            codecs: Vec::new(),
+            prefix: String::new(),
+        };
+        let bytes: Vec<u8> = [1i32, 2, 3].iter().flat_map(|n| n.to_le_bytes()).collect();
+        let short = decode(&meta, bytes.clone(), 4).err();
+        assert_eq!(short.as_deref(), Some("the chunk holds 3 elements, 4 are wanted"));
+        assert_eq!(decode(&meta, bytes, 3).map(|values| values.len()), Ok(3));
+    }
 
     #[test]
     fn reads_vlen_texts() {

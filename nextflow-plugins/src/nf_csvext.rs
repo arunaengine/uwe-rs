@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::number::Number;
+use nextflow_evaluator::regex::Pattern;
 use nextflow_evaluator::value::{PathValue, Value};
 
 use crate::Context;
@@ -120,10 +121,13 @@ fn concat(lines: &[String], appends: &[Vec<String>], sep: &str) -> Result<String
     if appends.is_empty() {
         return Err(thrown("Index 0 out of bounds for length 0"));
     }
-    let width = |lines: &[String]| lines.first().map_or(0, |line| fields(line, sep).len());
+    let pattern = regex(sep)?;
+    let width = |lines: &[String]| -> Result<usize, Error> {
+        lines.first().map_or(Ok(0), |line| Ok(fields(line, &pattern)?.len()))
+    };
     let mut text = joined(lines);
     for append in appends {
-        if width(lines) != width(append) {
+        if width(lines)? != width(append)? {
             return Err(thrown("source and append must to be same size"));
         }
         text.push_str(&joined(append.get(1..).unwrap_or_default()));
@@ -179,10 +183,11 @@ fn trim(
     columns: Option<Value>,
     sep: &str,
 ) -> Result<String, Error> {
-    let names = lines
-        .first()
-        .map(|line| fields(line, sep))
-        .unwrap_or_default();
+    let pattern = regex(sep)?;
+    let names = match lines.first() {
+        Some(line) => fields(line, &pattern)?,
+        None => Vec::new(),
+    };
     let index = |value: &Value| -> Option<usize> {
         let text = value.to_string();
         match text.chars().all(|c| c.is_ascii_digit()) && !text.is_empty() {
@@ -208,7 +213,7 @@ fn trim(
     };
     let mut text = String::new();
     for line in lines {
-        let kept: Vec<String> = (fields(line, sep).into_iter().enumerate())
+        let kept: Vec<String> = (fields(line, &pattern)?.into_iter().enumerate())
             .filter(|(at, _)| !removed.contains(at))
             .map(|(_, field)| field)
             .collect();
@@ -246,14 +251,15 @@ fn joined(lines: &[String]) -> String {
     lines.iter().map(|line| format!("{line}\n")).collect()
 }
 
+/// The separator as the regular expression that Java's `String.split` reads it as.
+fn regex(sep: &str) -> Result<Pattern, Error> {
+    Pattern::new(sep).map_err(raised)
+}
+
 /// The fields of a line split on the separator, without trailing empty fields, as Java's
 /// `String.split` gives them.
-fn fields(line: &str, sep: &str) -> Vec<String> {
-    let mut fields: Vec<String> = line.split(sep).map(str::to_owned).collect();
-    while fields.last().is_some_and(String::is_empty) {
-        fields.pop();
-    }
-    fields
+fn fields(line: &str, pattern: &Pattern) -> Result<Vec<String>, Error> {
+    pattern.split(line, 0).map_err(raised)
 }
 
 /// The fields of the plugin's parser: split on the separator outside double quotes, which it
@@ -280,8 +286,30 @@ fn parsed(line: &str, sep: &str) -> Vec<String> {
 }
 
 fn thrown(message: impl Into<String>) -> Error {
+    raised(Exception::illegal_argument(message))
+}
+
+fn raised(exception: Exception) -> Error {
     Error::Thrown {
-        exception: Rc::new(Exception::illegal_argument(message)),
+        exception: Rc::new(exception),
         span: Default::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_on_regex() {
+        let lines = ["x|y|z".to_owned(), "1|2|3".to_owned()];
+        let trimmed = trim(&lines, Some(Value::integer(1)), None, "\\|").ok();
+        assert_eq!(trimmed.as_deref(), Some("x\\|z\n1\\|3\n"));
+        let narrow = vec!["a".to_owned()];
+        let concat = concat(&lines, &[narrow], "\\|").err().map(|error| error.to_string());
+        assert_eq!(
+            concat.as_deref(),
+            Some("IllegalArgumentException: source and append must to be same size")
+        );
     }
 }

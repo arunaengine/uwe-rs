@@ -139,8 +139,21 @@ pub(crate) fn redacted(config: &serde_json::Value) -> serde_json::Value {
                 .collect(),
         ),
         Json::Array(items) => Json::Array(items.iter().map(redacted).collect()),
+        Json::String(text) if leaks(text) => Json::String(safe_url(text)),
         other => other.clone(),
     }
+}
+
+/// Whether an address holds a user name or password, or a query value of a credential, as in
+/// `jdbc:postgresql://db/app?password=secret`.
+fn leaks(url: &str) -> bool {
+    let Some((_, rest)) = url.split_once("://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let query = rest.split_once('?').map_or("", |(_, query)| query);
+    let named = |pair: &str| secret(pair.split('=').next().unwrap_or_default());
+    authority.contains('@') || query.split(['&', ';']).any(named)
 }
 
 /// Whether two addresses share scheme, host and port.
@@ -162,6 +175,22 @@ mod tests {
         assert!(first.chars().all(|digit| digit.is_ascii_hexdigit()));
         assert_ne!(first, second);
         assert!((0.0..1.0).contains(&random_unit()));
+    }
+
+    /// Addresses with credentials lose them in a redacted config; others stay whole.
+    #[test]
+    fn redacts_addresses() {
+        let config = serde_json::json!({
+            "sql": {"db": {"default": {"url": "jdbc:postgresql://db/app?password=secret"}}},
+            "work": ["s3://user:pw@bucket/run", "https://example.org/a?page=2"],
+        });
+        let hidden = redacted(&config);
+        assert_eq!(
+            hidden["sql"]["db"]["default"]["url"],
+            "jdbc:postgresql://db/app"
+        );
+        assert_eq!(hidden["work"][0], "s3://bucket/run");
+        assert_eq!(hidden["work"][1], "https://example.org/a?page=2");
     }
 
     #[test]

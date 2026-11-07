@@ -1,10 +1,10 @@
-//! The verifier: checks the version, names and types of a document.
+//! The verifier: checks names, types, edges, producers and cycles of a document.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::{Document, Graph, Port, Source, VERSION};
+use crate::document::{Document, Endpoint, Graph, Port, Source, VERSION};
 use crate::op::{Kind, Op};
 use crate::types::{Type, TypeDef};
 
@@ -36,10 +36,28 @@ pub enum Problem {
     NoType(String),
     #[error("type {0} is defined through itself")]
     RecursiveType(String),
+    #[error("graph {0} runs itself")]
+    Recursion(String),
     #[error("{0} must not be empty")]
     Empty(String),
     #[error("no op {0} in this graph")]
     NoOp(String),
+    #[error("no {0}")]
+    NoPort(String),
+    #[error("{0} has more than one producer")]
+    Producers(String),
+    #[error("{0} has no producer and is not optional")]
+    Unbound(String),
+    #[error("{port} gets {found} but accepts {want}")]
+    Mismatch {
+        port: String,
+        found: String,
+        want: String,
+    },
+    #[error("{0} joins a value port and a stream port")]
+    FlowMismatch(String),
+    #[error("ops form a cycle through {0}")]
+    Cycle(String),
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.
@@ -68,6 +86,12 @@ struct Checker<'d> {
     document: &'d Document,
     defs: &'d [TypeDef],
     errors: Vec<VerifyError>,
+}
+
+#[derive(Clone, Copy)]
+enum End {
+    From,
+    To,
 }
 
 impl<'d> Checker<'d> {
@@ -115,6 +139,10 @@ impl<'d> Checker<'d> {
         }
         for graph in &document.graphs {
             self.graph_body(graph);
+            let next = |name: &str| self.graph(name).map(called).unwrap_or_default();
+            if reaches(&graph.name, next) {
+                self.report(&graph.name, Problem::Recursion(graph.name.clone()));
+            }
         }
     }
 
@@ -125,6 +153,94 @@ impl<'d> Checker<'d> {
         self.names(at, graph.ops.iter().map(|op| op.path.as_str()), true);
         for op in &graph.ops {
             self.op(graph, op);
+        }
+        let mut bound = BTreeSet::new();
+        for edge in &graph.edges {
+            let at = endpoint_at(graph, &edge.to);
+            let from = port_of(graph, &edge.from, End::From);
+            let to = port_of(graph, &edge.to, End::To);
+            let (from, to) = match (from, to) {
+                (Ok(from), Ok(to)) => (from, to),
+                (from, to) => {
+                    from.err()
+                        .into_iter()
+                        .chain(to.err())
+                        .for_each(|p| self.report(&at, p));
+                    continue;
+                }
+            };
+            let name = port_name(&edge.to);
+            if !bound.insert((edge.to.op.as_deref(), edge.to.port.as_str())) {
+                self.report(&at, Problem::Producers(name.clone()));
+            }
+            if from.flow != to.flow {
+                self.report(&at, Problem::FlowMismatch(name.clone()));
+            }
+            if !to.r#type.accepts(&from.r#type, self.defs) {
+                let (found, want) = (show(&from.r#type), show(&to.r#type));
+                self.report(
+                    &at,
+                    Problem::Mismatch {
+                        port: name,
+                        found,
+                        want,
+                    },
+                );
+            }
+        }
+        self.unbound(graph, &bound);
+        self.cycles(graph);
+    }
+
+    fn unbound(&mut self, graph: &Graph, bound: &BTreeSet<(Option<&str>, &str)>) {
+        for op in &graph.ops {
+            for input in &op.inputs {
+                let set = bound.contains(&(Some(op.path.as_str()), input.name.as_str()));
+                if !set && !input.r#type.is_optional(self.defs) {
+                    let at = format!("{}/{}", graph.name, op.path);
+                    self.report(&at, Problem::Unbound(format!("input {}", input.name)));
+                }
+            }
+        }
+        for output in &graph.outputs {
+            if !bound.contains(&(None, output.name.as_str())) {
+                self.report(
+                    &graph.name,
+                    Problem::Unbound(format!("graph output {}", output.name)),
+                );
+            }
+        }
+    }
+
+    /// Data edges and `after` dependencies between ops of one graph must not form a cycle.
+    fn cycles(&mut self, graph: &Graph) {
+        let index: BTreeMap<&str, usize> = graph
+            .ops
+            .iter()
+            .enumerate()
+            .map(|(at, op)| (op.path.as_str(), at))
+            .collect();
+        let mut next = vec![Vec::new(); graph.ops.len()];
+        for edge in &graph.edges {
+            if let (Some(from), Some(to)) = (&edge.from.op, &edge.to.op)
+                && let (Some(&from), Some(&to)) = (index.get(from.as_str()), index.get(to.as_str()))
+            {
+                next[from].push(to);
+            }
+        }
+        for (to, op) in graph.ops.iter().enumerate() {
+            for dependency in &op.after {
+                if let Some(&from) = index.get(dependency.op.as_str()) {
+                    next[from].push(to);
+                }
+            }
+        }
+        if let Some(at) = first_cycle(&next) {
+            let path = &graph.ops[at].path;
+            self.report(
+                &format!("{}/{path}", graph.name),
+                Problem::Cycle(path.clone()),
+            );
         }
     }
 
@@ -221,6 +337,48 @@ impl<'d> Checker<'d> {
     }
 }
 
+fn port_of<'g>(graph: &'g Graph, end: &Endpoint, side: End) -> Result<&'g Port, Problem> {
+    let ports = match (&end.op, side) {
+        (None, End::From) => &graph.inputs,
+        (None, End::To) => &graph.outputs,
+        (Some(path), _) => {
+            let op = graph.ops.iter().find(|op| op.path == *path);
+            let op = op.ok_or_else(|| Problem::NoOp(path.clone()))?;
+            if let End::From = side {
+                &op.outputs
+            } else {
+                &op.inputs
+            }
+        }
+    };
+    let found = ports.iter().find(|port| port.name == end.port);
+    found.ok_or_else(|| {
+        let side = match (&end.op, side) {
+            (None, End::From) => "graph input",
+            (None, End::To) => "graph output",
+            (Some(_), End::From) => "output",
+            (Some(_), End::To) => "input",
+        };
+        Problem::NoPort(format!("{side} {}", end.port))
+    })
+}
+
+fn endpoint_at(graph: &Graph, end: &Endpoint) -> String {
+    match &end.op {
+        Some(path) if graph.ops.iter().any(|op| op.path == *path) => {
+            format!("{}/{path}", graph.name)
+        }
+        _ => graph.name.clone(),
+    }
+}
+
+fn port_name(end: &Endpoint) -> String {
+    match end.op {
+        Some(_) => format!("input {}", end.port),
+        None => format!("graph output {}", end.port),
+    }
+}
+
 fn called_by(kind: &Kind) -> Vec<&str> {
     match kind {
         Kind::Call(call) => vec![&call.graph],
@@ -230,6 +388,14 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Loop(body) => vec![&body.body],
         _ => Vec::new(),
     }
+}
+
+fn called(graph: &Graph) -> Vec<&str> {
+    graph
+        .ops
+        .iter()
+        .flat_map(|op| called_by(&op.kind))
+        .collect()
 }
 
 fn named_in(r#type: &Type) -> Vec<&str> {
@@ -255,6 +421,41 @@ fn reaches<'n>(start: &str, next: impl Fn(&str) -> Vec<&'n str>) -> bool {
         }
     }
     false
+}
+
+/// The first node found on a cycle, by depth-first search.
+fn first_cycle(next: &[Vec<usize>]) -> Option<usize> {
+    let mut state = vec![Visit::New; next.len()];
+    for root in 0..next.len() {
+        let mut stack = vec![(root, 0)];
+        while let Some(top) = stack.len().checked_sub(1) {
+            let (node, child) = stack[top];
+            if child == 0 && state[node] == Visit::Done {
+                stack.pop();
+                continue;
+            }
+            state[node] = Visit::Open;
+            let Some(&to) = next[node].get(child) else {
+                state[node] = Visit::Done;
+                stack.pop();
+                continue;
+            };
+            stack[top].1 += 1;
+            match state[to] {
+                Visit::Open => return Some(to),
+                Visit::New => stack.push((to, 0)),
+                Visit::Done => {}
+            }
+        }
+    }
+    None
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Visit {
+    New,
+    Open,
+    Done,
 }
 
 fn walk<'t>(r#type: &'t Type, visit: &mut dyn FnMut(&'t Type)) {

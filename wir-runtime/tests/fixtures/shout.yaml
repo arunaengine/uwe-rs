@@ -1,0 +1,63 @@
+# Greets the parameter `name`, then writes the greeting in capitals; its outputs are the line
+# and the file in capitals (tests/argo.rs).
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: greetings
+spec:
+  entrypoint: main
+  arguments:
+    parameters:
+    - name: name
+      value: ada
+    - name: greeting
+      value: hello
+  templates:
+  - name: main
+    steps:
+    - - name: greet
+        template: greet
+    - - name: shout
+        template: shout
+        arguments:
+          artifacts:
+          - name: text
+            from: "{{steps.greet.outputs.artifacts.text}}"
+    outputs:
+      parameters:
+      - name: line
+        valueFrom:
+          parameter: "{{steps.greet.outputs.parameters.line}}"
+      artifacts:
+      - name: loud
+        from: "{{steps.shout.outputs.artifacts.loud}}"
+  - name: greet
+    container:
+      image: debian:stable-slim
+      command: [sh, -c, "echo '{{workflow.parameters.greeting}} {{workflow.parameters.name}}' > /tmp/greeting.txt"]
+    outputs:
+      parameters:
+      - name: line
+        valueFrom:
+          path: /tmp/greeting.txt
+      artifacts:
+      - name: text
+        path: /tmp/greeting.txt
+        archive:
+          none: {}
+  - name: shout
+    inputs:
+      artifacts:
+      - name: text
+        path: /tmp/in.txt
+    container:
+      image: debian:stable-slim
+      command: [sh, -c, "tr a-z A-Z < /tmp/in.txt > /tmp/loud.txt"]
+    outputs:
+      artifacts:
+      - name: loud
+        path: /tmp/loud.txt
+        archive:
+          none: {}

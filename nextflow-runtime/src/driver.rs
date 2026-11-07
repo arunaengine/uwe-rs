@@ -404,6 +404,15 @@ impl Nextflow {
         }
         error(failure)
     }
+
+    /// What the entry workflow emitted so far, by emit name: a value channel gives its value,
+    /// a queue channel the array of its values. `None` before the run started.
+    pub fn emitted(&self) -> Result<Option<serde_json::Value>, DriverError> {
+        let Some(run) = &self.run else {
+            return Ok(None);
+        };
+        run.emitted().map(Some).map_err(DriverError::new)
+    }
 }
 
 /// The engine has run and delivered everything once the driver goes.
@@ -602,6 +611,12 @@ impl Driver for Nextflow {
 
     fn use_files(&mut self, files: Arc<dyn Files>) {
         self.files = Some(files);
+    }
+
+    /// What the entry workflow emitted, in a real run.
+    fn results(&self) -> Option<serde_json::Value> {
+        let emitted = (!self.launch.simulated).then(|| self.emitted().ok().flatten());
+        emitted.flatten()
     }
 
     /// The outputs of the `output { }` block of the main script, which it publishes into the

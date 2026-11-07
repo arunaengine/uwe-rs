@@ -169,6 +169,78 @@ fn rejects_graph_recursion() {
 }
 
 #[test]
+fn call_ports_match() {
+    let mut document = base();
+    let inner = document["graphs"][0].clone();
+    document["graphs"][0]["name"] = json!("inner");
+    let call = json!({"path": "run", "kind": {"call": {"graph": "inner"}},
+        "inputs": [{"name": "text", "type": "string"}],
+        "outputs": [{"name": "top", "type": {"file": {}}}]});
+    let outer = json!({"name": "main", "inputs": inner["inputs"], "outputs": inner["outputs"],
+    "ops": [call], "edges": [
+        edge((None, "text"), (Some("run"), "text")),
+        edge((Some("run"), "top"), (None, "top"))
+    ]});
+    document["graphs"]
+        .as_array_mut()
+        .expect("graphs")
+        .push(outer);
+    let found = problems(document);
+    let wanted = Problem::CallPort {
+        port: "input text".into(),
+        graph: "inner".into(),
+    };
+    assert!(
+        found
+            .iter()
+            .any(|e| e.at == "main/run" && e.problem == wanted),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn native_ports_typed() {
+    let mut document = base();
+    document["sources"] = json!([{"id": "flow", "language": "nextflow", "location": "main.nf"}]);
+    document["graphs"][0]["ops"][1]["kind"] =
+        json!({"native": {"source": "flow", "language": "cwl"}});
+    document["graphs"][0]["ops"][1]["outputs"][0]["type"] = json!("dynamic");
+    let found: Vec<Problem> = problems(document).into_iter().map(|e| e.problem).collect();
+    assert!(
+        found.contains(&Problem::Untyped("port out".into())),
+        "{found:?}"
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| matches!(p, Problem::Language { named, .. } if named == "flow"))
+    );
+}
+
+#[test]
+fn task_outputs_captured() {
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["kind"]["task"]["captures"] = json!([]);
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::Capture("out".into()))
+    );
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["outputs"][0]["type"] = json!("int");
+    document["graphs"][0]["outputs"][0]["type"] = json!("int");
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::CaptureType("out".into()))
+    );
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["kind"]["task"]["command"] = json!([{"input": "other"}]);
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::NoPort("input other".into()))
+    );
+}
+
+#[test]
 fn rejects_recursive_types() {
     let mut document = base();
     document["types"] = json!([{"name": "Tree", "type": {"array": {"items": {"named": "Tree"}}}}]);

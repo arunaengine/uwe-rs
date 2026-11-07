@@ -34,11 +34,27 @@ An attempt is accepted only when its exit code is in `success_codes` (only 0 whe
 
 ## Native blocks
 
-A `native` op runs a whole document of another language with the driver that uwe has for that language. This version runs CWL blocks. The op's inputs become the job of the CWL run, by port name, and the CWL output object becomes the op's outputs, by port name; each output must fit its port type, or the op fails. The block keeps its own rules: its tasks, cache keys, resume fingerprints, acceptance, retries, timers and deliveries are those of the same CWL document run alone. Its tasks keep their step names, so `-no-cache-steps echo` works as it does for the CWL document, and their names start with the op path, like `block: echo`.
+A `native` op runs a whole document of another language with the driver that uwe has for that language. This version runs CWL and Nextflow blocks. The op's inputs become the job of the CWL run, by port name, and the CWL output object becomes the op's outputs, by port name; each output must fit its port type, or the op fails. The block keeps its own rules: its tasks, cache keys, resume fingerprints, acceptance, retries, timers and deliveries are those of the same CWL document run alone. Its tasks keep their step names, so `-no-cache-steps echo` works as it does for the CWL document, and their names start with the op path, like `block: echo`.
 
 The `source` location of a block is relative to the wir document, or a URL. `entry` names the process of a packed CWL document, like `main`. A block delivers its output files to a folder of its own, the op path below the output folder of the run (`-output-dir`, else the current folder), so two blocks do not overwrite each other's files. The job file of a block is written below the scratch folder of uwe. No block changes the working directory of the process.
 
 The `cache: never` attribute of a block turns off cached results for its tasks. It only makes reuse stricter: a CWL `WorkReuse` with `enableReuse: false` stays as it is.
+
+## Nextflow blocks
+
+A Nextflow block runs a Nextflow script, or the main script of a project folder, as `uwe run` runs it alone. `entry` is the workflow of `-entry`; without it the unnamed workflow runs. `profiles` are the profiles of `-profile`, and `configs` name sources whose files are read like `-c` files, in order. Its tasks, cache keys and resume fingerprints are those of the same run alone, launched in the same folder.
+
+Params: each op input becomes the param of its name, written to a params file like `-params-file`. A File or a Directory becomes its path, arrays and records keep their shape with paths for their files, and a null input stays out, so the default of the pipeline holds. The pipeline checks the params as it does alone.
+
+Launch folder: a block runs as if it was launched in its own folder, the op path below the output folder of the run (`-output-dir`, else the current folder). Relative paths start there: `file()` and `publishDir` paths, `params.outdir`, the `nextflow.config` of the launch folder and `launchDir`. So `publishDir "${params.outdir}/fastqc"` with `outdir` set to `results` publishes to `<output folder>/<op path>/results/fastqc`. Its own files, like operator files and reports, go to a scratch folder of the block. Two blocks of one run never share a folder, and no block changes the working directory of the process.
+
+Results: when the block has finished, each op output takes its value by its name:
+
+1. An emit of the entry workflow with the output's name. A value channel gives its value, or null when it closed empty, and a queue channel the array of all its values, in the order they came, which can follow the order in which tasks finished. A path becomes a File, or a Directory where the output type wants one there. Numbers, strings, booleans, lists and maps keep their JSON form; a value that JSON cannot hold, like a closure, fails the op.
+2. Else the files that the block published below the folder that the op input of the same name names, like `outdir`, from the launch folder: a Directory output gets that folder, an array of Files every file published below it, sorted by path, and a File output the one file published there. An optional output is null when nothing was published; otherwise publishing nothing, or several files for a File, fails the op.
+3. Else the op fails with a message that the output is neither an emit nor the folder of an input.
+
+The value must then fit the output type, or the op fails. Nextflow emits have no types, so an output that takes any value has the type `dynamic`; wir allows `dynamic` only on the outputs of Nextflow blocks. In a simulated run the files of emits are made up, and the published files are the targets of the publish rules, which nothing writes.
 
 ## Outputs
 
@@ -50,6 +66,8 @@ The run database records a wir run with the language `wir`, and its run crate na
 
 ## Not yet
 
-- Native blocks of Nextflow, Snakemake, Argo and WDL.
+- Native blocks of Snakemake, Argo and WDL.
+- Workflow outputs of the `output { }` block of Nextflow as op outputs by their names; their files count as published files below their folder.
+- A remote output folder for Nextflow blocks, and the launch folder in `${launchDir}` of include paths and in relative `conda` files, which still start from the working directory.
 - The attributes `place` of every op and `retry` and `time` of native ops; `cache: resume`.
 - Input descriptions for `uwe inputs` and strict admission of embedded runs, and a record of the document's sources and version in the run crate.

@@ -821,3 +821,44 @@ uwe sets `uwe-attempt`, `uwe-submission` and the `idempotency_tag` itself. A tag
 ## Read-only TES inputs
 
 Some TES servers stage input files as read-only and owned by another user, and run the task as a user without rights to change them. uwe makes executable inputs and the helper executable with `chmod +x`. When `chmod` fails, uwe copies the file next to itself, makes the copy executable and moves it over the original. This needs a folder the task user may write to. If the copy fails too, the task stops with an error, as before. When `chmod` works, nothing changes.
+
+## Trying the executors on one machine
+
+Two scripts run real workflows with the Kubernetes and SLURM executors on one Linux machine with Docker. Both need the static binary of `just release-binary` and network access for nf-core/demo and its images. They remove their cluster, containers and folders after the run; `KEEP_CLUSTER=1` keeps them.
+
+```sh
+just kind-workflows-test    # a kind cluster, with shared-path and object-store staging
+just slurm-test             # a one-node SLURM cluster in a container, with container = "docker"
+```
+
+`just kind-workflows-test` runs `scripts/kind-staging.sh` with `MODES="shared-path self"` and `WORKFLOWS="cwl nf-core-demo"`. It needs Docker, kind and kubectl. The kind node mounts a temporary folder at the same path (`extraMounts`), which holds the cache of uwe for `shared-path`. For `object-store`, an S3 server (rustfs) runs on the network of kind, and the pods download the uploaded uwe binary from it. `KIND_CLUSTER` names the cluster, and `WORKFLOWS` also takes `hello`, the Snakemake demo.
+
+`just slurm-test` runs `scripts/slurm/run-workflows.sh`. It builds `scripts/slurm/Dockerfile`, Debian with slurmctld, slurmd, munge and the Docker client, as one node of 8 CPUs and 16000 MB. The container gets the Docker socket of this machine and a data folder at the same path inside and outside. The script copies the static uwe into the container and runs it there as the user of this machine, with this config:
+
+```toml
+[executor.slurm]
+container = "docker"
+```
+
+The jobs start the task containers on the Docker engine of this machine, which sees the files of the jobs at the same paths, as `shared-path` needs. The container needs no systemd or cgroups (`CgroupPlugin=disabled`, `proctrack/linuxproc`). It has no accounting, so uwe follows the jobs with `squeue` alone. `WORK` names the data folder and `WORKFLOWS` picks some of `cwl` and `nf-core-demo`.
+
+CWL tools run without network unless they ask for `NetworkAccess`. Docker and Podman cut them off the network, locally and on SLURM. The Kubernetes executor cannot, so it refuses them, until `[network]` of the config file lets their steps use the network, as `scripts/kind-staging.sh` does:
+
+```toml
+[network]
+allowed_steps = ["*"]
+```
+
+On 2026-11-07, uwe at commit 5620be97 ran these on Linux x86_64 with Docker 29.9.3, kind with `kindest/node:v1.34.0`, and Slurm 24.11.5 of Debian 13. The local runs used Docker; Podman was not tested.
+
+| Where | Workflow | Tasks | Time |
+| --- | --- | --- | --- |
+| Local | `uwe run demo/cwl/scatter-workflow.cwl demo/cwl/scatter-job.yml -default-image debian:stable-slim` | 4 | 1 s |
+| Local | `uwe run nf-core/demo -r 32893afef8076a03a2767a020b3f0cab2e0b40b2 -profile test,docker --outdir results` | 8 | 21 s |
+| Local | `uwe run demo/snakemake/hello.smk` | 6 | 2 s |
+| Local | `uwe run two-tools.json -inputs inputs.json` (`wir/examples/two-tools.json`, inputs as in `uwe/tests/wir.rs`) | 2 | 1 s |
+| kind, `shared-path` | Snakemake demo, CWL demo, nf-core/demo | 6, 4, 8 | 16 s, 11 s, 128 s |
+| kind, `object-store` | Snakemake demo, CWL demo, nf-core/demo | 6, 4, 8 | 34 s, 13 s, 37 s |
+| SLURM, `container = "docker"` | CWL demo, nf-core/demo | 4, 8 | 6 s, 45 s |
+
+The times include image pulls that were not cached yet. The wir inputs are `{"text": {"class": "File", "location": "text.txt", "format": "http://edamontology.org/format_2330"}, "lines": 2}`, with a few lines of text in `text.txt`.

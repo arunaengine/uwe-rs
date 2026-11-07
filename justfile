@@ -48,6 +48,16 @@ helper-image tag="uwe-helper:dev": release-binary
 kind-staging-test: release-binary
 	bash scripts/kind-staging.sh
 
+# Runs the CWL demo and nf-core/demo on a kind cluster with shared paths and with object-store
+# staging of the uploaded binary.
+kind-workflows-test: release-binary
+	MODES="shared-path self" WORKFLOWS="cwl nf-core-demo" bash scripts/kind-staging.sh
+
+# Runs the CWL demo and nf-core/demo with the SLURM executor on a one-node SLURM cluster in a
+# container, whose jobs start the tasks on the Docker engine of this machine.
+slurm-test: release-binary
+	bash scripts/slurm/run-workflows.sh
+
 # Runs four demos and checks failure, resume, cancellation and simulation with local Docker.
 container-runs:
 	nice -n 19 cargo build --offline --locked -p uwe -j 8

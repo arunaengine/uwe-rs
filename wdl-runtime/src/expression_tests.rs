@@ -104,6 +104,35 @@ fn fills_placeholders() {
 }
 
 #[test]
+fn reads_files() {
+    let mut env = Fixed::default();
+    env.files.insert("lines.txt".into(), "x\ny\n".into());
+    env.files.insert("count.txt".into(), " 42\n".into());
+    assert_eq!(text("basename(\"/a/b/c.txt\", \".txt\")", &mut env), "c");
+    assert_eq!(text("sub(\"a-b-c\", \"-\", \"_\")", &mut env), "a_b_c");
+    assert_eq!(
+        text("sub(\"ab\", \"(a)(b)\", \"\\\\2\\\\1$\")", &mut env),
+        "ba$"
+    );
+    assert_eq!(
+        value("read_int(\"count.txt\")", &mut env),
+        Ok(Value::Int(42))
+    );
+    let lines = value("read_lines(\"lines.txt\")", &mut env);
+    assert_eq!(
+        lines,
+        Ok(Value::Array(vec![
+            Value::String("x".into()),
+            Value::String("y".into())
+        ]))
+    );
+    assert!(matches!(
+        value("read_objects(\"x\")", &mut env),
+        Err(Error::Unsupported(_))
+    ));
+}
+
+#[test]
 fn lists_referenced_names() {
     let names = super::names(&parse("a + b.out[c] + length(d)"));
     let expected: Vec<&str> = vec!["a", "b", "c", "d"];

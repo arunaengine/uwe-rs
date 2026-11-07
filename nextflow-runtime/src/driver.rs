@@ -565,23 +565,19 @@ impl Driver for Nextflow {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
         })?;
         let mut outcome = outcome;
-        if let Some(reports) = &mut self.reports {
-            // A task that ended well keeps its streams in the store; observers read them.
-            if reports.observed()
-                && outcome.stderr.is_empty()
-                && let Some(log) = &outcome.stderr_log
-            {
-                outcome.stderr = stdout_text(self.files.as_deref(), log).unwrap_or_default();
+        // The observers hear how the attempt ended once its outputs were checked, with whole
+        // streams from the store: the outcome of a failed task keeps only their end.
+        let heard = self.reports.as_ref().map(|reports| {
+            let mut heard = outcome.clone();
+            let whole = |log: &Option<workflow_graph::Stream>| {
+                (log.as_ref()).and_then(|log| stdout_text(self.files.as_deref(), log).ok())
+            };
+            if reports.observed() {
+                heard.stderr = whole(&heard.stderr_log).unwrap_or(heard.stderr);
+                heard.stdout = whole(&heard.stdout_log).unwrap_or(heard.stdout);
             }
-            if reports.observed()
-                && outcome.stdout.is_empty()
-                && let Some(log) = &outcome.stdout_log
-            {
-                outcome.stdout = stdout_text(self.files.as_deref(), log).unwrap_or_default();
-            }
-        }
-        // The observers hear how the attempt ended once its outputs were checked.
-        let heard = self.reports.is_some().then(|| outcome.clone());
+            heard
+        });
         let outcome = match &request.made {
             _ if request.agent.is_some() => self.calls.outcome(&request),
             // An `exec:` section ran when the task was asked for; its files are its outputs.

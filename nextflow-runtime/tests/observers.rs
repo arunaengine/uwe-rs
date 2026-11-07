@@ -664,3 +664,56 @@ fn hears_missing_outputs() {
     assert_eq!(ended.len(), 1, "{ended:?}");
     assert!(ended[0].starts_with("failed"), "{ended:?}");
 }
+
+/// Fails every task, with only the end of its error stream in the outcome and the whole
+/// stream in its log, as executors keep the streams of a failed task.
+struct Tailed(PathBuf);
+
+impl Executor for Tailed {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let file = self.0.join("stderr");
+        std::fs::write(&file, "first\nlast\n").expect("writes the log");
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            exit_code: 1,
+            stderr: "last\n".into(),
+            stderr_log: Some(Stream {
+                location: file.to_string_lossy().into_owned(),
+                size: 11,
+                digest: String::new(),
+            }),
+            ..Outcome::default()
+        }))
+    }
+
+    fn files(&self) -> Option<Arc<dyn Files>> {
+        Some(Arc::new(Kept))
+    }
+}
+
+/// Observers hear the whole error stream of a failed task.
+#[test]
+fn hears_failed_streams() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(directory.path().join("main.nf"), OUTPUTS).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: Arc::default(),
+    }));
+    let mut executor = Tailed(directory.path().to_owned());
+    let execution = Engine::new(&mut executor).run("main.nf", &mut driver);
+    assert!(execution.error.is_some(), "the task fails");
+    let events = events.borrow();
+    let failed = (events.iter()).find_map(|event| match event {
+        Event::TaskFailed(task) => Some(task),
+        _ => None,
+    });
+    assert_eq!(failed.expect("MAKE fails").stderr, "first\nlast\n");
+}

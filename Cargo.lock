@@ -7870,9 +7870,11 @@ dependencies = [
 name = "wir-runtime"
 version = "0.1.0"
 dependencies = [
+ "cwl-runtime",
  "input-schema",
  "serde_json",
  "tracing",
+ "wir",
  "workflow-graph",
 ]
 

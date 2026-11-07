@@ -1,10 +1,11 @@
-//! Lowers CWL tools into wir, and keeps tools with unknown requirements native.
+//! Lowers CWL tools into wir task ops, and keeps tools with unknown requirements native.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
 
-use cwl_lowering::{Lowering, lower};
+use cwl_lowering::{Kept, Lowering, lower};
+use serde_json::{Value as Json, json};
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -14,6 +15,76 @@ fn lowered(name: &str) -> Lowering {
     let path = fixtures().join(name);
     let document = cwl_parser::load_file(&path, Default::default()).unwrap();
     lower(&document, &fixtures()).unwrap()
+}
+
+/// The only op of the entry graph, as JSON.
+fn only_op(lowering: &Lowering) -> Json {
+    let graph = &lowering.document.graphs[0];
+    assert_eq!(graph.ops.len(), 1, "one op: {graph:?}");
+    serde_json::to_value(&graph.ops[0]).unwrap()
+}
+
+#[test]
+fn lowers_plain_tools() {
+    let lowering = lowered("echo.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let op = only_op(&lowering);
+    let task = json!({
+        "image": "debian:stable-slim",
+        "command": ["echo", "-n", {"input": "message"}, {"input": "words"}],
+        "captures": [{"output": "out", "from": "stdout"}],
+        "stdout": "out.txt"
+    });
+    assert_eq!(op["path"], "echo");
+    assert_eq!(op["kind"]["task"], task);
+    let inputs = json!([
+        {"name": "message", "type": "string"},
+        {"name": "unused", "type": {"optional": "int"}},
+        {"name": "words", "type": {"optional": {"array": {"items": "string"}}}}
+    ]);
+    assert_eq!(op["inputs"], inputs);
+    assert_eq!(op["origin"], json!({"source": "echo"}));
+    let source = &lowering.document.sources[0];
+    assert_eq!(
+        (source.location.as_str(), source.version.as_deref()),
+        ("echo.cwl", Some("v1.2"))
+    );
+}
+
+#[test]
+fn captures_stream_files() {
+    let op = only_op(&lowered("count.cwl"));
+    let task = &op["kind"]["task"];
+    assert_eq!(task["image"], "docker.io/library/debian:12-slim");
+    assert_eq!(task["command"], json!(["wc", "-l", {"input": "text"}]));
+    assert_eq!(task["stdout"], "count.txt");
+    let captures = json!([{"output": "count", "from": "stdout"}]);
+    assert_eq!(
+        task["captures"], captures,
+        "the glob of the stdout file reads the stream"
+    );
+    let resources = json!({"cpus": 2, "memory": 67_108_864});
+    assert_eq!(op["attributes"], json!({"resources": resources}));
+}
+
+#[test]
+fn keeps_expressions_native() {
+    let lowering = lowered("split.cwl");
+    let reason = "output parts: an expression in a glob";
+    assert_eq!(
+        lowering.kept,
+        [Kept {
+            path: "split".into(),
+            reason: reason.into()
+        }]
+    );
+    let op = only_op(&lowering);
+    let native = json!({"source": "split", "language": "cwl"});
+    assert_eq!(op["kind"]["native"], native);
+    assert_eq!(
+        op["outputs"][0]["type"],
+        json!({"array": {"items": {"file": {}}}})
+    );
 }
 
 #[test]

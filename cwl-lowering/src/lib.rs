@@ -4,14 +4,17 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod requirements;
+mod tool;
 mod types;
 
 use std::path::{Path, PathBuf};
 
-use cwl_parser::model::{Process, Requirement, RequirementClass, short_name};
+use cwl_parser::model::{Class, Process, Requirement, RequirementClass, short_name};
 use wir::{
     Document, Edge, Endpoint, Flow, Graph, Kind, Language, Native, Op, Origin, Port, Source, Type,
 };
+
+pub use tool::DEFAULT_IMAGE;
 
 /// A lowered document, and the parts of it that stay native CWL ops.
 #[derive(Clone, Debug)]
@@ -120,19 +123,24 @@ impl Lowerer {
             source: source.clone(),
             at: entry.clone(),
         });
-        // Until tools lower, a process stays native for its first unknown requirement.
-        let mut probe = wir::Task {
-            image: None,
-            command: Vec::new(),
-            captures: Vec::new(),
-            success_codes: Vec::new(),
-            network: false,
-            stdout: None,
-            stderr: None,
+        let lowered = match &process.class {
+            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope),
+            _ => Err("this process class has no lowering yet".into()),
         };
-        let reason = match requirements::apply(&scope, &mut probe) {
+        let reason = match lowered {
+            Ok(lowered) => {
+                return Ok(Op {
+                    path: path.to_owned(),
+                    kind: Kind::Task(lowered.task),
+                    inputs: lowered.inputs,
+                    outputs: lowered.outputs,
+                    after: Vec::new(),
+                    effects: Vec::new(),
+                    attributes: lowered.attributes,
+                    origin,
+                });
+            }
             Err(reason) => reason,
-            Ok(_) => "this process class has no lowering yet".to_owned(),
         };
         if entry.as_deref().is_some_and(|entry| entry.contains('/')) {
             return Err(format!(

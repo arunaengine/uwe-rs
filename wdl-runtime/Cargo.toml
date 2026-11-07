@@ -1,0 +1,20 @@
+# Manifest of wdl-runtime, which runs WDL documents as a driver of the execution graph.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "wdl-runtime"
+description = "Values, expressions, the standard library, tasks, calls, scatter and conditionals for WDL, as a workflow-graph driver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+indexmap.workspace = true
+serde_json.workspace = true
+# Parsing, imports and type checking of WDL by the Sprocket project. Its engine crate keeps
+# expression evaluation private and always builds its own task backends, so uwe evaluates.
+wdl-analysis = "0.28.0"
+wdl-ast = "0.27.2"

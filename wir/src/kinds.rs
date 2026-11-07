@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
-use crate::op::{Argument, CaptureRule, Kind, Map, Native, Op, Scatter, Task};
+use crate::op::{Argument, Branch, CaptureRule, Kind, Map, Native, Op, Scatter, Task};
 use crate::types::{ArrayType, Type, TypeDef, resolve};
 
 impl<'d> Checker<'d> {
@@ -26,7 +26,7 @@ impl<'d> Checker<'d> {
                     self.report(at, Problem::Later(feature, "0.4".into()));
                 }
             }
-            Kind::Branch(branch) => self.inputs(at, op, [&branch.condition]),
+            Kind::Branch(branch) => self.branch(at, op, branch),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
             _ => {}
         }
@@ -118,9 +118,6 @@ impl<'d> Checker<'d> {
         if map.over.is_empty() {
             self.report(at, Problem::Empty("over".into()));
         }
-        if matches!(self.document.wir_version.as_str(), "0.1" | "0.2" | "0.3") {
-            self.report(at, Problem::Later("a map".into(), "0.4".into()));
-        }
         let Some(body) = self.graph(&map.body) else {
             return;
         };
@@ -169,6 +166,69 @@ impl<'d> Checker<'d> {
                 if !fits || !flows {
                     let port = format!("{side} {port}");
                     let graph = map.body.clone();
+                    self.report(at, Problem::CallPort { port, graph });
+                }
+            }
+        }
+    }
+
+    /// The condition is a bool input, the body has the other inputs, and each output takes
+    /// the body's output or null.
+    fn branch(&mut self, at: &str, op: &Op, branch: &Branch) {
+        self.inputs(at, op, [&branch.condition]);
+        let condition = op.inputs.iter().find(|port| port.name == branch.condition);
+        if let Some(port) =
+            condition.filter(|port| resolve(&port.r#type, self.defs) != Some(&Type::Bool))
+        {
+            let (found, want) = (show(&port.r#type), "\"bool\"".to_owned());
+            let port = format!("input {}", port.name);
+            self.report(at, Problem::Mismatch { port, found, want });
+        }
+        let Some(body) = self.graph(&branch.body) else {
+            return;
+        };
+        let inputs = op
+            .inputs
+            .iter()
+            .filter(|port| port.name != branch.condition);
+        let sides = [
+            (
+                "input",
+                inputs.collect::<Vec<_>>(),
+                body.inputs.iter().collect::<Vec<_>>(),
+            ),
+            (
+                "output",
+                op.outputs.iter().collect(),
+                body.outputs.iter().collect(),
+            ),
+        ];
+        for (side, ours, theirs) in sides {
+            let names: BTreeSet<&str> = ours
+                .iter()
+                .chain(&theirs)
+                .map(|p| p.name.as_str())
+                .collect();
+            for port in names {
+                let mine = ours.iter().find(|item| item.name == port);
+                let other = theirs.iter().find(|item| item.name == port);
+                let fits = match (side, mine, other) {
+                    ("input", Some(mine), Some(other)) => {
+                        other.r#type.accepts(&mine.r#type, self.defs)
+                    }
+                    (_, Some(mine), Some(other)) => {
+                        let made = Type::Optional(Box::new(other.r#type.clone()));
+                        mine.r#type.accepts(&made, self.defs)
+                    }
+                    _ => false,
+                };
+                let flows = [mine, other]
+                    .iter()
+                    .flatten()
+                    .all(|item| item.flow.is_value());
+                if !fits || !flows {
+                    let port = format!("{side} {port}");
+                    let graph = branch.body.clone();
                     self.report(at, Problem::CallPort { port, graph });
                 }
             }

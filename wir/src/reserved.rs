@@ -66,15 +66,6 @@ pub struct Join {
     pub fail_on_duplicate: bool,
 }
 
-/// Runs `body` only when the bool input `condition` is true; outputs are optional. Open: a
-/// skipped status against null outputs, and CWL `when` with scatter.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Branch {
-    pub body: String,
-    pub condition: String,
-}
-
 /// Picks among optional inputs, like CWL `pickValue`. Open: the error when nothing is set.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

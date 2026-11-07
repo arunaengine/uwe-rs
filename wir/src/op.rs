@@ -32,7 +32,8 @@ pub struct Op {
     pub origin: Option<Origin>,
 }
 
-/// What an op does, with the fields of its kind. `task`, `call`, `native`, `map` and `expr` have
+/// What an op does, with the fields of its kind. `task`, `call`, `native`, `map`, `expr` and
+/// `branch` have
 /// defined semantics in this version; the others are reserved, see [`reserved`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -50,7 +51,7 @@ pub enum Kind {
     Cross(reserved::Cross),
     Group(reserved::Group),
     Join(reserved::Join),
-    Branch(reserved::Branch),
+    Branch(Branch),
     Select(reserved::Select),
     Loop(reserved::Loop),
     Dynamic(reserved::Dynamic),
@@ -62,7 +63,12 @@ impl Kind {
     pub fn is_reserved(&self) -> bool {
         !matches!(
             self,
-            Kind::Task(_) | Kind::Call(_) | Kind::Native(_) | Kind::Map(_) | Kind::Expr(_)
+            Kind::Task(_)
+                | Kind::Call(_)
+                | Kind::Native(_)
+                | Kind::Map(_)
+                | Kind::Expr(_)
+                | Kind::Branch(_)
         )
     }
 }
@@ -139,6 +145,15 @@ pub struct Expr {
     /// Code that runs before it, like CWL `expressionLib`. Since wir 0.4.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<String>,
+}
+
+/// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the
+/// op ends skipped with every output null. Since wir 0.4.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Branch {
+    pub body: String,
+    pub condition: String,
 }
 
 /// Runs the `body` graph once per round: each round takes items of the array inputs in `over`

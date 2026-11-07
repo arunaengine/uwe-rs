@@ -176,6 +176,30 @@ fn prefers_given_secrets() {
 }
 
 #[test]
+fn limits_environment_names() {
+    // Cargo sets both variables for the tests; only PATH is on the list of the host.
+    assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
+    let mut secrets = SecretValues::default();
+    secrets.insert("UWE_TEST_GIVEN_TOKEN", "given").unwrap();
+    secrets.limit_environment(["PATH".to_owned()]);
+    assert!(secrets.variable("PATH") == std::env::var("PATH").ok());
+    assert!(secrets.get("CARGO_MANIFEST_DIR").is_none());
+    assert!(secrets.variable("CARGO_MANIFEST_DIR").is_none());
+    let names: Vec<String> = (secrets.environment().into_iter())
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(names, ["PATH", "UWE_TEST_GIVEN_TOKEN"]);
+    let text = "[web]\ntoken = { environment = \"CARGO_MANIFEST_DIR\" }\n";
+    let config = parse(text).unwrap().with_secrets(secrets);
+    let web = config.section("web").unwrap().unwrap();
+    let error = web.secret("token").unwrap().expect("a reference").reveal();
+    assert_eq!(
+        error.expect_err("not on the list").to_string(),
+        "/site/config.toml:2: the host gave no value for the secret CARGO_MANIFEST_DIR"
+    );
+}
+
+#[test]
 fn refuses_invalid_secrets() {
     let mut secrets = SecretValues::default();
     for (name, value, reason) in [

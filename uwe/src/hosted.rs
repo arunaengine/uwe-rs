@@ -123,6 +123,19 @@ impl Hosted {
     }
 }
 
+/// What workflow code may reach while uwe interprets it, for a host that runs the workflows of
+/// many users in one process. `Default` reaches nothing of the service user.
+#[derive(Clone, Debug, Default)]
+pub struct Isolation {
+    /// The variables of the process environment that a run may read besides its secret
+    /// values, like `PATH`.
+    pub variables: BTreeSet<String>,
+    /// Reads the Nextflow secret store of the service user, as `NXF_SECRETS_FILE` names it.
+    pub secret_store: bool,
+    /// Reads the Docker and Podman registry credentials of the service user.
+    pub registry_files: bool,
+}
+
 fn failed(path: &Path, error: std::io::Error) -> Failure {
     Failure::setup(format!(
         "cannot check hosted path {}: {error}",

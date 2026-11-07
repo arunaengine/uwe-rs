@@ -142,7 +142,9 @@ fn copy_tree(source: &Path, target: &Path, skip: &Path) -> std::io::Result<()> {
 /// spaces a level, blank lines around the blocks of the top level.
 fn config_text(config: &Value) -> String {
     let mut text = String::new();
-    let Some(entries) = config.as_object() else {
+    let mut sorted = config.clone();
+    sorted.sort_all_objects();
+    let Some(entries) = sorted.as_object() else {
         return text;
     };
     let mut last_block = false;

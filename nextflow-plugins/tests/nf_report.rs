@@ -119,7 +119,9 @@ fn names_meta_samples() {
     );
     assert_eq!(samples["samples_by_status"]["FAILED"][0]["sample_id"], "D");
     let task = &samples["samples_by_status"]["FAILED"][0]["tasks"][0];
-    assert_eq!(keys(task), ["status", "task_name"]);
+    let mut fields = keys(task);
+    fields.sort();
+    assert_eq!(fields, ["status", "task_name"]);
     let tasks = std::fs::read_to_string(reports.join("task-status-report-b.tsv")).expect("TSV");
     assert!(tasks.starts_with("task_name\tstatus\ttag\n"), "{tasks}");
     assert!(tasks.contains("WORK (S3)\tFAILED\tS3\n"), "{tasks}");

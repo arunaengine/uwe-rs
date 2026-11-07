@@ -436,7 +436,9 @@ pub(crate) fn errors(
     let mut errors: Vec<(String, String, String)> = Vec::new();
     // Missing fields by the value and the `required` keyword that asks for them.
     let mut missing: Vec<(String, String, Vec<String>, String)> = Vec::new();
-    for error in validator.iter_errors(instance) {
+    let mut sorted = instance.clone();
+    sorted.sort_all_objects();
+    for error in validator.iter_errors(&sorted) {
         let path = error.instance_path().to_string();
         let location = error.evaluation_path().to_string();
         let added = note(&error.schema_path().to_string()).unwrap_or_default();

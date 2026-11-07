@@ -42,6 +42,43 @@ pub struct Settings {
     pub wdl: wdl_runtime::Options,
     /// Whether a real run prints the outputs of its graph, as JSON.
     pub print: bool,
+    /// How the run fetches the repository of a source with a `git:` digest.
+    pub repositories: Repositories,
+}
+
+/// Fetches a repository at a commit and gives the folder of its checkout.
+type Fetching = dyn Fn(&str, &str) -> Result<PathBuf, DriverError> + Send + Sync;
+
+/// How a run fetches the repository at the address of a source whose digest names a commit,
+/// like `git:<commit>`. By default it cannot.
+#[derive(Clone, Default)]
+pub struct Repositories {
+    fetch: Option<Arc<Fetching>>,
+}
+
+impl Repositories {
+    pub fn new(
+        fetch: impl Fn(&str, &str) -> Result<PathBuf, DriverError> + Send + Sync + 'static,
+    ) -> Repositories {
+        Repositories {
+            fetch: Some(Arc::new(fetch)),
+        }
+    }
+
+    fn fetch(&self, location: &str, commit: &str) -> Result<PathBuf, DriverError> {
+        match &self.fetch {
+            Some(fetch) => fetch(location, commit),
+            None => Err(DriverError::new(format!(
+                "{location}: this run cannot fetch repositories"
+            ))),
+        }
+    }
+}
+
+impl std::fmt::Debug for Repositories {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Repositories { .. }")
+    }
 }
 
 impl Default for Settings {
@@ -53,6 +90,7 @@ impl Default for Settings {
             snakemake: snakemake::Options::default(),
             wdl: wdl_runtime::Options::default(),
             print: true,
+            repositories: Repositories::default(),
         }
     }
 }
@@ -365,14 +403,17 @@ impl WirDriver {
         }
     }
 
-    /// Where the document source `id` is: a URL, or a path from the folder of the document.
+    /// Where the document source `id` is: the checkout of a repository at the commit of a
+    /// `git:` digest, a URL, or a path from the folder of the document.
     fn locate(&self, id: &str) -> Result<PathBuf, DriverError> {
         let source = (self.document.sources.iter())
             .find(|source| source.id == id)
             .ok_or_else(|| DriverError::new(format!("no source {id}")))?;
-        Ok(match source.location.contains("://") {
-            true => PathBuf::from(&source.location),
-            false => self.base.join(&source.location),
+        let commit = (source.digest.as_deref()).and_then(|digest| digest.strip_prefix("git:"));
+        Ok(match (source.location.contains("://"), commit) {
+            (true, Some(commit)) => self.settings.repositories.fetch(&source.location, commit)?,
+            (true, None) => PathBuf::from(&source.location),
+            (false, _) => self.base.join(&source.location),
         })
     }
 

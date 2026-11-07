@@ -111,6 +111,14 @@ pub(crate) fn driver(
                 },
                 wdl: wdl_options(arguments),
                 print: !arguments.no_print,
+                repositories: {
+                    // A block fetches its repository as `uwe run <address> -r <commit>` does.
+                    let arguments = arguments.clone();
+                    wir_runtime::Repositories::new(move |location, commit| {
+                        repository::prepare(Path::new(location), Some(commit), false, &arguments)
+                            .map_err(|failure| DriverError::new(failure.message))
+                    })
+                },
             };
             let downloads = cache_directory().join("downloads");
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))

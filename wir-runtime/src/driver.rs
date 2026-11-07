@@ -641,7 +641,7 @@ impl Driver for WirDriver {
 
 /// Delivers the files and folders of a result value that are not in the output folder yet,
 /// like those of task ops, to `root` by their basenames, and names them there. `places` holds
-/// the source path of each place in `root`; two sources for one place fail before any delivery.
+/// the source path of each place in `root`; a later source of a taken name gets `<name>-<n>/`.
 fn deliver(
     value: &mut Json,
     root: &Path,
@@ -670,10 +670,16 @@ fn deliver(
                     .or_else(|| location.rsplit('/').next())
                     .unwrap_or("output");
                 let inside = local.starts_with(root);
-                let place = match inside {
+                let mut place = match inside {
                     true => local.clone(),
                     false => root.join(name),
                 };
+                // As the CWL driver does, a later file of a taken name goes to a numbered folder.
+                let mut number = 2;
+                while !inside && places.get(&place).is_some_and(|other| *other != local) {
+                    place = root.join(format!("{name}-{number}")).join(name);
+                    number += 1;
+                }
                 if let Some(other) = places.insert(place.clone(), local.clone())
                     && other != local
                 {

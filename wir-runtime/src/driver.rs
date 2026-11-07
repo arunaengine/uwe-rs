@@ -21,7 +21,7 @@ use crate::child::Child;
 use crate::cwl;
 use crate::inputs;
 use crate::nextflow;
-use crate::plan::plan;
+use crate::plan::{self, plan};
 use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
@@ -207,11 +207,33 @@ impl WirDriver {
             Kind::Task(spec) => {
                 self.last += 1;
                 let node = self.progress.node(at);
-                let task = task::build(TaskId(self.last), &node.path, &node.op, &spec, &bound);
+                let names = (node.path.as_str(), node.step.as_str());
+                let task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
                 self.tasks.insert(task.id, (at, task.clone()));
                 Ok(vec![task])
             }
             Kind::Call(_) => Ok(Vec::new()),
+            Kind::Map(map) => {
+                let path = self.progress.node(at).path.clone();
+                if map.parallelism.is_some() || map.min_success.is_some() {
+                    let message = format!("op {path}: parallelism and min_success are reserved");
+                    return Err(DriverError::unsupported(message));
+                }
+                match plan::items(&map, &bound) {
+                    Ok(rounds) => {
+                        let start = self.progress.plan.nodes.len();
+                        let nodes = &mut self.progress.plan.nodes;
+                        plan::rounds(&self.document, nodes, at, &map.body, rounds.items)?;
+                        self.progress.plan.nodes[at].shape = rounds.shape;
+                        self.progress.adopt(start);
+                    }
+                    Err(why) => {
+                        let message = Some(format!("op {path}: {why}"));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
             _ => {
                 let path = &self.progress.node(at).path;
                 Err(DriverError::unsupported(format!(

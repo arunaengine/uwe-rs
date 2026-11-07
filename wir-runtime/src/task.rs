@@ -13,7 +13,13 @@ pub const WORKDIR: &str = "/work";
 
 /// The task of a task op with its input values. Inputs are staged below `inputs/<port>`,
 /// and the attributes only set what no cache key covers.
-pub fn build(id: TaskId, path: &str, op: &Op, spec: &wir::Task, bound: &Map<String, Json>) -> Task {
+pub fn build(
+    id: TaskId,
+    (path, step): (&str, &str),
+    op: &Op,
+    spec: &wir::Task,
+    bound: &Map<String, Json>,
+) -> Task {
     let mut inputs = Vec::new();
     let mut words = Vec::new();
     for argument in &spec.command {
@@ -63,7 +69,7 @@ pub fn build(id: TaskId, path: &str, op: &Op, spec: &wir::Task, bound: &Map<Stri
     Task {
         id,
         name: path.to_owned(),
-        step: path.to_owned(),
+        step: step.to_owned(),
         image: spec.image.clone(),
         command,
         script,

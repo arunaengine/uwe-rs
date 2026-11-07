@@ -6,6 +6,7 @@
 mod backend;
 pub mod grid;
 mod images;
+mod orphans;
 mod queue;
 mod remote;
 mod script;

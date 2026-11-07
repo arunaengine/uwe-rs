@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use config_file::{ConfigError, ConfigFile};
+use config_file::{ConfigError, ConfigFile, SecretValues};
 
 fn parse(text: &str) -> Result<ConfigFile, ConfigError> {
     ConfigFile::parse(text, Path::new("/site/config.toml"))
@@ -131,6 +131,72 @@ fn resolves_secret_sources() {
          UWE_TEST_VARIABLE_THAT_IS_NOT_SET, which holds this secret, is not set"
     );
     assert!(web.secret("absent").unwrap().is_none());
+}
+
+#[test]
+fn prefers_given_secrets() {
+    let text = "[web]\ntoken = { environment = \"UWE_TEST_GIVEN_TOKEN\" }\n\
+                path = { environment = \"PATH\" }\n";
+    let mut first = SecretValues::default();
+    first.insert("UWE_TEST_GIVEN_TOKEN", "first-value").unwrap();
+    let mut second = SecretValues::default();
+    second
+        .insert("UWE_TEST_GIVEN_TOKEN", "second-value")
+        .unwrap();
+    second.allow_environment(false);
+    let reveal = |secrets: &SecretValues, key: &str| {
+        let config = parse(text).unwrap().with_secrets(secrets.clone());
+        let web = config.section("web").unwrap().unwrap();
+        web.secret(key).unwrap().expect("a reference").reveal()
+    };
+    // Each config file sees only its own value; the process environment has none. The
+    // asserts compare without printing the values.
+    assert!(reveal(&first, "token").unwrap() == "first-value");
+    assert!(reveal(&second, "token").unwrap() == "second-value");
+    assert!(first.get("UWE_TEST_GIVEN_TOKEN").as_deref() == Some("first-value"));
+    assert!(reveal(&first, "path").unwrap() == std::env::var("PATH").unwrap());
+    assert_eq!(
+        reveal(&second, "path")
+            .expect_err("no fallback")
+            .to_string(),
+        "/site/config.toml:3: the host gave no value for the secret PATH"
+    );
+    assert!(second.get("PATH").is_none());
+    let config = parse(text).unwrap().with_secrets(second.clone());
+    let shown = format!("{second:?} {config:?}");
+    assert!(
+        !shown.contains("second-value"),
+        "Debug shows a secret value"
+    );
+    assert!(shown.contains("UWE_TEST_GIVEN_TOKEN"), "{shown}");
+}
+
+#[test]
+fn refuses_invalid_secrets() {
+    let mut secrets = SecretValues::default();
+    for (name, value, reason) in [
+        (
+            "TOKEN",
+            "a\0b",
+            "the value of the secret TOKEN holds a NUL byte",
+        ),
+        ("TOKEN", "", "the value of the secret TOKEN is empty"),
+        ("", "value", "a secret needs a name"),
+        (
+            "A=B",
+            "value",
+            "the secret name \"A=B\" holds `=` or a NUL byte",
+        ),
+        (
+            "A\0B",
+            "value",
+            "the secret name \"A\\0B\" holds `=` or a NUL byte",
+        ),
+    ] {
+        let error = secrets.insert(name, value).expect_err("refused");
+        assert_eq!(error.to_string(), reason);
+    }
+    assert_eq!(secrets.names().count(), 0);
 }
 
 #[test]

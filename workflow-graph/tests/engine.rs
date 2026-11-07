@@ -7,8 +7,8 @@ use workflow_graph::render::{Options, View};
 use workflow_graph::simulator::{EMPTY_GZIP, file_name, glob_matches};
 use workflow_graph::{
     Attempt, Driver, DriverError, EdgeKind, Engine, Event, Executor, Input, Language, MORE_TASKS,
-    Marker, MarkerKind, Note, Observer, Outcome, Running, SIMULATION, Simulator, Task, TaskId,
-    execute,
+    Marker, MarkerKind, Note, Observer, Outcome, Reuse, Running, SIMULATION, Simulator, Task,
+    TaskId, execute,
 };
 
 /// Two `split` tasks, then one `merge` task that reads both outputs.
@@ -701,4 +701,88 @@ fn marks_output_tasks() {
             .summary()
             .contains("the next tasks depend on its outputs: a checkpoint")
     );
+}
+
+/// One task per step, each with the reuse its workflow gave it.
+struct Steps(Vec<(&'static str, Reuse)>);
+
+impl Driver for Steps {
+    fn language(&self) -> Language {
+        Language::Nextflow
+    }
+
+    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        Ok((self.0.iter().zip(1..))
+            .map(|((step, reuse), id)| Task {
+                id: TaskId(id),
+                name: format!("{step} (1)"),
+                step: (*step).into(),
+                command: vec!["true".into()],
+                reuse: *reuse,
+                ..Task::default()
+            })
+            .collect())
+    }
+
+    fn complete(&mut self, _outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        Ok(Vec::new())
+    }
+
+    fn finish(&mut self) -> Result<(), DriverError> {
+        Ok(())
+    }
+}
+
+/// Keeps the step and reuse of each task that it runs.
+#[derive(Default)]
+struct Seen(Vec<(String, Reuse)>);
+
+impl Executor for Seen {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        self.0.push((attempt.task.step.clone(), attempt.task.reuse));
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            exit_code: 0,
+            ..Outcome::default()
+        }))
+    }
+}
+
+#[test]
+fn never_caches_steps() {
+    let steps = [
+        ("NFCORE:DEMO:FASTQC", Reuse::Allowed),
+        ("align/sort", Reuse::Denied),
+        ("MULTIQC", Reuse::Allowed),
+        ("FASTQC_EXTRA", Reuse::Allowed),
+        ("collect", Reuse::Disabled),
+    ];
+    let mut executor = Seen::default();
+    let graph = Engine::new(&mut executor)
+        .no_cache_steps(vec!["FASTQC".into(), "sort".into(), "NFCORE".into()])
+        .run("main.nf", &mut Steps(steps.to_vec()))
+        .into_result()
+        .expect("the run succeeds");
+    // A named step neither reads nor writes the cache; the others keep what their workflow says.
+    let expected = [
+        ("NFCORE:DEMO:FASTQC", Reuse::Disabled),
+        ("align/sort", Reuse::Disabled),
+        ("MULTIQC", Reuse::Allowed),
+        ("FASTQC_EXTRA", Reuse::Allowed),
+        ("collect", Reuse::Disabled),
+    ];
+    let expected: Vec<_> = (expected.iter())
+        .map(|(step, reuse)| (step.to_string(), *reuse))
+        .collect();
+    assert_eq!(executor.0, expected);
+    let recorded: Vec<_> = (graph.nodes.iter())
+        .map(|node| (node.task.step.clone(), node.task.reuse))
+        .collect();
+    assert_eq!(recorded, expected, "the graph records what ran");
+    let mut plain = Seen::default();
+    Engine::new(&mut plain).run("main.nf", &mut Steps(steps.to_vec()));
+    let given: Vec<_> = (steps.iter())
+        .map(|(step, reuse)| (step.to_string(), *reuse))
+        .collect();
+    assert_eq!(plain.0, given, "without rules every task keeps its reuse");
 }

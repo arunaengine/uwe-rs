@@ -136,6 +136,9 @@ pub struct Arguments {
     /// `-no-cache`: the run takes no result from the cache and keeps none there; every task
     /// runs.
     pub no_cache: bool,
+    /// `-no-cache-steps a,b`: steps whose tasks take no result from the cache and keep none
+    /// there, like Nextflow's `cache false`.
+    pub no_cache_steps: Vec<String>,
     pub strict_provenance: bool,
     /// `-no-network`: tasks whose workflow does not say that they need the network run
     /// without it.
@@ -169,6 +172,7 @@ impl Arguments {
             executor: self.executor.clone(),
             resume: self.resume.clone(),
             cache: !self.no_cache,
+            no_cache_steps: self.no_cache_steps.clone(),
             strict_provenance: self.strict_provenance,
             targets: self.targets.clone(),
             until: self.until.clone(),
@@ -401,6 +405,15 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 ))?);
             }
             "-no-cache" => parsed.no_cache = true,
+            "-no-cache-steps" => {
+                let names = value()?;
+                if names.starts_with('-') || names.split(',').any(str::is_empty) {
+                    return Err("the option `-no-cache-steps` needs step names".into());
+                }
+                parsed
+                    .no_cache_steps
+                    .extend(names.split(',').map(str::to_owned));
+            }
             "-no-right-sizing" => parsed.no_right_sizing = true,
             "-no-grouping" => parsed.no_grouping = true,
             "-address" => {
@@ -706,6 +719,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check-order", "repeat", "replay"],
     ),
     ("-no-cache", &["run", "graph", "check-order"]),
+    ("-no-cache-steps <steps>", &["run", "graph", "check-order"]),
     ("-no-network", &["run", "graph", "check-order", "replay"]),
     ("-machine-retries <n>", EXECUTION),
     ("-machine-retry-delay-ms <milliseconds>", EXECUTION),
@@ -1023,6 +1037,31 @@ mod tests {
         ] {
             let error = parse(&["Snakefile".into(), option.into()]).unwrap_err();
             assert!(error.contains(&format!("use `{replacement}")), "{error}");
+        }
+    }
+
+    #[test]
+    fn collects_uncached_steps() {
+        let words = [
+            "main.nf",
+            "-no-cache-steps",
+            "FASTQC,align/sort",
+            "-no-cache-steps",
+            "MULTIQC",
+        ]
+        .map(str::to_owned);
+        for command in ["run", "graph", "check-order"] {
+            let parsed = parse_command(command, &words).unwrap();
+            assert_eq!(parsed.no_cache_steps, ["FASTQC", "align/sort", "MULTIQC"]);
+            let settings = parsed.run_settings();
+            assert_eq!(settings.no_cache_steps, parsed.no_cache_steps);
+        }
+        let error = parse_command("repeat", &words).unwrap_err();
+        assert!(error.contains("does not apply"), "{error}");
+        for value in [None, Some("-no-cache"), Some("a,"), Some("")] {
+            let mut words = vec!["main.nf".into(), "-no-cache-steps".into()];
+            words.extend(value.map(str::to_owned));
+            assert!(parse(&words).unwrap_err().contains("needs"));
         }
     }
 

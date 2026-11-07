@@ -202,25 +202,9 @@ pub(crate) fn executor(
         }
         "slurm" => {
             let default_image = arguments.default_image.clone();
-            let settings = &setup.executors;
-            let named =
-                (arguments.slurm_container.as_deref()).or(settings.slurm_container.as_deref());
-            let container = slurm::container(named)
-                .map_err(|message| Failure::usage(format!("uwe: {message}")))?;
-            let options = match arguments.slurm_options.as_deref() {
-                Some(options) => options.split_whitespace().map(str::to_owned).collect(),
-                None => settings.slurm_options.clone().unwrap_or_default(),
-            };
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
-            let mut backend = slurm::backend(&scratch, container, options, settings.slurm_pull);
-            backend.remote = slurm::remote(settings, &storage)
-                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
-            backend.staging_time = settings.slurm_staging.margin();
-            backend.cpu_memory_gb = settings.slurm_cpu_memory;
-            if let Some(seconds) = settings.slurm_query {
-                backend.query_grace = std::time::Duration::from_secs(seconds);
-            }
+            let backend = slurm::configured(arguments, setup, &scratch)?;
             let executor = slurm::executor(store, backend, run, default_image, storage, setup)
                 .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)

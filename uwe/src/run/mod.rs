@@ -10,9 +10,9 @@ pub(crate) mod support;
 
 pub use config_file::SecretValues;
 pub use events::{Event, Listener, TaskEvent, TaskState};
+pub use executor::orphans;
 pub use settings::Settings;
 pub use task_runner::NetworkRule;
-pub use tes_executor::orphans;
 pub use workflow_graph::Language;
 
 use crate::application::{self, Description, Policy};

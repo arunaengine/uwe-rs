@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
@@ -128,11 +130,11 @@ fn leave(backend: &TesBackend, folder: &str, run: Option<&str>, id: &str) -> Pat
     root
 }
 
-fn found(attempt: &str, id: &str, state: Option<State>, outcome: Outcome) -> Orphan {
+fn found(attempt: &str, id: &str, state: Option<&str>, outcome: Outcome) -> Orphan {
     Orphan {
         attempt: attempt.into(),
         id: Some(id.into()),
-        state,
+        state: state.map(str::to_owned),
         outcome,
     }
 }
@@ -152,15 +154,10 @@ async fn stops_running_tasks() {
             found(
                 "first-sort-1-1",
                 "running",
-                Some(State::Running),
+                Some("RUNNING"),
                 Outcome::Running
             ),
-            found(
-                "first-sort-2-1",
-                "done",
-                Some(State::Complete),
-                Outcome::Ended
-            ),
+            found("first-sort-2-1", "done", Some("COMPLETE"), Outcome::Ended),
         ]
     );
     assert!(
@@ -175,15 +172,10 @@ async fn stops_running_tasks() {
             found(
                 "first-sort-1-1",
                 "running",
-                Some(State::Canceled),
+                Some("CANCELED"),
                 Outcome::Canceled
             ),
-            found(
-                "first-sort-2-1",
-                "done",
-                Some(State::Complete),
-                Outcome::Ended
-            ),
+            found("first-sort-2-1", "done", Some("COMPLETE"), Outcome::Ended),
         ]
     );
     assert!(!running.join("remote.json").exists() && !done.join("remote.json").exists());
@@ -242,12 +234,7 @@ async fn keeps_other_attempts() {
     let foreign = "another TES server or token owns the task";
     let unnamed = "the journal names no run, so it may belong to another";
     let mut expected = [
-        found(
-            "first-live-1-1",
-            "live",
-            Some(State::Running),
-            Outcome::Running,
-        ),
+        found("first-live-1-1", "live", Some("RUNNING"), Outcome::Running),
         found(
             "first-old-1-1",
             "legacy",
@@ -311,7 +298,7 @@ async fn uses_journal_token() {
         [found(
             "first-sort-1-1",
             "running",
-            Some(State::Canceled),
+            Some("CANCELED"),
             Outcome::Canceled
         )]
     );

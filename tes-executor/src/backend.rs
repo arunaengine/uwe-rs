@@ -41,6 +41,9 @@ const READ_GRACE: Duration = Duration::from_secs(120);
 #[derive(Debug)]
 pub struct TesBackend {
     pub client: Client,
+    /// The run whose attempts this backend runs. Each journal names it, so that the tasks of
+    /// one run can be found again after its uwe process is gone.
+    pub run: String,
     /// Where each attempt gets its scratch directory, which the server reads and writes.
     pub scratch: PathBuf,
     /// The entrypoints and default commands of images, from their registries.
@@ -131,7 +134,7 @@ impl Backend for TesBackend {
             && !root.join("remote.json").try_exists()?
         {
             let journal = serde_json::json!({"backend":"TES","server":self.client.server(),
-                "auth":self.client.identity(),"locked":true,"stopped":true,
+                "auth":self.client.identity(),"locked":true,"stopped":true,"run":self.run,
                 "staging":{"prefix":prefix,"root":staging.objects.url(""),
                     "cleanup":staging.settings.staging_cleanup}});
             journal_at(&root, &journal)?;
@@ -282,7 +285,7 @@ impl TesBackend {
         let started = owner_start(std::process::id())
             .ok_or_else(|| std::io::Error::other("cannot identify the TES coordinator process"))?;
         let mut journal = serde_json::json!({"backend": "TES", "server": self.client.server(),
-            "name": job.name, "id": null, "owner": std::process::id(), "host": host,
+            "name": job.name, "run": self.run, "id": null, "owner": std::process::id(), "host": host,
             "started": started, "locked": true, "auth": self.client.identity(),
             "submission": submission});
         if let Some(prefix) = prefix {
@@ -438,7 +441,7 @@ impl TesBackend {
         result
     }
 
-    async fn recover(
+    pub(crate) async fn recover(
         &self,
         peers: &[&TesBackend],
         entries: Vec<PathBuf>,
@@ -1072,6 +1075,7 @@ mod tests {
             ..Settings::default()
         };
         let backend = TesBackend {
+            run: String::new(),
             client: Client::new("http://127.0.0.1:1", None).unwrap(),
             scratch: root.path().into(),
             configs: Default::default(),
@@ -1158,6 +1162,7 @@ mod tests {
             calls
         });
         let backend = TesBackend {
+            run: String::new(),
             client: Client::new(&server, None).unwrap(),
             scratch: folder.path().to_owned(),
             configs: ImageConfigs::default(),

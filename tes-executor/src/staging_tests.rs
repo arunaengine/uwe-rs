@@ -280,6 +280,7 @@ fn backend(server: &Server, root: &Path, source: &Store, objects: &Store) -> Tes
         ..Settings::default()
     };
     TesBackend {
+        run: String::new(),
         client: Client::new(&server.address, None).unwrap(),
         scratch: root.join("scratch"),
         configs: Default::default(),

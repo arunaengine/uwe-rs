@@ -14,6 +14,7 @@ fn backend(folder: &std::path::Path) -> TesBackend {
     // Funnel runs images of this machine, whose configs no registry needs to give.
     let config = executor::registry::ImageConfig::default();
     TesBackend {
+        run: String::new(),
         client: Client::new(&server, None).expect("a client"),
         scratch: folder.join("scratch"),
         staging: None,

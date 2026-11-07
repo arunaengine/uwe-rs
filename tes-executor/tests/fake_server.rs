@@ -135,6 +135,7 @@ fn returns_server_outputs() {
         user: String::new(),
     };
     let backend = TesBackend {
+        run: String::new(),
         client: Client::new(&address, None).expect("a client"),
         scratch: folder.path().join("scratch"),
         staging: None,
@@ -244,6 +245,7 @@ fn refuses_multiple_executors() {
         user: String::new(),
     };
     let backend = TesBackend {
+        run: String::new(),
         client: Client::new(&address, None).expect("a client"),
         scratch: folder.path().join("scratch"),
         staging: None,
@@ -358,6 +360,7 @@ fn bounds_accepted_tasks() {
             ..Default::default()
         };
         let backend = TesBackend {
+            run: String::new(),
             client: Client::new(&address, None).unwrap(),
             scratch: folder.path().join("scratch"),
             staging: None,
@@ -487,6 +490,7 @@ fn stop_task(own: bool) {
         }
     });
     let backend = TesBackend {
+        run: String::new(),
         client: Client::new(&address, None).unwrap(),
         scratch: folder.path().join("scratch"),
         staging: None,
@@ -611,6 +615,7 @@ fn recovers_lost_submissions() {
         ..Kept::default()
     }));
     let backend = TesBackend {
+        run: "first".into(),
         client: Client::new(&keep(kept.clone()), None).unwrap(),
         scratch: folder.path().join("scratch"),
         staging: None,
@@ -637,6 +642,7 @@ fn recovers_lost_submissions() {
     let mut record: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
     assert!(record["id"].is_null());
+    assert_eq!(record["run"], "first", "the journal names its run");
     // A server that cannot list its tasks leaves the journal, but blocks nothing.
     kept.lock().unwrap().lose = false;
     kept.lock().unwrap().broken = true;
@@ -689,6 +695,7 @@ fn refuses_identity_modes() {
         .unwrap();
     for staging in [None, Some(stage)] {
         let backend = TesBackend {
+            run: String::new(),
             client: Client::new("http://127.0.0.1:1", None).unwrap(),
             scratch: folder.path().join("scratch"),
             staging,
@@ -754,6 +761,7 @@ fn preserves_other_sites() {
     std::fs::write(orphan.join("remote.json"), journal.to_string()).unwrap();
     let task = Arc::new(Mutex::new(None));
     let backend = TesBackend {
+        run: String::new(),
         client: Client::new(&serve(task.clone()), None).unwrap(),
         scratch,
         staging: None,
@@ -792,6 +800,7 @@ fn recovers_dropped_attempts() {
     let task = Arc::new(Mutex::new(None));
     let address = serve(task.clone());
     let backend = TesBackend {
+        run: String::new(),
         client: Client::new(&address, None).unwrap(),
         scratch,
         staging: None,
@@ -839,6 +848,7 @@ fn preserves_active_attempts() {
     let task = Arc::new(Mutex::new(None));
     let address = serve(task.clone());
     let backend = TesBackend {
+        run: String::new(),
         client: Client::new(&address, None).unwrap(),
         scratch,
         staging: None,

@@ -79,6 +79,12 @@ pub enum Problem {
     CaptureType(String),
     #[error("{port} does not match graph {graph}")]
     CallPort { port: String, graph: String },
+    #[error("the default of {0} does not fit its type")]
+    Unfit(String),
+    #[error("{0} is an output and takes no default")]
+    Default(String),
+    #[error("{0} needs exactly one input and one output")]
+    Unary(String),
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.
@@ -197,7 +203,7 @@ impl<'d> Checker<'d> {
             if from.flow != to.flow {
                 self.report(&at, Problem::FlowMismatch(name.clone()));
             }
-            if !to.r#type.accepts(&from.r#type, self.defs) {
+            if !to.takes().accepts(&from.r#type, self.defs) {
                 let (found, want) = (show(&from.r#type), show(&to.r#type));
                 self.report(
                     &at,
@@ -217,7 +223,7 @@ impl<'d> Checker<'d> {
         for op in &graph.ops {
             for input in &op.inputs {
                 let set = bound.contains(&(Some(op.path.as_str()), input.name.as_str()));
-                if !set && !input.r#type.is_optional(self.defs) {
+                if !set && input.default.is_none() && !input.r#type.is_optional(self.defs) {
                     let at = format!("{}/{}", graph.name, op.path);
                     self.report(&at, Problem::Unbound(format!("input {}", input.name)));
                 }
@@ -295,6 +301,22 @@ impl<'d> Checker<'d> {
         self.names(at, ports.iter().map(|port| port.name.as_str()), false);
         for port in ports {
             self.check_type(&format!("{at} {side} {}", port.name), &port.r#type);
+            let Some(value) = &port.default else {
+                continue;
+            };
+            let named = format!("{side} {}", port.name);
+            if side.ends_with("output") {
+                self.report(at, Problem::Default(named));
+            } else if !crate::fits(value, &port.r#type, self.defs) {
+                self.report(at, Problem::Unfit(named));
+            }
+            if matches!(
+                self.document.wir_version.as_str(),
+                "0.1" | "0.2" | "0.3" | "0.4"
+            ) {
+                let feature = "the default of a port".into();
+                self.report(at, Problem::Later(feature, "0.5".into()));
+            }
         }
     }
 

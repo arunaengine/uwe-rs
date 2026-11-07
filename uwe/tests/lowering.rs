@@ -72,7 +72,7 @@ fn prints_lowered_documents() {
     let (code, printed, errors) = uwe(root, &cache, &["lower", "pipeline.cwl"]);
     assert_eq!((code, errors.as_str()), (0, ""), "{printed}");
     let document: Json = serde_json::from_str(&printed).expect("prints JSON");
-    assert_eq!(document["wir_version"], "0.4");
+    assert_eq!(document["wir_version"], "0.5");
     assert_eq!(
         document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"],
         "out.txt"

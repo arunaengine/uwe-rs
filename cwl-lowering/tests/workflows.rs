@@ -112,3 +112,101 @@ fn lowers_when_branches() {
         optional
     );
 }
+
+#[test]
+fn lowers_input_defaults() {
+    let lowering = lowered("defaults.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let main = graph(&lowering, "main");
+    let name = json!({"name": "name", "type": "string", "default": "world"});
+    assert_eq!(main["inputs"][0], name, "a graph input keeps its type");
+    let text = json!({"class": "File", "location": "echo.cwl"});
+    assert_eq!(main["inputs"][2]["default"], text, "relative to the base");
+    let ops = main["ops"].as_array().unwrap();
+    let op = |path: &str| ops.iter().find(|op| op["path"] == path).unwrap();
+    let again = json!([
+        {"name": "greeting", "type": "string", "default": "hi"},
+        {"name": "name", "type": "string", "default": "there"}
+    ]);
+    assert_eq!(op("again")["inputs"], again, "the step defaults win");
+    let say = json!({"name": "greeting", "type": "string", "default": "hello"});
+    assert_eq!(op("say")["inputs"][0], say, "the tool default");
+}
+
+#[test]
+fn lowers_step_values() {
+    let lowering = lowered("values.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let main = graph(&lowering, "main");
+    let ops = [
+        ("each".into(), "map".into()),
+        ("say.message".into(), "expr".into()),
+        ("say".into(), "task".into()),
+    ];
+    assert_eq!(kinds(&main), ops);
+    let value = &main["ops"][1];
+    assert_eq!(value["kind"]["expr"]["code"], "hello $(self)");
+    let names: Vec<&str> = (value["inputs"].as_array().unwrap().iter())
+        .map(|port| port["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["message", "self"], "the step inputs and self");
+    assert_eq!(
+        value["outputs"][0]["type"], "string",
+        "the type of the tool input"
+    );
+    let edges = main["edges"].as_array().unwrap();
+    for port in ["message", "self"] {
+        let edge = json!({"from": {"port": "name"}, "to": {"op": "say.message", "port": port}});
+        assert!(edges.contains(&edge), "{port} takes the source");
+    }
+    let round = graph(&lowering, "each");
+    let ops = [
+        ("each.message".into(), "expr".into()),
+        ("each".into(), "task".into()),
+    ];
+    assert_eq!(kinds(&round), ops, "valueFrom runs per round");
+    let greeting = json!({"name": "greeting", "type": "dynamic", "default": "hi"});
+    let map = main["ops"][0]["inputs"].as_array().unwrap();
+    assert!(
+        map.contains(&greeting),
+        "the map takes the default: {map:?}"
+    );
+}
+
+#[test]
+fn lowers_merged_links() {
+    let lowering = lowered("links.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let main = graph(&lowering, "main");
+    let joins: Vec<(String, String)> = kinds(&main).into_iter().skip(4).collect();
+    let ops = [
+        ("again.words.merge".into(), "merge".into()),
+        ("count.text.merge".into(), "merge".into()),
+        ("count.text.select".into(), "select".into()),
+        ("both.merge".into(), "merge".into()),
+        ("first.merge".into(), "merge".into()),
+        ("first.select".into(), "select".into()),
+        ("flat.merge".into(), "merge".into()),
+        ("flat.flatten".into(), "flatten".into()),
+    ];
+    assert_eq!(joins, ops, "the ops of the links after those of the steps");
+    let ops = main["ops"].as_array().unwrap();
+    let op = |path: &str| ops.iter().find(|op| op["path"] == path).unwrap();
+    assert_eq!(op("count.text.select")["kind"]["select"]["rule"], "first");
+    let words = json!({"array": {"items": "string"}});
+    assert_eq!(op("again.words.merge")["outputs"][0]["type"], words);
+    let flat = op("flat.merge")["outputs"][0]["type"].clone();
+    assert_eq!(
+        flat,
+        json!({"array": {"items": "dynamic"}}),
+        "of an array and a File"
+    );
+}
+
+#[test]
+fn keeps_loaded_inputs() {
+    let lowering = lowered("contents.cwl");
+    let reason = "loadContents or loadListing of input text";
+    assert_eq!(lowering.kept.len(), 1, "{:?}", lowering.kept);
+    assert_eq!(lowering.kept[0].reason, reason, "an expr reads no files");
+}

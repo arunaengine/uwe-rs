@@ -19,6 +19,7 @@ use crate::catalogue::{Kind, Plugin, State};
 use crate::nf_schema::entries;
 use crate::observer::{Event, Observer, Part, Task};
 use crate::report_format::{Json, ordered_json};
+use crate::service::safe_url;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &["loadIridaSampleIds"],
@@ -210,8 +211,17 @@ fn settings(config: &Config) -> Result<Settings, String> {
             _ => parsers.push(parser(&name, &value, &samples)?),
         }
     }
+    let path = text(config, &["path"]);
+    if let Some(path) = &path
+        && storage::address::scheme(path).is_some()
+    {
+        return Err(format!(
+            "nf-iridanext writes iridanext.output.path only to a local file, not {}",
+            safe_url(path)
+        ));
+    }
     Ok(Settings {
-        path: text(config, &["path"]),
+        path,
         overwrite: flag(config, &["overwrite"], false),
         relativize: flag(config, &["relativize"], true),
         validate: flag(config, &["validate"], false),
@@ -293,7 +303,15 @@ impl Observer for Irida {
     }
 
     fn check(&mut self) -> Result<(), String> {
-        self.failure.clone().map_or(Ok(()), Err)
+        self.failure.clone().map_or(Ok(()), Err)?;
+        let sources = (self.settings.parsers.iter()).filter_map(|parser| self.source(parser));
+        match sources.into_iter().find(|target| storage::address::scheme(target).is_some()) {
+            Some(target) => Err(format!(
+                "nf-iridanext reads sample metadata only from local files, not {}",
+                safe_url(target)
+            )),
+            None => Ok(()),
+        }
     }
 }
 
@@ -416,13 +434,7 @@ impl Irida {
     fn metadata(&self, ids: &[String]) -> Result<Json, String> {
         let mut found = Json::Object(Vec::new());
         for parser in &self.settings.parsers {
-            let glob = match parser {
-                Parser::Csv { glob, .. } | Parser::Json { glob } => glob,
-            };
-            let target = (self.published.iter())
-                .map(|(_, target)| target)
-                .find(|target| glob.as_ref().is_none_or(|glob| matches(glob, target)));
-            let Some(target) = target else {
+            let Some(target) = self.source(parser) else {
                 continue;
             };
             for (id, value) in read(parser, &self.launch.join(target))? {
@@ -439,6 +451,16 @@ impl Irida {
             kept.push((id, self.arrange(value)?));
         }
         Ok(Json::Object(kept))
+    }
+
+    /// The first published file that a metadata parser reads.
+    fn source(&self, parser: &Parser) -> Option<&String> {
+        let glob = match parser {
+            Parser::Csv { glob, .. } | Parser::Json { glob } => glob,
+        };
+        (self.published.iter())
+            .map(|(_, target)| target)
+            .find(|target| glob.as_ref().is_none_or(|glob| matches(glob, target)))
     }
 
     /// The metadata of one sample after `flatten`, `ignore`, `keep` and `rename`.
@@ -632,6 +654,26 @@ mod tests {
         flattened("", value, &mut flat);
         let keys: Vec<&str> = flat.iter().map(|(key, _)| key.as_str()).collect();
         assert_eq!(keys, ["k.x", "k.y.1", "k.y.2"]);
+    }
+
+    #[test]
+    fn refuses_remote_metadata() {
+        let mut settings = settings(&Config::default()).expect("settings");
+        settings.parsers.push(Parser::Json { glob: None });
+        let mut irida = Irida {
+            settings,
+            launch: PathBuf::from("/launch"),
+            tasks: Vec::new(),
+            published: Vec::new(),
+            failure: None,
+        };
+        irida.notify(&Event::FilePublished {
+            source: "/work/meta.json".into(),
+            target: "s3://bucket/run/meta.json".into(),
+        });
+        let message = "nf-iridanext reads sample metadata only from local files, not \
+                       s3://bucket/run/meta.json";
+        assert_eq!(irida.check(), Err(message.to_owned()));
     }
 
     #[test]

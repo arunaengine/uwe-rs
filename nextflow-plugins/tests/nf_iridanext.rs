@@ -110,3 +110,20 @@ fn rejects_unknown_parser() {
         "{error}"
     );
 }
+
+#[test]
+fn refuses_remote_output() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    let fixtures = common::fixtures("nf_iridanext");
+    common::copy(&fixtures, folder, &["main.nf"]);
+    let text = config(folder, "path = 's3://bucket/run/out.json'", "");
+    std::fs::write(folder.join("nextflow.config"), text).expect("writes the config");
+    let (execution, _) = common::run(folder, "irida");
+    let error = execution.error.expect("the run stops").to_string();
+    let expected = "nf-iridanext writes iridanext.output.path only to a local file, not \
+                    s3://bucket/run/out.json";
+    assert!(error.contains(expected), "{error}");
+    // The run launches in the current folder, where the old code wrote `s3:/bucket/run`.
+    assert!(!Path::new("s3:").exists(), "a local remote folder");
+}

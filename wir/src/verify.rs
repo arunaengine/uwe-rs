@@ -20,7 +20,7 @@ pub struct VerifyError {
 /// What is wrong.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Problem {
-    #[error("wir version {0} is not known; this verifier knows 0.1 and {VERSION}")]
+    #[error("wir version {0} is not known; this verifier knows 0.1 to {VERSION}")]
     Version(String),
     #[error(
         "{0:?} is not a valid name: use letters, digits, '_', '-' and '.', paths join them by '/'"
@@ -60,8 +60,9 @@ pub enum Problem {
     Cycle(String),
     #[error("native {0} needs a type without dynamic")]
     Untyped(String),
-    #[error("{0} needs wir version 0.2")]
-    Later(String),
+    /// A feature, and the wir version that added it.
+    #[error("{0} needs wir version {1}")]
+    Later(String, String),
     #[error("language {found} differs from that of source {named}, {want}")]
     Language {
         named: String,

@@ -66,7 +66,7 @@ fn schema_rejects_unknown() {
     value["graphs"][0]["ops"][0]["note"] = json!("not a field");
     assert!(!validator.is_valid(&value));
     value["graphs"][0]["ops"][0] = op;
-    value["wir_version"] = json!("0.3");
+    value["wir_version"] = json!("0.4");
     assert!(!validator.is_valid(&value));
     value["wir_version"] = json!(wir::VERSION);
     value["graphs"][0]["ops"][0]["path"] = json!("a b");

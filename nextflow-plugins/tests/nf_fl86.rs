@@ -138,8 +138,12 @@ fn refuses_remote_outdir() {
         .error
         .map(|error| error.to_string())
         .unwrap_or_default();
-    let expected = "nf-fl86 writes pipeline_info only to a local output folder, not s3://bucket/run";
+    let expected =
+        "nf-fl86 writes pipeline_info only to a local output folder, not s3://bucket/run";
     assert!(error.contains(expected), "{error}\n{printed}");
     // The run launches in the current folder, where the old code wrote `s3:/bucket/run`.
-    assert!(!std::path::Path::new("s3:").exists(), "a local remote folder");
+    assert!(
+        !std::path::Path::new("s3:").exists(),
+        "a local remote folder"
+    );
 }

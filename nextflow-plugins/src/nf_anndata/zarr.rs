@@ -464,7 +464,10 @@ mod tests {
         };
         let bytes: Vec<u8> = [1i32, 2, 3].iter().flat_map(|n| n.to_le_bytes()).collect();
         let short = decode(&meta, bytes.clone(), 4).err();
-        assert_eq!(short.as_deref(), Some("the chunk holds 3 elements, 4 are wanted"));
+        assert_eq!(
+            short.as_deref(),
+            Some("the chunk holds 3 elements, 4 are wanted")
+        );
         assert_eq!(decode(&meta, bytes, 3).map(|values| values.len()), Ok(3));
     }
 

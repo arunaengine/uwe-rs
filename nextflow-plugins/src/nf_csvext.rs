@@ -123,7 +123,9 @@ fn concat(lines: &[String], appends: &[Vec<String>], sep: &str) -> Result<String
     }
     let pattern = regex(sep)?;
     let width = |lines: &[String]| -> Result<usize, Error> {
-        lines.first().map_or(Ok(0), |line| Ok(fields(line, &pattern)?.len()))
+        lines
+            .first()
+            .map_or(Ok(0), |line| Ok(fields(line, &pattern)?.len()))
     };
     let mut text = joined(lines);
     for append in appends {
@@ -306,7 +308,9 @@ mod tests {
         let trimmed = trim(&lines, Some(Value::integer(1)), None, "\\|").ok();
         assert_eq!(trimmed.as_deref(), Some("x\\|z\n1\\|3\n"));
         let narrow = vec!["a".to_owned()];
-        let concat = concat(&lines, &[narrow], "\\|").err().map(|error| error.to_string());
+        let concat = concat(&lines, &[narrow], "\\|")
+            .err()
+            .map(|error| error.to_string());
         assert_eq!(
             concat.as_deref(),
             Some("IllegalArgumentException: source and append must to be same size")

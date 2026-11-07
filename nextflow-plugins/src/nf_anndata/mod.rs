@@ -214,7 +214,9 @@ fn open(path: &PathValue, context: &mut Context) -> Result<Store, Failure> {
             None => Some(PathBuf::from(&path.path)),
         };
         let local = local.filter(|local| local.is_file());
-        return Ok(Store::Hdf5(hdf5::open(&local.ok_or(Failure::hdf(message))?)?));
+        return Ok(Store::Hdf5(hdf5::open(
+            &local.ok_or(Failure::hdf(message))?,
+        )?));
     }
     let directory = PathBuf::from(&path.path);
     if path.prefix.is_none() && (name.ends_with(".zarr") || zarr::is_store(&directory)) {

@@ -191,7 +191,10 @@ fn hides_credentials() {
     let refused = request(url, Vec::new()).expect("a connection");
     let unsent = member(&refused, "getResponseCode", Vec::new());
     for text in [printed, message, unsent] {
-        assert!(!text.contains("secret") && !text.contains("hidden"), "{text}");
+        assert!(
+            !text.contains("secret") && !text.contains("hidden"),
+            "{text}"
+        );
     }
 }
 
@@ -204,7 +207,8 @@ fn dumps_multiline_text() {
         (map, "script: |-\n  first\n  second\n"),
         (list, "- |-\n  first\n  second\n"),
     ] {
-        let dumped = with_context(|context| call("nf-boost", "toYaml", vec![value.clone()], context));
+        let dumped =
+            with_context(|context| call("nf-boost", "toYaml", vec![value.clone()], context));
         let dumped = dumped.expect("a dump").to_string();
         assert_eq!(dumped, expected);
         let read = nextflow_evaluator::interpreter::parse_yaml(&dumped).expect("reads");

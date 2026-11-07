@@ -305,7 +305,10 @@ impl Observer for Irida {
     fn check(&mut self) -> Result<(), String> {
         self.failure.clone().map_or(Ok(()), Err)?;
         let sources = (self.settings.parsers.iter()).filter_map(|parser| self.source(parser));
-        match sources.into_iter().find(|target| storage::address::scheme(target).is_some()) {
+        match sources
+            .into_iter()
+            .find(|target| storage::address::scheme(target).is_some())
+        {
             Some(target) => Err(format!(
                 "nf-iridanext reads sample metadata only from local files, not {}",
                 safe_url(target)

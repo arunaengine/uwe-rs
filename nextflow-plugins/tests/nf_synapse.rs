@@ -59,8 +59,10 @@ fn scope_reaches_storage() {
         "plugins {{ id 'nf-synapse@0.1.3' }}\nsynapse {{\n    endpoint = '{endpoint}'\n    \
          authToken = 'fake-token'\n}}\n"
     ));
-    let observers = catalogue::observers(&config, std::path::Path::new("/launch"))
-        .expect("an activated plugin");
+    let observers = catalogue::observers(&config, std::path::Path::new("/launch"), &|name| {
+        std::env::var(name).ok()
+    })
+    .expect("an activated plugin");
     assert!(observers.is_empty());
     let storage = storage::Storage::default().blocking();
     let found = storage.stat("syn://syn100").expect("a stat");

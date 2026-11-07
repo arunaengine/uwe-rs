@@ -31,6 +31,7 @@ const COLOURS: [&str; 12] = [
 fn activate(
     config: &Config,
     launch: &std::path::Path,
+    _: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |key: &str| {
         config

@@ -157,7 +157,7 @@ struct SignaturePublication {
 
 impl Session {
     pub fn new(launch: &Launch, storage: &Storage) -> Result<Session, DriverError> {
-        Session::within(launch, storage, None)
+        Session::within(launch, storage, None, None)
     }
 
     /// A session that starts in `folder` rather than in the working directory of the process:
@@ -166,6 +166,7 @@ impl Session {
         launch: &Launch,
         storage: &Storage,
         folder: Option<&Path>,
+        environment: Option<Vec<(String, String)>>,
     ) -> Result<Session, DriverError> {
         // Config files are relative to where the run starts, as Snakemake takes them.
         let mut launch = launch.clone();
@@ -208,7 +209,9 @@ impl Session {
             launch.scratch.join("downloads").join("snakemake"),
             storage,
         ));
-        let files = Rc::new(WorkflowFiles::new(&workdir, mirrors.clone()));
+        let mut files = WorkflowFiles::new(&workdir, mirrors.clone());
+        files.environment = environment;
+        let files = Rc::new(files);
         if !launch.simulated {
             files.write_to_disk();
         }
@@ -3044,6 +3047,9 @@ pub struct Settings {
     pub cancel: executor::CancellationToken,
     /// The Git client for Snakefiles of `gitfile(...)` in repositories on the web.
     pub git: Option<crate::gitfile::GitClient>,
+    /// The environment that the workflow reads, like `os.environ` and the variables of
+    /// `envvars`; `None` reads the environment of the process.
+    pub environment: Option<Vec<(String, String)>>,
 }
 
 /// Runtime options supplied by the CLI in addition to workflow profile defaults.
@@ -3114,7 +3120,8 @@ pub fn spawn_driver(
             let channel = Rc::new(Channel::new(incoming, outgoing));
             let open = || -> Result<Session, DriverError> {
                 let folder = options.workdir.as_deref();
-                let mut session = Session::within(&launch, &settings.storage, folder)?;
+                let environment = settings.environment.clone();
+                let mut session = Session::within(&launch, &settings.storage, folder, environment)?;
                 *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.shared = options.shared_workdir && !launch.simulated;

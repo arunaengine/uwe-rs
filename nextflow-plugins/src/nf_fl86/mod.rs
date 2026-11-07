@@ -294,7 +294,11 @@ struct Settings {
     access: Access,
 }
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |path: &[&str]| {
         let found = config
             .get(path)
@@ -303,7 +307,7 @@ fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Obser
             .map(|value| value.to_string().trim().to_owned())
             .filter(|value| !value.is_empty())
     };
-    let access = Access::of(config, &|name| std::env::var(name).ok());
+    let access = Access::of(config, environment);
     let action = config
         .get(&["seqera_action"])
         .filter(|value| value.truth())

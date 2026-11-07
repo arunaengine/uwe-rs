@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -558,11 +558,16 @@ impl Driver for WirDriver {
                 count => format!("{first}; and {} more ops failed", count - 1),
             }));
         }
-        let results = self.progress.outputs().map_err(DriverError::new)?;
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        let ports = entry.map_or(&[][..], |graph| &graph.outputs);
+        let results = self.progress.outputs(ports).map_err(DriverError::new)?;
         if !self.launch.simulated {
             let mut results = Json::Object(results);
             let root = self.output_root();
-            deliver(&mut results, &root, &mut self.delivering);
+            let mut planned = Vec::new();
+            deliver(&mut results, &root, &mut planned, &mut BTreeMap::new())
+                .map_err(DriverError::new)?;
+            self.delivering.extend(planned);
             if self.settings.print {
                 println!(
                     "{}",
@@ -629,12 +634,20 @@ impl Driver for WirDriver {
 }
 
 /// Delivers the files and folders of a result value that are not in the output folder yet,
-/// like those of task ops, to `root` by their basenames, and names them there.
-fn deliver(value: &mut Json, root: &Path, deliveries: &mut Vec<Delivery>) {
+/// like those of task ops, to `root` by their basenames, and names them there. `places` holds
+/// the source of each place in `root`; two sources for one place fail before any delivery.
+fn deliver(
+    value: &mut Json,
+    root: &Path,
+    deliveries: &mut Vec<Delivery>,
+    places: &mut BTreeMap<PathBuf, String>,
+) -> Result<(), String> {
     match value {
-        Json::Array(items) => items
-            .iter_mut()
-            .for_each(|item| deliver(item, root, deliveries)),
+        Json::Array(items) => {
+            for item in items {
+                deliver(item, root, deliveries, places)?;
+            }
+        }
         Json::Object(object) => {
             let class = object.get("class").and_then(Json::as_str);
             let location = object
@@ -650,8 +663,21 @@ fn deliver(value: &mut Json, root: &Path, deliveries: &mut Vec<Delivery>) {
                 let name = name
                     .or_else(|| location.rsplit('/').next())
                     .unwrap_or("output");
-                if !local.starts_with(root) {
-                    let target = root.join(name).to_string_lossy().into_owned();
+                let inside = local.starts_with(root);
+                let place = match inside {
+                    true => local,
+                    false => root.join(name),
+                };
+                if let Some(other) = places.insert(place.clone(), location.clone())
+                    && other != location
+                {
+                    return Err(format!(
+                        "two outputs go to {}; give their files different names",
+                        place.display()
+                    ));
+                }
+                if !inside {
+                    let target = place.to_string_lossy().into_owned();
                     deliveries.push(Delivery {
                         location,
                         target: target.clone(),
@@ -661,10 +687,11 @@ fn deliver(value: &mut Json, root: &Path, deliveries: &mut Vec<Delivery>) {
                     object.insert("location".into(), Json::String(target));
                 }
             }
-            object
-                .values_mut()
-                .for_each(|item| deliver(item, root, deliveries));
+            for item in object.values_mut() {
+                deliver(item, root, deliveries, places)?;
+            }
         }
         _ => {}
     }
+    Ok(())
 }

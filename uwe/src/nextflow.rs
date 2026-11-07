@@ -26,6 +26,8 @@ struct Console {
     print: bool,
     storage: Blocking,
     secrets: std::collections::BTreeMap<String, config_file::Secret>,
+    /// The values of the run for the variables that the workflow and its plugins read.
+    variables: config_file::SecretValues,
     /// Where operators like `collectFile` keep their files: the folder of the run, which the
     /// driver removes. `None` keeps them in the system temporary folder.
     operators: Option<PathBuf>,
@@ -46,6 +48,11 @@ impl Host for Console {
     fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
         SecretSource(&self.secrets).secret(name)
     }
+
+    fn environment(&self, name: &str) -> Option<String> {
+        self.variables.variable(name)
+    }
+
     fn print(&mut self, text: &str) {
         if self.quiet {
             eprint!("{text}");
@@ -303,13 +310,14 @@ pub(crate) fn secret_file(
 }
 
 /// The host of a run; remote files are cached in `downloads` of the cache directory.
-fn console(quiet: bool, setup: &Setup) -> Console {
+fn console(quiet: bool, setup: &Setup, variables: &config_file::SecretValues) -> Console {
     Console {
         downloads: crate::cache_directory().join("downloads"),
         quiet,
         print: true,
         storage: setup.storage.blocking(),
         secrets: setup.secrets.clone(),
+        variables: variables.clone(),
         operators: None,
         launch: None,
     }
@@ -320,7 +328,7 @@ fn console(quiet: bool, setup: &Setup) -> Console {
 pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::nextflow::Options {
     let console = Console {
         print: !arguments.no_print,
-        ..console(false, setup)
+        ..console(false, setup, &arguments.secrets)
     };
     let engine = setup.engine_kind(arguments);
     // As for a Nextflow run: only executors on this machine inject secrets and pass options.
@@ -363,7 +371,7 @@ pub fn driver(
     let console = Console {
         operators: Some(run_folder(&launch.scratch, run)),
         print: !arguments.no_print,
-        ..console(quiet, setup)
+        ..console(quiet, setup, &arguments.secrets)
     };
     let settings = Settings {
         host: Box::new(console),
@@ -395,26 +403,34 @@ pub fn driver(
 }
 
 /// The plugins of the config of a launch that a run skips, as warnings for `uwe check`.
-pub fn plugin_warnings(launch: &Launch, setup: &Setup) -> Vec<String> {
-    let mut console = console(true, setup);
+pub fn plugin_warnings(launch: &Launch, arguments: &Arguments, setup: &Setup) -> Vec<String> {
+    let mut console = console(true, setup, &arguments.secrets);
     nextflow_runtime::driver::plugin_warnings(launch, &mut console)
 }
 
 /// The place of the store that the `cloudcache` scope of the config names, or the variable
 /// `NXF_CLOUDCACHE_PATH`, for nf-cloudcache. A config that does not load gives none; the run
 /// reports its error.
-pub fn cloud_cache(launch: &Launch, setup: &Setup) -> Result<Option<String>, String> {
-    let mut console = console(true, setup);
+pub fn cloud_cache(
+    launch: &Launch,
+    arguments: &Arguments,
+    setup: &Setup,
+) -> Result<Option<String>, String> {
+    let mut console = console(true, setup, &arguments.secrets);
     let Ok(config) = nextflow_runtime::driver::config(&launch.target, launch, &mut console) else {
         return Ok(None);
     };
-    let variable = std::env::var("NXF_CLOUDCACHE_PATH").ok();
+    let variable = arguments.secrets.variable("NXF_CLOUDCACHE_PATH");
     nextflow_plugins::cloud_cache(&config, variable.as_deref())
 }
 
 /// `uwe config`: the config of a project in the flat form of `nextflow config -flat`.
-pub fn print_config(launch: &Launch, setup: &Setup) -> Result<(), DriverError> {
-    let mut console = console(false, setup);
+pub fn print_config(
+    launch: &Launch,
+    arguments: &Arguments,
+    setup: &Setup,
+) -> Result<(), DriverError> {
+    let mut console = console(false, setup, &arguments.secrets);
     let config = nextflow_runtime::driver::config(&launch.target, launch, &mut console)?;
     print!("{}", config.flat());
     Ok(())
@@ -463,7 +479,7 @@ pub fn pipeline_executor(
     if language != Language::Nextflow {
         return Ok(None);
     }
-    let mut console = console(true, setup);
+    let mut console = console(true, setup, &arguments.secrets);
     // A config that does not load fails the run in the driver, with its own message.
     let Ok(config) = nextflow_runtime::driver::config(&launch.target, launch, &mut console) else {
         return Ok(None);
@@ -977,7 +993,7 @@ mod tests {
             target: folder.path().to_owned(),
             ..workflow_graph::Launch::default()
         };
-        let mut host = super::console(true, &crate::setup::Setup::default());
+        let mut host = super::console(true, &crate::setup::Setup::default(), &Default::default());
         nextflow_runtime::driver::config(&launch.target, &launch, &mut host).expect("a config")
     }
 
@@ -1009,7 +1025,7 @@ mod tests {
             target: folder.path().join("main.nf"),
             ..workflow_graph::Launch::default()
         };
-        let mut host = super::console(true, &crate::setup::Setup::default());
+        let mut host = super::console(true, &crate::setup::Setup::default(), &Default::default());
         let config = nextflow_runtime::driver::config(&launch.target, &launch, &mut host);
         let choice = super::choice(&config.expect("a config"));
         assert_eq!(choice, Ok(Some("aws-batch".to_owned())));
@@ -1131,7 +1147,7 @@ mod tests {
     fn writes_local_parents() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("pipeline_info/params.json");
-        let mut host = super::console(false, &crate::setup::Setup::default());
+        let mut host = super::console(false, &crate::setup::Setup::default(), &Default::default());
         let value = nextflow_evaluator::value::PathValue::parse(&path.to_string_lossy(), "/");
         nextflow_evaluator::interpreter::Host::write(&mut host, &value, b"{}").unwrap();
         assert_eq!(std::fs::read(path).unwrap(), b"{}");
@@ -1143,7 +1159,7 @@ mod tests {
         let run = root.path().join("run");
         let mut host = super::Console {
             operators: Some(run.clone()),
-            ..super::console(false, &crate::setup::Setup::default())
+            ..super::console(false, &crate::setup::Setup::default(), &Default::default())
         };
         let folder = nextflow_evaluator::interpreter::Host::operator_directory(&mut host).unwrap();
         let folder = std::path::Path::new(&folder.path);

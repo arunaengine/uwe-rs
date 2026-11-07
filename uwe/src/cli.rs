@@ -143,7 +143,7 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let project = arguments.target.clone().unwrap_or_else(|| ".".into());
-    nextflow::print_config(&launch(arguments, project), &setup)?;
+    nextflow::print_config(&launch(arguments, project), arguments, &setup)?;
     Ok(())
 }
 

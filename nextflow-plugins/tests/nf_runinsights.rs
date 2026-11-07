@@ -36,7 +36,9 @@ fn activate(launch: &Path) -> Box<dyn Observer> {
         work_dir: launch.join("work").to_string_lossy().into_owned(),
     };
     let config = nextflow_config::load(&[file], &options, &mut Quiet).expect("loads");
-    let mut observers = nextflow_plugins::catalogue::observers(&config, launch).expect("activates");
+    let mut observers =
+        nextflow_plugins::catalogue::observers(&config, launch, &|name| std::env::var(name).ok())
+            .expect("activates");
     observers.pop().expect("an observer")
 }
 

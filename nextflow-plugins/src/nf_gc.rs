@@ -40,7 +40,11 @@ pub(crate) fn mode(config: &Config) -> Result<Option<String>, String> {
     }
 }
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let mode = mode(config)?.unwrap_or_default();
     match config.get(&["nfGc", "gc_mode"]).filter(Value::truth) {
         Some(_) => tracing::info!("nf-gc using gc_mode='{mode}'"),

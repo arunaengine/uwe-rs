@@ -148,11 +148,9 @@ pub fn cgroup_metrics(config: &Config) -> bool {
 pub use nf_biffix::ImageMap;
 
 /// The image map of nf-biffix, which every container of the run goes through, when the config
-/// names the plugin and `BIFFIX_IMAGE_MAP_FILE` is set.
-pub fn image_map(config: &Config) -> Option<ImageMap> {
-    let path = std::env::var("BIFFIX_IMAGE_MAP_FILE")
-        .ok()
-        .filter(|path| !path.is_empty())?;
+/// names the plugin and `BIFFIX_IMAGE_MAP_FILE` is set in the environment of the run.
+pub fn image_map(config: &Config, environment: &catalogue::Environment) -> Option<ImageMap> {
+    let path = environment("BIFFIX_IMAGE_MAP_FILE").filter(|path| !path.is_empty())?;
     let configured = catalogue::configured(config)
         .iter()
         .any(|id| id == "nf-biffix");

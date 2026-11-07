@@ -31,7 +31,11 @@ const USAGE: &str = "`fromStore` takes `selection: <address>`, or `run: <ref>` w
 
 /// Hands the stores of the `cas` scope to the `cas://` provider, checks `outputDir`, and
 /// makes the observer that writes the blocks of the run.
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let text = |path: &[&str]| {
         (config.get(path))
             .filter(|value| !matches!(value, Value::Null))
@@ -82,9 +86,7 @@ fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Obser
     let signer = text(&["cas", "asserted_by"])
         .map(|name| (name, "cas.asserted_by"))
         .or_else(|| {
-            let name = std::env::var("NXF_BLOCKS_USER")
-                .ok()
-                .filter(|name| !name.is_empty());
+            let name = environment("NXF_BLOCKS_USER").filter(|name| !name.is_empty());
             name.map(|name| (name, "NXF_BLOCKS_USER"))
         });
     let asserted_by = match signer {

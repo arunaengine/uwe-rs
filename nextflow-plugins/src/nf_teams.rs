@@ -49,7 +49,11 @@ struct Enabled {
     template: Option<String>,
 }
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    _: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |path: &[&str]| {
         let mut full = vec!["teams"];
         full.extend_from_slice(path);

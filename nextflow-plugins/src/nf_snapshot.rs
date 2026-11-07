@@ -22,7 +22,11 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-snapshot", Kind::Observer, State::Partial)
 };
 
-fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Observer>>, String> {
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
     let get = |key: &str| {
         config
             .get(&["snapshot", key])
@@ -45,7 +49,7 @@ fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Obser
         None => Vec::new(),
     };
     let update = get("update").is_some_and(|value| value.truth())
-        || std::env::var("NXF_SNAPSHOT_UPDATE").is_ok_and(|value| value == "true");
+        || environment("NXF_SNAPSHOT_UPDATE").is_some_and(|value| value == "true");
     Ok(Some(Box::new(Snapshot {
         file,
         base: get("baseDir").map(|value| value.to_string()),

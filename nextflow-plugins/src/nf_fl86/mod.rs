@@ -78,8 +78,13 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
     }
 }
 
-/// The output folder: `params.outdir`, else the config's `outputDir`, else `results`.
-fn outdir(params: &serde_json::Value, config: &serde_json::Value, launch: &Path) -> PathBuf {
+/// The output folder: `params.outdir`, else the config's `outputDir`, else `results`. A remote
+/// folder is refused, as the plugins of uwe write only local files.
+fn outdir(
+    params: &serde_json::Value,
+    config: &serde_json::Value,
+    launch: &Path,
+) -> Result<PathBuf, String> {
     let set = |value: &serde_json::Value| {
         value
             .as_str()
@@ -87,7 +92,14 @@ fn outdir(params: &serde_json::Value, config: &serde_json::Value, launch: &Path)
             .map(str::to_owned)
     };
     let folder = set(&params["outdir"]).or_else(|| set(&config["outputDir"]));
-    launch.join(folder.unwrap_or("results".to_owned()))
+    let folder = folder.unwrap_or("results".to_owned());
+    match storage::address::scheme(&folder) {
+        None => Ok(launch.join(folder)),
+        Some(_) => Err(format!(
+            "nf-fl86 writes pipeline_info only to a local output folder, not {}",
+            crate::service::safe_url(&folder)
+        )),
+    }
 }
 
 /// Before the script: the output folder guard, the start line, and the copies of the sample
@@ -100,7 +112,7 @@ pub(crate) fn start(context: &mut Context) -> Result<(), Error> {
         .get(&["outputDir"])
         .map(|value| crate::nf_schema::json(&value));
     let config = serde_json::json!({ "outputDir": config });
-    let folder = outdir(&params, &config, &launch);
+    let folder = outdir(&params, &config, &launch).map_err(thrown)?;
     let resumed = get(&context.workflow, "resume").is_some_and(|value| value.truth());
     if folder.exists() && !resumed {
         return Err(thrown(format!(
@@ -166,9 +178,12 @@ pub(crate) fn finish(context: &mut Context) {
             &serde_json::json!({ "outputDir": config }),
             &launch,
         );
-        let path = folder.join("pipeline_info/workflow.json");
-        let written = std::fs::create_dir_all(folder.join("pipeline_info"))
-            .and_then(|()| std::fs::write(&path, metadata(context).pretty()));
+        let written = folder.and_then(|folder| {
+            let path = folder.join("pipeline_info/workflow.json");
+            std::fs::create_dir_all(folder.join("pipeline_info"))
+                .and_then(|()| std::fs::write(&path, metadata(context).pretty()))
+                .map_err(|error| error.to_string())
+        });
         match written {
             Ok(()) => tracing::info!("Workflow metadata written to pipeline_info/workflow.json"),
             Err(error) => tracing::warn!(%error, "Failed to write workflow metadata"),
@@ -346,11 +361,14 @@ fn activate(config: &Config) -> Result<Option<Box<dyn Observer>>, String> {
 
 /// `pipeline_info/params.json`: the params, top-level keys sorted.
 fn write_params(start: &Start) {
-    let folder =
-        outdir(&start.params, &start.config, Path::new(&start.launch_dir)).join("pipeline_info");
+    let folder = outdir(&start.params, &start.config, Path::new(&start.launch_dir));
     let text = Json::from(&start.params).pretty();
-    let written = std::fs::create_dir_all(&folder)
-        .and_then(|()| std::fs::write(folder.join("params.json"), text));
+    let written = folder.and_then(|folder| {
+        let folder = folder.join("pipeline_info");
+        std::fs::create_dir_all(&folder)
+            .and_then(|()| std::fs::write(folder.join("params.json"), text))
+            .map_err(|error| error.to_string())
+    });
     match written {
         Ok(()) => tracing::info!("Workflow parameters written to pipeline_info/params.json"),
         Err(_) => {
@@ -443,7 +461,8 @@ fn follow(action: &Action, start: &Start, access: &Access) {
         (None, Some(launch)) => Some(launch.clone()),
         (None, None) => {
             let folder = outdir(&start.params, &start.config, Path::new(&start.launch_dir));
-            Some(serde_json::json!({ "input_dir": folder.to_string_lossy() }))
+            let input = |folder: PathBuf| serde_json::json!({ "input_dir": folder.to_string_lossy() });
+            folder.ok().map(input)
         }
     };
     let (Some(name), Some(id), Some(workspace), Some(params)) =

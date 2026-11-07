@@ -254,3 +254,152 @@ fn reports_missing_sources() {
         .unwrap_err();
     assert!(error.to_string().starts_with("op block: "), "{error}");
 }
+
+/// A block that reads the files of another block starts only after the engine delivered
+/// them: the call that ends the first block starts nothing, and the next wake does.
+#[test]
+fn waits_for_deliveries() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let data = root.join("data");
+    std::fs::create_dir(&data).unwrap();
+    std::fs::write(data.join("a.txt"), "one\n").unwrap();
+    std::fs::write(
+        root.join("job.json"),
+        json!({"folder": {"class": "Directory", "location": "data"}}).to_string(),
+    )
+    .unwrap();
+    let joined = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n\
+                  inputs:\n  texts:\n    type: File[]\n    inputBinding: {position: 1}\n\
+                  outputs:\n  joined: {type: stdout}\nstdout: joined.txt\n";
+    std::fs::write(root.join("cat.cwl"), joined).unwrap();
+    let files = json!({"array": {"items": {"file": {}}}});
+    let document = json!({
+        "wir_version": "0.3",
+        "sources": [
+            {"id": "copy", "language": "cwl", "location": demos().join("directory-copy.cwl")},
+            {"id": "cat", "language": "cwl", "location": root.join("cat.cwl")}
+        ],
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "folder", "type": "directory"}],
+            "ops": [
+                {
+                    "path": "first", "kind": {"native": {"source": "copy", "language": "cwl"}},
+                    "inputs": [{"name": "folder", "type": "directory"}],
+                    "outputs": [{"name": "copies", "type": files}]
+                },
+                {
+                    "path": "second", "kind": {"native": {"source": "cat", "language": "cwl"}},
+                    "inputs": [{"name": "texts", "type": files}]
+                }
+            ],
+            "edges": [
+                {"from": {"port": "folder"}, "to": {"op": "first", "port": "folder"}},
+                {"from": {"op": "first", "port": "copies"}, "to": {"op": "second", "port": "texts"}}
+            ]
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).unwrap();
+    let options = cwl_runtime::Options {
+        simulated: false,
+        print: false,
+        ..cwl_runtime::Options::default()
+    };
+    let settings = Settings {
+        cwl: options,
+        ..settings()
+    };
+    let launch = launch(root, target, root.join("job.json"), false);
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    driver.use_files(std::sync::Arc::new(workflow_graph::LocalFiles));
+    let first = driver.start().unwrap();
+    assert_eq!(first.len(), 1, "{first:?}");
+    let work = root.join("work");
+    std::fs::create_dir(&work).unwrap();
+    std::fs::write(work.join("a.txt"), "one\n").unwrap();
+    let outcome = Outcome {
+        id: first[0].id,
+        files: vec![OutputFile {
+            path: "a.txt".into(),
+            location: work.join("a.txt").to_string_lossy().into_owned(),
+            ..OutputFile::default()
+        }],
+        ..Outcome::default()
+    };
+    let next = driver.complete(outcome).unwrap();
+    assert!(next.is_empty(), "the second block waits: {next:?}");
+    assert!(
+        driver
+            .wake_at()
+            .is_some_and(|time| time <= std::time::Instant::now())
+    );
+    let deliveries = driver.deliveries();
+    assert!(!deliveries.is_empty());
+    for delivery in &deliveries {
+        workflow_graph::Files::deliver(&workflow_graph::LocalFiles, delivery).unwrap();
+        driver.delivered(delivery).unwrap();
+    }
+    let second = driver.wake().unwrap();
+    assert_eq!(second.len(), 1, "{second:?}");
+    assert!(second[0].name.starts_with("second: "), "{}", second[0].name);
+    assert_eq!(driver.wake_at(), None);
+}
+
+/// A source at a repository address with a `git:` digest runs from the checkout of that
+/// commit, which the run fetches; a run that cannot fetch says so.
+#[test]
+fn fetches_pinned_repositories() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    std::fs::write(root.join("job.json"), "{}").unwrap();
+    let commit = "32893afef8076a03a2767a020b3f0cab2e0b40b2";
+    let document = json!({
+        "wir_version": "0.3",
+        "sources": [{
+            "id": "hello", "language": "cwl", "location": "https://example.org/demo/hello",
+            "digest": format!("git:{commit}")
+        }],
+        "graphs": [{
+            "name": "main",
+            "ops": [{"path": "block", "kind": {"native": {"source": "hello", "language": "cwl"}}}]
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).unwrap();
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = asked.clone();
+    let fetching = Settings {
+        repositories: wir_runtime::Repositories::new(move |location: &str, commit: &str| {
+            seen.lock()
+                .unwrap()
+                .push((location.to_owned(), commit.to_owned()));
+            Ok(demos().join("hello_world.cwl"))
+        }),
+        ..settings()
+    };
+    let launch = launch(root, target.clone(), root.join("job.json"), true);
+    let mut driver = WirDriver::new(&launch, fetching).unwrap();
+    let mut simulator = Simulator::new(root.join("simulator"));
+    let ran = execute("hello", &mut driver, &mut simulator)
+        .into_result()
+        .unwrap();
+    assert_eq!(ran.nodes.len(), 1);
+    let expected = (
+        "https://example.org/demo/hello".to_owned(),
+        commit.to_owned(),
+    );
+    assert_eq!(*asked.lock().unwrap(), [expected]);
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let mut simulator = Simulator::new(root.join("other"));
+    let error = execute("hello", &mut driver, &mut simulator)
+        .into_result()
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("cannot fetch repositories"),
+        "{error}"
+    );
+}

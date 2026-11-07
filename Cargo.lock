@@ -7867,6 +7867,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wir-runtime"
+version = "0.1.0"
+dependencies = [
+ "input-schema",
+ "serde_json",
+ "tracing",
+ "workflow-graph",
+]
+
+[[package]]
 name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

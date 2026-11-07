@@ -149,4 +149,4 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - the stream files of a task are relative paths that stay inside the working folder;
 - a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 before 0.3, none of 0.4 before 0.4.
 
-Not yet: the readable text form, the runner, frontends and lowering passes.
+Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering`. The runner is the crate `wir-runtime`.

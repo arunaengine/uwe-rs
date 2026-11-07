@@ -138,6 +138,9 @@ The run database records a wir run with the language `wir`, and its run crate na
 
 ## Not yet
 
+- Lowering CWL input defaults, `valueFrom`, several sources and `pickValue` (with `select`), ExpressionTools, and tools with requirements such as `InitialWorkDirRequirement`; they stay native ops.
+- Equal cache keys of a lowered tool and the same tool run as CWL, which need a wir task with the working folder, variables and staging places of the CWL driver.
+
 - `uwe resume` of the suspended steps of an Argo block.
 - Several targets in one Snakemake block; a rule that asks for them can stand in.
 - Workflow outputs of the `output { }` block of Nextflow as op outputs by their names; their files count as published files below their folder.

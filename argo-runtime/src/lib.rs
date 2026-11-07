@@ -160,6 +160,57 @@ impl ArgoDriver {
     pub fn workflow_name(&self) -> Option<&str> {
         self.run.as_ref().map(|run| run.workflow_name.as_str())
     }
+
+    /// The outputs of a run that started, also of a simulated one: the output parameters and
+    /// artifacts of the entrypoint, then the global outputs by their names, as
+    /// [`Driver::outputs`] names them. A parameter is a text, an artifact a File or Directory.
+    pub fn exported(&self) -> Option<serde_json::Value> {
+        let run = self.run.as_ref()?;
+        let mut values = serde_json::Map::new();
+        if let Some(root) = run.root {
+            let outputs = &run.nodes[root].outputs;
+            for (name, value) in &outputs.parameters {
+                values.entry(name).or_insert(value.as_str().into());
+            }
+            for artifact in &outputs.artifacts {
+                values
+                    .entry(&artifact.name)
+                    .or_insert(artifact_value(artifact));
+            }
+        }
+        for (key, value) in &run.globals {
+            if let Some(name) = key.strip_prefix("workflow.outputs.parameters.") {
+                values.entry(name).or_insert(value.as_str().into());
+            }
+        }
+        for (key, artifact) in &run.global_artifacts {
+            if let Some(name) = key.strip_prefix("workflow.outputs.artifacts.") {
+                values.entry(name).or_insert(artifact_value(artifact));
+            }
+        }
+        Some(serde_json::Value::Object(values))
+    }
+}
+
+/// An output artifact as a File, or a Directory where it is one, named by the basename of its
+/// path in the container. An artifact that the workflow holds as text has no file: null.
+fn artifact_value(artifact: &node::ArtifactValue) -> serde_json::Value {
+    let location = match &artifact.location {
+        Some(node::Location::File(path)) => path.to_string_lossy().into_owned(),
+        Some(node::Location::Url(url)) => url.clone(),
+        Some(node::Location::Raw(_)) | None => return serde_json::Value::Null,
+    };
+    let class = match artifact.directory {
+        true => "Directory",
+        false => "File",
+    };
+    let path = artifact.path.trim_end_matches('/');
+    let basename = path.rsplit('/').next().unwrap_or(path);
+    let basename = match basename.is_empty() {
+        true => artifact.name.as_str(),
+        false => basename,
+    };
+    serde_json::json!({"class": class, "location": location, "basename": basename})
 }
 
 fn driver_error(failure: run::Failure) -> DriverError {
@@ -304,6 +355,10 @@ impl Driver for ArgoDriver {
             .map(Some)
             .map_err(driver_error)
     }
+
+    fn results(&self) -> Option<serde_json::Value> {
+        self.exported().filter(|_| !self.options.assume_inputs)
+    }
 }
 
 /// The driver for an Argo workflow file.
@@ -313,6 +368,11 @@ pub fn driver(launch: &Launch) -> Result<Box<dyn Driver>, DriverError> {
 
 /// The driver for an Argo workflow file, with the services of its host.
 pub fn driver_with(launch: &Launch, services: Services) -> Result<Box<dyn Driver>, DriverError> {
+    Ok(Box::new(load_driver(launch, services)?))
+}
+
+/// The driver for an Argo workflow file with the services of its host, once it is loaded.
+pub fn load_driver(launch: &Launch, services: Services) -> Result<ArgoDriver, DriverError> {
     let target = &launch.target;
     if target.is_dir() {
         return Err(DriverError::new(format!(
@@ -374,7 +434,7 @@ pub fn driver_with(launch: &Launch, services: Services) -> Result<Box<dyn Driver
             false => std::path::absolute(&folder).unwrap_or(folder),
         });
     }
-    Ok(Box::new(driver))
+    Ok(driver)
 }
 
 /// The parameters of a parameter file, a YAML or JSON mapping, as `argo submit

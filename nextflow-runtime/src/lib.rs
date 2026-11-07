@@ -240,13 +240,19 @@ impl Run {
         if self.on_complete_called {
             return Ok(());
         }
+        self.ready()?;
+        workflow::finish(&self.workflow, true, self.network.succeeded);
+        self.handlers(host, false, Value::Null, false)
+    }
+
+    /// Whether the run can finish well: no failure and no step that still waits for input.
+    pub fn ready(&mut self) -> Result<(), Error> {
         if let Some(failure) = self.network.take_failure() {
             return Err(failure);
         }
         let waiting = self.network.running();
         if waiting.is_empty() && !self.network.has_tasks() {
-            workflow::finish(&self.workflow, true, self.network.succeeded);
-            return self.handlers(host, false, Value::Null, false);
+            return Ok(());
         }
         let names: Vec<&str> = waiting.iter().map(|name| &**name).collect();
         let message = format!(

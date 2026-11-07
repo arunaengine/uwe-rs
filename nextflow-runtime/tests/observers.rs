@@ -428,17 +428,26 @@ impl Observer for Refusing {
     }
 }
 
+/// A failed check fails the run before the `onComplete` handlers see it, as in Nextflow.
 #[test]
 fn checks_fail_runs() {
     let directory = tempfile::tempdir().expect("a temporary directory");
-    std::fs::write(directory.path().join("main.nf"), OUTPUTS).expect("writes the script");
+    let handler =
+        "made = MAKE()\n    workflow.onComplete { println \"complete ${workflow.success}\" }";
+    let script = OUTPUTS.replace("made = MAKE()", handler);
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
     let launch = Launch {
         target: directory.path().to_owned(),
         scratch: directory.path().join("scratch"),
         output_dir: Some(directory.path().join("results")),
         ..Launch::default()
     };
-    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let printed = Rc::new(RefCell::new(String::new()));
+    let settings = Settings {
+        host: Box::new(Printed(printed.clone())),
+        ..Settings::default()
+    };
+    let mut driver = Nextflow::new(&launch, settings).expect("a driver");
     let events = Rc::new(RefCell::new(Vec::new()));
     driver.observe(Box::new(Refusing(events.clone())));
     let execution = Engine::new(&mut Making).run("main.nf", &mut driver);
@@ -459,6 +468,8 @@ fn checks_fail_runs() {
         end.error.as_deref(),
         Some("nf-snapshot: 1 difference(s) from snapshot")
     );
+    let printed = printed.borrow();
+    assert!(!printed.contains("complete true"), "{printed}");
 }
 
 /// Observers and the script learn that a run resumes, as `workflow.resume` of Nextflow

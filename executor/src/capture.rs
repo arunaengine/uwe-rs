@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use task_model::Digest;
@@ -11,11 +12,21 @@ use crate::manifest;
 
 /// The control files that a captured attempt gives back, by their names in the control folder.
 pub const RECORDS: &[&str] = &[
-    "exit", "stdout", "stderr", "manifest", "start", "end", "usage", INDEX,
+    "exit",
+    "stdout",
+    "stderr",
+    "manifest",
+    "start",
+    "end",
+    "usage",
+    INDEX,
+    EXECUTABLES,
 ];
 /// The control file that names the path of each numbered output file, one `<number> <path>`
 /// per line.
 pub const INDEX: &str = "objects";
+/// The control file that names the number of each output file that is a program, one per line.
+pub const EXECUTABLES: &str = "executables";
 /// The folder of an attempt where the numbered output files are put back before they move.
 const TRANSFER: &str = "transfer";
 
@@ -62,6 +73,13 @@ pub fn target(root: &Path, relative: &str, records: &[&str]) -> Option<PathBuf> 
 pub async fn arrange(finished: &Finished) -> Result<(), ExecutorError> {
     let transfer = finished.root.join(TRANSFER);
     let text = tokio::fs::read_to_string(finished.root.join(CONTROL).join(INDEX)).await?;
+    let programs =
+        match tokio::fs::read_to_string(finished.root.join(CONTROL).join(EXECUTABLES)).await {
+            Ok(programs) => programs,
+            // Attempts of an older wrapper have no list of programs.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => return Err(error.into()),
+        };
     for line in text.lines() {
         let (number, path) = line
             .split_once(' ')
@@ -74,7 +92,13 @@ pub async fn arrange(finished: &Finished) -> Result<(), ExecutorError> {
             return Err(failed("a captured output file is missing"));
         }
         tokio::fs::create_dir_all(target.parent().expect("a parent")).await?;
-        tokio::fs::rename(source, target).await?;
+        tokio::fs::rename(source, &target).await?;
+        if programs.lines().any(|line| line == number) {
+            // As `chmod +x` does under the umask: who may read the program may run it.
+            let mode = std::fs::metadata(&target)?.permissions().mode();
+            let mode = std::fs::Permissions::from_mode(mode | (mode & 0o444) >> 2);
+            tokio::fs::set_permissions(&target, mode).await?;
+        }
     }
     if std::fs::read_dir(&transfer).is_ok_and(|mut entries| entries.next().is_some()) {
         return Err(failed("captured output files have no index records"));
@@ -99,6 +123,7 @@ const FLATTEN: &str = r#"transfer={transfer}
 mkdir -p "$transfer" || exit 1
 [ -f "$control/usage" ] || : > "$control/usage"
 : > "$control/objects"
+: > "$control/executables"
 number=0
 flatten() {
     local source="$1" path="$2" child name
@@ -114,6 +139,7 @@ flatten() {
 '*) echo 'uwe: cannot capture newline paths' >&2; exit 33 ;; esac
         number=$((number + 1))
         cp -L "$source" "$transfer/$number" || exit 1
+        [ ! -x "$source" ] || echo "$number" >> "$control/executables"
         printf '%s %s\n' "$number" "$path" >> "$control/objects"
     else
         echo 'uwe: an output is not a regular file' >&2

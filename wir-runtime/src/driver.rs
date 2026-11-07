@@ -21,7 +21,7 @@ use crate::child::Child;
 use crate::cwl;
 use crate::inputs;
 use crate::nextflow;
-use crate::plan::plan;
+use crate::plan::{self, plan};
 use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
@@ -207,11 +207,73 @@ impl WirDriver {
             Kind::Task(spec) => {
                 self.last += 1;
                 let node = self.progress.node(at);
-                let task = task::build(TaskId(self.last), &node.path, &node.op, &spec, &bound);
+                let names = (node.path.as_str(), node.step.as_str());
+                let task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
                 self.tasks.insert(task.id, (at, task.clone()));
                 Ok(vec![task])
             }
             Kind::Call(_) => Ok(Vec::new()),
+            Kind::Branch(branch) => {
+                let node = self.progress.node(at);
+                match bound.get(&branch.condition) {
+                    Some(Json::Bool(true)) => {}
+                    Some(Json::Bool(false)) => {
+                        let nulls = (node.op.outputs.iter())
+                            .map(|port| (port.name.clone(), Json::Null))
+                            .collect();
+                        self.progress.end(at, Status::Skipped, nulls, None);
+                    }
+                    _ => {
+                        let message = format!("op {}: the condition is not a bool", node.path);
+                        self.progress
+                            .end(at, Status::Failed, Map::new(), Some(message));
+                    }
+                }
+                Ok(Vec::new())
+            }
+            Kind::Expr(spec) => {
+                let node = self.progress.node(at);
+                let path = node.path.clone();
+                if spec.language != "js" {
+                    let message = format!("op {path}: the language {} is reserved", spec.language);
+                    return Err(DriverError::unsupported(message));
+                }
+                let output = node.op.outputs[0].clone();
+                let settings = &self.settings.cwl.javascript;
+                let defs = &self.document.types;
+                match crate::expr::evaluate(&spec, &bound, &output, defs, settings) {
+                    Ok(value) => {
+                        let values = Map::from_iter([(output.name, value)]);
+                        self.progress.end(at, Status::Succeeded, values, None);
+                    }
+                    Err(why) => {
+                        let message = Some(format!("op {path}: {why}"));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
+            Kind::Map(map) => {
+                let path = self.progress.node(at).path.clone();
+                if map.parallelism.is_some() || map.min_success.is_some() {
+                    let message = format!("op {path}: parallelism and min_success are reserved");
+                    return Err(DriverError::unsupported(message));
+                }
+                match plan::items(&map, &bound) {
+                    Ok(rounds) => {
+                        let start = self.progress.plan.nodes.len();
+                        let nodes = &mut self.progress.plan.nodes;
+                        plan::rounds(&self.document, nodes, at, &map.body, rounds.items)?;
+                        self.progress.plan.nodes[at].shape = rounds.shape;
+                        self.progress.adopt(start);
+                    }
+                    Err(why) => {
+                        let message = Some(format!("op {path}: {why}"));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
             _ => {
                 let path = &self.progress.node(at).path;
                 Err(DriverError::unsupported(format!(
@@ -641,7 +703,7 @@ impl Driver for WirDriver {
 
 /// Delivers the files and folders of a result value that are not in the output folder yet,
 /// like those of task ops, to `root` by their basenames, and names them there. `places` holds
-/// the source path of each place in `root`; two sources for one place fail before any delivery.
+/// the source path of each place in `root`; a later source of a taken name gets `<name>-<n>/`.
 fn deliver(
     value: &mut Json,
     root: &Path,
@@ -670,10 +732,16 @@ fn deliver(
                     .or_else(|| location.rsplit('/').next())
                     .unwrap_or("output");
                 let inside = local.starts_with(root);
-                let place = match inside {
+                let mut place = match inside {
                     true => local.clone(),
                     false => root.join(name),
                 };
+                // As the CWL driver does, a later file of a taken name goes to a numbered folder.
+                let mut number = 2;
+                while !inside && places.get(&place).is_some_and(|other| *other != local) {
+                    place = root.join(format!("{name}-{number}")).join(name);
+                    number += 1;
+                }
                 if let Some(other) = places.insert(place.clone(), local.clone())
                     && other != local
                 {

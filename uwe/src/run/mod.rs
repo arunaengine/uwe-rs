@@ -213,6 +213,10 @@ fn execute_with(
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();
     let (target, language) = target_and_language(arguments)?;
+    let (target, language) = match arguments.lowered {
+        true => (crate::lower::document(&target, language)?, Language::Wir),
+        false => (target, language),
+    };
     let target = &target;
     let launch = launch(arguments, target.clone());
     let picked;

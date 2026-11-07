@@ -1515,6 +1515,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cwl-lowering"
+version = "0.1.0"
+dependencies = [
+ "cwl-parser",
+ "cwl-runtime",
+ "serde_json",
+ "tempfile",
+ "wir",
+ "wir-runtime",
+ "workflow-graph",
+]
+
+[[package]]
 name = "cwl-parser"
 version = "0.1.0"
 dependencies = [
@@ -8777,6 +8790,8 @@ dependencies = [
  "conda-environment",
  "config-file",
  "content-store",
+ "cwl-lowering",
+ "cwl-parser",
  "cwl-runtime",
  "executor",
  "fancy-regex 0.20.0",

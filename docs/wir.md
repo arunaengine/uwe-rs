@@ -10,13 +10,49 @@ wir is the workflow intermediate representation of uwe: one typed graph format t
 $ uwe run run.wir.json -inputs inputs.json
 ```
 
+## Lowering CWL
+
+`uwe lower` prints the wir document of a CWL file, with the source locations from the current folder, so the document belongs there:
+
+```console
+$ uwe lower workflow.cwl > workflow.wir.json
+uwe: op align stays a native CWL op: step align: scatter
+```
+
+`uwe run workflow.cwl -lowered` runs a CWL document through its lowered wir document, which uwe writes below its scratch folder; `uwe graph -lowered` shows its graph. The crate `cwl-lowering` does the lowering:
+
+- A CommandLineTool becomes a `task` op when the task builds the same command: literal base command and arguments, inputs on the command line as one word each (scalars, Files, Directories, enums, and arrays of them without a prefix), `stdout` and `stderr` files, outputs of `stdout` and `stderr` type and outputs read by one literal glob. `DockerRequirement` with `dockerPull` sets the image, else it is `debian:stable-slim`; `NetworkAccess` sets `network`; `ResourceRequirement`, `ToolTimeLimit` and `WorkReuse` set the attributes.
+- A Workflow becomes a graph: an op per step, at the path of the step id, and an edge per link with one source. A step that runs a Workflow becomes a `call` op with a graph of its own, so its tasks have paths like `inner/wc`, as in the CWL run.
+- A scattered step becomes a `map` op over the scattered inputs, with the mode of its `scatterMethod`, whose body graph runs the op of the step. Its tasks have paths like `say/0/say` and the step `say/say`, where the CWL driver names them `say[0]` with the step `say`.
+- A step with `when` becomes an `expr` op `<step>.when` that computes the condition from the step inputs, with the `expressionLib` in scope, and a `branch` op at the step path whose body graph runs the op of the step, so its task has the path and step `say/say`. A skipped step gives null outputs. With `scatter`, both are the body of the `map`, so the condition holds per round and a skipped round gives null at its place.
+- Anything else stays a `native` CWL op that runs the process as a whole, and `uwe lower` names it with the first thing that has no lowering yet: expressions in tools, input defaults, `valueFrom`, several sources, `pickValue`, ExpressionTools, and requirements such as `InitialWorkDirRequirement`, `EnvVarRequirement` or `ShellCommandRequirement`. A workflow keeps its steps only when every step lowers; otherwise the whole workflow is one native op.
+
+A lowered tool runs as a wir task, not as the task of the CWL driver, so its cache key and resume fingerprint differ from those of the same tool run as CWL: the CWL driver works in `/var/spool/cwl`, sets `HOME` and `TMPDIR`, stages each input file in `/var/lib/cwl/inputs/<n>`, and asks for `cwl.output.json` in a real run, while a wir task works in `/work` with its inputs in `inputs/<port>`. The steps, the images and the outputs are the same, except where a tool prints the path of an input; `uwe/tests/lowering.rs` compares them on the simulator and in Docker. Two runs of the same lowered document share cache keys and resume fingerprints.
+
+Not lowered the same way: a lowered tool ignores a `cwl.output.json` that it writes, and its inputs have no format check and no secondary files that CWL would find beside them, so such inputs stay native.
+
+### Coverage
+
+`cwl-lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. On 2026-11-07 (suite commit `97908339`):
+
+| Outcome | Tests |
+| --- | --- |
+| lowers fully | 24 |
+| lowers partly: some ops stay native | 311 |
+| does not lower: the parser refuses it, or a native op cannot hold an `Any` or `null` type | 43 |
+| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 315 |
+
+What keeps most tests partly native, by the first reason of each: an input default (80), a requirement such as `InitialWorkDirRequirement`, `EnvVarRequirement`, `ShellCommandRequirement` or `SchemaDefRequirement` (75), an expression in a tool (32), `outputEval` or `loadContents` of an output (32), an ExpressionTool or Operation (24), several sources or `pickValue` (21), `stdin` (10), secondary files or a format of an input (8), a requirement set by an expression (7) and command line bindings (5).
+
+Where the runs end differently, the lowered run refuses a job key that the document does not take, which CWL ignores (`metadata`, `wf_wc_nomultiple`), and job requirements (`cwl:requirements`); a simulated native op makes up values that do not fit their types, and a simulated glob of folders makes up files. These are differences of wir runs and of the simulator, not of lowered tasks.
+
 ## Detection
 
 uwe takes a file as a wir document when it is JSON and has a top-level `wir_version` key. The file name does not matter, but `<name>.wir.json` is the convention. `-lang wir` picks wir for any file. uwe parses the document, checks its version, runs the verifier and refuses the document with every problem the verifier found before any task starts.
 
 ## Inputs
 
-The inputs of the entry graph come from the JSON file of `-inputs` and from parameters like `--lines 3`. A parameter is read by the type of its port: text for a string, a number for an `int` or a `float`, a path for a File or a Directory, and JSON for anything else. File and Directory values use the JSON form of wir, `{"class": "File", "location": ...}`; a relative `location` or `path` in the inputs file starts from the folder of that file. An input without a value is null when its type is optional; otherwise the run stops before any task starts. An `int` that reaches a `float` port becomes a float.
+The inputs of the entry graph come from the JSON or YAML file of `-inputs` and from parameters like `--lines 3`. A parameter is read by the type of its port: text for a string, a number for an `int` or a `float`, a path for a File or a Directory, and JSON for anything else. File and Directory values use the JSON form of wir, `{"class": "File", "location": ...}`; a relative `location` or `path` in the inputs file starts from the folder of that file. An input without a value is null when its type is optional; otherwise the run stops before any task starts. An `int` that reaches a `float` port becomes a float.
 
 ## Ops
 
@@ -24,11 +60,15 @@ An op starts once every connected input is bound and every `after` dependency ho
 
 A failed or errored op fails the run, unless an `after` dependency of another op waits for that status. A failure inside a call fails the call. After a failure that fails the run, no new op starts unless the run has `-keep-going`; running ops end first.
 
-Reserved op kinds, like `map` or `branch`, verify but do not run: uwe stops with exit code 33.
+A `map` op makes its rounds when it starts: round i is a call of its body at `<map>/<i>`, and the tasks inside keep the path without round numbers as their step, like `each/cat` for `each/0/cat`. A failed round fails the map. A `map` with `parallelism` or `min_success` stops the run with exit code 33.
+
+An `expr` op runs in uwe, without a task, with the CWL evaluator of uwe: parameter references directly, JavaScript in the helper that CWL runs use. A `branch` op runs its body like a call when its condition is true, else it ends skipped with null outputs and its tasks do not run.
+
+Reserved op kinds, like `select`, verify but do not run: uwe stops with exit code 33, and so do `map`, `expr` and `branch` in a document older than wir 0.4.
 
 ## Task ops
 
-A `task` op becomes one uwe task, with the op path as its step and name. It runs in its image in the working folder `/work`. Each File or Directory input is staged at `inputs/<port>/<basename>`, an item of an array at `inputs/<port>/<index>/<basename>`, with its secondary files beside it. The command is built as the wir README says, without a shell; a `stdout` or `stderr` capture runs it through `/bin/sh` with the stream written to `<output>.stdout` or `<output>.stderr`.
+A `task` op becomes one uwe task, with the op path as its step and name. It runs in its image in the working folder `/work`. Each File or Directory input is staged at `inputs/<port>/<basename>`, an item of an array at `inputs/<port>/<index>/<basename>`, with its secondary files beside it. The command is built as the wir README says, without a shell; a `stdout` or `stderr` capture, or a stream file the task names, runs it through `/bin/sh` with the stream written to that file, else to `<output>.stdout` or `<output>.stderr`.
 
 An attempt is accepted only when its exit code is in `success_codes` (only 0 when empty) and every capture fits its output: a glob matches one file for a File or a Directory, any number for an array, none only for an optional output. An attempt that is not accepted runs again while `retry` allows; then the op fails. A task that could not run, and no machine retry can mend, errors. The attributes `resources` and `time` set what the task asks for and `cache: never` keeps it from the cache; none of them enters its cache key. A task op runs without network, so runs can share its results, unless it sets `network: true`, like a CWL tool with `NetworkAccess`.
 
@@ -90,13 +130,16 @@ Results: when the block has finished, each op output takes the workflow output o
 
 ## Outputs
 
-A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. When two different files or folders would get the same place there, or one would go to a place that holds, or lies in, the place of another output or of a file that a native block delivered, the run fails before it delivers anything, and names those places. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
+A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. When a later file or folder would get a place that another one has, it goes to a numbered folder, `<name>-2/<name>` and so on, as the CWL driver delivers outputs, so the items of a `map` output with one name keep theirs. When one would go to a place that holds, or lies in, the place of another output or of a file that a native block delivered, the run fails before it delivers anything, and names those places. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
 
 ## Provenance
 
 The run database records a wir run with the language `wir`, and its run crate names the language wir.
 
 ## Not yet
+
+- Lowering CWL input defaults, `valueFrom`, several sources and `pickValue` (with `select`), ExpressionTools, and tools with requirements such as `InitialWorkDirRequirement`; they stay native ops.
+- Equal cache keys of a lowered tool and the same tool run as CWL, which need a wir task with the working folder, variables and staging places of the CWL driver.
 
 - `uwe resume` of the suspended steps of an Argo block.
 - Several targets in one Snakemake block; a rule that asks for them can stand in.

@@ -278,6 +278,158 @@ fn network_needs_version() {
 }
 
 #[test]
+fn stream_files_checked() {
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"] = json!("out.txt");
+    assert!(problems(document.clone()).is_empty());
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("../err.txt");
+    let outside = Problem::Outside("../err.txt".into());
+    assert_eq!(only(document.clone()), ("main/head".into(), outside));
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("err.txt");
+    document["wir_version"] = json!("0.3");
+    let later = Problem::Later("the stream files of a task".into(), "0.4".into());
+    assert_eq!(only(document), ("main/head".into(), later));
+}
+
+/// A map `each` over the files `texts`, whose body `round` runs one task.
+fn mapped() -> Json {
+    let files = json!({"array": {"items": {"file": {}}}});
+    let round = json!({
+        "name": "round",
+        "inputs": [{"name": "input", "type": {"file": {}}}],
+        "outputs": [{"name": "out", "type": {"file": {}}}],
+        "ops": [task("cat")],
+        "edges": [
+            edge((None, "input"), (Some("cat"), "input")),
+            edge((Some("cat"), "out"), (None, "out"))
+        ]
+    });
+    json!({
+        "wir_version": VERSION,
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "texts", "type": files}],
+            "outputs": [{"name": "outs", "type": files}],
+            "ops": [{
+                "path": "each",
+                "kind": {"map": {"body": "round", "over": ["input"]}},
+                "inputs": [{"name": "input", "type": files}],
+                "outputs": [{"name": "out", "type": files}]
+            }],
+            "edges": [
+                edge((None, "texts"), (Some("each"), "input")),
+                edge((Some("each"), "out"), (None, "outs"))
+            ]
+        }, round],
+        "entry": "main"
+    })
+}
+
+#[test]
+fn single_expr_output() {
+    let mut document = base();
+    let expr = json!({
+        "path": "pick",
+        "kind": {"expr": {"language": "js", "code": "$(inputs.text)", "library": ["var a = 1;"]}},
+        "inputs": [{"name": "text", "type": {"file": {}}}],
+        "outputs": [{"name": "out", "type": {"file": {}}}, {"name": "more", "type": "int"}]
+    });
+    document["graphs"][0]["ops"]
+        .as_array_mut()
+        .unwrap()
+        .push(expr);
+    let edge = edge((None, "text"), (Some("pick"), "text"));
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .unwrap()
+        .push(edge);
+    let single = Problem::Single("an expr".into());
+    assert_eq!(only(document.clone()), ("main/pick".into(), single));
+    document["graphs"][0]["ops"][2]["outputs"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(problems(document.clone()).is_empty());
+    document["wir_version"] = json!("0.3");
+    let later = Problem::Later("the library of an expr".into(), "0.4".into());
+    assert_eq!(only(document), ("main/pick".into(), later));
+}
+
+/// A branch `maybe` that runs the task of its body `inner` when `go` holds.
+fn branched() -> Json {
+    let optional = json!({"optional": {"file": {}}});
+    json!({
+        "wir_version": VERSION,
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "text", "type": {"file": {}}}, {"name": "go", "type": "bool"}],
+            "outputs": [{"name": "top", "type": optional}],
+            "ops": [{
+                "path": "maybe",
+                "kind": {"branch": {"body": "inner", "condition": "go"}},
+                "inputs": [{"name": "input", "type": {"file": {}}}, {"name": "go", "type": "bool"}],
+                "outputs": [{"name": "out", "type": optional}]
+            }],
+            "edges": [
+                edge((None, "text"), (Some("maybe"), "input")),
+                edge((None, "go"), (Some("maybe"), "go")),
+                edge((Some("maybe"), "out"), (None, "top"))
+            ]
+        }, {
+            "name": "inner",
+            "inputs": [{"name": "input", "type": {"file": {}}}],
+            "outputs": [{"name": "out", "type": {"file": {}}}],
+            "ops": [task("cat")],
+            "edges": [
+                edge((None, "input"), (Some("cat"), "input")),
+                edge((Some("cat"), "out"), (None, "out"))
+            ]
+        }],
+        "entry": "main"
+    })
+}
+
+#[test]
+fn branch_ports_checked() {
+    assert!(problems(branched()).is_empty());
+    let mut document = branched();
+    document["graphs"][0]["ops"][0]["outputs"][0]["type"] = json!({"file": {}});
+    let port = Problem::CallPort {
+        port: "output out".into(),
+        graph: "inner".into(),
+    };
+    assert_eq!(
+        only(document),
+        ("main/maybe".into(), port),
+        "an output may be null"
+    );
+}
+
+#[test]
+fn map_ports_checked() {
+    assert!(problems(mapped()).is_empty());
+    let mut document = mapped();
+    document["graphs"][0]["ops"][0]["outputs"][0]["type"] = json!({"file": {}});
+    let port = Problem::CallPort {
+        port: "output out".into(),
+        graph: "round".into(),
+    };
+    let found = problems(document);
+    assert!(
+        found
+            .iter()
+            .any(|error| error.at == "main/each" && error.problem == port),
+        "{found:?}"
+    );
+    let mut document = mapped();
+    document["graphs"][0]["ops"][0]["kind"]["map"]["mode"] = json!("nested_cross");
+    assert!(
+        problems(document.clone()).is_empty(),
+        "one input nests once"
+    );
+}
+
+#[test]
 fn task_outputs_captured() {
     let mut document = base();
     document["graphs"][0]["ops"][1]["kind"]["task"]["captures"] = json!([]);

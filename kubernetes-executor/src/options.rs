@@ -178,7 +178,8 @@ impl PodOptions {
     }
 
     /// Adds the options to the Job `job` of a task with `placement`, and its resource labels,
-    /// disk and accelerator type. uwe's own labels, node selectors and security stay.
+    /// disk and accelerator type. uwe's own labels, node selectors and security stay, but for
+    /// a requested user and group.
     pub fn apply(&self, job: &mut Value, placement: &Placement) -> Result<(), String> {
         let mut labels = BTreeMap::new();
         for (name, value) in placement.labels.iter().chain(&self.labels) {
@@ -228,8 +229,20 @@ impl PodOptions {
         for (name, value) in &self.fields {
             pod[name] = value.clone();
         }
-        if !self.security.is_empty() {
-            pod["securityContext"] = Value::Object(self.security.clone());
+        // Merged, so that the fsGroup of staging stays; a container's own user wins over the
+        // pod's, so the requested user and group also go to each container.
+        for (name, value) in &self.security {
+            pod["securityContext"][name] = value.clone();
+        }
+        let identity = (self.security.iter())
+            .filter(|(name, _)| matches!(name.as_str(), "runAsUser" | "runAsGroup"));
+        for (name, value) in identity {
+            for kind in ["initContainers", "containers"] {
+                let list = pod.get_mut(kind).and_then(Value::as_array_mut);
+                for container in list.into_iter().flatten() {
+                    container["securityContext"][name] = value.clone();
+                }
+            }
         }
         // Claims come first, as Nextflow names them.
         let mut volumes: Vec<&(Value, Value)> = self.volumes.iter().collect();

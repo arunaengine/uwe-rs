@@ -5,6 +5,7 @@
 pub mod document;
 pub mod expression;
 pub mod library;
+pub mod task;
 pub mod value;
 
 pub use value::Value;

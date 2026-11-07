@@ -66,13 +66,14 @@ pub(crate) fn image_entity(id: &str, reference: &str, named: Option<&str>) -> Va
 }
 
 /// The id of wir, the workflow intermediate representation of uwe, which WorkflowHub does not
-/// list.
-const WIR: &str = "https://w3id.org/workflowhub/workflow-ro-crate#wir";
+/// list: the page of uwe that describes it, as wir is part of uwe for now.
+const WIR: &str = "https://github.com/arunaengine/uwe-rs/blob/main/docs/wir.md";
 
-/// The id of a language as Workflow RO-Crate names it; Argo has none there.
+/// The id of a language as Workflow RO-Crate names it; Argo and wir have none there.
 pub(crate) fn language_id(language: &str) -> String {
     match language {
         "argo" => "https://argoproj.github.io/workflows/".into(),
+        "wir" => WIR.into(),
         other => format!("https://w3id.org/workflowhub/workflow-ro-crate#{other}"),
     }
 }
@@ -83,7 +84,6 @@ pub(crate) fn language(language: &str) -> Value {
         "snakemake" => ("Snakemake", "https://snakemake.readthedocs.io/"),
         "cwl" => ("Common Workflow Language", "https://www.commonwl.org/"),
         "wdl" => ("Workflow Description Language", "https://openwdl.org/"),
-        // wir has no public home page yet, so its id is also its address.
         "wir" => ("wir", WIR),
         _ => ("Argo Workflows", "https://argoproj.github.io/workflows/"),
     };
@@ -105,6 +105,7 @@ mod tests {
         let entity = language("wir");
         assert_eq!(entity["name"], "wir");
         assert_eq!(entity["@id"], WIR);
+        assert_eq!(entity["url"]["@id"], WIR);
         assert_eq!(language("argo")["name"], "Argo Workflows");
     }
 }

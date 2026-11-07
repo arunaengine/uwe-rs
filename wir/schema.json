@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["wir_version", "graphs", "entry"],
   "properties": {
-    "wir_version": { "enum": ["0.1", "0.2"] },
+    "wir_version": { "enum": ["0.1", "0.2", "0.3"] },
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
     "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
@@ -413,7 +413,8 @@
             }
           }
         },
-        "success_codes": { "type": "array", "items": { "type": "integer" } }
+        "success_codes": { "type": "array", "items": { "type": "integer" } },
+        "network": { "type": "boolean" }
       }
     }
   }

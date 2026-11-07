@@ -2,8 +2,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod agent;
 mod build;
+mod calls;
 pub mod channel;
+mod cleanup;
 pub mod driver;
 mod emits;
 mod files;
@@ -81,10 +84,15 @@ pub struct Options {
     pub config_files: Vec<String>,
     /// The command line that started the run.
     pub command_line: String,
+    /// Whether the run resumes an earlier one (`-resume`), `workflow.resume`.
+    pub resume: bool,
     /// Where the `exec:` sections of processes run: a folder of this run on this machine, with
     /// a folder for each task, its `task.workDir`. Without it, `exec:` sections are not
     /// supported.
     pub exec_folder: Option<std::path::PathBuf>,
+    /// The folder of the run whose files the run deletes once no node can pass them on, when
+    /// nf-gc or nf-boost's cleanup is on.
+    pub cleanup: Option<std::path::PathBuf>,
     /// Whether the run goes on after a task failed that would end it (`Launch.keep_going`):
     /// the task counts as ignored, and the run fails at its end.
     pub keep_going: bool,
@@ -124,6 +132,9 @@ impl Run {
     ) -> (Run, Result<Vec<TaskRequest>, Error>) {
         let mut network = Network::default();
         network.keep_going(options.keep_going);
+        if let Some(folder) = &options.cleanup {
+            network.clean(folder.clone());
+        }
         let workflow = workflow::metadata(options, &host.launch_dir());
         let mut operator_directory = None;
         let mut emits = Vec::new();
@@ -134,6 +145,9 @@ impl Run {
             operator_directory: &mut operator_directory,
         };
         let started = (|| {
+            if !session.start_plugins()? {
+                return Ok(Vec::new());
+            }
             {
                 let mut builder = build::Builder {
                     network: &mut network,
@@ -201,6 +215,22 @@ impl Run {
         self.network.take_deliveries()
     }
 
+    /// The processes that the workflow calls, with the processes that each one feeds.
+    pub(crate) fn processes(&self) -> Vec<nextflow_plugins::observer::Process> {
+        self.network.processes()
+    }
+
+    /// The workflow outputs, with the files that they published.
+    pub(crate) fn outputs(&self) -> Vec<nextflow_plugins::observer::Output> {
+        self.network.outputs()
+    }
+
+    /// The task whose failure ended the run, if one did.
+    pub(crate) fn failing_task(&self) -> Option<TaskId> {
+        let task = tree::get(self.network.failed_task.as_ref()?, &["task_id"])?;
+        task.to_string().parse().ok().map(TaskId)
+    }
+
     /// Consumes the native output-check verdict of the task just completed.
     pub fn take_acceptance(&mut self, task: TaskId) -> bool {
         self.network.take_acceptance(task)
@@ -223,13 +253,19 @@ impl Run {
         if self.on_complete_called {
             return Ok(());
         }
+        self.ready()?;
+        workflow::finish(&self.workflow, true, self.network.succeeded);
+        self.handlers(host, false, Value::Null, false)
+    }
+
+    /// Whether the run can finish well: no failure and no step that still waits for input.
+    pub fn ready(&mut self) -> Result<(), Error> {
         if let Some(failure) = self.network.take_failure() {
             return Err(failure);
         }
         let waiting = self.network.running();
         if waiting.is_empty() && !self.network.has_tasks() {
-            workflow::finish(&self.workflow, true, self.network.succeeded);
-            return self.handlers(host, false, Value::Null, false);
+            return Ok(());
         }
         let names: Vec<&str> = waiting.iter().map(|name| &**name).collect();
         let message = format!(
@@ -260,8 +296,8 @@ impl Run {
         let status = tree::get(&trace, &["exit"]).unwrap_or(Value::integer(status));
         workflow::finish(&self.workflow, false, self.network.succeeded);
         workflow::failure(&self.workflow, message, status);
-        let error = self.handlers(host, true, trace, true).err();
         let completion_error = self.handlers(host, false, Value::Null, true).err();
+        let error = self.handlers(host, true, trace, true).err();
         match error.or(completion_error) {
             Some(error) => Err(error),
             None => Ok(()),
@@ -316,6 +352,10 @@ impl Run {
                 }
             }
         }
+        drop(interpreter);
+        if !on_error {
+            session.finish_plugins(&self.workflow);
+        }
         match failure {
             Some(error) => Err(error),
             None => Ok(()),
@@ -350,7 +390,9 @@ impl Default for Options {
             run_name: "uwe".into(),
             config_files: Vec::new(),
             command_line: String::new(),
+            resume: false,
             exec_folder: None,
+            cleanup: None,
             keep_going: false,
             cli_params: Vec::new(),
         }

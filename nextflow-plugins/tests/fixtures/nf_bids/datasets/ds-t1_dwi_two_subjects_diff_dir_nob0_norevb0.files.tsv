@@ -1,0 +1,14 @@
+dataset_description.json	238
+sub-01/ses-001/anat/sub-01_ses-001_T1w.json	52402
+sub-01/ses-001/anat/sub-01_ses-001_T1w.nii.gz	0
+sub-01/ses-001/dwi/sub-01_ses-001_dir-AP_dwi.bval	474
+sub-01/ses-001/dwi/sub-01_ses-001_dir-AP_dwi.bvec	2820
+sub-01/ses-001/dwi/sub-01_ses-001_dir-AP_dwi.json	16348
+sub-01/ses-001/dwi/sub-01_ses-001_dir-AP_dwi.nii.gz	0
+sub-01/ses-005/anat/sub-01_ses-005_T1w.json	52509
+sub-01/ses-005/anat/sub-01_ses-005_T1w.nii.gz	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-PA_dwi.bval	474
+sub-01/ses-005/dwi/sub-01_ses-005_dir-PA_dwi.bvec	2820
+sub-01/ses-005/dwi/sub-01_ses-005_dir-PA_dwi.json	16455
+sub-01/ses-005/dwi/sub-01_ses-005_dir-PA_dwi.nii.gz	0
+sub-01/ses-005/sub-01_ses-005_scans.tsv	3131

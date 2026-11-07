@@ -1,0 +1,191 @@
+{
+    "object_id": "urn:uuid:eaf6a64e-feba-4c49-ab33-4d4b69e9193c",
+    "spec_version": "https://w3id.org/ieee/ieee-2791-schema/2791object.json",
+    "etag": "20fe827cc355b05d7830ed72dfc407eb",
+    "provenance_domain": {
+        "name": "probe-prov",
+        "version": "0.0.1",
+        "review": [
+            
+        ],
+        "derived_from": null,
+        "obsolete_after": null,
+        "embargo": null,
+        "created": "2026-11-06T10:22:01.778900519+01:00",
+        "modified": "2026-11-06T10:22:01.778900519+01:00",
+        "contributors": [
+            
+        ],
+        "license": "MIT"
+    },
+    "usability_domain": [
+        
+    ],
+    "extension_domain": [
+        
+    ],
+    "description_domain": {
+        "keywords": [
+            
+        ],
+        "xref": [
+            
+        ],
+        "platform": [
+            "Nextflow"
+        ],
+        "pipeline_steps": [
+            {
+                "step_number": 1,
+                "name": "ebeb1580730eca9136be4403bf992a51",
+                "description": "SPLIT",
+                "input_list": [
+                    {
+                        "uri": "file:///LAUNCH/input.txt"
+                    }
+                ],
+                "output_list": [
+                    {
+                        "uri": "work/eb/eb1580730eca9136be4403bf992a51/part_00.txt"
+                    },
+                    {
+                        "uri": "work/eb/eb1580730eca9136be4403bf992a51/part_01.txt"
+                    },
+                    {
+                        "uri": "work/eb/eb1580730eca9136be4403bf992a51/part_02.txt"
+                    }
+                ]
+            },
+            {
+                "step_number": 2,
+                "name": "cfd82fd271ef1f2d74d39a75879d0ec4",
+                "description": "SHOUT (1)",
+                "input_list": [
+                    {
+                        "uri": "work/eb/eb1580730eca9136be4403bf992a51/part_00.txt"
+                    }
+                ],
+                "output_list": [
+                    {
+                        "uri": "work/cf/d82fd271ef1f2d74d39a75879d0ec4/part_00.up.txt"
+                    }
+                ]
+            },
+            {
+                "step_number": 3,
+                "name": "0a5742999b23d15aa6cfd2f0a8e79ed5",
+                "description": "SHOUT (2)",
+                "input_list": [
+                    {
+                        "uri": "work/eb/eb1580730eca9136be4403bf992a51/part_01.txt"
+                    }
+                ],
+                "output_list": [
+                    {
+                        "uri": "work/0a/5742999b23d15aa6cfd2f0a8e79ed5/part_01.up.txt"
+                    }
+                ]
+            },
+            {
+                "step_number": 4,
+                "name": "65e1361a534a87c72538a461fe50c888",
+                "description": "SHOUT (3)",
+                "input_list": [
+                    {
+                        "uri": "work/eb/eb1580730eca9136be4403bf992a51/part_02.txt"
+                    }
+                ],
+                "output_list": [
+                    {
+                        "uri": "work/65/e1361a534a87c72538a461fe50c888/part_02.up.txt"
+                    }
+                ]
+            }
+        ]
+    },
+    "execution_domain": {
+        "script": [
+            "file:///LAUNCH/main.nf"
+        ],
+        "script_driver": "nextflow",
+        "software_prerequisites": [
+            {
+                "name": "Nextflow",
+                "version": "26.04.6",
+                "uri": {
+                    "uri": "https://github.com/nextflow-io/nextflow/releases/tag/v26.04.6"
+                }
+            }
+        ],
+        "external_data_endpoints": [
+            
+        ],
+        "environment_variables": {
+            
+        }
+    },
+    "parametric_domain": [
+        
+    ],
+    "io_domain": {
+        "input_subdomain": [
+            {
+                "uri": {
+                    "uri": "file:///LAUNCH/input.txt"
+                }
+            }
+        ],
+        "output_subdomain": [
+            {
+                "mediatype": "text/plain",
+                "uri": {
+                    "filename": "work/eb/eb1580730eca9136be4403bf992a51/part_00.txt",
+                    "uri": "file:///LAUNCH/results/split/part_00.txt"
+                }
+            },
+            {
+                "mediatype": "text/plain",
+                "uri": {
+                    "filename": "work/eb/eb1580730eca9136be4403bf992a51/part_01.txt",
+                    "uri": "file:///LAUNCH/results/split/part_01.txt"
+                }
+            },
+            {
+                "mediatype": "text/plain",
+                "uri": {
+                    "filename": "work/eb/eb1580730eca9136be4403bf992a51/part_02.txt",
+                    "uri": "file:///LAUNCH/results/split/part_02.txt"
+                }
+            },
+            {
+                "mediatype": "text/plain",
+                "uri": {
+                    "filename": "work/65/e1361a534a87c72538a461fe50c888/part_02.up.txt",
+                    "uri": "file:///LAUNCH/results/shout/part_02.up.txt"
+                }
+            },
+            {
+                "mediatype": "text/plain",
+                "uri": {
+                    "filename": "work/0a/5742999b23d15aa6cfd2f0a8e79ed5/part_01.up.txt",
+                    "uri": "file:///LAUNCH/results/shout/part_01.up.txt"
+                }
+            },
+            {
+                "mediatype": "text/plain",
+                "uri": {
+                    "filename": "work/cf/d82fd271ef1f2d74d39a75879d0ec4/part_00.up.txt",
+                    "uri": "file:///LAUNCH/results/shout/part_00.up.txt"
+                }
+            }
+        ]
+    },
+    "error_domain": {
+        "empirical_error": {
+            
+        },
+        "algorithmic_error": {
+            
+        }
+    }
+}

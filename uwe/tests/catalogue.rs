@@ -104,10 +104,21 @@ fn prepares_installed_preset() {
     assert!(catalogue.prepare(&mut arguments).unwrap().is_none());
     assert_eq!(catalogue.list()["references"][0]["version"], "1");
     assert_eq!(catalogue.list()["version"], 1);
-    assert_eq!(
-        catalogue.list()["capabilities"]["executors"]["tes"],
-        json!([])
-    );
+    let executors = &catalogue.list()["capabilities"]["executors"];
+    assert_eq!(executors["tes"], json!([]));
+    for name in ["slurm", "htcondor", "pbs", "nomad", "wr"] {
+        assert_eq!(executors[name], json!(["offline"]), "{name}");
+    }
+    for name in [
+        "aws-batch",
+        "google-batch",
+        "azure-batch",
+        "flyte",
+        "snowflake",
+        "jarvice",
+    ] {
+        assert_eq!(executors[name], json!([]), "{name}");
+    }
 }
 
 #[test]

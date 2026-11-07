@@ -140,6 +140,51 @@ fn missing_env_empty() {
 }
 
 #[test]
+fn passes_placement_hints() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process P {\n queue 'long'\n resourceLabels team: 'genomics', \
+                  'cost-center': 'A 12'\n accelerator 1, type: 'nvidia.com'\n \
+                  pod nodeSelector: 'disktype=ssd'\n script:\n 'true'\n}\nworkflow { P() }";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let config = "process {\n withName: P {\n  nomadOptions = [nodePool: 'highmem']\n }\n}\n";
+    std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    let resources = &graph.nodes[0].task.resources;
+    assert_eq!(resources.queue.as_deref(), Some("long"));
+    assert_eq!(resources.labels["team"], "genomics");
+    assert_eq!(resources.labels["cost-center"], "A 12");
+    let options = &resources.options;
+    assert_eq!(
+        options["pod"],
+        serde_json::json!([{"nodeSelector": "disktype=ssd"}])
+    );
+    assert_eq!(options["nomadOptions"]["nodePool"], "highmem");
+    assert_eq!(options["accelerator"]["type"], "nvidia.com");
+}
+
+/// The HTCondor and PBS executors get all cluster options of their schedulers, like Gadi's.
+#[test]
+fn passes_cluster_options() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process P {\n script:\n 'true'\n}\nworkflow { P() }";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let config =
+        "process {\n executor = 'pbspro'\n clusterOptions = '-P ab12 -l storage=gdata/ab12'\n}\n";
+    std::fs::write(directory.path().join("nextflow.config"), config).expect("writes the config");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    };
+    let graph = run(directory.path(), launch);
+    let options = &graph.nodes[0].task.resources.options;
+    assert_eq!(options["clusterOptions"], "-P ab12 -l storage=gdata/ab12");
+}
+
+#[test]
 fn builds_task_graph() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(directory.path().join("main.nf"), PIPELINE).expect("writes the script");
@@ -223,6 +268,35 @@ fn bin_helpers_run() {
             .unwrap();
         assert_eq!(result.status.code(), Some(status), "{:?}", result);
         assert_eq!(result.stdout, b"ready\n");
+    }
+}
+
+/// As in Nextflow, a change in `bin` reruns only the tasks whose script names one of its
+/// scripts; those get the whole folder, as a named script may call the others.
+#[test]
+fn stages_named_scripts() {
+    let directory = tempfile::tempdir().unwrap();
+    let bin = directory.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for name in ["used.sh", "other.sh"] {
+        std::fs::write(bin.join(name), "#!/bin/sh\necho hi\n").unwrap();
+    }
+    let script = "process USES {\n container 'debian:stable-slim'\n script:\n 'used.sh --fast'\n}\n\
+        process PLAIN {\n container 'debian:stable-slim'\n script:\n 'echo used'\n}\n\
+        workflow { USES(); PLAIN() }";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    let mut driver = nextflow_runtime::driver(&Launch {
+        target: directory.path().to_owned(),
+        ..Launch::default()
+    })
+    .unwrap();
+    for task in driver.start().unwrap() {
+        let staged = (task.inputs.iter()).find(|input| input.path == ".command.bin");
+        let staged = staged.map(|input| (input.source.as_str(), input.directory));
+        match task.step.as_str() {
+            "USES" => assert_eq!(staged, Some((bin.to_str().unwrap(), true))),
+            _ => assert_eq!((staged, task.command[0].as_str()), (None, "/bin/bash")),
+        }
     }
 }
 

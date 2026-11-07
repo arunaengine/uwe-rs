@@ -93,6 +93,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     executors::tes_server(&setup.executors, arguments, &mut report);
     executors::slurm(&setup, arguments, &mut report);
     executors::kubernetes(runtime, &setup.executors, arguments, &mut report);
+    executors::newer(&setup, arguments, &mut report);
     print!("{}", report.text());
     match report
         .found
@@ -275,7 +276,7 @@ mod config {
 
 mod executors {
     //! The executors that the config file or the command line sets up: the TES server, the tools
-    //! of SLURM and the kubeconfig of a Kubernetes cluster.
+    //! of SLURM, HTCondor and PBS, the kubeconfig of a Kubernetes cluster, and the cloud services.
     // Copyright (c) 2026 The uwe Contributors
     // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -386,6 +387,127 @@ mod executors {
                  cluster",
             ),
         }
+    }
+
+    /// The newer executors, each built as a run builds it: that reads its tools, staging root,
+    /// address and credentials, but asks no service.
+    pub(super) fn newer(setup: &Setup, arguments: &Arguments, report: &mut Report) {
+        let names = [
+            "aws-batch",
+            "google-batch",
+            "azure-batch",
+            "nomad",
+            "htcondor",
+            "pbs",
+            "flyte",
+            "snowflake",
+            "jarvice",
+            "wr",
+        ];
+        let store = (setup.store(arguments))
+            .map_err(|failure| failure.message.trim_start_matches("uwe: ").to_owned());
+        for name in names {
+            let asked = arguments.executor.as_deref() == Some(name);
+            let built =
+                (store.clone()).and_then(|store| built(name, asked, store, setup, arguments));
+            let (state, text) = match built {
+                Ok(text) => (State::Ready, text),
+                Err(problem) if asked => (State::Missing, problem),
+                Err(problem) => (State::NotSetUp, problem),
+            };
+            report.add(state, format!("executor {name}"), text);
+        }
+    }
+
+    /// What a run of the executor `name` would use, or why it cannot start.
+    fn built(
+        name: &str,
+        asked: bool,
+        store: content_store::Store,
+        setup: &Setup,
+        arguments: &Arguments,
+    ) -> Result<String, String> {
+        let scratch = crate::cache_directory().join("scratch");
+        let image = arguments.default_image.clone();
+        let run = "check-machine";
+        let cloud = |service: &str| {
+            format!(
+                "the settings, staging root and credentials of {service} are complete; uwe asks \
+                 {service} only when a run starts"
+            )
+        };
+        let grid = |scheduler: &str, config: &crate::grid::Config| {
+            let runtime = config.container.as_deref().unwrap_or("apptainer");
+            format!("the {scheduler} tools are on the PATH; the jobs run tasks with {runtime}")
+        };
+        let executors = &setup.executors;
+        Ok(match name {
+            "aws-batch" => {
+                crate::aws_batch::executor(store, &scratch, run, image, setup)?;
+                cloud("AWS Batch")
+            }
+            "google-batch" => {
+                crate::google_batch::executor(store, &scratch, run, image, setup)?;
+                cloud("Google Batch")
+            }
+            "azure-batch" => {
+                crate::azure_batch::executor(store, &scratch, run, image, setup)?;
+                cloud("Azure Batch")
+            }
+            "nomad" => {
+                let named = (executors.nomad.settings.address.clone()).or_else(|| {
+                    std::env::var("NOMAD_ADDR")
+                        .ok()
+                        .filter(|text| !text.is_empty())
+                });
+                if named.is_none() && !asked {
+                    return Err("no Nomad agent named; name one with `address` in \
+                                [executor.nomad] or NOMAD_ADDR"
+                        .into());
+                }
+                crate::nomad::executor(store, &scratch, run, image, setup)?;
+                let address = named.unwrap_or_else(|| nomad_executor::ADDRESS.into());
+                format!(
+                    "the jobs go to the Nomad agent at {address}; uwe asks it only when a run starts"
+                )
+            }
+            "htcondor" => {
+                crate::grid::htcondor(store, &scratch, run, image, setup)?;
+                grid("HTCondor", &executors.htcondor)
+            }
+            "flyte" => {
+                crate::flyte::executor(store, &scratch, run, image, setup)?;
+                cloud("Flyte")
+            }
+            "snowflake" => {
+                crate::snowflake::executor(store, &scratch, run, image, setup)?;
+                cloud("Snowflake")
+            }
+            "jarvice" => {
+                crate::jarvice::executor(store, &scratch, run, image, setup)?;
+                let address = &executors.jarvice.settings.api_url;
+                format!(
+                    "the jobs go to the JARVICE API at {address}; uwe asks it only when a run starts"
+                )
+            }
+            "wr" => {
+                crate::wr::executor(store, &scratch, run, image, setup)?;
+                let runtime = executors
+                    .wr
+                    .jobs
+                    .container
+                    .as_deref()
+                    .unwrap_or("apptainer");
+                format!(
+                    "the token and CA certificate of the wr manager are readable; the jobs run \
+                     tasks with {runtime}; uwe asks wr only when a run starts"
+                )
+            }
+            _ => {
+                crate::grid::pbs(store, &scratch, run, image, setup)?;
+                grid("PBS", &executors.pbs)
+            }
+        })
     }
 
     /// `a is`, `a and b are`, `a, b and c are`.

@@ -1,0 +1,20 @@
+
+---------------------------------------------
+  bactopia/bactopia v9.9.9
+  Probe workflow 
+---------------------------------------------
+
+--help          [boolean] Show this message for all non-hidden parameters. 
+--help_all      [boolean] Show the help message for all parameters. 
+
+Required Parameters
+  --sample      [string]  Sample name 
+  --r1          [string]  First read 
+  --r2          [string]  Second read 
+  --genome_size [integer] Genome size [default: 0] 
+  --species     [string]  Species name [default: UNKNOWN_SPECIES] 
+  --outdir      [string]  Output dir [default: bactopia] 
+
+ !! Hiding 1 param(s), use `--help_all` to show them !!
+
+[exit code 0]

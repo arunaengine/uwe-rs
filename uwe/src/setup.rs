@@ -35,7 +35,23 @@ const SECTIONS: &[&str] = &[
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
-pub(crate) const EXECUTORS: &[&str] = &["simulator", "local", "tes", "slurm", "kubernetes"];
+pub(crate) const EXECUTORS: &[&str] = &[
+    "simulator",
+    "local",
+    "tes",
+    "slurm",
+    "kubernetes",
+    "aws-batch",
+    "google-batch",
+    "azure-batch",
+    "nomad",
+    "htcondor",
+    "pbs",
+    "flyte",
+    "snowflake",
+    "jarvice",
+    "wr",
+];
 
 /// What the config files set up for a command; the default is what no config file sets up.
 #[derive(Default)]
@@ -97,6 +113,9 @@ pub struct Executors {
     pub slurm_helper_file: Option<PathBuf>,
     /// `[executor.slurm] node_folder`: the folder of the nodes for the files of a job.
     pub slurm_node_folder: Option<String>,
+    /// `[executor.slurm] memory_per_cpu_gb`: for a cluster that gives each CPU a fixed memory,
+    /// the GB per CPU; the jobs then ask for CPUs instead of memory.
+    pub slurm_cpu_memory: Option<f64>,
     /// `[executor.slurm] staging_secret_file`: the storage providers of the staging root for
     /// `staging_access = "credentials"`, in a file that only its owner may read.
     pub slurm_secret_file: Option<PathBuf>,
@@ -124,6 +143,32 @@ pub struct Executors {
     /// `[executor.kubernetes] kubedal_data_node` and the other kubedal settings, for
     /// `staging = "kubedal"`.
     pub kubernetes_kubedal: Option<kubernetes_executor::Kubedal>,
+    /// `[executor.kubernetes] context`: the context of the kubeconfig, else its current one.
+    pub kubernetes_context: Option<String>,
+    /// `[executor.kubernetes] service_account` and `pod`: the service account and the pod
+    /// options of every Job, as Nextflow's `pod` directive takes them.
+    pub kubernetes_pod: kubernetes_executor::PodOptions,
+    /// `[executor.kubernetes.cws]`: the Common Workflow Scheduler that places the pods.
+    pub kubernetes_cws: Option<kubernetes_executor::cws::Settings>,
+    /// `[executor.aws-batch]`: the jobs, their staging root and their helper.
+    pub aws_batch: crate::aws_batch::Config,
+    /// `[executor.google-batch]`: the jobs, their staging root and their helper.
+    pub google_batch: crate::google_batch::Config,
+    /// `[executor.azure-batch]`: the tasks, their pools, staging root and helper.
+    pub azure_batch: crate::azure_batch::Config,
+    /// `[executor.nomad]`: the agent, the jobs, their staging and helper.
+    pub nomad: crate::nomad::Config,
+    /// `[executor.htcondor]` and `[executor.pbs]`: the jobs, their staging and helper.
+    pub htcondor: crate::grid::Config,
+    pub pbs: crate::grid::Config,
+    /// `[executor.flyte]`: the control plane, the runs, their staging and helper.
+    pub flyte: crate::flyte::Config,
+    /// `[executor.snowflake]`: the account, the job services, their staging and helper.
+    pub snowflake: crate::snowflake::Config,
+    /// `[executor.jarvice]`: the API, the jobs, their vault or staging root and helper.
+    pub jarvice: crate::jarvice::Config,
+    /// `[executor.wr]`: the wr manager, the jobs, their staging and helper.
+    pub wr: crate::wr::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -151,8 +196,48 @@ impl Executors {
             "tes",
             "slurm",
             "kubernetes",
+            "aws-batch",
+            "google-batch",
+            "azure-batch",
+            "nomad",
+            "htcondor",
+            "pbs",
+            "flyte",
+            "snowflake",
+            "jarvice",
+            "wr",
         ];
         section.only(&keys)?;
+        if let Some(batch) = section.table("aws-batch")? {
+            settings.aws_batch = crate::aws_batch::Config::read(&batch)?;
+        }
+        if let Some(batch) = section.table("google-batch")? {
+            settings.google_batch = crate::google_batch::Config::read(&batch)?;
+        }
+        if let Some(batch) = section.table("azure-batch")? {
+            settings.azure_batch = crate::azure_batch::Config::read(&batch)?;
+        }
+        if let Some(nomad) = section.table("nomad")? {
+            settings.nomad = crate::nomad::Config::read(&nomad)?;
+        }
+        if let Some(htcondor) = section.table("htcondor")? {
+            settings.htcondor = crate::grid::Config::read(&htcondor, false)?;
+        }
+        if let Some(pbs) = section.table("pbs")? {
+            settings.pbs = crate::grid::Config::read(&pbs, true)?;
+        }
+        if let Some(flyte) = section.table("flyte")? {
+            settings.flyte = crate::flyte::Config::read(&flyte)?;
+        }
+        if let Some(snowflake) = section.table("snowflake")? {
+            settings.snowflake = crate::snowflake::Config::read(&snowflake)?;
+        }
+        if let Some(jarvice) = section.table("jarvice")? {
+            settings.jarvice = crate::jarvice::Config::read(&jarvice)?;
+        }
+        if let Some(wr) = section.table("wr")? {
+            settings.wr = crate::wr::Config::read(&wr)?;
+        }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;
             settings.engine = local.text("engine")?;
@@ -212,6 +297,7 @@ impl Executors {
                 "pull",
                 "node_folder",
                 "query_seconds",
+                "memory_per_cpu_gb",
             ];
             keys.push("staging_secret_file");
             keys.extend(["helper_path", "helper_url", "helper_sha256", "helper_file"]);
@@ -231,6 +317,12 @@ impl Executors {
                 settings.slurm_helper_file = None;
             }
             settings.slurm_container = slurm.text("container")?;
+            if let Some(gb) = slurm.number("memory_per_cpu_gb")? {
+                if !(gb > 0.0 && gb.is_finite()) {
+                    return Err(slurm.invalid("memory_per_cpu_gb", "must be above 0"));
+                }
+                settings.slurm_cpu_memory = Some(gb);
+            }
             settings.slurm_options = slurm.texts("options")?;
             if let Some(pull) = slurm.table("pull")? {
                 settings.slurm_pull = pull_resources(&pull)?;
@@ -258,12 +350,37 @@ impl Executors {
                 "kubedal_upload_minutes",
                 "unschedulable_minutes",
                 "start_grace_seconds",
+                "context",
+                "service_account",
+                "pod",
+                "cws",
             ]);
             keys.extend(crate::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
             settings.kubernetes_in_cluster = kubernetes.flag("in_cluster")?.unwrap_or(false);
+            settings.kubernetes_context = kubernetes.text("context")?;
+            settings.kubernetes_pod.service_account = kubernetes.text("service_account")?;
+            if let Some(pod) = kubernetes.json("pod")? {
+                let pods = &mut settings.kubernetes_pod;
+                pods.add(&pod)
+                    .map_err(|message| kubernetes.invalid("pod", message))?;
+            }
+            if let Some(cws) = kubernetes.table("cws")? {
+                cws.only(&["address", "strategy", "cost_function", "scheduler_name"])?;
+                let address = (cws.text("address")?)
+                    .ok_or_else(|| cws.missing("address", "the address of the scheduler"))?;
+                if !address.starts_with("http://") && !address.starts_with("https://") {
+                    return Err(cws.invalid("address", "must be an http:// or https:// address"));
+                }
+                let mut scheduler = kubernetes_executor::cws::Settings::new(&address);
+                scheduler.strategy = cws.text("strategy")?.unwrap_or(scheduler.strategy);
+                scheduler.cost_function = cws.text("cost_function")?;
+                let name = cws.text("scheduler_name")?;
+                scheduler.scheduler_name = name.unwrap_or(scheduler.scheduler_name);
+                settings.kubernetes_cws = Some(scheduler);
+            }
             if let Some(references) = kubernetes.table("references")? {
                 for reference in references.tables()? {
                     reference.only(&["path", "claim", "nfs_server", "nfs_path"])?;
@@ -430,7 +547,7 @@ fn shared_volume(shared: &Table<'_>) -> Result<kubernetes_executor::Volumes, Con
 
 /// Where the SLURM jobs get the uwe binary: `helper_path` on the nodes, or `helper_url` with
 /// its `helper_sha256`.
-fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigError> {
+pub(crate) fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigError> {
     let (path, url) = (slurm.text("helper_path")?, slurm.text("helper_url")?);
     let sha256 = slurm.text("helper_sha256")?;
     match (path, url, sha256) {
@@ -455,7 +572,7 @@ fn helper(slurm: &Table<'_>) -> Result<Option<slurm_executor::Helper>, ConfigErr
 
 /// The file of `helper_file`, or else the running binary, unless the table names where the jobs
 /// get the binary already.
-fn helper_file(table: &Table<'_>, named: bool) -> Result<Option<PathBuf>, ConfigError> {
+pub(crate) fn helper_file(table: &Table<'_>, named: bool) -> Result<Option<PathBuf>, ConfigError> {
     match (table.text("helper_file")?, named) {
         (Some(_), true) => {
             let message = "takes no other helper setting; name one place for the binary";
@@ -630,6 +747,7 @@ impl Defaults {
             && arguments.preset.is_none()
         {
             arguments.executor = self.executor.or_else(|| Some("local".into()));
+            arguments.executor_default = true;
         } else if matches!(command, "graph" | "check-order" | "inputs" | "outputs")
             && arguments.executor.is_none()
             && arguments.preset.is_none()
@@ -700,13 +818,16 @@ impl Setup {
     }
 
     /// Names the task engine for Nextflow metadata and config scope selection.
-    /// Uses the SLURM runtime or this machine's Docker/Podman engine.
+    /// Uses the runtime of the cluster nodes or this machine's Docker/Podman engine.
     pub fn engine_kind(&self, arguments: &Arguments) -> String {
-        engine_kind(
-            arguments.executor.as_deref(),
-            self.slurm_container(arguments),
-            &self.engine(),
-        )
+        let nodes = |config: &crate::grid::Config| config.container.clone();
+        let runtime = match arguments.executor.as_deref() {
+            Some("htcondor") => nodes(&self.executors.htcondor),
+            Some("pbs") => nodes(&self.executors.pbs),
+            _ => Some(self.slurm_container(arguments).to_owned()),
+        };
+        let runtime = runtime.unwrap_or_else(|| "apptainer".to_owned());
+        engine_kind(arguments.executor.as_deref(), &runtime, &self.engine())
     }
 
     /// The container runtime of SLURM jobs: `-slurm-container`, else `container` of
@@ -758,11 +879,11 @@ impl Setup {
     }
 }
 
-/// The kind of the engine that runs the tasks of `executor`: the SLURM runtime `slurm`, or the
-/// engine of this machine, `local`.
+/// The kind of the engine that runs the tasks of `executor`: the runtime of the cluster nodes
+/// `slurm`, or the engine of this machine, `local`.
 fn engine_kind(executor: Option<&str>, slurm: &str, local: &str) -> String {
     match executor {
-        Some("slurm") => slurm.to_owned(),
+        Some("slurm" | "htcondor" | "pbs") => slurm.to_owned(),
         _ if local.contains("podman") => "podman".to_owned(),
         _ => "docker".to_owned(),
     }
@@ -984,6 +1105,33 @@ mod tests {
         let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
         assert_eq!(settings.slurm_query, Some(120));
         assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());
+        let text = "[executor.kubernetes]\ncontext = 'lab'\nservice_account = 'runner'\n\
+                    pod = [{ nodeSelector = 'disktype=ssd' }]\n";
+        let settings = read(text).expect("settings");
+        assert_eq!(settings.kubernetes_context.as_deref(), Some("lab"));
+        assert_eq!(
+            settings.kubernetes_pod.service_account.as_deref(),
+            Some("runner")
+        );
+        let text = "[executor.kubernetes.cws]\naddress = 'http://cws.lab:8080/'\n\
+                    strategy = 'rank_max-fair'\n";
+        let cws = read(text)
+            .expect("settings")
+            .kubernetes_cws
+            .expect("a scheduler");
+        assert_eq!(cws.address, "http://cws.lab:8080");
+        assert_eq!(cws.strategy, "rank_max-fair");
+        assert_eq!(cws.scheduler_name, "workflow-scheduler");
+        assert!(read("[executor.kubernetes.cws]\nstrategy = 'fifo'\n").is_err());
+        let error = read("[executor.kubernetes]\npod = [{ privileged = true }]\n");
+        assert!(
+            error
+                .expect_err("refused")
+                .contains("never starts privileged")
+        );
+        let settings = read("[executor.slurm]\nmemory_per_cpu_gb = 4.5\n").expect("settings");
+        assert_eq!(settings.slurm_cpu_memory, Some(4.5));
+        assert!(read("[executor.slurm]\nmemory_per_cpu_gb = 0\n").is_err());
     }
 
     #[test]

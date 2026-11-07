@@ -1,0 +1,9 @@
+dataset_description.json	591
+sub-01/anat/sub-01_T1w.json	52509
+sub-01/anat/sub-01_T1w.nii.gz	0
+sub-01/dwi/sub-01_dir-AP_dwi.bval	474
+sub-01/dwi/sub-01_dir-AP_dwi.bvec	2820
+sub-01/dwi/sub-01_dir-AP_dwi.json	16455
+sub-01/dwi/sub-01_dir-AP_dwi.nii.gz	0
+sub-01/fmap/sub-01_dir-PA_epi.json	5919
+sub-01/fmap/sub-01_dir-PA_epi.nii.gz	0

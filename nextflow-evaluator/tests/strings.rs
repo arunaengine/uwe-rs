@@ -396,6 +396,25 @@ fn formats_java_times() {
     }
 }
 
+/// `java.time.Duration` text as Java's `toString()` gives it: the fraction without trailing
+/// zeros and negative parts with their sign, as Nextflow 26.04.6 prints them.
+#[test]
+fn prints_durations() {
+    let code = "def a = java.time.Instant.parse('2026-03-05T07:08:09Z')\n\
+                def b = java.time.Instant.parse('2026-03-05T07:08:09.000000100Z')\n\
+                def millis = [0, 2500, -2500, -500, 61001, 3600120, -3600500]\n\
+                def d = millis.collect { java.time.Duration.ofMillis(it) }\n\
+                d += [java.time.Duration.ofSeconds(-3725), java.time.Duration.ofMinutes(-61),\n\
+                      java.time.Duration.ofDays(1), java.time.Duration.between(a, b),\n\
+                      java.time.Duration.between(b, a)]\n\
+                d.collect { it.toString() }.join(' ')";
+    assert_eq!(
+        value(code),
+        "PT0S PT2.5S PT-2.5S PT-0.5S PT1M1.001S PT1H0.12S PT-1H-0.5S PT-1H-2M-5S PT-1H-1M \
+         PT24H PT0.0000001S PT-0.0000001S"
+    );
+}
+
 /// `java.time` values compare with `<` and sort, and dates give their `DayOfWeek`, as
 /// Nextflow 26.04.6 prints them.
 #[test]

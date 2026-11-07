@@ -1,0 +1,11 @@
+.bidsignore	18
+code/sub-01_T2w.nii.gz	0
+dataset_description.json	635
+derivatives/pipe/sub-01/anat/sub-01_desc-brain_mask.nii.gz	0
+participants.tsv	35
+sub-01/anat/sub-01_T1w.json	32
+sub-01/anat/sub-01_T1w.nii.gz	0
+sub-01/dwi/sub-01_dwi.bval	172
+sub-01/dwi/sub-01_dwi.bvec	942
+sub-01/dwi/sub-01_dwi.json	2719
+sub-01/dwi/sub-01_dwi.nii	0

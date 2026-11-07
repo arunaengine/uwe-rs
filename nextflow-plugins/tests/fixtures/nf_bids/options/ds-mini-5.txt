@@ -1,0 +1,8 @@
+opts: {"use_default_ignores": false}
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] <probe-dir>/work
+items: 1
+{"meta":{"subject":"sub-01","session":"NA","age":"34","sex":"F"},"T1w":{"json":"Path:<ds>/sub-01/anat/sub-01_T1w.json","nii":"Path:<ds>/sub-01/anat/sub-01_T1w.nii.gz"},"T2w":{"nii":"Path:<ds>/code/sub-01_T2w.nii.gz"},"dwi":{"bval":"Path:<ds>/sub-01/dwi/sub-01_dwi.bval","json":"Path:<ds>/sub-01/dwi/sub-01_dwi.json","nii":"Path:<ds>/sub-01/dwi/sub-01_dwi.nii"},"mask":{"nii":"Path:<ds>/derivatives/pipe/sub-01/anat/sub-01_desc-brain_mask.nii.gz"}}
+
+[SUCCESS] completed=0 failed=0 cached=0
+[exit code 0]

@@ -1,0 +1,14 @@
+[Header]
+IEMFileVersion,4
+Experiment Name,probe
+
+[Reads]
+151
+151
+
+[Data]
+Lane,Sample_ID,Sample_Name,Sample_Project,Description,index,index2,custom_col,Other
+1,S1,Name_One,ProjA,"desc, with comma",ACGTACGT,TTGGCCAA,x1, y1 
+1,S2,Name_Two,,,CCCCGGGG,,x2,
+2,S1,Name_One,ProjB,d3,GGGGAAAA,AAAATTTT,,
+

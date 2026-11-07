@@ -13,17 +13,19 @@ use nextflow_evaluator::interpreter::{Error, Host, parse_json, parse_yaml};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{PathValue, Value};
+use nextflow_plugins::observer::Observer;
 use workflow_graph::{
     Delivery, DeliveryMode, Driver, DriverError, Files, Input, Inputs, Language, Launch, Note,
     Outcome, Task,
 };
 
+use crate::calls::Calls;
 use crate::notes::Noting;
 use crate::process::glob_matches;
 use crate::reports::Reports;
 use crate::task::{
     ENVIRONMENT, SCRIPT, command, command_script, container, launcher, read_environment, resources,
-    with_registry,
+    wave_sources, with_registry,
 };
 use crate::{LoadError, Loader, Options, Run, TaskId, TaskOutcome, TaskRequest};
 
@@ -48,6 +50,22 @@ pub struct Settings {
     pub command_line: String,
     pub secret_env: bool,
     pub local_options: bool,
+    /// Where uwe pulled the pipeline from, which run observers hear.
+    pub repository: Option<Repository>,
+    /// Whether the run resumes an earlier one, `workflow.resume`.
+    pub resume: bool,
+}
+
+/// The Git repository of a pulled pipeline, as `workflow.repository`, `workflow.commitId` and
+/// `workflow.revision` describe it.
+#[derive(Clone, Debug, Default)]
+pub struct Repository {
+    pub url: String,
+    /// `owner/name`, as `workflow.projectName` shows it.
+    pub name: String,
+    pub commit_id: Option<String>,
+    /// The revision asked for, like a branch or tag.
+    pub revision: Option<String>,
 }
 
 impl Default for Settings {
@@ -60,6 +78,8 @@ impl Default for Settings {
             command_line: String::new(),
             secret_env: false,
             local_options: false,
+            repository: None,
+            resume: false,
         }
     }
 }
@@ -88,12 +108,20 @@ pub struct Nextflow {
     requests: HashMap<TaskId, TaskRequest>,
     /// The variables of the config's `env` scope, which every task gets.
     environment: BTreeMap<String, String>,
+    /// What nf-labrobotics adds to the tasks of its executor, when the config names it.
+    lab: Option<nextflow_plugins::Lab>,
     project_bin: Option<PathBuf>,
+    /// The names of the files in `project_bin`, which task scripts call by name.
+    bin_scripts: Vec<String>,
     /// What the run noted since the engine last asked: files it read, listed or spread.
     notes: Vec<Note>,
     /// The registry of the container engine, like `docker.registry`, for images without one.
     registry: Option<String>,
+    /// The image map of nf-biffix, which every container goes through.
+    images: Option<nextflow_plugins::ImageMap>,
     conda_channels: Vec<String>,
+    /// The Wave service of nf-wave, when the config turns it on.
+    wave: Option<nextflow_plugins::Wave>,
     /// The reports that the config turns on, like the trace, in a real run.
     reports: Option<Reports>,
     /// The deliveries of the reports, once they are written.
@@ -108,6 +136,10 @@ pub struct Nextflow {
     /// that the tasks that read them wait for it.
     made_by: HashMap<String, workflow_graph::TaskId>,
     acceptance: HashMap<(workflow_graph::TaskId, u32), bool>,
+    /// The run observers that the caller adds; a real run joins them to those of the plugins.
+    observers: Vec<Box<dyn Observer>>,
+    /// The model calls of agent tasks, which run before the engine records their tasks.
+    calls: Calls,
 }
 
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
@@ -137,10 +169,14 @@ impl Nextflow {
             run: None,
             requests: HashMap::new(),
             environment: BTreeMap::new(),
+            lab: None,
             project_bin: None,
+            bin_scripts: Vec::new(),
             notes: Vec::new(),
             registry: None,
+            images: None,
             conda_channels: vec!["conda-forge".into(), "bioconda".into()],
+            wave: None,
             reports: None,
             report_deliveries: Vec::new(),
             cause: None,
@@ -148,7 +184,14 @@ impl Nextflow {
             files: None,
             made_by: HashMap::new(),
             acceptance: HashMap::new(),
+            observers: Vec::new(),
+            calls: Calls::default(),
         })
+    }
+
+    /// Adds an observer that hears the events of a real run, besides those of the plugins.
+    pub fn observe(&mut self, observer: Box<dyn Observer>) {
+        self.observers.push(observer);
     }
 
     /// Loads the config of the project and the main script, once.
@@ -157,17 +200,8 @@ impl Nextflow {
             return Ok(());
         }
         let host = self.settings.host.as_mut();
-        // A project directory runs its `manifest.mainScript`, else `main.nf`. The parent of a
-        // bare file name like `main.nf` is empty, which stands for the launch directory.
         let target = &self.launch.target;
-        let project = if target.is_dir() {
-            target.clone()
-        } else {
-            let parent = target
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty());
-            parent.unwrap_or(Path::new(".")).to_owned()
-        };
+        let project = project_folder(target);
         let (mut config, mut files) = load_config(&project, &self.launch, host, false)?;
         let script = if target.is_dir() {
             let main = config
@@ -244,7 +278,10 @@ impl Nextflow {
                 .map(|file| file.to_string_lossy().into_owned())
                 .collect(),
             command_line: self.settings.command_line.clone(),
+            resume: self.settings.resume,
             exec_folder: Some(self.folder().join("exec")),
+            cleanup: (!self.launch.simulated && nextflow_plugins::cleanup(&loaded.config))
+                .then(|| std::path::absolute(self.folder()).unwrap_or_else(|_| self.folder())),
         }
     }
 
@@ -315,7 +352,12 @@ impl Nextflow {
 
     /// The container tasks of the requests of the network, which are kept until they finish.
     fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
-        requests
+        let host = self.settings.host.as_mut();
+        let mut asked = Vec::new();
+        for request in requests {
+            asked.extend(self.calls.ask(request, host).map_err(DriverError::new)?);
+        }
+        asked
             .into_iter()
             .map(|request| {
                 let names = crate::task::secrets(&request.directives).map_err(error)?;
@@ -326,6 +368,11 @@ impl Nextflow {
                     });
                 }
                 let mut task = task(&request, &self.environment)?;
+                // The task of an `exec:` section or an agent ran in the driver; it has no command.
+                let driven = request.made.is_some() || request.agent.is_some();
+                if let Some(lab) = self.lab.as_ref().filter(|_| !driven) {
+                    lab.apply(&request.directives, &mut task.environment);
+                }
                 if task.environment.contains_key(crate::options::WORK_ENV) && !self.settings.local_options {
                     return Err(DriverError { unsupported: true, message: "container PWD environment binding requires the local executor".into() });
                 }
@@ -341,8 +388,9 @@ impl Nextflow {
                         return Err(DriverError { unsupported: true, message: "container shared memory, swap and GPU 'all' flags require the local executor".into() });
                     }
                 }
-                if request.made.is_none()
+                if !driven
                     && let Some(bin) = &self.project_bin
+                    && names_bin_script(&task, &self.bin_scripts)
                 {
                     task.inputs.push(Input {
                         path: ".command.bin".into(),
@@ -361,7 +409,20 @@ impl Nextflow {
                         .splice(0..0, ["/bin/sh".into(), ".command.run".into()]);
                 }
                 let registry = self.registry.as_deref();
-                task.image = (task.image).map(|image| with_registry(&image, registry));
+                let written = task.image.take();
+                task.image = (written.as_deref()).map(|image| with_registry(image, registry));
+                if let (Some(images), Some(written), Some(image)) =
+                    (&self.images, &written, &task.image)
+                {
+                    let mapped = images.resolve(&request.process, written, image);
+                    task.image = Some(mapped.map_err(DriverError::new)?);
+                }
+                if let Some(wave) = self.wave.as_mut().filter(|_| !driven) {
+                    let sources = wave_sources(&request, registry, &self.conda_channels);
+                    if let Some(image) = wave.resolve(&sources).map_err(DriverError::new)? {
+                        task.image = Some(image);
+                    }
+                }
                 for input in &task.inputs {
                     if let Some(maker) = self.made_by.get(&input.source)
                         && !task.after.contains(maker)
@@ -373,7 +434,7 @@ impl Nextflow {
                     self.made_by.insert(path.path.clone(), task.id);
                 }
                 if let Some(reports) = &mut self.reports {
-                    reports.asked(&task);
+                    reports.asked(&task, &request);
                 }
                 self.requests.insert(request.id, request);
                 Ok(task)
@@ -431,6 +492,11 @@ impl Driver for Nextflow {
         self.load()?;
         let loaded = self.loaded.take().ok_or_else(not_started)?;
         let bin = loaded.project.join("bin");
+        let entries = std::fs::read_dir(&bin).into_iter().flatten().flatten();
+        let files = entries.filter(|entry| entry.file_type().is_ok_and(|kind| !kind.is_dir()));
+        self.bin_scripts = files
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
         self.project_bin = bin.is_dir().then_some(bin);
         let config = &loaded.config;
         if config
@@ -454,6 +520,9 @@ impl Driver for Nextflow {
             };
         }
         self.environment = environment(config);
+        let answers = self.launch.scratch.join("nextflow").join("agents");
+        self.calls = Calls::new(config, answers, self.settings.resume, self.launch.simulated);
+        self.lab = nextflow_plugins::labrobotics(config, &self.settings.run_name);
         let engine = self
             .settings
             .container_engine
@@ -462,10 +531,24 @@ impl Driver for Nextflow {
         self.registry = config
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
+        self.images = nextflow_plugins::image_map(config);
+        let launch_dir = launch_folder(self.settings.host.as_ref());
+        let host = &self.settings.host;
+        let variable = |name: &str| host.environment(name);
+        self.wave = nextflow_plugins::wave(config, &variable, self.launch.simulated)
+            .map_err(DriverError::new)?;
+        if let Some(note) = self.wave.as_ref().and_then(nextflow_plugins::Wave::note) {
+            self.settings.host.print(&format!("WARN: {note}\n"));
+        }
         if !self.launch.simulated {
-            let launch_dir = launch_folder(self.settings.host.as_ref());
+            for warning in nextflow_plugins::catalogue::warnings(config) {
+                self.settings.host.print(&format!("WARN: {warning}\n"));
+            }
+            let observers = nextflow_plugins::catalogue::observers(config);
             let script = loaded.script.to_string_lossy();
-            let reports = Reports::of(config, &launch_dir, &script);
+            let mut reports = Reports::of(config, &launch_dir, &script);
+            reports.observe(observers.map_err(DriverError::new)?);
+            reports.observe(std::mem::take(&mut self.observers));
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
         }
         let options = self.options(&loaded, loaded.config.clone());
@@ -474,6 +557,11 @@ impl Driver for Nextflow {
             notes: &mut self.notes,
         };
         let (run, requests) = Run::start_retained(&loaded.module, &options, &mut host);
+        // Observers hear the start once the network is built, so they get the process graph.
+        if let Some(reports) = &mut self.reports {
+            let repository = self.settings.repository.as_ref();
+            reports.run_started(&options, &launch_dir, run.processes(), repository);
+        }
         self.run = Some(run);
         let requests = requests.map_err(|failure| self.fault(failure))?;
         self.tasks(requests)
@@ -485,11 +573,22 @@ impl Driver for Nextflow {
         let request = self.requests.remove(&id).ok_or_else(|| {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
         })?;
-        if let Some(reports) = &mut self.reports {
-            reports.ended(&outcome);
-        }
         let mut outcome = outcome;
+        // The observers hear how the attempt ended once its outputs were checked, with whole
+        // streams from the store: the outcome of a failed task keeps only their end.
+        let heard = self.reports.as_ref().map(|reports| {
+            let mut heard = outcome.clone();
+            let whole = |log: &Option<workflow_graph::Stream>| {
+                (log.as_ref()).and_then(|log| stdout_text(self.files.as_deref(), log).ok())
+            };
+            if reports.observed() {
+                heard.stderr = whole(&heard.stderr_log).unwrap_or(heard.stderr);
+                heard.stdout = whole(&heard.stdout_log).unwrap_or(heard.stdout);
+            }
+            heard
+        });
         let outcome = match &request.made {
+            _ if request.agent.is_some() => self.calls.outcome(&request),
             // An `exec:` section ran when the task was asked for; its files are its outputs.
             Some(made) if outcome.exit_code == 0 => TaskOutcome {
                 id: request.id,
@@ -514,10 +613,29 @@ impl Driver for Nextflow {
             notes: &mut self.notes,
         };
         let completed = run.complete(outcome, &mut host);
-        self.acceptance
-            .insert(identity, run.take_acceptance(request.id));
+        let accepted = run.take_acceptance(request.id);
+        self.acceptance.insert(identity, accepted);
+        if let (Some(reports), Some(heard)) = (&mut self.reports, heard) {
+            reports.ended(&heard, accepted);
+        }
         let requests = completed.map_err(|failure| self.fault(failure))?;
         self.tasks(requests)
+    }
+
+    fn started(&mut self, task: workflow_graph::TaskId, attempt: u32) {
+        if let Some(reports) = &mut self.reports {
+            reports.started(task, attempt);
+        }
+    }
+
+    fn wake_at(&self) -> Option<std::time::Instant> {
+        self.calls.wake_at()
+    }
+
+    /// Asks the engine for the agent tasks whose model calls ended.
+    fn wake(&mut self) -> Result<Vec<Task>, DriverError> {
+        let answered = self.calls.answered();
+        self.tasks(answered)
     }
 
     fn take_acceptance(&mut self, task: workflow_graph::TaskId, attempt: u32) -> bool {
@@ -530,7 +648,16 @@ impl Driver for Nextflow {
 
     fn finish(&mut self) -> Result<(), DriverError> {
         let run = self.run.as_mut().ok_or_else(not_started)?;
+        run.ready().map_err(error)?;
+        // A failed check turns the run into a failed one before the `onComplete` handlers
+        // see it, and `failed` then ends it.
+        if let Some(reports) = &mut self.reports {
+            reports.check().map_err(DriverError::new)?;
+        }
         run.finish(self.settings.host.as_mut()).map_err(error)?;
+        if let Some(reports) = &mut self.reports {
+            reports.run_ended(None, None, run.outputs());
+        }
         self.write_reports()
     }
 
@@ -551,6 +678,9 @@ impl Driver for Nextflow {
                 self.settings.host.as_mut(),
             )
             .map_err(error);
+        if let Some(reports) = &mut self.reports {
+            reports.run_ended(Some(&message), run.failing_task(), run.outputs());
+        }
         run.take_deliveries();
         let reports = self.write_reports();
         match (handled, reports) {
@@ -562,6 +692,17 @@ impl Driver for Nextflow {
 
     fn notes(&mut self) -> Vec<Note> {
         std::mem::take(&mut self.notes)
+    }
+
+    fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        // The reports are uwe's own files, which the workflow does not publish.
+        let written = self.folder().join("reports");
+        if let Some(reports) = &mut self.reports
+            && !Path::new(&delivery.location).starts_with(&written)
+        {
+            reports.published(delivery);
+        }
+        Ok(())
     }
 
     fn deliveries(&mut self) -> Vec<Delivery> {
@@ -730,9 +871,33 @@ fn load_error(error: LoadError) -> DriverError {
     }
 }
 
-/// The config of a project directory, as `nextflow run` and `nextflow config` read it.
-pub fn config(project: &Path, launch: &Launch, host: &mut dyn Host) -> Result<Config, DriverError> {
-    load_config(project, launch, host, false).map(|(config, _)| config)
+/// The project directory of a target: the target when it is a directory, which runs its
+/// `manifest.mainScript`, else the folder of the script. A bare file name like `main.nf` is in
+/// the launch directory.
+fn project_folder(target: &Path) -> PathBuf {
+    if target.is_dir() {
+        return target.to_owned();
+    }
+    let parent = target
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty());
+    parent.unwrap_or(Path::new(".")).to_owned()
+}
+
+/// The warnings about the plugins of the config of a launch that a run skips, which `uwe
+/// check` lists. A config that does not load gives none; the check reports its error.
+pub fn plugin_warnings(launch: &Launch, host: &mut dyn Host) -> Vec<String> {
+    let project = project_folder(&launch.target);
+    match load_config(&project, launch, host, false) {
+        Ok((config, _)) => nextflow_plugins::catalogue::warnings(&config),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// The config of a project directory or of a script's folder, as `nextflow run` and `nextflow
+/// config` read it.
+pub fn config(target: &Path, launch: &Launch, host: &mut dyn Host) -> Result<Config, DriverError> {
+    load_config(&project_folder(target), launch, host, false).map(|(config, _)| config)
 }
 
 /// The config of a project directory and the files it came from, in the order read.
@@ -892,6 +1057,24 @@ fn environment(config: &Config) -> BTreeMap<String, String> {
     variables
 }
 
+/// Whether the script of a task names one of these `bin` scripts as a word of its own. As in
+/// Nextflow, only such a task depends on `bin`, so a change there reruns only those.
+fn names_bin_script(task: &Task, scripts: &[String]) -> bool {
+    let part = |letter: char| letter.is_alphanumeric() || matches!(letter, '.' | '_' | '-');
+    let named = |text: &str, name: &str| {
+        text.match_indices(name).any(|(at, _)| {
+            let before = text[..at].chars().next_back();
+            let after = text[at + name.len()..].chars().next();
+            !before.is_some_and(part) && !after.is_some_and(part)
+        })
+    };
+    let mut texts = task
+        .inputs
+        .iter()
+        .filter_map(|input| input.content.as_deref());
+    texts.any(|text| scripts.iter().any(|name| named(text, name)))
+}
+
 /// The container task of a Nextflow task: `.command.sh`, with the code that captures `env` and
 /// `eval` outputs, runs in the shell of the `shell` directive; the staged files are its inputs.
 pub fn task(
@@ -923,7 +1106,7 @@ pub fn task(
             .iter()
             .map(|(name, value)| (name.to_string(), value.to_string())),
     );
-    if request.made.is_some() {
+    if request.made.is_some() || request.agent.is_some() {
         return Ok(exec_task(request, environment, reuse));
     }
     let mut resources = resources(request).map_err(DriverError::new)?;

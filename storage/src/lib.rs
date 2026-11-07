@@ -3,17 +3,30 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod address;
+pub mod aws;
 mod azure;
 mod backend;
 mod blocking;
+pub mod cas;
+pub mod cbor;
 mod downloads;
+pub mod drs;
 mod error;
 mod folder;
 mod ftp;
+pub mod irods;
+mod irods_protocol;
 mod journal;
+pub mod lakefs;
+pub mod lamin;
 mod objects;
+pub mod oci;
+pub mod oci_key;
 mod public;
+pub mod quilt;
+pub mod quilt_package;
 pub mod settings;
+pub mod synapse;
 mod web;
 
 use std::collections::HashMap;
@@ -26,12 +39,12 @@ use config_file::{ConfigError, ConfigFile};
 use backend::{Backend, Connection, Source};
 use error::Problem;
 
-pub use blocking::Blocking;
+pub use blocking::{Answer, Blocking, exchange};
 pub use downloads::{download_name, hold_downloads};
 pub use error::StorageError;
 pub use journal::Fetched;
 pub use settings::Settings;
-pub use web::{config_proxy, http_client, trust_mozilla_roots, use_proxy};
+pub use web::{config_proxy, http_client, origin_client, trust_mozilla_roots, use_proxy};
 
 /// Whether a file exists as a file or a directory, its size, and its version.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -215,6 +228,14 @@ impl Storage {
             Provider::new(Source::PublicBuckets, prefixes(&["s3://", "gs://"])),
             Provider::new(Source::Files, prefixes(&["file://"])),
             Provider::new(Source::Ftp, prefixes(&["ftp://"])),
+            Provider::new(Source::Drs, prefixes(&["drs://"])),
+            Provider::new(Source::Synapse, prefixes(&["syn://"])),
+            Provider::new(Source::Irods, prefixes(&["irods://"])),
+            Provider::new(Source::Oci, prefixes(&["oci://"])),
+            Provider::new(Source::Lakefs, prefixes(&["lakefs://"])),
+            Provider::new(Source::Lamin, prefixes(&["lamin://"])),
+            Provider::new(Source::Quilt, prefixes(&["quilt+s3://"])),
+            Provider::new(Source::Cas, prefixes(&["cas://"])),
         ];
         Storage {
             inner: Arc::new(Inner {
@@ -235,6 +256,33 @@ impl Storage {
         Storage {
             inner: Arc::new(Inner {
                 configured: self.inner.configured.clone(),
+                built_in: self.inner.built_in.clone(),
+                store: self.inner.store.clone(),
+                local_store: self.inner.local_store.clone(),
+                journal: journal::Journal::default(),
+                downloading: Mutex::default(),
+                observed: Mutex::default(),
+                held: Mutex::default(),
+            }),
+        }
+    }
+
+    /// The same storage with more providers, which serve what the providers before them do
+    /// not, like those that a Nextflow config names.
+    pub fn with_providers(&self, providers: Vec<settings::ProviderSettings>) -> Storage {
+        let mut configured: Vec<Provider> = (self.inner.configured.iter())
+            .map(|provider| Provider::new(provider.source.clone(), provider.prefixes.clone()))
+            .collect();
+        for provider in providers {
+            let prefixes = provider.prefixes.clone();
+            configured.push(Provider::new(
+                Source::Configured(Box::new(provider)),
+                prefixes,
+            ));
+        }
+        Storage {
+            inner: Arc::new(Inner {
+                configured: Arc::new(configured),
                 built_in: self.inner.built_in.clone(),
                 store: self.inner.store.clone(),
                 local_store: self.inner.local_store.clone(),

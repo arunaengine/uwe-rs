@@ -146,7 +146,7 @@ fn scalar(text: &str) -> Value {
 }
 
 /// `yaml.dumpAsMap(map)`: block style with two spaces of indent.
-pub(super) fn dump_as_map(value: &Value) -> String {
+pub fn dump_as_map(value: &Value) -> String {
     let mut out = String::new();
     write_block(value, 0, &mut out);
     out

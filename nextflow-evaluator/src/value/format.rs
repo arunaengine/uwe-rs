@@ -148,6 +148,7 @@ impl Value {
                     out.push_str(text)
                 }
                 super::State::Uuid(value) => out.push_str(&value.to_string()),
+                super::State::Plugin(native) => out.push_str(&native.text()),
                 super::State::Builder(text) => out.push_str(text),
                 super::State::Optional(super::Value::Null) => out.push_str("Optional.empty"),
                 super::State::Optional(value) => {

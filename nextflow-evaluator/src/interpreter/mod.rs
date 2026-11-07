@@ -29,7 +29,7 @@ use crate::exception::Exception;
 use crate::lowered::{Code, Module, Place, Process, Slot};
 use crate::value::{Closure, PathValue, Value};
 
-pub use library::{combinations, parse_json, parse_json_for_split, parse_yaml};
+pub use library::{combinations, dump_yaml, parse_json, parse_json_for_split, parse_yaml};
 pub use task::{
     RenderedOutput, RenderedPart, RenderedTask, TaskDirective, TaskFrame, normalise_script,
 };
@@ -234,6 +234,17 @@ pub trait Host {
     ) -> Result<Value, Error> {
         let message = format!("the function `{name}` of the plugin `{plugin}`");
         Err(unsupported(message, Span::default()))
+    }
+
+    /// Calls a method of a plugin object, like `segments()` of fgbio's `ReadStructure`; `None`
+    /// when the object has no such method.
+    fn plugin_method(
+        &mut self,
+        _object: &Value,
+        _name: &str,
+        _arguments: Vec<Value>,
+    ) -> Result<Option<Value>, Error> {
+        Ok(None)
     }
 
     /// A property of a channel, like `ch.first().baseName`; `None` when the channel has no

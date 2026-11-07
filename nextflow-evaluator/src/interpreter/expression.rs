@@ -139,7 +139,15 @@ impl Interpreter<'_> {
                 arguments,
             } => {
                 let object = self.expression(frame, target)?;
-                let arguments = self.arguments(frame, arguments)?;
+                let mut arguments = self.arguments(frame, arguments)?;
+                // An operator of a plugin, like nf-bids' `groupTupleBy`, is a function that
+                // the script includes from the plugin; it takes the channel first.
+                let channel = matches!(object, Value::Channel(_) | Value::ChannelOut(_));
+                if channel && plugin_operator(&frame.module, name) {
+                    arguments.insert(0, object);
+                    let module = frame.module.clone();
+                    return self.call_definition(&module, (name, false), arguments, span);
+                }
                 self.spread(object, *access, |this, object| {
                     this.call_method(object, name, arguments.clone(), span)
                 })?
@@ -499,4 +507,16 @@ fn make_closure(frame: &Frame, code: &Rc<Code>) -> Value {
         module: frame.module.clone(),
         captured,
     }))
+}
+
+/// Whether the script includes a function of this name that the script of a plugin defines;
+/// a name that the plugin runs natively, like nf-boost's `scan`, stays a built-in operator.
+fn plugin_operator(module: &crate::lowered::Module, name: &str) -> bool {
+    let included = (module.includes.iter())
+        .any(|include| &*include.alias == name && include.source.starts_with("plugin/"));
+    let link = module.links.borrow().get(name).cloned();
+    included
+        && link.is_some_and(|link| {
+            link.module.plugin.is_none() && link.module.function_names.contains_key(&link.name)
+        })
 }

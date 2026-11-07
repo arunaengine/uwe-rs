@@ -354,6 +354,23 @@ impl Repository {
     }
 }
 
+/// The repository of a pipeline that uwe pulled from the target that the user named, with
+/// the commit of its checkout; `None` for a local pipeline.
+pub(crate) fn origin(
+    named: Option<&Path>,
+    revision: Option<&str>,
+    checkout: &Path,
+) -> Option<nextflow_runtime::driver::Repository> {
+    let named = named.filter(|named| !named.exists())?;
+    let repository = Repository::parse(&named.to_string_lossy()).ok()??;
+    Some(nextflow_runtime::driver::Repository {
+        url: repository.url.clone(),
+        name: format!("{}/{}", repository.owner, repository.name),
+        commit_id: root(checkout).map(|(_, commit)| commit),
+        revision: revision.map(str::to_owned),
+    })
+}
+
 pub(crate) fn root(path: &Path) -> Option<(PathBuf, String)> {
     let path = std::path::absolute(path).ok()?;
     path.ancestors().find_map(|folder| {
@@ -391,10 +408,8 @@ pub(crate) fn prepare(
         // A long path without `.git` is a repository only if the server answers as Git.
         let accounts = accounts()?;
         if !repository.url.ends_with(".git") {
-            let account = match &accounts {
-                Some(accounts) => (accounts.0)(&repository.url).map_err(Failure::setup)?,
-                None => None,
-            };
+            let account =
+                crate::git::account(&repository.url, accounts.as_ref()).map_err(Failure::setup)?;
             if !runtime.block_on(speaks_git(&repository.url, account)) {
                 return Ok(target.to_owned());
             }

@@ -87,6 +87,15 @@ pub struct Usage {
     pub write_bytes: Option<u64>,
     /// How many processes of the task the kernel killed for lack of memory.
     pub oom_kills: Option<u64>,
+    /// The largest memory of the cgroup that the wrapper sampled while the task ran, page
+    /// cache included, in bytes.
+    pub vmem: Option<u64>,
+    /// The largest anonymous memory of the cgroup that it sampled, in bytes.
+    pub rss: Option<u64>,
+    /// The peak of the cgroup's memory at the last sample, in bytes.
+    pub peak_vmem: Option<u64>,
+    /// The memory of the machine, in bytes, as `MemTotal` of `/proc/meminfo` shows it.
+    pub memory_total: Option<u64>,
 }
 
 impl Usage {
@@ -105,6 +114,10 @@ impl Usage {
                 "read_bytes" => usage.read_bytes = value,
                 "write_bytes" => usage.write_bytes = value,
                 "oom_kills" => usage.oom_kills = value,
+                "vmem" => usage.vmem = value,
+                "rss" => usage.rss = value,
+                "peak_vmem" => usage.peak_vmem = value,
+                "memory_total" => usage.memory_total = value,
                 _ => {}
             }
         }
@@ -234,9 +247,12 @@ mod usage_tests {
         let root = tempfile::tempdir().expect("a temporary directory");
         std::fs::create_dir_all(root.path().join(CONTROL)).expect("makes the folder");
         assert_eq!(Usage::of(root.path()), None);
-        let text = "memory_peak 2048\noom_kills 1\ncpu_usec 1500\nread_bytes 0\nwrite_bytes 4096\n";
+        let text = "vmem 4096\nrss 1024\npeak_vmem 8192\nmemory_total 65536\nmemory_peak 2048\n\
+                    oom_kills 1\ncpu_usec 1500\nread_bytes 0\nwrite_bytes 4096\n";
         std::fs::write(root.path().join(CONTROL).join(USAGE), text).expect("writes");
         let usage = Usage::of(root.path()).expect("a usage");
+        let sampled = (usage.vmem, usage.rss, usage.peak_vmem, usage.memory_total);
+        assert_eq!(sampled, (Some(4096), Some(1024), Some(8192), Some(65536)));
         assert_eq!(usage.memory_peak, Some(2048));
         assert_eq!(usage.cpu_usec, Some(1500));
         assert_eq!(usage.write_bytes, Some(4096));

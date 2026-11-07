@@ -27,6 +27,23 @@ pub struct Settings {
     pub staging_cleanup: bool,
     /// Tags that go on every task (`tags`), like the ones a server reads for network access.
     pub tags: BTreeMap<String, String>,
+    /// An API key (`api_key`), sent as the query parameter or header `api_key_name`.
+    pub api_key: Option<Secret>,
+    pub api_key_name: Option<String>,
+    /// Whether the API key goes in a header (`api_key_mode = "header"`) rather than the query.
+    pub api_key_header: bool,
+    /// How long one request may take (`timeout_seconds`); `None` for two minutes.
+    pub timeout: Option<std::time::Duration>,
+    /// The TES service whose own tags and parameters the tasks get (`platform`).
+    pub platform: Option<Platform>,
+}
+
+/// A TES service with tags and parameters of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Platform {
+    /// The Tencent Healthcare Omics Platform, as nf-tencentcloud sends its tasks: the tags
+    /// `runUuid`, `WorkingDir` and `DestDir`, and GPUs and spot VMs from resource labels.
+    TencentOmics,
 }
 
 impl Default for Settings {
@@ -42,6 +59,11 @@ impl Default for Settings {
             staging_minutes: None,
             staging_cleanup: false,
             tags: BTreeMap::new(),
+            api_key: None,
+            api_key_name: None,
+            api_key_header: false,
+            timeout: None,
+            platform: None,
         }
     }
 }
@@ -55,6 +77,13 @@ impl Settings {
                 user.reveal().map_err(|error| error.to_string())?,
                 password.reveal().map_err(|error| error.to_string())?,
             );
+        }
+        if let (Some(key), Some(name)) = (&self.api_key, &self.api_key_name) {
+            let key = key.reveal().map_err(|error| error.to_string())?;
+            client = client.with_api_key(name.clone(), key, self.api_key_header);
+        }
+        if let Some(timeout) = self.timeout {
+            client = client.with_timeout(timeout);
         }
         Ok(client)
     }
@@ -71,6 +100,11 @@ impl Settings {
         "staging_minutes",
         "staging_cleanup",
         "tags",
+        "api_key",
+        "api_key_name",
+        "api_key_mode",
+        "timeout_seconds",
+        "platform",
     ];
 
     /// How much longer than its task a TES task may run, as its state stays RUNNING while the
@@ -162,7 +196,33 @@ impl Settings {
                 tags.insert(key.to_owned(), table.text(key)?.unwrap_or_default());
             }
         }
+        let api_key = table.secret("api_key")?;
+        let api_key_name = table.text("api_key_name")?;
+        if api_key.is_some() != api_key_name.is_some() {
+            let message = "and api_key_name go together: the key and its parameter name";
+            return Err(table.invalid("api_key", message));
+        }
+        let api_key_header = match table.text("api_key_mode")?.as_deref() {
+            None | Some("query") => false,
+            Some("header") => true,
+            Some(_) => return Err(table.invalid("api_key_mode", "must be query or header")),
+        };
+        let timeout = match table.integer("timeout_seconds")? {
+            None => None,
+            Some(seconds @ 1..=3600) => Some(std::time::Duration::from_secs(seconds as u64)),
+            Some(_) => return Err(table.invalid("timeout_seconds", "must be between 1 and 3600")),
+        };
+        let platform = match table.text("platform")?.as_deref() {
+            None => None,
+            Some("tencent-omics") => Some(Platform::TencentOmics),
+            Some(_) => return Err(table.invalid("platform", "must be tencent-omics")),
+        };
         Ok(Self {
+            api_key,
+            api_key_name,
+            api_key_header,
+            timeout,
+            platform,
             helper_file: table
                 .text("helper_file")?
                 .map(|file| {
@@ -218,6 +278,21 @@ mod tests {
                 .staging_cleanup
         );
         assert!(read("[executor.tes]\nstaging_cleanup = true").is_err());
+    }
+
+    #[test]
+    fn reads_api_keys() {
+        let text = "[executor.tes]\napi_key = 'k'\napi_key_name = 'X-Api-Key'\n\
+                    api_key_mode = 'header'\ntimeout_seconds = 10\nplatform = 'tencent-omics'";
+        let settings = read(text).unwrap();
+        assert_eq!(settings.api_key_name.as_deref(), Some("X-Api-Key"));
+        assert!(settings.api_key_header);
+        assert_eq!(settings.timeout, Some(std::time::Duration::from_secs(10)));
+        assert_eq!(settings.platform, Some(Platform::TencentOmics));
+        assert!(read("[executor.tes]\napi_key = 'k'").is_err());
+        assert!(read("[executor.tes]\napi_key_mode = 'cookie'").is_err());
+        assert!(read("[executor.tes]\ntimeout_seconds = 0").is_err());
+        assert!(read("[executor.tes]\nplatform = 'funnel'").is_err());
     }
 
     #[test]

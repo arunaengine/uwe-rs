@@ -152,6 +152,14 @@ impl<'a> Table<'a> {
         }
     }
 
+    /// The value `key` as JSON, for settings of any shape, like a list of tables. A date is an
+    /// error, as JSON has none.
+    pub fn json(&self, key: &str) -> Result<Option<serde_json::Value>, ConfigError> {
+        self.get(key)
+            .map(|node| self.as_json(key, node))
+            .transpose()
+    }
+
     /// The secret `key`: the secret as text, or `{ environment = "NAME" }` for the name of the
     /// environment variable that holds it.
     pub fn secret(&self, key: &str) -> Result<Option<Secret>, ConfigError> {
@@ -216,6 +224,30 @@ impl<'a> Table<'a> {
             }),
             other => Err(self.wrong(key, node, "a table", other)),
         }
+    }
+
+    fn as_json(&self, key: &str, node: &Node) -> Result<serde_json::Value, ConfigError> {
+        use serde_json::Value as Json;
+        Ok(match &node.value {
+            Value::Text(text) => Json::String(text.clone()),
+            Value::Integer(number) => Json::from(*number),
+            Value::Float(number) => Json::from(*number),
+            Value::Boolean(flag) => Json::Bool(*flag),
+            Value::Array(items) => Json::Array(
+                (items.iter())
+                    .map(|item| self.as_json(key, item))
+                    .collect::<Result<_, _>>()?,
+            ),
+            Value::Table(entries) => Json::Object(
+                (entries.iter())
+                    .map(|(name, entry)| Ok((name.clone(), self.as_json(key, entry)?)))
+                    .collect::<Result<_, ConfigError>>()?,
+            ),
+            other @ Value::Datetime => {
+                let wanted = "text, a number, a flag, a list or a table";
+                return Err(self.wrong(key, node, wanted, other));
+            }
+        })
     }
 
     fn wrong(&self, key: &str, node: &Node, wanted: &str, found: &Value) -> ConfigError {

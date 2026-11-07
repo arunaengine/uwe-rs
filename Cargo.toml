@@ -7,13 +7,19 @@ resolver = "3"
 members = [
     "argo-parser",
     "argo-runtime",
+    "aws-batch-executor",
+    "azure-batch-executor",
     "conda-environment",
     "config-file",
     "content-store",
     "cwl-parser",
     "cwl-runtime",
     "executor",
+    "flyte-executor",
+    "google-batch-executor",
+    "htcondor-executor",
     "input-schema",
+    "jarvice-executor",
     "uwe",
     "kubernetes-executor",
     "nextflow-config",
@@ -21,6 +27,8 @@ members = [
     "nextflow-parser",
     "nextflow-plugins",
     "nextflow-runtime",
+    "nomad-executor",
+    "pbs-executor",
     "python-evaluator",
     "run-crate",
     "run-database",
@@ -29,6 +37,7 @@ members = [
     "slurm-executor",
     "snakemake-parser",
     "snakemake-runtime",
+    "snowflake-executor",
     "storage",
     "task-model",
     "task-runner",
@@ -37,6 +46,7 @@ members = [
     "wir",
     "wir-runtime",
     "workflow-graph",
+    "wr-executor",
 ]
 
 [workspace.package]
@@ -50,19 +60,28 @@ publish = false
 # Workspace crates
 argo-parser = { path = "argo-parser" }
 argo-runtime = { path = "argo-runtime" }
+aws-batch-executor = { path = "aws-batch-executor" }
+azure-batch-executor = { path = "azure-batch-executor" }
 conda-environment = { path = "conda-environment" }
 config-file = { path = "config-file" }
 content-store = { path = "content-store" }
 cwl-parser = { path = "cwl-parser" }
 cwl-runtime = { path = "cwl-runtime" }
 executor = { path = "executor" }
+flyte-executor = { path = "flyte-executor" }
+google-batch-executor = { path = "google-batch-executor" }
+htcondor-executor = { path = "htcondor-executor" }
 input-schema = { path = "input-schema" }
+jarvice-executor = { path = "jarvice-executor" }
 kubernetes-executor = { path = "kubernetes-executor" }
 nextflow-config = { path = "nextflow-config" }
 nextflow-evaluator = { path = "nextflow-evaluator" }
 nextflow-parser = { path = "nextflow-parser" }
 nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }
+nomad-executor = { path = "nomad-executor" }
+pbs-executor = { path = "pbs-executor" }
+wr-executor = { path = "wr-executor" }
 python-evaluator = { path = "python-evaluator" }
 run-crate = { path = "run-crate" }
 run-database = { path = "run-database" }
@@ -71,6 +90,7 @@ run-telemetry = { path = "run-telemetry" }
 slurm-executor = { path = "slurm-executor" }
 snakemake-parser = { path = "snakemake-parser" }
 snakemake-runtime = { path = "snakemake-runtime" }
+snowflake-executor = { path = "snowflake-executor" }
 storage = { path = "storage" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
@@ -87,9 +107,22 @@ axum = { version = "0.8.9", default-features = false, features = [
     "query",
     "tokio",
 ] }
+# RSA signatures of OCI requests, with the crypto library that rustls already uses.
+aws-lc-rs = { version = "1.18.1", default-features = false, features = ["aws-lc-sys"] }
 base64 = "0.23.1"
 bollard = "0.21.1"
 oxrdf = "0.3.4"
+# Arrow IPC streams in Rust for nf-r-ipc, which exchanges its values with R as one table.
+arrow-array = { version = "60.0.0", default-features = false }
+arrow-ipc = { version = "60.0.0", default-features = false }
+arrow-schema = { version = "60.0.0", default-features = false }
+# Parquet files in Rust for nf-parquet, without Arrow; LZ4, Snappy, gzip and zstd pages.
+parquet = { version = "60.0.0", default-features = false, features = [
+    "flate2-zlib-rs",
+    "lz4",
+    "snap",
+    "zstd",
+] }
 oxrdfxml = { version = "0.2.4", default-features = false }
 oxttl = { version = "0.2.4", default-features = false }
 boa_engine = { version = "0.22.0", default-features = false, features = [
@@ -97,15 +130,23 @@ boa_engine = { version = "0.22.0", default-features = false, features = [
 ] }
 bytes = "1.12.1"
 calamine = "0.38.0"
+chrono = { version = "0.4.45", default-features = false, features = ["alloc"] }
 fancy-regex = "0.20.0"
 flate2 = "1.1.10"
 futures-util = { version = "0.3.34", default-features = false }
 granit-parser = "2.1.0"
+# Reads the HDF5 files of nf-anndata (`.h5ad`) in Rust: no C library.
+hdf5-pure = { version = "0.47.0", default-features = false, features = [
+    "std",
+    "checksum",
+    "deflate",
+] }
 # Git over HTTPS in Rust, for repository sources and Argo git artifacts: no git program.
 gix = { version = "0.90.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "sha1",
 ] }
+hmac = "0.13.0"
 http = "1.5.0"
 indexmap = "2.14.2"
 jiff = "0.2.38"
@@ -115,6 +156,20 @@ kube = { version = "5.0.0", default-features = false, features = [
     "client",
     "rustls-tls",
     "aws-lc-rs",
+] }
+# Mail over SMTP with rustls, for the completion e-mail of nf-core-utils: no sendmail program.
+# LZ4 blocks inside the Blosc chunks of Zarr stores, for nf-anndata.
+lz4_flex = { version = "0.14.0", default-features = false, features = [
+    "safe-decode",
+    "std",
+] }
+lettre = { version = "0.11.23", default-features = false, features = [
+    "aws-lc-rs",
+    "builder",
+    "hostname",
+    "rustls",
+    "rustls-platform-verifier",
+    "smtp-transport",
 ] }
 md-5 = { version = "0.11.0", default-features = false }
 num-bigint = "0.5.1"
@@ -132,6 +187,8 @@ opendal = { version = "0.59.4", default-features = false, features = [
 opendal-http-transport-reqwest = "0.59.4"
 opendal-service-azblob = { version = "0.59.4", default-features = false }
 opendal-service-gcs = { version = "0.59.4", default-features = false }
+# A throwaway CA and certificate for tests of TLS servers with their own CA, like wr; tests only.
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 regex = "1.13.1"
 regex-syntax = "0.8.11"
 rattler_conda_types = "0.58.1"
@@ -144,8 +201,12 @@ reqwest = { version = "0.13.5", default-features = false, features = [
     "blocking",
     "rustls",
 ] }
+reqsign-aws-core = { version = "3.2.0", default-features = false }
 reqsign-azure-storage = { version = "3.3.0", default-features = false }
 reqsign-core = { version = "3.3.2", default-features = false }
+reqsign-file-read-tokio = "3.0.7"
+# RS256 signing of the JWTs that exchange a Google service account key for an access token.
+rsa = "0.9.10"
 ruff_python_ast = "=0.0.20"
 ruff_python_parser = "=0.0.20"
 ruff_text_size = "=0.0.20"
@@ -155,11 +216,22 @@ rustix = { version = "1.1.5", default-features = false, features = [
     "std",
 ] }
 saphyr-parser = "0.3.3"
+# TLS for the iRODS protocol, which starts TLS inside its own connection, checked by the system.
+rustls-platform-verifier = "0.7.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_jcs = "0.2.0"
 sha1 = { version = "0.11.0", default-features = false }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
+# PostgreSQL and MySQL clients in Rust for nf-sqldb, without the sqlx facade, whose optional
+# SQLite driver clashes with rusqlite's SQLite. No RSA, so MySQL passwords need TLS.
+sqlx-core = { version = "0.9.0", default-features = false, features = [
+    "_rt-tokio",
+    "_tls-rustls-aws-lc-rs",
+    "json",
+] }
+sqlx-mysql = { version = "0.9.0", default-features = false, features = ["chrono", "json"] }
+sqlx-postgres = { version = "0.9.0", default-features = false, features = ["chrono", "json"] }
 suppaftp = { version = "12.1.1", default-features = false, features = [
     "tokio",
 ] }
@@ -172,6 +244,7 @@ tokio = { version = "1.53.2", features = [
     "macros",
     "rt-multi-thread",
 ] }
+tokio-rustls = "0.26.6"
 tokio-util = "0.7.20"
 toml = { version = "1.1.8", default-features = false, features = [
     "parse",
@@ -180,6 +253,7 @@ toml = { version = "1.1.8", default-features = false, features = [
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 webpki-root-certs = "1.0.9"
+zstd = { version = "0.14.3", default-features = false }
 zip = { version = "9.0.1", default-features = false, features = ["deflate"] }
 
 # Debug and test builds keep line tables for backtraces only. With full debug info each test

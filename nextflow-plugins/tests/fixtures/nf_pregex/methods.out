@@ -1,0 +1,200 @@
+regex => sample((?:\d)+)_(?<read>(?:R1|R2)) (java.lang.String)
+test sub => true (java.lang.Boolean)
+test no => false (java.lang.Boolean)
+test null => false (java.lang.Boolean)
+matches whole => true (java.lang.Boolean)
+matches partial => false (java.lang.Boolean)
+matches null => false (java.lang.Boolean)
+extract => [0:sample12_R2, match:sample12_R2, 1:12, 2:R2, read:R2] (java.util.LinkedHashMap)
+extract keys => [0, match, 1, 2, read] (java.util.LinkedHashMap$LinkedKeySet)
+extract none => null (null)
+extract null => null (null)
+extract optional group missing => [0:a, match:a, 1:null] (java.util.LinkedHashMap)
+extract named order => [0:123, match:123, 1:1, 2:2, 3:3, b:1, a:3] (java.util.LinkedHashMap)
+chromosome extract => [0:chr22, match:chr22] (java.util.LinkedHashMap)
+chromosome test => [true, true, false, false] (java.util.ArrayList)
+fastq => [true, true, false] (java.util.ArrayList)
+bed => [true, true] (java.util.ArrayList)
+bad regex test !! java.util.regex.PatternSyntaxException / java.util.regex.PatternSyntaxException: Unclosed character class near index 1
+[]
+ ^
+report class => io.nextflow.pregex.PRegEx$TestReport (java.lang.String)
+report counts => [2, 1, 3, false] (java.util.ArrayList)
+results => [[sample1_R1, true, true, true], [sampleX_R1, false, false, true], [sample2_R3, true, false, false]] (java.util.ArrayList)
+--- report() ---
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  Test Report                                                       ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+Pattern: sample((?:\d)+)_(?<read>(?:R1|R2))
+──────────────────────────────────────────────────────────────────────
+
+  ✓ [PASS] "sample1_R1"
+      Expected: match | Actual: match
+  ✓ [PASS] "sampleX_R1"
+      Expected: no match | Actual: no match
+  ✗ [FAIL] "sample2_R3"
+      Expected: match | Actual: no match
+
+──────────────────────────────────────────────────────────────────────
+Results: 2 passed, 1 failed, 3 total
+Status: ✗ SOME TESTS FAILED
+--- report() all pass ---
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  Test Report                                                       ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+Pattern: \d
+──────────────────────────────────────────────────────────────────────
+
+  ✓ [PASS] "1"
+      Expected: match | Actual: match
+  ✓ [PASS] "a"
+      Expected: no match | Actual: no match
+
+──────────────────────────────────────────────────────────────────────
+Results: 2 passed, 0 failed, 2 total
+Status: ✓ ALL TESTS PASSED
+--- explain() p ---
+Pattern: sample((?:\d)+)_(?<read>(?:R1|R2))
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pattern Type: Sequence
+
+Breakdown:
+• Sequence of patterns
+  • Literal text: "sample"
+  • Capturing group:
+    • One or more of:
+      • Any digit (0-9)
+  • Literal text: "_"
+  • Named group 'read':
+    • One of: R1, R2
+      Options:
+        - R1
+        - R2
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This pattern will match strings containing: patterns matching: sample((?:\d)+)_(?<read>(?:R1|R2))
+--- explain() complex ---
+Pattern: (?:[AC]{2}|(?:x){1,2}|\s{1,}|(?:\w)*|(?:.)?|[a-c]|(?:chr)?(?:2[0-2]|1[0-9]|[1-9]|[XYMxym])|\.[Bb][Ee][Dd](?:\.[Gg][Zz])?)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pattern Type: AnyOf
+
+Breakdown:
+• One of the following patterns:
+  • Exactly 2 times:
+    • Character class: [AC]
+  • Between 1 and 2 times:
+    • Literal text: "x"
+  • At least 1 times:
+    • Any whitespace character
+  • Zero or more of:
+    • Any word character (a-z, A-Z, 0-9, _)
+  • Optional:
+    • Any character
+  • CharRange
+  • Raw regex: (?:chr)?(?:2[0-2]|1[0-9]|[1-9]|[XYMxym])
+  • Sequence of patterns
+    • Sequence of patterns
+      • Literal text: "."
+      • Sequence of patterns
+        • Sequence of patterns
+          • Character class: [Bb]
+          • Character class: [Ee]
+        • Character class: [Dd]
+    • Optional:
+      • Sequence of patterns
+        • Sequence of patterns
+          • Literal text: "."
+          • Character class: [Gg]
+        • Character class: [Zz]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This pattern will match strings containing: patterns matching: (?:[AC]{2}|(?:x){1,2}|\s{1,}|(?:\w)*|(?:.)?|[a-c]|(?:chr)?(?:2[0-2]|1[0-9]|[1-9]|[XYMxym])|\.[Bb][Ee][Dd](?:\.[Gg][Zz])?)
+--- explain() leaf literal ---
+Pattern: abc
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pattern Type: Literal
+
+Breakdown:
+• Literal text: "abc"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This pattern will match strings containing: the exact text 'abc'
+--- explain() digit ---
+Pattern: \d
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pattern Type: Digit
+
+Breakdown:
+• Any digit (0-9)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This pattern will match strings containing: numeric digits
+--- explain() wordchar ---
+Pattern: \w
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pattern Type: WordChar
+
+Breakdown:
+• Any word character (a-z, A-Z, 0-9, _)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This pattern will match strings containing: alphanumeric characters and underscores
+--- explain() either ---
+Pattern: (?:R1|R2|1|2)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pattern Type: Either
+
+Breakdown:
+• One of: R1, R2, 1, 2
+  Options:
+    - R1
+    - R2
+    - 1
+    - 2
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This pattern will match strings containing: one of: R1, R2, 1, 2
+--- visualize() p ---
+
+Pattern Structure:
+══════════════════════════════════════════════════════════════════════
+└── Sequence of patterns
+    ├── Literal text: "sample"
+    ├── Capturing group:
+    │   └── One or more of:
+    │       └── Any digit (0-9)
+    ├── Literal text: "_"
+    └── Named group 'read':
+        └── One of: R1, R2
+            ├── Literal text: "R1"
+            └── Literal text: "R2"
+══════════════════════════════════════════════════════════════════════
+
+Regex: sample((?:\d)+)_(?<read>(?:R1|R2))
+
+--- visualize() complex ---
+
+Pattern Structure:
+══════════════════════════════════════════════════════════════════════
+└── One of the following patterns:
+    ├── Exactly 2 times:
+    │   └── Character class: [AC]
+    ├── One of: a, b
+    │   ├── Literal text: "a"
+    │   └── Literal text: "b"
+    └── MultiRange
+══════════════════════════════════════════════════════════════════════
+
+Regex: (?:[AC]{2}|(?:a|b)|[a-c])
+
+--- end ---

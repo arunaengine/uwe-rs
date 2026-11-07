@@ -26,7 +26,7 @@ pub use cell::{ListCell, MapCell};
 pub use class::{assignable, class_text, qualified_class_name, simple_class_name};
 pub use compare::Relation;
 pub use key::Key;
-pub use object::{DAYS, JsonOptions, Object, State, Time, Workflow};
+pub use object::{DAYS, JsonOptions, Native, Object, State, Time, Workflow};
 pub use operators::Operator;
 pub use path::PathValue;
 pub use range::{Range, RangeClass};

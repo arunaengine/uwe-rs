@@ -2,16 +2,91 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod catalogue;
+mod crg_lims;
 pub mod everit;
+pub mod nf_agent;
 mod nf_anndata;
+mod nf_arts;
+mod nf_bactopia;
+mod nf_bids;
+mod nf_biffix;
+mod nf_bigbrother;
+mod nf_blocks;
+mod nf_boost;
+mod nf_cgroup_metrics;
+mod nf_cloudcache;
+mod nf_cmgg;
+mod nf_co2footprint;
+mod nf_core_utils;
+mod nf_crg_report;
+mod nf_crukci_support;
+mod nf_csvext;
+mod nf_databricks;
+mod nf_datatrail;
+mod nf_dotenv;
+mod nf_drs;
+mod nf_emoji;
+mod nf_fairscape;
 mod nf_fgbio;
+mod nf_fl86;
+mod nf_flowviewer;
+mod nf_gadi;
+mod nf_gc;
+mod nf_gpt;
+mod nf_iridanext;
+mod nf_irods;
+mod nf_jev;
+mod nf_labrobotics;
+mod nf_lakefs;
+mod nf_lamin;
+mod nf_llm_debugger;
+mod nf_logsaver;
+mod nf_metalog;
+mod nf_nextpie;
+mod nf_oci;
+mod nf_parquet;
+mod nf_ped;
+mod nf_pregex;
+mod nf_prometheus;
+mod nf_prov;
+mod nf_python;
+mod nf_quilt;
+mod nf_r_ipc;
+mod nf_report;
+mod nf_runinsights;
 mod nf_schema;
+mod nf_seqlab_progress;
+mod nf_slack;
+mod nf_snapshot;
+mod nf_sqldb;
+mod nf_storagemetrics;
+mod nf_synapse;
+mod nf_teams;
+mod nf_tencentcloud;
+mod nf_tower;
+mod nf_trino;
 #[path = "validation.rs"]
 mod nf_validation;
+mod nf_versions;
+mod nf_wave;
+mod nf_weblog;
+pub mod observer;
+mod report_format;
+mod run_metadata;
+mod service;
+
+use std::any::Any;
+use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
 
 use nextflow_config::Config;
 use nextflow_evaluator::interpreter::{Error, Host};
-use nextflow_evaluator::value::Value;
+use nextflow_evaluator::value::{Native, Object, State as ObjectState, Value};
+
+use crate::catalogue::{Kind, Plugin, State};
+pub use crate::nf_labrobotics::Lab;
+pub use crate::nf_wave::{Sources as WaveSources, Wave, wave};
 
 /// Parameters as nf-schema validates them, according to the selected plugin version.
 pub fn schema_params(params: &Value, config: &Config) -> Value {
@@ -50,96 +125,83 @@ const NF_SCHEMA: &[&str] = &[
     "validateParameters",
 ];
 
-/// The functions of nf-core-utils 0.5.0. Those that `nf_core_utils.nf` defines run as
-/// script code; the others are not supported yet.
-const NF_CORE_UTILS: &[&str] = &[
-    "autoToolBibliographyText",
-    "autoToolCitationText",
-    "checkCondaChannels",
-    "checkConfigProvided",
-    "checkProfileProvided",
-    "collectCitationsFromFiles",
-    "collectVersions",
-    "completionEmail",
-    "completionSummary",
-    "convertLegacyYamlToEvalSyntax",
-    "convertMetaYamlToTopicFormat",
-    "dumpParametersToJSON",
-    "generateCitationReport",
-    "generateComprehensiveReport",
-    "generateModuleToolCitation",
-    "generateVersionReport",
-    "generateYamlFromEvalSyntax",
-    "getCitation",
-    "getGenomeAttribute",
-    "getReferencesFile",
-    "getReferencesValue",
-    "getWorkflowVersion",
-    "imNotification",
-    "methodsDescriptionText",
-    "paramsSummaryMultiqc",
-    "processCitationsFromFile",
-    "processCitationsFromTopic",
-    "processMixedCitationSources",
-    "processMixedVersionSources",
-    "processVersionsFromFile",
-    "processVersionsFromTopic",
-    "softwareVersionsToYAML",
-    "toolBibliographyText",
-    "toolCitationText",
-    "workflowVersionToChannel",
-];
+const NF_SCHEMA_PLUGIN: Plugin = Plugin {
+    functions: NF_SCHEMA,
+    call: Some(nf_schema::call),
+    scopes: &["validation"],
+    ..Plugin::new("nf-schema", Kind::Functions, State::Implemented)
+};
 
-/// The functions of a plugin, or `None` for a plugin uwe does not have.
-pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
-    match plugin {
-        "nf-anndata" => Some(&["anndata"]),
-        "nf-core-utils" => Some(NF_CORE_UTILS),
-        "nf-fgbio" => Some(&["readStructure"]),
-        "nf-schema" => Some(NF_SCHEMA),
-        "nf-validation" => Some(nf_validation::FUNCTIONS),
-        _ => None,
-    }
+const NF_VALIDATION_PLUGIN: Plugin = Plugin {
+    functions: nf_validation::FUNCTIONS,
+    call: Some(nf_validation::call),
+    factories: &["fromSamplesheet"],
+    scopes: &["validation"],
+    ..Plugin::new("nf-validation", Kind::Functions, State::Implemented)
+};
+
+/// Whether nf-cgroup-metrics fills the memory fields of the trace from the cgroup samples.
+pub fn cgroup_metrics(config: &Config) -> bool {
+    nf_cgroup_metrics::enabled(config)
 }
 
-/// Native plugin coverage, including functions recognized but not implemented.
-pub fn capabilities() -> serde_json::Value {
-    let core = [
-        "getGenomeAttribute",
-        "getWorkflowVersion",
-        "checkConfigProvided",
-        "checkProfileProvided",
-        "completionSummary",
-        "dumpParametersToJSON",
-        "softwareVersionsToYAML",
-    ];
-    let unavailable: Vec<_> = NF_CORE_UTILS
+pub use nf_biffix::ImageMap;
+
+/// The image map of nf-biffix, which every container of the run goes through, when the config
+/// names the plugin and `BIFFIX_IMAGE_MAP_FILE` is set.
+pub fn image_map(config: &Config) -> Option<ImageMap> {
+    let path = std::env::var("BIFFIX_IMAGE_MAP_FILE")
+        .ok()
+        .filter(|path| !path.is_empty())?;
+    let configured = catalogue::configured(config)
         .iter()
-        .filter(|name| !core.contains(name))
-        .collect();
-    serde_json::json!({
-        "nf-schema": {"supported": NF_SCHEMA, "unavailable": []},
-        "nf-validation": {"supported": nf_validation::FUNCTIONS, "unavailable": []},
-        "nf-fgbio": {"supported": ["readStructure"], "unavailable": []},
-        "nf-core-utils": {"supported": core, "unavailable": unavailable},
-        "nf-anndata": {"supported": [], "unavailable": ["anndata"]}
-    })
+        .any(|id| id == "nf-biffix");
+    configured.then(|| ImageMap::load(&path))
+}
+
+/// Where nf-cloudcache puts the cache store: see [`nf_cloudcache::location`].
+pub fn cloud_cache(config: &Config, variable: Option<&str>) -> Result<Option<String>, String> {
+    nf_cloudcache::location(config, variable)
+}
+
+/// Whether the plugins of the config free the intermediate files of the run while it runs:
+/// nf-gc, or nf-boost with `boost.cleanup`. A config that they reject turns it off; their
+/// observers report it.
+pub fn cleanup(config: &Config) -> bool {
+    let configured = catalogue::configured(config);
+    let boost =
+        configured.iter().any(|id| id == "nf-boost") && nf_boost::cleanup(config).unwrap_or(false);
+    boost || nf_gc::mode(config).is_ok_and(|mode| mode.is_some())
+}
+
+/// What the `labrobotics` executor of nf-labrobotics adds to its tasks, when the config names
+/// the plugin.
+pub fn labrobotics(config: &Config, session: &str) -> Option<Lab> {
+    let configured = catalogue::configured(config);
+    (configured.iter().any(|id| id == "nf-labrobotics")).then(|| Lab::of(config, session))
+}
+
+/// The functions of a plugin that uwe runs, or `None` for a plugin uwe does not run.
+pub fn functions(plugin: &str) -> Option<&'static [&'static str]> {
+    let plugin = catalogue::find(plugin).filter(|plugin| plugin.works())?;
+    Some(plugin.functions)
+}
+
+/// Native plugin coverage: every plugin of the catalogue, with the functions that work.
+pub fn capabilities() -> serde_json::Value {
+    catalogue::capabilities()
 }
 
 /// The plugin of a channel factory that a plugin adds, like `Channel.fromSamplesheet`.
 pub fn factory_plugin(name: &str) -> Option<&'static str> {
-    match name {
-        "fromSamplesheet" => Some("nf-validation"),
-        _ => None,
-    }
+    let plugins = catalogue::PLUGINS.iter();
+    let mut adding = plugins.filter(|plugin| plugin.factories.contains(&name));
+    adding.next().map(|plugin| plugin.id)
 }
 
 /// The script that ports functions of a plugin to Nextflow script, if there is one.
 pub fn script(plugin: &str) -> Option<&'static str> {
-    match plugin {
-        "nf-core-utils" => Some(include_str!("nf_core_utils.nf")),
-        _ => None,
-    }
+    catalogue::find(plugin)?.script
 }
 
 /// What plugin functions can see of the run.
@@ -154,6 +216,98 @@ pub struct Context<'a> {
     /// The names of the params of the command line and the params file, which Nextflow keeps
     /// as `session.cliParams`.
     pub cli_params: &'a [String],
+    /// The `workflow` object of the run, which nf-schema 3 summaries read; null when unknown.
+    pub workflow: Value,
+}
+
+/// Runs what the plugins of the config do when a run starts, before its script: nf-schema
+/// checks its config, and may print help and end the run instead. `false` ends the run with
+/// success before its script, like nf-bactopia after its help.
+pub fn start(context: &mut Context) -> Result<bool, Error> {
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-schema")
+    {
+        nf_schema::start(context)?;
+    }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-bactopia")
+        && !nf_bactopia::start(context)
+    {
+        return Ok(false);
+    }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-fl86")
+    {
+        nf_fl86::start(context)?;
+    }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-jev")
+    {
+        nf_jev::start(context)?;
+    }
+    Ok(true)
+}
+
+/// Runs what the plugins of the config do when a run ends, after its `onComplete` handlers;
+/// `context.workflow` is the finished `workflow` object.
+pub fn finish(context: &mut Context) {
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-bactopia")
+    {
+        nf_bactopia::finish(context);
+    }
+    if catalogue::configured(context.config)
+        .iter()
+        .any(|id| id == "nf-fl86")
+    {
+        nf_fl86::finish(context);
+    }
+}
+
+/// Calls a method of a plugin object, `None` when the object has no such method.
+pub fn method(
+    object: &Value,
+    name: &str,
+    arguments: Vec<Value>,
+    context: &mut Context,
+) -> Result<Option<Value>, Error> {
+    let plugin = match object {
+        Value::Object(native) => match &native.borrow().state {
+            ObjectState::Plugin(native) => native.plugin(),
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    match catalogue::find(plugin).and_then(|plugin| plugin.methods) {
+        Some(methods) => methods(object, name, arguments, context),
+        None => Ok(None),
+    }
+}
+
+/// A new object of a plugin class with its state.
+pub(crate) fn object(class: &'static str, state: impl Native) -> Value {
+    Value::Object(Rc::new(RefCell::new(Object {
+        class,
+        state: ObjectState::Plugin(Box::new(state)),
+    })))
+}
+
+/// The state of a plugin object, if the value is an object of that state.
+pub(crate) fn native<T: Native>(value: &Value) -> Option<RefMut<'_, T>> {
+    let Value::Object(object) = value else {
+        return None;
+    };
+    let borrowed = object.try_borrow_mut().ok()?;
+    RefMut::filter_map(borrowed, |object| match &mut object.state {
+        ObjectState::Plugin(native) => (native.as_mut() as &mut dyn Any).downcast_mut::<T>(),
+        _ => None,
+    })
+    .ok()
 }
 
 /// Calls a function of a plugin.
@@ -163,12 +317,9 @@ pub fn call(
     arguments: Vec<Value>,
     context: &mut Context,
 ) -> Result<Value, Error> {
-    match plugin {
-        "nf-anndata" => nf_anndata::call(name, arguments, context),
-        "nf-fgbio" => nf_fgbio::call(name, arguments),
-        "nf-schema" => nf_schema::call(name, arguments, context),
-        "nf-validation" => nf_validation::call(name, arguments, context),
-        _ => Err(Error::Unsupported {
+    match catalogue::find(plugin).and_then(|plugin| plugin.call) {
+        Some(call) => call(name, arguments, context),
+        None => Err(Error::Unsupported {
             message: format!("the function `{name}` of the plugin `{plugin}`"),
             span: Default::default(),
         }),

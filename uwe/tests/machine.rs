@@ -15,7 +15,9 @@ fn check_machine(directory: &Path, arguments: &[&str]) -> (i32, String) {
         .env("XDG_CACHE_HOME", directory.join("cache"))
         .env("UWE_ENGINE", directory.join("docker.sock"))
         .env("PATH", directory)
+        .env("HOME", directory)
         .env_remove("UWE_TES_TOKEN")
+        .env_remove("NOMAD_ADDR")
         .current_dir(directory)
         .output()
         .expect("runs uwe");
@@ -61,8 +63,26 @@ fn explains_missing_engine() {
         line(&stdout, "run database"),
         format!("ready      run database: {}, 0 runs", database.display())
     );
-    for part in ["executor tes", "executor slurm", "executor kubernetes"] {
-        assert!(line(&stdout, part).starts_with("not set up "), "{stdout}");
+    let executors = [
+        "tes",
+        "slurm",
+        "kubernetes",
+        "aws-batch",
+        "google-batch",
+        "azure-batch",
+    ];
+    let newer = [
+        "nomad",
+        "htcondor",
+        "pbs",
+        "flyte",
+        "snowflake",
+        "jarvice",
+        "wr",
+    ];
+    for name in executors.into_iter().chain(newer) {
+        let part = format!("executor {name}");
+        assert!(line(&stdout, &part).starts_with("not set up "), "{stdout}");
     }
     assert!(
         stdout.ends_with(
@@ -188,5 +208,90 @@ fn requires_selected_kubeconfig() {
     assert!(
         line(&stdout, "executor kubernetes").starts_with("not set up "),
         "{stdout}"
+    );
+}
+
+/// The newer executors are built as a run builds them, which asks no service: their tools,
+/// staging root, address and credentials.
+#[test]
+fn checks_newer_executors() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    for name in ["qsub", "qstat", "qdel"] {
+        let path = directory.path().join(name);
+        std::fs::write(&path, "#!/bin/sh\n").expect("writes a tool");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("makes it executable");
+    }
+    let (code, stdout) = check_machine(directory.path(), &["-executor", "htcondor"]);
+    assert_eq!(code, 3, "{stdout}");
+    assert_eq!(
+        line(&stdout, "executor htcondor"),
+        "missing    executor htcondor: -executor htcondor needs `condor_submit`, `condor_q`, \
+         `condor_rm` on the PATH; run uwe on an HTCondor access point"
+    );
+    assert_eq!(
+        line(&stdout, "executor pbs"),
+        "ready      executor pbs: the PBS tools are on the PATH; the jobs run tasks with apptainer"
+    );
+    assert_eq!(
+        line(&stdout, "executor nomad"),
+        "not set up executor nomad: no Nomad agent named; name one with `address` in \
+         [executor.nomad] or NOMAD_ADDR"
+    );
+    let (code, stdout) = check_machine(directory.path(), &["-executor", "aws-batch"]);
+    assert_eq!(code, 3, "{stdout}");
+    assert!(
+        line(&stdout, "executor aws-batch")
+            .starts_with("missing    executor aws-batch: AWS Batch jobs share no folders"),
+        "{stdout}"
+    );
+    let config = format!(
+        "[executor.aws-batch]\nregion = 'eu-west-1'\nstaging = 'object-store'\n\
+         staging_root = '{}'\nhelper_path = '/opt/uwe'\n\n\
+         [executor.nomad]\naddress = 'http://127.0.0.1:1'\n\n\
+         [executor.flyte]\nendpoint = 'http://127.0.0.1:1'\norg = 'lab'\nproject = 'flows'\n\
+         domain = 'development'\nstaging = 'object-store'\nstaging_root = '{0}'\n\
+         helper_path = '/opt/uwe'\n\n\
+         [executor.jarvice]\napi_url = 'http://127.0.0.1:1'\nusername = 'lab'\n\
+         api_key = 'not-a-real-key'\nstaging = 'object-store'\nstaging_root = '{0}'\n\
+         helper_path = '/opt/uwe'\n\n\
+         [executor.wr]\nendpoint = 'https://127.0.0.1:1'\ntoken_file = 'wr.token'\n\
+         ca_file = 'wr.pem'\n",
+        directory.path().join("staging").display()
+    );
+    std::fs::write(directory.path().join("wr.token"), "not-a-real-token\n").expect("writes");
+    let key = rcgen::KeyPair::generate().expect("a key");
+    let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).expect("parameters");
+    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    let ca = params.self_signed(&key).expect("a CA").pem();
+    std::fs::write(directory.path().join("wr.pem"), ca).expect("writes the CA");
+    std::fs::write(directory.path().join("lab.toml"), config).expect("writes the config file");
+    let arguments = ["-uwe-config", "lab.toml", "-executor", "aws-batch"];
+    let (_, stdout) = check_machine(directory.path(), &arguments);
+    assert_eq!(
+        line(&stdout, "executor aws-batch"),
+        "ready      executor aws-batch: the settings, staging root and credentials of AWS Batch \
+         are complete; uwe asks AWS Batch only when a run starts"
+    );
+    assert_eq!(
+        line(&stdout, "executor nomad"),
+        "ready      executor nomad: the jobs go to the Nomad agent at http://127.0.0.1:1; uwe \
+         asks it only when a run starts"
+    );
+    assert_eq!(
+        line(&stdout, "executor flyte"),
+        "ready      executor flyte: the settings, staging root and credentials of Flyte are \
+         complete; uwe asks Flyte only when a run starts"
+    );
+    assert_eq!(
+        line(&stdout, "executor jarvice"),
+        "ready      executor jarvice: the jobs go to the JARVICE API at http://127.0.0.1:1; uwe \
+         asks it only when a run starts"
+    );
+    assert_eq!(
+        line(&stdout, "executor wr"),
+        "ready      executor wr: the token and CA certificate of the wr manager are readable; \
+         the jobs run tasks with apptainer; uwe asks wr only when a run starts"
     );
 }

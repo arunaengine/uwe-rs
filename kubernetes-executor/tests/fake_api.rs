@@ -1004,7 +1004,12 @@ async fn binds_selected_platform() {
     let reference = format!("localhost:{}/tool", address.rsplit(':').next().unwrap());
     let mut spec = spec(&format!("{reference}:1"), "echo $FROM_ENTRYPOINT > out.txt");
     spec.image.as_mut().unwrap().platform = Some("linux/arm64".into());
-    let (staging, placement) = (Staging::default(), placement());
+    let mut placement = placement();
+    // The pod options of the task come after the arch selector of uwe, which wins.
+    let pod = json!([{"nodeSelector": "kubernetes.io/arch=amd64,disktype=ssd"},
+                     {"priorityClassName": "high"}]);
+    placement.options.insert("pod".into(), pod);
+    let staging = Staging::default();
     let job = Job {
         name: "platform",
         spec: &spec,
@@ -1024,6 +1029,8 @@ async fn binds_selected_platform() {
     );
     assert_eq!(pod["nodeSelector"]["kubernetes.io/arch"], "arm64");
     assert_eq!(pod["nodeSelector"]["kubernetes.io/os"], "linux");
+    assert_eq!(pod["nodeSelector"]["disktype"], "ssd");
+    assert_eq!(pod["priorityClassName"], "high");
 }
 
 #[tokio::test]
@@ -2579,4 +2586,94 @@ printf '%s' '{"out":{"class":"File","location":"selected.txt"}}' > cwl.output.js
             .iter()
             .any(|file| { file["path"] == "control/discover" && file["executable"] == true })
     );
+}
+
+/// The calls that a fake got, each as `METHOD path` with its body.
+type Calls = Arc<Mutex<Vec<(String, Value)>>>;
+
+/// A fake of the REST API of the Common Workflow Scheduler: it answers each call with 200 and
+/// keeps it.
+fn workflow_scheduler() -> (String, Calls) {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = format!("http://{}/", listener.local_addr().expect("an address"));
+    let shared = calls.clone();
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            if let Some((method, path, _, body)) = request(&mut stream) {
+                let body = serde_json::from_str(&body).unwrap_or(Value::Null);
+                shared
+                    .lock()
+                    .expect("the calls")
+                    .push((format!("{method} {path}"), body));
+            }
+            reply(&mut stream, "200 OK", "application/json", "{}");
+        }
+    });
+    (address, calls)
+}
+
+/// Two tasks of a run with CWS: CWS learns of the run, the process and each task by the name
+/// of its pod, and the pods name CWS as their scheduler.
+#[tokio::test]
+async fn schedules_with_cws() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, state) = backend(root.path()).await;
+    let (address, calls) = workflow_scheduler();
+    let mut settings = kubernetes_executor::cws::Settings::new(&address);
+    settings.strategy = "rank_max-fair".into();
+    let scheduler = json!({"schedulerName": settings.scheduler_name});
+    backend.pod.add(&scheduler).expect("a pod option");
+    backend.cws = Some(kubernetes_executor::cws::Client::new(settings, "run"));
+    let source = root.path().join("in.txt");
+    std::fs::write(&source, "hello\n").expect("writes the input");
+    let staging = Staging {
+        inputs: vec![Staged {
+            path: "in.txt".into(),
+            source,
+            ..Default::default()
+        }],
+        ..Staging::default()
+    };
+    let placement = placement();
+    let spec = spec("debian:stable-slim", "tr a-z A-Z < in.txt > out.txt");
+    for name in ["run-UPPER-1-1", "run-UPPER-2-2"] {
+        let job = Job {
+            name,
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+        assert_eq!(finished.exit_code, Some(0));
+    }
+    let calls = calls.lock().expect("the calls").clone();
+    let paths: Vec<&str> = calls.iter().map(|(path, _)| path.as_str()).collect();
+    let expected = [
+        "POST /v1/scheduler/run",
+        "POST /v1/scheduler/run/DAG/vertices",
+        "POST /v1/scheduler/run/task/1",
+        "POST /v1/scheduler/run/task/2",
+    ];
+    assert_eq!(paths, expected);
+    let register = json!({"dns": address.trim_end_matches('/'), "namespace": NAMESPACE,
+                          "strategy": "rank_max-fair"});
+    assert_eq!(calls[0].1, register);
+    assert_eq!(
+        calls[1].1,
+        json!([{"label": "UPPER", "type": "PROCESS", "uid": 1}])
+    );
+    let task = &calls[3].1;
+    assert_eq!(task["runName"], "uwe-run-upper-2-2-pod");
+    assert_eq!(task["task"], "UPPER");
+    assert_eq!(task["name"], "UPPER (2)");
+    assert_eq!(task["repetition"], 1);
+    assert_eq!(task["inputSize"], 6);
+    assert_eq!(task["memoryInBytes"], 256 << 20);
+    let submitted = state.lock().expect("the state").submitted.clone();
+    assert_eq!(submitted.len(), 2);
+    for job in &submitted {
+        let pod = &job["spec"]["template"]["spec"];
+        assert_eq!(pod["schedulerName"], "workflow-scheduler");
+    }
 }

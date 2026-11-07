@@ -1,0 +1,1 @@
+PED files of the nf-ped 0.4.0 spec; written-all.txt and written-families.txt are the files that writePed() and writePed(families: [fam2, famX]) wrote for a.ped with Nextflow 26.04.6, offline.

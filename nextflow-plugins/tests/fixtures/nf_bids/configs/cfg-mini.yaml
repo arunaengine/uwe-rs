@@ -1,0 +1,10 @@
+loop_over: [subject, session]
+T1w:
+  plain_set: {}
+dwi:
+  plain_set:
+    additional_extensions: [bval, bvec]
+T2w:
+  plain_set: {}
+mask:
+  plain_set: {}

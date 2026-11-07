@@ -1,0 +1,10 @@
+POST /hooks.slack.com/services/x
+Content-Type: application/json
+User-Agent: Java/21.0.13.0.3
+Host: 127.0.0.1:<http port>
+Accept: */*
+Connection: keep-alive
+Content-Length: 715
+
+{"text": "slack tiny_watson success=true version=v1.0.0", "fields": [{"title": "runName", "value": "tiny_watson"},{"title": "outdir", "value": "results"},{"title": "start", "value": "2026-11-06T09:29:43.528328125+01:00"},{"title": "complete", "value": "2026-11-06T09:29:44.776048956+01:00"},{"title": "scriptfile", "value": "<probe>/core.nf"},{"title": "scriptid", "value": "d46fe46fe1b9f9f6a31314d7a52821f7"},{"title": "nxf_version", "value": "26.04.6"},{"title": "nxf_build", "value": "12646"},{"title": "nxf_timestamp", "value": "09-07-2026 18:49 UTC"}], "commandLine": "nextflow run core.nf -c v0.7.0.config -c fake.config -ansi-log false"}
+

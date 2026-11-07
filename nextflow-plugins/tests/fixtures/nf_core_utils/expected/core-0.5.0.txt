@@ -1,0 +1,183 @@
+===== getGenomeAttribute fasta
+${params.igenomes_base}/Homo_sapiens/genome.fa
+===== getGenomeAttribute missing
+null
+===== getWorkflowVersion
+v1.0.0
+===== getWorkflowVersion 2.0
+v2.0
+===== getWorkflowVersion v2.0 commit
+v2.0-gabcdef1
+===== getWorkflowVersion short commit
+!! java.lang.StringIndexOutOfBoundsException: Range [0, 7) out of bounds for length 3
+===== checkConfigProvided
+false
+===== checkProfileProvided positional
+!! java.lang.IllegalArgumentException: ERROR ~ The `-profile` option cannot end with a trailing comma, please remove it and re-run the pipeline!
+HINT: A common mistake is to provide multiple values separated by spaces e.g. `-profile test, docker`.
+
+===== completionSummary
+returned
+===== dumpParametersToJSON
+1
+===== checkCondaChannels
+true
+===== collectVersions
+FASTQC:
+  fastqc: 0.12.1
+SORT:
+  samtools: 1.22
+Software:
+  bgzip: 1.21
+  inline: 9.9
+  samtools: 1.21
+TOOLX:
+  toolx: '3.0'
+Workflow:
+    nf-core/probe: v1.0.0
+    Nextflow: unknown
+===== collectVersions nf
+Workflow:
+    nf-core/probe: v1.0.0
+    Nextflow: 25.10.0
+===== softwareVersionsToYAML list
+FASTQC:
+  fastqc: 0.12.1
+SORT:
+  samtools: 1.22
+Workflow:
+    nf-core/probe: v1.0.0
+    Nextflow: unknown
+===== softwareVersionsToYAML named
+FASTQC:
+  fastqc: 0.12.1
+SORT:
+  samtools: 1.22
+Workflow:
+    nf-core/probe: v1.0.0
+    Nextflow: 24.04.1
+===== processMixedVersionSources
+fastqc: 0.12.1
+samtools: 1.22
+FASTQC:
+  fastqc: 0.12.1
+samtools: 1.21
+bgzip: 1.21
+Workflow:
+    nf-core/probe: v1.0.0
+    Nextflow: unknown
+===== convertLegacyYamlToEvalSyntax
+[["LEGACY","fastqc","0.12.1"],["LEGACY","samtools","1.21"]]
+===== convertLegacyYamlToEvalSyntax process
+[["FASTQC","fastqc","0.12.1"]]
+===== generateYamlFromEvalSyntax
+fastqc: 0.12.1
+samtools: 1.22
+Workflow:
+    nf-core/probe: v1.0.0
+    Nextflow: unknown
+===== generateYamlFromEvalSyntax noworkflow
+fastqc: 0.12.1
+samtools: 1.22
+===== processVersionsFromTopic
+fastqc: 0.12.1
+samtools: 1.22
+===== processVersionsFromFile
+FASTQC:
+  fastqc: 0.12.1
+samtools: 1.21
+bgzip: 1.21
+===== workflowVersionToChannel
+[["Workflow","nf-core/probe","v1.0.0"],["Workflow","Nextflow","unknown"]]
+===== generateModuleToolCitation fastqc
+{"fastqc":{"citation":"fastqc (FastQC gives general quality metrics about your reads.\n)","bibliography":"<li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li>"}}
+===== generateModuleToolCitation samtools
+{"samtools":{"citation":"samtools (DOI: 10.1093/bioinformatics/btp352)","bibliography":"<li>Heng Li, Bob Handsaker and others. 2009. The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: 10.1093/bioinformatics/btp352. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>"},"htslib":{"citation":"htslib (C library for high-throughput sequencing data formats)","bibliography":"<li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>"},"plaintool":{"citation":"plaintool","bibliography":null}}
+===== generateModuleToolCitation missing
+!! java.lang.IllegalArgumentException: meta.yml file not found at: /missing/meta.yml
+===== collectCitationsFromFiles
+{"fastqc":{"citation":"fastqc (FastQC gives general quality metrics about your reads.\n)","bibliography":"<li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li>"},"samtools":{"citation":"samtools (DOI: 10.1093/bioinformatics/btp352)","bibliography":"<li>Heng Li, Bob Handsaker and others. 2009. The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: 10.1093/bioinformatics/btp352. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>"},"htslib":{"citation":"htslib (C library for high-throughput sequencing data formats)","bibliography":"<li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>"},"plaintool":{"citation":"plaintool","bibliography":null}}
+===== toolCitationText
+Tools used in the workflow included: fastqc (FastQC gives general quality metrics about your reads.
+), samtools (DOI: 10.1093/bioinformatics/btp352), htslib (C library for high-throughput sequencing data formats), plaintool.
+===== toolCitationText empty
+No tools used in the workflow.
+===== toolBibliographyText
+<li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li> <li>Heng Li, Bob Handsaker and others. 2009. The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: 10.1093/bioinformatics/btp352. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li> <li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>
+===== toolBibliographyText empty
+No bibliography entries found.
+===== methodsDescriptionText
+id: "nf-core-probe-methods-description"
+description: "Suggested text and references to use when describing pipeline usage within the methods section of a publication."
+section_name: "nf-core/probe Methods Description"
+section_href: "https://github.com/nf-core/probe"
+plot_type: "html"
+data: |
+  <h4>Methods</h4>
+  <p>Data was processed using nf-core/probe v1.0.0 (doi: <a href='https://doi.org/10.5281/zenodo.1'>10.5281/zenodo.1</a>), (doi: <a href='https://doi.org/10.5281/zenodo.2'>10.5281/zenodo.2</a>) of the nf-core collection of workflows.</p>
+  <p>The pipeline was executed with Nextflow v26.04.6.</p>
+  <pre><code>nextflow run core.nf -c v0.5.0.config -c fake.config -ansi-log false</code></pre>
+  <p>Tools used in the workflow included: fastqc (FastQC gives general quality metrics about your reads.
+), samtools (DOI: 10.1093/bioinformatics/btp352), htslib (C library for high-throughput sequencing data formats), plaintool.</p>
+  <ul><li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li> <li>Heng Li, Bob Handsaker and others. 2009. The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: 10.1093/bioinformatics/btp352. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li> <li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li></ul>
+  <ul></ul>
+
+===== generateComprehensiveReport
+{"versions_yaml":"FASTQC:\n  fastqc: 0.12.1\nSORT:\n  samtools: 1.22\nSoftware:\n  bgzip: 1.21\n  samtools: 1.21\nWorkflow:\n    nf-core/probe: v1.0.0\n    Nextflow: unknown","tool_citations":"Tools used in the workflow included: fastqc (FastQC gives general quality metrics about your reads.\n).","tool_bibliography":"<li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li>","methods_description":"id: \"nf-core-probe-methods-description\"\ndescription: \"Suggested text and references to use when describing pipeline usage within the methods section of a publication.\"\nsection_name: \"nf-core/probe Methods Description\"\nsection_href: \"https://github.com/nf-core/probe\"\nplot_type: \"html\"\ndata: |\n  <h4>Methods</h4>\n  <p>Data was processed using nf-core/probe v1.0.0 (doi: <a href='https://doi.org/10.5281/zenodo.1'>10.5281/zenodo.1</a>), (doi: <a href='https://doi.org/10.5281/zenodo.2'>10.5281/zenodo.2</a>) of the nf-core collection of workflows.</p>\n  <p>The pipeline was executed with Nextflow v26.04.6.</p>\n  <pre><code>nextflow run core.nf -c v0.5.0.config -c fake.config -ansi-log false</code></pre>\n  <p>Tools used in the workflow included: fastqc (FastQC gives general quality metrics about your reads.\n).</p>\n  <ul><li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li></ul>\n  <ul></ul>\n","citations_map":{"fastqc":{"citation":"fastqc (FastQC gives general quality metrics about your reads.\n)","bibliography":"<li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li>"}}}
+===== generateVersionReport
+{"versions_yaml":"FASTQC:\n  fastqc: 0.12.1\nSORT:\n  samtools: 1.22\nWorkflow:\n    nf-core/probe: v1.0.0\n    Nextflow: unknown"}
+===== generateCitationReport
+{"tool_citations":"Tools used in the workflow included: samtools (DOI: 10.1093/bioinformatics/btp352), htslib (C library for high-throughput sequencing data formats), plaintool.","tool_bibliography":"<li>Heng Li, Bob Handsaker and others. 2009. The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: 10.1093/bioinformatics/btp352. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li> <li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>","methods_description":"","citations_map":{"samtools":{"citation":"samtools (DOI: 10.1093/bioinformatics/btp352)","bibliography":"<li>Heng Li, Bob Handsaker and others. 2009. The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: 10.1093/bioinformatics/btp352. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>"},"htslib":{"citation":"htslib (C library for high-throughput sequencing data formats)","bibliography":"<li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>"},"plaintool":{"citation":"plaintool","bibliography":null}}}
+===== processCitationsFromTopic
+{"fastqc":{"citation":"fastqc (DOI: 10.1/x)","bibliography":"<li>A B. 2020. fastqc. doi: 10.1/x</li>"},"plain":{"citation":"Plain citation text","bibliography":"<li>Plain citation text</li>"}}
+===== processCitationsFromFile
+{"fastqc":{"citation":"fastqc (FastQC gives general quality metrics about your reads.\n)","bibliography":"<li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li>"}}
+===== processMixedCitationSources
+{"plain":{"citation":"Plain citation text","bibliography":"<li>Plain citation text</li>"},"fastqc":{"citation":"fastqc (FastQC gives general quality metrics about your reads.\n)","bibliography":"<li>fastqc. <a href='https://www.bioinformatics.babraham.ac.uk/projects/fastqc/'>https://www.bioinformatics.babraham.ac.uk/projects/fastqc/</a></li>"}}
+===== convertMetaYamlToTopicFormat
+[["sort","samtools",{"description":"Tools for dealing with SAM, BAM and CRAM files","homepage":"http://www.htslib.org/","doi":"10.1093/bioinformatics/btp352","author":"Heng Li, Bob Handsaker and others","year":2009,"title":"The Sequence Alignment/Map format and SAMtools","journal":"Bioinformatics"}],["sort","htslib",{"description":"C library for high-throughput sequencing data formats","homepage":"http://www.htslib.org/"}],["sort","plaintool","just a string"]]
+===== convertMetaYamlToTopicFormat named
+[["MYMOD","fastqc",{"description":"FastQC gives general quality metrics about your reads.\n","homepage":"https://www.bioinformatics.babraham.ac.uk/projects/fastqc/","documentation":"https://www.bioinformatics.babraham.ac.uk/projects/fastqc/Help/","licence":["GPL-2.0-only"],"publication":{"author":"Andrews, S.","year":2010,"title":"FastQC: a quality control tool for high throughput sequence data","source":"Babraham Bioinformatics"}}]]
+===== getCitation
+[["SORT","samtools",{"description":"Tools for dealing with SAM, BAM and CRAM files","homepage":"http://www.htslib.org/","doi":"10.1093/bioinformatics/btp352","author":"Heng Li, Bob Handsaker and others","year":2009,"title":"The Sequence Alignment/Map format and SAMtools","journal":"Bioinformatics"}],["SORT","htslib",{"description":"C library for high-throughput sequencing data formats","homepage":"http://www.htslib.org/"}]]
+===== autoToolCitationText
+Tools used in the workflow included: fastqc (FastQC gives general quality metrics about your reads.
+), samtools (DOI: 10.1093/bioinformatics/btp352), htslib (C library for high-throughput sequencing data formats).
+===== autoToolCitationText empty
+No tools used in the workflow.
+===== autoToolBibliographyText
+<li>Heng Li, Bob Handsaker and others. 2009. The Sequence Alignment/Map format and SAMtools. Bioinformatics. doi: 10.1093/bioinformatics/btp352. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li> <li>htslib. <a href='http://www.htslib.org/'>http://www.htslib.org/</a></li>
+===== paramsSummaryMultiqc
+id: 'nf-core-probe-summary'
+description: ' - this information is collected when the pipeline is started.'
+section_name: 'nf-core/probe Workflow Summary'
+section_href: 'https://github.com/nf-core/probe'
+plot_type: 'html'
+data: |
+    <p style="font-size:110%"><b>Input/output options</b></p>
+    <dl class="dl-horizontal">
+        <dt>input</dt><dd><samp><span style="color:#999999;">N/A</a></samp></dd>
+        <dt>outdir</dt><dd><samp>results</samp></dd>
+        <dt>zeta</dt><dd><samp>z</samp></dd>
+    </dl>
+    <p style="font-size:110%"><b>Core Nextflow options</b></p>
+    <dl class="dl-horizontal">
+        <dt>runName</dt><dd><samp>x</samp></dd>
+    </dl>
+
+[PIPELINE] nf-core/probe 1.0.0 | profile=standard
+[WORKDIR] <probe>/work
+===== completionEmail
+!! java.io.IOException: Exec failed, error: 2 (No such file or directory) 
+===== completionEmail plaintext
+!! java.io.IOException: Exec failed, error: 2 (No such file or directory) 
+===== imNotification slack
+returned
+===== imNotification teams
+returned
+===== imNotification failing
+returned
+===== imNotification empty
+returned
+
+[SUCCESS] completed=0 failed=0 cached=0

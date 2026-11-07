@@ -54,8 +54,12 @@ pub struct Arguments {
     pub forceall: bool,
     /// `-rerun-triggers`: Snakemake checks that can require existing outputs to run again.
     pub rerun_triggers: Option<Vec<String>>,
-    /// `-executor simulator|local|tes|slurm|kubernetes`; `None` uses config, else local for runs.
+    /// `-executor simulator|local|tes|slurm|kubernetes|aws-batch|google-batch|azure-batch|nomad`,
+    /// `htcondor`, `pbs`, `flyte` or `snowflake`; `None` uses config, else local for runs.
     pub executor: Option<String>,
+    /// Whether `executor` is `default` of `[executor]` or `local`, which a Nextflow pipeline's
+    /// `process.executor` may override, rather than `-executor` or a preset.
+    pub executor_default: bool,
     /// `-graph file`: where to write the execution graph.
     pub graph: Option<PathBuf>,
     /// `-report file`: where `uwe run` writes the report of the run when it ends.
@@ -73,6 +77,17 @@ pub struct Arguments {
     pub kubeconfig: Option<PathBuf>,
     /// `-kubernetes-namespace name`: the namespace of the Jobs of `-executor kubernetes`.
     pub kubernetes_namespace: Option<String>,
+    /// `-head-image image`: the image with uwe that `uwe kuberun` runs in its pod.
+    pub head_image: Option<String>,
+    /// `-head-cpus n` and `-head-memory size`: what the pod of `uwe kuberun` asks for.
+    pub head_cpus: Option<String>,
+    pub head_memory: Option<String>,
+    /// `-volume-mount claim:path,...`: the volume claims of the pod of `uwe kuberun`.
+    pub volume_mounts: Vec<String>,
+    /// `-background`: `uwe kuberun` ends once the pod has started.
+    pub background: bool,
+    /// `-fail-on-change`: `uwe compare` ends with exit code 3 when the runs differ.
+    pub fail_on_change: bool,
     /// `-format name`: `json`, `dot`, `summary` or `svg` for `uwe graph`; `json`, `text` or
     /// `form` for `uwe inputs`.
     pub format: Option<String>,
@@ -304,6 +319,17 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
                 });
             }
             "-uwe-config" => parsed.config_file = Some(value()?.into()),
+            "-head-image" => parsed.head_image = Some(value()?),
+            "-head-cpus" => parsed.head_cpus = Some(value()?),
+            "-head-memory" => parsed.head_memory = Some(value()?),
+            "-volume-mount" => {
+                let mounts = value()?;
+                parsed
+                    .volume_mounts
+                    .extend(mounts.split(',').map(str::to_owned));
+            }
+            "-background" => parsed.background = true,
+            "-fail-on-change" => parsed.fail_on_change = true,
             "-preset" => parsed.preset = Some(value()?),
             "-profile" => {
                 // Groovy's `tokenize(',')`: empty names are dropped, spaces are kept.
@@ -565,6 +591,7 @@ pub const COMMANDS: &[&str] = &[
     "resume",
     "reconcile",
     "presets",
+    "kuberun",
     "version",
 ];
 const WORKFLOW: &[&str] = &[
@@ -575,6 +602,7 @@ const WORKFLOW: &[&str] = &[
     "inputs",
     "outputs",
     "check-order",
+    "kuberun",
 ];
 const CONFIGURED: &[&str] = COMMANDS.split_at(COMMANDS.len() - 1).0;
 const EXECUTION: &[&str] = &["run", "graph", "check-order", "repeat", "replay"];
@@ -587,12 +615,22 @@ const BACKEND: &[&str] = &[
     "replay",
     "check-machine",
 ];
+const KUBERNETES: &[&str] = &[
+    "run",
+    "check",
+    "graph",
+    "check-order",
+    "repeat",
+    "replay",
+    "check-machine",
+    "kuberun",
+];
 const OPTIONS: &[(&str, &[&str])] = &[
     (
         "-r,-revision <tag|branch|commit>",
-        &["run", "graph", "check", "inputs", "outputs"],
+        &["run", "graph", "check", "inputs", "outputs", "kuberun"],
     ),
-    ("-latest", &["run", "graph"]),
+    ("-latest", &["run", "graph", "kuberun"]),
     ("-help", COMMANDS),
     ("-version,--version", COMMANDS),
     ("-v,-verbose", CONFIGURED),
@@ -623,7 +661,15 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ),
     (
         "-lang <nextflow|snakemake|cwl|argo|wdl>",
-        &["run", "graph", "check", "inputs", "outputs", "check-order"],
+        &[
+            "run",
+            "graph",
+            "check",
+            "inputs",
+            "outputs",
+            "check-order",
+            "kuberun",
+        ],
     ),
     ("-profile <a,b>", WORKFLOW),
     ("-preset <name>", &["run", "check", "inputs", "outputs"]),
@@ -631,10 +677,21 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ("-inputs,-params-file <file>", WORKFLOW),
     (
         "-entry <name>",
-        &["run", "graph", "check", "inputs", "outputs", "check-order"],
+        &[
+            "run",
+            "graph",
+            "check",
+            "inputs",
+            "outputs",
+            "check-order",
+            "kuberun",
+        ],
     ),
     ("--config <name=value>", WORKFLOW),
-    ("-stub,-stub-run", &["run", "graph", "check", "check-order"]),
+    (
+        "-stub,-stub-run",
+        &["run", "graph", "check", "check-order", "kuberun"],
+    ),
     ("-keep-going", &["run", "graph", "check-order"]),
     (
         "-until <rules,files>",
@@ -650,7 +707,10 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ),
     ("-forceall", &["run", "graph", "check", "check-order"]),
     ("-rerun-triggers <a,b>", &["run"]),
-    ("-executor <simulator|local|tes|slurm|kubernetes>", BACKEND),
+    (
+        "-executor <simulator|local|tes|slurm|kubernetes|aws-batch|google-batch|azure-batch|nomad|htcondor|pbs|flyte|snowflake|jarvice|wr>",
+        BACKEND,
+    ),
     (
         "-store <folder|address>",
         &[
@@ -662,6 +722,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
             "check-order",
             "repeat",
             "replay",
+            "kuberun",
         ],
     ),
     ("-tes-server <address>", BACKEND),
@@ -670,11 +731,24 @@ const OPTIONS: &[(&str, &[&str])] = &[
         BACKEND,
     ),
     ("-slurm-options <options>", BACKEND),
-    ("-kubeconfig <file>", BACKEND),
-    ("-kubernetes-namespace <name>", BACKEND),
+    ("-kubeconfig <file>", KUBERNETES),
+    ("-kubernetes-namespace <name>", KUBERNETES),
+    ("-head-image <image>", &["kuberun"]),
+    ("-head-cpus <n>", &["kuberun"]),
+    ("-head-memory <size>", &["kuberun"]),
+    ("-volume-mount <claim:path,...>", &["kuberun"]),
+    ("-background", &["kuberun"]),
     (
         "-default-image <image>",
-        &["run", "graph", "check", "check-order", "repeat", "replay"],
+        &[
+            "run",
+            "graph",
+            "check",
+            "check-order",
+            "repeat",
+            "replay",
+            "kuberun",
+        ],
     ),
     (
         "-python-image <image>",
@@ -682,7 +756,8 @@ const OPTIONS: &[(&str, &[&str])] = &[
     ),
     ("-output-dir <folder>", WORKFLOW),
     ("-graph <file>", &["run", "graph"]),
-    ("-report <file>", &["run"]),
+    ("-report <file>", &["run", "compare"]),
+    ("-fail-on-change", &["compare"]),
     (
         "-format <format>",
         &["graph", "inputs", "outputs", "time", "compare"],

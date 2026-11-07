@@ -4,7 +4,7 @@
 
 [package]
 name = "storage"
-description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP and local folders"
+description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP, local folders, GA4GH DRS, Synapse, iRODS and OCI Object Storage"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,21 +12,31 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+aws-lc-rs.workspace = true
 base64.workspace = true
 bytes.workspace = true
 config-file.workspace = true
 futures-util.workspace = true
+hmac.workspace = true
 http.workspace = true
+jiff.workspace = true
+md-5.workspace = true
 opendal.workspace = true
 opendal-http-transport-reqwest.workspace = true
 opendal-service-azblob.workspace = true
 opendal-service-gcs.workspace = true
+reqsign-aws-core.workspace = true
 reqsign-azure-storage.workspace = true
 reqsign-core.workspace = true
-reqwest.workspace = true
+reqsign-file-read-tokio.workspace = true
+reqwest = { workspace = true, features = ["stream"] }
+rustls-platform-verifier.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 suppaftp.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync", "time"] }
+tokio-rustls.workspace = true
+tracing.workspace = true
 webpki-root-certs.workspace = true

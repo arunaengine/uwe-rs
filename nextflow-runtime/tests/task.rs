@@ -34,6 +34,8 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
         script: "#!/bin/bash -ue\nFOO='a b'\necho hi\n".into(),
         directives,
         staged: vec![(PathValue::parse("/data/x.gz", "/"), "x.gz".into())],
+        values: Vec::new(),
+        declared: Vec::new(),
         input_environment: Vec::new(),
         stdin: None,
         output_patterns: vec!["out.txt".into()],
@@ -41,6 +43,7 @@ fn request(eval: &[&str], env: &[&str], container: Option<&str>) -> TaskRequest 
         eval: eval.iter().map(|command| (*command).to_owned()).collect(),
         stdout: false,
         made: None,
+        agent: None,
     }
 }
 

@@ -66,6 +66,7 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
         "replay" => insight::replay::command(arguments),
         "telemetry" => insight::telemetry::command(arguments),
         "report" => report::command(arguments),
+        "kuberun" => crate::kuberun::command(arguments),
         "help" | "-help" | "--help" => {
             println!("{usage}");
             Ok(())

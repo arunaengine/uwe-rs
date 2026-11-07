@@ -80,6 +80,29 @@ pub enum State {
         class: Rc<crate::lowered::LibraryClass>,
         fields: indexmap::IndexMap<Rc<str>, super::Value>,
     },
+    /// An object of a plugin class, like fgbio's `ReadStructure`, whose plugin runs its methods.
+    Plugin(Box<dyn Native>),
+}
+
+/// The state of a plugin object. The host runs its methods through `Host::plugin_method`.
+pub trait Native: std::any::Any + std::fmt::Debug {
+    /// The id of the plugin that runs the methods, like `nf-fgbio`.
+    fn plugin(&self) -> &'static str;
+
+    /// The text of `toString()`.
+    fn text(&self) -> String;
+
+    /// The value that `equals` and `hashCode` compare, for objects of the same class;
+    /// `None` when the object is only equal to itself.
+    fn key(&self) -> Option<String> {
+        None
+    }
+
+    /// Whether the method takes the result of its closure arguments instead of the
+    /// closures, like Scala's `getOrElse` of `None`.
+    fn calls_closure(&self, _method: &str) -> bool {
+        false
+    }
 }
 
 /// The values of `java.time` that scripts use for timestamps.
@@ -123,7 +146,8 @@ impl Time {
             }
             Time::Duration(duration) => {
                 let seconds = duration.as_secs();
-                if seconds == 0 && duration.subsec_nanos() == 0 {
+                let nanos = duration.subsec_nanos().unsigned_abs();
+                if seconds == 0 && nanos == 0 {
                     return "PT0S".into();
                 }
                 let (hours, minutes, rest) = (seconds / 3600, (seconds % 3600) / 60, seconds % 60);
@@ -134,8 +158,17 @@ impl Time {
                 if minutes != 0 {
                     text.push_str(&format!("{minutes}M"));
                 }
-                if rest != 0 || duration.subsec_nanos() != 0 {
-                    text.push_str(&format!("{rest}{}S", fraction(duration.subsec_nanos())));
+                if rest != 0 || nanos != 0 {
+                    // Java writes a negative part under one second as `-0.5`.
+                    let sign = if rest == 0 && duration.is_negative() {
+                        "-"
+                    } else {
+                        ""
+                    };
+                    let digits = format!("{nanos:09}");
+                    let digits = digits.trim_end_matches('0');
+                    let point = if digits.is_empty() { "" } else { "." };
+                    text.push_str(&format!("{sign}{rest}{point}{digits}S"));
                 }
                 text
             }

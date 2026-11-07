@@ -127,6 +127,30 @@ fn lists_s3_providers() {
     );
 }
 
+/// Providers from a Nextflow config come after those of the config file, which keep theirs.
+#[test]
+fn adds_providers() {
+    let storage = storage("[storage.lab]\ntype = \"s3\"\nprefixes = [\"s3://lab-data/\"]\n");
+    let cos = storage::settings::ProviderSettings {
+        name: "tencentcloud".into(),
+        prefixes: vec!["cos://".into()],
+        kind: Kind::S3(storage::settings::S3 {
+            endpoint: Some("https://cos.ap-guangzhou.myqcloud.com".into()),
+            ..storage::settings::S3::default()
+        }),
+        origin: config_file::Origin {
+            file: Arc::from(Path::new("nextflow.config")),
+            line: 0,
+        },
+    };
+    let more = storage.with_providers(vec![cos]);
+    let names: Vec<String> = (more.s3_providers().into_iter())
+        .map(|(name, ..)| name)
+        .collect();
+    assert_eq!(names, ["lab", "tencentcloud"]);
+    assert_eq!(storage.s3_providers().len(), 1);
+}
+
 #[test]
 fn gives_https_accounts() {
     let storage = Storage::from_config(&config(
@@ -154,14 +178,14 @@ fn locates_settings_errors() {
         settings_error("[storage.a]\nprefixes = [\"s3://a/\"]\n"),
         format!(
             "{file}:1: `[storage.a]` needs `type`, the kind of provider: one of s3, \
-             google-cloud-storage, azure-blob-storage, https, ftp, folder"
+             google-cloud-storage, azure-blob-storage, https, ftp, folder, drs, synapse, irods, oci, lakefs, lamin, quilt, cas"
         )
     );
     assert_eq!(
         settings_error("[storage.a]\ntype = \"dropbox\"\n"),
         format!(
             "{file}:2: `storage.a.type` is `dropbox`, which uwe does not know; use \
-             one of s3, google-cloud-storage, azure-blob-storage, https, ftp, folder"
+             one of s3, google-cloud-storage, azure-blob-storage, https, ftp, folder, drs, synapse, irods, oci, lakefs, lamin, quilt, cas"
         )
     );
     assert_eq!(

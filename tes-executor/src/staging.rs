@@ -235,6 +235,7 @@ impl ObjectStage {
                     .placement
                     .disk_bytes
                     .map(|bytes| bytes as f64 / crate::client::GB),
+                ..Resources::default()
             }),
             executors: vec![ExecutorSpec {
                 image: spec

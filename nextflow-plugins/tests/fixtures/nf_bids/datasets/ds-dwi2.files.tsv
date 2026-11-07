@@ -1,0 +1,16 @@
+.bidsignore	0
+dataset_description.json	0
+sub-01/ses-005/anat/sub-01_ses-005_T1w.json	0
+sub-01/ses-005/anat/sub-01_ses-005_T1w.nii.gz	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.bval	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.bvec	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.json	0
+sub-01/ses-005/dwi/sub-01_ses-005_dir-AP_dwi.nii.gz	0
+sub-01/ses-005/dwi/true_gradients_mqc.png	0
+sub-01/ses-005/fmap/sub-01_ses-005_dir-AP_epi.json	0
+sub-01/ses-005/fmap/sub-01_ses-005_dir-AP_epi.nii.gz	0
+sub-01/ses-005/fmap/t.nii.gz	0
+sub-01/ses-005/fmap/titi.nii.gz	0
+sub-01/ses-005/fmap/toto.nii.gz	0
+sub-01/ses-005/fmap/tt.nii.gz	0
+sub-01/ses-005/sub-01_ses-005_scans.tsv	0

@@ -4,9 +4,11 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::fmt::Write as _;
+use std::path::Path;
 
 use run_database::{Comparison, Pairing, Run, Side, TaskPair};
 
+use super::compare_report::Details;
 use super::{json_format, print_json};
 use crate::arguments::Arguments;
 use crate::runs::{local_time, open};
@@ -43,10 +45,46 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     super::run(&database, &second)?;
     let comparison = (database.compare(&first, &second).map_err(broken)?)
         .ok_or_else(|| failure(format!("uwe: cannot compare runs {first} and {second}")))?;
-    if json {
-        return print_json(serde_json::to_value(&comparison));
+    let mut identical = true;
+    if arguments.report.is_some() || arguments.fail_on_change {
+        let details = Details::load(&database, &comparison).map_err(broken)?;
+        let report = super::compare_report::report(&comparison, &details, run_database::now());
+        identical = report["identical"] == true;
+        if let Some(file) = &arguments.report {
+            write_report(file, &report)?;
+        }
     }
-    print!("{}", text(&comparison));
+    if json {
+        print_json(serde_json::to_value(&comparison))?;
+    } else {
+        print!("{}", text(&comparison));
+    }
+    // nf-diff's exit code for runs that differ.
+    match arguments.fail_on_change && !identical {
+        true => Err(Failure::said(3)),
+        false => Ok(()),
+    }
+}
+
+/// Writes the report in the format of the file name: JSON for `.json`, Markdown for `.md`,
+/// else one HTML page.
+fn write_report(file: &Path, report: &serde_json::Value) -> Result<(), Failure> {
+    let extension = file
+        .extension()
+        .and_then(|end| end.to_str())
+        .unwrap_or_default();
+    let (format, text) = match extension {
+        "json" => (
+            "json",
+            serde_json::to_string_pretty(report).unwrap_or_default(),
+        ),
+        "md" | "markdown" => ("md", super::compare_report::markdown(report)),
+        _ => ("html", super::compare_report::html(report)),
+    };
+    std::fs::write(file, text)
+        .map_err(|error| failure(format!("uwe: cannot write {}: {error}", file.display())))?;
+    let shown = std::path::absolute(file).unwrap_or_else(|_| file.to_owned());
+    eprintln!("Report: {} ({format})", shown.display());
     Ok(())
 }
 

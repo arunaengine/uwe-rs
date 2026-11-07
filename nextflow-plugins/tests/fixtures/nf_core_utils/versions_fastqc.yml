@@ -1,0 +1,2 @@
+"NFCORE_PROBE:FASTQC":
+  fastqc: 0.12.1

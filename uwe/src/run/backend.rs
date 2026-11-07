@@ -5,7 +5,10 @@
 use crate::arguments::Arguments;
 use crate::repeat::Pinned;
 use crate::setup::Setup;
-use crate::{Failure, cache_directory, kubernetes, local, preview, resources, runs, slurm, tes};
+use crate::{
+    Failure, aws_batch, azure_batch, cache_directory, flyte, google_batch, grid, jarvice,
+    kubernetes, local, nomad, preview, resources, runs, slurm, snowflake, tes, wr,
+};
 use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
 
 /// Caps task requests and gives tasks without a time the default `time` in seconds, before
@@ -138,6 +141,9 @@ pub(crate) fn offline_possible(arguments: &Arguments, setup: &Setup) -> Result<(
         Some("kubernetes") => {
             "the Kubernetes executor makes no network policy that cuts a task off the network"
         }
+        Some("aws-batch") => "AWS Batch has no setting that cuts a job off the network",
+        Some("google-batch") => "Google Batch jobs need the network to stage their files",
+        Some("azure-batch") => "Azure Batch tasks need the network to stage their files",
         Some("slurm") if named == "singularity" => {
             "Singularity cuts a task off the network only where the site allows it, which \
              uwe does not ask for (`-slurm-container apptainer`, `podman` or `docker` can)"
@@ -227,6 +233,7 @@ pub(crate) fn executor(
             backend.remote = slurm::remote(settings, &storage)
                 .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             backend.staging_time = settings.slurm_staging.margin();
+            backend.cpu_memory_gb = settings.slurm_cpu_memory;
             if let Some(seconds) = settings.slurm_query {
                 backend.query_grace = std::time::Duration::from_secs(seconds);
             }
@@ -253,9 +260,80 @@ pub(crate) fn executor(
             .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
+        "aws-batch" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = aws_batch::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "google-batch" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = google_batch::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "azure-batch" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = azure_batch::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "nomad" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = nomad::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "htcondor" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = grid::htcondor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "pbs" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = grid::pbs(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "flyte" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = flyte::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "snowflake" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = snowflake::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "jarvice" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = jarvice::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        "wr" => {
+            let default_image = arguments.default_image.clone();
+            let store = setup.store(arguments)?;
+            let executor = wr::executor(store, &scratch, run, default_image, setup)
+                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
         other => Err(Failure::usage(format!(
-            "uwe: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm` or \
-             `kubernetes`"
+            "uwe: unknown executor `{other}`; use `simulator`, `local`, `tes`, `slurm`, \
+             `kubernetes`, `aws-batch`, `google-batch`, `azure-batch`, `nomad`, `htcondor`, \
+             `pbs`, `flyte`, `snowflake`, `jarvice` or `wr`"
         ))),
     }
 }

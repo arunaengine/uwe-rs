@@ -295,7 +295,8 @@ impl<'a> Evaluator<'a> {
                     // Legacy syntax: the legacy parser makes a selector at the top level of a
                     // file a block like any other, which no process reads.
                     let top = prefix.is_empty() && !in_profile;
-                    if !top && (prefix.len() != 1 || &*prefix[0] != "process") {
+                    let scoped = prefix.len() == 1 && matches!(&*prefix[0], "process" | "agent");
+                    if !top && !scoped {
                         let message = "Config selectors are only allowed in the `process` scope";
                         return Err(invalid(file, message, *span));
                     }
@@ -622,7 +623,8 @@ fn chained_path(target: &Expression) -> Option<Vec<Name>> {
 }
 
 fn process_scope(path: &[Rc<str>]) -> bool {
-    path.first().is_some_and(|scope| &**scope == "process")
+    path.first()
+        .is_some_and(|scope| matches!(&**scope, "process" | "agent"))
 }
 
 /// The value of a name that strict syntax does not know, as the legacy parser resolves it

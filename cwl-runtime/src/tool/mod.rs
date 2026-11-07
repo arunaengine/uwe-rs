@@ -742,6 +742,7 @@ fn resources(
         ),
         time_seconds: None,
         gpus: None,
+        ..Resources::default()
     };
     let sizes = vec![
         ("cores", Value::Integer(cores.ceil() as i64)),

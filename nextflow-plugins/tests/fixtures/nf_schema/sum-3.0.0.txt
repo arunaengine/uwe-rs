@@ -1,0 +1,91 @@
+===== summary map
+{
+    "Input/output options": {
+        "input": "samplesheet.csv",
+        "outdir": "results",
+        "tool": null
+    },
+    "Generic options": {
+        "mode": "move",
+        "tool": {
+            "level": "5"
+        },
+        "mixed": "7"
+    },
+    "Other parameters": {
+        "loose": "free",
+        "tool": null
+    },
+    "Core Nextflow options": {
+        "runName": "big_einstein",
+        "container": "quay.io/biocontainers/fastqc:0.12.1",
+        "launchDir": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema",
+        "workDir": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/work",
+        "projectDir": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema",
+        "userName": "<user>",
+        "profile": "standard",
+        "configFiles": "<masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/s3.0.0.config"
+    }
+}
+===== summary log
+SUMMARY-BEFORE
+Input/output options
+  input      : samplesheet.csv
+  outdir     : results
+  tool       : null
+
+Generic options
+  mode       : move
+  tool.level : 5
+  mixed      : 7
+
+Other parameters
+  loose      : free
+  tool       : null
+
+Core Nextflow options
+  runName    : big_einstein
+  container  : quay.io/biocontainers/fastqc:0.12.1
+  launchDir  : <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema
+  workDir    : <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/work
+  projectDir : <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema
+  userName   : <user>
+  profile    : standard
+  configFiles: <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/s3.0.0.config
+
+!! Only displaying parameters that differ from the pipeline defaults !!
+------------------------------------------------------
+SUMMARY-AFTER
+===== summary log options
+OPT-BEFORE
+Input/output options
+  input      : samplesheet.csv
+  outdir     : results
+  tool       : null
+
+Generic options
+  mode       : move
+  tool.level : 5
+  mixed      : 7
+
+Other parameters
+  loose      : free
+  tool       : null
+
+Core Nextflow options
+  runName    : big_einstein
+  container  : quay.io/biocontainers/fastqc:0.12.1
+  launchDir  : <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema
+  workDir    : <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/work
+  projectDir : <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema
+  userName   : <user>
+  profile    : standard
+  configFiles: <masked>/projects/uwe-rs/.claude/plans/plugin-specs/scratch/nf-schema/s3.0.0.config
+
+!! Only displaying parameters that differ from the pipeline defaults !!
+------------------------------------------------------
+OPT-AFTER
+[PIPELINE] sum3.nf | profile=standard
+[WORKDIR] <probe>/work
+
+[SUCCESS] completed=0 failed=0 cached=0

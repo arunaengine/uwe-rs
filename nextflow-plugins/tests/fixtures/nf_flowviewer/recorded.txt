@@ -1,0 +1,2 @@
+Recorded 2026-11-06 with Nextflow 26.04.6 and nf-flowviewer 1.0.0 against a local server that logged each request, from the probe pipeline of nf-fairscape's fixtures with `artifactMaxSize = 16`.
+requests.jsonl: one line per request with its method, path, content type and body, the launch folder replaced by /LAUNCH.

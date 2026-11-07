@@ -4,8 +4,10 @@
 
 mod backend;
 mod cluster;
+pub mod cws;
 mod daemons;
 mod manifest;
+mod options;
 mod pods;
 mod staging;
 
@@ -14,5 +16,6 @@ pub use cluster::Cluster;
 pub use manifest::{
     DOWNLOAD_IMAGE, FOLDERS, Helper, LABEL, Limits, SharedVolume, Volumes, job, job_name,
 };
+pub use options::{PRIVILEGED, PodOptions};
 pub use pods::{Look, Pods};
 pub use staging::{Kubedal, PodStaging, Via};

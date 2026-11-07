@@ -1,0 +1,24 @@
+# Manifest of pbs-executor, which runs tasks as PBS Pro and OpenPBS jobs.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "pbs-executor"
+description = "Runs tasks as PBS Pro and OpenPBS jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+executor.workspace = true
+serde_json.workspace = true
+slurm-executor.workspace = true
+tokio = { workspace = true, features = ["process"] }
+
+[dev-dependencies]
+task-model.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
+tokio-util.workspace = true

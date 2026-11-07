@@ -1,0 +1,13 @@
+dataset_description.json	139
+sub-01/ses-01/anat/sub-01_ses-01_T1w.json	62
+sub-01/ses-01/anat/sub-01_ses-01_T1w.nii.gz	0
+sub-01/ses-01/fmap/sub-01_ses-01_run-01_epi.json	128
+sub-01/ses-01/fmap/sub-01_ses-01_run-01_epi.nii.gz	0
+sub-01/ses-01/fmap/sub-01_ses-01_run-02_epi.json	128
+sub-01/ses-01/fmap/sub-01_ses-01_run-02_epi.nii.gz	0
+sub-01/ses-01/fmap/sub-01_ses-01_run-03_epi.json	128
+sub-01/ses-01/fmap/sub-01_ses-01_run-03_epi.nii.gz	0
+sub-02/ses-01/anat/sub-02_ses-01_T1w.json	62
+sub-02/ses-01/anat/sub-02_ses-01_T1w.nii.gz	0
+sub-02/ses-01/fmap/sub-02_ses-01_run-01_epi.json	128
+sub-02/ses-01/fmap/sub-02_ses-01_run-01_epi.nii.gz	0

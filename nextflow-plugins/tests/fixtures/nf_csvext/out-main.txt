@@ -1,0 +1,62 @@
+Downloading plugin nf-csvext@0.2.0
+== concat header (UnixPath, name tmpNcsv)
+name,age,city
+bob,30,"Berlin, DE"
+alice,4,Paris
+carl,100,Rome
+dora,7,Oslo
+== concat no header (UnixPath, name tmpNcsv)
+name,age,city
+bob,30,"Berlin, DE"
+alice,4,Paris
+carl,100,Rome
+dora,7,Oslo
+== concat list (UnixPath, name tmpNcsv)
+name,age,city
+bob,30,"Berlin, DE"
+alice,4,Paris
+carl,100,Rome
+dora,7,Oslo
+dora,7,Oslo
+== sort by age (UnixPath, name tmpNcsv)
+name,age,city
+alice,4,Paris
+bob,30,"Berlin, DE"
+carl,100,Rome
+== sort by 0 (UnixPath, name tmpNcsv)
+name,age,city
+alice,4,Paris
+bob,30,"Berlin, DE"
+carl,100,Rome
+== sort by AGE (case) (UnixPath, name tmpNcsv)
+name,age,city
+alice,4,Paris
+bob,30,"Berlin, DE"
+carl,100,Rome
+== trim column (UnixPath, name tmpNcsv)
+name,city
+bob,"Berlin, DE"
+alice,Paris
+carl,Rome
+== trim columns text (UnixPath, name tmpNcsv)
+name,age,city
+bob,30,"Berlin, DE"
+alice,4,Paris
+carl,100,Rome
+== trim columns list (UnixPath, name tmpNcsv)
+name
+bob, DE"
+alice
+carl
+== trim index (UnixPath, name tmpNcsv)
+name,city
+bob,"Berlin, DE"
+alice,Paris
+carl,Rome
+== pretty (UnixPath, name tmpNcsv)
+name ;age;city      
+bob  ;30 ;Berlin, DE
+alice;4  ;Paris     
+carl ;100;Rome      
+create map: name;id;n;zcreate list: a|1create closure: hcreate list: b|2create closure: Pcreate map: x;1;;create closure: Qcreate map: y;2;;
+[SUCCESS] completed=0 failed=0 cached=0

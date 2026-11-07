@@ -1,5 +1,5 @@
-//! The `process` scope for one process: the settings of the matching selectors and the plain
-//! defaults (config spec, section 6).
+//! The `process` scope for one process, and the `agent` scope for one agent: the settings of
+//! the matching selectors and the plain defaults (config spec, section 6).
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -31,8 +31,28 @@ impl Config {
         names: &[&str],
         labels: &[String],
     ) -> Result<ProcessSettings, Exception> {
+        self.scope_settings("process", names, labels, &[])
+    }
+
+    /// The settings of the `agent` scope for an agent, as for a process, without the options
+    /// that hold for the whole run, like `agent.baseUrl`.
+    pub fn agent_settings(
+        &self,
+        names: &[&str],
+        labels: &[String],
+    ) -> Result<ProcessSettings, Exception> {
+        self.scope_settings("agent", names, labels, RUN_OPTIONS)
+    }
+
+    fn scope_settings(
+        &self,
+        scope: &str,
+        names: &[&str],
+        labels: &[String],
+        left_out: &[&str],
+    ) -> Result<ProcessSettings, Exception> {
         let mut settings = ProcessSettings::default();
-        let Some(Value::Map(scope)) = self.get(&["process"]) else {
+        let Some(Value::Map(scope)) = self.get(&[scope]) else {
             return Ok(settings);
         };
         let entries: Vec<(String, Value)> = scope
@@ -57,7 +77,7 @@ impl Config {
                     }
                 }
                 if matched != negated {
-                    add(&mut settings.selected, body);
+                    add(&mut settings.selected, body, left_out);
                 }
             }
         }
@@ -72,13 +92,13 @@ impl Config {
                 if let Some(pattern) = key.strip_prefix("withName:") {
                     let (pattern, negated) = selector(pattern)?;
                     if pattern.matches(name)? != negated {
-                        add(&mut settings.selected, body);
+                        add(&mut settings.selected, body, left_out);
                     }
                 }
             }
         }
         for (key, value) in entries {
-            if !key.starts_with("withLabel:") && !key.starts_with("withName:") && key != "params" {
+            if setting(&key, left_out) {
                 settings.defaults.push((key.into(), value));
             }
         }
@@ -97,15 +117,36 @@ fn selector(text: &str) -> Result<(Pattern, bool), Exception> {
     Ok((Pattern::new(text)?, negated))
 }
 
-/// The settings of a selector body, without nested selectors and `params`.
-fn add(settings: &mut Vec<(Rc<str>, Value)>, body: &Value) {
+/// The settings of a selector body, without nested selectors, `params` and those left out.
+fn add(settings: &mut Vec<(Rc<str>, Value)>, body: &Value, left_out: &[&str]) {
     let Value::Map(body) = body else {
         return;
     };
     for (key, value) in &body.borrow().entries {
         let key = key.0.to_string();
-        if !key.starts_with("withLabel:") && !key.starts_with("withName:") && key != "params" {
+        if setting(&key, left_out) {
             settings.push((key.into(), value.clone()));
         }
     }
 }
+
+/// Whether a key of the scope sets a directive: not a selector, `params` or one left out.
+fn setting(key: &str, left_out: &[&str]) -> bool {
+    !key.starts_with("withLabel:")
+        && !key.starts_with("withName:")
+        && key != "params"
+        && !left_out.contains(&key)
+}
+
+/// The options of the `agent` scope that hold for the whole run; `model` and
+/// `maxIterations` are defaults of agent directives instead.
+const RUN_OPTIONS: &[&str] = &[
+    "runner",
+    "apiProvider",
+    "apiKey",
+    "baseUrl",
+    "maxToolOutputInlineSize",
+    "requestTimeout",
+    "trace",
+    "rpc",
+];

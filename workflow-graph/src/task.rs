@@ -237,6 +237,16 @@ pub struct Resources {
     pub disk_bytes: Option<u64>,
     pub time_seconds: Option<u64>,
     pub gpus: Option<u32>,
+    /// The queue of the executor that runs the task, like Nextflow's `queue` directive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
+    /// Labels for the job of the task, like Nextflow's `resourceLabels`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
+    /// Options of the executor for the task by name, like Nextflow's `pod` and `nomadOptions`,
+    /// and the named options of `accelerator`, like its `type`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, serde_json::Value>,
 }
 
 /// What came of an attempt of a task.
@@ -353,6 +363,16 @@ pub struct Usage {
     /// The bytes read from and written to block devices.
     pub read_bytes: Option<u64>,
     pub write_bytes: Option<u64>,
+    /// The largest memory and anonymous memory of the cgroup, sampled once per second while
+    /// the task ran, the peak at the last sample, and the memory of the machine, in bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vmem: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rss: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_vmem: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_total: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

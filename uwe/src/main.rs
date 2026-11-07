@@ -104,8 +104,8 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe origin <file>
        uwe digest <path>
        uwe time <run> [-format text|json]
-       uwe compare <run> [<run>] [-format text|json]
-       uwe replay <run> <task> [-executor local|tes|slurm|kubernetes] [-store <place>]
+       uwe compare <run> [<run>] [-format text|json] [-report <file>] [-fail-on-change]
+       uwe replay <run> <task> [-executor <executor>] [-store <place>]
        uwe telemetry <run> [-output <file>]
        uwe report <run> [-output <file>]
        uwe resume <run> [<step>] [<name>=<value>]...
@@ -117,6 +117,8 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe changes <run>
        uwe repeat <run> [-executor <executor>] [-store <folder or address>] [options]
        uwe lock-environment <conda environment file> [-platform <name>] [-output <file>]
+       uwe kuberun <repository or path in the cluster> -head-image <image> [-kubeconfig <file>]
+                     [-volume-mount <claim:path,...>] [-background] [options]
        uwe version
        uwe help [command]
 
@@ -136,7 +138,12 @@ options:
   -executor <executor>                local (the default for run) runs Docker or Podman
                                       containers on this machine; simulator writes TES task
                                       documents and makes up outputs, tes runs on a TES server,
-                                      slurm as SLURM batch jobs, kubernetes as Kubernetes Jobs
+                                      slurm as SLURM batch jobs, kubernetes as Kubernetes Jobs,
+                                      aws-batch, google-batch and azure-batch as jobs of these
+                                      cloud services, nomad as Nomad jobs, htcondor and pbs as
+                                      HTCondor and PBS jobs, flyte as Flyte runs, snowflake as
+                                      Snowflake job services, jarvice as JARVICE batch jobs and
+                                      wr as jobs of a wr manager
   -graph <file>                       writes the execution graph: DOT for .dot, SVG for .svg,
                                       a summary for .txt, else JSON
   -view tasks|steps                   one node per task (the default) or one per step
@@ -153,6 +160,11 @@ options:
   -kubeconfig <file>                  the kubeconfig of the cluster of -executor kubernetes;
                                       uwe never takes the default one
   -kubernetes-namespace <name>        the namespace of the Jobs; the kubeconfig's by default
+  -head-image <image>                 the image with uwe on its PATH that `kuberun` runs in a
+                                      pod; -head-cpus <n> and -head-memory <size> its requests
+  -volume-mount <claim:path,...>      volume claims of the `kuberun` pod; the first holds the
+                                      cache of uwe
+  -background                         `kuberun` ends once the pod has started
   -max-pending <n>                    lets up to n tasks be pending at once (default 1 for
                                       the simulator, 1024 for real executors)
   -order asked|reversed|finished|shuffled[:<seed>]
@@ -192,7 +204,10 @@ options:
                                       container
   -page                               serves the web page of the run while it goes on
   -report <file>                      writes the report of the run when it ends: one HTML
-                                      file with the page of the run, to open without a server
+                                      file with the page of the run, to open without a server;
+                                      for `compare`, the report of the comparison: JSON for
+                                      .json, Markdown for .md, else one HTML page
+  -fail-on-change                     `compare` ends with exit code 3 when the runs differ
   -address <ip>, -port <number>       where the page listens (default: 127.0.0.1, a free port)
   -database <file>                    the run database (default: runs.sqlite in the cache)
   -output <folder or file>            where `export` writes the RO-Crate (default: <run>-crate),

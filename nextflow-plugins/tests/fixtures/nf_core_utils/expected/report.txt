@@ -1,0 +1,13 @@
+TXT version=v1.0.0 runName=gloomy_mandelbrot success=true exitStatus=0
+errorMessage=None
+errorReport=None
+commandLine=nextflow run new07.nf -c v0.7.0.config -c fake.config -ansi-log false -profile standard
+projectDir=<probe>
+dateComplete=2026-11-06T09:30:28.558437562+01:00 duration=856ms
+  - Date Started: 2026-11-06T09:30:27.701668171+01:00
+  - Date Completed: 2026-11-06T09:30:28.558437562+01:00
+  - Pipeline script file path: <probe>/new07.nf
+  - Pipeline script hash ID: e99a125aef2710489473033864fe3ab3
+  - Nextflow Version: 26.04.6
+  - Nextflow Build: 12646
+  - Nextflow Compile Timestamp: 09-07-2026 18:49 UTC

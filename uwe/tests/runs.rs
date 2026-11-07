@@ -268,6 +268,22 @@ fn rejects_simulated_resume() {
     assert!(output.contains("was simulated"), "{output}");
 }
 
+/// `-resume` sets `workflow.resume`, as with Nextflow 26.04.6.
+#[test]
+fn marks_resumed_runs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path();
+    let script = "workflow {\n    println \"resume=${workflow.resume}\"\n}\n";
+    std::fs::write(path.join("main.nf"), script).expect("writes the script");
+    let fresh = ["run", "-executor", "simulator", "main.nf"];
+    let (code, output) = uwe(path, &fresh);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("resume=false\n"), "{output}");
+    let (code, output) = uwe(path, &[&fresh[..], &["-resume"]].concat());
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("resume=true\n"), "{output}");
+}
+
 #[test]
 fn leaves_resume_requests() {
     let directory = tempfile::tempdir().expect("a temporary directory");

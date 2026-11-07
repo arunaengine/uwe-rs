@@ -13,8 +13,8 @@ use executor::remote::RemoteStage;
 use executor::wrapper::quote;
 
 use crate::script::{
-    CONTAINER_EXIT, Container, ENGINE_EXIT, LOG, NOT_SEEN, clock, command, engine_finish,
-    engine_guard, engine_launch, timed_out, timeout,
+    CONTAINER_EXIT, Container, ENGINE_EXIT, NOT_SEEN, clock, command, engine_finish, engine_guard,
+    engine_launch, timed_out, timeout,
 };
 
 /// How the jobs of a backend get their files when the nodes share no folders with this machine.
@@ -55,11 +55,11 @@ pub enum Helper {
     Upload(Binary),
 }
 
-/// The records that an attempt sends back: those of the wrapper, then the log of the job, and
-/// last the exit code of the container, which tells this machine that the rest is there.
-pub fn records() -> Vec<&'static str> {
+/// The records that an attempt sends back: those of the wrapper, then the log of the job in
+/// `log_file`, and last the exit code of the container, which tells that the rest is there.
+pub fn records(log_file: &'static str) -> Vec<&'static str> {
     let mut records = executor::capture::RECORDS.to_vec();
-    records.extend([LOG, ENGINE_EXIT, CONTAINER_EXIT]);
+    records.extend([log_file, ENGINE_EXIT, CONTAINER_EXIT]);
     records
 }
 
@@ -77,7 +77,7 @@ pub struct Links<'a> {
 
 /// The job script that runs `run` with its folder on the node instead of at its scratch
 /// directory, between stage-in and stage-out. On every exit it removes its folder, after it
-/// sent its log back, or else kept it beside the folder.
+/// sent its log `log_file` back, or else kept it beside the folder.
 pub fn job_script(
     container: &Container,
     run: &ContainerRun<'_>,
@@ -85,6 +85,7 @@ pub fn job_script(
     gpus: bool,
     time: Option<u64>,
     links: Links<'_>,
+    log_file: &str,
 ) -> String {
     let base = match &staging.folder {
         Some(folder) => quote(folder),
@@ -93,11 +94,11 @@ pub fn job_script(
     let name = run.root.file_name().unwrap_or_default().to_string_lossy();
     // The folder of the job is new and private: it keeps the helper, the plan and the log, which
     // run or count after the task. Only its `data` folder is the folder of the task.
-    let keep = format!("mv -f \"$node/{LOG}\" \"$node.log\"");
+    let keep = format!("mv -f \"$node/{log_file}\" \"$node.log\"");
     let (send, early) = match links.log {
         Some(request) => (
-            format!("{} || {keep}", send_log(request, false)),
-            format!("    {}\n", send_log(request, true)),
+            format!("{} || {keep}", send_log(request, log_file, false)),
+            format!("    {}\n", send_log(request, log_file, true)),
         ),
         None => (keep, String::new()),
     };
@@ -115,7 +116,7 @@ pub fn job_script(
          folders.\numask 077\nif ! node=$(mkdir -p {base} 2>&1 && mktemp -d {base}/{} 2>&1); \
          then\n    early=\"uwe: cannot make a private folder in \"{base}\" on $(hostname): \
          $node\"\n{early}    exit 1\nfi\n\
-         exec >> \"$node/{LOG}\" 2>&1\nsent=\nfinish() {{\n    trap '' TERM INT HUP\n    \
+         exec >> \"$node/{log_file}\" 2>&1\nsent=\nfinish() {{\n    trap '' TERM INT HUP\n    \
          {cleanup}\
          rm -rf \"$node/data\"\n    [ -n \"$sent\" ] || {send}\n    rm -rf \"$node\"\n}}\n\
          trap finish EXIT\ntrap 'exit 143' TERM INT HUP\n",
@@ -159,8 +160,8 @@ pub fn job_script(
     let publish = links
         .engine
         .map(|request| {
-            send_log(request, false).replace(
-                &format!("\"$node/{LOG}\""),
+            send_log(request, log_file, false).replace(
+                &format!("\"$node/{log_file}\""),
                 &format!("\"$node/{ENGINE_EXIT}\""),
             )
         })
@@ -189,8 +190,8 @@ pub fn job_script(
 
 /// The command that uploads the log of the job with `request`, with `curl` or `wget`, or copies
 /// it for a staging root in a folder. An `early` log is the text of `$early` instead.
-fn send_log(request: &Request, early: bool) -> String {
-    let log = format!("\"$node/{LOG}\"");
+fn send_log(request: &Request, log_file: &str, early: bool) -> String {
+    let log = format!("\"$node/{log_file}\"");
     if let Some(path) = executor::helper::local_file(&request.url) {
         let folder = path
             .parent()
@@ -255,6 +256,7 @@ mod tests {
     use task_model::Image;
 
     use super::*;
+    use crate::script::LOG;
 
     #[test]
     fn stages_through_node() {
@@ -301,7 +303,7 @@ mod tests {
             log: None,
             engine: None,
         };
-        let script = job_script(&apptainer, &run, &staging, false, Some(60), links);
+        let script = job_script(&apptainer, &run, &staging, false, Some(60), links, LOG);
         let expected = "umask 077\nif ! node=$(mkdir -p \"${TMPDIR:-/tmp}\" 2>&1 && \
             mktemp -d \"${TMPDIR:-/tmp}\"/'uwe-run-P-1-1.XXXXXXXX' 2>&1); then\n    \
             early=\"uwe: cannot make a private folder in \"\"${TMPDIR:-/tmp}\"\" on \
@@ -335,7 +337,7 @@ mod tests {
             log: Some(&log),
             ..links
         };
-        let script = job_script(&docker, &run, &staging, false, None, links);
+        let script = job_script(&docker, &run, &staging, false, None, links, LOG);
         let expected = "[ -n \"$sent\" ] || { curl -fsS --max-time 60 -X PUT -T \
             \"$node/slurm.log\" -H 'x-ms-blob-type: BlockBlob' 'https://staging/log?signature' || \
             wget -q -O /dev/null --timeout=30 --tries=1 --method=PUT --body-file=\"$node/slurm.log\" \
@@ -371,7 +373,7 @@ mod tests {
             binary: Some("https://staging/cas/x?signature"),
             ..links
         };
-        let script = job_script(&docker, &run, &staging, false, None, links);
+        let script = job_script(&docker, &run, &staging, false, None, links, LOG);
         let expected = "[ \"$(uname -m)\" = aarch64 ] || { echo \"uwe: the helper runs on \
             aarch64, but $(hostname) is $(uname -m); name a binary for it with helper_file\" \
             >&2; exit 1; }\nhelper=\"$node/uwe\"\n{ curl -fsSL -o \"$helper\" \
@@ -392,7 +394,7 @@ mod tests {
             access: &access,
             ..run
         };
-        let script = job_script(&docker, &run, &staging, false, None, links);
+        let script = job_script(&docker, &run, &staging, false, None, links, LOG);
         let open = script.find("umask 000\n").expect("an open umask");
         assert!(
             open > script.find("chmod +x").expect("the helper"),

@@ -1,0 +1,8 @@
+
+[FAILED] completed=0 failed=0 cached=0
+[ERROR] ERROR ~ Configuration validation failed for bad/loopstr.yaml:
+ERRORS:
+  Global 'loop_over' must be a list of entity names
+
+ -- Check script 'main.nf' at line: 22 or see '.nextflow.log' file for more details
+[exit code 1]

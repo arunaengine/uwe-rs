@@ -1,0 +1,13 @@
+process,realtime,native_id,submit,cpus,module,start,task_id,attempt,script,duration,exit,workdir,group_id,name,tag,complete,run_name,hash,status
+STEP_ONE,1,234694,1793958213045,1,[],1793958213056,2,1,"
+    echo ""1"" > one.txt
+    ",12,0,/LAUNCH/work/0b/07ac24fb4b1350e3a89c836f271a3a,s1,STEP_ONE (s1),s1,1793958213057,shrivelled_coulomb,0b/07ac24,COMPLETED
+STEP_ONE,9,234710,1793958213056,1,[],1793958213058,3,1,"
+    echo ""2"" > one.txt
+    ",11,0,/LAUNCH/work/74/1f19066a90f4e76d38b99c28e105f5,s2,STEP_ONE (s2),s2,1793958213067,shrivelled_coulomb,74/1f1906,COMPLETED
+STEP_TWO,1,234739,1793958213097,1,[],1793958213112,5,1,"
+    cat one.txt
+    ",16,0,/LAUNCH/work/f1/3835073286901bf79dc1c68938c1f7,s2,STEP_TWO (s2),s2,1793958213113,shrivelled_coulomb,f1/383507,COMPLETED
+STEP_TWO,4,234744,1793958213102,1,[],1793958213114,4,1,"
+    cat one.txt
+    ",16,0,/LAUNCH/work/15/64bff10adcfc9d0e6fc2b3f97d5af9,s1,STEP_TWO (s1),s1,1793958213118,shrivelled_coulomb,15/64bff1,COMPLETED

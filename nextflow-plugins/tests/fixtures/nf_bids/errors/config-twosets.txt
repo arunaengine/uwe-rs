@@ -1,0 +1,5 @@
+[PIPELINE] main.nf | profile=standard
+[WORKDIR] <probe-dir>/work
+
+[FAILED] completed=0 failed=0 cached=0
+[exit code 1]

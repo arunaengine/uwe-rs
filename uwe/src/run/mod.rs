@@ -164,6 +164,36 @@ fn execute_with(
     let (target, language) = target_and_language(arguments)?;
     let target = &target;
     let launch = launch(arguments, target.clone());
+    let picked;
+    let arguments =
+        match crate::nextflow::pipeline_executor(language, &launch, arguments, &mut setup)? {
+            Some(executor) => {
+                picked = Arguments {
+                    executor: Some(executor),
+                    executor_default: false,
+                    ..arguments.clone()
+                };
+                &picked
+            }
+            None => arguments,
+        };
+    // nf-cloudcache puts the store where the config says, unless `-store` names one.
+    let cached;
+    let arguments = match language {
+        Language::Nextflow if arguments.store.is_none() => {
+            match crate::nextflow::cloud_cache(&launch, &setup).map_err(Failure::setup)? {
+                Some(location) => {
+                    cached = Arguments {
+                        store: Some(location),
+                        ..arguments.clone()
+                    };
+                    &cached
+                }
+                None => arguments,
+            }
+        }
+        _ => arguments,
+    };
     let run = chosen.unwrap_or_else(run_id);
     let name = arguments.executor.as_deref().unwrap_or("local");
     if let Some(network) = network {

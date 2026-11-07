@@ -50,6 +50,9 @@ pub struct Placement {
     pub queue: Option<String>,
     /// Backend parameters passed through as given, such as TES `backend_parameters`.
     pub parameters: BTreeMap<String, String>,
+    /// Labels that the backend puts on the job of the task, like AWS Batch tags.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
     /// Whether the task runs without network, where the backend can cut it off.
     #[serde(default)]
     pub offline: bool,
@@ -58,6 +61,10 @@ pub struct Placement {
     /// 0 when unknown. Tasks with more after them start first, so that the run ends sooner.
     #[serde(default)]
     pub priority: u64,
+    /// Options of the executor for this task by name, as the workflow gives them, like
+    /// Nextflow's `pod` and `nomadOptions`; each executor reads its own.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

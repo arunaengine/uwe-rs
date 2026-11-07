@@ -1,0 +1,4 @@
+sample	runtype	genome_size	species	r1	r2	se	ont	assembly
+A	paired-end	0	sp	/x/A_R1.fq.gz	/x/A_R2.fq.gz			
+B	merge-pe	5	sp2	/x/B1.fq.gz,/x/B2.fq.gz	/x/B3.fq.gz,/x/B4.fq.gz			
+C	bogus	0	sp					

@@ -179,6 +179,9 @@ options:
                                       without running its finished tasks again
   -no-cache                           takes no result from the cache and keeps none there:
                                       every task runs
+  -no-cache-steps <steps>             the same for the tasks of these steps only, named in
+                                      full or by the last part, like FASTQC for
+                                      NFCORE_DEMO:DEMO:FASTQC
   -strict-provenance                  `run` stops if durable provenance cannot be recorded
   -reason <text>                      explains why a stopped local owner is reconciled
   -no-right-sizing                    tasks ask for the CPUs and memory that the workflow

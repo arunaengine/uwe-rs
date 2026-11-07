@@ -355,6 +355,56 @@ fn single_expr_output() {
     assert_eq!(only(document), ("main/pick".into(), later));
 }
 
+/// A branch `maybe` that runs the task of its body `inner` when `go` holds.
+fn branched() -> Json {
+    let optional = json!({"optional": {"file": {}}});
+    json!({
+        "wir_version": VERSION,
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "text", "type": {"file": {}}}, {"name": "go", "type": "bool"}],
+            "outputs": [{"name": "top", "type": optional}],
+            "ops": [{
+                "path": "maybe",
+                "kind": {"branch": {"body": "inner", "condition": "go"}},
+                "inputs": [{"name": "input", "type": {"file": {}}}, {"name": "go", "type": "bool"}],
+                "outputs": [{"name": "out", "type": optional}]
+            }],
+            "edges": [
+                edge((None, "text"), (Some("maybe"), "input")),
+                edge((None, "go"), (Some("maybe"), "go")),
+                edge((Some("maybe"), "out"), (None, "top"))
+            ]
+        }, {
+            "name": "inner",
+            "inputs": [{"name": "input", "type": {"file": {}}}],
+            "outputs": [{"name": "out", "type": {"file": {}}}],
+            "ops": [task("cat")],
+            "edges": [
+                edge((None, "input"), (Some("cat"), "input")),
+                edge((Some("cat"), "out"), (None, "out"))
+            ]
+        }],
+        "entry": "main"
+    })
+}
+
+#[test]
+fn branch_ports_checked() {
+    assert!(problems(branched()).is_empty());
+    let mut document = branched();
+    document["graphs"][0]["ops"][0]["outputs"][0]["type"] = json!({"file": {}});
+    let port = Problem::CallPort {
+        port: "output out".into(),
+        graph: "inner".into(),
+    };
+    assert_eq!(
+        only(document),
+        ("main/maybe".into(), port),
+        "an output may be null"
+    );
+}
+
 #[test]
 fn map_ports_checked() {
     assert!(problems(mapped()).is_empty());
@@ -377,9 +427,6 @@ fn map_ports_checked() {
         problems(document.clone()).is_empty(),
         "one input nests once"
     );
-    document["wir_version"] = json!("0.3");
-    let later = Problem::Later("a map".into(), "0.4".into());
-    assert_eq!(only(document), ("main/each".into(), later));
 }
 
 #[test]

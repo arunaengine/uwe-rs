@@ -20,7 +20,7 @@ fn spec() -> TaskSpec {
             "sh".into(),
             "-c".into(),
             "cat in.txt tree/a.txt > out.txt && mkdir -p out/deep && echo b > out/deep/b.txt \
-             && cat /opt/data/c.txt > /opt/result.txt && ./tree/run.sh && read line < /dev/stdin \
+             && cp tree/run.sh out/run.sh && cat /opt/data/c.txt > /opt/result.txt && ./tree/run.sh && read line < /dev/stdin \
              && echo \"$line\""
                 .into(),
         ],
@@ -134,6 +134,17 @@ async fn round_trip(stage: &RemoteStage) -> Planned {
     let read = |path: &str| std::fs::read_to_string(finished.local_path(path)).unwrap();
     assert_eq!(read("out.txt"), "a\ntree\n");
     assert_eq!(read("out/deep/b.txt"), "b\n");
+    // The outputs get the modes that a local task gives them.
+    let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    std::fs::write(host.join("plain"), "plain").unwrap();
+    let plain = mode(&host.join("plain"));
+    assert_eq!(mode(&finished.local_path("out.txt")), plain);
+    let program = mode(&finished.local_path("out/run.sh"));
+    assert_eq!(
+        program,
+        plain | (plain & 0o444) >> 2,
+        "a program stays executable"
+    );
     assert_eq!(
         std::fs::read_to_string(finished.stdout()).unwrap(),
         "ran\nline\n"

@@ -25,6 +25,7 @@ for argument in "$@"; do
         --chdir=*) chdir=${argument#--chdir=} ;;
         --output=*) output=${argument#--output=} ;;
         --job-name=*) name=${argument#--job-name=} ;;
+        --comment=*) comment=${argument#--comment=} ;;
     esac
     script=$argument
 done
@@ -35,6 +36,7 @@ echo "$id" > "$state/last"
 flock -u 9
 printf '%s\n' "$@" > "$state/$id.options"
 printf '%s\n' "$name" > "$state/$id.name"
+printf '%s\n' "${comment:-(null)}" > "$state/$id.comment"
 printf '%s\n' "$script" > "$state/$id.command"
 echo 2026-10-03T00:00:00 > "$state/$id.submitted"
 # A file `partition-limit` holds the longest time of the partition. SLURM keeps a job that asks
@@ -91,6 +93,7 @@ for argument in "$@"; do
         '--format=%i|%o') commands=yes ;;
         '--format=%i|%T|%j|%V|%o') identified=yes ;;
         '--format=%i %T %r') reasons=yes ;;
+        '--format=%i|%T|%U|%k') described=yes ;;
         --json)
             [ -e "$(dirname "$0")/json" ] || { echo "squeue: unrecognized option '--json'" >&2; exit 1; }
             json=yes ;;
@@ -128,6 +131,8 @@ for id in ${jobs//,/ }; do
     fi
     if [ -n "$commands" ]; then
         printf '%s|%s\n' "$id" "$(cat "$state/$id.command")"
+    elif [ -n "$described" ]; then
+        printf '%s|%s|%s|%s\n' "$id" "$job_state" "$(id -u)" "$(cat "$state/$id.comment")"
     elif [ -n "$identified" ]; then
         printf '%s|%s|%s|%s|%s\n' "$id" "$job_state" "$(cat "$state/$id.name")" "$(cat "$state/$id.submitted")" "$(cat "$state/$id.command")"
     elif [ -n "$json" ]; then
@@ -2087,4 +2092,136 @@ fn submitted(journal: &Path) -> bool {
 
 fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+#[tokio::test]
+async fn stops_left_jobs() {
+    use executor::orphans::{Orphan, Outcome};
+    let root = tempfile::tempdir().unwrap();
+    let bin = cluster(root.path(), APPTAINER);
+    let container = Container::Apptainer(text(&bin.join("apptainer")));
+    let with = |run: &str, options: &[&str]| {
+        let mut backend = backend(root.path(), &bin, container.clone());
+        backend.run = run.into();
+        backend
+            .options
+            .extend(options.iter().map(|option| option.to_string()));
+        backend
+    };
+    let (backend, other, custom) = (
+        with("run1", &[]),
+        with("run1-b", &[]),
+        with("run1", &["--comment=site"]),
+    );
+    let mut spec = spec("sleep 30");
+    spec.image.as_mut().unwrap().reference = "/images/tool.sif".into();
+    let (staging, placement, cancel) = (Staging::default(), placement(), CancellationToken::new());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let names = [
+        "run1-sort-1-1",
+        "run1-live-1-1",
+        "run1-b-sort-1-1",
+        "run1-custom-1-1",
+    ];
+    let roots = names.map(|name| backend.scratch.join(name));
+    // The attempts start together, and their processes stop once SLURM took their jobs.
+    tokio::select! {
+        results = async { tokio::join!(
+            backend.run(job(names[0]), &cancel),
+            backend.run(job(names[1]), &cancel),
+            other.run(job(names[2]), &cancel),
+            custom.run(job(names[3]), &cancel),
+        ) } => panic!("{results:?}"),
+        () = until(|| roots.iter().all(|root| submitted(&root.join("remote.json")))) => {}
+    }
+    // An attempt whose process still runs holds the lock of its journal.
+    let lock = std::fs::File::options()
+        .write(true)
+        .open(roots[1].join("remote.lock"))
+        .unwrap();
+    lock.lock().unwrap();
+    // A journal from before the journals named their run.
+    let old = backend.scratch.join("run1-old-1-1");
+    std::fs::create_dir_all(&old).unwrap();
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(roots[0].join("remote.json")).unwrap()).unwrap();
+    record.as_object_mut().unwrap().remove("run");
+    std::fs::write(old.join("remote.json"), record.to_string()).unwrap();
+
+    let outcomes = |found: &[Orphan]| -> Vec<(String, Outcome)> {
+        (found.iter())
+            .map(|orphan| (orphan.attempt.clone(), orphan.outcome.clone()))
+            .collect()
+    };
+    let no_run = "the journal names no run, so it may belong to another";
+    let report = backend.report_run("run1").await.unwrap();
+    assert_eq!(
+        outcomes(&report),
+        [
+            ("run1-custom-1-1".into(), Outcome::Running),
+            ("run1-live-1-1".into(), Outcome::Running),
+            ("run1-old-1-1".into(), Outcome::Unclear(no_run.into())),
+            ("run1-sort-1-1".into(), Outcome::Running),
+        ]
+    );
+    assert_eq!(report[3].state.as_deref(), Some("RUNNING"));
+    let calls = bin.join("state/scancel.calls");
+    assert!(!calls.exists());
+
+    // Tools of another folder are another configuration of SLURM.
+    std::os::unix::fs::symlink(&bin, root.path().join("tools")).unwrap();
+    let mut stranger = with("run1", &[]);
+    stranger.commands = Some(root.path().join("tools"));
+    let refused = stranger.stop_run("run1").await.unwrap();
+    assert!(
+        refused
+            .iter()
+            .all(|orphan| matches!(orphan.outcome, Outcome::Kept(_)))
+    );
+    assert!(!calls.exists());
+
+    let stopped = backend.stop_run("run1").await.unwrap();
+    let kept = |reason: &str| Outcome::Kept(reason.into());
+    let expected = [
+        (
+            "run1-custom-1-1".to_owned(),
+            kept("the comment of the job does not name the run"),
+        ),
+        (
+            "run1-live-1-1".into(),
+            kept("the uwe process of the attempt still runs"),
+        ),
+        ("run1-old-1-1".into(), kept(no_run)),
+        ("run1-sort-1-1".into(), Outcome::Canceled),
+    ];
+    assert_eq!(outcomes(&stopped), expected);
+    assert!(!roots[0].join("remote.json").exists());
+    let cancelled = std::fs::read_to_string(&calls).unwrap();
+    assert_eq!(cancelled.lines().count(), 1, "{cancelled}");
+    assert!(
+        cancelled.contains("--name=uwe-run1-sort-1-1"),
+        "{cancelled}"
+    );
+    assert!(roots[2].join("remote.json").exists());
+    // A second call finds no journal of the canceled job, so it cancels nothing.
+    let again = backend.stop_run("run1").await.unwrap();
+    assert_eq!(outcomes(&again), expected[..3]);
+    assert_eq!(std::fs::read_to_string(&calls).unwrap(), cancelled);
+    lock.unlock().unwrap();
+    for entry in std::fs::read_dir(bin.join("state")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|extension| extension == "pid")
+            && !path.with_extension("exit").exists()
+        {
+            let group = format!("-{}", std::fs::read_to_string(&path).unwrap().trim());
+            let _ = std::process::Command::new("kill")
+                .args(["-TERM", "--", &group])
+                .status();
+        }
+    }
 }

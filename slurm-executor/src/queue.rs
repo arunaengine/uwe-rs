@@ -165,6 +165,57 @@ pub(crate) async fn identified(
     )
 }
 
+/// What `squeue` says of one job: its state, the user ID of its owner and its comment.
+pub(crate) struct Described {
+    pub state: String,
+    pub user: u32,
+    pub comment: String,
+}
+
+/// What `squeue` says of the job `id`; `Ok(None)` for a job that SLURM no longer lists.
+pub(crate) async fn described(
+    squeue: &Path,
+    id: &str,
+    cluster: Option<&str>,
+    grace: Duration,
+) -> Result<Option<Described>, String> {
+    let mut command = Command::new(squeue);
+    command
+        .args(["--noheader", "--states=all", "--format=%i|%T|%U|%k"])
+        .arg(format!("--jobs={id}"));
+    if let Some(cluster) = cluster {
+        command.arg(format!("--clusters={cluster}"));
+    }
+    let answer = output(&mut command, grace).await;
+    let answer = answer.map_err(|error| format!("squeue did not answer: {error}"))?;
+    let errors = String::from_utf8_lossy(&answer.stderr);
+    if !answer.status.success() {
+        return match errors.contains("Invalid job id") {
+            true => Ok(None),
+            false => Err(format!("squeue failed: {}", errors.trim())),
+        };
+    }
+    let text = String::from_utf8_lossy(&answer.stdout);
+    let Some(line) = text.lines().find(|line| line.split('|').next() == Some(id)) else {
+        return Ok(None);
+    };
+    let columns: Vec<&str> = line.splitn(4, '|').collect();
+    let user = columns.get(2).and_then(|user| user.parse().ok());
+    match (columns.get(1), user, columns.get(3)) {
+        (Some(state), Some(user), Some(comment)) => Ok(Some(Described {
+            state: (*state).to_owned(),
+            user,
+            comment: (*comment).to_owned(),
+        })),
+        _ => Err(format!("squeue gave an unknown line for job {id}")),
+    }
+}
+
+/// Whether a job in the state `state` has ended.
+pub(crate) fn ended(state: &str) -> bool {
+    ENDED.contains(&state)
+}
+
 /// The ids of the jobs of `user` that have the name `name` and the script `script`, by
 /// `squeue`; `None` when it fails.
 pub(crate) async fn named(

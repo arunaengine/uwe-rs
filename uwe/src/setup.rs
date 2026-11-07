@@ -58,6 +58,9 @@ pub(crate) const EXECUTORS: &[&str] = &[
 pub struct Setup {
     pub references: task_runner::References,
     pub hosted: bool,
+    /// What workflow code may reach while uwe interprets it; `None` reaches what the process
+    /// can, as on the command line.
+    pub isolation: Option<crate::hosted::Isolation>,
     pub argo_policy: argo_runtime::Policy,
     pub argo_locks: argo_runtime::SharedLocks,
     pub cluster: Option<kubernetes_executor::Cluster>,

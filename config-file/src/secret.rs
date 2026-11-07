@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -49,7 +49,7 @@ impl Secret {
                 if let Some(value) = given.values.get(name) {
                     return Ok(value.clone());
                 }
-                if !given.environment {
+                if !given.reads(name) {
                     let message = format!("the host gave no value for the secret {name}");
                     return Err(ConfigError::at(&self.origin, message));
                 }
@@ -102,6 +102,8 @@ impl fmt::Debug for Secret {
 pub struct SecretValues {
     values: Arc<BTreeMap<String, String>>,
     environment: bool,
+    /// The only variables of the process that are read, when the host limits them.
+    allowed: Option<Arc<BTreeSet<String>>>,
 }
 
 impl Default for SecretValues {
@@ -110,6 +112,7 @@ impl Default for SecretValues {
         SecretValues {
             values: Arc::default(),
             environment: true,
+            allowed: None,
         }
     }
 }
@@ -145,13 +148,28 @@ impl SecretValues {
         self.environment = allowed;
     }
 
+    /// Reads only these variables of the process environment for a name without a given
+    /// value, when the environment is allowed. Other names count as not set.
+    pub fn limit_environment(&mut self, names: impl IntoIterator<Item = String>) {
+        self.allowed = Some(Arc::new(names.into_iter().collect()));
+    }
+
+    /// Whether the variable `name` of the process may be read.
+    fn reads(&self, name: &str) -> bool {
+        self.environment
+            && self
+                .allowed
+                .as_ref()
+                .is_none_or(|names| names.contains(name))
+    }
+
     /// The value for `name`: the given one, else its environment variable when allowed and
     /// not empty.
     pub fn get(&self, name: &str) -> Option<String> {
         if let Some(value) = self.values.get(name) {
             return Some(value.clone());
         }
-        if !self.environment {
+        if !self.reads(name) {
             return None;
         }
         std::env::var(name).ok().filter(|value| !value.is_empty())
@@ -163,16 +181,15 @@ impl SecretValues {
         if let Some(value) = self.values.get(name) {
             return Some(value.clone());
         }
-        self.environment.then(|| std::env::var(name).ok()).flatten()
+        self.reads(name).then(|| std::env::var(name).ok()).flatten()
     }
 
     /// The environment as a workflow sees it: the variables of the process when allowed, in
     /// their order, with the given values in place of theirs or after them.
     pub fn environment(&self) -> Vec<(String, String)> {
-        let mut variables: Vec<(String, String)> = match self.environment {
-            true => std::env::vars().collect(),
-            false => Vec::new(),
-        };
+        let mut variables: Vec<(String, String)> = std::env::vars()
+            .filter(|(name, _)| self.reads(name))
+            .collect();
         for (name, value) in self.values.iter() {
             match variables.iter_mut().find(|(known, _)| known == name) {
                 Some(entry) => entry.1 = value.clone(),
@@ -195,6 +212,7 @@ impl fmt::Debug for SecretValues {
             .debug_struct("SecretValues")
             .field("names", &self.values.keys().collect::<Vec<_>>())
             .field("environment", &self.environment)
+            .field("allowed", &self.allowed)
             .finish()
     }
 }

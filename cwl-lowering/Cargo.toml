@@ -1,0 +1,17 @@
+# Manifest of cwl-lowering, which lowers CWL documents into wir ops.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "cwl-lowering"
+description = "Lowers CWL documents into wir: tools into task ops, workflows into graphs, the rest into native CWL ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+cwl-parser.workspace = true
+serde_json.workspace = true
+wir.workspace = true

@@ -144,18 +144,27 @@ impl WdlDriver {
                     _ => format!("{folder}/{name}/{index}/{base}"),
                 };
                 index += 1;
-                self.deliveries.push(Delivery {
-                    location: path.clone(),
-                    target: target.clone(),
-                    mode: DeliveryMode::Copy,
-                    overwrite: true,
-                });
+                // A copy onto its own source would remove it first.
+                if !same_file(path, &target) {
+                    self.deliveries.push(Delivery {
+                        location: path.clone(),
+                        target: target.clone(),
+                        mode: DeliveryMode::Copy,
+                        overwrite: true,
+                    });
+                }
                 *path = target;
             });
             delivered.insert(name.clone(), value);
         }
         delivered
     }
+}
+
+/// Whether two local paths name one file, also through links.
+fn same_file(source: &str, target: &str) -> bool {
+    let resolved = |path: &str| std::fs::canonicalize(path).or_else(|_| std::path::absolute(path));
+    matches!((resolved(source), resolved(target)), (Ok(source), Ok(target)) if source == target)
 }
 
 /// The call of a workflow with a name, also inside scatters and conditionals.

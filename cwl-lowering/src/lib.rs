@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod group;
 mod requirements;
 mod tool;
 mod types;

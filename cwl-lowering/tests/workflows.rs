@@ -82,3 +82,33 @@ fn lowers_scatter_maps() {
     let nested = json!({"array": {"items": {"array": {"items": {"file": {}}}}}});
     assert_eq!(main["ops"][0]["outputs"][0]["type"], nested);
 }
+
+#[test]
+fn lowers_when_branches() {
+    let lowering = lowered("gate.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let main = graph(&lowering, "main");
+    let ops = [
+        ("say.when".into(), "expr".into()),
+        ("say".into(), "branch".into()),
+    ];
+    assert_eq!(kinds(&main), ops);
+    assert_eq!(main["ops"][0]["kind"]["expr"]["code"], "$(inputs.go)");
+    let branch = json!({"body": "say.when", "condition": "when"});
+    assert_eq!(main["ops"][1]["kind"]["branch"], branch);
+    let gate = json!({"from": {"port": "go"}, "to": {"op": "say.when", "port": "go"}});
+    assert!(
+        main["edges"].as_array().unwrap().contains(&gate),
+        "only the condition takes go"
+    );
+    let lowering = lowered("when.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let round = graph(&lowering, "say");
+    assert_eq!(kinds(&round), ops, "the condition holds per round");
+    assert_eq!(round["ops"][0]["kind"]["expr"]["library"], Json::Null);
+    let optional = json!({"array": {"items": {"optional": {"file": {}}}}});
+    assert_eq!(
+        graph(&lowering, "main")["ops"][0]["outputs"][0]["type"],
+        optional
+    );
+}

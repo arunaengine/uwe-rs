@@ -40,6 +40,10 @@ fn fixtures(root: &Path) {
     std::fs::write(root.join("messages.json"), messages.to_string()).expect("writes the job");
     let lists = json!({"messages": ["a", "b"], "lists": [["x"], ["y", "z"]]});
     std::fs::write(root.join("lists.json"), lists.to_string()).expect("writes the job");
+    for (name, go) in [("open.json", true), ("shut.json", false)] {
+        let gate = json!({"message": "hello", "go": go});
+        std::fs::write(root.join(name), gate.to_string()).expect("writes the job");
+    }
 }
 
 /// The language of the latest run and its tasks with their fingerprints, by step.
@@ -160,6 +164,34 @@ fn matches_scatter_steps() {
             .collect();
         rounds.sort();
         assert_eq!(rounds[0], "say/0/say", "{document}");
+    }
+}
+
+#[test]
+fn matches_when_steps() {
+    for (job, steps) in [("open.json", vec!["say/say"]), ("shut.json", vec![])] {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let (root, cache) = (folder.path(), folder.path().join("cache"));
+        fixtures(root);
+        let native = ["run", "-executor", "simulator", "gate.cwl", "-inputs", job];
+        let (code, _, errors) = uwe(root, &cache, &native);
+        assert_eq!(code, 0, "{job}: {errors}");
+        let (_, alone) = latest(&cache);
+        let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
+        let (code, _, errors) = uwe(root, &cache, &lowered);
+        assert_eq!(code, 0, "{job}: {errors}");
+        let (_, through) = latest(&cache);
+        let alone: Vec<&str> = alone
+            .iter()
+            .map(|(task, _, _)| task.step.as_str())
+            .collect();
+        let through: Vec<&str> = through
+            .iter()
+            .map(|(task, _, _)| task.step.as_str())
+            .collect();
+        // The task of a branch has the path of the branch and of the op of its body.
+        let native: Vec<&str> = steps.iter().map(|_| "say").collect();
+        assert_eq!((alone, through), (native, steps), "{job}");
     }
 }
 

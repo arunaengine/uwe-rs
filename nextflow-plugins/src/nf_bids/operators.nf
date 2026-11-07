@@ -9,11 +9,12 @@ include { bidsKey; bidsGroups; bidsPairs } from 'plugin/nf-bids'
 def groupTupleBy(source, Closure key, Map options = [:]) {
     def size = options.size ?: 0
     def remainder = options.remainder != false
-    return source
-        .map { item -> [bidsKey(key.call(item)), item] }
-        .toList()
-        .flatMap { pairs -> bidsGroups(pairs, size, remainder) }
-        .map { group -> [group[0], sortedItems(group[1], options.sort)] }
+    def keyed = source.map { item -> [bidsKey(key.call(item)), item] }
+    // With a size, groupTuple sends a full group at once instead of at the end of the source.
+    def groups = size > 0
+        ? keyed.groupTuple(size: size, remainder: remainder)
+        : keyed.toList().flatMap { pairs -> bidsGroups(pairs, size, remainder) }
+    return groups.map { group -> [group[0], sortedItems(group[1], options.sort)] }
 }
 
 // The items of a group sorted as `sort` asks: naturally, by a closure, or by a comparator.

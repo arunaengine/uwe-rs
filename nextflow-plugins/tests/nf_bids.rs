@@ -5,10 +5,14 @@
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
 
 use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
+use nextflow_runtime::driver::{Nextflow, Settings};
 use nextflow_runtime::{Loader, Options, Run};
+use workflow_graph::{Attempt, Engine, Executor, Launch, Order, Outcome, RunOptions, Running};
 
 struct Console {
     lines: Vec<String>,
@@ -317,4 +321,80 @@ fn applies_key_operators() {
     lines.sort();
     expected.sort();
     assert_eq!(lines, expected);
+}
+
+/// Runs the tasks of `streaming.nf`: `make 3` ends only once `use a` started, or after a
+/// generous cap, so that the order tells whether the full group went on while `make 3` ran.
+struct Gate {
+    order: Arc<Mutex<Vec<String>>>,
+    open: mpsc::Sender<()>,
+    gate: Option<mpsc::Receiver<()>>,
+}
+
+impl Executor for Gate {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let script = attempt.task.script.clone().unwrap_or_default();
+        let script = script.lines().last().unwrap_or_default().trim().to_owned();
+        let order = self.order.clone();
+        order.lock().expect("the order").push(script.clone());
+        let outcome = Outcome {
+            id: attempt.task.id,
+            ..Outcome::default()
+        };
+        if script == "use a" {
+            let _ = self.open.send(());
+        }
+        let gate = (script == "make 3").then(|| self.gate.take()).flatten();
+        match gate {
+            Some(gate) => Running::new(async move {
+                let waited = move || gate.recv_timeout(Duration::from_secs(60));
+                let _ = tokio::task::spawn_blocking(waited).await;
+                order.lock().expect("the order").push("make 3 ended".into());
+                Ok(outcome)
+            }),
+            None => Running::ended(Ok(outcome)),
+        }
+    }
+}
+
+#[test]
+fn sends_full_groups() {
+    let launch = tempfile::tempdir().expect("a folder");
+    let folder = launch.path();
+    std::fs::copy(fixtures().join("streaming.nf"), folder.join("main.nf")).expect("copies");
+    let config = "plugins { id 'nf-bids@0.3.0' }\n";
+    std::fs::write(folder.join("nextflow.config"), config).expect("writes");
+    let run = Launch {
+        target: folder.to_owned(),
+        scratch: folder.join("scratch"),
+        ..Launch::default()
+    };
+    let console = Console {
+        lines: Vec::new(),
+        launch: folder.to_string_lossy().into_owned(),
+    };
+    let settings = Settings {
+        host: Box::new(console),
+        ..Settings::default()
+    };
+    let mut driver = Nextflow::new(&run, settings).expect("a driver");
+    let (open, gate) = mpsc::channel();
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let mut executor = Gate {
+        order: order.clone(),
+        open,
+        gate: Some(gate),
+    };
+    let options = RunOptions {
+        max_pending: 8,
+        order: Order::Finished,
+    };
+    let execution = Engine::new(&mut executor)
+        .options(options)
+        .run("main.nf", &mut driver);
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    let order = order.lock().expect("the order").clone();
+    let at = |name: &str| order.iter().position(|step| step == name);
+    assert!(at("use a") < at("make 3 ended"), "{order:?}");
+    assert!(at("use b").is_some(), "{order:?}");
 }

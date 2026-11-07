@@ -10,7 +10,7 @@ use executor::poll::REQUEST_GRACE;
 use serde_json::Value;
 
 use crate::TesBackend;
-use crate::client::State;
+pub use crate::client::State;
 
 /// The TES task of one attempt of a run, as its journal and its server tell.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]

@@ -193,25 +193,9 @@ pub(crate) fn executor(
         }
         "tes" => {
             let default_image = arguments.default_image.clone();
-            let settings = &setup.executors;
-            let server = (arguments.tes_server.as_deref())
-                .or(settings.tes_server.as_deref())
-                .unwrap_or(tes::DEFAULT_SERVER);
-            let token = match arguments.secrets.get("UWE_TES_TOKEN") {
-                Some(token) => Some(token),
-                None => (settings.tes_token.as_ref().map(|secret| secret.reveal()))
-                    .transpose()
-                    .map_err(|error| Failure::setup(format!("uwe: {error}")))?,
-            };
+            let place = tes::place(arguments, setup, &scratch)?;
             let store = setup.store(arguments)?;
             let storage = setup.storage.clone();
-            let place = tes::Place {
-                server,
-                token,
-                settings: &settings.tes,
-                sites: &settings.tes_sites,
-                scratch: &scratch,
-            };
             let executor = tes::executor(store, place, run, default_image, storage, setup)
                 .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)

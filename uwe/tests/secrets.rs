@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use uwe::RunRequest;
+use uwe::run::orphans::{Outcome, State};
 use uwe::run::{SecretValues, Settings};
 
 /// The name both runs give a value for. The process environment never has it.
@@ -85,6 +86,74 @@ fn keeps_secrets_apart() {
                 "the runs did not overlap"
             );
         }
+    }
+}
+
+/// What the server says of every task: it has ended.
+const ENDED: &str = r#"{"id":"task-1","state":"CANCELED"}"#;
+
+#[test]
+fn stops_with_secrets() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("stops_with_secrets");
+    }
+    let root = tempfile::tempdir().unwrap();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    for (run, value) in VALUES.iter().enumerate() {
+        let server = Server::answering(Arc::new((Mutex::new(1), Condvar::new())), ENDED);
+        let folder = root.path().join(run.to_string());
+        let config = format!(
+            "[executor.tes]\nserver = \"{}\"\ntoken = {{ environment = \"{NAME}\" }}\n",
+            server.address
+        );
+        let id = format!("run-{run}");
+        let request = || {
+            let mut secrets = SecretValues::default();
+            secrets.insert(NAME, *value).unwrap();
+            secrets.allow_environment(false);
+            let mut request = request(&folder, &config, secrets);
+            request.settings.run_id = Some(id.clone());
+            request
+        };
+        // The journal of an attempt whose uwe process is gone.
+        let attempt = folder.join(format!("cache/scratch/tes/{id}-sort-1-1"));
+        std::fs::create_dir_all(&attempt).unwrap();
+        std::fs::File::create(attempt.join("remote.lock")).unwrap();
+        let journal = json!({"backend": "TES", "server": format!("{}/ga4gh/tes/v1", server.address),
+            "name": format!("{id}-sort-1-1"), "run": id, "id": "task-1", "owner": u32::MAX,
+            "host": "previous-boot", "started": "", "locked": true});
+        std::fs::write(attempt.join("remote.json"), journal.to_string()).unwrap();
+        let report = runtime.block_on(request().remote_tasks());
+        let report = report.unwrap_or_else(|failure| panic!("run {run}: {}", failure.message));
+        assert_eq!(report.len(), 1);
+        assert_eq!(report[0].state, Some(State::Canceled));
+        assert_eq!(report[0].outcome, Outcome::Ended);
+        assert!(
+            attempt.join("remote.json").is_file(),
+            "the report changed the journal"
+        );
+        let stopped = runtime.block_on(request().stop_tasks());
+        let stopped = stopped.unwrap_or_else(|failure| panic!("run {run}: {}", failure.message));
+        assert_eq!(stopped[0].outcome, Outcome::Ended);
+        assert!(!attempt.join("remote.json").exists());
+        let asked = {
+            let tokens = server.tokens.lock().unwrap();
+            let own = format!("Bearer {value}");
+            assert!(!tokens.is_empty(), "run {run} sent no request");
+            assert!(
+                tokens.iter().all(|token| *token == own),
+                "run {run} sent another token"
+            );
+            tokens.len()
+        };
+        // Once the journal is settled, a second call asks no server.
+        let again = runtime.block_on(request().stop_tasks());
+        assert!(
+            again
+                .unwrap_or_else(|failure| panic!("{}", failure.message))
+                .is_empty()
+        );
+        assert_eq!(server.tokens.lock().unwrap().len(), asked);
     }
 }
 

@@ -313,7 +313,8 @@ impl Reports {
         let attempt = self.attempts.entry(task.id).or_default();
         *attempt += 1;
         let row = Row {
-            number: self.order.len(),
+            number: (self.order.iter().position(|asked| *asked == task.id))
+                .map_or(0, |place| place + 1),
             task: task.clone(),
             exit: 0,
             attempt: *attempt,

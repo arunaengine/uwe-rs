@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ops::Bound;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -565,8 +566,13 @@ impl Driver for WirDriver {
             let mut results = Json::Object(results);
             let root = self.output_root();
             let mut planned = Vec::new();
-            deliver(&mut results, &root, &mut planned, &mut BTreeMap::new())
-                .map_err(DriverError::new)?;
+            let mut places = BTreeMap::new();
+            for target in (self.children.iter()).flat_map(|(_, child)| child.targets()) {
+                let place = cwl_parser::iri::file_path(target).unwrap_or(PathBuf::from(target));
+                places.insert(place.clone(), place);
+            }
+            deliver(&mut results, &root, &mut planned, &mut places).map_err(DriverError::new)?;
+            nested(&planned, &places).map_err(DriverError::new)?;
             self.delivering.extend(planned);
             if self.settings.print {
                 println!(
@@ -635,12 +641,12 @@ impl Driver for WirDriver {
 
 /// Delivers the files and folders of a result value that are not in the output folder yet,
 /// like those of task ops, to `root` by their basenames, and names them there. `places` holds
-/// the source of each place in `root`; two sources for one place fail before any delivery.
+/// the source path of each place in `root`; two sources for one place fail before any delivery.
 fn deliver(
     value: &mut Json,
     root: &Path,
     deliveries: &mut Vec<Delivery>,
-    places: &mut BTreeMap<PathBuf, String>,
+    places: &mut BTreeMap<PathBuf, PathBuf>,
 ) -> Result<(), String> {
     match value {
         Json::Array(items) => {
@@ -665,11 +671,11 @@ fn deliver(
                     .unwrap_or("output");
                 let inside = local.starts_with(root);
                 let place = match inside {
-                    true => local,
+                    true => local.clone(),
                     false => root.join(name),
                 };
-                if let Some(other) = places.insert(place.clone(), location.clone())
-                    && other != location
+                if let Some(other) = places.insert(place.clone(), local.clone())
+                    && other != local
                 {
                     return Err(format!(
                         "two outputs go to {}; give their files different names",
@@ -692,6 +698,33 @@ fn deliver(
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+/// Refuses a delivery to a place that holds, or lies in, another place of `places`: copying
+/// it would replace the files below it, or the folder it lies in.
+fn nested(deliveries: &[Delivery], places: &BTreeMap<PathBuf, PathBuf>) -> Result<(), String> {
+    for delivery in deliveries {
+        let place = Path::new(&delivery.target);
+        let outer = (place.ancestors().skip(1)).find(|folder| places.contains_key(*folder));
+        // Places below `place` follow it in the order of paths.
+        let after = (Bound::Excluded(place), Bound::Unbounded);
+        let inner = (places.range::<Path, _>(after).next())
+            .map(|(path, _)| path.as_path())
+            .filter(|path| path.starts_with(place));
+        let pair = match (outer, inner) {
+            (Some(outer), _) => Some((outer, place)),
+            (None, Some(inner)) => Some((place, inner)),
+            (None, None) => None,
+        };
+        if let Some((outer, inner)) = pair {
+            return Err(format!(
+                "outputs go to {} and to {} inside it; give their files different names",
+                outer.display(),
+                inner.display()
+            ));
+        }
     }
     Ok(())
 }

@@ -90,7 +90,7 @@ Results: when the block has finished, each op output takes the workflow output o
 
 ## Outputs
 
-A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. When two different files or folders would get the same place there, the run fails before it delivers anything, and names that place. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
+A real run that succeeds delivers the files and folders of the entry graph's outputs that are not in the output folder yet, like those of task ops, to the output folder by their basenames. When two different files or folders would get the same place there, or one would go to a place that holds, or lies in, the place of another output or of a file that a native block delivered, the run fails before it delivers anything, and names those places. It prints the outputs as JSON, like CWL prints its output object, unless `-no-print` is given. An embedding host gets the same object as `Run::outputs`. A simulated run has no outputs.
 
 ## Provenance
 

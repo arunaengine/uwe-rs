@@ -140,6 +140,7 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_versions::PLUGIN,
     // Functions that read data, query services or run code in containers.
     crate::nf_crg_report::PLUGIN,
+    // nf-csvext: reads each source file and sorts and writes each result whole in memory.
     crate::nf_csvext::PLUGIN,
     crate::nf_databricks::PLUGIN,
     // nf-fl86: writes pipeline_info only to a local output folder; a remote one fails the run.

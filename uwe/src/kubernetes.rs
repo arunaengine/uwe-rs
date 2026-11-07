@@ -6,8 +6,13 @@
 use std::path::Path;
 
 use content_store::Store;
+use executor::orphans::Orphan;
 use kubernetes_executor::{Cluster, KubernetesBackend, PodStaging, Via, Volumes};
 use task_runner::{Runner, RunnerExecutor};
+
+use crate::Failure;
+use crate::arguments::Arguments;
+use crate::setup::Setup;
 
 /// An executor that runs each task as a Job in the cluster of `kubeconfig`, in `namespace` or
 /// else the namespace of the kubeconfig's context. Tasks without an image get `default_image`.
@@ -20,6 +25,63 @@ pub fn executor(
     namespace: Option<String>,
     setup: &crate::setup::Setup,
 ) -> Result<RunnerExecutor<crate::conda_backend::Remote<KubernetesBackend>>, String> {
+    let backend = backend(scratch, run, kubeconfig, namespace, setup)?;
+    let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
+    runtime
+        .block_on(backend.reconcile())
+        .map_err(|error| error.to_string())?;
+    // The nodes read the inputs from the store, so they are copied there.
+    let backend = crate::conda_backend::Remote::new(backend, store.clone(), scratch, run, setup);
+    let mut runner = Runner::new(
+        store,
+        backend,
+        run,
+        crate::runner_settings(setup.storage.clone(), true),
+    );
+    runner.references(setup.references.clone());
+    Ok(RunnerExecutor::new(runner, default_image))
+}
+
+/// The Kubernetes Jobs that the run `run` left, from its journals in the scratch folder of
+/// this machine: their state only, or, with `stop`, after this call deleted them.
+pub fn orphans(
+    arguments: &Arguments,
+    setup: &Setup,
+    run: &str,
+    stop: bool,
+) -> Result<Vec<Orphan>, Failure> {
+    let failed = |message: String| Failure::setup(format!("uwe: {message}"));
+    let scratch = crate::cache_directory().join("scratch");
+    let journals = executor::orphans::journals(&scratch.join("kubernetes"), run);
+    // Without a journal no cluster needs to answer.
+    if journals
+        .map_err(|error| failed(error.to_string()))?
+        .is_empty()
+    {
+        return Ok(Vec::new());
+    }
+    let settings = &setup.executors;
+    let kubeconfig = (arguments.kubeconfig.as_deref()).or(settings.kubeconfig.as_deref());
+    let namespace =
+        (arguments.kubernetes_namespace.clone()).or_else(|| settings.kubernetes_namespace.clone());
+    let backend = backend(&scratch, run, kubeconfig, namespace, setup).map_err(failed)?;
+    let runtime = workflow_graph::runtime().map_err(|error| failed(error.to_string()))?;
+    let found = match stop {
+        true => runtime.block_on(backend.stop_run(run)),
+        false => runtime.block_on(backend.report_run(run)),
+    };
+    found.map_err(|error| failed(error.to_string()))
+}
+
+/// The backend of the run `run` in the cluster of `kubeconfig`, with the staging of the config
+/// file, before it recovers the attempts of other runs.
+fn backend(
+    scratch: &Path,
+    run: &str,
+    kubeconfig: Option<&Path>,
+    namespace: Option<String>,
+    setup: &crate::setup::Setup,
+) -> Result<KubernetesBackend, String> {
     // The client runs on the runtime of the engine, which runs the attempts.
     let runtime = workflow_graph::runtime().map_err(|error| error.to_string())?;
     // The first line says what is wrong; the lines after it quote the file.
@@ -35,6 +97,7 @@ pub fn executor(
         }
     };
     let mut backend = KubernetesBackend::new(cluster, scratch.join("kubernetes"));
+    backend.run = run.to_owned();
     let executors = &setup.executors;
     backend.trusted = !setup.hosted;
     backend.references = executors.kubernetes_references.clone();
@@ -98,17 +161,5 @@ pub fn executor(
         };
         backend.remote = Some(PodStaging { stage, via });
     }
-    runtime
-        .block_on(backend.reconcile())
-        .map_err(|error| error.to_string())?;
-    // The nodes read the inputs from the store, so they are copied there.
-    let backend = crate::conda_backend::Remote::new(backend, store.clone(), scratch, run, setup);
-    let mut runner = Runner::new(
-        store,
-        backend,
-        run,
-        crate::runner_settings(setup.storage.clone(), true),
-    );
-    runner.references(setup.references.clone());
-    Ok(RunnerExecutor::new(runner, default_image))
+    Ok(backend)
 }

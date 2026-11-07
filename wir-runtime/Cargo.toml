@@ -12,7 +12,9 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+cwl-runtime.workspace = true
 input-schema.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+wir.workspace = true
 workflow-graph.workspace = true

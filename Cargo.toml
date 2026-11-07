@@ -74,6 +74,7 @@ storage = { path = "storage" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
 tes-executor = { path = "tes-executor" }
+wir = { path = "wir" }
 workflow-graph = { path = "workflow-graph" }
 
 # Third-party crates

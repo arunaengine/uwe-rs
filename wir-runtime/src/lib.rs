@@ -7,6 +7,7 @@ mod argo;
 mod child;
 pub mod cwl;
 mod driver;
+mod expr;
 mod inputs;
 pub mod nextflow;
 mod plan;

@@ -174,10 +174,21 @@ fn server(engine: Engine, address: &str, source: &Source) -> Result<Target, Stri
             Some(mode) if mode == "REQUIRED" || mode == "TRUST" => Tls::Require,
             Some(mode) if mode.starts_with("VERIFY") => Tls::Verify,
             Some(_) => Tls::Prefer,
-            None => match parameter("useSSL").as_deref() {
-                Some("false") => Tls::Disable,
-                _ => Tls::Prefer,
-            },
+            // Connector/J's mapping of its older flags, where `useSSL` defaults to true.
+            None => {
+                let flag =
+                    |name: &str| parameter(name).map(|value| value.eq_ignore_ascii_case("true"));
+                match (
+                    flag("useSSL"),
+                    flag("requireSSL"),
+                    flag("verifyServerCertificate"),
+                ) {
+                    (Some(false), _, _) => Tls::Disable,
+                    (_, _, Some(true)) => Tls::Verify,
+                    (_, Some(true), _) => Tls::Require,
+                    _ => Tls::Prefer,
+                }
+            }
         },
     };
     let user = (source
@@ -246,6 +257,24 @@ mod tests {
         };
         assert_eq!((server.host.as_str(), server.port), ("localhost", 5432));
         assert_eq!(server.user.as_deref(), Some("me"));
+    }
+
+    #[test]
+    fn maps_legacy_tls() {
+        let tls = |query: &str| match target(
+            &source(&format!("jdbc:mysql://h/x?{query}"), None),
+            "/",
+            &|_| None,
+        ) {
+            Ok(Target::Server(server)) => server.tls,
+            other => panic!("a server: {other:?}"),
+        };
+        let strict = "useSSL=true&requireSSL=true&verifyServerCertificate=true";
+        assert_eq!(tls(strict), Tls::Verify);
+        assert_eq!(tls("useSSL=true&requireSSL=true"), Tls::Require);
+        assert_eq!(tls("useSSL=true"), Tls::Prefer);
+        assert_eq!(tls("useSSL=false&requireSSL=true"), Tls::Disable);
+        assert_eq!(tls(&format!("{strict}&sslMode=PREFERRED")), Tls::Prefer);
     }
 
     #[test]

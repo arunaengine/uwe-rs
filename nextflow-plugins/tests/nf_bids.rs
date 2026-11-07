@@ -323,7 +323,25 @@ fn applies_key_operators() {
     assert_eq!(lines, expected);
 }
 
-/// Runs the tasks of `streaming.nf`: `make 3` ends only once `use a` started, or after a
+/// A task for each full group of `groupTupleBy` with a size, while the source still runs.
+const STREAMING: &str = "include { groupTupleBy } from 'plugin/nf-bids'
+process MAKE {
+    input: val item
+    output: val item
+    script: \"make ${item[1]}\"
+}
+process USE {
+    input: val group
+    output: val group
+    script: \"use ${group[0]}\"
+}
+workflow {
+    MAKE(channel.of(['a', 1], ['a', 2], ['b', 3]))
+    USE(MAKE.out.groupTupleBy({ it[0] }, [size: 2]))
+}
+";
+
+/// Runs the tasks of `STREAMING`: `make 3` ends only once `use a` started, or after a
 /// generous cap, so that the order tells whether the full group went on while `make 3` ran.
 struct Gate {
     order: Arc<Mutex<Vec<String>>>,
@@ -361,7 +379,7 @@ impl Executor for Gate {
 fn sends_full_groups() {
     let launch = tempfile::tempdir().expect("a folder");
     let folder = launch.path();
-    std::fs::copy(fixtures().join("streaming.nf"), folder.join("main.nf")).expect("copies");
+    std::fs::write(folder.join("main.nf"), STREAMING).expect("writes");
     let config = "plugins { id 'nf-bids@0.3.0' }\n";
     std::fs::write(folder.join("nextflow.config"), config).expect("writes");
     let run = Launch {

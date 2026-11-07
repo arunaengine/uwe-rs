@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Runs a workflow with the Kubernetes executor on a kind cluster, with object-store staging (with the
-# uploaded binary, a helper image, or credentials), with kubedal staging, and with a shared claim.
+# Runs workflows with the Kubernetes executor on a kind cluster, with object-store staging (with the
+# uploaded binary, a helper image, or credentials), with kubedal staging, and with shared paths.
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 #
 # Needs docker, kind, kubectl and helm, the static binary of `just release-binary` (UWE),
 # a checkout of kubedal (KUBEDAL, default ../kubedal) and its image (KUBEDAL_IMAGE, default
-# kubedal:e2e). MODES picks some of self, image-volume, init-container, kubedal, credentials and
-# shared-claim; without a kubedal checkout the default leaves out kubedal;
-# KIND_CLUSTER names the cluster (default uwe-staging); KEEP_CLUSTER=1 keeps the cluster
-# and the S3 server after the run.
+# kubedal:e2e). MODES picks some of self, image-volume, init-container, kubedal, credentials,
+# shared-claim and shared-path; without a kubedal checkout the default leaves out kubedal;
+# WORKFLOWS picks some of hello (the default), cwl and nf-core-demo; KIND_CLUSTER names the
+# cluster (default uwe-staging); KEEP_CLUSTER=1 keeps the cluster and the S3 server after the run.
 set -euo pipefail
 
 repository="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,6 +20,7 @@ cluster="${KIND_CLUSTER:-uwe-staging}"
 modes="self image-volume init-container kubedal credentials shared-claim"
 [ -d "$kubedal" ] || modes="${modes/kubedal /}"
 modes="${MODES:-$modes}"
+workflows="${WORKFLOWS:-hello}"
 server="$cluster-s3"
 work="$(mktemp -d)"
 # The folder that this machine and the node share, for the cache of shared paths.
@@ -113,6 +114,25 @@ keys() {
     curl -sf --aws-sigv4 aws:amz:us-east-1:s3 --user "$STAGING_KEY:$STAGING_SECRET" \
         "$endpoint/staging?list-type=2&prefix=$1"
 }
+# Runs the workflow $1 in the current folder with the other arguments of uwe, and checks results.
+workflow() {
+    local name="$1"
+    shift
+    case "$name" in
+        hello)
+            cp "$repository/demo/snakemake/hello.smk" . && "$binary" run hello.smk "$@" \
+                && [ "$(cat hello/all.txt)" = "$(printf '%s world!\n' Hello Hola Bonjour Ciao)" ] ;;
+        cwl)
+            cp "$repository/demo/cwl/"{scatter-workflow.cwl,hello_world.cwl,scatter-job.yml} . \
+                && "$binary" run scatter-workflow.cwl scatter-job.yml \
+                    -default-image debian:stable-slim "$@" ;;
+        nf-core-demo)
+            "$binary" run nf-core/demo -r 32893afef8076a03a2767a020b3f0cab2e0b40b2 \
+                -profile test,docker --outdir results "$@" \
+                && [ -s results/multiqc/multiqc_report.html ] ;;
+        *) echo "unknown workflow $name" >&2; return 1 ;;
+    esac
+}
 export XDG_CONFIG_HOME="$work/config" UWE_SITE_CONFIG=""
 status=0
 case " $modes " in *" kubedal "*)
@@ -155,6 +175,10 @@ helper_image = "'"$helper"'"'
         staging="[executor.kubernetes.shared_volume]
 claim = \"uwe-cache\"
 path = \"$shared\""
+    elif [ "$mode" = shared-path ]; then
+        # The cache of uwe is in the folder that the node mounts at the same path.
+        export XDG_CACHE_HOME="$shared/cache"
+        staging='staging = "shared-path"'
     fi
     cat > "$work/$mode.toml" <<EOF
 [storage.staging]
@@ -165,24 +189,29 @@ region = "us-east-1"
 access_key_id = { environment = "STAGING_KEY" }
 secret_access_key = { environment = "STAGING_SECRET" }
 
+# CWL tools have no network unless they ask, and Kubernetes cannot cut a pod off the network.
+[network]
+allowed_steps = ["*"]
+
 [executor.kubernetes]
 namespace = "uwe"
 $staging
 EOF
-    rm -rf "$XDG_CACHE_HOME" "$work/run"
-    mkdir "$work/run"
-    cp "$repository/demo/snakemake/hello.smk" "$work/run/"
-    if (cd "$work/run" && "$binary" run hello.smk -executor kubernetes -kubeconfig "$work/kubeconfig" \
-        -uwe-config "$work/$mode.toml") \
-        && [ "$(cat "$work/run/hello/all.txt")" = "$(printf '%s world!\n' Hello Hola Bonjour Ciao)" ] \
-        && { [ "$mode" != credentials ] || { keys credentials/cas/ | grep -q '<Key>' \
-            && ! keys credentials/attempts/ | grep -q '<Key>'; }; } \
-        && { [ "$mode" != self ] || keys self/cas/ | grep -q "$(sha256sum "$binary" | cut -c 3-64)"; }; then
-        echo "=== $mode: passed"
-    else
-        echo "=== $mode: FAILED"
-        kubectl -n uwe get pods,events 2>&1 | tail -20
-        status=1
-    fi
+    for name in $workflows; do
+        rm -rf "$XDG_CACHE_HOME" "$work/run"
+        mkdir "$work/run"
+        started=$SECONDS
+        if (cd "$work/run" && workflow "$name" -executor kubernetes -kubeconfig "$work/kubeconfig" \
+            -uwe-config "$work/$mode.toml") \
+            && { [ "$mode" != credentials ] || { keys credentials/cas/ | grep -q '<Key>' \
+                && ! keys credentials/attempts/ | grep -q '<Key>'; }; } \
+            && { [ "$mode" != self ] || keys self/cas/ | grep -q "$(sha256sum "$binary" | cut -c 3-64)"; }; then
+            echo "=== $mode $name: passed after $((SECONDS - started)) s"
+        else
+            echo "=== $mode $name: FAILED"
+            kubectl -n uwe get pods,events 2>&1 | tail -20
+            status=1
+        fi
+    done
 done
 exit "$status"

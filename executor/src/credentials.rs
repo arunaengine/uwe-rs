@@ -43,6 +43,13 @@ impl Registry {
         })
     }
 
+    /// Leaves out the Docker and Podman credential files of the service user, so that only
+    /// the configured credentials count.
+    pub fn without_files(mut self) -> Self {
+        self.paths.clear();
+        self
+    }
+
     /// All overlapping requests must use the same registry settings, across worker threads.
     /// Hold the returned scope until their asynchronous work has joined.
     pub fn enter(&self) -> Result<Scope, String> {
@@ -382,6 +389,26 @@ mod tests {
                 .credential
                 .is_none()
         );
+    }
+
+    #[test]
+    fn skips_service_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let docker = directory.path().join("config.json");
+        std::fs::write(
+            &docker,
+            r#"{"auths":{"host":{"identitytoken":"identity"}}}"#,
+        )
+        .unwrap();
+        let registry = Registry {
+            configured: BTreeMap::new(),
+            paths: vec![docker],
+        };
+        let found = |registry: &Registry| {
+            (lookup_in("host", &registry.configured, &registry.paths).unwrap()).credential
+        };
+        assert!(found(&registry).is_some());
+        assert!(found(&registry.without_files()).is_none());
     }
 
     #[test]

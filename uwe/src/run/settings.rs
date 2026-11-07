@@ -326,6 +326,9 @@ impl Settings {
                 Some(setup) => setup,
                 None => Setup::load(&arguments)?,
             };
+            if !isolation.registry_files {
+                setup.registry = setup.registry.without_files();
+            }
             setup.isolation = Some(isolation);
             self.setup = Some(setup);
         }
@@ -374,6 +377,8 @@ mod tests {
         assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
         assert!(arguments.secrets.variable("CARGO_MANIFEST_DIR").is_none());
         assert!(arguments.secrets.variable("PATH").is_some());
+        let registry = format!("{:?}", setup.registry);
+        assert!(registry.contains("paths: []"), "{registry}");
     }
 
     #[test]

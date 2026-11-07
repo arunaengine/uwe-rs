@@ -65,6 +65,10 @@ pub(crate) fn image_entity(id: &str, reference: &str, named: Option<&str>) -> Va
     entity
 }
 
+/// The id of wir, the workflow intermediate representation of uwe, which WorkflowHub does not
+/// list.
+const WIR: &str = "https://w3id.org/workflowhub/workflow-ro-crate#wir";
+
 /// The id of a language as Workflow RO-Crate names it; Argo has none there.
 pub(crate) fn language_id(language: &str) -> String {
     match language {
@@ -78,6 +82,8 @@ pub(crate) fn language(language: &str) -> Value {
         "nextflow" => ("Nextflow", "https://www.nextflow.io/"),
         "snakemake" => ("Snakemake", "https://snakemake.readthedocs.io/"),
         "cwl" => ("Common Workflow Language", "https://www.commonwl.org/"),
+        // wir has no public home page yet, so its id is also its address.
+        "wir" => ("wir", WIR),
         _ => ("Argo Workflows", "https://argoproj.github.io/workflows/"),
     };
     json!({
@@ -87,4 +93,17 @@ pub(crate) fn language(language: &str) -> Value {
         "identifier": {"@id": url},
         "url": {"@id": url}
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn labels_wir_documents() {
+        let entity = language("wir");
+        assert_eq!(entity["name"], "wir");
+        assert_eq!(entity["@id"], WIR);
+        assert_eq!(language("argo")["name"], "Argo Workflows");
+    }
 }

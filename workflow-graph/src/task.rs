@@ -15,6 +15,8 @@ pub enum Language {
     Snakemake,
     Cwl,
     Argo,
+    /// A wir document, the workflow intermediate representation of uwe.
+    Wir,
 }
 
 impl std::fmt::Display for Language {
@@ -24,6 +26,7 @@ impl std::fmt::Display for Language {
             Language::Snakemake => "snakemake",
             Language::Cwl => "cwl",
             Language::Argo => "argo",
+            Language::Wir => "wir",
         })
     }
 }

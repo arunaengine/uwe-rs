@@ -1,0 +1,77 @@
+{
+  "wir_version": "0.1",
+  "sources": [
+    {
+      "id": "variants",
+      "language": "cwl",
+      "location": "workflows/call-variants.cwl",
+      "version": "v1.2"
+    }
+  ],
+  "types": [
+    {
+      "name": "IndexedReference",
+      "type": {
+        "file": {
+          "format": "http://edamontology.org/format_1929",
+          "secondary_files": [{ "pattern": ".fai" }, { "pattern": "^.dict", "required": false }]
+        }
+      }
+    }
+  ],
+  "graphs": [
+    {
+      "name": "main",
+      "inputs": [
+        {
+          "name": "reads",
+          "type": {
+            "array": {
+              "items": { "file": { "format": "http://edamontology.org/format_1930" } },
+              "nonempty": true
+            }
+          }
+        },
+        { "name": "reference", "type": { "named": "IndexedReference" } },
+        { "name": "min_quality", "type": { "optional": "int" } }
+      ],
+      "outputs": [
+        { "name": "variants", "type": { "file": { "format": "http://edamontology.org/format_3016" } } },
+        { "name": "report", "type": { "optional": { "file": {} } } }
+      ],
+      "ops": [
+        {
+          "path": "call-variants",
+          "kind": { "native": { "source": "variants", "language": "cwl", "entry": "main" } },
+          "inputs": [
+            {
+              "name": "reads",
+              "type": {
+                "array": {
+                  "items": { "file": { "format": "http://edamontology.org/format_1930" } },
+                  "nonempty": true
+                }
+              }
+            },
+            { "name": "reference", "type": { "named": "IndexedReference" } },
+            { "name": "min_quality", "type": { "optional": "int" } }
+          ],
+          "outputs": [
+            { "name": "variants", "type": { "file": { "format": "http://edamontology.org/format_3016" } } },
+            { "name": "report", "type": { "optional": { "file": {} } } }
+          ],
+          "attributes": { "cache": "default", "time": 7200 },
+          "origin": { "source": "variants" }
+        }
+      ],
+      "edges": [
+        { "from": { "port": "reads" }, "to": { "op": "call-variants", "port": "reads" } },
+        { "from": { "port": "reference" }, "to": { "op": "call-variants", "port": "reference" } },
+        { "from": { "port": "min_quality" }, "to": { "op": "call-variants", "port": "min_quality" } },
+        { "from": { "op": "call-variants", "port": "variants" }, "to": { "port": "variants" } },
+        { "from": { "op": "call-variants", "port": "report" }, "to": { "port": "report" } }
+      ]
+    }
+  ],
+  "entry": "main"
+}

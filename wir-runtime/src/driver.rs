@@ -213,6 +213,28 @@ impl WirDriver {
                 Ok(vec![task])
             }
             Kind::Call(_) => Ok(Vec::new()),
+            Kind::Expr(spec) => {
+                let node = self.progress.node(at);
+                let path = node.path.clone();
+                if spec.language != "js" {
+                    let message = format!("op {path}: the language {} is reserved", spec.language);
+                    return Err(DriverError::unsupported(message));
+                }
+                let output = node.op.outputs[0].clone();
+                let settings = &self.settings.cwl.javascript;
+                let defs = &self.document.types;
+                match crate::expr::evaluate(&spec, &bound, &output, defs, settings) {
+                    Ok(value) => {
+                        let values = Map::from_iter([(output.name, value)]);
+                        self.progress.end(at, Status::Succeeded, values, None);
+                    }
+                    Err(why) => {
+                        let message = Some(format!("op {path}: {why}"));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
             Kind::Map(map) => {
                 let path = self.progress.node(at).path.clone();
                 if map.parallelism.is_some() || map.min_success.is_some() {

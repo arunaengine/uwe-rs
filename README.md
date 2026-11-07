@@ -93,6 +93,10 @@ Conda environments are solved in Rust (rattler and resolvo) and turned into cont
 - `uwe check-order <workflow>` finds steps whose results depend on which task finished first.
 - `uwe inputs` and `uwe outputs` print the inputs and outputs of any workflow as JSON Schema. Every run checks its inputs against that schema.
 
+### Recording tools
+
+- `uwe record [-name <name>] [-image <image>] -- <command ...>` runs a command once in the current folder and writes it there as a CWL CommandLineTool, `<name>.cwl`. Words that name a file or folder become `File` and `Directory` inputs, other values typed inputs with the recorded value as default, and `>` and `2>` become `stdout` and `stderr`. The files and folders that the run writes become the outputs, with EDAM formats for common file endings. `-image` adds a `DockerRequirement` hint. Quote `|`, `>` and `2>` so that your shell passes them on. A failed command writes nothing. The recorder comes from [SciWIn](https://github.com/fairagro/sciwin).
+
 ## Install
 
 You need a Rust toolchain from [rustup](https://rustup.rs) and Docker or Podman. On Linux:

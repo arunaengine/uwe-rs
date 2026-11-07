@@ -79,6 +79,11 @@ pub struct Arguments {
     pub kubernetes_namespace: Option<String>,
     /// `-head-image image`: the image with uwe that `uwe kuberun` runs in its pod.
     pub head_image: Option<String>,
+    /// `-name name` and `-image image` of `uwe record`: the tool file and its container.
+    pub tool_name: Option<String>,
+    pub tool_image: Option<String>,
+    /// The words after `--` of `uwe record`: the command it runs and records.
+    pub command_line: Vec<String>,
     /// `-head-cpus n` and `-head-memory size`: what the pod of `uwe kuberun` asks for.
     pub head_cpus: Option<String>,
     pub head_memory: Option<String>,
@@ -234,6 +239,10 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
     while index < arguments.len() {
         let argument = &arguments[index];
         index += 1;
+        if command == Some("record") && argument == "--" {
+            parsed.command_line = arguments[index..].to_vec();
+            break;
+        }
         if let Some(command) = command {
             let option = OPTIONS.iter().find(|(names, _)| {
                 names
@@ -320,6 +329,8 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             }
             "-uwe-config" => parsed.config_file = Some(value()?.into()),
             "-head-image" => parsed.head_image = Some(value()?),
+            "-name" => parsed.tool_name = Some(value()?),
+            "-image" => parsed.tool_image = Some(value()?),
             "-head-cpus" => parsed.head_cpus = Some(value()?),
             "-head-memory" => parsed.head_memory = Some(value()?),
             "-volume-mount" => {
@@ -592,6 +603,7 @@ pub const COMMANDS: &[&str] = &[
     "reconcile",
     "presets",
     "kuberun",
+    "record",
     "version",
 ];
 const WORKFLOW: &[&str] = &[
@@ -631,6 +643,8 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check", "inputs", "outputs", "kuberun"],
     ),
     ("-latest", &["run", "graph", "kuberun"]),
+    ("-name <name>", &["record"]),
+    ("-image <image>", &["record"]),
     ("-help", COMMANDS),
     ("-version,--version", COMMANDS),
     ("-v,-verbose", CONFIGURED),
@@ -826,6 +840,7 @@ pub fn help(command: &str) -> Result<String, String> {
         "config" => " [project] [--param value]",
         "origin" => " <file>",
         "digest" => " <path>",
+        "record" => " -- <command ...>",
         _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
         "lock-environment" => " <environment.yml>",
         _ => " <run>",
@@ -992,6 +1007,16 @@ mod tests {
     fn parse_all(arguments: &[&str]) -> Arguments {
         let arguments: Vec<String> = arguments.iter().map(|text| text.to_string()).collect();
         parse(&arguments).expect("valid options")
+    }
+
+    #[test]
+    fn record_takes_rest() {
+        let words = ["-name", "copy", "--", "cat", "-n", "in.txt", ">", "out.txt"];
+        let parsed = parse_command("record", &words.map(str::to_owned)).unwrap();
+        assert_eq!(parsed.tool_name.as_deref(), Some("copy"));
+        assert_eq!(parsed.command_line, ["cat", "-n", "in.txt", ">", "out.txt"]);
+        assert!(parsed.params.is_empty() && parsed.target.is_none());
+        assert!(parse_command("run", &["main.nf", "-name", "x"].map(str::to_owned)).is_err());
     }
 
     #[test]

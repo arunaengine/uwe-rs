@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod defaults;
 mod group;
 mod requirements;
 mod tool;
@@ -152,12 +153,14 @@ impl Lowerer {
             at: entry.clone(),
         });
         let lowered = match &process.class {
-            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope).map(|lowered| {
-                let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
-                (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
-                op.attributes = lowered.attributes;
-                op
-            }),
+            Class::CommandLineTool(tool) => {
+                tool::lower(process, tool, &scope, &self.base).map(|lowered| {
+                    let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
+                    (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
+                    op.attributes = lowered.attributes;
+                    op
+                })
+            }
             Class::Workflow(workflow) => self.call(process, workflow, &scope, path),
             _ => Err("this process class has no lowering yet".into()),
         };

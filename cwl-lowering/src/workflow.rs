@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use cwl_parser::model::{Process, Step, Workflow, short_name};
 use wir::{Call, Document, Edge, Endpoint, Graph, Kind, Op};
 
-use crate::{Lowerer, Scope, blank, boundary, process_name};
+use crate::{Lowerer, Scope, blank, boundary, defaults, process_name, types};
 
 impl Lowerer {
     /// The graph `name` of a workflow, or the first thing in it that has no lowering yet. A
@@ -57,10 +57,15 @@ impl Lowerer {
         scope: &Scope,
         name: &str,
     ) -> Result<Graph, String> {
-        if let Some(input) = process.inputs.iter().find(|input| input.default.is_some()) {
-            return Err(format!("the default of input {}", short_name(&input.id)));
+        let (mut inputs, outputs) = boundary(process)?;
+        // A graph input keeps its type and takes null through its default.
+        for (port, input) in inputs.iter_mut().zip(&process.inputs) {
+            if let Some(default) = &input.default {
+                port.r#type = types::convert(&input.value_type)?;
+                defaults::set(port, default, &self.base)
+                    .map_err(|why| format!("input {}: {why}", port.name))?;
+            }
         }
-        let (inputs, outputs) = boundary(process)?;
         let mut ends: HashMap<&str, Endpoint> = HashMap::new();
         for input in &process.inputs {
             ends.insert(&input.id, end(None, short_name(&input.id)));
@@ -81,10 +86,24 @@ impl Lowerer {
             let inner = scope.with(&step.requirements, &step.hints);
             let op = self.op(&step.run.process, &inner, path)?;
             let group = self.guarded(step, op, path, &inner)?;
-            let group = match step.scatter.is_empty() {
+            let mut group = match step.scatter.is_empty() {
                 true => group,
                 false => self.scatter(step, group, path)?,
             };
+            for input in &step.inputs {
+                let Some(default) = &input.default else {
+                    continue;
+                };
+                let port = short_name(&input.id);
+                let takers: Vec<String> = group.takers(port).map(str::to_owned).collect();
+                for op in group.ops.iter_mut().filter(|op| takers.contains(&op.path)) {
+                    let found = op.inputs.iter_mut().find(|item| item.name == port);
+                    if let Some(item) = found {
+                        defaults::set(item, default, &self.base)
+                            .map_err(|why| format!("step {path}: input {port}: {why}"))?;
+                    }
+                }
+            }
             for input in &step.inputs {
                 let port = short_name(&input.id);
                 let [source] = input.source.as_slice() else {
@@ -148,8 +167,8 @@ impl Lowerer {
 fn plain(step: &Step) -> Result<(), String> {
     for input in &step.inputs {
         let port = short_name(&input.id);
-        if input.value_from.is_some() || input.default.is_some() {
-            return Err(format!("the valueFrom or default of input {port}"));
+        if input.value_from.is_some() {
+            return Err(format!("the valueFrom of input {port}"));
         }
         if input.source.len() > 1 || input.link_merge.is_some() || input.pick_value.is_some() {
             return Err(format!("several sources for input {port}"));

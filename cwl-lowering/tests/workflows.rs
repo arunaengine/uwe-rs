@@ -112,3 +112,23 @@ fn lowers_when_branches() {
         optional
     );
 }
+
+#[test]
+fn lowers_input_defaults() {
+    let lowering = lowered("defaults.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let main = graph(&lowering, "main");
+    let name = json!({"name": "name", "type": "string", "default": "world"});
+    assert_eq!(main["inputs"][0], name, "a graph input keeps its type");
+    let text = json!({"class": "File", "location": "echo.cwl"});
+    assert_eq!(main["inputs"][2]["default"], text, "relative to the base");
+    let ops = main["ops"].as_array().unwrap();
+    let op = |path: &str| ops.iter().find(|op| op["path"] == path).unwrap();
+    let again = json!([
+        {"name": "greeting", "type": "string", "default": "hi"},
+        {"name": "name", "type": "string", "default": "there"}
+    ]);
+    assert_eq!(op("again")["inputs"], again, "the step defaults win");
+    let say = json!({"name": "greeting", "type": "string", "default": "hello"});
+    assert_eq!(op("say")["inputs"][0], say, "the tool default");
+}

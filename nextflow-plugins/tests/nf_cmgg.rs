@@ -229,6 +229,29 @@ fn follows_settings() {
     );
 }
 
+#[test]
+fn keeps_sheets_inside() {
+    let launch = tempfile::tempdir().expect("a folder");
+    let mut observers = activate(launch.path(), "");
+    let absolute = launch.path().join("absolute");
+    let samples = format!(
+        "sample,tag,kind,reads\nS1,../../escape,DNA,5\nS2,{},RNA,9\nS10,wes,DNA,7\n",
+        absolute.display()
+    );
+    std::fs::write(launch.path().join("samples.csv"), samples).expect("writes");
+    run(
+        launch.path(),
+        &mut observers,
+        "samples.csv",
+        "results",
+        true,
+    );
+    assert!(!launch.path().join("escape").exists(), "a .. value");
+    assert!(!absolute.exists(), "an absolute value");
+    let sheets = launch.path().join("results/samplesheets");
+    assert!(sheets.join("wes/all.yaml").is_file(), "a plain value");
+}
+
 /// Writes the files that a task's script writes with `>`, in a folder of its own, as a
 /// local executor would; `metrics.tsv` gets the yields of the probe.
 struct Writer(PathBuf);

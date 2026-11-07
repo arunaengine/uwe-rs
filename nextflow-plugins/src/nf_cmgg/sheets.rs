@@ -199,9 +199,12 @@ impl Collector {
             groups.entry(group).or_default().push(entry);
         }
         for (group, entries) in &groups {
-            let directory = match group.is_empty() {
-                true => self.location.clone(),
-                false => self.location.join(group),
+            let directory = match group_folder(&self.location, group) {
+                Ok(directory) => directory,
+                Err(message) => {
+                    tracing::error!("Skipping samplesheets of '{group}': {message}");
+                    continue;
+                }
             };
             for sheet in &self.worksheet.sheets {
                 tracing::info!("Publishing samplesheet '{}'", sheet.name);
@@ -252,6 +255,23 @@ impl Collector {
             write_yaml(&directory.join(name), failed)?;
         }
         Ok(())
+    }
+}
+
+/// The folder of a `split_by` group below the sample sheet folder. The group comes from the
+/// input, so an absolute path or a `..` part is refused.
+fn group_folder(location: &Path, group: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(group);
+    let inside = (relative.components()).all(|part| {
+        matches!(
+            part,
+            std::path::Component::Normal(_) | std::path::Component::CurDir
+        )
+    });
+    match inside {
+        true if group.is_empty() => Ok(location.to_owned()),
+        true => Ok(location.join(relative)),
+        false => Err("the split_by value is not a plain folder name".into()),
     }
 }
 

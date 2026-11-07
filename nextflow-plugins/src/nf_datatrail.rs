@@ -115,7 +115,13 @@ impl Settings {
                 let filter = (filter.iter())
                     .map(|text| Pattern::new(text).map_err(|error| error.to_string()))
                     .collect::<Result<Vec<_>, _>>()?;
-                prepare(&launch.join(&file), &file, "DAG", overwrite)?;
+                let written = dot_file(Path::new(&file));
+                prepare(
+                    &launch.join(&written),
+                    &written.to_string_lossy(),
+                    "DAG",
+                    overwrite,
+                )?;
                 Some(Plot {
                     rankdir: text(&["plot", "rankdir"]).unwrap_or_else(|| "TB".to_owned()),
                     detailed: flag(&["plot", "detailed"], false),
@@ -180,6 +186,14 @@ fn prepare(path: &Path, shown: &str, name: &str, overwrite: bool) -> Result<(), 
         return Err(format!("Unable to overwrite existing {name} file: {shown}"));
     }
     Ok(())
+}
+
+/// The DOT file that uwe writes for a plot file, which is a `.dot` beside other formats.
+fn dot_file(target: &Path) -> PathBuf {
+    match target.extension().and_then(|extension| extension.to_str()) {
+        Some("dot") => target.to_path_buf(),
+        _ => target.with_extension("dot"),
+    }
 }
 
 /// A file, made with its folders.
@@ -317,16 +331,13 @@ impl Datatrail {
             println!("Rendering datatrail graph to file: {}", plot.file);
             let graph = Graph::of(&self.tasks, plot);
             let target = self.launch.join(&plot.file);
-            let dot = match target.extension().and_then(|extension| extension.to_str()) {
-                Some("dot") => target.clone(),
-                _ => {
-                    tracing::warn!(
-                        "Graphviz is required to render the execution DAG in the given format -- \
-                         See http://www.graphviz.org for more info."
-                    );
-                    target.with_extension("dot")
-                }
-            };
+            let dot = dot_file(&target);
+            if dot != target {
+                tracing::warn!(
+                    "Graphviz is required to render the execution DAG in the given format -- See \
+                     http://www.graphviz.org for more info."
+                );
+            }
             let name = (target
                 .file_stem()
                 .map(|stem| stem.to_string_lossy().into_owned()))

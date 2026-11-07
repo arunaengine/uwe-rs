@@ -94,51 +94,7 @@ pub(crate) fn driver(
             let options = cwl_options(arguments, setup, cancel);
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
-        Language::Argo => {
-            let endpoints = (setup.storage.s3_providers().into_iter())
-                .map(|(provider, prefixes, address)| argo_runtime::Endpoint {
-                    provider,
-                    prefixes,
-                    address,
-                })
-                .collect();
-            let storage = setup.storage.clone();
-            let git = move |source: &argo_runtime::GitSource, folder: &Path| {
-                if source.account && !source.repo.starts_with("https://") {
-                    return Err(format!(
-                        "{} signs in over plain HTTP, which would send the account in clear text; use https",
-                        source.repo
-                    ));
-                }
-                let storage = storage.clone();
-                let lookup =
-                    move |url: &str| storage.account(url).map_err(|error| error.to_string());
-                if source.account && lookup(&source.repo)?.is_none() {
-                    return Err(format!(
-                        "{} signs in; give it an account with an https storage provider of the config file",
-                        source.repo
-                    ));
-                }
-                let fetch = crate::git::Fetch {
-                    url: source.repo.clone(),
-                    reference: source.reference.clone(),
-                    depth: source.depth,
-                    refspecs: source.fetch.clone(),
-                    submodules: source.submodules,
-                    accounts: Some(crate::git::Accounts(std::sync::Arc::new(lookup))),
-                };
-                let stop = std::sync::atomic::AtomicBool::new(false);
-                crate::git::checkout(&fetch, folder, &stop).map(|_| ())
-            };
-            let services = argo_runtime::Services {
-                policy: setup.argo_policy.clone(),
-                locks: setup.argo_locks.clone(),
-                endpoints,
-                resume: Some(resume_folder(run)),
-                git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),
-            };
-            argo_runtime::driver_with(launch, services)
-        }
+        Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
         Language::Wdl => {
             let options = wdl_runtime::Options {
                 image: (arguments.default_image.clone())
@@ -149,6 +105,11 @@ pub(crate) fn driver(
         }
         Language::Wir => {
             let settings = wir_runtime::Settings {
+                // A block runs no `uwe resume` requests: they name the steps of a whole run.
+                argo: argo_runtime::Services {
+                    resume: None,
+                    ..argo_services(run, setup)
+                },
                 cwl: cwl_options(arguments, setup, cancel),
                 nextflow: nextflow::blocks(run, arguments, setup),
                 snakemake: wir_runtime::snakemake::Options {
@@ -160,6 +121,51 @@ pub(crate) fn driver(
             let downloads = cache_directory().join("downloads");
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
         }
+    }
+}
+
+/// The services of Argo runs, and of the Argo blocks of wir runs.
+fn argo_services(run: &str, setup: &Setup) -> argo_runtime::Services {
+    let endpoints = (setup.storage.s3_providers().into_iter())
+        .map(|(provider, prefixes, address)| argo_runtime::Endpoint {
+            provider,
+            prefixes,
+            address,
+        })
+        .collect();
+    let storage = setup.storage.clone();
+    let git = move |source: &argo_runtime::GitSource, folder: &Path| {
+        if source.account && !source.repo.starts_with("https://") {
+            return Err(format!(
+                "{} signs in over plain HTTP, which would send the account in clear text; use https",
+                source.repo
+            ));
+        }
+        let storage = storage.clone();
+        let lookup = move |url: &str| storage.account(url).map_err(|error| error.to_string());
+        if source.account && lookup(&source.repo)?.is_none() {
+            return Err(format!(
+                "{} signs in; give it an account with an https storage provider of the config file",
+                source.repo
+            ));
+        }
+        let fetch = crate::git::Fetch {
+            url: source.repo.clone(),
+            reference: source.reference.clone(),
+            depth: source.depth,
+            refspecs: source.fetch.clone(),
+            submodules: source.submodules,
+            accounts: Some(crate::git::Accounts(std::sync::Arc::new(lookup))),
+        };
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        crate::git::checkout(&fetch, folder, &stop).map(|_| ())
+    };
+    argo_runtime::Services {
+        policy: setup.argo_policy.clone(),
+        locks: setup.argo_locks.clone(),
+        endpoints,
+        resume: Some(resume_folder(run)),
+        git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),
     }
 }
 

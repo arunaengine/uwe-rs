@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+argo-runtime.workspace = true
 cwl-parser.workspace = true
 cwl-runtime.workspace = true
 input-schema.workspace = true

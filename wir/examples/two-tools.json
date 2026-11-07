@@ -1,0 +1,55 @@
+{
+  "wir_version": "0.1",
+  "sources": [
+    { "id": "workflow", "language": "cwl", "location": "sort-head.cwl", "version": "v1.2" }
+  ],
+  "graphs": [
+    {
+      "name": "main",
+      "inputs": [
+        { "name": "text", "type": { "file": { "format": "http://edamontology.org/format_2330" } } },
+        { "name": "lines", "type": "int" }
+      ],
+      "outputs": [{ "name": "top", "type": { "file": {} } }],
+      "ops": [
+        {
+          "path": "sort",
+          "kind": {
+            "task": {
+              "image": "docker.io/library/debian:12-slim",
+              "command": ["sort", { "input": "text" }],
+              "captures": [{ "output": "sorted", "from": "stdout" }]
+            }
+          },
+          "inputs": [{ "name": "text", "type": { "file": {} } }],
+          "outputs": [{ "name": "sorted", "type": { "file": {} } }],
+          "attributes": { "resources": { "cpus": 1, "memory": 268435456 }, "retry": 1 },
+          "origin": { "source": "workflow", "at": "steps/sort" }
+        },
+        {
+          "path": "head",
+          "kind": {
+            "task": {
+              "image": "docker.io/library/debian:12-slim",
+              "command": ["head", "-n", { "input": "lines" }, { "input": "sorted" }],
+              "captures": [{ "output": "top", "from": "stdout" }]
+            }
+          },
+          "inputs": [
+            { "name": "sorted", "type": { "file": {} } },
+            { "name": "lines", "type": "int" }
+          ],
+          "outputs": [{ "name": "top", "type": { "file": {} } }],
+          "origin": { "source": "workflow", "at": "steps/head" }
+        }
+      ],
+      "edges": [
+        { "from": { "port": "text" }, "to": { "op": "sort", "port": "text" } },
+        { "from": { "op": "sort", "port": "sorted" }, "to": { "op": "head", "port": "sorted" } },
+        { "from": { "port": "lines" }, "to": { "op": "head", "port": "lines" } },
+        { "from": { "op": "head", "port": "top" }, "to": { "port": "top" } }
+      ]
+    }
+  ],
+  "entry": "main"
+}

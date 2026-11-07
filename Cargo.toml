@@ -33,6 +33,7 @@ members = [
     "task-model",
     "task-runner",
     "tes-executor",
+    "wir",
     "workflow-graph",
 ]
 

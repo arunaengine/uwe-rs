@@ -362,6 +362,8 @@ fn clean_requires_rule() {
         "nomad/",
         "htcondor/",
         "pbs/",
+        "jarvice/",
+        "wr/",
     ]
     .map(|folder| scratch.join(format!("{folder}{earlier}-1-1")));
     let staying = [scratch.join("slurm/images"), scratch.join("slurm/1-2-3-4")];
@@ -385,7 +387,7 @@ fn clean_requires_rule() {
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("It keeps what run"), "{output}");
     assert!(
-        output.contains("scratch folders of runs that ended: 11 folders"),
+        output.contains("scratch folders of runs that ended: 13 folders"),
         "{output}"
     );
     let line = "answers of agent tasks that runs ask the model for again: 1 file (16 bytes)";
@@ -399,7 +401,7 @@ fn clean_requires_rule() {
     let (code, output) = uwe(root.path(), &cache, &arguments);
     assert_eq!(code, 0, "{output}");
     assert!(
-        output.contains("Removed 0 results, 0 files and 11 scratch folders."),
+        output.contains("Removed 0 results, 0 files and 13 scratch folders."),
         "{output}"
     );
     assert!(

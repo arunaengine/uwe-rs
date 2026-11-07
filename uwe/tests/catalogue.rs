@@ -106,7 +106,7 @@ fn prepares_installed_preset() {
     assert_eq!(catalogue.list()["version"], 1);
     let executors = &catalogue.list()["capabilities"]["executors"];
     assert_eq!(executors["tes"], json!([]));
-    for name in ["slurm", "htcondor", "pbs", "nomad"] {
+    for name in ["slurm", "htcondor", "pbs", "nomad", "wr"] {
         assert_eq!(executors[name], json!(["offline"]), "{name}");
     }
     for name in [
@@ -115,6 +115,7 @@ fn prepares_installed_preset() {
         "azure-batch",
         "flyte",
         "snowflake",
+        "jarvice",
     ] {
         assert_eq!(executors[name], json!([]), "{name}");
     }

@@ -235,7 +235,8 @@ pub(super) fn read(config: &Config) -> Result<Settings, String> {
         },
         intensity,
         zone: zone.clone(),
-        token,
+        // A given `ci` wins over live values, so the API is not asked then.
+        token: token.filter(|_| ci.is_none()),
         options: Vec::new(),
     };
     let mut settings = settings;
@@ -322,7 +323,38 @@ fn stamp(millis: i64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use nextflow_evaluator::interpreter::Host;
+
     use super::*;
+
+    struct Quiet;
+
+    impl Host for Quiet {
+        fn print(&mut self, _: &str) {}
+    }
+
+    fn loaded(text: &str) -> Config {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("nextflow.config");
+        std::fs::write(&file, text).expect("a config");
+        let settings = nextflow_config::Options {
+            profiles: None,
+            params: nextflow_evaluator::value::Value::map([]),
+            project_dir: "/project".into(),
+            launch_dir: "/launch".into(),
+            work_dir: "/work".into(),
+        };
+        nextflow_config::load(&[file], &settings, &mut Quiet).expect("loads")
+    }
+
+    /// A given `ci` wins over the live values of an API key.
+    #[test]
+    fn keeps_given_intensity() {
+        let given = read(&loaded("co2footprint { ci = 100; emApiKey = 'key' }")).expect("settings");
+        assert_eq!((given.intensity, given.token), (100.0, None));
+        let live = read(&loaded("co2footprint { emApiKey = 'key' }")).expect("settings");
+        assert_eq!(live.token.as_deref(), Some("key"));
+    }
 
     #[test]
     fn stamps_like_nextflow() {

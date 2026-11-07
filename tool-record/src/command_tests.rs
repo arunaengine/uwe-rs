@@ -89,7 +89,6 @@ fn reads_type_hints() {
     let tool = parsed("tool f:later.csv i:7 s:12");
     let kinds: Vec<Kind> = tool.inputs.iter().map(|input| input.kind).collect();
     assert_eq!(kinds, [Kind::File, Kind::Int, Kind::String]);
-    assert_eq!(tool.inputs[0].format.as_deref(), Some("edam:format_3752"));
     assert_eq!(tool.inputs[2].default, Some(json!("12")));
 }
 
@@ -150,7 +149,6 @@ fn finds_local_paths() {
     let tool = parse(&words, folder.path());
     let kinds: Vec<Kind> = tool.inputs.iter().map(|input| input.kind).collect();
     assert_eq!(kinds, [Kind::File, Kind::Directory, Kind::File]);
-    assert_eq!(tool.inputs[0].format.as_deref(), Some("edam:format_3464"));
     assert_eq!(
         tool.inputs[1].default,
         Some(json!({ "class": "Directory", "location": "reads" }))

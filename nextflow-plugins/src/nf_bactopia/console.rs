@@ -4,10 +4,8 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;
-use std::rc::Rc;
 
-use nextflow_evaluator::exception::Exception;
-use nextflow_evaluator::interpreter::{Error, parse_json};
+use nextflow_evaluator::interpreter::parse_json;
 use nextflow_evaluator::value::{State as ObjectState, Value, tree};
 
 use super::param;
@@ -25,17 +23,15 @@ const CORE: [&str; 7] = [
     "configFiles",
 ];
 
-/// Prints the banner, or the help and ends the run when `--help` or `--help_all` is set.
-pub(crate) fn start(context: &mut Context) -> Result<(), Error> {
+/// Prints the banner, or the help when `--help` or `--help_all` is set; `false` then ends the
+/// run with success before its script, as the plugin exits with code 0.
+pub(crate) fn start(context: &mut Context) -> bool {
     let all = param(context, "help_all").is_some();
     let mut text = header(context);
     if all || param(context, "help").is_some() {
         text.push_str(&help(context, all));
         context.host.print(&text);
-        return Err(Error::Thrown {
-            exception: Rc::new(Exception::new("AbortOperationException", "")),
-            span: Default::default(),
-        });
+        return false;
     }
     let groups = changed(context);
     let width = (groups.iter().flat_map(|(_, params)| params.iter()))
@@ -65,7 +61,7 @@ pub(crate) fn start(context: &mut Context) -> Result<(), Error> {
     text.push_str("\n!! Only displaying parameters that differ from the defaults !!\n");
     text.push_str(&format!("{}\n\n", "-".repeat(68)));
     context.host.print(&text);
-    Ok(())
+    true
 }
 
 /// Prints the execution summary of the run, which the help ended early does not have.

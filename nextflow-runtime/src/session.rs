@@ -34,8 +34,9 @@ impl Session<'_> {
         }
     }
 
-    /// Runs what the plugins of the config do before the script, like nf-schema's help.
-    pub(crate) fn start_plugins(&mut self) -> Result<(), Error> {
+    /// Runs what the plugins of the config do before the script, like nf-schema's help;
+    /// `false` when a plugin ended the run.
+    pub(crate) fn start_plugins(&mut self) -> Result<bool, Error> {
         nextflow_plugins::start(&mut self.plugin_context())
     }
 

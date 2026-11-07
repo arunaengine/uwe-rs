@@ -15,3 +15,9 @@ publish.workspace = true
 cwl-parser.workspace = true
 serde_json.workspace = true
 wir.workspace = true
+
+[dev-dependencies]
+cwl-runtime.workspace = true
+tempfile.workspace = true
+wir-runtime.workspace = true
+workflow-graph.workspace = true

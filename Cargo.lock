@@ -1519,8 +1519,12 @@ name = "cwl-lowering"
 version = "0.1.0"
 dependencies = [
  "cwl-parser",
+ "cwl-runtime",
  "serde_json",
+ "tempfile",
  "wir",
+ "wir-runtime",
+ "workflow-graph",
 ]
 
 [[package]]

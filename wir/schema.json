@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wir document",
+  "description": "The JSON form of a wir 0.1 document. It checks the shape and the name patterns; the wir verifier checks types, edges, producers, cycles and op fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["wir_version", "graphs", "entry"],
+  "properties": {
+    "wir_version": { "const": "0.1" },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
+    "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
+    "entry": { "$ref": "#/$defs/name" }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+    "path": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "names": { "type": "array", "items": { "$ref": "#/$defs/name" } },
+    "language": { "enum": ["cwl", "nextflow", "snakemake", "argo", "wdl"] },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "language", "location"],
+      "properties": {
+        "id": { "$ref": "#/$defs/name" },
+        "language": { "$ref": "#/$defs/language" },
+        "location": { "type": "string" },
+        "version": { "type": "string" },
+        "digest": { "type": "string" }
+      }
+    },
+    "type_def": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": { "name": { "$ref": "#/$defs/name" }, "type": { "$ref": "#/$defs/type" } }
+    },
+    "type": {
+      "oneOf": [
+        { "enum": ["bool", "int", "float", "string", "directory", "dynamic"] },
+        { "$ref": "#/$defs/file_type" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["record"],
+          "properties": { "record": { "type": "array", "items": { "$ref": "#/$defs/field" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["array"],
+          "properties": {
+            "array": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["items"],
+              "properties": {
+                "items": { "$ref": "#/$defs/type" },
+                "nonempty": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["map"],
+          "properties": {
+            "map": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "value"],
+              "properties": {
+                "key": { "enum": ["string", "int", "bool"] },
+                "value": { "$ref": "#/$defs/type" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["optional"],
+          "properties": { "optional": { "$ref": "#/$defs/type" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["union"],
+          "properties": { "union": { "type": "array", "items": { "$ref": "#/$defs/type" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enum"],
+          "properties": { "enum": { "type": "array", "items": { "type": "string" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tuple"],
+          "properties": { "tuple": { "type": "array", "items": { "$ref": "#/$defs/type" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["named"],
+          "properties": { "named": { "$ref": "#/$defs/name" } }
+        }
+      ]
+    },
+    "file_type": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file"],
+      "properties": {
+        "file": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "format": { "type": "string" },
+            "secondary_files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["pattern"],
+                "properties": {
+                  "pattern": { "type": "string" },
+                  "required": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": { "name": { "type": "string" }, "type": { "$ref": "#/$defs/type" } }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "type": { "$ref": "#/$defs/type" },
+        "flow": { "enum": ["value", "stream"] }
+      }
+    },
+    "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "inputs": { "$ref": "#/$defs/ports" },
+        "outputs": { "$ref": "#/$defs/ports" },
+        "ops": { "type": "array", "items": { "$ref": "#/$defs/op" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": { "from": { "$ref": "#/$defs/endpoint" }, "to": { "$ref": "#/$defs/endpoint" } }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": { "op": { "$ref": "#/$defs/path" }, "port": { "$ref": "#/$defs/name" } }
+    },
+    "op": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "kind": { "$ref": "#/$defs/kind" },
+        "inputs": { "$ref": "#/$defs/ports" },
+        "outputs": { "$ref": "#/$defs/ports" },
+        "after": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+        "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
+        "attributes": { "$ref": "#/$defs/attributes" },
+        "origin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": { "source": { "$ref": "#/$defs/name" }, "at": { "type": "string" } }
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "on"],
+      "properties": {
+        "op": { "$ref": "#/$defs/path" },
+        "on": {
+          "type": "array",
+          "items": { "enum": ["succeeded", "failed", "errored", "skipped", "omitted"] }
+        }
+      }
+    },
+    "effect": {
+      "oneOf": [
+        { "const": "nondeterministic" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publish"],
+          "properties": { "publish": { "type": "string" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["external"],
+          "properties": { "external": { "type": "string" } }
+        }
+      ]
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cache": { "enum": ["default", "never", "resume"] },
+        "place": { "type": "string" },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpus": { "$ref": "#/$defs/count" },
+            "memory": { "$ref": "#/$defs/count" },
+            "disk": { "$ref": "#/$defs/count" },
+            "gpus": { "$ref": "#/$defs/count" }
+          }
+        },
+        "retry": { "$ref": "#/$defs/count" },
+        "time": { "$ref": "#/$defs/count" }
+      }
+    },
+    "kind": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "task": { "$ref": "#/$defs/task" },
+        "call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["graph"],
+          "properties": { "graph": { "$ref": "#/$defs/name" } }
+        },
+        "native": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "language"],
+          "properties": {
+            "source": { "$ref": "#/$defs/name" },
+            "language": { "$ref": "#/$defs/language" },
+            "entry": { "type": "string" }
+          }
+        },
+        "expr": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["language", "code"],
+          "properties": { "language": { "type": "string" }, "code": { "type": "string" } }
+        },
+        "map": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body", "over"],
+          "properties": {
+            "body": { "$ref": "#/$defs/name" },
+            "over": { "$ref": "#/$defs/names" },
+            "mode": { "enum": ["dot", "flat_cross", "nested_cross"] },
+            "parallelism": { "$ref": "#/$defs/count" },
+            "min_success": { "$ref": "#/$defs/count" }
+          }
+        },
+        "collect": { "$ref": "#/$defs/empty" },
+        "filter": { "$ref": "#/$defs/body" },
+        "flatten": { "$ref": "#/$defs/empty" },
+        "merge": { "$ref": "#/$defs/empty" },
+        "zip": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "remainder": { "type": "boolean" } }
+        },
+        "cross": { "$ref": "#/$defs/empty" },
+        "group": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["by"],
+          "properties": {
+            "by": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+            "size": { "$ref": "#/$defs/count" },
+            "remainder": { "type": "boolean" }
+          }
+        },
+        "join": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["by"],
+          "properties": {
+            "by": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+            "remainder": { "type": "boolean" },
+            "fail_on_mismatch": { "type": "boolean" },
+            "fail_on_duplicate": { "type": "boolean" }
+          }
+        },
+        "branch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body", "condition"],
+          "properties": {
+            "body": { "$ref": "#/$defs/name" },
+            "condition": { "$ref": "#/$defs/name" }
+          }
+        },
+        "select": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule"],
+          "properties": { "rule": { "enum": ["first", "only", "all"] } }
+        },
+        "loop": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body", "condition"],
+          "properties": {
+            "body": { "$ref": "#/$defs/name" },
+            "condition": { "$ref": "#/$defs/name" },
+            "carry": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["output", "input"],
+                "properties": {
+                  "output": { "$ref": "#/$defs/name" },
+                  "input": { "$ref": "#/$defs/name" }
+                }
+              }
+            }
+          }
+        },
+        "dynamic": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["plan"],
+          "properties": { "plan": { "$ref": "#/$defs/name" } }
+        }
+      }
+    },
+    "empty": { "type": "object", "additionalProperties": false },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body"],
+      "properties": { "body": { "$ref": "#/$defs/name" } }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "image": { "type": "string" },
+        "command": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["input"],
+                "properties": { "input": { "$ref": "#/$defs/name" } }
+              }
+            ]
+          }
+        },
+        "captures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["output", "from"],
+            "properties": {
+              "output": { "$ref": "#/$defs/name" },
+              "from": {
+                "oneOf": [
+                  { "enum": ["stdout", "stderr"] },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["glob"],
+                    "properties": { "glob": { "type": "string" } }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "success_codes": { "type": "array", "items": { "type": "integer" } }
+      }
+    }
+  }
+}

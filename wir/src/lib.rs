@@ -11,7 +11,7 @@ mod value;
 mod verify;
 
 pub use document::{
-    Document, Edge, Endpoint, Graph, Language, ParseError, Port, Source, VERSION, parse,
+    Document, Edge, Endpoint, Graph, Language, ParseError, Port, SCHEMA, Source, VERSION, parse,
 };
 pub use flow::Flow;
 pub use op::{

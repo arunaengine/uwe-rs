@@ -11,6 +11,9 @@ use crate::types::{Type, TypeDef};
 /// The wir version this crate reads and writes. The README states the versioning rule.
 pub const VERSION: &str = "0.1";
 
+/// The JSON Schema (draft 2020-12) of the JSON form of this version.
+pub const SCHEMA: &str = include_str!("../schema.json");
+
 /// One wir document. Its JSON form is described by [`crate::SCHEMA`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

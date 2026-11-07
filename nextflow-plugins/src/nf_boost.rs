@@ -12,6 +12,7 @@ use nextflow_evaluator::value::{Key, Native, Object, State as ObjectState, Value
 
 use crate::catalogue::{Kind, Plugin, State};
 use crate::observer::Observer;
+use crate::service::safe_url;
 use crate::{Context, native, object};
 
 /// The functions run as script code of `nf_boost.nf`, `toYaml` and `request` here; `scan` is an
@@ -84,7 +85,7 @@ impl Native for Connection {
     }
 
     fn text(&self) -> String {
-        format!("{}:{}", class(&self.url), self.url)
+        format!("{}:{}", class(&self.url), safe_url(&self.url))
     }
 }
 
@@ -142,8 +143,10 @@ fn answer(connection: &mut Connection) -> Result<&storage::Answer, Error> {
             &connection.headers,
             body,
         );
-        let answer =
-            sent.map_err(|error| thrown(Exception::new("IOException", error.to_string())))?;
+        let answer = sent.map_err(|error| {
+            let message = hidden(&error.to_string(), &connection.url);
+            thrown(Exception::new("IOException", message))
+        })?;
         connection.answer = Some(answer);
     }
     connection
@@ -177,7 +180,7 @@ fn methods(
     if !known.contains(&name) {
         return Ok(None);
     }
-    let url = connection.url.clone();
+    let url = safe_url(&connection.url);
     let answer = answer(&mut connection)?;
     let header = |wanted: &str| {
         let found = answer
@@ -223,6 +226,21 @@ fn methods(
         }
         _ => return Ok(None),
     }))
+}
+
+/// A message without the user info and query of an address, which the HTTP client may print
+/// in another form than the given address.
+fn hidden(message: &str, url: &str) -> String {
+    let mut message = message.replace(url, &safe_url(url));
+    if let Some(start) = url.find(['?', '#']) {
+        message = message.replace(&url[start..], "");
+    }
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split('/').next().unwrap_or_default();
+    if let Some((user, _)) = authority.rsplit_once('@') {
+        message = message.replace(&format!("{user}@"), "");
+    }
+    message
 }
 
 /// An input stream over the bytes of an answer.

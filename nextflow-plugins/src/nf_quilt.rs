@@ -283,6 +283,7 @@ fn push_of(settings: &Settings, address: &Address, start: &Start, end: &End, now
         "pkg": settings.package.clone().unwrap_or_else(|| address.package.clone()),
         "nextflow": "  - **version**: ```26.04.6```",
     });
+    variables.sort_all_objects();
     let message = render(&settings.message, &variables)
         .unwrap_or_else(|| format!("compileMessage.FAILED\n{}", settings.message));
     let message = format!("nf-quilt:{}-{message}", now.day);
@@ -292,6 +293,7 @@ fn push_of(settings: &Settings, address: &Address, start: &Start, end: &End, now
             .unwrap_or_else(|| format!("compileReadme.FAILED\n{template}"));
         files.push(("README_NF_QUILT.md".to_owned(), readme));
     }
+    meta.sort_keys();
     Push {
         address: Address {
             path: String::new(),
@@ -428,7 +430,9 @@ fn pretty(value: &Value, indent: usize) -> String {
         Value::Object(map) if map.is_empty() => "{ }".to_owned(),
         Value::Object(map) => {
             let inner = " ".repeat(indent + 2);
-            let fields: Vec<String> = (map.iter())
+            let mut entries: Vec<_> = map.iter().collect();
+            entries.sort_by(|left, right| left.0.cmp(right.0));
+            let fields: Vec<String> = (entries.into_iter())
                 .map(|(key, value)| {
                     format!(
                         "{inner}{} : {}",

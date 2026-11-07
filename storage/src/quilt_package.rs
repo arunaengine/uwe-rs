@@ -189,8 +189,10 @@ fn manifest(header: &Value, items: &[Entry]) -> (String, String) {
 /// Compact JSON with sorted keys and every character beyond ASCII escaped, as Python's
 /// `json.dumps(sort_keys=True, separators=(',', ':'))` writes it.
 fn canonical(value: &Value) -> String {
+    let mut sorted = value.clone();
+    sorted.sort_all_objects();
     let mut text = String::new();
-    for character in value.to_string().chars() {
+    for character in sorted.to_string().chars() {
         if character.is_ascii() {
             text.push(character);
             continue;

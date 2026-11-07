@@ -225,6 +225,8 @@ fn flatten<'a>(prefix: &str, value: &'a Value, into: &mut Vec<(String, &'a Value
     let Value::Object(entries) = value else {
         return;
     };
+    let mut entries: Vec<_> = entries.iter().collect();
+    entries.sort_by(|left, right| left.0.cmp(right.0));
     for (key, value) in entries {
         let name = if prefix.is_empty() {
             key.clone()

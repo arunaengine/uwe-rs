@@ -362,7 +362,11 @@ fn activate(config: &Config, _: &std::path::Path) -> Result<Option<Box<dyn Obser
 /// `pipeline_info/params.json`: the params, top-level keys sorted.
 fn write_params(start: &Start) {
     let folder = outdir(&start.params, &start.config, Path::new(&start.launch_dir));
-    let text = Json::from(&start.params).pretty();
+    let mut params = start.params.clone();
+    if let Some(map) = params.as_object_mut() {
+        map.sort_keys();
+    }
+    let text = Json::from(&params).pretty();
     let written = folder.and_then(|folder| {
         let folder = folder.join("pipeline_info");
         std::fs::create_dir_all(&folder)

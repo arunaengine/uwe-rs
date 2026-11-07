@@ -45,10 +45,10 @@ fn server(requests: usize) -> String {
             let mut body = vec![0; length];
             reader.read_exact(&mut body).expect("the body");
             let answer = serde_json::json!({
-                "method": method,
-                "path": path,
                 "body": String::from_utf8_lossy(&body),
                 "content_type": header("content-type"),
+                "method": method,
+                "path": path,
                 "x_test": header("x-test"),
             })
             .to_string();

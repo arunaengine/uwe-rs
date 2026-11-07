@@ -227,7 +227,7 @@ impl Connection for Open {
                 Link::Postgres(connection) => {
                     let mut transaction = connection.begin().await?;
                     for row in rows {
-                        let mut query = query(AssertSqlSafe(numbered(statement)));
+                        let mut query = query(AssertSqlSafe(numbered(statement, row)));
                         for value in row {
                             query = match value.clone() {
                                 Datum::Null | Datum::List(_) => query.bind(None::<i32>),
@@ -274,8 +274,9 @@ impl Connection for Open {
     }
 }
 
-/// The statement with PostgreSQL's numbered placeholders for JDBC's `?` outside quotes.
-fn numbered(statement: &str) -> String {
+/// The statement with PostgreSQL's numbered placeholders for JDBC's `?` outside quotes. A
+/// decimal goes as text with a cast to `numeric`, which keeps its digits exactly.
+fn numbered(statement: &str, row: &[Datum]) -> String {
     let (mut text, mut count, mut quote) = (String::new(), 0, None);
     for c in statement.chars() {
         match (c, quote) {
@@ -284,6 +285,9 @@ fn numbered(statement: &str) -> String {
             ('?', None) => {
                 count += 1;
                 text.push_str(&format!("${count}"));
+                if let Some(Datum::Decimal(_)) = row.get(count - 1) {
+                    text.push_str("::numeric");
+                }
                 continue;
             }
             _ => {}
@@ -565,8 +569,13 @@ mod tests {
     fn numbers_placeholders() {
         let statement = "insert into t ( a,b ) values ( ?,'?' || ? )";
         assert_eq!(
-            numbered(statement),
+            numbered(statement, &[]),
             "insert into t ( a,b ) values ( $1,'?' || $2 )"
+        );
+        let row = [Datum::Text("x".into()), Datum::Decimal("12.3400".into())];
+        assert_eq!(
+            numbered("insert into t values ( ?,? )", &row),
+            "insert into t values ( $1,$2::numeric )"
         );
     }
 

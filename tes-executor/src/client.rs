@@ -298,8 +298,12 @@ impl Client {
     }
 
     pub(crate) fn identity(&self) -> String {
-        let bytes =
-            serde_json::to_vec(&(&self.token, &self.basic)).expect("authentication strings encode");
+        // Without an API key the fingerprint stays as before, so older journals still match.
+        let bytes = match &self.api_key {
+            None => serde_json::to_vec(&(&self.token, &self.basic)),
+            Some(key) => serde_json::to_vec(&(&self.token, &self.basic, key)),
+        };
+        let bytes = bytes.expect("authentication strings encode");
         task_model::Digest::sha256(&bytes).hex().to_owned()
     }
 
@@ -561,6 +565,30 @@ mod tests {
             "the key went to another host"
         );
         assert!(matches!(answer, Err(TesError::Status { status: 307, .. })));
+    }
+
+    #[test]
+    fn separates_key_identities() {
+        let plain = Client::new("http://localhost:1", None).unwrap();
+        let keyed = |name: &str, key: &str, header: bool| {
+            let client = Client::new("http://localhost:1", None).unwrap();
+            client
+                .with_api_key(name.into(), key.into(), header)
+                .identity()
+        };
+        let first = keyed("X-Api-Key", "made-up-one", true);
+        assert_ne!(first, keyed("X-Api-Key", "made-up-two", true));
+        assert_ne!(first, keyed("X-Other-Key", "made-up-one", true));
+        assert_ne!(first, keyed("X-Api-Key", "made-up-one", false));
+        assert_ne!(first, plain.identity());
+        assert!(!first.contains("made-up"));
+        let before = serde_json::to_vec(&(None::<String>, None::<(String, String)>)).unwrap();
+        let before = task_model::Digest::sha256(&before).hex().to_owned();
+        assert_eq!(
+            plain.identity(),
+            before,
+            "journals without a key keep their identity"
+        );
     }
 
     #[test]

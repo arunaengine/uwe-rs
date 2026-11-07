@@ -46,6 +46,7 @@ pub fn executor(
                 .map(|_| ObjectStage::configured(store.clone(), &storage, settings))
                 .transpose()?;
             Ok(TesBackend {
+                run: run.into(),
                 client,
                 scratch: scratch.clone(),
                 configs: Default::default(),

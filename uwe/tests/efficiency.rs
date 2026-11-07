@@ -186,6 +186,7 @@ fn tes_groups_tasks() {
     let store = content_store::Store::local(&folder.join("store")).expect("a store");
     let image = "debian:stable-slim";
     let backend = tes_executor::TesBackend {
+        run: String::new(),
         client: tes_executor::Client::new(&server, None).expect("a client"),
         scratch: folder.join("scratch"),
         // Funnel runs images of this machine, whose configs no registry needs to give.
@@ -288,6 +289,7 @@ fn routes_near_inputs() {
     }
     let image = "debian:stable-slim";
     let backend = |server: &str| tes_executor::TesBackend {
+        run: String::new(),
         client: tes_executor::Client::new(server, None).expect("a client"),
         scratch: folder.join("scratch"),
         configs: executor::registry::ImageConfigs::known([(image.into(), Default::default())]),

@@ -20,6 +20,8 @@ pub struct Local {
     pub holder: Holder,
     pub preparing: Arc<Semaphore>,
     pub secrets: std::collections::BTreeMap<String, config_file::Secret>,
+    /// The Nextflow secret store that task secrets come from after `secrets`, if any.
+    pub secret_store: Option<std::path::PathBuf>,
     /// Where the values of the variables that a job names come from.
     pub variables: config_file::SecretValues,
 }
@@ -231,7 +233,8 @@ impl Backend for Local {
         else {
             return self.backend.run(job, cancel).await;
         };
-        let file = crate::nextflow::secret_file(names, &self.secrets)?;
+        let file =
+            crate::nextflow::secret_file(names, &self.secrets, self.secret_store.as_deref())?;
         let mut spec = job.spec.clone();
         spec.environment
             .remove(nextflow_runtime::task::SECRET_NAMES);
@@ -325,6 +328,7 @@ impl<B: Backend> Backend for Remote<B> {
                     holder: self.holder.clone(),
                     preparing: Arc::new(Semaphore::new(1)),
                     secrets: Default::default(),
+                    secret_store: None,
                     variables: Default::default(),
                 })
             })

@@ -140,19 +140,34 @@ pub fn capture(
 /// The value of an output of `r#type` from the files its capture found.
 fn fill(r#type: &Type, found: &[&OutputFile], defs: &[TypeDef]) -> Result<Json, String> {
     match resolve(r#type, defs) {
-        Some(Type::Array(_)) => Ok(Json::Array(found.iter().map(|file| entry(file)).collect())),
+        Some(Type::Array(array)) => {
+            let format = declared_format(&array.items, defs);
+            Ok(Json::Array(
+                found.iter().map(|file| entry(file, format)).collect(),
+            ))
+        }
         Some(Type::Optional(_)) if found.is_empty() => Ok(Json::Null),
         Some(Type::Optional(inner)) => fill(inner, found, defs),
         _ => match found {
-            [one] => Ok(entry(one)),
+            [one] => Ok(entry(one, declared_format(r#type, defs))),
             [] => Err("no file matched".into()),
             _ => Err(format!("{} files matched one value", found.len())),
         },
     }
 }
 
-/// A File or Directory value of a file that a task made.
-fn entry(file: &OutputFile) -> Json {
+/// The format that a File type declares, also through an optional type.
+fn declared_format<'a>(r#type: &'a Type, defs: &'a [TypeDef]) -> Option<&'a str> {
+    match resolve(r#type, defs)? {
+        Type::File(file) => file.format.as_deref(),
+        Type::Optional(inner) => declared_format(inner, defs),
+        _ => None,
+    }
+}
+
+/// A File or Directory value of a file that a task made, with the format that its type
+/// declares.
+fn entry(file: &OutputFile, format: Option<&str>) -> Json {
     let class = if file.directory { "Directory" } else { "File" };
     let basename = file
         .path
@@ -166,6 +181,9 @@ fn entry(file: &OutputFile) -> Json {
     }
     if let (false, Some(digest)) = (file.directory, &file.digest) {
         value["checksum"] = json!(digest);
+    }
+    if let (false, Some(format)) = (file.directory, format) {
+        value["format"] = json!(format);
     }
     value
 }

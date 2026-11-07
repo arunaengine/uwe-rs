@@ -232,3 +232,20 @@ fn refuses_output_clashes() {
     assert!(workflow_graph::Driver::results(&driver).is_none());
     assert!(!folder.path().join("out/result.txt").exists());
 }
+
+#[test]
+fn formats_captured_files() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut executor = scripted(folder.path(), |_| 0, true);
+    let format = "http://edamontology.org/format_2330";
+    let (driver, execution) = run(folder.path(), &mut executor, |document| {
+        let graph = &mut document["graphs"][0];
+        graph["outputs"][0]["type"] = json!({"file": {"format": format}});
+        for op in graph["ops"].as_array_mut().unwrap() {
+            op["outputs"][0]["type"] = json!({"file": {"format": format}});
+        }
+    });
+    execution.into_result().unwrap();
+    let top = &workflow_graph::Driver::results(&driver).unwrap()["top"];
+    assert_eq!(top["format"], format, "{top}");
+}

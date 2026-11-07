@@ -229,3 +229,41 @@ fn exports_typed_outputs() {
     assert_eq!(all["location"], results["scatter_names.all"]);
     assert!(exported["count"].is_i64(), "{exported}");
 }
+
+/// Writes its words with `write_lines` for a task that reads them.
+const WRITTEN: &str = "version 1.1\n\ntask show {\n  input { File lines }\n  \
+    command <<< cat ~{lines} >>>\n  output { String said = read_string(stdout()) }\n}\n\n\
+    workflow written {\n  input { Array[String] words }\n  \
+    call show { input: lines = write_lines(words) }\n}\n";
+
+#[test]
+fn keeps_scratch_apart() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    std::fs::write(folder.path().join("written.wdl"), WRITTEN).expect("writes the document");
+    let mut drivers = Vec::new();
+    let mut tasks = Vec::new();
+    for word in ["first", "second"] {
+        let inputs = folder.path().join(format!("{word}.json"));
+        let given = json!({"written.words": [word]}).to_string();
+        std::fs::write(&inputs, given).expect("writes the inputs");
+        let launch = Launch {
+            target: folder.path().join("written.wdl"),
+            inputs: Some(inputs),
+            scratch: folder.path().join("scratch"),
+            ..Launch::default()
+        };
+        let mut driver = WdlDriver::new(&launch, Options::default()).expect("a driver");
+        tasks.push(driver.start().expect("the first tasks"));
+        drivers.push(driver);
+    }
+    for (word, started) in ["first", "second"].into_iter().zip(tasks) {
+        let [task] = started.as_slice() else {
+            panic!("one task: {started:?}");
+        };
+        let written = (task.inputs.iter())
+            .find(|input| input.source.contains("written"))
+            .expect("the written file");
+        let text = std::fs::read_to_string(&written.source).expect("reads the written file");
+        assert_eq!(text, format!("{word}\n"), "{}", written.source);
+    }
+}

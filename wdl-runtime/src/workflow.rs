@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::PathBuf;
 
 use indexmap::IndexMap;
 use wdl_analysis::Document;
@@ -31,8 +30,9 @@ pub struct Run {
     calls: HashMap<TaskId, Call>,
     next: u64,
     settings: Settings,
-    /// Where files that the workflow writes itself go.
-    scratch: PathBuf,
+    /// Where files that the workflow writes itself go, a folder of this run alone that is
+    /// removed when the run is dropped.
+    scratch: tempfile::TempDir,
     written: usize,
     /// Inputs of the calls of the main workflow from the input file, by call name.
     nested: BTreeMap<String, BTreeMap<String, Value>>,
@@ -112,7 +112,7 @@ enum Step {
 }
 
 impl Run {
-    pub fn new(settings: Settings, scratch: PathBuf, keep_going: bool) -> Self {
+    pub fn new(settings: Settings, scratch: tempfile::TempDir, keep_going: bool) -> Self {
         Run {
             frames: Vec::new(),
             blocks: Vec::new(),
@@ -454,7 +454,7 @@ impl Environment for Scope<'_> {
     }
 
     fn write(&mut self, content: String) -> Result<Value, Error> {
-        let folder = self.run.scratch.join("written");
+        let folder = self.run.scratch.path().join("written");
         std::fs::create_dir_all(&folder).map_err(|error| Error::failed(error.to_string()))?;
         let path = folder.join(self.run.written.to_string());
         self.run.written += 1;

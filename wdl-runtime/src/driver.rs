@@ -72,10 +72,14 @@ impl WdlDriver {
             simulated: launch.simulated,
             files: Arc::new(LocalFiles),
         };
-        let scratch = match launch.scratch.as_os_str().is_empty() {
+        let base = match launch.scratch.as_os_str().is_empty() {
             true => std::env::temp_dir().join("uwe-wdl"),
             false => launch.scratch.join("wdl"),
         };
+        // Blocks and runs can share the scratch folder, so each driver writes in its own.
+        let scratch = std::fs::create_dir_all(&base)
+            .and_then(|()| tempfile::Builder::new().prefix("driver-").tempdir_in(&base))
+            .map_err(|error| DriverError::new(format!("cannot make a scratch folder: {error}")))?;
         Ok(WdlDriver {
             launch: launch.clone(),
             unit,

@@ -635,12 +635,12 @@ impl Driver for WirDriver {
 
 /// Delivers the files and folders of a result value that are not in the output folder yet,
 /// like those of task ops, to `root` by their basenames, and names them there. `places` holds
-/// the source of each place in `root`; two sources for one place fail before any delivery.
+/// the source path of each place in `root`; two sources for one place fail before any delivery.
 fn deliver(
     value: &mut Json,
     root: &Path,
     deliveries: &mut Vec<Delivery>,
-    places: &mut BTreeMap<PathBuf, String>,
+    places: &mut BTreeMap<PathBuf, PathBuf>,
 ) -> Result<(), String> {
     match value {
         Json::Array(items) => {
@@ -665,11 +665,11 @@ fn deliver(
                     .unwrap_or("output");
                 let inside = local.starts_with(root);
                 let place = match inside {
-                    true => local,
+                    true => local.clone(),
                     false => root.join(name),
                 };
-                if let Some(other) = places.insert(place.clone(), location.clone())
-                    && other != location
+                if let Some(other) = places.insert(place.clone(), local.clone())
+                    && other != local
                 {
                     return Err(format!(
                         "two outputs go to {}; give their files different names",

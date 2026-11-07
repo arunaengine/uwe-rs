@@ -249,3 +249,35 @@ fn formats_captured_files() {
     let top = &workflow_graph::Driver::results(&driver).unwrap()["top"];
     assert_eq!(top["format"], format, "{top}");
 }
+
+#[test]
+fn accepts_equal_sources() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = example(folder.path(), |document| {
+        let graph = &mut document["graphs"][0];
+        for name in ["first", "second"] {
+            let port = json!({"name": name, "type": {"file": {}}});
+            graph["inputs"].as_array_mut().unwrap().push(port.clone());
+            graph["outputs"].as_array_mut().unwrap().push(port);
+            let edge = json!({"from": {"port": name}, "to": {"port": name}});
+            graph["edges"].as_array_mut().unwrap().push(edge);
+        }
+    });
+    let result = folder.path().join("out/result.txt");
+    std::fs::create_dir_all(folder.path().join("out")).unwrap();
+    std::fs::write(&result, "a\n").unwrap();
+    let mut inputs: Json =
+        serde_json::from_str(&std::fs::read_to_string(folder.path().join("inputs.json")).unwrap())
+            .unwrap();
+    let path = result.to_string_lossy().into_owned();
+    inputs["first"] = json!({"class": "File", "location": path});
+    inputs["second"] = json!({"class": "File", "location": format!("file://{path}")});
+    std::fs::write(folder.path().join("inputs.json"), inputs.to_string()).unwrap();
+    let mut executor = scripted(folder.path(), |_| 0, true);
+    let mut driver = driver(&launch);
+    execute("two-tools", &mut driver, &mut executor)
+        .into_result()
+        .unwrap();
+    let results = workflow_graph::Driver::results(&driver).unwrap();
+    assert_eq!(results["first"]["location"].as_str(), Some(path.as_str()));
+}

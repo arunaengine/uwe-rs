@@ -70,7 +70,7 @@ pub fn main_file(target: &Path, language: Language) -> Option<PathBuf> {
     let (names, extension): (&[&str], &str) = match language {
         Language::Nextflow => (&["main.nf"], "nf"),
         Language::Snakemake => (&SNAKEFILES, "smk"),
-        Language::Cwl | Language::Argo => return None,
+        Language::Cwl | Language::Argo | Language::Wir => return None,
     };
     if let Some(name) = names.iter().find(|name| target.join(name).is_file()) {
         return Some(target.join(name));

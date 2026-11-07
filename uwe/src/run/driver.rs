@@ -178,6 +178,7 @@ pub(crate) fn driver(
             };
             argo_runtime::driver_with(launch, services)
         }
+        Language::Wir => Err(DriverError::unsupported("uwe cannot run wir documents yet")),
     }
 }
 

@@ -180,6 +180,13 @@ fn plan(arguments: &Arguments, name: &str, namespace: &str) -> Result<Plan, Fail
             })?;
         mounts.push((claim.to_owned(), path.to_owned()));
     }
+    // The first claim is the shared volume of the task Jobs too; the pod reads this file as
+    // its site config, under the config files of the command line.
+    if let Some((claim, path)) = mounts.first() {
+        let site =
+            format!("[executor.kubernetes.shared_volume]\nclaim = {claim:?}\npath = {path:?}\n");
+        files.insert("config.toml".to_owned(), site);
+    }
     Ok(Plan {
         name: name.to_owned(),
         namespace: namespace.to_owned(),

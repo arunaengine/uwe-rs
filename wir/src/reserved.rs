@@ -13,31 +13,6 @@ pub struct Expr {
     pub code: String,
 }
 
-/// Runs the `body` graph once per item of the inputs in `over`. Open: each scatter mode,
-/// per-round reads of streams and Nextflow `each`, output order, and failure with `min_success`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Map {
-    pub body: String,
-    pub over: Vec<String>,
-    #[serde(default, skip_serializing_if = "Scatter::is_dot")]
-    pub mode: Scatter,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parallelism: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min_success: Option<u32>,
-}
-
-/// How a `map` combines several inputs, as CWL `scatterMethod`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Scatter {
-    #[default]
-    Dot,
-    FlatCross,
-    NestedCross,
-}
-
 /// Turns a stream into one array value once the stream closes. Open: order and what an
 /// error inside the stream does.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -150,12 +125,6 @@ pub struct Carry {
 #[serde(deny_unknown_fields)]
 pub struct Dynamic {
     pub plan: String,
-}
-
-impl Scatter {
-    pub fn is_dot(&self) -> bool {
-        *self == Scatter::Dot
-    }
 }
 
 fn is_false(value: &bool) -> bool {

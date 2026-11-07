@@ -291,6 +291,67 @@ fn stream_files_checked() {
     assert_eq!(only(document), ("main/head".into(), later));
 }
 
+/// A map `each` over the files `texts`, whose body `round` runs one task.
+fn mapped() -> Json {
+    let files = json!({"array": {"items": {"file": {}}}});
+    let round = json!({
+        "name": "round",
+        "inputs": [{"name": "input", "type": {"file": {}}}],
+        "outputs": [{"name": "out", "type": {"file": {}}}],
+        "ops": [task("cat")],
+        "edges": [
+            edge((None, "input"), (Some("cat"), "input")),
+            edge((Some("cat"), "out"), (None, "out"))
+        ]
+    });
+    json!({
+        "wir_version": VERSION,
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "texts", "type": files}],
+            "outputs": [{"name": "outs", "type": files}],
+            "ops": [{
+                "path": "each",
+                "kind": {"map": {"body": "round", "over": ["input"]}},
+                "inputs": [{"name": "input", "type": files}],
+                "outputs": [{"name": "out", "type": files}]
+            }],
+            "edges": [
+                edge((None, "texts"), (Some("each"), "input")),
+                edge((Some("each"), "out"), (None, "outs"))
+            ]
+        }, round],
+        "entry": "main"
+    })
+}
+
+#[test]
+fn map_ports_checked() {
+    assert!(problems(mapped()).is_empty());
+    let mut document = mapped();
+    document["graphs"][0]["ops"][0]["outputs"][0]["type"] = json!({"file": {}});
+    let port = Problem::CallPort {
+        port: "output out".into(),
+        graph: "round".into(),
+    };
+    let found = problems(document);
+    assert!(
+        found
+            .iter()
+            .any(|error| error.at == "main/each" && error.problem == port),
+        "{found:?}"
+    );
+    let mut document = mapped();
+    document["graphs"][0]["ops"][0]["kind"]["map"]["mode"] = json!("nested_cross");
+    assert!(
+        problems(document.clone()).is_empty(),
+        "one input nests once"
+    );
+    document["wir_version"] = json!("0.3");
+    let later = Problem::Later("a map".into(), "0.4".into());
+    assert_eq!(only(document), ("main/each".into(), later));
+}
+
 #[test]
 fn task_outputs_captured() {
     let mut document = base();

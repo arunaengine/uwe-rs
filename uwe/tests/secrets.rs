@@ -22,6 +22,20 @@ const VALUES: [&str; 2] = ["first-run-value", "second-run-value"];
 /// The child process that runs a test reads no site or user config file.
 const CHILD: &str = "UWE_SECRETS_CHILD";
 
+/// The variable that the Nextflow runs read, with `env` and as the key of nf-gpt.
+const KEY: &str = "OPENAI_API_KEY";
+
+/// The value of `KEY` in the environment of the child process.
+const PROCESS_VALUE: &str = "process-value";
+
+/// Writes what `env` gives for `KEY`, then asks nf-gpt, which sends `KEY` as its token.
+const SCRIPT: &str = "include { gptPromptForText } from 'plugin/nf-gpt'\n\
+    workflow {\n  file(params.seen).text = env('OPENAI_API_KEY') ?: 'none'\n  \
+    file(params.answer).text = gptPromptForText('Tell me a joke')\n}\n";
+
+/// A chat completion with one answer, as nf-gpt reads it.
+const ANSWER: &str = r#"{"choices":[{"message":{"role":"assistant","content":"A joke"}}]}"#;
+
 #[test]
 fn keeps_secrets_apart() {
     if std::env::var_os(CHILD).is_none() {
@@ -101,6 +115,93 @@ fn refuses_missing_secret() {
     assert!(server.tokens.lock().unwrap().is_empty());
 }
 
+#[test]
+fn routes_workflow_environment() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("routes_workflow_environment");
+    }
+    let root = tempfile::tempdir().unwrap();
+    let meeting = Arc::new((Mutex::new(0), Condvar::new()));
+    let servers = [0, 1].map(|_| Server::answering(meeting.clone(), ANSWER));
+    let requests = [0, 1].map(|run| {
+        let mut secrets = SecretValues::default();
+        secrets.insert(KEY, VALUES[run]).unwrap();
+        secrets.allow_environment(false);
+        nextflow(&root.path().join(run.to_string()), &servers[run], secrets)
+    });
+    let [first, second] = requests;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (first, second) = runtime.block_on(async { tokio::join!(first.run(), second.run()) });
+    for (run, result) in [first, second].into_iter().enumerate() {
+        let ran = result.unwrap_or_else(|failure| panic!("run {run}: {}", failure.message));
+        assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+        let seen = std::fs::read_to_string(root.path().join(format!("{run}/seen.txt"))).unwrap();
+        assert!(seen == VALUES[run], "env gave run {run} another value");
+        let own = format!("Bearer {}", VALUES[run]);
+        let tokens = servers[run].tokens.lock().unwrap();
+        assert!(!tokens.is_empty(), "run {run} asked nf-gpt nothing");
+        assert!(
+            tokens.iter().all(|token| *token == own),
+            "run {run} sent another key"
+        );
+        assert!(
+            servers[run].met.load(Ordering::SeqCst),
+            "the runs did not overlap"
+        );
+    }
+    // Without a given value and without the environment, the key is not set.
+    let server = Server::answering(Arc::new((Mutex::new(1), Condvar::new())), ANSWER);
+    let mut secrets = SecretValues::default();
+    secrets.allow_environment(false);
+    let folder = root.path().join("unset");
+    let result = runtime.block_on(nextflow(&folder, &server, secrets).run());
+    let message = match result {
+        Ok(ran) => ran
+            .execution
+            .error
+            .map(|error| error.to_string())
+            .unwrap_or_default(),
+        Err(failure) => failure.message,
+    };
+    assert!(message.contains("Missing ChatGPT API key"), "{message}");
+    let seen = std::fs::read_to_string(folder.join("seen.txt")).unwrap();
+    assert_eq!(seen, "none");
+    assert!(server.tokens.lock().unwrap().is_empty());
+    // The command line reads the environment of the process.
+    let folder = root.path().join("process");
+    let result = runtime.block_on(nextflow(&folder, &server, SecretValues::default()).run());
+    let ran = result.unwrap_or_else(|failure| panic!("{}", failure.message));
+    assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+    let seen = std::fs::read_to_string(folder.join("seen.txt")).unwrap();
+    assert_eq!(seen, PROCESS_VALUE);
+    let tokens = server.tokens.lock().unwrap();
+    assert_eq!(*tokens, [format!("Bearer {PROCESS_VALUE}")]);
+}
+
+/// A run of `SCRIPT` in `folder`, with nf-gpt asking `server`.
+fn nextflow(folder: &Path, server: &Server, secrets: SecretValues) -> RunRequest {
+    std::fs::create_dir_all(folder).unwrap();
+    std::fs::write(folder.join("main.nf"), SCRIPT).unwrap();
+    let config = format!(
+        "plugins {{ id 'nf-gpt@0.4.0' }}\ngpt {{ endpoint = '{}' }}\n",
+        server.address
+    );
+    std::fs::write(folder.join("nextflow.config"), config).unwrap();
+    let mut settings = Settings::new(folder.join("main.nf"));
+    let path = |name: &str| json!(folder.join(name).to_string_lossy());
+    settings.params.insert("seen".into(), path("seen.txt"));
+    settings.params.insert("answer".into(), path("answer.txt"));
+    settings.database = Some(folder.join("runs.sqlite"));
+    settings.store = Some(folder.join("store").to_string_lossy().into_owned());
+    settings.output_dir = Some(folder.join("outputs"));
+    settings.cache = false;
+    settings.cache_folder = Some(folder.join("cache"));
+    settings.secrets = secrets;
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    request
+}
+
 /// Runs one test of this file again in a child process without config files, and checks that
 /// its output holds no secret value.
 fn in_child(test: &str) {
@@ -112,6 +213,7 @@ fn in_child(test: &str) {
         .env("XDG_CONFIG_HOME", config.path())
         .env_remove(NAME)
         .env_remove("UWE_TES_TOKEN")
+        .env(KEY, PROCESS_VALUE)
         .output()
         .unwrap();
     let text = [output.stdout, output.stderr].concat();
@@ -191,6 +293,11 @@ struct Server {
 
 impl Server {
     fn start(meeting: Arc<(Mutex<usize>, Condvar)>) -> Server {
+        Server::answering(meeting, r#"{"tasks":[]}"#)
+    }
+
+    /// A server that answers every request with `answer`.
+    fn answering(meeting: Arc<(Mutex<usize>, Condvar)>, answer: &'static str) -> Server {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
         let tokens = Arc::new(Mutex::new(Vec::new()));
@@ -210,7 +317,6 @@ impl Server {
                 if std::mem::take(&mut first) {
                     other.store(meet(&meeting), Ordering::SeqCst);
                 }
-                let answer = r#"{"tasks":[]}"#;
                 let reply = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
                     answer.len()
@@ -240,7 +346,8 @@ fn meet(meeting: &(Mutex<usize>, Condvar)) -> bool {
     !waited.timed_out()
 }
 
-/// The request line and headers, up to the empty line.
+/// The request line and headers, up to the empty line. Reads the body too, so that the
+/// answer does not reset the connection.
 fn read_head(stream: &mut std::net::TcpStream) -> String {
     let mut head = Vec::new();
     let mut buffer = [0; 4096];
@@ -250,5 +357,21 @@ fn read_head(stream: &mut std::net::TcpStream) -> String {
             Ok(read) => head.extend_from_slice(&buffer[..read]),
         }
     }
-    String::from_utf8_lossy(&head).into_owned()
+    let text = String::from_utf8_lossy(&head).into_owned();
+    let length: usize = (text.lines())
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse().ok())?
+        })
+        .unwrap_or(0);
+    let start = (head.windows(4)).position(|window| window == b"\r\n\r\n");
+    let mut read = head.len() - start.map_or(head.len(), |start| start + 4);
+    while read < length {
+        match stream.read(&mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(more) => read += more,
+        }
+    }
+    text
 }

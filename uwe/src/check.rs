@@ -381,7 +381,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         }
     };
     if language == Language::Nextflow {
-        for warning in crate::nextflow::plugin_warnings(&launch, &setup) {
+        for warning in crate::nextflow::plugin_warnings(&launch, arguments, &setup) {
             report.add(Kind::Warning, warning);
         }
     }

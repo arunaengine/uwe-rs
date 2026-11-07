@@ -181,7 +181,9 @@ fn execute_with(
     let cached;
     let arguments = match language {
         Language::Nextflow if arguments.store.is_none() => {
-            match crate::nextflow::cloud_cache(&launch, &setup).map_err(Failure::setup)? {
+            match crate::nextflow::cloud_cache(&launch, arguments, &setup)
+                .map_err(Failure::setup)?
+            {
                 Some(location) => {
                     cached = Arguments {
                         store: Some(location),

@@ -139,7 +139,7 @@ fn py_function(arguments: Vec<Value>, context: &mut Context) -> Result<Value, Er
     let mounts = read_only(&passed, &folders);
     let text = |path: PathBuf| path.to_string_lossy().into_owned();
     let call = Call {
-        engine: context.host.environment("UWE_ENGINE").unwrap_or_default(),
+        engine: std::env::var("UWE_ENGINE").unwrap_or_default(),
         image: setting(context.config.get(&["nf_python", "container"]))?
             .unwrap_or(IMAGE.to_owned()),
         program: program.clone(),

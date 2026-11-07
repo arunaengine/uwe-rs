@@ -79,6 +79,8 @@ pub struct KubernetesBackend {
     pub pod: crate::PodOptions,
     /// The Common Workflow Scheduler that learns of each task before its Job, if any.
     pub cws: Option<crate::cws::Client>,
+    /// The id of the run, which each Job and journal names.
+    pub run: String,
     /// The label value of the Jobs of this backend.
     label: String,
     pub(crate) pods: Pods,
@@ -121,6 +123,7 @@ impl KubernetesBackend {
             unschedulable_time: UNSCHEDULABLE_TIME,
             pod: crate::PodOptions::default(),
             cws: None,
+            run: String::new(),
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
             warned: AtomicBool::new(false),
@@ -530,6 +533,7 @@ impl KubernetesBackend {
             options.add(list).map_err(ExecutorError::Unsupported)?;
         }
         (options.apply(&mut manifest, job.placement)).map_err(ExecutorError::Unsupported)?;
+        manifest["metadata"]["annotations"][crate::manifest::RUN] = serde_json::json!(self.run);
         let resources = manifest["spec"]["template"]["spec"]["resources"].clone();
         if !resources.is_null() {
             manifest["spec"]["suspend"] = serde_json::json!(true);
@@ -544,6 +548,7 @@ impl KubernetesBackend {
         })?;
         let mut journal = serde_json::json!({"backend": "Kubernetes", "server": self.cluster.server(),
             "namespace": self.cluster.namespace(), "name": name, "label": self.label, "uid": null,
+            "run": self.run, "auth": self.cluster.identity(),
             "owner": std::process::id(), "host": host, "started": started, "locked": true});
         // The recovery of the attempt removes its objects from the staging root.
         if let Some(staged) = staged {
@@ -921,7 +926,7 @@ impl KubernetesBackend {
 
     /// Finds the Job of a journal whose submission left no UID, by its name, which only this
     /// attempt has, and the label of the backend that made it.
-    async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
+    pub(crate) async fn identify(&self, root: &Path, journal: &serde_json::Value) -> Submitted {
         let age = self.poll * 4 + SUBMIT_GRACE + REQUEST_GRACE;
         if !executor::poll::old_enough(&root.join("remote.json"), age) {
             return Submitted::Unclear("the submission is too recent to tell");
@@ -1271,7 +1276,7 @@ enum Creation {
 }
 
 /// What became of a submission whose answer was lost.
-enum Submitted {
+pub(crate) enum Submitted {
     /// The Job with this UID.
     Found(String),
     /// The cluster has no such Job: it never took it, or it is gone.
@@ -1282,7 +1287,7 @@ enum Submitted {
 
 /// The lock of an attempt. It lets go of the lock before it closes the file, as a process that
 /// this one starts holds a copy of the file, and so the lock, until it runs its program.
-struct Owned(File);
+pub(crate) struct Owned(pub(crate) File);
 
 impl Drop for Owned {
     fn drop(&mut self) {
@@ -1317,7 +1322,7 @@ fn unresolved(root: &Path, error: impl std::fmt::Display) -> ExecutorError {
     .into()
 }
 
-fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorError> {
+pub(crate) fn journal_at(root: &Path, journal: &serde_json::Value) -> Result<(), ExecutorError> {
     use std::io::Write;
     let path = root.join("remote.json.next");
     let mut file = std::fs::File::create(&path)?;

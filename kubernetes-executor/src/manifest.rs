@@ -13,6 +13,8 @@ use executor::wrapper::timed;
 
 /// The label that marks the Jobs of one backend, so that one request lists all their pods.
 pub const LABEL: &str = "uwe.dev/attempts";
+/// The annotation of a Job that names the run of its attempt.
+pub const RUN: &str = "uwe.dev/run";
 
 /// How long Kubernetes keeps a Job that ended, in case the backend could not delete it.
 const KEEP_SECONDS: u64 = 600;

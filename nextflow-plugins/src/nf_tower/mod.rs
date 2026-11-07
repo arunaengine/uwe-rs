@@ -115,7 +115,14 @@ impl Observer for Tower {
             .changed
             .wait_timeout_while(status, self.limit, waiting)
         {
-            Ok((status, _)) => status.failure.clone().map_or(Ok(()), Err),
+            Ok((status, wait)) => match status.failure.clone() {
+                Some(failure) => Err(failure),
+                None if wait.timed_out() => Err(format!(
+                    "Seqera Platform did not take the reports of the run within {} ms",
+                    self.limit.as_millis()
+                )),
+                None => Ok(()),
+            },
             Err(_) => Ok(()),
         }
     }

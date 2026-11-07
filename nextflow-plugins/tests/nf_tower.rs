@@ -322,3 +322,18 @@ fn aborts_failed_progress() {
         "{paths:?}"
     );
 }
+
+#[test]
+fn fails_unconfirmed_run() {
+    let fake = Fake::start(json!([
+        {"method": "POST", "match": "/trace/create", "status": 503, "type": "text/html",
+         "body": "<html><head><title>503 Service Unavailable</title></head></html>"},
+    ]));
+    let slow = "  httpReadTimeout = '100ms'\n  retryPolicy { maxAttempts = 2; delay = '5s' }\n";
+    let (_directory, error) = run("main.nf", &fake, slow);
+    let error = error.expect("the run fails while the Platform does not answer");
+    assert!(
+        error.contains("Seqera Platform did not take the reports of the run within 200 ms"),
+        "{error}"
+    );
+}

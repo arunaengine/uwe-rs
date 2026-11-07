@@ -57,6 +57,22 @@ impl Lowerer {
         scope: &Scope,
         name: &str,
     ) -> Result<Graph, String> {
+        // The steps would see the contents or listing that CWL loads into a workflow input.
+        let loads = |input: &cwl_parser::model::InputParameter| {
+            let binding = input
+                .binding
+                .as_ref()
+                .and_then(|binding| binding.load_contents);
+            input.load_contents == Some(true)
+                || binding == Some(true)
+                || input.load_listing.is_some()
+        };
+        if let Some(input) = process.inputs.iter().find(|input| loads(input)) {
+            return Err(format!(
+                "loadContents or loadListing of input {}",
+                short_name(&input.id)
+            ));
+        }
         let (mut inputs, outputs) = boundary(process)?;
         // A graph input keeps its type and takes null through its default.
         for (port, input) in inputs.iter_mut().zip(&process.inputs) {

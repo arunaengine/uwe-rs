@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{ExpressionTool, Part, Process};
+use cwl_parser::model::{ExpressionTool, Part, Process, Type as Cwl};
 use wir::{Call, Edge, Expr, Graph, Kind, Op, Port};
 
 use crate::workflow::end;
@@ -41,6 +41,10 @@ impl Lowerer {
                     .is_some_and(|binding| binding.load_contents == Some(true));
             if loads || input.load_listing.is_some() {
                 return Err(format!("loadContents or loadListing of input {name}"));
+            }
+            // wir takes `dynamic` as optional, where CWL needs a value for a required `Any`.
+            if input.value_type == Cwl::Any && input.default.is_none() {
+                return Err(format!("the Any input {name}"));
             }
             if !input.secondary_files.is_empty() || !input.format.is_empty() {
                 return Err(format!("the secondary files or format of input {name}"));

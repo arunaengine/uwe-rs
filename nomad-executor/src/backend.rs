@@ -412,7 +412,13 @@ impl NomadBackend {
                     }
                 }
                 Seen::Unplaced => {
-                    let evaluations = self.client.evaluations(id).await.map_err(api)?;
+                    let evaluations = match self.client.evaluations(id).await {
+                        Ok(evaluations) => evaluations,
+                        Err(error) => {
+                            self.stop(id, false).await;
+                            return Err(api(error));
+                        }
+                    };
                     let problem = unplaceable(&evaluations);
                     if let Some(problem) = problem.filter(|_| self.settings.fail_unplaced) {
                         self.stop(id, true).await;

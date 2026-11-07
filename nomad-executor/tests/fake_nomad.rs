@@ -400,3 +400,30 @@ async fn fails_unplaceable_jobs() {
     let id = &fake.jobs()[0];
     assert!(fake.purged(id), "a job that cannot run is purged");
 }
+
+/// A job that waits for a node is stopped when its evaluations cannot be read, before uwe
+/// ends the attempt.
+#[tokio::test]
+async fn stops_unread_jobs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeNomad::start(&folder.path().join("fake"));
+    let backend = backend(folder.path(), settings(&fake), false);
+    fake.unplaceable();
+    fake.refuse_evaluations();
+    let (placement, staging) = (Placement::default(), Staging::default());
+    let ended = run(
+        &backend,
+        "run-WAIT-1-1",
+        &spec_small(),
+        &placement,
+        &staging,
+    )
+    .await;
+    assert!(ended.is_err(), "{ended:?}");
+    let stopped = fake.requests("DELETE /v1/job/uwe-run-wait-1-1");
+    assert_eq!(
+        stopped.len(),
+        1,
+        "the job may not start after the attempt ended"
+    );
+}

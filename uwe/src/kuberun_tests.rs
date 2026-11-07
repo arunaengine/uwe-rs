@@ -55,6 +55,8 @@ fn plans_driver_pod() {
         ]
     );
     assert_eq!(plan.files["config-0"], "process.cpus = 2\n");
+    let site = "[executor.kubernetes.shared_volume]\nclaim = \"shared\"\npath = \"/data\"\n";
+    assert_eq!(plan.files["config.toml"], site);
     assert!(plan.files["kubeconfig"].contains("serviceaccount/token"));
     let pod = pod(&plan);
     let spec = &pod["spec"];

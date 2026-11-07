@@ -20,7 +20,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     call: Some(say_hello),
     scopes: &["storagemetrics"],
     observer: Some(activate),
-    ..Plugin::new("nf-storagemetrics", Kind::Observer, State::Implemented)
+    ..Plugin::new("nf-storagemetrics", Kind::Observer, State::Partial)
 };
 
 const HEADER: &str = "task_id\thash\tprocess\ttag\tstatus\tworkdir\tsize_bytes\tsize_human\n";

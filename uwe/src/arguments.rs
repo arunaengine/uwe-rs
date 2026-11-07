@@ -149,6 +149,8 @@ pub struct Arguments {
     /// `-no-grouping`: each task runs in a container of its own, also the short tasks that
     /// would run together.
     pub no_grouping: bool,
+    /// The secret values of an embedded run; the command line reads the environment.
+    pub secrets: config_file::SecretValues,
 }
 
 /// Which run `-resume` continues.

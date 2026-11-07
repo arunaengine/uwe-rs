@@ -29,6 +29,16 @@ fn archive(files: &[(&str, &str)]) -> Vec<u8> {
 }
 
 #[test]
+fn prefers_given_token() {
+    let repository = Repository::parse("nf-core/demo").unwrap().unwrap();
+    let mut secrets = config_file::SecretValues::default();
+    secrets.allow_environment(false);
+    assert!(repository.token(&secrets).is_none());
+    secrets.insert("GITHUB_TOKEN", "given-token").unwrap();
+    assert!(repository.token(&secrets).as_deref() == Some("given-token"));
+}
+
+#[test]
 fn parses_host_identities() {
     for (url, host, api) in [
         (
@@ -251,14 +261,10 @@ fn records_hidden_sources() {
 fn fetches_github_demo() {
     let cache = tempfile::tempdir().unwrap();
     let repository = Repository::parse("nf-core/demo").unwrap().unwrap();
+    let token = repository.token(&config_file::SecretValues::default());
     let folder = workflow_graph::runtime()
         .unwrap()
-        .block_on(repository.fetch(
-            cache.path(),
-            Some("1.2.0"),
-            false,
-            repository.token().as_deref(),
-        ))
+        .block_on(repository.fetch(cache.path(), Some("1.2.0"), false, token.as_deref()))
         .unwrap();
     assert!(folder.join("main.nf").is_file());
     assert_eq!(

@@ -29,6 +29,7 @@ mod kubernetes;
 mod kuberun;
 mod local;
 mod logging;
+mod lower;
 mod machine;
 mod nextflow;
 mod nomad;

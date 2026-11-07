@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use cwl_lowering::{Kept, Lowering, lower};
+use cwl_lowering::{Lowering, lower};
 use serde_json::{Value as Json, json};
 
 fn fixtures() -> PathBuf {
@@ -63,18 +63,22 @@ fn lowers_steps_calls() {
 }
 
 #[test]
-fn keeps_scatter_native() {
+fn lowers_scatter_maps() {
     let lowering = lowered("scatter.cwl");
-    let kept = Kept {
-        path: "scatter".into(),
-        reason: "step say: scatter".into(),
-    };
-    assert_eq!(lowering.kept, [kept]);
+    assert!(lowering.full(), "{:?}", lowering.kept);
     let main = graph(&lowering, "main");
-    assert_eq!(kinds(&main), [("scatter".to_owned(), "native".to_owned())]);
+    assert_eq!(kinds(&main), [("say".to_owned(), "map".to_owned())]);
+    let map = json!({"body": "say", "over": ["message"]});
+    assert_eq!(main["ops"][0]["kind"]["map"], map);
+    let message = &main["ops"][0]["inputs"][0];
+    assert_eq!(message["type"], json!({"array": {"items": "string"}}));
     assert_eq!(
-        lowering.document.graphs.len(),
-        1,
-        "no graph of the failed workflow stays"
+        kinds(&graph(&lowering, "say")),
+        [("say".to_owned(), "task".to_owned())]
     );
+    let lowering = lowered("cross.cwl");
+    let main = graph(&lowering, "main");
+    assert_eq!(main["ops"][0]["kind"]["map"]["mode"], "nested_cross");
+    let nested = json!({"array": {"items": {"array": {"items": {"file": {}}}}}});
+    assert_eq!(main["ops"][0]["outputs"][0]["type"], nested);
 }

@@ -1,12 +1,12 @@
-//! Lowers a CWL workflow into a wir graph: an op per step, an edge per plain link, and a
-//! call op with a graph of its own for each subworkflow.
+//! Lowers a CWL workflow into a wir graph: an op per step, an edge per plain link, a call op
+//! with a graph of its own for each subworkflow, and a map op for each scattered step.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
 
-use cwl_parser::model::{Process, Step, Workflow, short_name};
-use wir::{Call, Document, Edge, Endpoint, Graph, Kind, Op};
+use cwl_parser::model::{Process, ScatterMethod, Step, Workflow, short_name};
+use wir::{ArrayType, Call, Document, Edge, Endpoint, Graph, Kind, Map, Op, Port, Scatter, Type};
 
 use crate::{Lowerer, Scope, blank, boundary, process_name};
 
@@ -38,11 +38,7 @@ impl Lowerer {
         scope: &Scope,
         path: &str,
     ) -> Result<Op, String> {
-        let stem = process_name(&process.id);
-        let mut name = stem.clone();
-        while name == "main" || self.graphs.iter().any(|graph| graph.name == name) {
-            name = format!("{stem}-{}", self.graphs.len() + 1);
-        }
+        let name = self.graph_name(&process_name(&process.id));
         let inner = format!("{}{path}/", self.prefix);
         let outer = std::mem::replace(&mut self.prefix, inner);
         let graph = self.workflow(process, workflow, scope, &name);
@@ -52,6 +48,81 @@ impl Lowerer {
         (op.inputs, op.outputs) = (graph.inputs.clone(), graph.outputs.clone());
         self.graphs.push(graph);
         Ok(op)
+    }
+
+    /// A map op at `path` that runs the op of a scattered step once per round, in a body
+    /// graph of its own.
+    fn scatter(&mut self, step: &Step, op: Op, path: &str) -> Result<Op, String> {
+        let over: Vec<String> = step
+            .scatter
+            .iter()
+            .map(|id| short_name(id).to_owned())
+            .collect();
+        if let Some(name) = over
+            .iter()
+            .find(|name| !op.inputs.iter().any(|port| port.name == **name))
+        {
+            return Err(format!("step {path}: the scattered input {name}"));
+        }
+        let mode = match step.scatter_method {
+            None | Some(ScatterMethod::Dotproduct) => Scatter::Dot,
+            Some(ScatterMethod::FlatCrossproduct) => Scatter::FlatCross,
+            Some(ScatterMethod::NestedCrossproduct) => Scatter::NestedCross,
+        };
+        let depth = match mode {
+            Scatter::NestedCross => over.len(),
+            _ => 1,
+        };
+        let body = self.graph_name(path);
+        let mut edges: Vec<Edge> = (op.inputs.iter())
+            .map(|port| Edge {
+                from: end(None, &port.name),
+                to: end(Some(&op.path), &port.name),
+            })
+            .collect();
+        edges.extend(op.outputs.iter().map(|port| Edge {
+            from: end(Some(&op.path), &port.name),
+            to: end(None, &port.name),
+        }));
+        let mut map = blank(
+            path,
+            Kind::Map(Map {
+                body: body.clone(),
+                over: over.clone(),
+                mode,
+                parallelism: None,
+                min_success: None,
+            }),
+            op.origin.clone(),
+        );
+        map.inputs = (op.inputs.iter())
+            .map(|port| match over.contains(&port.name) {
+                true => array(port.clone(), 1),
+                false => port.clone(),
+            })
+            .collect();
+        map.outputs = op
+            .outputs
+            .iter()
+            .map(|port| array(port.clone(), depth))
+            .collect();
+        self.graphs.push(Graph {
+            name: body,
+            inputs: op.inputs.clone(),
+            outputs: op.outputs.clone(),
+            ops: vec![op],
+            edges,
+        });
+        Ok(map)
+    }
+
+    /// A graph name from `stem` that no graph has yet.
+    fn graph_name(&self, stem: &str) -> String {
+        let mut name = stem.to_owned();
+        while name == "main" || self.graphs.iter().any(|graph| graph.name == name) {
+            name = format!("{stem}-{}", self.graphs.len() + 1);
+        }
+        name
     }
 
     fn steps(
@@ -84,6 +155,10 @@ impl Lowerer {
             plain(step).map_err(|why| format!("step {path}: {why}"))?;
             let inner = scope.with(&step.requirements, &step.hints);
             let op = self.op(&step.run.process, &inner, path)?;
+            let op = match step.scatter.is_empty() {
+                true => op,
+                false => self.scatter(step, op, path)?,
+            };
             for input in &step.inputs {
                 let port = short_name(&input.id);
                 // A step input that the process does not take only serves expressions.
@@ -144,9 +219,6 @@ impl Lowerer {
 
 /// Refuses step features that have no lowering yet.
 fn plain(step: &Step) -> Result<(), String> {
-    if !step.scatter.is_empty() {
-        return Err("scatter".into());
-    }
     if step.when.is_some() {
         return Err("when".into());
     }
@@ -163,6 +235,17 @@ fn plain(step: &Step) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// A port whose type is an array `depth` times.
+fn array(mut port: Port, depth: usize) -> Port {
+    for _ in 0..depth {
+        port.r#type = Type::Array(ArrayType {
+            items: Box::new(port.r#type),
+            nonempty: false,
+        });
+    }
+    port
 }
 
 fn end(op: Option<&str>, port: &str) -> Endpoint {

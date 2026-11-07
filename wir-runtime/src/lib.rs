@@ -16,4 +16,4 @@ mod task;
 mod wdl;
 
 pub use child::{Block, Child};
-pub use driver::{Settings, WirDriver, driver};
+pub use driver::{Repositories, Settings, WirDriver, driver};

@@ -169,6 +169,8 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_prov::PLUGIN,
     crate::nf_runinsights::PLUGIN,
     crate::nf_snapshot::PLUGIN,
+    // nf-storagemetrics: measures only the folders of tasks with output files, as uwe gives
+    // observers no work folder of a task.
     crate::nf_storagemetrics::PLUGIN,
     // Observers that send to services.
     crate::nf_biffix::PLUGIN,

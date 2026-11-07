@@ -83,6 +83,8 @@ pub enum Problem {
     Unfit(String),
     #[error("{0} is an output and takes no default")]
     Default(String),
+    #[error("{0} needs exactly one input and one output")]
+    Unary(String),
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.

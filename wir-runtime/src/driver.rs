@@ -262,6 +262,27 @@ impl WirDriver {
                 }
                 Ok(Vec::new())
             }
+            Kind::Select(_) | Kind::Merge(_) | Kind::Flatten(_) => {
+                let node = self.progress.node(at);
+                let path = node.path.clone();
+                let ports = node.op.inputs.iter().chain(&node.op.outputs);
+                if ports.into_iter().any(|port| !port.flow.is_value()) {
+                    let message = format!("op {path}: uwe does not run this op on streams yet");
+                    return Err(DriverError::unsupported(message));
+                }
+                let output = node.op.outputs[0].name.clone();
+                match crate::arrays::evaluate(&node.op, &bound, &self.document.types) {
+                    Ok(value) => {
+                        let values = Map::from_iter([(output, value)]);
+                        self.progress.end(at, Status::Succeeded, values, None);
+                    }
+                    Err(why) => {
+                        let message = Some(format!("op {path}: {why}"));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
             Kind::Map(map) => {
                 let path = self.progress.node(at).path.clone();
                 if map.parallelism.is_some() || map.min_success.is_some() {

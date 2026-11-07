@@ -64,7 +64,7 @@ A `map` op makes its rounds when it starts: round i is a call of its body at `<m
 
 An `expr` op runs in uwe, without a task, with the CWL evaluator of uwe: parameter references directly, JavaScript in the helper that CWL runs use. A `branch` op runs its body like a call when its condition is true, else it ends skipped with null outputs and its tasks do not run.
 
-Reserved op kinds, like `select`, verify but do not run: uwe stops with exit code 33, and so do `map`, `expr` and `branch` in a document older than wir 0.4.
+`select`, `merge` and `flatten` run in uwe, without a task, as the wir README says; `merge` and `flatten` on streams stop the run with exit code 33. Reserved op kinds, like `collect`, verify but do not run: uwe stops with exit code 33, and so do `map`, `expr` and `branch` in a document older than wir 0.4, and `select`, `merge` and `flatten` in one older than wir 0.5.
 
 ## Task ops
 

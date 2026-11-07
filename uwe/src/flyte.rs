@@ -45,6 +45,7 @@ pub fn executor(
     run: &str,
     default_image: Option<String>,
     setup: &crate::setup::Setup,
+    secrets: &config_file::SecretValues,
 ) -> Result<RunnerExecutor<crate::conda_backend::Remote<FlyteBackend>>, String> {
     let config = &setup.executors.flyte;
     let stage = config.staging.stage(&setup.storage)?.ok_or(
@@ -55,7 +56,7 @@ pub fn executor(
     let settings = config.settings.clone();
     let key = match &settings.api_key {
         Some(secret) => Some(secret.reveal().map_err(|error| error.to_string())?),
-        None => KEY_VARIABLES.iter().find_map(|name| variable(name)),
+        None => KEY_VARIABLES.iter().find_map(|name| secrets.get(name)),
     };
     let key = key.map(|key| ApiKey::parse(&key)).transpose()?;
     let endpoint = (settings.endpoint.clone())

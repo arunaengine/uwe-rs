@@ -5,8 +5,10 @@
 
 mod child;
 pub mod cwl;
+mod driver;
 mod inputs;
 mod plan;
 mod state;
 
 pub use child::{Block, Child};
+pub use driver::{Settings, WirDriver, driver};

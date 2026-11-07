@@ -533,6 +533,21 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn retries_unanswered_reads() {
+        let file = |kind: std::io::ErrorKind| {
+            RunnerError::Store(content_store::StoreError::File {
+                path: "work/.command.env".into(),
+                error: std::io::Error::new(kind, "no answer"),
+            })
+        };
+        let task = task(Some("debian"), &["true"]);
+        let unanswered = failure(&task, file(std::io::ErrorKind::TimedOut));
+        assert!(matches!(unanswered, ExecuteError::Machine { .. }));
+        let missing = failure(&task, file(std::io::ErrorKind::NotFound));
+        assert!(matches!(missing, ExecuteError::Executor { .. }));
+    }
+
     fn task(image: Option<&str>, command: &[&str]) -> Arc<Task> {
         Arc::new(Task {
             name: "t".into(),

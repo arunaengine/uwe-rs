@@ -61,9 +61,10 @@ process SMALL {
 workflow { SMALL(BIG()) | view }
 ";
 
-/// Writes the fake `apptainer` into `folder/bin`.
+/// Writes the fake `apptainer` into `folder/tools`. Not `bin`: every task gets the pipeline's
+/// `bin` folder as an input.
 fn tools(folder: &Path) -> PathBuf {
-    let bin = folder.join("bin");
+    let bin = folder.join("tools");
     std::fs::create_dir_all(&bin).expect("makes the folder");
     // A child process writes the command, so that no test holds it open for writing.
     let script = "printf '%s' \"$1\" > \"$2\" && chmod 755 \"$2\"";
@@ -84,7 +85,7 @@ fn run(folder: &Path, config: &str, settings: &str, options: &[&str]) -> (i32, S
     std::fs::write(&file, settings).expect("writes the settings");
     let path = format!(
         "{}:{}",
-        folder.join("bin").display(),
+        folder.join("tools").display(),
         std::env::var("PATH").unwrap_or_default()
     );
     let output = common::command()
@@ -105,6 +106,17 @@ fn run(folder: &Path, config: &str, settings: &str, options: &[&str]) -> (i32, S
     (output.status.code().unwrap_or(-1), text)
 }
 
+/// nf-wr's config with the manager of `fake`, whose token and CA are in `files`.
+fn pipeline(fake: &FakeWr, files: &Path) -> String {
+    format!(
+        "plugins {{ id 'nf-wr' }}\nprocess.executor = 'wr'\nexecutor {{\n $wr {{\n  \
+         endpoint = '{}'\n  tokenpath = '{}'\n  cacertpath = '{}'\n }}\n}}\n",
+        fake.address,
+        files.join(".wr_production/client.token").display(),
+        files.join(".wr_production/ca.pem").display(),
+    )
+}
+
 /// nf-wr's config picks the wr executor and names the manager, its token and its CA; the jobs
 /// run on shared folders with the resources of their tasks.
 #[test]
@@ -114,13 +126,7 @@ fn runs_wr_pipelines() {
     let fake = FakeWr::start(Some(&bin));
     let files = folder.path().join("files");
     fake.write_files(&files, "production");
-    let config = format!(
-        "plugins {{ id 'nf-wr' }}\nprocess.executor = 'wr'\nexecutor {{\n $wr {{\n  \
-         endpoint = '{}'\n  tokenpath = '{}'\n  cacertpath = '{}'\n }}\n}}\n",
-        fake.address,
-        files.join(".wr_production/client.token").display(),
-        files.join(".wr_production/ca.pem").display(),
-    );
+    let config = pipeline(&fake, &files);
     let (code, output) = run(folder.path(), &config, "[executor.wr]\n", &[]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("big"), "{output}");
@@ -165,4 +171,21 @@ fn runs_staged_jobs() {
     assert_eq!(job["on_exit"], json!([{"cleanup": true}]));
     let node = std::fs::read_dir(folder.path().join("node")).expect("the node folder");
     assert_eq!(node.count(), 0, "the jobs remove their folders");
+}
+
+/// `-resume` takes the tasks of an earlier run, so the second run adds no job.
+#[test]
+fn resumes_earlier_runs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let bin = tools(folder.path());
+    let fake = FakeWr::start(Some(&bin));
+    let files = folder.path().join("files");
+    fake.write_files(&files, "production");
+    let config = pipeline(&fake, &files);
+    for _ in 0..2 {
+        let (code, output) = run(folder.path(), &config, "[executor.wr]\n", &["-resume"]);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("big"), "{output}");
+    }
+    assert_eq!(fake.requests("POST /rest/v1/jobs/").len(), 2);
 }

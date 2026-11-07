@@ -53,23 +53,32 @@ fn run(folder: &Path, config: &str, settings: &str, options: &[&str]) -> (i32, S
     (output.status.code().unwrap_or(-1), text)
 }
 
+/// nf-jarvice's config of the fixture, with the address of the fake.
+fn pipeline(fake: &FakeJarvice) -> String {
+    format!(
+        "plugins {{ id 'nf-jarvice@0.7.0' }}\nprocess {{\n executor = 'jarvice'\n \
+         container = '{IMAGE}'\n apiUrl = '{}'\n machineType = 'n0'\n vault {{\n  \
+         name = 'persistent'\n  readonly = false\n  force = false\n }}\n user {{\n  \
+         username = 'probeuser'\n  apikey = 'fake-key-for-local-probe'\n }}\n}}\n",
+        fake.address
+    )
+}
+
+/// uwe's settings for jobs that see `folder` as their vault.
+fn vault(folder: &Path) -> String {
+    format!(
+        "[executor.jarvice]\nvault_path = '{}'\npoll_seconds = 1\n",
+        folder.display()
+    )
+}
+
 /// nf-jarvice's config picks the JARVICE executor: the process settings name the API, the
 /// machine type, the vault and the user; uwe's cache is on the vault, which the jobs share.
 #[test]
 fn runs_jarvice_pipelines() {
     let folder = tempfile::tempdir().expect("a folder");
     let fake = FakeJarvice::start();
-    let config = format!(
-        "plugins {{ id 'nf-jarvice@0.7.0' }}\nprocess {{\n executor = 'jarvice'\n \
-         container = '{IMAGE}'\n apiUrl = '{}'\n machineType = 'n0'\n vault {{\n  \
-         name = 'persistent'\n  readonly = false\n  force = false\n }}\n user {{\n  \
-         username = 'probeuser'\n  apikey = 'fake-key-for-local-probe'\n }}\n}}\n",
-        fake.address
-    );
-    let settings = format!(
-        "[executor.jarvice]\nvault_path = '{}'\npoll_seconds = 1\n",
-        folder.path().display()
-    );
+    let (config, settings) = (pipeline(&fake), vault(folder.path()));
     let (code, output) = run(folder.path(), &config, &settings, &[]);
     assert_eq!(code, 0, "{output}");
     assert!(output.contains("big"), "{output}");
@@ -119,4 +128,18 @@ fn runs_staged_jobs() {
     let submitted = fake.requests("POST /jarvice/batch");
     assert_eq!(submitted.len(), 2, "{output}");
     assert!(submitted[0].body.get("vault").is_none());
+}
+
+/// `-resume` takes the tasks of an earlier run, so the second run submits no job.
+#[test]
+fn resumes_earlier_runs() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeJarvice::start();
+    let (config, settings) = (pipeline(&fake), vault(folder.path()));
+    for _ in 0..2 {
+        let (code, output) = run(folder.path(), &config, &settings, &["-resume"]);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains("big"), "{output}");
+    }
+    assert_eq!(fake.requests("POST /jarvice/batch").len(), 2);
 }

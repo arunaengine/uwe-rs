@@ -29,12 +29,12 @@ pub fn block(
 impl Block for cwl_runtime::CwlDriver {
     /// The output object as delivered by a real run, else the one of a simulated run, whose
     /// files are made up.
-    fn exported(&self) -> Option<Json> {
+    fn exported(&self) -> Result<Option<Json>, DriverError> {
         let object = self.results().or_else(|| {
             let outputs = cwl_runtime::Value::Map(self.outputs()?.clone());
             serde_json::from_str(&outputs.to_json()).ok()
-        })?;
-        Some(to_wir(object))
+        });
+        Ok(object.map(to_wir))
     }
 }
 

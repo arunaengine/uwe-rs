@@ -6,6 +6,7 @@
 mod backend;
 mod capture;
 pub mod client;
+pub mod orphans;
 mod outputs;
 mod settings;
 mod staging;

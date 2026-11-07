@@ -441,7 +441,7 @@ impl TesBackend {
         result
     }
 
-    async fn recover(
+    pub(crate) async fn recover(
         &self,
         peers: &[&TesBackend],
         entries: Vec<PathBuf>,

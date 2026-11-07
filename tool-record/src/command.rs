@@ -241,3 +241,7 @@ pub(crate) fn slug(text: &str) -> String {
         false => parts.join("_"),
     }
 }
+
+#[cfg(test)]
+#[path = "command_tests.rs"]
+mod tests;

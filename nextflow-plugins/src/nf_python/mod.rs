@@ -233,9 +233,11 @@ fn read_only(passed: &[(String, Value)], folders: &[PathBuf]) -> Vec<executor::p
         match value {
             Value::Path(path) if path.prefix.is_none() => found.push(PathBuf::from(&path.path)),
             Value::List(list) => (list.borrow().items.iter()).for_each(|item| local(item, found)),
-            Value::Map(map) => {
-                (map.borrow().entries.iter()).for_each(|(_, item)| local(item, found))
-            }
+            Value::Set(set) => (set.borrow().items.iter()).for_each(|item| local(&item.0, found)),
+            Value::Map(map) => (map.borrow().entries.iter()).for_each(|(key, item)| {
+                local(&key.0, found);
+                local(item, found);
+            }),
             _ => {}
         }
     }
@@ -266,21 +268,28 @@ mod tests {
         let launch = tempfile::tempdir().expect("a folder");
         let data = outside.path().join("input.csv");
         std::fs::write(&data, "a\n").expect("writes");
+        let keyed = outside.path().join("keyed.csv");
+        std::fs::write(&keyed, "k\n").expect("writes");
         std::fs::write(launch.path().join("here.csv"), "b\n").expect("writes");
         let at = |path: &Path| {
             Value::Path(std::rc::Rc::new(
                 nextflow_evaluator::value::PathValue::parse(&path.to_string_lossy(), "/"),
             ))
         };
+        let set = Value::set([at(&data)]);
         let passed = vec![
-            ("data".to_owned(), Value::list(vec![at(&data)])),
+            ("data".to_owned(), set),
+            (
+                "keyed".to_owned(),
+                Value::map([(at(&keyed), Value::integer(1))]),
+            ),
             ("here".to_owned(), at(&launch.path().join("here.csv"))),
         ];
         let mounts = read_only(&passed, &[launch.path().to_owned()]);
         let mounted: Vec<(&Path, bool)> = (mounts.iter())
             .map(|mount| (mount.source.as_path(), mount.read_only))
             .collect();
-        assert_eq!(mounted, [(data.as_path(), true)]);
+        assert_eq!(mounted, [(data.as_path(), true), (keyed.as_path(), true)]);
     }
 
     #[test]

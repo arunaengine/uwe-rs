@@ -125,6 +125,24 @@ pub(crate) fn secret(name: &str) -> bool {
     words.iter().any(|word| name.contains(word))
 }
 
+/// A config as JSON with the values of credential settings replaced by `[secret]`.
+pub(crate) fn redacted(config: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value as Json;
+    match config {
+        Json::Object(map) => Json::Object(
+            (map.iter())
+                .map(|(key, value)| match value {
+                    Json::Object(_) => (key.clone(), redacted(value)),
+                    _ if secret(key) => (key.clone(), Json::String("[secret]".into())),
+                    _ => (key.clone(), redacted(value)),
+                })
+                .collect(),
+        ),
+        Json::Array(items) => Json::Array(items.iter().map(redacted).collect()),
+        other => other.clone(),
+    }
+}
+
 /// Whether two addresses share scheme, host and port.
 pub(crate) fn same_origin(url: &str, other: &str) -> bool {
     match (reqwest::Url::parse(url), reqwest::Url::parse(other)) {

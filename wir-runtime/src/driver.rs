@@ -97,6 +97,9 @@ pub struct WirDriver {
     results: Option<Json>,
     /// The files of the graph outputs that task ops made, to deliver to the output folder.
     delivering: Vec<Delivery>,
+    /// A native block ended in this call. Its results name the files it delivers, which the
+    /// engine delivers after the call, so the ops after it start on the next wake.
+    ended: bool,
 }
 
 impl WirDriver {
@@ -132,19 +135,21 @@ impl WirDriver {
             folder: None,
             results: None,
             delivering: Vec::new(),
+            ended: false,
         })
     }
 
-    /// Starts every node that can start; the tasks they ask for.
+    /// Starts every node that can start, until a native block ends; the tasks they ask for.
     fn advance(&mut self) -> Result<Vec<Task>, DriverError> {
         let mut tasks = Vec::new();
-        loop {
+        while !self.ended {
             let draining = self.draining();
             let Some((at, bound)) = self.progress.next(draining) else {
                 return Ok(tasks);
             };
             tasks.extend(self.begin(at, bound)?);
         }
+        Ok(tasks)
     }
 
     /// Starts a node with its input values; the tasks it asks for.
@@ -318,6 +323,7 @@ impl WirDriver {
 
     /// Finishes a child, once, and binds its results to the node's outputs.
     fn end_child(&mut self, index: usize) {
+        self.ended = true;
         let (at, child) = &mut self.children[index];
         let at = *at;
         let finished = child.finish();
@@ -437,6 +443,9 @@ impl Driver for WirDriver {
     }
 
     fn wake_at(&self) -> Option<Instant> {
+        if self.ended {
+            return Some(Instant::now());
+        }
         self.children
             .iter()
             .filter_map(|(_, child)| child.wake_at())
@@ -444,6 +453,7 @@ impl Driver for WirDriver {
     }
 
     fn wake(&mut self) -> Result<Vec<Task>, DriverError> {
+        self.ended = false;
         let mut tasks = Vec::new();
         for index in 0..self.children.len() {
             if self.children[index]

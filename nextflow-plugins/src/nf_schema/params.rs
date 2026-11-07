@@ -269,9 +269,28 @@ fn evaluated<'a>(
     }
     let target = (map.get("$ref").and_then(|value| value.as_str()))
         .and_then(|reference| reference.strip_prefix('#'))
-        .and_then(|pointer| root.pointer(pointer));
+        .and_then(
+            |fragment| match fragment.is_empty() || fragment.starts_with('/') {
+                true => root.pointer(fragment),
+                false => anchored(root, fragment),
+            },
+        );
     if let Some(target) = target {
         evaluated(root, target, known, open, depth + 1);
+    }
+}
+
+/// The subschema of a document whose `$anchor` is this name.
+fn anchored<'a>(value: &'a serde_json::Value, name: &str) -> Option<&'a serde_json::Value> {
+    match value {
+        serde_json::Value::Object(map)
+            if map.get("$anchor").and_then(|it| it.as_str()) == Some(name) =>
+        {
+            Some(value)
+        }
+        serde_json::Value::Object(map) => map.values().find_map(|value| anchored(value, name)),
+        serde_json::Value::Array(items) => items.iter().find_map(|value| anchored(value, name)),
+        _ => None,
     }
 }
 
@@ -408,4 +427,20 @@ pub(super) fn groups(schema: &Value) -> Vec<(String, Vec<(String, Value)>)> {
         groups.push(("Other parameters".into(), entries(&properties)));
     }
     groups
+}
+
+#[cfg(test)]
+mod tests {
+    /// A property behind a `$ref` to an `$anchor` is known, as the validator sees it.
+    #[test]
+    fn follows_anchors() {
+        let schema = serde_json::json!({
+            "$defs": {"inputs": {"$anchor": "inputs", "properties": {"input": {}}}},
+            "allOf": [{"$ref": "#inputs"}],
+        });
+        let instance = serde_json::json!({"input": "a.csv", "other": 1});
+        let mut found = Vec::new();
+        super::unevaluated(&schema, &[&schema], &instance, "", &mut found);
+        assert_eq!(found, ["other"]);
+    }
 }

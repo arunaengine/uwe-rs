@@ -8821,6 +8821,7 @@ dependencies = [
  "tes-executor",
  "tokio",
  "tokio-rustls",
+ "tool-record",
  "tracing",
  "tracing-subscriber",
  "wdl-runtime",

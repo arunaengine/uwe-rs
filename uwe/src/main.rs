@@ -103,6 +103,7 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe why <run> <task>
        uwe origin <file>
        uwe digest <path>
+       uwe record [-name <name>] [-image <image>] -- <command ...>
        uwe time <run> [-format text|json]
        uwe compare <run> [<run>] [-format text|json] [-report <file>] [-fail-on-change]
        uwe replay <run> <task> [-executor <executor>] [-store <place>]

@@ -67,6 +67,7 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
         "telemetry" => insight::telemetry::command(arguments),
         "report" => report::command(arguments),
         "kuberun" => crate::kuberun::command(arguments),
+        "record" => record(arguments),
         "help" | "-help" | "--help" => {
             println!("{usage}");
             Ok(())
@@ -75,6 +76,34 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
             "unknown command `{command}`; {HELP}"
         ))),
     }
+}
+
+/// `uwe record`: runs a command once in the current folder and writes it there as a CWL
+/// CommandLineTool, with the files it wrote as outputs.
+fn record(arguments: &Arguments) -> Result<(), Failure> {
+    if arguments.target.is_some() || arguments.command_line.is_empty() {
+        return Err(Failure::usage(
+            "uwe: use `uwe record [-name <name>] [-image <image>] -- <command ...>`",
+        ));
+    }
+    let folder = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
+    let request = tool_record::Request {
+        command: arguments.command_line.clone(),
+        name: arguments.tool_name.clone(),
+        image: arguments.tool_image.clone(),
+        folder,
+    };
+    let recorded =
+        tool_record::record(&request).map_err(|error| failure(format!("uwe: {error}")))?;
+    print!("{}", recorded.log);
+    let tool = &recorded.tool;
+    println!(
+        "uwe: wrote {} with {} inputs and {} outputs",
+        recorded.path.display(),
+        tool.inputs.len(),
+        tool.outputs.len()
+    );
+    Ok(())
 }
 
 fn digest(arguments: &Arguments) -> Result<(), Failure> {

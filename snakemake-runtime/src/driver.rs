@@ -106,6 +106,8 @@ pub struct Session {
     kept: Vec<String>,
     /// The outputs to deliver to the working directory, which the driver hands to the engine.
     pub deliveries: Arc<Mutex<Vec<Delivery>>>,
+    /// The files of the targets once the run has finished, which the driver hands out.
+    results: Arc<Mutex<Option<serde_json::Value>>>,
     /// How the evaluation of the Snakefile ended, once it ran; it runs once.
     evaluation: Option<Result<(), DriverError>>,
     /// What the code of jobs needs, like the stand-in of the snakemake package.
@@ -155,12 +157,25 @@ struct SignaturePublication {
 
 impl Session {
     pub fn new(launch: &Launch, storage: &Storage) -> Result<Session, DriverError> {
+        Session::within(launch, storage, None)
+    }
+
+    /// A session that starts in `folder` rather than in the working directory of the process:
+    /// relative config files and profiles start there, and so does the work of a Snakefile.
+    fn within(
+        launch: &Launch,
+        storage: &Storage,
+        folder: Option<&Path>,
+    ) -> Result<Session, DriverError> {
         // Config files are relative to where the run starts, as Snakemake takes them.
         let mut launch = launch.clone();
+        let started = |path: &Path| match folder {
+            Some(folder) => folder.join(path),
+            None => std::path::absolute(path).unwrap_or_else(|_| path.to_owned()),
+        };
         for path in launch.configs.iter_mut().chain(launch.inputs.iter_mut()) {
-            *path = std::path::absolute(&*path).unwrap_or_else(|_| path.clone());
+            *path = started(path);
         }
-        let launch = &launch;
         let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
         let (snakefile, workdir) = if target.is_dir() {
             let snakefile = find_snakefile(&target).ok_or_else(|| {
@@ -168,8 +183,12 @@ impl Session {
             })?;
             (snakefile, target.clone())
         } else if target.is_file() {
-            let workdir =
-                std::env::current_dir().map_err(|error| DriverError::new(error.to_string()))?;
+            let workdir = match folder {
+                Some(folder) => folder.to_owned(),
+                None => {
+                    std::env::current_dir().map_err(|error| DriverError::new(error.to_string()))?
+                }
+            };
             (target.clone(), workdir)
         } else {
             return Err(DriverError::new(format!(
@@ -177,6 +196,14 @@ impl Session {
                 target.display()
             )));
         };
+        // A profile is a path from the folder, else a workflow profile that Snakemake finds.
+        for name in launch.profiles.iter_mut().filter(|_| folder.is_some()) {
+            let path = started(Path::new(name));
+            let found = crate::profile::find_named(&workdir, &snakefile, name);
+            let path = found.filter(|_| !path.exists()).unwrap_or(path);
+            *name = path.to_string_lossy().into_owned();
+        }
+        let launch = &launch;
         let mirrors = Rc::new(Mirrors::new(
             launch.scratch.join("downloads").join("snakemake"),
             storage,
@@ -240,6 +267,7 @@ impl Session {
             protections: Vec::new(),
             kept: Vec::new(),
             deliveries: Arc::default(),
+            results: Arc::default(),
             evaluation: None,
             embedded: crate::embedded::Setting::new(&launch.scratch, launch.simulated),
             touched: None,
@@ -2789,7 +2817,49 @@ impl Session {
             .close_files(true)
             .map_err(|error| self.error(&error))?;
         self.interpreter.packages.stop();
+        let results = self.target_files();
+        *self.results.lock().unwrap_or_else(PoisonError::into_inner) = Some(results);
         Ok(())
+    }
+
+    /// The files of the targets, as [`Session::outputs`] names them: the items of the target
+    /// jobs, their inputs where they have no outputs, like those of `all`, and target files.
+    fn target_files(&self) -> serde_json::Value {
+        let Some(planner) = &self.planner else {
+            return serde_json::Value::Object(serde_json::Map::new());
+        };
+        let targets: Vec<String> = match self.launch.targets.is_empty() {
+            true => self.state.borrow().default_target.iter().cloned().collect(),
+            false => self.launch.targets.clone(),
+        };
+        let mut groups = Vec::new();
+        for target in &targets {
+            if !planner.rules.iter().any(|rule| rule.name == *target) {
+                groups.push((None, vec![(target.clone(), false)], false));
+                continue;
+            }
+            let found = (self.roots.iter()).find(|job| {
+                let rule = planner.jobs[**job].rule;
+                planner.rules[rule].name == *target
+            });
+            let Some(job) = found.map(|job| &planner.jobs[*job]) else {
+                continue;
+            };
+            let items = match job.output.values.is_empty() {
+                true => &job.input,
+                false => &job.output,
+            };
+            for (name, values, many) in items.named_entries() {
+                let files = (values.iter())
+                    .filter_map(|value| {
+                        let directory = value.tag("directory").is_some();
+                        value.as_str().map(|path| (path.to_owned(), directory))
+                    })
+                    .collect();
+                groups.push((name, files, many));
+            }
+        }
+        crate::output_schema::results(groups, &self.workdir)
     }
 }
 
@@ -2826,7 +2896,7 @@ fn output_checksums(path: &Path) -> std::io::Result<[(&'static str, String); 3]>
 
 /// The driver the engine talks to. The session lives on a thread of its own with a large
 /// stack, since workflow code may recurse deeply.
-struct SnakemakeDriver {
+pub struct SnakemakeDriver {
     requests: Sender<Request>,
     replies: Receiver<Reply>,
     /// The answers to requests for the inputs.
@@ -2843,9 +2913,19 @@ struct SnakemakeDriver {
     /// Whether the session drains the run after a failed job, as of its last reply.
     draining: Arc<AtomicBool>,
     acceptance: Arc<Mutex<HashSet<(TaskId, u32)>>>,
+    /// The files of the targets once the session has finished.
+    results: Arc<Mutex<Option<serde_json::Value>>>,
+    simulated: bool,
 }
 
 impl SnakemakeDriver {
+    /// The files of the targets of a finished run, also of a simulated one, whose files the
+    /// simulator made up: each output of [`Driver::outputs`] by its name, as File values.
+    pub fn exported(&self) -> Option<serde_json::Value> {
+        let results = self.results.lock().unwrap_or_else(PoisonError::into_inner);
+        results.clone()
+    }
+
     fn ask(&mut self, request: Request) -> Reply {
         if self.requests.send(request).is_err() {
             return Err(DriverError::new("the Snakemake session ended unexpectedly"));
@@ -2902,6 +2982,10 @@ impl Driver for SnakemakeDriver {
 
     fn draining(&self) -> bool {
         self.draining.load(Ordering::Relaxed)
+    }
+
+    fn results(&self) -> Option<serde_json::Value> {
+        self.exported().filter(|_| !self.simulated)
     }
 
     fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
@@ -2974,6 +3058,9 @@ pub struct RunSettings {
     pub shared_workdir: bool,
     /// Whether jobs run on this machine, as Snakemake's local runs, which form no group jobs.
     pub local: bool,
+    /// The folder that the run starts in, as if launched there: the working directory of a
+    /// Snakefile, and where relative config files and profiles start. Else the process's.
+    pub workdir: Option<PathBuf>,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -2992,6 +3079,16 @@ pub fn driver_with_options(
     settings: Settings,
     options: RunSettings,
 ) -> Result<Box<dyn Driver>, DriverError> {
+    Ok(Box::new(spawn_driver(launch, settings, options)?))
+}
+
+/// The driver of a Snakemake workflow with settings and options, whose session starts on a
+/// thread of its own.
+pub fn spawn_driver(
+    launch: &Launch,
+    settings: Settings,
+    options: RunSettings,
+) -> Result<SnakemakeDriver, DriverError> {
     let (requests, incoming) = channel::<Request>();
     let (outgoing, replies) = channel::<Reply>();
     let (inputs_outgoing, inputs) = channel::<InputsReply>();
@@ -3007,13 +3104,17 @@ pub fn driver_with_options(
     let session_draining = draining.clone();
     let acceptance: Arc<Mutex<HashSet<(TaskId, u32)>>> = Arc::default();
     let session_acceptance = acceptance.clone();
+    let results: Arc<Mutex<Option<serde_json::Value>>> = Arc::default();
+    let session_results = results.clone();
+    let simulated = launch.simulated;
     let worker = std::thread::Builder::new()
         .name("snakemake".into())
         .stack_size(512 << 20)
         .spawn(move || {
             let channel = Rc::new(Channel::new(incoming, outgoing));
             let open = || -> Result<Session, DriverError> {
-                let mut session = Session::new(&launch, &settings.storage)?;
+                let folder = options.workdir.as_deref();
+                let mut session = Session::within(&launch, &settings.storage, folder)?;
                 *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.shared = options.shared_workdir && !launch.simulated;
@@ -3024,6 +3125,7 @@ pub fn driver_with_options(
                 session.state.borrow_mut().default_image = options.image.clone();
                 session.acceptance = session_acceptance.clone();
                 session.deliveries = shared.clone();
+                session.results = session_results.clone();
                 session.files.read_outputs_through(task_files.clone());
                 if let Some(python) = settings.python.clone() {
                     session.use_cancellable_python(python, settings.cancel.clone());
@@ -3142,7 +3244,7 @@ pub fn driver_with_options(
         .map_err(|error| {
             DriverError::new(format!("cannot start the Snakemake session: {error}"))
         })?;
-    Ok(Box::new(SnakemakeDriver {
+    Ok(SnakemakeDriver {
         requests,
         replies,
         inputs,
@@ -3153,7 +3255,9 @@ pub fn driver_with_options(
         files,
         draining,
         acceptance,
-    }))
+        results,
+        simulated,
+    })
 }
 
 /// The inputs or outputs of the workflow of a session. Workflow code that runs a command while

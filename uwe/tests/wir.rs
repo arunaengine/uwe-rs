@@ -479,3 +479,396 @@ fn matches_nextflow_outputs() {
         published.to_string_lossy().as_ref()
     );
 }
+
+/// The greetings Snakefile of wir-runtime in `root`, a wir document that runs it as the native
+/// op `block`, and the inputs of both runs.
+fn snakefile(root: &Path, names: &[&str]) -> (String, String) {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../wir-runtime/tests/fixtures/greetings.smk");
+    std::fs::copy(fixture, root.join("greetings.smk")).expect("copies the Snakefile");
+    let inputs = root.join("config.json");
+    std::fs::write(&inputs, json!({"names": names}).to_string()).expect("writes the config");
+    let taken = json!([{"name": "names", "type": {"array": {"items": "string"}}}]);
+    let given = json!([
+        {"name": "greetings", "type": {"array": {"items": {"file": {}}}}},
+        {"name": "total", "type": {"file": {}}}
+    ]);
+    let edges: Vec<Json> = (taken.as_array().unwrap().iter())
+        .map(|port| json!({"from": {"port": port["name"]}, "to": {"op": "block", "port": port["name"]}}))
+        .chain(given.as_array().unwrap().iter().map(|port| {
+            json!({"from": {"op": "block", "port": port["name"]}, "to": {"port": port["name"]}})
+        }))
+        .collect();
+    let native = json!({"source": "block", "language": "snakemake"});
+    let document = json!({
+        "wir_version": "0.2",
+        "sources": [{"id": "block", "language": "snakemake", "location": "greetings.smk"}],
+        "graphs": [{
+            "name": "main", "inputs": taken, "outputs": given,
+            "ops": [{"path": "block", "kind": {"native": native}, "inputs": taken, "outputs": given}],
+            "edges": edges
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).expect("writes the document");
+    let shown = |path: PathBuf| path.to_string_lossy().into_owned();
+    (shown(target), shown(inputs))
+}
+
+#[test]
+fn matches_native_snakemake() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = snakefile(root, &["ada", "bob"]);
+    // The native run starts in the folder that the block starts in.
+    let launch = root.join("block");
+    std::fs::create_dir(&launch).expect("makes the folder");
+    let script = root.join("greetings.smk");
+    let script = script.to_string_lossy();
+    let native = ["run", "-executor", "simulator", &script, "-inputs", &inputs];
+    let (code, output) = uwe(&launch, &cache, &native);
+    assert_eq!(code, 0, "{output}");
+    let (_, language, alone) = latest(&cache);
+    assert_eq!((language.as_str(), alone.len()), ("snakemake", 4));
+    let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
+    let (code, output) = uwe(root, &cache, &through);
+    assert_eq!(code, 0, "{output}");
+    let (_, language, tasks) = latest(&cache);
+    assert_eq!(language, "wir");
+    same_inputs(&alone, &tasks);
+    // A block resumes as the Snakefile does alone: with the same tasks taken from earlier.
+    let resumed: Vec<&str> = native.iter().copied().chain(["-resume"]).collect();
+    let (code, output) = uwe(&launch, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, alone) = latest(&cache);
+    let resumed: Vec<&str> = through.iter().copied().chain(["-resume"]).collect();
+    let (code, output) = uwe(root, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, again) = latest(&cache);
+    assert_eq!(alone.len(), again.len());
+    for (one, other) in alone.iter().zip(&again) {
+        let name = &other.task.name;
+        assert_eq!(one.reused.is_some(), other.reused.is_some(), "{name}");
+    }
+}
+
+/// Checks that two runs asked for the same tasks, with equal steps, cache keys and fingerprints
+/// for the same input files: each run makes the files of its tasks anew, and a simulated run
+/// keeps them in a folder of its own, so inputs count as equal when they are equal there.
+fn same_inputs(native: &[Recorded], through: &[Recorded]) {
+    assert!(!native.is_empty());
+    assert_eq!(native.len(), through.len());
+    for (one, other) in native.iter().zip(through) {
+        let name = &one.task.name;
+        assert_eq!(one.task.step, other.task.step);
+        assert_eq!(other.task.name, format!("block: {name}"));
+        // A rule without a command, like `all`, asks for its inputs and has no cache key.
+        if !one.task.command.is_empty() {
+            assert_eq!(key(&one.task), key(&other.task), "cache key of {name}");
+        }
+        let mut placed = other.task.clone();
+        for (input, alone) in placed.inputs.iter_mut().zip(&one.task.inputs) {
+            let within =
+                |source: &str| source.split_once("/work/").map(|(_, rest)| rest.to_owned());
+            if within(&input.source).is_some() && within(&input.source) == within(&alone.source) {
+                input.source = alone.source.clone();
+            }
+        }
+        let states = run_database::input_states(&one.task);
+        let alone = run_database::fingerprint(&one.task, &states);
+        assert_eq!(alone, run_database::fingerprint(&placed, &states), "{name}");
+        if one.task.inputs.is_empty() {
+            assert_eq!(one.fingerprint, other.fingerprint, "fingerprint of {name}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn matches_snakemake_outputs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = snakefile(root, &["ada", "bob"]);
+    // Local jobs run in the working folder itself, which their tasks name; so the native run
+    // works in the folder of the block, and its results move aside before the block runs.
+    let launch = root.join("block");
+    std::fs::create_dir(&launch).expect("makes the folder");
+    let script = root.join("greetings.smk");
+    let script = script.to_string_lossy();
+    let (code, output) = uwe(&launch, &cache, &["run", &script, "-inputs", &inputs]);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, alone) = latest(&cache);
+    let native = root.join("native");
+    std::fs::rename(&launch, &native).expect("moves the results aside");
+    let (code, output) = uwe(root, &cache, &["run", &target, "-inputs", &inputs]);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, tasks) = latest(&cache);
+    same_inputs(&alone, &tasks);
+    let delivered = texts(&native.join("greetings"));
+    assert_eq!(delivered.len(), 2, "{delivered:?}");
+    assert_eq!(delivered[0].1, "hello ada\n");
+    assert_eq!(texts(&launch.join("greetings")), delivered);
+    assert_eq!(texts(&launch), texts(&native), "the total");
+    let start = output.find('{').expect("the outputs");
+    let mut values = serde_json::Deserializer::from_str(&output[start..]).into_iter::<Json>();
+    let printed = values
+        .next()
+        .expect("a value")
+        .expect("the outputs as JSON");
+    let made = launch.join("total.txt");
+    assert_eq!(
+        printed["total"]["location"],
+        made.to_string_lossy().as_ref()
+    );
+}
+
+/// The Argo workflow of wir-runtime in `root`, a wir document that runs it as the native op
+/// `block`, and the inputs of both runs.
+fn shout(root: &Path, name: &str) -> (String, String) {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../wir-runtime/tests/fixtures/shout.yaml");
+    std::fs::copy(fixture, root.join("shout.yaml")).expect("copies the workflow");
+    let inputs = root.join("parameters.json");
+    std::fs::write(&inputs, json!({"name": name}).to_string()).expect("writes the parameters");
+    let taken = json!([{"name": "name", "type": "string"}]);
+    let given = json!([{"name": "line", "type": "string"}, {"name": "loud", "type": {"file": {}}}]);
+    let edges: Vec<Json> = (taken.as_array().unwrap().iter())
+        .map(|port| json!({"from": {"port": port["name"]}, "to": {"op": "block", "port": port["name"]}}))
+        .chain(given.as_array().unwrap().iter().map(|port| {
+            json!({"from": {"op": "block", "port": port["name"]}, "to": {"port": port["name"]}})
+        }))
+        .collect();
+    let native = json!({"source": "block", "language": "argo"});
+    let document = json!({
+        "wir_version": "0.3",
+        "sources": [{"id": "block", "language": "argo", "location": "shout.yaml"}],
+        "graphs": [{
+            "name": "main", "inputs": taken, "outputs": given,
+            "ops": [{"path": "block", "kind": {"native": native}, "inputs": taken, "outputs": given}],
+            "edges": edges
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).expect("writes the document");
+    let shown = |path: PathBuf| path.to_string_lossy().into_owned();
+    (shown(target), shown(inputs))
+}
+
+#[test]
+fn matches_native_argo() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = shout(root, "ada");
+    // The native run delivers to the folder that the block delivers to.
+    let native = [
+        "run",
+        "-executor",
+        "simulator",
+        "shout.yaml",
+        "-inputs",
+        &inputs,
+        "-output-dir",
+        "block",
+    ];
+    let (code, output) = uwe(root, &cache, &native);
+    assert_eq!(code, 0, "{output}");
+    let (_, language, alone) = latest(&cache);
+    assert_eq!((language.as_str(), alone.len()), ("argo", 2));
+    let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
+    let (code, output) = uwe(root, &cache, &through);
+    assert_eq!(code, 0, "{output}");
+    let (_, language, tasks) = latest(&cache);
+    assert_eq!(language, "wir");
+    same_inputs(&alone, &tasks);
+    // A block resumes as the workflow does alone: with the same tasks taken from earlier.
+    let resumed: Vec<&str> = native.iter().copied().chain(["-resume"]).collect();
+    let (code, output) = uwe(root, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, alone) = latest(&cache);
+    let resumed: Vec<&str> = through.iter().copied().chain(["-resume"]).collect();
+    let (code, output) = uwe(root, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, again) = latest(&cache);
+    assert_eq!(alone.len(), again.len());
+    for (one, other) in alone.iter().zip(&again) {
+        let name = &other.task.name;
+        assert_eq!(one.reused.is_some(), other.reused.is_some(), "{name}");
+    }
+}
+
+/// The text of each file below a folder and its subfolders, by its path there.
+fn tree(folder: &Path) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let mut pending = vec![folder.to_owned()];
+    while let Some(current) = pending.pop() {
+        for entry in std::fs::read_dir(&current)
+            .expect("lists the folder")
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            let shown = path.strip_prefix(folder).expect("below the folder");
+            let text = std::fs::read_to_string(&path).expect("reads");
+            found.push((shown.to_string_lossy().into_owned(), text));
+        }
+    }
+    found.sort();
+    found
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn matches_argo_outputs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = shout(root, "ada");
+    let native = [
+        "run",
+        "shout.yaml",
+        "-inputs",
+        &inputs,
+        "-output-dir",
+        "native",
+    ];
+    let (code, output) = uwe(root, &cache, &native);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, alone) = latest(&cache);
+    let through = ["run", &target, "-inputs", &inputs, "-output-dir", "wir"];
+    let (code, output) = uwe(root, &cache, &through);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, tasks) = latest(&cache);
+    same_inputs(&alone, &tasks);
+    let delivered = tree(&root.join("native"));
+    assert_eq!(delivered.len(), 2, "{delivered:?}");
+    assert_eq!(tree(&root.join("wir/block")), delivered);
+    let start = output.find('{').expect("the outputs");
+    let mut values = serde_json::Deserializer::from_str(&output[start..]).into_iter::<Json>();
+    let printed = values
+        .next()
+        .expect("a value")
+        .expect("the outputs as JSON");
+    assert_eq!(printed["line"], "hello ada");
+    let loud = std::fs::read_to_string(root.join("wir/loud.txt")).expect("the delivered file");
+    assert_eq!(loud, "HELLO ADA\n");
+}
+
+/// The WDL scatter demo in `root`, a wir document that runs it as the native op `block`, and
+/// the inputs of both runs.
+fn scatter_names(root: &Path, names: &[&str]) -> (String, String) {
+    let demo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../demo/wdl/scatter.wdl");
+    std::fs::copy(demo, root.join("scatter.wdl")).expect("copies the workflow");
+    let inputs = root.join("inputs.json");
+    std::fs::write(&inputs, json!({"names": names}).to_string()).expect("writes the inputs");
+    let taken = json!([{"name": "names", "type": {"array": {"items": "string"}}}]);
+    let given = json!([{"name": "all", "type": {"file": {}}}, {"name": "count", "type": "int"}]);
+    let edges: Vec<Json> = (taken.as_array().unwrap().iter())
+        .map(|port| json!({"from": {"port": port["name"]}, "to": {"op": "block", "port": port["name"]}}))
+        .chain(given.as_array().unwrap().iter().map(|port| {
+            json!({"from": {"op": "block", "port": port["name"]}, "to": {"port": port["name"]}})
+        }))
+        .collect();
+    let native = json!({"source": "block", "language": "wdl"});
+    let document = json!({
+        "wir_version": "0.3",
+        "sources": [{"id": "block", "language": "wdl", "location": "scatter.wdl"}],
+        "graphs": [{
+            "name": "main", "inputs": taken, "outputs": given,
+            "ops": [{"path": "block", "kind": {"native": native}, "inputs": taken, "outputs": given}],
+            "edges": edges
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).expect("writes the document");
+    let shown = |path: PathBuf| path.to_string_lossy().into_owned();
+    (shown(target), shown(inputs))
+}
+
+#[test]
+fn matches_native_wdl() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = scatter_names(root, &["Ada", "Bob"]);
+    // The native run delivers to the folder that the block delivers to.
+    let native = [
+        "run",
+        "-executor",
+        "simulator",
+        "scatter.wdl",
+        "-inputs",
+        &inputs,
+        "-output-dir",
+        "block",
+    ];
+    let (code, output) = uwe(root, &cache, &native);
+    assert_eq!(code, 0, "{output}");
+    let (_, language, alone) = latest(&cache);
+    assert_eq!((language.as_str(), alone.len()), ("wdl", 3));
+    let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
+    let (code, output) = uwe(root, &cache, &through);
+    assert_eq!(code, 0, "{output}");
+    let (_, language, tasks) = latest(&cache);
+    assert_eq!(language, "wir");
+    same_inputs(&alone, &tasks);
+    // A block resumes as the workflow does alone: with the same tasks taken from earlier.
+    let resumed: Vec<&str> = native.iter().copied().chain(["-resume"]).collect();
+    let (code, output) = uwe(root, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, alone) = latest(&cache);
+    let resumed: Vec<&str> = through.iter().copied().chain(["-resume"]).collect();
+    let (code, output) = uwe(root, &cache, &resumed);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, again) = latest(&cache);
+    assert_eq!(alone.len(), again.len());
+    for (one, other) in alone.iter().zip(&again) {
+        let name = &other.task.name;
+        assert_eq!(one.reused.is_some(), other.reused.is_some(), "{name}");
+    }
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
+fn matches_wdl_outputs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let (target, inputs) = scatter_names(root, &["Ada", "Bob"]);
+    let native = [
+        "run",
+        "scatter.wdl",
+        "-inputs",
+        &inputs,
+        "-output-dir",
+        "native",
+    ];
+    let (code, output) = uwe(root, &cache, &native);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, alone) = latest(&cache);
+    let through = ["run", &target, "-inputs", &inputs, "-output-dir", "wir"];
+    let (code, output) = uwe(root, &cache, &through);
+    assert_eq!(code, 0, "{output}");
+    let (_, _, tasks) = latest(&cache);
+    same_inputs(&alone, &tasks);
+    let delivered = tree(&root.join("native"));
+    assert_eq!(
+        delivered,
+        [(
+            "all/all.txt".to_owned(),
+            "Hello, Ada\nHello, Bob\n".to_owned()
+        )]
+    );
+    assert_eq!(tree(&root.join("wir/block")), delivered);
+    let start = output.find('{').expect("the outputs");
+    let mut values = serde_json::Deserializer::from_str(&output[start..]).into_iter::<Json>();
+    let printed = values
+        .next()
+        .expect("a value")
+        .expect("the outputs as JSON");
+    assert_eq!(printed["count"], 2);
+    let made = root.join("wir/block/all/all.txt");
+    assert_eq!(printed["all"]["location"], made.to_string_lossy().as_ref());
+}

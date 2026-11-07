@@ -9350,15 +9350,18 @@ dependencies = [
 name = "wir-runtime"
 version = "0.1.0"
 dependencies = [
+ "argo-runtime",
  "cwl-parser",
  "cwl-runtime",
  "input-schema",
  "nextflow-evaluator",
  "nextflow-runtime",
  "serde_json",
+ "snakemake-runtime",
  "storage",
  "tempfile",
  "tracing",
+ "wdl-runtime",
  "wir",
  "workflow-graph",
 ]

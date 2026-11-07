@@ -6,7 +6,7 @@
 use serde_json::{Map, Value as Json, json};
 use wir::{Argument, CaptureRule, Op, Port, Type, TypeDef, resolve};
 use workflow_graph::simulator::glob_matches;
-use workflow_graph::{Input, Outcome, OutputFile, Resources, Reuse, Task, TaskId};
+use workflow_graph::{Input, Network, Outcome, OutputFile, Resources, Reuse, Task, TaskId};
 
 /// Where a task runs in its container: its fresh working folder.
 pub const WORKDIR: &str = "/work";
@@ -77,6 +77,11 @@ pub fn build(id: TaskId, path: &str, op: &Op, spec: &wir::Task, bound: &Map<Stri
         reuse: match attributes.cache {
             Some(wir::Cache::Never) => Reuse::Disabled,
             _ => Reuse::Allowed,
+        },
+        // Without network, runs may share the results of the task.
+        network: match spec.network {
+            true => Network::Allowed,
+            false => Network::Denied,
         },
         ..Task::default()
     }

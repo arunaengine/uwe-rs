@@ -65,7 +65,9 @@ pub fn apply(scope: &Scope, task: &mut Task) -> Result<Attributes, String> {
     }) {
         match limit {
             Dynamic::Value(seconds) if *seconds > 0 => attributes.time = Some(*seconds as u64),
-            Dynamic::Value(_) => {}
+            Dynamic::Value(0) => {}
+            // CWL refuses a negative limit when the tool runs; the native op keeps that.
+            Dynamic::Value(_) => return Err("a negative time limit".into()),
             Dynamic::Expression(_) => return Err("a time limit set by an expression".into()),
         }
     }

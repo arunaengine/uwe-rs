@@ -14,7 +14,7 @@ wir::verify(&document)?;                     // every problem, with the op path
 let ok = wir::fits(&value, &port.r#type, &document.types); // run-time check of a value
 ```
 
-`wir::SCHEMA` is the JSON Schema (draft 2020-12) of the JSON form. It checks the shape and the name patterns; the verifier checks the rest. The examples in [examples/](examples/) show a graph of two CWL-like tools and a whole CWL workflow as one `native` op.
+`wir::SCHEMA` is the JSON Schema (draft 2020-12) of the JSON form. It checks the shape and the name patterns; the verifier checks the rest. The examples in [examples/](examples/) show a graph of two CWL-like tools, a whole CWL workflow as one `native` op, and a Nextflow pipeline as one `native` op with profiles and a config file.
 
 ## Document
 
@@ -26,7 +26,9 @@ The JSON form uses snake_case keys and leaves out fields that hold their default
 
 ## Versioning
 
-`wir_version` is `<major>.<minor>`; this crate reads and writes `0.1`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
+`wir_version` is `<major>.<minor>`; this crate reads `0.1` and `0.2`, and `wir::VERSION` is `0.2`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
+
+Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. A 0.1 document is read as it is; the verifier refuses these additions in a document that says 0.1.
 
 - While the major version is 0, every change to the form or the semantics raises the minor version.
 - From 1.0, a minor version only adds optional fields, op kinds, or semantics for reserved op kinds; a reader then accepts its own major version up to its own minor. Any other change raises the major version.
@@ -90,7 +92,7 @@ The task succeeds when its exit code is in `success_codes` (only 0 when empty) a
 
 **`call`** runs a named graph of the same document. The op has exactly the graph's port names, with types the graph accepts on the input side and the op accepts on the output side. Its outputs are bound at once when the graph has finished and every graph output is bound; the call fails when an op inside fails. A graph must not call itself, directly or through other graphs.
 
-**`native`** runs a source document as a whole in its own language runtime, such as a complete CWL workflow. `source` names a document source with the same `language`, and `entry` what to run inside it. The op's ports are the boundary: inputs go in by name, and outputs are exported by name and checked against their port types. These types must not contain `dynamic`. The block keeps its own acceptance rules and its own task cache keys, and its tasks are recorded under the op path. A failed or missing required output fails the op.
+**`native`** runs a source document as a whole in its own language runtime, such as a complete CWL workflow. `source` names a document source with the same `language`, and `entry` what to run inside it. `profiles` lists profiles of the language, like Nextflow `-profile`, and `configs` names document sources of the same language that configure the run, like Nextflow `-c` files, both in order. The op's ports are the boundary: inputs go in by name, and outputs are exported by name and checked against their port types. These types must not contain `dynamic`, except the outputs of a Nextflow block: Nextflow emits have no types, so a block declares the output `dynamic` to take what an emit gives as it is. The block keeps its own acceptance rules and its own task cache keys, and its tasks are recorded under the op path. A failed or missing required output fails the op.
 
 **`after` dependencies** name another op of the same graph and the statuses that satisfy it: `succeeded`, `failed` (ran and not accepted), `errored` (could not run), `skipped` (its own condition was false) and `omitted` (did not run because a dependency did not hold). All dependencies of an op must hold. Data edges and dependencies together must not form a cycle.
 
@@ -132,6 +134,7 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
 - a call matches the called graph's ports;
-- a native op's source exists in its language, and none of its ports uses `dynamic`.
+- a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
+- a document that says 0.1 uses no additions of 0.2.
 
 Not yet: the readable text form, the runner, frontends and lowering passes.

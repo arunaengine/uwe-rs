@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::{Document, Endpoint, Graph, Port, Source, VERSION};
+use crate::document::{Document, Endpoint, Graph, KNOWN, Port, Source, VERSION};
 use crate::op::{Kind, Op};
 use crate::types::{Type, TypeDef};
 
@@ -20,7 +20,7 @@ pub struct VerifyError {
 /// What is wrong.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Problem {
-    #[error("wir version {0} is not known; this verifier knows {VERSION}")]
+    #[error("wir version {0} is not known; this verifier knows 0.1 and {VERSION}")]
     Version(String),
     #[error(
         "{0:?} is not a valid name: use letters, digits, '_', '-' and '.', paths join them by '/'"
@@ -60,6 +60,8 @@ pub enum Problem {
     Cycle(String),
     #[error("native {0} needs a type without dynamic")]
     Untyped(String),
+    #[error("{0} needs wir version 0.2")]
+    Later(String),
     #[error("language {found} differs from that of source {named}, {want}")]
     Language {
         named: String,
@@ -81,7 +83,7 @@ pub fn verify(document: &Document) -> Result<(), Vec<VerifyError>> {
         defs: &document.types,
         errors: Vec::new(),
     };
-    if document.wir_version != VERSION {
+    if !KNOWN.contains(&document.wir_version.as_str()) {
         check.report("document", Problem::Version(document.wir_version.clone()));
     }
     check.sources();

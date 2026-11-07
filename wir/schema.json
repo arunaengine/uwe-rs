@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["wir_version", "graphs", "entry"],
   "properties": {
-    "wir_version": { "const": "0.1" },
+    "wir_version": { "enum": ["0.1", "0.2"] },
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
     "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
@@ -266,7 +266,9 @@
           "properties": {
             "source": { "$ref": "#/$defs/name" },
             "language": { "$ref": "#/$defs/language" },
-            "entry": { "type": "string" }
+            "entry": { "type": "string" },
+            "profiles": { "type": "array", "items": { "type": "string" } },
+            "configs": { "$ref": "#/$defs/names" }
           }
         },
         "expr": {

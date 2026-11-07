@@ -21,6 +21,8 @@ fn schema_matches_parser() {
         json!({"task": {"command": ["true"], "success_codes": [0, 1]}}),
         json!({"call": {"graph": "g"}}),
         json!({"native": {"source": "s", "language": "argo"}}),
+        json!({"native": {"source": "s", "language": "nextflow", "entry": "w",
+            "profiles": ["test"], "configs": ["c"]}}),
         json!({"expr": {"language": "js", "code": "1 + 1"}}),
         json!({"map": {"body": "g", "over": ["a"], "mode": "flat_cross", "min_success": 1}}),
         json!({"collect": {}}),
@@ -64,7 +66,7 @@ fn schema_rejects_unknown() {
     value["graphs"][0]["ops"][0]["note"] = json!("not a field");
     assert!(!validator.is_valid(&value));
     value["graphs"][0]["ops"][0] = op;
-    value["wir_version"] = json!("0.2");
+    value["wir_version"] = json!("0.3");
     assert!(!validator.is_valid(&value));
     value["wir_version"] = json!(wir::VERSION);
     value["graphs"][0]["ops"][0]["path"] = json!("a b");

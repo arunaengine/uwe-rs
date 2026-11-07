@@ -49,6 +49,7 @@ pub fn executor(
     run: &str,
     default_image: Option<String>,
     setup: &crate::setup::Setup,
+    secrets: &config_file::SecretValues,
 ) -> Result<RunnerExecutor<crate::conda_backend::Remote<GoogleBackend>>, String> {
     let config = &setup.executors.google_batch;
     let stage = config.staging.stage(&setup.storage)?.ok_or(
@@ -59,7 +60,9 @@ pub fn executor(
     let mut settings = config.settings.clone();
     // The same pinned image downloads the helper for Kubernetes pods.
     (settings.download_image).get_or_insert_with(|| kubernetes_executor::DOWNLOAD_IMAGE.into());
-    let credentials = Credentials::find(settings.credential_file.as_deref(), variable)?;
+    let credentials = Credentials::find(settings.credential_file.as_deref(), |name| {
+        secrets.get(name)
+    })?;
     let project = credentials.project(settings.project.as_deref(), variable)?;
     let location = settings.location().to_owned();
     let client = Client::new(project, location, credentials, &settings, PACE);

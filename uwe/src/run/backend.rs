@@ -277,8 +277,15 @@ pub(crate) fn executor(
         "google-batch" => {
             let default_image = arguments.default_image.clone();
             let store = setup.store(arguments)?;
-            let executor = google_batch::executor(store, &scratch, run, default_image, setup)
-                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            let executor = google_batch::executor(
+                store,
+                &scratch,
+                run,
+                default_image,
+                setup,
+                &arguments.secrets,
+            )
+            .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "azure-batch" => {

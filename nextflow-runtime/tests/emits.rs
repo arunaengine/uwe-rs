@@ -68,7 +68,7 @@ fn records_entry_emits() {
 }
 
 #[test]
-fn unnamed_entry_emits_nothing() {
+fn unnamed_emits_nothing() {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("main.nf"), SCRIPT).unwrap();
     let launch = Launch {

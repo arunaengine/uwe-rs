@@ -280,7 +280,7 @@ impl Nextflow {
         Ok(Inputs {
             schema,
             values,
-            base: std::env::current_dir().unwrap_or_default(),
+            base: launch_folder(self.settings.host.as_ref()),
             read: Some(read),
             assumes_values: false,
             // Nextflow holds no param to a schema; a pipeline does when its code checks them.
@@ -309,7 +309,7 @@ impl Nextflow {
             title: title(&config, &loaded.project),
             description: manifest(&config, "description"),
         };
-        let base = std::env::current_dir().unwrap_or_default();
+        let base = launch_folder(self.settings.host.as_ref());
         Ok(crate::inputs::declared(&declared, &base))
     }
 
@@ -404,6 +404,15 @@ impl Nextflow {
         }
         error(failure)
     }
+
+    /// What the entry workflow emitted so far, by emit name: a value channel gives its value,
+    /// a queue channel the array of its values. `None` before the run started.
+    pub fn emitted(&self) -> Result<Option<serde_json::Value>, DriverError> {
+        let Some(run) = &self.run else {
+            return Ok(None);
+        };
+        run.emitted().map(Some).map_err(DriverError::new)
+    }
 }
 
 /// The engine has run and delivered everything once the driver goes.
@@ -454,7 +463,7 @@ impl Driver for Nextflow {
             .get(&[engine, "registry"])
             .map(|registry| registry.to_string());
         if !self.launch.simulated {
-            let launch_dir = std::env::current_dir().unwrap_or_default();
+            let launch_dir = launch_folder(self.settings.host.as_ref());
             let script = loaded.script.to_string_lossy();
             let reports = Reports::of(config, &launch_dir, &script);
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
@@ -604,6 +613,12 @@ impl Driver for Nextflow {
         self.files = Some(files);
     }
 
+    /// What the entry workflow emitted, in a real run.
+    fn results(&self) -> Option<serde_json::Value> {
+        let emitted = (!self.launch.simulated).then(|| self.emitted().ok().flatten());
+        emitted.flatten()
+    }
+
     /// The outputs of the `output { }` block of the main script, which it publishes into the
     /// output folder (`-output-dir`, else `outputDir` of the config, else `results`), else the
     /// `emit`s of the workflows of the main script.
@@ -727,8 +742,7 @@ fn load_config(
     host: &mut dyn Host,
     typed: bool,
 ) -> Result<(Config, Vec<PathBuf>), DriverError> {
-    let launch_dir =
-        std::env::current_dir().map_err(|error| DriverError::new(error.to_string()))?;
+    let launch_dir = launch_folder(host);
     let project = std::path::absolute(project).unwrap_or_else(|_| project.to_owned());
     let files = nextflow_config::files(&project, &launch_dir, &launch.configs);
     let options = nextflow_config::Options {
@@ -743,6 +757,12 @@ fn load_config(
         message: error.to_string(),
     })?;
     Ok((config, files))
+}
+
+/// The launch folder of a run, which its host gives, so that runs in one process can have
+/// folders of their own.
+fn launch_folder(host: &dyn Host) -> PathBuf {
+    PathBuf::from(host.launch_dir())
 }
 
 /// The params of a launch as nested maps: those of the params file (`-params-file`, JSON or

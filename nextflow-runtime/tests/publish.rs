@@ -442,3 +442,70 @@ workflow {
         .collect();
     assert_eq!(targets, ["published/x.log"]);
 }
+
+/// A host whose launch folder is not the working directory of the process.
+struct Launched(std::path::PathBuf);
+
+impl nextflow_evaluator::interpreter::Host for Launched {
+    fn print(&mut self, _: &str) {}
+
+    fn launch_dir(&self) -> String {
+        self.0.to_string_lossy().into_owned()
+    }
+}
+
+#[test]
+fn publishes_below_launch() {
+    let directory = tempfile::tempdir().unwrap();
+    let (project, launch) = (
+        directory.path().join("project"),
+        directory.path().join("launch"),
+    );
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&launch).unwrap();
+    std::fs::write(
+        project.join("main.nf"),
+        r#"
+process MAKE {
+    publishDir "${params.outdir}/made", mode: 'copy'
+    output:
+    path 'result.txt'
+    script:
+    'touch result.txt'
+}
+workflow { MAKE() }
+"#,
+    )
+    .unwrap();
+    std::fs::write(launch.join("nextflow.config"), "params.outdir = 'chosen'\n").unwrap();
+    let settings = nextflow_runtime::driver::Settings {
+        host: Box::new(Launched(launch.clone())),
+        ..Default::default()
+    };
+    let target = Launch {
+        target: project.join("main.nf"),
+        ..Launch::default()
+    };
+    let mut driver = nextflow_runtime::driver::Nextflow::new(&target, settings).unwrap();
+    let inputs = workflow_graph::Driver::inputs(&mut driver)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        inputs.base, launch,
+        "relative inputs start from the launch folder"
+    );
+    let tasks = workflow_graph::Driver::start(&mut driver).unwrap();
+    let outcome = workflow_graph::Outcome {
+        id: tasks[0].id,
+        files: vec![workflow_graph::OutputFile {
+            path: "result.txt".into(),
+            location: "/work/result.txt".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    workflow_graph::Driver::complete(&mut driver, outcome).unwrap();
+    let deliveries = workflow_graph::Driver::deliveries(&mut driver);
+    let wanted = launch.join("chosen/made/result.txt");
+    assert_eq!(deliveries[0].target, wanted.to_string_lossy());
+}

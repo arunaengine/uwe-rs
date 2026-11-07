@@ -5,6 +5,7 @@
 use std::collections::BTreeSet;
 
 use super::{Checker, Problem, show, walk};
+use crate::document::Language;
 use crate::op::{Argument, CaptureRule, Kind, Native, Op, Task};
 use crate::types::{Type, TypeDef, resolve};
 
@@ -102,9 +103,38 @@ impl<'d> Checker<'d> {
             let (found, want) = (show(&native.language), show(&source.language));
             self.report(at, Problem::Language { named, found, want });
         }
-        for port in op.inputs.iter().chain(&op.outputs) {
-            if self.has_dynamic(&port.r#type) {
-                self.report(at, Problem::Untyped(format!("port {}", port.name)));
+        for config in &native.configs {
+            if let Some(source) = self.source(at, config)
+                && source.language != native.language
+            {
+                let named = config.clone();
+                let (found, want) = (show(&native.language), show(&source.language));
+                self.report(at, Problem::Language { named, found, want });
+            }
+        }
+        // Nextflow emits have no types, so a block may take what one gives as dynamic.
+        let open = native.language == Language::Nextflow;
+        let mut dynamic = false;
+        let sides = [(&op.inputs, false), (&op.outputs, open)];
+        for (ports, allowed) in sides {
+            for port in ports {
+                match (self.has_dynamic(&port.r#type), allowed) {
+                    (false, _) => {}
+                    (true, true) => dynamic = true,
+                    (true, false) => {
+                        self.report(at, Problem::Untyped(format!("port {}", port.name)));
+                    }
+                }
+            }
+        }
+        if self.document.wir_version == "0.1" {
+            let features = [
+                (!native.profiles.is_empty(), "native profiles"),
+                (!native.configs.is_empty(), "native configs"),
+                (dynamic, "a dynamic native output"),
+            ];
+            for (_, feature) in features.iter().filter(|(used, _)| *used) {
+                self.report(at, Problem::Later((*feature).into()));
             }
         }
     }

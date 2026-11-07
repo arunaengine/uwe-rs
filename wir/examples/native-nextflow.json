@@ -1,0 +1,54 @@
+{
+  "wir_version": "0.2",
+  "sources": [
+    { "id": "rnaseq", "language": "nextflow", "location": "pipelines/rnaseq/main.nf" },
+    { "id": "cluster", "language": "nextflow", "location": "pipelines/cluster.config" }
+  ],
+  "graphs": [
+    {
+      "name": "main",
+      "inputs": [
+        { "name": "input", "type": { "file": {} } },
+        { "name": "outdir", "type": "string" }
+      ],
+      "outputs": [
+        { "name": "results", "type": "directory" },
+        { "name": "counts", "type": { "array": { "items": { "file": {} } } } },
+        { "name": "versions", "type": "dynamic" }
+      ],
+      "ops": [
+        {
+          "path": "rnaseq",
+          "kind": {
+            "native": {
+              "source": "rnaseq",
+              "language": "nextflow",
+              "entry": "RNASEQ",
+              "profiles": ["docker", "test"],
+              "configs": ["cluster"]
+            }
+          },
+          "inputs": [
+            { "name": "input", "type": { "file": {} } },
+            { "name": "outdir", "type": "string" }
+          ],
+          "outputs": [
+            { "name": "outdir", "type": "directory" },
+            { "name": "counts", "type": { "array": { "items": { "file": {} } } } },
+            { "name": "versions", "type": "dynamic" }
+          ],
+          "effects": [{ "publish": "outdir" }],
+          "origin": { "source": "rnaseq" }
+        }
+      ],
+      "edges": [
+        { "from": { "port": "input" }, "to": { "op": "rnaseq", "port": "input" } },
+        { "from": { "port": "outdir" }, "to": { "op": "rnaseq", "port": "outdir" } },
+        { "from": { "op": "rnaseq", "port": "outdir" }, "to": { "port": "results" } },
+        { "from": { "op": "rnaseq", "port": "counts" }, "to": { "port": "counts" } },
+        { "from": { "op": "rnaseq", "port": "versions" }, "to": { "port": "versions" } }
+      ]
+    }
+  ],
+  "entry": "main"
+}

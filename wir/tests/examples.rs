@@ -7,7 +7,7 @@ use std::path::Path;
 use jsonschema::{Draft, Validator};
 use serde_json::Value as Json;
 
-const EXAMPLES: [&str; 2] = ["two-tools.json", "native-cwl.json"];
+const EXAMPLES: [&str; 3] = ["two-tools.json", "native-cwl.json", "native-nextflow.json"];
 
 fn example(name: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

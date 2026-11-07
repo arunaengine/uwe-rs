@@ -132,6 +132,13 @@ pub struct Native {
     /// What to run inside the source: a workflow name, an entry point or a process id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
+    /// Profiles of the language, like Nextflow `-profile`, in order. Since wir 0.2.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<String>,
+    /// Ids of document sources that configure the run, like Nextflow `-c` files, in the order
+    /// read. Since wir 0.2.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub configs: Vec<String>,
 }
 
 /// The op runs only after `op` has ended with one of the statuses in `on`.

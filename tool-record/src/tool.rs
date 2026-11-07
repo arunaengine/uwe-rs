@@ -318,3 +318,7 @@ fn scalar(text: &str) -> String {
 fn quoted(text: &str) -> String {
     Json::String(text.to_owned()).to_string()
 }
+
+#[cfg(test)]
+#[path = "tool_tests.rs"]
+mod tests;

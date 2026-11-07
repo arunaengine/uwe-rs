@@ -21,6 +21,7 @@ mod image;
 mod job;
 pub mod local;
 pub mod manifest;
+pub mod orphans;
 pub mod poll;
 mod pool;
 pub mod process;

@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::Duration;
 
@@ -118,7 +119,10 @@ impl Store {
         }
         let parent = target.parent().unwrap_or_else(|| Path::new("."));
         tokio::fs::create_dir_all(parent).await?;
-        let temporary = tempfile::NamedTempFile::new_in(parent)?;
+        // The output gets the ordinary mode of new files, as one that a local task writes.
+        let temporary = tempfile::Builder::new()
+            .permissions(std::fs::Permissions::from_mode(0o666))
+            .tempfile_in(parent)?;
         let mut file = tokio::fs::File::from_std(temporary.reopen()?);
         let reader = read.await?;
         let mut hash = Sha256::new();
@@ -168,6 +172,26 @@ mod tests {
             (digest, 6)
         );
         assert_eq!(std::fs::read(target).unwrap(), b"output");
+    }
+
+    #[tokio::test]
+    async fn reads_ordinary_mode() {
+        let store = Store::memory().unwrap();
+        let digest = store.put_content(b"output".to_vec().into()).await.unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let (target, plain) = (folder.path().join("output"), folder.path().join("plain"));
+        let location = layout::content(&digest);
+        store
+            .read_object(&location, None, &target, None)
+            .await
+            .unwrap();
+        std::fs::write(&plain, b"plain").unwrap();
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode(&target),
+            mode(&plain),
+            "an output gets the mode of a new file"
+        );
     }
 
     #[tokio::test]

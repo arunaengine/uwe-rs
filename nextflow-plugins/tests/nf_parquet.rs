@@ -235,3 +235,42 @@ fn reports_errors() {
         assert!(error.contains(message), "{body}\n{error}\n{printed}");
     }
 }
+
+/// Writes a Parquet file of one timestamp column whose last row is out of range.
+fn bad_last_row(path: &Path) {
+    use parquet::data_type::Int64Type;
+    use parquet::file::writer::SerializedFileWriter;
+    let schema = "message rows { required int64 at (TIMESTAMP(MILLIS, false)); }";
+    let schema = std::sync::Arc::new(parquet::schema::parser::parse_message_type(schema).expect("a schema"));
+    let file = std::fs::File::create(path).expect("creates the file");
+    let mut writer = SerializedFileWriter::new(file, schema, Default::default()).expect("a writer");
+    let mut group = writer.next_row_group().expect("a row group");
+    let mut column = group.next_column().expect("a column").expect("the column");
+    let values = [1, 2, i64::MAX];
+    column.typed::<Int64Type>().write_batch(&values, None, None).expect("writes");
+    column.close().expect("closes the column");
+    group.close().expect("closes the row group");
+    writer.close().expect("closes the file");
+}
+
+#[test]
+fn stops_at_limit() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let file = directory.path().join("bad.parquet");
+    bad_last_row(&file);
+    let body = format!(
+        "  channel.fromPath('{0}').splitParquet(limit: 2).view {{ \"row \" + it.at }}\n  \
+         channel.fromPath('{0}').countParquet(limit: 2).view {{ \"count \" + it }}",
+        file.display()
+    );
+    let (error, printed) = run(directory.path(), &body);
+    assert_eq!(error, None, "{printed}");
+    let mut lines: Vec<&str> = printed.lines().collect();
+    lines.sort();
+    let expected = [
+        "count 2",
+        "row 1970-01-01T00:00:00.001",
+        "row 1970-01-01T00:00:00.002",
+    ];
+    assert_eq!(lines, expected);
+}

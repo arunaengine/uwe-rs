@@ -1091,3 +1091,110 @@ fn splits_path_records() {
     let second = std::fs::read_to_string(chunks.join("seqs.2.fa")).expect("reads the chunk");
     assert_eq!(second, ">b\nGT\n");
 }
+
+/// The splitters give the same records whether they read a file at once or a part at a time:
+/// plain and gzip files, path methods and operators, with `by`, `limit`, `record` and more.
+#[test]
+fn keeps_split_results() {
+    use std::io::Write;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let zipped = |name: &str, bytes: &[u8]| {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(bytes).expect("compresses");
+        std::fs::write(
+            directory.path().join(name),
+            encoder.finish().expect("compresses"),
+        )
+        .expect("writes the file");
+    };
+    zipped(
+        "r.fq.gz",
+        b"@r1 a\nACGT\n+\nIIII\n@r2\nGG\n+r2\nII\n@r3\nT\n+\nI\n@r4 x y\nCC\n+\nII\n@r5\nA\n+\n!",
+    );
+    zipped("t.txt.gz", b"head\none\r\ntwo\n\xe2\x82\nthree\nlast");
+    zipped("c.csv.gz", b"a;b\n\n1; \"x;y\"\r\n2;3\n \n4;5\n6");
+    std::fs::write(
+        directory.path().join("bad.txt.gz"),
+        b"this is not a gzip file\n",
+    )
+    .expect("writes the file");
+    std::fs::write(
+        directory.path().join("s.fa"),
+        b">s1 first one\nAC\nGT\n>s2\nTT\n\n>s3 third\nG\n>s4\n",
+    )
+    .expect("writes the file");
+    let chunks = directory.path().join("chunks");
+    std::fs::create_dir(&chunks).expect("creates the folder");
+    let body = format!(
+        "def fq = file('{root}/r.fq.gz')\ndef fa = file('{root}/s.fa')\n\
+         def tx = file('{root}/t.txt.gz')\ndef cs = file('{root}/c.csv.gz')\n\
+         println(fq.splitFastq(by: 2).inspect())\n\
+         println(fq.splitFastq(record: true, limit: 2))\n\
+         println([fq.countFastq(), fq.countFastq(by: 2), fa.countFasta(), tx.countLines()])\n\
+         println(fa.splitFasta(record: [id: true, desc: true, seqString: true]))\n\
+         println(fa.splitFasta(by: 2, limit: 3).inspect())\n\
+         println(tx.splitText(by: 2, keepHeader: true).inspect())\n\
+         println(tx.splitText(limit: 2).inspect())\n\
+         println(tx.splitText(decompress: false).size())\n\
+         println(cs.splitCsv(sep: ';', header: true, limit: 2))\n\
+         println(cs.splitCsv(sep: ';', by: 2, quote: '\"'))\n\
+         println(cs.splitCsv(sep: ';', strip: true, skip: 1))\n\
+         println(fq.splitFastq(by: 3, file: file('{chunks}')).collect {{ it.name + ' ' + it.text.inspect() }})\n\
+         try {{ file('{root}/bad.txt.gz').countLines() }} catch (e) {{ println(e.class.name + ' ' + e.message.replace('{root}', 'ROOT')) }}\n\
+         channel.fromPath(fq).splitFastq(by: 2).view {{ 'fastq ' + it.inspect() }}\n\
+         channel.fromPath(fa).splitFasta(record: [id: true, sequence: true]).view {{ 'fasta ' + it }}\n\
+         channel.fromPath(tx).splitText(by: 2, keepHeader: true).view {{ 'text ' + it.inspect() }}\n\
+         channel.fromPath(cs).splitCsv(sep: ';', header: true, by: 2).view {{ 'csv ' + it }}\n\
+         channel.fromPath(cs).splitCsv(sep: ';').view {{ 'rows ' + it }}\n\
+         channel.fromPath(fq).countFastq().view {{ 'count ' + it }}\n\
+         channel.of(['k', fa]).splitFasta(elem: 1, by: 2).view {{ 'tuple ' + it.inspect() }}\n\
+         channel.fromPath(fq).splitFastq(by: 2, file: true).view {{ 'file ' + it.name + ' ' + it.text.inspect() }}",
+        root = directory.path().display(),
+        chunks = chunks.display(),
+    );
+    let printed = lines(&body);
+    let expected = [
+        "['@r1 a\\nACGT\\n+\\nIIII\\n@r2\\nGG\\n+r2\\nII\\n', '@r3\\nT\\n+\\nI\\n@r4 x y\\nCC\\n+\\nII\\n', '@r5\\nA\\n+\\n!']",
+        "[[readHeader:r1 a, readString:ACGT, qualityHeader:, qualityString:IIII], [readHeader:r2, readString:GG, qualityHeader:r2, qualityString:II]]",
+        "[5, 3, 4, 6]",
+        "[[id:s1, desc:first one, seqString:ACGT], [id:s2, desc:null, seqString:TT], [id:s3, desc:third, seqString:G], [id:s4, desc:null, seqString:]]",
+        "['>s1 first one\\nAC\\nGT\\n>s2\\nTT\\n\\n', '>s3 third\\nG\\n']",
+        "['head\\nhead\\none\\r\\n', 'head\\ntwo\\n�\\n', 'head\\nthree\\nlast']",
+        "['head\\n', 'one\\r\\n']",
+        "1",
+        "[[a:1, b: \"x], [a:2, b:3]]",
+        "[[a, b], [1,  x;y], [2, 3], [4, 5], [6]]",
+        "[[1, \"x, y\"], [2, 3], [4, 5], [6]]",
+        "[r.1.fq '@r1 a\\nACGT\\n+\\nIIII\\n@r2\\nGG\\n+r2\\nII\\n@r3\\nT\\n+\\nI\\n', r.2.fq '@r4 x y\\nCC\\n+\\nII\\n@r5\\nA\\n+\\n!']",
+        "java.util.zip.ZipException Cannot decompress ROOT/bad.txt.gz: invalid gzip header",
+        "fastq '@r1 a\\nACGT\\n+\\nIIII\\n@r2\\nGG\\n+r2\\nII\\n'",
+        "fastq '@r3\\nT\\n+\\nI\\n@r4 x y\\nCC\\n+\\nII\\n'",
+        "fastq '@r5\\nA\\n+\\n!'",
+        "fasta [id:s1, sequence:AC",
+        "GT",
+        "]",
+        "fasta [id:s2, sequence:TT",
+        "",
+        "]",
+        "fasta [id:s3, sequence:G",
+        "]",
+        "fasta [id:s4, sequence:]",
+        "text 'head\\nhead\\none\\r\\n'",
+        "text 'head\\ntwo\\n�\\n'",
+        "text 'head\\nthree\\nlast'",
+        "csv [[a:1, b: \"x], [a:2, b:3]]",
+        "csv [[a:4, b:5], [a:6, b:null]]",
+        "rows [a, b]",
+        "rows [1,  \"x, y\"]",
+        "rows [2, 3]",
+        "rows [4, 5]",
+        "rows [6]",
+        "count 5",
+        "tuple ['k', '>s1 first one\\nAC\\nGT\\n>s2\\nTT\\n\\n']",
+        "tuple ['k', '>s3 third\\nG\\n>s4\\n']",
+        "file r.fq.1.1 '@r1 a\\nACGT\\n+\\nIIII\\n@r2\\nGG\\n+r2\\nII\\n'",
+        "file r.fq.2.2 '@r3\\nT\\n+\\nI\\n@r4 x y\\nCC\\n+\\nII\\n'",
+        "file r.fq.3.3 '@r5\\nA\\n+\\n!'",
+    ];
+    assert_eq!(printed, expected);
+}

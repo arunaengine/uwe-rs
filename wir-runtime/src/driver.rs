@@ -20,6 +20,7 @@ use crate::cwl;
 use crate::inputs;
 use crate::nextflow;
 use crate::plan::plan;
+use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
 
@@ -31,6 +32,8 @@ pub struct Settings {
     pub cwl: cwl_runtime::Options,
     /// How the drivers of Nextflow blocks get their settings, with a launch folder each.
     pub nextflow: nextflow::Options,
+    /// What the drivers of Snakemake blocks use; each starts in a folder of its own.
+    pub snakemake: snakemake::Options,
     /// Whether a real run prints the outputs of its graph, as JSON.
     pub print: bool,
 }
@@ -40,6 +43,7 @@ impl Default for Settings {
         Settings {
             cwl: cwl_runtime::Options::default(),
             nextflow: nextflow::Options::default(),
+            snakemake: snakemake::Options::default(),
             print: true,
         }
     }
@@ -211,6 +215,8 @@ impl WirDriver {
         let folder = self.job_folder()?.join(&path);
         let (job, values) = match native.language {
             Dialect::Nextflow => (folder.join("params.json"), nextflow::params(&bound)),
+            // A Snakemake config file takes the same values as Nextflow params.
+            Dialect::Snakemake => (folder.join("config.json"), nextflow::params(&bound)),
             _ => (
                 folder.join("job.json"),
                 cwl::to_cwl(Json::Object(bound.clone())),
@@ -248,6 +254,13 @@ impl WirDriver {
                 let driver = nextflow::block(&launch, &output, &self.settings.nextflow)?;
                 self.launched.insert(at, (output, bound));
                 driver
+            }
+            // A Snakefile block starts in its output folder, a project folder in itself.
+            Dialect::Snakemake => {
+                std::fs::create_dir_all(&output).map_err(|error| {
+                    DriverError::new(format!("cannot make {}: {error}", output.display()))
+                })?;
+                snakemake::block(&launch, &output, &self.settings.snakemake)?
             }
             other => {
                 let message = format!("op {path}: uwe does not run {other:?} blocks yet");

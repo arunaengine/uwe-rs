@@ -653,6 +653,7 @@ impl Setup {
     pub fn load(arguments: &Arguments) -> Result<Setup, Failure> {
         let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
+        let config = config.with_secrets(arguments.secrets.clone());
         config.root().only(SECTIONS).map_err(failed)?;
         let registry = executor::credentials::Registry::from_config(&config).map_err(failed)?;
         let storage = Storage::from_config(&config).map_err(failed)?;

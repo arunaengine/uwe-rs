@@ -79,10 +79,19 @@ impl Builder<'_> {
                 ("encodingFormat", "application/json".into()),
             ]));
         }
-        save(
-            &self.folder.join("nextflow.config"),
-            &config_text(&start.config),
-        )?;
+        let resolved = self.folder.join("nextflow.config");
+        let loaded =
+            (start.config_files.iter()).filter_map(|file| Path::new(file).canonicalize().ok());
+        if let Ok(target) = resolved.canonicalize()
+            && loaded.into_iter().any(|file| file == target)
+        {
+            let message = format!(
+                "Unable to overwrite existing provenance file: {}",
+                resolved.display()
+            );
+            return Err(std::io::Error::other(message));
+        }
+        save(&resolved, &config_text(&start.config))?;
         self.files.push(Json::object([
             ("@id", Json::from("nextflow.config")),
             ("@type", "File".into()),

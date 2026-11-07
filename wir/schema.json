@@ -275,7 +275,11 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["language", "code"],
-          "properties": { "language": { "type": "string" }, "code": { "type": "string" } }
+          "properties": {
+            "language": { "type": "string" },
+            "code": { "type": "string" },
+            "library": { "type": "array", "items": { "type": "string" } }
+          }
         },
         "map": {
           "type": "object",

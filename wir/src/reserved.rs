@@ -4,15 +4,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A pure function in a named expression language (`js`, `python`, `groovy`). Open: which
-/// languages, numeric overflow, and how the function sees File values.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Expr {
-    pub language: String,
-    pub code: String,
-}
-
 /// Turns a stream into one array value once the stream closes. Open: order and what an
 /// error inside the stream does.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

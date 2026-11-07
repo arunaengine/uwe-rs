@@ -326,6 +326,36 @@ fn mapped() -> Json {
 }
 
 #[test]
+fn expr_needs_one_output() {
+    let mut document = base();
+    let expr = json!({
+        "path": "pick",
+        "kind": {"expr": {"language": "js", "code": "$(inputs.text)", "library": ["var a = 1;"]}},
+        "inputs": [{"name": "text", "type": {"file": {}}}],
+        "outputs": [{"name": "out", "type": {"file": {}}}, {"name": "more", "type": "int"}]
+    });
+    document["graphs"][0]["ops"]
+        .as_array_mut()
+        .unwrap()
+        .push(expr);
+    let edge = edge((None, "text"), (Some("pick"), "text"));
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .unwrap()
+        .push(edge);
+    let single = Problem::Single("an expr".into());
+    assert_eq!(only(document.clone()), ("main/pick".into(), single));
+    document["graphs"][0]["ops"][2]["outputs"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(problems(document.clone()).is_empty());
+    document["wir_version"] = json!("0.3");
+    let later = Problem::Later("the library of an expr".into(), "0.4".into());
+    assert_eq!(only(document), ("main/pick".into(), later));
+}
+
+#[test]
 fn map_ports_checked() {
     assert!(problems(mapped()).is_empty());
     let mut document = mapped();

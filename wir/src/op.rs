@@ -32,7 +32,7 @@ pub struct Op {
     pub origin: Option<Origin>,
 }
 
-/// What an op does, with the fields of its kind. `task`, `call`, `native` and `map` have
+/// What an op does, with the fields of its kind. `task`, `call`, `native`, `map` and `expr` have
 /// defined semantics in this version; the others are reserved, see [`reserved`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -40,7 +40,7 @@ pub enum Kind {
     Task(Task),
     Call(Call),
     Native(Native),
-    Expr(reserved::Expr),
+    Expr(Expr),
     Map(Map),
     Collect(reserved::Collect),
     Filter(reserved::Filter),
@@ -62,7 +62,7 @@ impl Kind {
     pub fn is_reserved(&self) -> bool {
         !matches!(
             self,
-            Kind::Task(_) | Kind::Call(_) | Kind::Native(_) | Kind::Map(_)
+            Kind::Task(_) | Kind::Call(_) | Kind::Native(_) | Kind::Map(_) | Kind::Expr(_)
         )
     }
 }
@@ -126,6 +126,19 @@ pub enum CaptureRule {
     Glob(String),
     Stdout,
     Stderr,
+}
+
+/// A pure CWL expression over the op's inputs, which binds its one output. Since wir 0.4;
+/// languages other than `js` stay reserved.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Expr {
+    pub language: String,
+    /// Text with `$(...)` parts, or a `${...}` function body, as a CWL expression.
+    pub code: String,
+    /// Code that runs before it, like CWL `expressionLib`. Since wir 0.4.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub library: Vec<String>,
 }
 
 /// Runs the `body` graph once per round: each round takes items of the array inputs in `over`

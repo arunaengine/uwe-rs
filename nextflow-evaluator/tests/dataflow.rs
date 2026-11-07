@@ -109,6 +109,7 @@ fn build(workflows: &str) -> (Result<(), String>, Vec<String>) {
     interpreter.set_global("channel", Value::Namespace("channel".into()));
     let result = interpreter
         .run_entry(&module)
+        .map(drop)
         .map_err(|error| error.to_string());
     (result, network.calls)
 }

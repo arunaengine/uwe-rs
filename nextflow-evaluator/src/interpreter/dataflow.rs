@@ -15,8 +15,9 @@ use crate::lowered::{Input, Module, Place, Process, Workflow};
 use crate::value::{ChannelOut, DefinitionRef, Key, Value};
 
 impl Interpreter<'_> {
-    /// Runs the named workflow selected by `-entry`, including an imported workflow alias.
-    pub fn run_named_entry(&mut self, module: &Rc<Module>, name: &str) -> Result<(), Error> {
+    /// Runs the named workflow selected by `-entry`, including an imported workflow alias; the
+    /// result is what it emits.
+    pub fn run_named_entry(&mut self, module: &Rc<Module>, name: &str) -> Result<Value, Error> {
         self.types = module.types;
         let (target, target_name) = resolve(module, name);
         if !target
@@ -33,13 +34,12 @@ impl Interpreter<'_> {
             ));
         }
         self.call_definition(module, (name, false), Vec::new(), Span::default())
-            .map(drop)
     }
 
     /// Runs the entry workflow of a script, which builds the dataflow network. As in Nextflow,
     /// a script with named workflows only fails, and one without workflows and processes, like
-    /// an empty script, does nothing.
-    pub fn run_entry(&mut self, module: &Rc<Module>) -> Result<(), Error> {
+    /// an empty script, does nothing. The result is what the workflow emits.
+    pub fn run_entry(&mut self, module: &Rc<Module>) -> Result<Value, Error> {
         self.types = module.types;
         let entry = module
             .workflows
@@ -47,16 +47,14 @@ impl Interpreter<'_> {
             .find(|workflow| workflow.name.is_none())
             .cloned();
         match entry {
-            Some(workflow) => self
-                .call_workflow(module, &workflow, Vec::new(), workflow.span)
-                .map(drop),
+            Some(workflow) => self.call_workflow(module, &workflow, Vec::new(), workflow.span),
             None if !module.workflows.is_empty() => {
                 let message = "No entry workflow specified";
                 let exception = Exception::new("AbortOperationException", message);
                 Err(thrown(exception, Span::default()))
             }
-            None if module.processes.is_empty() => Ok(()),
-            None => self.run_process_entry(module),
+            None if module.processes.is_empty() => Ok(Value::Null),
+            None => self.run_process_entry(module).map(|()| Value::Null),
         }
     }
 

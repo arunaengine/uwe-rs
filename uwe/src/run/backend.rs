@@ -687,6 +687,7 @@ mod tests {
         let address = running_server(sent.clone());
         let config = executor::registry::ImageConfig::default();
         let backend = tes_executor::TesBackend {
+            run: String::new(),
             client: tes_executor::Client::new(&address, None).unwrap(),
             scratch: root.path().join("scratch"),
             staging: None,

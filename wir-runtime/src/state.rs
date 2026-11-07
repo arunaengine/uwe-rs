@@ -264,3 +264,7 @@ pub fn widen(value: Json, r#type: &Type, defs: &[TypeDef]) -> Json {
         (_, value) => value,
     }
 }
+
+#[cfg(test)]
+#[path = "state_tests.rs"]
+mod tests;

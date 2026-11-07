@@ -99,6 +99,7 @@ fn fills_placeholders() {
     assert_eq!(text("\"~{true='-y' false='-n' flag}\"", &mut env), "-n");
     assert_eq!(text("\"[~{default='none' missing}]\"", &mut env), "[none]");
     assert_eq!(text("\"[~{missing}]\"", &mut env), "[]");
+    assert_eq!(text("\"[~{\"-x \" + missing}]\"", &mut env), "[]");
     assert_eq!(text("\"r=~{ratio}\"", &mut env), "r=0.500000");
     assert_eq!(text("\"a\" + 1", &mut env), "a1");
 }

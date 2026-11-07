@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use indexmap::IndexMap;
@@ -21,7 +22,7 @@ pub(super) fn plan_output(
     document: &Document,
     decl: &BoundDecl,
     frame: &mut Frame,
-    outputs: &mut BTreeMap<String, Value>,
+    outputs: &mut BTreeMap<String, Option<Value>>,
     patterns: &mut BTreeSet<String>,
 ) -> Result<(), Error> {
     let name = decl.name().text().to_owned();
@@ -30,9 +31,16 @@ pub(super) fn plan_output(
         frame,
         found: BTreeSet::new(),
         outputs,
+        guessed: Cell::new(false),
+        borrowed: Cell::new(false),
     };
     let value = expression::evaluate(&decl.expr(), &mut planning);
     let mut found = std::mem::take(&mut planning.found);
+    // A value that used made-up file contents is only known after the run.
+    let value = match planning.guessed.get() {
+        true => Err(Error::Unknown),
+        false => value,
+    };
     match value {
         Ok(value) => {
             let mut value = value
@@ -47,9 +55,11 @@ pub(super) fn plan_output(
                     });
                 }
             });
-            planning.outputs.insert(name.clone(), value);
+            planning.outputs.insert(name.clone(), Some(value));
         }
-        Err(Error::Unknown) if !found.is_empty() || !has_files(&ty) => {}
+        Err(Error::Unknown) if !found.is_empty() || !has_files(&ty) || planning.borrowed.get() => {
+            planning.outputs.insert(name.clone(), None);
+        }
         Err(Error::Unknown) => {
             return Err(Error::Unsupported(format!(
                 "output `{name}` names files that only the results of the task tell"
@@ -134,21 +144,31 @@ fn placeholder(ty: &Type) -> Value {
     }
 }
 
-/// The names of a task while its outputs are planned: reads of files the task makes are
-/// unknown, and give their paths as outputs.
+/// The names of a task while its outputs are planned. Files that the task makes read as
+/// empty, so that evaluation goes on and finds every file the output needs.
 struct Planning<'a> {
     frame: &'a mut Frame,
     found: BTreeSet<String>,
-    /// The outputs planned before, which later outputs may refer to.
-    outputs: &'a mut BTreeMap<String, Value>,
+    /// The outputs planned before, which later outputs may refer to; `None` when only the
+    /// results of the task tell the value.
+    outputs: &'a mut BTreeMap<String, Option<Value>>,
+    /// Whether the value used made-up contents of files the task makes.
+    guessed: Cell<bool>,
+    /// Whether the value used an output whose files are already planned.
+    borrowed: Cell<bool>,
 }
 
 impl Environment for Planning<'_> {
     fn lookup(&self, name: &str) -> Option<Value> {
-        self.outputs
-            .get(name)
-            .cloned()
-            .or_else(|| self.frame.lookup(name))
+        match self.outputs.get(name) {
+            Some(Some(value)) => Some(value.clone()),
+            Some(None) => {
+                self.guessed.set(true);
+                self.borrowed.set(true);
+                Some(Value::None)
+            }
+            None => self.frame.lookup(name),
+        }
     }
 
     fn read(&mut self, file: &str) -> Result<String, Error> {
@@ -158,12 +178,14 @@ impl Environment for Planning<'_> {
             return self.frame.read(file);
         }
         self.found.insert(file.to_owned());
-        Err(Error::Unknown)
+        self.guessed.set(true);
+        Ok(String::new())
     }
 
     fn glob(&mut self, pattern: &str) -> Result<Vec<String>, Error> {
         self.found.insert(pattern.to_owned());
-        Err(Error::Unknown)
+        self.guessed.set(true);
+        Ok(Vec::new())
     }
 
     fn stream(&mut self, stream: Stream) -> Result<Value, Error> {
@@ -181,7 +203,8 @@ impl Environment for Planning<'_> {
             return self.frame.size(file);
         }
         self.found.insert(file.to_owned());
-        Err(Error::Unknown)
+        self.guessed.set(true);
+        Ok(0)
     }
 }
 
@@ -206,25 +229,41 @@ impl Results<'_> {
 
     /// Checks that the files of an output exist; a missing optional file is `None`.
     fn locate(&self, value: Value, ty: &Type) -> Result<Value, String> {
-        if let Value::File(path) | Value::Directory(path) = &value
-            && self.location(path).is_none()
-            && !path.contains("://")
-        {
-            return match ty.is_optional() || self.settings.simulated {
-                true => Ok(Value::None),
-                false => Err(format!("the task did not make {path}")),
-            };
-        }
-        let mut missing = None;
-        let mut value = value;
-        value.visit_paths(&mut |path, _| {
-            if self.location(path).is_none() && !path.contains("://") {
-                missing.get_or_insert(path.clone());
+        use wdl_analysis::types::CompoundType;
+        match (value, ty) {
+            (Value::File(path) | Value::Directory(path), _)
+                if self.location(&path).is_none() && !path.contains("://") =>
+            {
+                match ty.is_optional() || self.settings.simulated {
+                    true => Ok(Value::None),
+                    false => Err(format!("the task did not make {path}")),
+                }
             }
-        });
-        match missing {
-            Some(path) if !self.settings.simulated => Err(format!("the task did not make {path}")),
-            _ => Ok(value),
+            (Value::Array(items), Type::Compound(CompoundType::Array(array), _)) => (items
+                .into_iter())
+            .map(|item| self.locate(item, array.element_type()))
+            .collect::<Result<_, _>>()
+            .map(Value::Array),
+            (Value::Pair(left, right), Type::Compound(CompoundType::Pair(pair), _)) => {
+                Ok(Value::Pair(
+                    Box::new(self.locate(*left, pair.left_type())?),
+                    Box::new(self.locate(*right, pair.right_type())?),
+                ))
+            }
+            (mut value, _) => {
+                let mut missing = None;
+                value.visit_paths(&mut |path, _| {
+                    if self.location(path).is_none() && !path.contains("://") {
+                        missing.get_or_insert(path.clone());
+                    }
+                });
+                match missing {
+                    Some(path) if !self.settings.simulated => {
+                        Err(format!("the task did not make {path}"))
+                    }
+                    _ => Ok(value),
+                }
+            }
         }
     }
 }

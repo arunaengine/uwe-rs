@@ -17,6 +17,8 @@ fn demo(name: &str) -> PathBuf {
 /// What a simulated run gave: its tasks in the order they were asked for, and its outputs.
 struct Simulated {
     tasks: Vec<Task>,
+    /// The output patterns of each task.
+    patterns: Vec<Vec<String>>,
     outputs: Json,
 }
 
@@ -38,6 +40,7 @@ fn simulate(launch: Launch, order: Order) -> Result<Simulated, String> {
         return Err(error.to_string());
     }
     let mut tasks = Vec::new();
+    let mut patterns = Vec::new();
     let mut entries: Vec<PathBuf> = std::fs::read_dir(folder.path().join("tes"))
         .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
         .unwrap_or_default();
@@ -49,13 +52,24 @@ fn simulate(launch: Launch, order: Order) -> Result<Simulated, String> {
         let document: Json =
             serde_json::from_str(&std::fs::read_to_string(path).expect("a TES file"))
                 .expect("JSON");
+        let outputs = document["outputs"].as_array().cloned().unwrap_or_default();
+        let paths = outputs.iter().filter_map(|output| output["path"].as_str());
+        patterns.push(
+            paths
+                .map(|path| path.rsplit("/work/").next().unwrap_or(path).to_owned())
+                .collect(),
+        );
         tasks.push(Task {
             name: document["name"].as_str().unwrap_or_default().to_owned(),
             ..Task::default()
         });
     }
     let outputs = driver.results().unwrap_or(Json::Null);
-    Ok(Simulated { tasks, outputs })
+    Ok(Simulated {
+        tasks,
+        patterns,
+        outputs,
+    })
 }
 
 fn launch(name: &str) -> Launch {
@@ -163,4 +177,29 @@ fn reports_analysis_errors() {
     .err()
     .expect("an error");
     assert!(error.message.contains("broken.wdl:3"), "{}", error.message);
+}
+
+#[test]
+fn plans_task_outputs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let path = folder.path().join("pick.wdl");
+    let document = "version 1.2\ntask pick {\n  command <<<\n    touch a.csv b.csv\n  >>>\n  output {\n    Array[File] csvs = glob(\"*.csv\")\n    File first = csvs[0]\n    Boolean same = read_string(\"a.csv\") == read_string(\"b.csv\")\n  }\n}\n";
+    std::fs::write(&path, document).expect("writes");
+    let run = simulate(
+        Launch {
+            target: path,
+            ..Launch::default()
+        },
+        Order::AsAsked,
+    )
+    .expect("a simulated run");
+    assert_eq!(run.outputs["pick.same"], json!(true));
+    assert!(
+        run.outputs["pick.first"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("a.csv")),
+        "{}",
+        run.outputs
+    );
+    assert_eq!(run.patterns, [["*.csv", "a.csv", "b.csv"]]);
 }

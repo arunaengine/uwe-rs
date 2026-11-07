@@ -136,6 +136,7 @@ fn py_function(arguments: Vec<Value>, context: &mut Context) -> Result<Value, Er
             folders.push(extra.to_owned());
         }
     }
+    let mounts = read_only(&passed, &folders);
     let text = |path: PathBuf| path.to_string_lossy().into_owned();
     let call = Call {
         engine: context.host.environment("UWE_ENGINE").unwrap_or_default(),
@@ -144,7 +145,7 @@ fn py_function(arguments: Vec<Value>, context: &mut Context) -> Result<Value, Er
         program: program.clone(),
         arguments: vec![text(script.clone())],
         folders,
-        mounts: Vec::new(),
+        mounts,
         workdir: launch.clone(),
         environment: vec![
             ("NEXTFLOW_INFILE".to_owned(), text(folder.join("in.json"))),
@@ -225,9 +226,62 @@ fn report(first: &str, program: &str, script: &Path, code: i32, folder: &Path) -
     )
 }
 
+/// Read-only mounts of the local files and folders that the arguments name, outside the
+/// mounted folders, so that Python can read them where they are.
+fn read_only(passed: &[(String, Value)], folders: &[PathBuf]) -> Vec<executor::process::Mount> {
+    fn local(value: &Value, found: &mut Vec<PathBuf>) {
+        match value {
+            Value::Path(path) if path.prefix.is_none() => found.push(PathBuf::from(&path.path)),
+            Value::List(list) => (list.borrow().items.iter()).for_each(|item| local(item, found)),
+            Value::Map(map) => {
+                (map.borrow().entries.iter()).for_each(|(_, item)| local(item, found))
+            }
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    passed
+        .iter()
+        .for_each(|(_, value)| local(value, &mut found));
+    found.sort();
+    found.dedup();
+    (found.into_iter())
+        .filter(|path| path.exists() && !folders.iter().any(|folder| path.starts_with(folder)))
+        .map(|path| executor::process::Mount {
+            target: path.to_string_lossy().into_owned(),
+            source: path,
+            read_only: true,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A file argument outside the launch folder is mounted read-only; one inside is not.
+    #[test]
+    fn mounts_named_files() {
+        let outside = tempfile::tempdir().expect("a folder");
+        let launch = tempfile::tempdir().expect("a folder");
+        let data = outside.path().join("input.csv");
+        std::fs::write(&data, "a\n").expect("writes");
+        std::fs::write(launch.path().join("here.csv"), "b\n").expect("writes");
+        let at = |path: &Path| {
+            Value::Path(std::rc::Rc::new(
+                nextflow_evaluator::value::PathValue::parse(&path.to_string_lossy(), "/"),
+            ))
+        };
+        let passed = vec![
+            ("data".to_owned(), Value::list(vec![at(&data)])),
+            ("here".to_owned(), at(&launch.path().join("here.csv"))),
+        ];
+        let mounts = read_only(&passed, &[launch.path().to_owned()]);
+        let mounted: Vec<(&Path, bool)> = (mounts.iter())
+            .map(|mount| (mount.source.as_path(), mount.read_only))
+            .collect();
+        assert_eq!(mounted, [(data.as_path(), true)]);
+    }
 
     #[test]
     fn dedents_like_plugin() {

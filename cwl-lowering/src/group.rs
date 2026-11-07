@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{ScatterMethod, Step, short_name};
+use cwl_parser::model::{Expression, ScatterMethod, Step, short_name};
 use wir::{ArrayType, Branch, Edge, Expr, Flow, Graph, Kind, Map, Op, Port, Scatter, Type};
 
 use crate::workflow::end;
@@ -14,6 +14,9 @@ const CONDITION: &str = "when";
 
 /// The input of a `valueFrom` expr that holds the value of its step input.
 const SELF: &str = "self";
+
+/// The suffix of the task input that the `valueFrom` of a tool input fills.
+pub(crate) const VALUE: &str = "valueFrom";
 
 /// The ops of a step, the last at the path of the step, and the edges between them.
 pub(crate) struct Group {
@@ -76,7 +79,7 @@ impl Group {
         ports
     }
 
-    fn main(&self) -> &Op {
+    pub fn main(&self) -> &Op {
         &self.ops[self.ops.len() - 1]
     }
 }
@@ -87,18 +90,21 @@ impl Lowerer {
     pub(crate) fn guarded(
         &mut self,
         step: &Step,
-        op: Op,
+        inner: Group,
         path: &str,
         scope: &Scope,
     ) -> Result<Group, String> {
         let library = scope.library();
-        let mut group = values(step, &op, path, &library)?;
+        let op = inner.main();
+        let mut group = values(step, op, path, &library)?;
         let Some(when) = &step.when else {
-            group.edges = feeds(&group, &[&op]);
-            group.ops.push(op);
+            group.edges = feeds(&group, &inner);
+            group.edges.extend(inner.edges);
+            group.selves.extend(inner.selves);
+            group.ops.extend(inner.ops);
             return Ok(group);
         };
-        if op.inputs.iter().any(|port| port.name == CONDITION) {
+        if inner.inputs().iter().any(|port| port.name == CONDITION) {
             return Err(format!("step {path}: an input named {CONDITION}"));
         }
         let test = format!("{path}.{CONDITION}");
@@ -127,13 +133,13 @@ impl Lowerer {
             }),
             op.origin.clone(),
         );
-        branch.inputs = op.inputs.clone();
+        branch.inputs = inner.inputs();
         branch.inputs.push(port(CONDITION, Type::Bool));
         branch.outputs = (op.outputs.iter())
             .map(|item| port(&item.name, crate::types::optional(item.r#type.clone())))
             .collect();
-        self.body(body, Group::of(vec![op]), None);
-        group.edges = feeds(&group, &[&condition, &branch]);
+        self.body(body, inner, None);
+        group.edges = feeds(&group, &Group::of(vec![condition.clone(), branch.clone()]));
         group.edges.push(Edge {
             from: end(Some(&test), "out"),
             to: end(Some(path), CONDITION),
@@ -267,21 +273,64 @@ fn values(step: &Step, op: &Op, path: &str, library: &[String]) -> Result<Group,
     Ok(group)
 }
 
-/// The edges from the `valueFrom` exprs of a group to the inputs of the same name of `ops`.
-fn feeds(group: &Group, ops: &[&Op]) -> Vec<Edge> {
+/// The edges from the `valueFrom` exprs of a group to the ops of `inner` that take the step
+/// input of each.
+fn feeds(group: &Group, inner: &Group) -> Vec<Edge> {
     let mut edges = Vec::new();
     for (expr, name) in &group.selves {
-        for op in ops
-            .iter()
-            .filter(|op| op.inputs.iter().any(|item| item.name == *name))
-        {
+        for (op, input) in inner.takers(name) {
             edges.push(Edge {
                 from: end(Some(expr), "out"),
-                to: end(Some(&op.path), name),
+                to: end(Some(&op), &input),
             });
         }
     }
     edges
+}
+
+/// The group of a task whose inputs `values` give their words through `valueFrom`: an expr
+/// `<task>.<input>.valueFrom` each, which sees the task inputs and fills the task input of
+/// that name with text, numbers or a list of them.
+pub(crate) fn computed(mut task: Op, values: &[(String, Expression)], library: &[String]) -> Group {
+    let mut group = Group::of(Vec::new());
+    let words = Type::Union(vec![Type::String, Type::Int, Type::Float]);
+    let words = crate::types::optional(Type::Union(vec![
+        words.clone(),
+        Type::Array(ArrayType {
+            items: Box::new(words),
+            nonempty: false,
+        }),
+    ]));
+    for (name, code) in values {
+        let input = format!("{name}.{VALUE}");
+        let at = format!("{}.{input}", task.path);
+        let kind = Kind::Expr(Expr {
+            language: "js".into(),
+            code: code.text.clone(),
+            library: library.to_vec(),
+        });
+        let mut expr = blank(&at, kind, task.origin.clone());
+        expr.inputs = task.inputs.clone();
+        if let Some(this) = task.inputs.iter().find(|item| item.name == *name) {
+            expr.inputs.push(Port {
+                name: SELF.into(),
+                ..this.clone()
+            });
+        }
+        expr.outputs = vec![port("out", words.clone())];
+        group.edges.push(Edge {
+            from: end(Some(&at), "out"),
+            to: end(Some(&task.path), &input),
+        });
+        group.selves.push((at, name.clone()));
+        group.ops.push(expr);
+    }
+    let filled = values
+        .iter()
+        .map(|(name, _)| port(&format!("{name}.{VALUE}"), words.clone()));
+    task.inputs.extend(filled);
+    group.ops.push(task);
+    group
 }
 
 /// Whether an edge of the group feeds the input `port` of the op at `path`.

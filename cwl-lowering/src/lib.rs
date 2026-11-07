@@ -15,6 +15,7 @@ mod workflow;
 use std::path::{Path, PathBuf};
 
 use cwl_parser::model::{Class, Process, Requirement, RequirementClass, short_name};
+use group::Group;
 use wir::{
     Document, Edge, Endpoint, Flow, Graph, Kind, Language, Native, Op, Origin, Port, Source, Type,
 };
@@ -61,7 +62,7 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
             Ok(graph) => graph,
             Err(reason) => {
                 let op = lowerer.native(process, &name, reason)?;
-                single(process, op)?
+                single(process, one(op))?
             }
         },
         _ => {
@@ -91,13 +92,15 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
     })
 }
 
-/// The entry graph of a process that one op runs, with its ports.
-fn single(process: &Process, op: Op) -> Result<Graph, String> {
+/// The entry graph of a process that the ops of a group run, with its ports.
+fn single(process: &Process, group: Group) -> Result<Graph, String> {
     let (inputs, outputs) = boundary(process)?;
-    let name = op.path.clone();
-    let mut edges = Vec::new();
+    let name = group.main().path.clone();
+    let mut edges = group.edges.clone();
     for port in &inputs {
-        edges.push(edge((None, &port.name), (Some(&name), &port.name)));
+        for (op, input) in group.takers(&port.name) {
+            edges.push(edge((None, &port.name), (Some(&op), &input)));
+        }
     }
     for port in &outputs {
         edges.push(edge((Some(&name), &port.name), (None, &port.name)));
@@ -106,9 +109,13 @@ fn single(process: &Process, op: Op) -> Result<Graph, String> {
         name: "main".into(),
         inputs,
         outputs,
-        ops: vec![op],
+        ops: group.ops,
         edges,
     })
+}
+
+fn one(op: Op) -> Group {
+    Group::of(vec![op])
 }
 
 /// The requirements and hints in effect, outer ones first, as uwe's CWL driver keeps them.
@@ -158,8 +165,9 @@ struct Lowerer {
 }
 
 impl Lowerer {
-    /// The op at `path` that runs a process: lowered where it can be, else a native op.
-    fn op(&mut self, process: &Process, outer: &Scope, path: &str) -> Result<Op, String> {
+    /// The ops that run a process, the last at `path`: lowered where it can be, else a
+    /// native op.
+    fn op(&mut self, process: &Process, outer: &Scope, path: &str) -> Result<Group, String> {
         let scope = outer.with(&process.requirements, &process.hints);
         let (source, entry) = self.source(process);
         let origin = Some(Origin {
@@ -172,19 +180,21 @@ impl Lowerer {
                     let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
                     (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
                     op.attributes = lowered.attributes;
-                    op
+                    group::computed(op, &lowered.values, &scope.library())
                 })
             }
-            Class::Workflow(workflow) => self.call(process, workflow, &scope, path),
-            Class::ExpressionTool(tool) => self.expression(process, tool, &scope, path),
+            Class::Workflow(workflow) => self.call(process, workflow, &scope, path).map(one),
+            Class::ExpressionTool(tool) => self.expression(process, tool, &scope, path).map(one),
             Class::Operation => Err("this process class has no lowering yet".into()),
         };
         match lowered {
-            Ok(mut op) => {
-                op.origin = origin;
-                Ok(op)
+            Ok(mut group) => {
+                if let Some(main) = group.ops.last_mut() {
+                    main.origin = origin;
+                }
+                Ok(group)
             }
-            Err(reason) => self.native(process, path, reason),
+            Err(reason) => self.native(process, path, reason).map(one),
         }
     }
 

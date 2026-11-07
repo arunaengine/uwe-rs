@@ -25,6 +25,8 @@ pub struct Lowered {
     pub inputs: Vec<Port>,
     pub outputs: Vec<Port>,
     pub attributes: Attributes,
+    /// The inputs whose words come from the `valueFrom` of their binding, with its code.
+    pub values: Vec<(String, Expression)>,
 }
 
 /// The task of a tool, or the first thing it uses that a task cannot say the same way. File
@@ -76,6 +78,7 @@ pub fn lower(
         words.push((key, words_of));
     }
     let mut inputs = Vec::new();
+    let mut values = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
         if !input.secondary_files.is_empty() || !input.format.is_empty() {
@@ -88,6 +91,9 @@ pub fn lower(
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
             words.push((key, bound(binding, &input.value_type, &name)?));
+            if let Some(code) = &binding.value_from {
+                values.push((name.clone(), code.clone()));
+            }
         }
         let r#type = convert(&input.value_type).map_err(|why| format!("input {name}: {why}"))?;
         let mut port = Port {
@@ -125,6 +131,7 @@ pub fn lower(
         inputs,
         outputs,
         attributes,
+        values,
     })
 }
 
@@ -134,8 +141,18 @@ fn bound(
     value_type: &Cwl,
     name: &str,
 ) -> Result<Vec<Argument>, String> {
-    if binding.value_from.is_some() || binding.item_separator.is_some() {
-        return Err(format!("the valueFrom or itemSeparator of input {name}"));
+    if binding.item_separator.is_some() {
+        return Err(format!("the itemSeparator of input {name}"));
+    }
+    if binding.value_from.is_some() {
+        // CWL writes no prefix for a null and no word for a bool, so only plain inputs and
+        // words without a prefix stay the same.
+        return match (value_type, &binding.prefix) {
+            (Cwl::Union(_), _) | (_, Some(_)) => Err(format!("the valueFrom of input {name}")),
+            _ => Ok(vec![Argument::Input {
+                input: format!("{name}.{}", crate::group::VALUE),
+            }]),
+        };
     }
     let members: Vec<&Cwl> = match value_type {
         Cwl::Union(members) => members

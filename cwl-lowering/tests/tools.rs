@@ -119,3 +119,26 @@ fn lowers_expression_tools() {
         "no default"
     );
 }
+
+#[test]
+fn lowers_input_values() {
+    let lowering = lowered("shout.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let graph = serde_json::to_value(&lowering.document.graphs[0]).unwrap();
+    let ops = graph["ops"].as_array().unwrap();
+    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
+    assert_eq!(
+        paths,
+        ["shout.count.valueFrom", "shout.message.valueFrom", "shout"]
+    );
+    let command = json!(["echo", {"input": "message.valueFrom"}, {"input": "count.valueFrom"}]);
+    assert_eq!(ops[2]["kind"]["task"]["command"], command);
+    let this = json!({"name": "self", "type": "int", "default": 2});
+    assert_eq!(
+        ops[0]["inputs"][2], this,
+        "self is the input with its default"
+    );
+    let edge =
+        json!({"from": {"port": "count"}, "to": {"op": "shout.count.valueFrom", "port": "self"}});
+    assert!(graph["edges"].as_array().unwrap().contains(&edge));
+}

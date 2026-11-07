@@ -32,7 +32,8 @@ pub struct Op {
     pub origin: Option<Origin>,
 }
 
-/// What an op does, with the fields of its kind. Only `task`, `call` and `native` have
+/// What an op does, with the fields of its kind. `task`, `call`, `native`, `map`, `expr` and
+/// `branch` have
 /// defined semantics in this version; the others are reserved, see [`reserved`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -40,8 +41,8 @@ pub enum Kind {
     Task(Task),
     Call(Call),
     Native(Native),
-    Expr(reserved::Expr),
-    Map(reserved::Map),
+    Expr(Expr),
+    Map(Map),
     Collect(reserved::Collect),
     Filter(reserved::Filter),
     Flatten(reserved::Flatten),
@@ -50,7 +51,7 @@ pub enum Kind {
     Cross(reserved::Cross),
     Group(reserved::Group),
     Join(reserved::Join),
-    Branch(reserved::Branch),
+    Branch(Branch),
     Select(reserved::Select),
     Loop(reserved::Loop),
     Dynamic(reserved::Dynamic),
@@ -60,7 +61,15 @@ impl Kind {
     /// Whether this kind is reserved: it parses and verifies, but no runner of this version
     /// runs it.
     pub fn is_reserved(&self) -> bool {
-        !matches!(self, Kind::Task(_) | Kind::Call(_) | Kind::Native(_))
+        !matches!(
+            self,
+            Kind::Task(_)
+                | Kind::Call(_)
+                | Kind::Native(_)
+                | Kind::Map(_)
+                | Kind::Expr(_)
+                | Kind::Branch(_)
+        )
     }
 }
 
@@ -85,6 +94,13 @@ pub struct Task {
     /// Since wir 0.3.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub network: bool,
+    /// The file in the working folder that standard output goes to, like CWL `stdout`; a
+    /// `stdout` capture then reads it. Since wir 0.4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stdout: Option<String>,
+    /// The file that standard error goes to, like CWL `stderr`. Since wir 0.4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stderr: Option<String>,
 }
 
 /// One command argument: literal text, or the value of a task input.
@@ -116,6 +132,63 @@ pub enum CaptureRule {
     Glob(String),
     Stdout,
     Stderr,
+}
+
+/// A pure CWL expression over the op's inputs, which binds its one output. Since wir 0.4;
+/// languages other than `js` stay reserved.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Expr {
+    pub language: String,
+    /// Text with `$(...)` parts, or a `${...}` function body, as a CWL expression.
+    pub code: String,
+    /// Code that runs before it, like CWL `expressionLib`. Since wir 0.4.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub library: Vec<String>,
+}
+
+/// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the
+/// op ends skipped with every output null. Since wir 0.4.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Branch {
+    pub body: String,
+    pub condition: String,
+}
+
+/// Runs the `body` graph once per round: each round takes items of the array inputs in `over`
+/// and the other inputs as they are. Each output is the array of what the rounds gave, in
+/// round order. Since wir 0.4; `parallelism` and `min_success` stay reserved.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Map {
+    pub body: String,
+    pub over: Vec<String>,
+    #[serde(default, skip_serializing_if = "Scatter::is_dot")]
+    pub mode: Scatter,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallelism: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_success: Option<u32>,
+}
+
+/// How a `map` makes rounds of several inputs, as CWL `scatterMethod`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Scatter {
+    /// Item i of every input in round i; the inputs have equal lengths.
+    #[default]
+    Dot,
+    /// Every combination, the first input varying slowest; flat outputs.
+    FlatCross,
+    /// Every combination, with outputs nested one level per input.
+    NestedCross,
+}
+
+impl Scatter {
+    pub fn is_dot(&self) -> bool {
+        *self == Scatter::Dot
+    }
 }
 
 /// Runs a named graph of the same document with the op's inputs. The op's ports have the

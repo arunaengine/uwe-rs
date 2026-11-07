@@ -13,7 +13,13 @@ pub const WORKDIR: &str = "/work";
 
 /// The task of a task op with its input values. Inputs are staged below `inputs/<port>`,
 /// and the attributes only set what no cache key covers.
-pub fn build(id: TaskId, path: &str, op: &Op, spec: &wir::Task, bound: &Map<String, Json>) -> Task {
+pub fn build(
+    id: TaskId,
+    (path, step): (&str, &str),
+    op: &Op,
+    spec: &wir::Task,
+    bound: &Map<String, Json>,
+) -> Task {
     let mut inputs = Vec::new();
     let mut words = Vec::new();
     for argument in &spec.command {
@@ -26,9 +32,13 @@ pub fn build(id: TaskId, path: &str, op: &Op, spec: &wir::Task, bound: &Map<Stri
         }
     }
     let stream = |rule: CaptureRule| {
-        (spec.captures.iter())
-            .find(|capture| capture.from == rule)
-            .map(|capture| stream_name(&capture.output, &rule))
+        let named = match rule {
+            CaptureRule::Stderr => &spec.stderr,
+            _ => &spec.stdout,
+        };
+        let captured = (spec.captures.iter()).find(|capture| capture.from == rule);
+        (named.clone())
+            .or_else(|| captured.map(|capture| stream_name(spec, &capture.output, &rule)))
     };
     let (stdout, stderr) = (stream(CaptureRule::Stdout), stream(CaptureRule::Stderr));
     let mut outputs: Vec<String> = stdout.iter().chain(&stderr).cloned().collect();
@@ -59,7 +69,7 @@ pub fn build(id: TaskId, path: &str, op: &Op, spec: &wir::Task, bound: &Map<Stri
     Task {
         id,
         name: path.to_owned(),
-        step: path.to_owned(),
+        step: step.to_owned(),
         image: spec.image.clone(),
         command,
         script,
@@ -119,7 +129,7 @@ pub fn capture(
                 found
             }
             rule => {
-                let name = stream_name(&port.name, rule);
+                let name = stream_name(spec, &port.name, rule);
                 outcome
                     .files
                     .iter()
@@ -242,10 +252,13 @@ fn stage(value: &Json, folder: &str, inputs: &mut Vec<Input>) -> Option<String> 
     Some(path)
 }
 
-/// The file that a stream capture of an output writes to.
-fn stream_name(output: &str, rule: &CaptureRule) -> String {
-    match rule {
-        CaptureRule::Stderr => format!("{output}.stderr"),
+/// The file that a stream capture of an output reads: the one the task names, else one
+/// named after the output.
+fn stream_name(spec: &wir::Task, output: &str, rule: &CaptureRule) -> String {
+    match (rule, &spec.stdout, &spec.stderr) {
+        (CaptureRule::Stderr, _, Some(name)) => name.clone(),
+        (CaptureRule::Stderr, _, None) => format!("{output}.stderr"),
+        (_, Some(name), _) => name.clone(),
         _ => format!("{output}.stdout"),
     }
 }

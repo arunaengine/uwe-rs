@@ -6,8 +6,8 @@ use std::collections::BTreeSet;
 
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
-use crate::op::{Argument, CaptureRule, Kind, Native, Op, Task};
-use crate::types::{Type, TypeDef, resolve};
+use crate::op::{Argument, Branch, CaptureRule, Kind, Map, Native, Op, Scatter, Task};
+use crate::types::{ArrayType, Type, TypeDef, resolve};
 
 impl<'d> Checker<'d> {
     pub(super) fn kind(&mut self, at: &str, op: &Op) {
@@ -15,8 +15,18 @@ impl<'d> Checker<'d> {
             Kind::Task(task) => self.task(at, op, task),
             Kind::Call(call) => self.call(at, op, &call.graph),
             Kind::Native(native) => self.native(at, op, native),
-            Kind::Map(map) => self.inputs(at, op, map.over.iter()),
-            Kind::Branch(branch) => self.inputs(at, op, [&branch.condition]),
+            Kind::Map(map) => self.map(at, op, map),
+            Kind::Expr(expr) => {
+                if op.outputs.len() != 1 {
+                    self.report(at, Problem::Single("an expr".into()));
+                }
+                let version = self.document.wir_version.as_str();
+                if !expr.library.is_empty() && matches!(version, "0.1" | "0.2" | "0.3") {
+                    let feature = "the library of an expr".into();
+                    self.report(at, Problem::Later(feature, "0.4".into()));
+                }
+            }
+            Kind::Branch(branch) => self.branch(at, op, branch),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
             _ => {}
         }
@@ -29,6 +39,16 @@ impl<'d> Checker<'d> {
         if task.network && matches!(self.document.wir_version.as_str(), "0.1" | "0.2") {
             let feature = "the network of a task".into();
             self.report(at, Problem::Later(feature, "0.3".into()));
+        }
+        let streams = [&task.stdout, &task.stderr];
+        let named: Vec<&String> = streams.into_iter().flatten().collect();
+        if !named.is_empty() && matches!(self.document.wir_version.as_str(), "0.1" | "0.2" | "0.3")
+        {
+            let feature = "the stream files of a task".into();
+            self.report(at, Problem::Later(feature, "0.4".into()));
+        }
+        for name in named.into_iter().filter(|name| !inside(name)) {
+            self.report(at, Problem::Outside(name.clone()));
         }
         let used = task.command.iter().filter_map(|argument| match argument {
             Argument::Input { input } => Some(input),
@@ -86,6 +106,130 @@ impl<'d> Checker<'d> {
                             graph: name.to_owned(),
                         },
                     );
+                }
+            }
+        }
+    }
+
+    /// The op's ports must be the body's ports: an input in `over` is an array of what the
+    /// body takes, and each output an array, nested per input for `nested_cross`, of what it gives.
+    fn map(&mut self, at: &str, op: &Op, map: &Map) {
+        self.inputs(at, op, map.over.iter());
+        if map.over.is_empty() {
+            self.report(at, Problem::Empty("over".into()));
+        }
+        let Some(body) = self.graph(&map.body) else {
+            return;
+        };
+        let depth = match map.mode {
+            Scatter::NestedCross => map.over.len(),
+            _ => 1,
+        };
+        let sides = [
+            ("input", &op.inputs, &body.inputs),
+            ("output", &op.outputs, &body.outputs),
+        ];
+        for (side, ours, theirs) in sides {
+            let names: BTreeSet<&str> =
+                ours.iter().chain(theirs).map(|p| p.name.as_str()).collect();
+            for port in names {
+                let mine = ours.iter().find(|item| item.name == port);
+                let other = theirs.iter().find(|item| item.name == port);
+                let fits = match (side, mine, other) {
+                    ("input", Some(mine), Some(other)) if map.over.iter().any(|n| n == port) => {
+                        match resolve(&mine.r#type, self.defs) {
+                            Some(Type::Array(array)) => {
+                                other.r#type.accepts(&array.items, self.defs)
+                            }
+                            _ => false,
+                        }
+                    }
+                    ("input", Some(mine), Some(other)) => {
+                        other.r#type.accepts(&mine.r#type, self.defs)
+                    }
+                    (_, Some(mine), Some(other)) => {
+                        let mut made = other.r#type.clone();
+                        for _ in 0..depth {
+                            made = Type::Array(ArrayType {
+                                items: Box::new(made),
+                                nonempty: false,
+                            });
+                        }
+                        mine.r#type.accepts(&made, self.defs)
+                    }
+                    _ => false,
+                };
+                let flows = [mine, other]
+                    .iter()
+                    .flatten()
+                    .all(|item| item.flow.is_value());
+                if !fits || !flows {
+                    let port = format!("{side} {port}");
+                    let graph = map.body.clone();
+                    self.report(at, Problem::CallPort { port, graph });
+                }
+            }
+        }
+    }
+
+    /// The condition is a bool input, the body has the other inputs, and each output takes
+    /// the body's output or null.
+    fn branch(&mut self, at: &str, op: &Op, branch: &Branch) {
+        self.inputs(at, op, [&branch.condition]);
+        let condition = op.inputs.iter().find(|port| port.name == branch.condition);
+        if let Some(port) =
+            condition.filter(|port| resolve(&port.r#type, self.defs) != Some(&Type::Bool))
+        {
+            let (found, want) = (show(&port.r#type), "\"bool\"".to_owned());
+            let port = format!("input {}", port.name);
+            self.report(at, Problem::Mismatch { port, found, want });
+        }
+        let Some(body) = self.graph(&branch.body) else {
+            return;
+        };
+        let inputs = op
+            .inputs
+            .iter()
+            .filter(|port| port.name != branch.condition);
+        let sides = [
+            (
+                "input",
+                inputs.collect::<Vec<_>>(),
+                body.inputs.iter().collect::<Vec<_>>(),
+            ),
+            (
+                "output",
+                op.outputs.iter().collect(),
+                body.outputs.iter().collect(),
+            ),
+        ];
+        for (side, ours, theirs) in sides {
+            let names: BTreeSet<&str> = ours
+                .iter()
+                .chain(&theirs)
+                .map(|p| p.name.as_str())
+                .collect();
+            for port in names {
+                let mine = ours.iter().find(|item| item.name == port);
+                let other = theirs.iter().find(|item| item.name == port);
+                let fits = match (side, mine, other) {
+                    ("input", Some(mine), Some(other)) => {
+                        other.r#type.accepts(&mine.r#type, self.defs)
+                    }
+                    (_, Some(mine), Some(other)) => {
+                        let made = Type::Optional(Box::new(other.r#type.clone()));
+                        mine.r#type.accepts(&made, self.defs)
+                    }
+                    _ => false,
+                };
+                let flows = [mine, other]
+                    .iter()
+                    .flatten()
+                    .all(|item| item.flow.is_value());
+                if !fits || !flows {
+                    let port = format!("{side} {port}");
+                    let graph = branch.body.clone();
+                    self.report(at, Problem::CallPort { port, graph });
                 }
             }
         }
@@ -152,6 +296,11 @@ impl<'d> Checker<'d> {
         });
         found
     }
+}
+
+/// Whether a path is relative and stays inside the working folder.
+fn inside(path: &str) -> bool {
+    !path.is_empty() && !path.starts_with('/') && !path.split('/').any(|part| part == "..")
 }
 
 /// Glob captures fill File, Directory or arrays of them; stdout and stderr fill a File.

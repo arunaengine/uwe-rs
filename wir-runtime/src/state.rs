@@ -64,6 +64,15 @@ impl Progress {
         &self.plan.nodes[at]
     }
 
+    /// Takes in the nodes added to the plan from `from` on, like the rounds of a map.
+    pub fn adopt(&mut self, from: usize) {
+        self.states.resize(self.plan.nodes.len(), State::Waiting);
+        let added = (self.plan.nodes[from..].iter()).flat_map(|node| &node.after);
+        let handled =
+            added.flat_map(|(dependency, on)| on.iter().map(|status| (*dependency, *status)));
+        self.handled.extend(handled.collect::<Vec<_>>());
+    }
+
     /// The next node that can start, with its input values. On the way it ends the nodes
     /// that can no longer run and the calls whose graph ended. While `draining`, nothing
     /// starts.
@@ -73,8 +82,14 @@ impl Progress {
             for at in 0..self.plan.nodes.len() {
                 match &self.states[at] {
                     State::Waiting => {}
-                    State::Running(_) if matches!(self.node(at).op.kind, Kind::Call(_)) => {
+                    State::Running(_)
+                        if matches!(self.node(at).op.kind, Kind::Call(_) | Kind::Branch(_)) =>
+                    {
                         changed |= self.end_call(at);
+                        continue;
+                    }
+                    State::Running(_) if matches!(self.node(at).op.kind, Kind::Map(_)) => {
+                        changed |= self.end_map(at);
                         continue;
                     }
                     _ => continue,
@@ -201,12 +216,14 @@ impl Progress {
         match source {
             Source::Input(name) => Ok(Some(self.inputs.get(name).cloned().unwrap_or_default())),
             Source::Null => Ok(Some(Json::Null)),
+            Source::Value(value) => Ok(Some(value.clone())),
             Source::Call(call, port) => match &self.states[*call] {
                 State::Running(bound) => Ok(Some(bound.get(port).cloned().unwrap_or_default())),
                 _ => Ok(None),
             },
             Source::Output(node, port) => match &self.states[*node] {
-                State::Ended(Status::Succeeded, values) => {
+                // A skipped branch binds null to its outputs.
+                State::Ended(Status::Succeeded | Status::Skipped, values) => {
                     Ok(Some(values.get(port).cloned().unwrap_or_default()))
                 }
                 State::Ended(..) => Err(()),
@@ -267,6 +284,61 @@ impl Progress {
             }
         }
         true
+    }
+}
+
+impl Progress {
+    /// Ends a map once every round ended: it succeeds when every round succeeded, with each
+    /// output the array of the rounds' values in round order, nested by the map's shape.
+    fn end_map(&mut self, at: usize) -> bool {
+        let rounds: Vec<usize> = (0..self.plan.nodes.len())
+            .filter(|node| self.node(*node).parent == Some(at))
+            .collect();
+        let mut values: Vec<&Map<String, Json>> = Vec::new();
+        for round in &rounds {
+            match &self.states[*round] {
+                State::Ended(Status::Succeeded, given) => values.push(given),
+                State::Ended(..) => {}
+                _ => return false,
+            }
+        }
+        if values.len() < rounds.len() {
+            let reasons: Vec<&str> = (self.inner.iter())
+                .filter(|(map, _)| *map == at)
+                .map(|(_, why)| why.as_str())
+                .collect();
+            let message = match reasons.is_empty() {
+                true => format!("op {}: a round failed", self.node(at).path),
+                false => reasons.join("; "),
+            };
+            self.end(at, Status::Failed, Map::new(), Some(message));
+            return true;
+        }
+        let node = self.node(at);
+        let mut outputs = Map::new();
+        for port in &node.op.outputs {
+            let items: Vec<Json> = (values.iter())
+                .map(|given| given.get(&port.name).cloned().unwrap_or_default())
+                .collect();
+            outputs.insert(port.name.clone(), nest(&items, &node.shape));
+        }
+        self.end(at, Status::Succeeded, outputs, None);
+        true
+    }
+}
+
+/// Values in round order as nested arrays of `shape`, one level per number.
+fn nest(values: &[Json], shape: &[usize]) -> Json {
+    match shape {
+        [] | [_] => Json::Array(values.to_vec()),
+        [count, rest @ ..] => {
+            let size: usize = rest.iter().product();
+            Json::Array(
+                (0..*count)
+                    .map(|index| nest(&values[index * size..(index + 1) * size], rest))
+                    .collect(),
+            )
+        }
     }
 }
 

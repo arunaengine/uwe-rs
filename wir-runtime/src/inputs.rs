@@ -11,7 +11,7 @@ use workflow_graph::{DriverError, Launch};
 
 use crate::state::widen;
 
-/// The input values of a launch by port name: the JSON inputs file, with File and Directory
+/// The input values of a launch by port name: the JSON or YAML inputs file, with File and Directory
 /// locations taken from its folder, then the parameters, read by the type of their port.
 pub fn read(
     launch: &Launch,
@@ -23,8 +23,14 @@ pub fn read(
         let shown = path.display();
         let text = std::fs::read_to_string(path)
             .map_err(|error| DriverError::new(format!("cannot read {shown}: {error}")))?;
-        let mut json: Json = serde_json::from_str(&text)
-            .map_err(|error| DriverError::new(format!("{shown} is not JSON: {error}")))?;
+        // A CWL job may be YAML, which the CWL reader of values takes.
+        let mut json: Json = match serde_json::from_str(&text) {
+            Ok(json) => json,
+            Err(_) => cwl_runtime::Value::parse(&text)
+                .ok()
+                .and_then(|value| serde_json::from_str(&value.to_json()).ok())
+                .ok_or_else(|| DriverError::new(format!("{shown} is neither JSON nor YAML")))?,
+        };
         let base = std::path::absolute(path).unwrap_or_else(|_| path.clone());
         absolute(&mut json, base.parent().unwrap_or(Path::new("/")));
         let Json::Object(object) = json else {

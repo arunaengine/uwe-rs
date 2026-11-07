@@ -26,9 +26,9 @@ The JSON form uses snake_case keys and leaves out fields that hold their default
 
 ## Versioning
 
-`wir_version` is `<major>.<minor>`; this crate reads `0.1`, `0.2` and `0.3`, and `wir::VERSION` is `0.3`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
+`wir_version` is `<major>.<minor>`; this crate reads `0.1` to `0.4`, and `wir::VERSION` is `0.4`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
 
-Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
+Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops, defines `map`, `expr` and `branch`, and adds `library` to `expr`. Those three op kinds stay reserved in a document of an earlier version. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
 
 - While the major version is 0, every change to the form or the semantics raises the minor version.
 - From 1.0, a minor version only adds optional fields, op kinds, or semantics for reserved op kinds; a reader then accepts its own major version up to its own minor. Any other change raises the major version.
@@ -88,11 +88,25 @@ No op of this version reads or writes streams. The rest of the stream contract b
 - `{"glob": pattern}`: paths in the working folder that match, sorted by path. One match fills a File or Directory output, all matches fill an array output. No match fills an optional output with null and fails the task otherwise; several matches fail a non-array output; an empty match fails a nonempty array.
 - `"stdout"` and `"stderr"`: a File with what the command wrote there.
 
+`stdout` and `stderr` name the files in the working folder that standard output and standard error go to, like CWL `stdout` and `stderr`; a stream capture reads that file, and a glob capture may match it too. Without a name, a stream capture writes to a file that the runner names.
+
 The task succeeds when its exit code is in `success_codes` (only 0 when empty) and every capture worked. Then all outputs are bound at once; otherwise it ends `failed` and binds none. A task that could not run at all, such as a missing image or a lost node, ends `errored`. The command runs without network unless the task sets `network: true`; this is part of the task and enters its cache key, so a task without network can share its results between runs. The attributes never enter its cache key.
 
 **`call`** runs a named graph of the same document. The op has exactly the graph's port names, with types the graph accepts on the input side and the op accepts on the output side. Its outputs are bound at once when the graph has finished and every graph output is bound; the call fails when an op inside fails. A graph must not call itself, directly or through other graphs.
 
 **`native`** runs a source document as a whole in its own language runtime, such as a complete CWL workflow. `source` names a document source with the same `language`, and `entry` what to run inside it. `profiles` lists profiles of the language, like Nextflow `-profile`, and `configs` names document sources of the same language that configure the run, like Nextflow `-c` files, both in order. The op's ports are the boundary: inputs go in by name, and outputs are exported by name and checked against their port types. These types must not contain `dynamic`, except the outputs of a Nextflow block: Nextflow emits have no types, so a block declares the output `dynamic` to take what an emit gives as it is. The block keeps its own acceptance rules and its own task cache keys, and its tasks are recorded under the op path. A failed or missing required output fails the op.
+
+**`map`** runs its `body` graph once per round. The inputs named in `over` are arrays; each round takes one item of each, and every other input as it is, so the body has the op's port names with the item type for an `over` input. The rounds of `mode`:
+
+- `dot` (the default): round i takes item i of every `over` input. The inputs must have equal lengths, or the op fails before any round starts.
+- `flat_cross`: one round per combination of items, the first `over` input varying slowest.
+- `nested_cross`: the rounds of `flat_cross`, with every output nested one level per `over` input, in their order.
+
+Each output is the array of the values that the rounds gave for it, in round order, whatever the order in which the rounds end; a round that gives null puts null at its place. An empty `over` input gives no rounds and empty arrays; for `nested_cross` the levels of the inputs before it stay, so lengths 2 and 0 give `[[], []]`. The op succeeds when every round succeeds; a failed round fails the op and binds no output, and a failure inside a round is the failure of the op. Rounds start as their inputs allow, like calls; round i of the op `p` runs its ops at `p/<i>/<op>`, and a task keeps the path without the round numbers as its step. `parallelism` and `min_success` stay reserved: a runner of this version refuses a `map` that sets them.
+
+**`expr`** computes its one output from its inputs, in the engine and without a task. With `language` `js`, `code` is a CWL expression: text with `$(...)` parts or one `${...}` function body, evaluated as CWL evaluates it, so one `$(...)` keeps the type of its value and text with parts becomes a string. `library` holds code that runs first, like CWL `expressionLib`. The code sees the op's input values as `inputs`, the input `self`, when there is one, also as `self`, and an empty `runtime`. A File or Directory looks as in CWL: with `path`, `nameroot`, `nameext` and `secondaryFiles` beside the wir fields. The value must fit the output type, where an integral number fits an `int` in the signed 64-bit range; a File or Directory value keeps the wir fields. An expression that throws, takes too long or gives a value that does not fit fails the op. An `expr` is pure: it reads no files and has no effects, and equal inputs give equal outputs. Other languages stay reserved: a runner of this version refuses them.
+
+**`branch`** runs its `body` graph when its input `condition`, a bool, is true. The body has the op's ports apart from the input `condition`; each output of the op holds the body's output or null. When the condition is true the op runs like a `call` of the body, and it succeeds, fails or errors as that call does. When it is false the body does not run: the op ends `skipped` and binds every output to null, so the ops that read them run with null; inside a `map` that round gives null at its place. A dependency on `succeeded` does not hold for a skipped op, one on `skipped` does. A null condition fails the op.
 
 **`after` dependencies** name another op of the same graph and the statuses that satisfy it: `succeeded`, `failed` (ran and not accepted), `errored` (could not run), `skipped` (its own condition was false) and `omitted` (did not run because a dependency did not hold). All dependencies of an op must hold. Data edges and dependencies together must not form a cycle.
 
@@ -106,8 +120,6 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 
 | Op | Fields | Open |
 | --- | --- | --- |
-| `expr` | `language`, `code` | languages beyond `js`, `python`, `groovy`; numeric overflow; how File values look; stays pure |
-| `map` | `body`, `over`, `mode`, `parallelism`, `min_success` | each scatter mode; per-round reads of streams and Nextflow `each`; output order; failures with `min_success` |
 | `collect` | none | order; an error inside the stream |
 | `filter` | `body` | order; end of stream |
 | `flatten` | none | depth; empty arrays |
@@ -116,7 +128,6 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 | `cross` | none | order; empty input |
 | `group` | `by`, `size`, `remainder` | Nextflow `groupTuple` rules; order of groups |
 | `join` | `by`, `remainder`, `fail_on_mismatch`, `fail_on_duplicate` | duplicate keys; mismatch errors; order |
-| `branch` | `body`, `condition` | `skipped` status against null outputs; CWL `when` with scatter |
 | `select` | `rule` (`first`, `only`, `all`) | the error when nothing is set |
 | `loop` | `body`, `condition`, `carry` | the first check; outputs of every round; limits |
 | `dynamic` | `plan` | typed boundaries; stable instance ids; reconciling with finished work |
@@ -133,8 +144,9 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - every input and graph output has at most one producer, and every required one has a producer;
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
-- a call matches the called graph's ports;
+- an expr has one output; a branch has a bool condition, the body's other ports and optional outputs; a call matches the called graph's ports, and a map the ports of its body, with arrays for the `over` inputs and the outputs;
 - a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
-- a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 in 0.1 or 0.2.
+- the stream files of a task are relative paths that stay inside the working folder;
+- a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 before 0.3, none of 0.4 before 0.4.
 
-Not yet: the readable text form, the runner, frontends and lowering passes.
+Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering`. The runner is the crate `wir-runtime`.

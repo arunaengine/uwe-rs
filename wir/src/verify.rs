@@ -69,6 +69,10 @@ pub enum Problem {
         found: String,
         want: String,
     },
+    #[error("{0:?} is not a path inside the working folder")]
+    Outside(String),
+    #[error("{0} needs exactly one output")]
+    Single(String),
     #[error("output {0} needs exactly one capture")]
     Capture(String),
     #[error("output {0} cannot hold what its capture reads")]

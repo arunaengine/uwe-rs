@@ -143,6 +143,31 @@ fn denies_task_network() {
     );
 }
 
+#[test]
+fn names_stream_files() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = example(folder.path(), |document| {
+        document["wir_version"] = json!(wir::VERSION);
+        let sort = &mut document["graphs"][0]["ops"][0]["kind"]["task"];
+        sort["stdout"] = json!("sorted.txt");
+        sort["stderr"] = json!("log.txt");
+    });
+    let mut executor = scripted(folder.path(), |_| 0, true);
+    let mut driver = driver(&launch);
+    let graph = execute("two-tools", &mut driver, &mut executor)
+        .into_result()
+        .unwrap();
+    let sort = &graph.nodes[0].task;
+    let script = "exec > 'sorted.txt' 2> 'log.txt'\n'sort' 'inputs/text/text.txt'";
+    assert_eq!(sort.command, ["/bin/sh", "-c", script]);
+    assert_eq!(sort.outputs, ["sorted.txt", "log.txt"]);
+    let head = &graph.nodes[1].task;
+    assert!(
+        head.command[2].ends_with("'inputs/sorted/sorted.txt'"),
+        "the capture reads the named file"
+    );
+}
+
 /// Runs the example on a scripted executor.
 fn run(
     root: &Path,
@@ -214,7 +239,7 @@ fn accepts_success_codes() {
 }
 
 #[test]
-fn refuses_output_clashes() {
+fn numbers_output_clashes() {
     let folder = tempfile::tempdir().unwrap();
     let mut executor = scripted(folder.path(), |_| 0, true);
     let (driver, execution) = run(folder.path(), &mut executor, |document| {
@@ -227,10 +252,14 @@ fn refuses_output_clashes() {
         let edge = json!({"from": {"op": "sort", "port": "sorted"}, "to": {"port": "sorted"}});
         graph["edges"].as_array_mut().unwrap().push(edge);
     });
-    let error = execution.into_result().unwrap_err().to_string();
-    assert!(error.contains("/out/result.txt"), "{error}");
-    assert!(workflow_graph::Driver::results(&driver).is_none());
-    assert!(!folder.path().join("out/result.txt").exists());
+    execution.into_result().unwrap();
+    let results = workflow_graph::Driver::results(&driver).unwrap();
+    let place = |name: &str| results[name]["location"].as_str().unwrap().to_owned();
+    assert!(place("top").ends_with("/out/result.txt"), "{results}");
+    assert!(
+        place("sorted").ends_with("/out/result.txt-2/result.txt"),
+        "{results}"
+    );
 }
 
 #[test]

@@ -1,11 +1,12 @@
-//! Lowers CWL documents into wir: tools into task ops, and what has no lowering yet into
-//! native CWL ops, so every document lowers, partly or fully.
+//! Lowers CWL documents into wir: tools into task ops, workflows into graphs, and what has no
+//! lowering yet into native CWL ops, so every document lowers, partly or fully.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod requirements;
 mod tool;
 mod types;
+mod workflow;
 
 use std::path::{Path, PathBuf};
 
@@ -45,30 +46,32 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
         base: base.to_owned(),
         sources: Vec::new(),
         kept: Vec::new(),
+        graphs: Vec::new(),
+        prefix: String::new(),
     };
     let process = &document.process;
-    let (inputs, outputs) = boundary(process)?;
+    let scope = Scope::default().with(&process.requirements, &process.hints);
     let name = process_name(&process.id);
-    let op = lowerer.op(process, &Scope::default(), &name)?;
-    let mut edges = Vec::new();
-    for port in &inputs {
-        edges.push(edge((None, &port.name), (Some(&name), &port.name)));
-    }
-    for port in &outputs {
-        edges.push(edge((Some(&name), &port.name), (None, &port.name)));
-    }
-    let graph = Graph {
-        name: "main".into(),
-        inputs,
-        outputs,
-        ops: vec![op],
-        edges,
+    let main = match &process.class {
+        Class::Workflow(workflow) => match lowerer.workflow(process, workflow, &scope, "main") {
+            Ok(graph) => graph,
+            Err(reason) => {
+                let op = lowerer.native(process, &name, reason)?;
+                single(process, op)?
+            }
+        },
+        _ => {
+            let op = lowerer.op(process, &Scope::default(), &name)?;
+            single(process, op)?
+        }
     };
+    let mut graphs = vec![main];
+    graphs.append(&mut lowerer.graphs);
     let document = Document {
         wir_version: wir::VERSION.into(),
         sources: lowerer.sources,
         types: Vec::new(),
-        graphs: vec![graph],
+        graphs,
         entry: "main".into(),
     };
     if let Err(problems) = wir::verify(&document) {
@@ -81,6 +84,26 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
     Ok(Lowering {
         document,
         kept: lowerer.kept,
+    })
+}
+
+/// The entry graph of a process that one op runs, with its ports.
+fn single(process: &Process, op: Op) -> Result<Graph, String> {
+    let (inputs, outputs) = boundary(process)?;
+    let name = op.path.clone();
+    let mut edges = Vec::new();
+    for port in &inputs {
+        edges.push(edge((None, &port.name), (Some(&name), &port.name)));
+    }
+    for port in &outputs {
+        edges.push(edge((Some(&name), &port.name), (None, &port.name)));
+    }
+    Ok(Graph {
+        name: "main".into(),
+        inputs,
+        outputs,
+        ops: vec![op],
+        edges,
     })
 }
 
@@ -112,6 +135,10 @@ struct Lowerer {
     base: PathBuf,
     sources: Vec<Source>,
     kept: Vec<Kept>,
+    /// The graphs that call ops run, apart from the entry graph.
+    graphs: Vec<Graph>,
+    /// The path of the call whose graph is being lowered, like `inner/`, for the kept ops.
+    prefix: String,
 }
 
 impl Lowerer {
@@ -124,24 +151,31 @@ impl Lowerer {
             at: entry.clone(),
         });
         let lowered = match &process.class {
-            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope),
+            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope).map(|lowered| {
+                let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
+                (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
+                op.attributes = lowered.attributes;
+                op
+            }),
+            Class::Workflow(workflow) => self.call(process, workflow, &scope, path),
             _ => Err("this process class has no lowering yet".into()),
         };
-        let reason = match lowered {
-            Ok(lowered) => {
-                return Ok(Op {
-                    path: path.to_owned(),
-                    kind: Kind::Task(lowered.task),
-                    inputs: lowered.inputs,
-                    outputs: lowered.outputs,
-                    after: Vec::new(),
-                    effects: Vec::new(),
-                    attributes: lowered.attributes,
-                    origin,
-                });
+        match lowered {
+            Ok(mut op) => {
+                op.origin = origin;
+                Ok(op)
             }
-            Err(reason) => reason,
-        };
+            Err(reason) => self.native(process, path, reason),
+        }
+    }
+
+    /// A native op at `path` that runs a process, kept for `reason`.
+    fn native(&mut self, process: &Process, path: &str, reason: String) -> Result<Op, String> {
+        let (source, entry) = self.source(process);
+        let origin = Some(Origin {
+            source: source.clone(),
+            at: entry.clone(),
+        });
         if entry.as_deref().is_some_and(|entry| entry.contains('/')) {
             return Err(format!(
                 "{path}: {reason}, and its inline process cannot run alone"
@@ -154,7 +188,7 @@ impl Lowerer {
             ));
         }
         self.kept.push(Kept {
-            path: path.to_owned(),
+            path: format!("{}{path}", self.prefix),
             reason,
         });
         Ok(Op {
@@ -250,6 +284,20 @@ fn dynamic(r#type: &Type) -> bool {
         Type::Record(fields) => fields.iter().any(|field| dynamic(&field.r#type)),
         Type::Union(items) | Type::Tuple(items) => items.iter().any(dynamic),
         _ => false,
+    }
+}
+
+/// An op without ports, dependencies or attributes.
+fn blank(path: &str, kind: Kind, origin: Option<Origin>) -> Op {
+    Op {
+        path: path.to_owned(),
+        kind,
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        after: Vec::new(),
+        effects: Vec::new(),
+        attributes: Default::default(),
+        origin,
     }
 }
 

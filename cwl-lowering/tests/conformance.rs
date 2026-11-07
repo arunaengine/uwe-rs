@@ -6,16 +6,19 @@
 use std::path::{Path, PathBuf};
 
 use cwl_runtime::{CwlDriver, Options, Value};
+use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{Driver, Launch, Simulator, execute};
 
-/// How many tests lower fully, partly or not at all, and how many lowered runs end as the
-/// native run does: both succeed with as many tasks, or both fail.
+/// How many tests lower fully, partly or not at all, how many lowered runs end as the native
+/// run does (both succeed with as many tasks, or both fail), and how many of those that both
+/// succeed give equal outputs, with Files and Directories compared by class and basename.
 const RECORDED: Counts = Counts {
-    full: 24,
-    partly: 311,
-    unlowered: 43,
-    same: 315,
+    full: 49,
+    partly: 289,
+    unlowered: 40,
+    same: 310,
+    equal: 286,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -24,6 +27,7 @@ struct Counts {
     partly: usize,
     unlowered: usize,
     same: usize,
+    equal: usize,
 }
 
 struct Test {
@@ -59,12 +63,25 @@ fn tests(list: &Path) -> Vec<Test> {
 }
 
 /// The number of tasks of a simulated run, or its error.
-fn run(driver: Result<Box<dyn Driver>, String>, name: &str, root: &Path) -> Result<usize, String> {
-    let mut driver = driver?;
+fn run(driver: &mut dyn Driver, name: &str, root: &Path) -> Result<usize, String> {
     let mut simulator = Simulator::new(root.join(format!("simulator-{name}")));
-    let execution = execute(name, driver.as_mut(), &mut simulator);
+    let execution = execute(name, driver, &mut simulator);
     let graph = execution.into_result().map_err(|error| error.to_string())?;
     Ok(graph.nodes.len())
+}
+
+/// Outputs with each File and Directory as its class and basename, as the folders differ.
+fn shown(value: Json) -> Json {
+    match value {
+        Json::Array(items) => Json::Array(items.into_iter().map(shown).collect()),
+        Json::Object(object) => match object.get("class").and_then(Json::as_str) {
+            Some(class @ ("File" | "Directory")) => {
+                json!({"class": class, "basename": object.get("basename")})
+            }
+            _ => Json::Object(object.into_iter().map(|(k, v)| (k, shown(v))).collect()),
+        },
+        other => other,
+    }
 }
 
 /// The outcome of one test: how it lowers, and whether its lowered run ends as its native one.
@@ -105,25 +122,43 @@ fn outcome(test: &Test, counts: &mut Counts) -> String {
         simulated: true,
         ..Launch::default()
     };
-    let native = CwlDriver::new(&launch(test.tool.clone()), Options::default())
-        .map(|driver| Box::new(driver) as Box<dyn Driver>)
-        .map_err(|error| error.message);
+    let mut native = CwlDriver::new(&launch(test.tool.clone()), Options::default());
     let settings = Settings {
         print: false,
         ..Settings::default()
     };
-    let lowered = WirDriver::new(&launch(target), settings)
-        .map(|driver| Box::new(driver) as Box<dyn Driver>)
-        .map_err(|error| error.message);
-    let (native, lowered) = (run(native, "native", root), run(lowered, "lowered", root));
+    let mut lowered = WirDriver::new(&launch(target), settings);
+    let native_run = match &mut native {
+        Ok(driver) => run(driver, "native", root),
+        Err(error) => Err(error.message.clone()),
+    };
+    let lowered_run = match &mut lowered {
+        Ok(driver) => run(driver, "lowered", root),
+        Err(error) => Err(error.message.clone()),
+    };
+    let values = match (&native, &lowered, &native_run, &lowered_run) {
+        (Ok(one), Ok(other), Ok(_), Ok(_)) => {
+            let given = one.outputs().map(|map| Value::Map(map.clone()).to_json());
+            let given = given.and_then(|text| serde_json::from_str(&text).ok());
+            Some((given.map(shown), other.outputs().map(shown)))
+        }
+        _ => None,
+    };
+    let (native, lowered) = (native_run, lowered_run);
     let ended = match (&native, &lowered) {
-        (Ok(one), Ok(other)) if one == other => "same".to_owned(),
+        (Ok(one), Ok(other)) if one == other => match values {
+            Some((Some(one), Some(other))) if one == other => {
+                counts.equal += 1;
+                "same, equal outputs".to_owned()
+            }
+            _ => "same, other outputs".to_owned(),
+        },
         (Err(_), Err(_)) => "same".to_owned(),
         (Ok(one), Ok(other)) => format!("differs: {one} and {other} tasks"),
         (Ok(_), Err(error)) => format!("differs: lowered fails: {}", first(error)),
         (Err(error), Ok(_)) => format!("differs: native fails: {}", first(error)),
     };
-    if ended == "same" {
+    if ended.starts_with("same") {
         counts.same += 1;
     }
     format!("{shape}, {ended}")

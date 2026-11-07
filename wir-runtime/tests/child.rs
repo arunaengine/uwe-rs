@@ -133,8 +133,8 @@ impl Driver for Script {
 }
 
 impl Block for Script {
-    fn exported(&self) -> Option<Json> {
-        Some(json!({"out": 1}))
+    fn exported(&self) -> Result<Option<Json>, DriverError> {
+        Ok(Some(json!({"out": 1})))
     }
 }
 
@@ -228,6 +228,24 @@ fn routes_deliveries() {
     );
     assert_eq!(seen.borrow().acknowledged, [delivery("a")]);
     assert_eq!(other.borrow().acknowledged, [delivery("b")]);
+}
+
+#[test]
+fn holds_final_deliveries() {
+    let seen = Rc::new(RefCell::new(Seen::default()));
+    let mut script = Script::new(&seen);
+    script.deliveries = vec![delivery("a")];
+    let mut child = Child::new(Box::new(script));
+    assert_eq!(child.finish().unwrap(), Some(json!({"out": 1})));
+    assert_eq!(
+        child.targets(),
+        ["/out/a"],
+        "the results may name what it delivers"
+    );
+    assert_eq!(child.deliveries(), [delivery("a")], "held for the parent");
+    assert!(child.deliveries().is_empty(), "handed out once");
+    assert!(child.delivered(&delivery("a")).unwrap().is_ok());
+    assert_eq!(seen.borrow().acknowledged, [delivery("a")]);
 }
 
 #[test]

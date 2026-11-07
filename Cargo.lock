@@ -7870,9 +7870,12 @@ dependencies = [
 name = "wir-runtime"
 version = "0.1.0"
 dependencies = [
+ "cwl-parser",
  "cwl-runtime",
  "input-schema",
  "serde_json",
+ "storage",
+ "tempfile",
  "tracing",
  "wir",
  "workflow-graph",

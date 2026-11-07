@@ -166,6 +166,153 @@ pub fn call(name: &str, arguments: Vec<Value>, env: &mut dyn Environment) -> Res
                 serde_json::from_str(&content).map_err(|error| Error::failed(error.to_string()))?;
             Value::from_json(&json, &Type::Union, std::path::Path::new("")).map_err(Error::Failed)
         }
+        ("write_lines", [items]) => {
+            let content: String = strings(items)?
+                .into_iter()
+                .map(|line| line + "\n")
+                .collect();
+            env.write(content)
+        }
+        ("write_tsv", [rows]) => {
+            let mut content = String::new();
+            for row in array(rows)? {
+                content.push_str(&strings(row)?.join("\t"));
+                content.push('\n');
+            }
+            env.write(content)
+        }
+        ("write_map", [Value::Map(entries)]) => {
+            let mut content = String::new();
+            for (key, value) in entries {
+                content.push_str(&format!("{}\t{}\n", text(key)?, text(value)?));
+            }
+            env.write(content)
+        }
+        ("write_json", [value]) => env.write(value.to_json().to_string()),
+        ("length", [Value::Array(items)]) => Ok(Value::Int(items.len() as i64)),
+        ("length", [Value::Map(entries)]) => Ok(Value::Int(entries.len() as i64)),
+        ("length", [Value::Object(fields)]) => Ok(Value::Int(fields.len() as i64)),
+        ("length", [Value::String(text)]) => Ok(Value::Int(text.chars().count() as i64)),
+        ("range", [Value::Int(count)]) if *count >= 0 => {
+            Ok(Value::Array((0..*count).map(Value::Int).collect()))
+        }
+        ("transpose", [rows]) => {
+            let rows: Vec<&[Value]> = (array(rows)?.iter()).map(array).collect::<Result<_, _>>()?;
+            let width = rows.first().map_or(0, |row| row.len());
+            if rows.iter().any(|row| row.len() != width) {
+                return fail("the rows differ in length".into());
+            }
+            let columns = (0..width)
+                .map(|column| Value::Array(rows.iter().map(|row| row[column].clone()).collect()));
+            Ok(Value::Array(columns.collect()))
+        }
+        ("cross", [left, right]) => {
+            let (left, right) = (array(left)?, array(right)?);
+            let pairs = left
+                .iter()
+                .flat_map(|a| right.iter().map(move |b| pair(a, b)));
+            Ok(Value::Array(pairs.collect()))
+        }
+        ("zip", [left, right]) => {
+            let (left, right) = (array(left)?, array(right)?);
+            if left.len() != right.len() {
+                return fail(format!(
+                    "the arrays have {} and {} items",
+                    left.len(),
+                    right.len()
+                ));
+            }
+            Ok(Value::Array(
+                left.iter().zip(right).map(|(a, b)| pair(a, b)).collect(),
+            ))
+        }
+        ("unzip", [pairs]) => {
+            let (mut left, mut right) = (Vec::new(), Vec::new());
+            for item in array(pairs)? {
+                let (a, b) = sides(item)?;
+                left.push(a.clone());
+                right.push(b.clone());
+            }
+            Ok(pair(&Value::Array(left), &Value::Array(right)))
+        }
+        ("flatten", [rows]) => {
+            let mut items = Vec::new();
+            for row in array(rows)? {
+                items.extend(array(row)?.iter().cloned());
+            }
+            Ok(Value::Array(items))
+        }
+        ("select_first", [items, rest @ ..]) if rest.len() <= 1 => {
+            let first = array(items)?
+                .iter()
+                .find(|item| **item != Value::None)
+                .cloned();
+            match (first, rest) {
+                (Some(first), _) => Ok(first),
+                (None, [default]) => Ok(default.clone()),
+                (None, _) => fail("every item is None".into()),
+            }
+        }
+        ("select_all", [items]) => Ok(Value::Array(
+            array(items)?
+                .iter()
+                .filter(|item| **item != Value::None)
+                .cloned()
+                .collect(),
+        )),
+        ("defined", [value]) => Ok(Value::Boolean(*value != Value::None)),
+        ("as_pairs", [Value::Map(entries)]) => Ok(Value::Array(
+            entries
+                .iter()
+                .map(|(key, value)| pair(key, value))
+                .collect(),
+        )),
+        ("as_map", [pairs]) => {
+            let mut entries: Vec<(Value, Value)> = Vec::new();
+            for item in array(pairs)? {
+                let (key, value) = sides(item)?;
+                if entries.iter().any(|(known, _)| equal(known, key)) {
+                    return fail(format!("the key {} repeats", key.to_json()));
+                }
+                entries.push((key.clone(), value.clone()));
+            }
+            Ok(Value::Map(entries))
+        }
+        ("collect_by_key", [pairs]) => {
+            let mut entries: Vec<(Value, Value)> = Vec::new();
+            for item in array(pairs)? {
+                let (key, value) = sides(item)?;
+                match entries.iter_mut().find(|(known, _)| equal(known, key)) {
+                    Some((_, Value::Array(values))) => values.push(value.clone()),
+                    _ => entries.push((key.clone(), Value::Array(vec![value.clone()]))),
+                }
+            }
+            Ok(Value::Map(entries))
+        }
+        ("keys", [Value::Map(entries)]) => Ok(Value::Array(
+            entries.iter().map(|(key, _)| key.clone()).collect(),
+        )),
+        ("keys", [Value::Object(fields)]) => Ok(Value::Array(
+            fields.keys().cloned().map(Value::String).collect(),
+        )),
+        ("values", [Value::Map(entries)]) => Ok(Value::Array(
+            entries.iter().map(|(_, value)| value.clone()).collect(),
+        )),
+        ("contains", [items, wanted]) => Ok(Value::Boolean(
+            array(items)?.iter().any(|item| equal(item, wanted)),
+        )),
+        ("contains_key", [Value::Map(entries), key]) => Ok(Value::Boolean(
+            entries.iter().any(|(known, _)| equal(known, key)),
+        )),
+        ("contains_key", [Value::Object(fields), key]) => {
+            Ok(Value::Boolean(fields.contains_key(&text(key)?)))
+        }
+        ("chunk", [items, Value::Int(size)]) if *size > 0 => {
+            let chunks = array(items)?.chunks(*size as usize);
+            Ok(Value::Array(
+                chunks.map(|chunk| Value::Array(chunk.to_vec())).collect(),
+            ))
+        }
         _ if KNOWN.contains(&name) => fail(format!("wrong arguments: {}", kinds(&arguments))),
         _ => Err(Error::Unsupported(format!(
             "the function `{name}` is not supported"
@@ -202,6 +349,28 @@ const KNOWN: &[&str] = &[
     "read_tsv",
     "read_map",
     "read_json",
+    "write_lines",
+    "write_tsv",
+    "write_map",
+    "write_json",
+    "length",
+    "range",
+    "transpose",
+    "cross",
+    "zip",
+    "unzip",
+    "flatten",
+    "select_first",
+    "select_all",
+    "defined",
+    "as_pairs",
+    "as_map",
+    "collect_by_key",
+    "keys",
+    "values",
+    "contains",
+    "contains_key",
+    "chunk",
 ];
 
 fn kinds(arguments: &[Value]) -> String {
@@ -231,6 +400,17 @@ fn array(value: &Value) -> Result<&[Value], Error> {
 /// The texts of an array of primitive values.
 fn strings(value: &Value) -> Result<Vec<String>, Error> {
     array(value)?.iter().map(text).collect()
+}
+
+fn pair(left: &Value, right: &Value) -> Value {
+    Value::Pair(Box::new(left.clone()), Box::new(right.clone()))
+}
+
+fn sides(value: &Value) -> Result<(&Value, &Value), Error> {
+    match value {
+        Value::Pair(left, right) => Ok((left, right)),
+        value => Err(Error::failed(format!("a {} is not a pair", value.kind()))),
+    }
 }
 
 fn regex(pattern: &str) -> Result<regex::Regex, Error> {

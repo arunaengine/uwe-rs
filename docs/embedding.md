@@ -147,12 +147,12 @@ These still come from the environment of the process, for every run alike:
 
 ## Tasks of a run whose process is gone
 
-A TES run keeps a journal for each attempt in the scratch folder of the cache, `scratch/tes/<run>-<task>-<attempt>`. When the uwe process of the run stops, for example because the host restarts, its tasks can still run on the TES server. The next TES run on the same cache stops them. A host can also do it at once for one run, with the settings that the run used: the same `run_id`, `config_file`, `cache_folder`, `store` and `secrets`, or the same `setup`.
+A TES, Kubernetes or SLURM run keeps a journal for each attempt in the scratch folder of the cache: `scratch/tes/<run>-<task>-<attempt>`, `scratch/kubernetes/...` or `scratch/slurm/...`. When the uwe process of the run stops, for example because the host restarts, its tasks can still run on the TES server, as Kubernetes Jobs or as SLURM jobs. The next run with the same executor on the same cache stops them. A host can also do it at once for one run, with the settings that the run used: the same `run_id`, `config_file`, `cache_folder`, `store` and `secrets`, or the same `setup`. For SLURM the host also needs the environment of the run: the tools of SLURM on the same `PATH`, and the same `SLURM_CONF`.
 
 - `RunRequest::remote_tasks` reports the tasks of the run with what their servers say now. It changes nothing.
-- `RunRequest::stop_tasks` cancels each task that has not ended, and waits until the server confirms that it ended. Then it removes the journal of the attempt, and the staged objects as `staging_cleanup` says. It gives up on one task after a minute, like the recovery of a run, and goes on with the next one.
+- `RunRequest::stop_tasks` cancels each task that has not ended, and waits until the server confirms that it ended: the TES server, the Kubernetes API server once the Job and its pods are gone, or `squeue` once the job left the queue. Then it removes the journal of the attempt, and the staged objects as `staging_cleanup` says. The outputs of a stopped Kubernetes Job or SLURM job are not collected. It gives up on one task after a minute, or after four times `query_seconds` of `[executor.slurm]` for a slow SLURM controller, like the recovery of a run, and goes on with the next one.
 
-Both give one `run::orphans::Orphan` for each attempt: its name, the id of its TES task, the state that the server last gave and an `Outcome`. The outcome is `Running` or `Ended` for a task, and `Canceled` for a task that `stop_tasks` canceled. `Unclear` says why the state is not known, `Kept` says why `stop_tasks` left a task as it was, and `Failed` holds the error of a stop that failed. A task that was kept or failed keeps its journal, so a later call tries again. A call for a run without journals gives an empty list and asks no server.
+Both give one `run::orphans::Orphan` for each attempt: its name, the id of its task, the state that the server last gave and an `Outcome`. The id is that of the TES task or the SLURM job, or the name of the Kubernetes Job. The state is in the words of the server: like `RUNNING` or `CANCELED` of TES, `PENDING` or `RUNNING` of SLURM, and `pending`, `active`, `complete` or `failed` for a Kubernetes Job. The outcome is `Running` or `Ended` for a task, and `Canceled` for a task that `stop_tasks` canceled. `Unclear` says why the state is not known, `Kept` says why `stop_tasks` left a task as it was, and `Failed` holds the error of a stop that failed. A task that was kept or failed keeps its journal, so a later call tries again. A call for a run without journals gives an empty list and asks no server.
 
 ```rust
 let mut settings = uwe::run::Settings::new("");
@@ -169,7 +169,8 @@ for task in uwe::RunRequest::new(settings).stop_tasks().await? {
 These calls touch only the tasks of this run:
 
 - A journal belongs to the run only when it names the run. Journals from before uwe named the run in them are only reported, as `Unclear` or `Kept`, since the folder name of run `a` also fits a task of run `a-b`.
-- A task is stopped only with a backend whose server and token are the ones that started it, as in the recovery of a run. A task of another server or token is kept.
+- The jobs name their run too: each Kubernetes Job in its annotation `uwe.dev/run`, and each SLURM job in its comment, `uwe run <run>`. A Job or job that names another run, or none, is kept. A `--comment` in `options` of `[executor.slurm]` wins over the one of uwe, so such jobs are only reported.
+- A task is stopped only with a backend that reaches it as the run did, as in the recovery of a run. For TES, that is the server and token that started it. For Kubernetes, it is the API server, the namespace and the user of the kubeconfig; a client that the host passes in `setup` counts as one identity. For SLURM, it is the same tools, `slurm.conf` and `PATH`, and the job must belong to the owner of the folder of the attempt. Other tasks are kept.
 - An attempt whose uwe process still holds the lock of its journal is kept.
 - A second call finds no journal of the stopped tasks, so it does nothing.
 

@@ -267,3 +267,39 @@ fn keeps_scratch_apart() {
         assert_eq!(text, format!("{word}\n"), "{}", written.source);
     }
 }
+
+#[test]
+fn keeps_delivered_sources() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let document = "version 1.1\n\nworkflow pass {\n  input { File given }\n  \
+        output { File result = given }\n}\n";
+    std::fs::write(folder.path().join("pass.wdl"), document).expect("writes the document");
+    let out = folder.path().join("out");
+    let data = out.join("result").join("data.txt");
+    std::fs::create_dir_all(data.parent().expect("a folder")).expect("makes the folder");
+    std::fs::write(&data, "kept\n").expect("writes the data");
+    let inputs = folder.path().join("inputs.json");
+    let given = json!({"pass.given": data.to_string_lossy()}).to_string();
+    std::fs::write(&inputs, given).expect("writes the inputs");
+    let launch = Launch {
+        target: folder.path().join("pass.wdl"),
+        inputs: Some(inputs),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(out),
+        ..Launch::default()
+    };
+    let options = Options {
+        print: false,
+        ..Options::default()
+    };
+    let mut driver = WdlDriver::new(&launch, options).expect("a driver");
+    assert!(driver.start().expect("starts").is_empty(), "no calls");
+    driver.finish().expect("finishes");
+    let deliveries = driver.deliveries();
+    assert!(
+        deliveries.iter().all(|item| item.location != item.target),
+        "a delivery onto its own source: {deliveries:?}"
+    );
+    let results = driver.results().expect("the results");
+    assert_eq!(results["pass.result"], json!(data.to_string_lossy()));
+}

@@ -43,7 +43,9 @@ An op starts once every connected input is bound and every `after` dependency ho
 
 A failed or errored op fails the run, unless an `after` dependency of another op waits for that status. A failure inside a call fails the call. After a failure that fails the run, no new op starts unless the run has `-keep-going`; running ops end first.
 
-Reserved op kinds, like `map` or `branch`, verify but do not run: uwe stops with exit code 33.
+A `map` op makes its rounds when it starts: round i is a call of its body at `<map>/<i>`, and the tasks inside keep the path without round numbers as their step, like `each/cat` for `each/0/cat`. A failed round fails the map. A `map` with `parallelism` or `min_success` stops the run with exit code 33.
+
+Reserved op kinds, like `branch`, verify but do not run: uwe stops with exit code 33.
 
 ## Task ops
 

@@ -14,8 +14,8 @@ const SNAKEFILES: [&str; 4] = [
     "workflow/snakefile",
 ];
 
-/// Detects Nextflow projects, Snakefiles and CWL or Argo documents.
-/// CWL uses `cwlVersion`; Argo uses `apiVersion: argoproj.io`.
+/// Detects Nextflow projects, Snakefiles and CWL, Argo or WDL documents.
+/// CWL uses `cwlVersion`; Argo uses `apiVersion: argoproj.io`; WDL files end with `.wdl`.
 pub fn language(target: &Path) -> Result<Language, String> {
     let shown = target.display();
     if target.is_dir() {
@@ -50,6 +50,7 @@ pub fn language(target: &Path) -> Result<Language, String> {
         Some("nf") => return Ok(Language::Nextflow),
         Some("smk" | "snakefile") => return Ok(Language::Snakemake),
         Some("cwl") => return Ok(Language::Cwl),
+        Some("wdl") => return Ok(Language::Wdl),
         _ if name == "Snakefile" || name == "snakefile" => return Ok(Language::Snakemake),
         _ => {}
     }
@@ -70,7 +71,7 @@ pub fn main_file(target: &Path, language: Language) -> Option<PathBuf> {
     let (names, extension): (&[&str], &str) = match language {
         Language::Nextflow => (&["main.nf"], "nf"),
         Language::Snakemake => (&SNAKEFILES, "smk"),
-        Language::Cwl | Language::Argo => return None,
+        Language::Cwl | Language::Argo | Language::Wdl => return None,
     };
     if let Some(name) = names.iter().find(|name| target.join(name).is_file()) {
         return Some(target.join(name));
@@ -158,6 +159,7 @@ mod tests {
         assert_eq!(file("Snakefile", ""), Ok(Language::Snakemake));
         assert_eq!(file("snakefile", ""), Ok(Language::Snakemake));
         assert_eq!(file("rules/align.smk", ""), Ok(Language::Snakemake));
+        assert_eq!(file("hello.wdl", ""), Ok(Language::Wdl));
         assert_eq!(file("tool.cwl", ""), Ok(Language::Cwl));
     }
 

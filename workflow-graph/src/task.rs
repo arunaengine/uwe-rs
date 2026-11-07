@@ -15,6 +15,7 @@ pub enum Language {
     Snakemake,
     Cwl,
     Argo,
+    Wdl,
 }
 
 impl std::fmt::Display for Language {
@@ -24,6 +25,7 @@ impl std::fmt::Display for Language {
             Language::Snakemake => "snakemake",
             Language::Cwl => "cwl",
             Language::Argo => "argo",
+            Language::Wdl => "wdl",
         })
     }
 }

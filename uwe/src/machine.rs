@@ -476,7 +476,7 @@ mod executors {
                 grid("HTCondor", &executors.htcondor)
             }
             "flyte" => {
-                crate::flyte::executor(store, &scratch, run, image, setup)?;
+                crate::flyte::executor(store, &scratch, run, image, setup, &arguments.secrets)?;
                 cloud("Flyte")
             }
             "snowflake" => {

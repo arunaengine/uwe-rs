@@ -699,7 +699,7 @@ With `process.executor = 'k8s'` the `k8s` scope fills these settings: `k8s.names
 
 ## Common Workflow Scheduler on Kubernetes
 
-`[executor.kubernetes.cws]` lets a running Common Workflow Scheduler (CWS) place the pods of the Kubernetes executor. uwe registers the run with CWS, adds the vertex of each process to its graph, and registers each task before its Job exists. The pods name CWS as their `schedulerName`. uwe does not start CWS, which runs as root by default; the cluster's administrators run it.
+`[executor.kubernetes.cws]` lets a running Common Workflow Scheduler (CWS) place the pods of the Kubernetes executor. uwe registers the run with CWS, adds the vertex of each process to its graph, and registers each task by the name of its pod once the Job made the pod, which waits for CWS meanwhile. A Job without a pod after `unschedulable_minutes` fails. The pods name CWS as their `schedulerName`. uwe does not start CWS, which runs as root by default; the cluster's administrators run it.
 
 ```toml
 [executor.kubernetes.cws]
@@ -709,7 +709,7 @@ address = "http://cws.lab:8080"            # the CWS REST API, without /v1
 # scheduler_name = "workflow-scheduler"    # the SCHEDULER_NAME of the CWS instance
 ```
 
-The calls are `POST /v1/scheduler/<run>` with `dns`, `namespace`, `strategy` and `costFunction`, `POST /v1/scheduler/<run>/DAG/vertices` once for each process, and `POST /v1/scheduler/<run>/task/<n>` with the Job name as `runName`, the process, the CPUs, the memory in bytes, the work folder, the attempt as `repetition` and the bytes of the inputs as `inputSize`. The registration of the run is tried again for 150 seconds while CWS refuses connections.
+The calls are `POST /v1/scheduler/<run>` with `dns`, `namespace`, `strategy` and `costFunction`, `POST /v1/scheduler/<run>/DAG/vertices` once for each process, and `POST /v1/scheduler/<run>/task/<n>` with the pod name as `runName`, the process, the CPUs, the memory in bytes, the work folder, the attempt as `repetition` and the bytes of the inputs as `inputSize`. The registration of the run is tried again for 150 seconds while CWS refuses connections.
 
 With `process.executor = 'k8s'` nf-cws's `cws` scope fills these settings: `cws.dns`, `strategy` and `costFunction`. uwe tells CWS of each task by itself and ignores `cws.batchSize`, `memoryPredictor`, `minMemory`, `maxMemory`, `maxCopyTasksPerNode` and `maxWaitingCopyTasksPerNode`, and the on-demand scheduler pod of `k8s.scheduler`, with a warning.
 
@@ -717,7 +717,6 @@ Limits:
 
 - The graph has no edges: the Kubernetes executor sees the tasks, not the data between them. Strategies that rank by the graph see each process alone.
 - The file inputs of a task are not listed (`fileInputs` is empty), and there are no batches, memory prediction or WOW (node-local work folders with copy daemons).
-- uwe runs Jobs, so CWS sees pods named `<Job name>-<suffix>`, while `runName` is the Job name. Whether CWS matches these pods was not checked against a real CWS.
 - The tests run against a local fake of CWS next to the fake Kubernetes API. Runs with a real CWS are not verified.
 
 ## SLURM memory per CPU

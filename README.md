@@ -46,6 +46,7 @@ So far it looks like it can. A Snakemake rule and a Nextflow process that run th
 | [Snakemake](https://snakemake.github.io) | Rules, wildcards, checkpoints, shadow rules, embedded Python, lifecycle hooks, yte and jinja2 templates, and `cwl:` rules, which use the CWL runtime of uwe. Python is evaluated in Rust. |
 | [CWL](https://www.commonwl.org) | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
 | [Argo Workflows](https://argoproj.github.io/workflows/) | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
+| [wir](wir/README.md) | The workflow intermediate representation of uwe: graphs of `call` ops and of `native` ops that run whole CWL documents, with the cache keys of the CWL run. See [Running wir documents](docs/wir.md). |
 
 Each language is a native subset, not a wrapper around the original engine. `uwe check` tells you before a run whether a workflow uses something uwe does not support.
 
@@ -191,6 +192,7 @@ uwe page
 | [Remote executors and staging](docs/remote-executors.md) | You run on SLURM, Kubernetes or TES |
 | [Workflow presets and installed references](docs/presets.md) | You offer fixed workflows and reference data to users |
 | [Embedding uwe in a service](docs/embedding.md) | You start runs from your own Rust service |
+| [Running wir documents](docs/wir.md) | You run a graph in the intermediate representation of uwe |
 | [Operating uwe](docs/operations.md) | You back up, restore or upgrade uwe for a team |
 | [The demo](demo/README.md) | You want to try every language on a laptop or a cluster |
 | [Contributing](CONTRIBUTING.md) | You change the code |

@@ -1,0 +1,21 @@
+# Manifest of tool-record, which records a shell command as a CWL CommandLineTool.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+# Its code comes from SciWIn (https://github.com/fairagro/sciwin), see LICENSE-SCIWIN.
+
+[package]
+name = "tool-record"
+description = "Records a shell command as a CWL CommandLineTool by running it once"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cwl-parser.workspace = true
+tempfile.workspace = true

@@ -15,6 +15,7 @@ use workflow_graph::{
     Launch, Note, Outcome, Reuse, Task, TaskId,
 };
 
+use crate::argo;
 use crate::child::Child;
 use crate::cwl;
 use crate::inputs;
@@ -27,6 +28,8 @@ use crate::task;
 /// How a run makes the drivers of native blocks, and what it shows.
 #[derive(Clone, Debug)]
 pub struct Settings {
+    /// The services of Argo blocks, like the S3 providers of the config file.
+    pub argo: argo_runtime::Services,
     /// The options of CWL blocks. A block never prints its output object, and the launch
     /// says whether it is simulated.
     pub cwl: cwl_runtime::Options,
@@ -41,6 +44,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
+            argo: argo_runtime::Services::default(),
             cwl: cwl_runtime::Options::default(),
             nextflow: nextflow::Options::default(),
             snakemake: snakemake::Options::default(),
@@ -215,8 +219,9 @@ impl WirDriver {
         let folder = self.job_folder()?.join(&path);
         let (job, values) = match native.language {
             Dialect::Nextflow => (folder.join("params.json"), nextflow::params(&bound)),
-            // A Snakemake config file takes the same values as Nextflow params.
+            // A Snakemake config file and an Argo parameter file take the values of params.
             Dialect::Snakemake => (folder.join("config.json"), nextflow::params(&bound)),
+            Dialect::Argo => (folder.join("parameters.json"), nextflow::params(&bound)),
             _ => (
                 folder.join("job.json"),
                 cwl::to_cwl(Json::Object(bound.clone())),
@@ -262,6 +267,11 @@ impl WirDriver {
                 })?;
                 snakemake::block(&launch, &output, &self.settings.snakemake)?
             }
+            Dialect::Argo if !launch.profiles.is_empty() => {
+                let message = format!("op {path}: Argo blocks take no profiles");
+                return Err(DriverError::unsupported(message));
+            }
+            Dialect::Argo => argo::block(&launch, &self.settings.argo)?,
             other => {
                 let message = format!("op {path}: uwe does not run {other:?} blocks yet");
                 return Err(DriverError::unsupported(message));

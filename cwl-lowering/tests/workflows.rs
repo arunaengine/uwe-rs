@@ -172,3 +172,33 @@ fn lowers_step_values() {
         "the map takes the default: {map:?}"
     );
 }
+
+#[test]
+fn lowers_merged_links() {
+    let lowering = lowered("links.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let main = graph(&lowering, "main");
+    let joins: Vec<(String, String)> = kinds(&main).into_iter().skip(4).collect();
+    let ops = [
+        ("again.words.merge".into(), "merge".into()),
+        ("count.text.merge".into(), "merge".into()),
+        ("count.text.select".into(), "select".into()),
+        ("both.merge".into(), "merge".into()),
+        ("first.merge".into(), "merge".into()),
+        ("first.select".into(), "select".into()),
+        ("flat.merge".into(), "merge".into()),
+        ("flat.flatten".into(), "flatten".into()),
+    ];
+    assert_eq!(joins, ops, "the ops of the links after those of the steps");
+    let ops = main["ops"].as_array().unwrap();
+    let op = |path: &str| ops.iter().find(|op| op["path"] == path).unwrap();
+    assert_eq!(op("count.text.select")["kind"]["select"]["rule"], "first");
+    let words = json!({"array": {"items": "string"}});
+    assert_eq!(op("again.words.merge")["outputs"][0]["type"], words);
+    let flat = op("flat.merge")["outputs"][0]["type"].clone();
+    assert_eq!(
+        flat,
+        json!({"array": {"items": "dynamic"}}),
+        "of an array and a File"
+    );
+}

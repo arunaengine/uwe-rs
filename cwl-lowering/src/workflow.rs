@@ -1,14 +1,14 @@
-//! Lowers a CWL workflow into a wir graph: an op per step, an edge per plain link, a call op
-//! with a graph of its own for each subworkflow, and a map op for each scattered step.
+//! Lowers a CWL workflow into a wir graph: an op per step, an edge or merge and select ops per
+//! link, a call op with a graph of its own for each subworkflow, and a map op per scatter.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
 
 use cwl_parser::model::{Process, Step, Workflow, short_name};
-use wir::{Call, Document, Edge, Endpoint, Graph, Kind, Op};
+use wir::{Call, Document, Edge, Endpoint, Graph, Kind, Op, Type};
 
-use crate::{Lowerer, Scope, blank, boundary, defaults, process_name, types};
+use crate::{Lowerer, Scope, blank, boundary, defaults, links, process_name, types};
 
 impl Lowerer {
     /// The graph `name` of a workflow, or the first thing in it that has no lowering yet. A
@@ -78,8 +78,7 @@ impl Lowerer {
         let find = |source: &str| {
             (ends.get(source).cloned()).ok_or_else(|| format!("the source {}", short_name(source)))
         };
-        let mut ops = Vec::new();
-        let mut edges = Vec::new();
+        let mut groups = Vec::new();
         for step in &workflow.steps {
             let path = short_name(&step.id);
             plain(step).map_err(|why| format!("step {path}: {why}"))?;
@@ -105,36 +104,68 @@ impl Lowerer {
                     }
                 }
             }
-            for input in &step.inputs {
+            groups.push((step, group));
+        }
+        // The type of what an end gives, to type the ops that merge and pick.
+        let typed = |from: &Endpoint| {
+            let ports = match &from.op {
+                None => Some(&inputs),
+                Some(path) => (groups.iter().flat_map(|(_, group)| &group.ops))
+                    .find(|op| op.path == *path)
+                    .map(|op| &op.outputs),
+            };
+            let port = ports.and_then(|ports| ports.iter().find(|port| port.name == from.port));
+            port.map_or(Type::Dynamic, |port| port.r#type.clone())
+        };
+        let link = |at: &str, sources: &[String], input: (_, _)| {
+            let ends = (sources.iter())
+                .map(|source| find(source).map(|from| (from.clone(), typed(&from))))
+                .collect::<Result<Vec<_>, String>>()?;
+            links::join(at, &ends, input.0, input.1)
+        };
+        let (mut edges, mut joins) = (Vec::new(), Vec::new());
+        for (step, group) in &groups {
+            let path = short_name(&step.id);
+            for input in step.inputs.iter().filter(|input| !input.source.is_empty()) {
                 let port = short_name(&input.id);
-                let [source] = input.source.as_slice() else {
-                    continue;
-                };
+                let joined = link(
+                    &format!("{path}.{port}"),
+                    &input.source,
+                    (input.link_merge, input.pick_value),
+                )
+                .map_err(|why| format!("step {path}: input {port}: {why}"))?;
                 // A step input that no op takes only serves expressions.
                 for (op, input) in group.takers(port) {
                     edges.push(Edge {
-                        from: find(source)?,
+                        from: joined.from.clone(),
                         to: end(Some(&op), &input),
                     });
                 }
+                joins.extend(joined.ops);
+                edges.extend(joined.edges);
             }
-            ops.extend(group.ops);
-            edges.extend(group.edges);
+            edges.extend(group.edges.iter().cloned());
         }
         for output in &process.outputs {
             let port = short_name(&output.id);
-            let ([source], None, None) = (
-                output.output_source.as_slice(),
-                &output.link_merge,
-                &output.pick_value,
-            ) else {
-                return Err(format!("output {port}: not one plain source"));
-            };
+            let joined = link(
+                port,
+                &output.output_source,
+                (output.link_merge, output.pick_value),
+            )
+            .map_err(|why| format!("output {port}: {why}"))?;
             edges.push(Edge {
-                from: find(source)?,
+                from: joined.from,
                 to: end(None, port),
             });
+            joins.extend(joined.ops);
+            edges.extend(joined.edges);
         }
+        let mut ops: Vec<Op> = groups
+            .into_iter()
+            .flat_map(|(_, group)| group.ops)
+            .collect();
+        ops.extend(joins);
         let graph = Graph {
             name: name.to_owned(),
             inputs,
@@ -168,9 +199,6 @@ impl Lowerer {
 fn plain(step: &Step) -> Result<(), String> {
     for input in &step.inputs {
         let port = short_name(&input.id);
-        if input.source.len() > 1 || input.link_merge.is_some() || input.pick_value.is_some() {
-            return Err(format!("several sources for input {port}"));
-        }
         if input.load_contents.is_some() || input.load_listing.is_some() {
             return Err(format!("loadContents or loadListing of input {port}"));
         }

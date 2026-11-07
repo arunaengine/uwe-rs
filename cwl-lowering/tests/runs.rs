@@ -119,3 +119,11 @@ fn values_match_native() {
     assert_eq!(native.tasks.len(), 3, "{native:?}");
     assert_eq!(lowered, native);
 }
+
+#[test]
+fn links_match_native() {
+    let job = json!({"name": "you", "names": ["a", "b"]});
+    let (native, lowered) = both("links.cwl", job);
+    assert_eq!(native.tasks.len(), 5, "{native:?}");
+    assert_eq!(lowered, native);
+}

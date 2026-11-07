@@ -2,12 +2,14 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeSet;
+
 use indexmap::IndexMap;
 use wdl_ast::v1::{
-    CommandPart, CommandSection, Expr, LiteralExpr, LiteralString, Placeholder, PlaceholderOption,
-    StringPart, StrippedCommandPart, StrippedStringPart,
+    CommandPart, CommandSection, Expr, LiteralExpr, LiteralString, NameRefExpr, Placeholder,
+    PlaceholderOption, StringPart, StrippedCommandPart, StrippedStringPart,
 };
-use wdl_ast::AstToken;
+use wdl_ast::{AstNode, AstToken};
 
 use crate::library;
 use crate::value::Value;
@@ -476,3 +478,14 @@ fn member(target: Value, name: &str) -> Result<Value, Error> {
         ))),
     }
 }
+
+/// The names an expression refers to.
+pub fn names(expr: &Expr) -> BTreeSet<String> {
+    (expr.descendants::<NameRefExpr>())
+        .map(|name| name.name().text().to_owned())
+        .collect()
+}
+
+#[cfg(test)]
+#[path = "expression_tests.rs"]
+mod tests;

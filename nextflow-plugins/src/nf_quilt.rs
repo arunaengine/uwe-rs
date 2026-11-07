@@ -268,7 +268,7 @@ fn push_of(settings: &Settings, address: &Address, start: &Start, end: &End, now
         }
         files.push((
             "nf-quilt/config.json".to_owned(),
-            pretty(&Value::Object(stored), 0),
+            pretty(&crate::service::redacted(&Value::Object(stored)), 0),
         ));
         files.push(("nf-quilt/params.json".to_owned(), pretty(&start.params, 0)));
         files.push((
@@ -534,7 +534,8 @@ mod tests {
             profile: "standard".into(),
             config_files: vec!["/scratch/nextflow.config".into()],
             params: json!({}),
-            config: json!({ "plugins": ["nf-quilt@1.0.1"], "params": {}, "workDir": "work" }),
+            config: json!({ "plugins": ["nf-quilt@1.0.1"], "params": {}, "workDir": "work",
+                "aws": { "accessKey": "AKIAEXAMPLE", "secretKey": "not-a-real-secret" } }),
             manifest: json!({}),
             processes: Vec::new(),
             start: 1_793_963_795_486,
@@ -602,6 +603,8 @@ mod tests {
         assert!(
             !config.contains("\"params\"") && config.contains("\"runName\" : \"loving_northcutt\"")
         );
+        assert!(!config.contains("not-a-real-secret"), "{config}");
+        assert!(config.contains("\"secretKey\" : \"[secret]\""), "{config}");
         assert_eq!(push.files[1].1, b"{ }");
         let readme = String::from_utf8_lossy(&push.files[3].1).into_owned();
         assert!(readme.starts_with("\n# test/probe\n\n## 2026-11-06t12-16-36.984583936\n"));

@@ -82,7 +82,7 @@ fn start() -> Start {
         profile: "standard".into(),
         config_files: Vec::new(),
         params: serde_json::json!({ "samples": 2 }),
-        config: serde_json::json!({}),
+        config: serde_json::json!({ "slack": { "bot": { "token": "not-a-real-token" } } }),
         manifest: serde_json::json!({}),
         processes: Vec::new(),
         start: 1_793_964_945_628,
@@ -158,6 +158,14 @@ fn records_store_runs() {
     assert_eq!(
         manifest.get("started_at").and_then(Node::text),
         Some("2026-11-06T11:35:45.628Z")
+    );
+    let config = manifest
+        .get("config")
+        .and_then(Node::text)
+        .unwrap_or_default();
+    assert!(
+        !config.contains("not-a-real-token") && config.contains("[secret]"),
+        "{config}"
     );
     assert_eq!(
         completion.get("finished_at").and_then(Node::text),

@@ -273,7 +273,8 @@ impl Lineage {
     }
 
     fn manifest(&self, start: &Start) -> Node {
-        let mut config = serde_json::to_string_pretty(&start.config).unwrap_or_default();
+        let config = crate::service::redacted(&start.config);
+        let mut config = serde_json::to_string_pretty(&config).unwrap_or_default();
         for location in &self.locations {
             config = config.replace(&format!("\"{location}\""), "\"[redacted-location]\"");
         }

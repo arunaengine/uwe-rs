@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use config_file::SecretValues;
 use serde_json::{Map, Value};
 use workflow_graph::{CancellationToken, Language};
 
@@ -82,6 +83,9 @@ pub struct Settings {
     /// Writes to standard output what `uwe run` writes there, like the CWL output object and
     /// what a Nextflow workflow prints. Off by default, so the host keeps its standard output.
     pub print: bool,
+    /// Secret values of this run, by the environment variable each stands for, like a
+    /// `{ environment = "NAME" }` secret or `UWE_TES_TOKEN`. They win over the environment.
+    pub secrets: SecretValues,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -127,6 +131,7 @@ impl Default for Settings {
             run_id: None,
             listener: None,
             print: false,
+            secrets: SecretValues::default(),
             cli: None,
         }
     }
@@ -214,6 +219,7 @@ impl Settings {
         arguments.output_dir = self.output_dir;
         arguments.database = self.database;
         arguments.store = self.store;
+        arguments.secrets = self.secrets;
         let mut file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
             let mut values = self.inputs.unwrap_or_else(|| Value::Object(Map::new()));
             let object = values

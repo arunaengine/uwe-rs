@@ -100,6 +100,33 @@ let run = running.await??;
 
 The channel closes when uwe drops the settings at the end of the run, so the loop ends then.
 
+## Secrets of a run
+
+A config file names its secrets as `{ environment = "NAME" }`. On the command line uwe reads them from the environment of the process. A host that runs several workflows at once can give each run its own values instead, in `run::Settings.secrets`, a `run::SecretValues`. So the host does not need to change its environment while runs read it, and two runs can use different values for the same name.
+
+`SecretValues::insert(name, value)` gives a value for the environment variable `name`. It refuses an empty name, a name with `=` or a NUL byte, and an empty value or one with a NUL byte. The error names the secret, never its value.
+
+uwe takes a given value first, wherever a run reads one of these names:
+
+- the `{ environment = "NAME" }` secrets of the config files that the run reads, like storage keys, the TES token, user and password, registry credentials, telemetry headers, the page token and the `[secrets]` section,
+- `UWE_TES_TOKEN`,
+- the repository tokens `NXF_GITHUB_ACCESS_TOKEN`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `BITBUCKET_TOKEN` and `GITEA_TOKEN`.
+
+A name without a given value is read from the environment, as on the command line. Call `allow_environment(false)` to stop that. Then such a secret fails the run with "the host gave no value for the secret NAME", and a token without a value is not sent.
+
+```rust
+let mut settings = uwe::run::Settings::new("/srv/workflows/main.cwl");
+settings.config_file = Some("/srv/runs/01JBXQ5Z7C2W9M/uwe.toml".into());
+settings.secrets.insert("LAB_TES_TOKEN", token)?;
+settings.secrets.insert("LAB_S3_SECRET", secret_key)?;
+settings.secrets.allow_environment(false);
+let run = uwe::RunRequest::new(settings).run().await?;
+```
+
+The same settings work for `RunRequest::describe` and for a run on the simulator. uwe writes the given values to neither the run database, the recorded command line nor the RO-Crate. `Debug` of `SecretValues` shows only the names.
+
+A host that passes its own `setup` made the secrets in it itself, so those do not take the given values. `UWE_TES_TOKEN` and the repository tokens still do. What a workflow reads from the environment itself, like the `envvars` of a Snakemake rule or `env('NAME')` in Nextflow, still comes from the environment of the process.
+
 ## The hosted policy
 
 The policy limits which presets are allowed and which cache, database and output paths a tenant gets. It also limits Argo host roots and volume mappings. Its authorization callback sees the merged inputs before planning, and the normalized inputs before execution.

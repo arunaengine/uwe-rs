@@ -454,7 +454,8 @@ pub struct Run {
     pub page: Option<Server>,
     pub id: String,
     /// The result values of a real run that finished, like the output object of CWL with the
-    /// locations of its delivered files. `None` for simulated runs and other languages.
+    /// locations of its delivered files, or the outputs of a wir graph. `None` for simulated
+    /// runs and other languages.
     pub outputs: Option<serde_json::Value>,
 }
 

@@ -34,6 +34,7 @@ members = [
     "task-runner",
     "tes-executor",
     "wir",
+    "wir-runtime",
     "workflow-graph",
 ]
 
@@ -73,6 +74,8 @@ storage = { path = "storage" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
 tes-executor = { path = "tes-executor" }
+wir = { path = "wir" }
+wir-runtime = { path = "wir-runtime" }
 workflow-graph = { path = "workflow-graph" }
 
 # Third-party crates

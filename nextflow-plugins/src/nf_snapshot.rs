@@ -157,7 +157,7 @@ impl Snapshot {
                 continue;
             }
             let mut files = Vec::new();
-            walk(target, &mut files);
+            walk(target, &mut files).map_err(|error| failed(&error))?;
             for file in files {
                 let Ok(relative) = file.strip_prefix(&self.root) else {
                     continue;
@@ -237,17 +237,18 @@ fn failed(error: &std::io::Error) -> String {
 }
 
 /// The regular files of a published path: itself, or the files below a folder, following
-/// links.
-fn walk(path: &Path, into: &mut Vec<PathBuf>) {
+/// links. A folder that cannot be read is an error, so that no snapshot misses its files.
+fn walk(path: &Path, into: &mut Vec<PathBuf>) -> std::io::Result<()> {
     if !path.is_dir() {
         if path.is_file() {
             into.push(path.to_owned());
         }
-        return;
+        return Ok(());
     }
-    for entry in std::fs::read_dir(path).into_iter().flatten().flatten() {
-        walk(&entry.path(), into);
+    for entry in std::fs::read_dir(path)? {
+        walk(&entry?.path(), into)?;
     }
+    Ok(())
 }
 
 /// The hex MD5 of a file's content, of the unpacked content for a `.gz` file.
@@ -302,4 +303,25 @@ fn normal(path: &Path) -> PathBuf {
         }
     }
     normal
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    /// A folder that cannot be read fails the walk instead of leaving its files out.
+    #[test]
+    fn fails_unreadable_folders() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let hidden = folder.path().join("hidden");
+        std::fs::create_dir(&hidden).expect("makes the folder");
+        std::fs::write(hidden.join("a.txt"), "a").expect("writes");
+        std::fs::set_permissions(&hidden, std::fs::Permissions::from_mode(0o000)).expect("locks");
+        // Root reads any folder; then there is nothing to fail.
+        let locked = std::fs::read_dir(&hidden).is_err();
+        let mut files = Vec::new();
+        let walked = super::walk(folder.path(), &mut files);
+        std::fs::set_permissions(&hidden, std::fs::Permissions::from_mode(0o755)).expect("opens");
+        assert!(!locked || walked.is_err(), "{files:?}");
+    }
 }

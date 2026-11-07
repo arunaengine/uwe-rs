@@ -86,6 +86,89 @@ fn paths_are_unique() {
 }
 
 #[test]
+fn edge_types_match() {
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["inputs"][0]["type"] = json!("string");
+    let (at, problem) = only(document);
+    assert_eq!(at, "main/head");
+    assert!(matches!(problem, Problem::Mismatch { port, .. } if port == "input input"));
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["inputs"][0]["flow"] = json!("stream");
+    assert_eq!(
+        only(document),
+        (
+            "main/head".into(),
+            Problem::FlowMismatch("input input".into())
+        )
+    );
+}
+
+#[test]
+fn one_producer_each() {
+    let mut document = base();
+    let extra = edge((None, "text"), (Some("head"), "input"));
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .expect("edges")
+        .push(extra);
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::Producers("input input".into()))
+    );
+}
+
+#[test]
+fn required_inputs_bound() {
+    let mut document = base();
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .expect("edges")
+        .remove(1);
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::Unbound("input input".into()))
+    );
+    let mut document = base();
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .expect("edges")
+        .remove(1);
+    document["graphs"][0]["ops"][1]["inputs"][0]["type"] = json!({"optional": {"file": {}}});
+    assert_eq!(problems(document), Vec::new());
+}
+
+#[test]
+fn rejects_op_cycles() {
+    let mut document = base();
+    let back = json!({"op": "head", "on": ["succeeded"]});
+    document["graphs"][0]["ops"][0]["after"] = json!([back]);
+    let (at, problem) = only(document);
+    assert!(at.starts_with("main/"));
+    assert!(matches!(problem, Problem::Cycle(_)));
+}
+
+#[test]
+fn rejects_graph_recursion() {
+    let mut document = base();
+    let call = json!({"path": "again", "kind": {"call": {"graph": "main"}},
+        "inputs": [{"name": "text", "type": {"file": {}}}],
+        "outputs": [{"name": "top", "type": {"file": {}}}]});
+    document["graphs"][0]["ops"]
+        .as_array_mut()
+        .expect("ops")
+        .push(call);
+    let edge = edge((None, "text"), (Some("again"), "text"));
+    document["graphs"][0]["edges"]
+        .as_array_mut()
+        .expect("edges")
+        .push(edge);
+    assert_eq!(
+        only(document),
+        ("main".into(), Problem::Recursion("main".into()))
+    );
+}
+
+#[test]
 fn rejects_recursive_types() {
     let mut document = base();
     document["types"] = json!([{"name": "Tree", "type": {"array": {"items": {"named": "Tree"}}}}]);

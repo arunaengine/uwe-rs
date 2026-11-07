@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -11,8 +11,8 @@ use std::time::Instant;
 use serde_json::{Map, Value as Json};
 use wir::{Document, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
-    CancellationToken, Delivery, Driver, DriverError, ExecuteError, Files, Language, Launch, Note,
-    Outcome, Reuse, Task, TaskId,
+    CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
+    Launch, Note, Outcome, Reuse, Task, TaskId,
 };
 
 use crate::child::Child;
@@ -20,6 +20,7 @@ use crate::cwl;
 use crate::inputs;
 use crate::plan::plan;
 use crate::state::{Progress, widen};
+use crate::task;
 
 /// How a run makes the drivers of native blocks, and what it shows.
 #[derive(Clone, Debug)]
@@ -66,12 +67,18 @@ pub struct WirDriver {
     children: Vec<(usize, Child)>,
     /// The child of each task, by its id in this run.
     owners: HashMap<TaskId, usize>,
+    /// The tasks of task ops, by id, with the node of each.
+    tasks: HashMap<TaskId, (usize, Task)>,
+    /// The attempts of task ops that their captures accepted.
+    accepted: HashSet<(TaskId, u32)>,
     last: u64,
     files: Option<Arc<dyn Files>>,
     cancel: Option<CancellationToken>,
     /// Where the job files of native blocks are written.
     folder: Option<tempfile::TempDir>,
     results: Option<Json>,
+    /// The files of the graph outputs that task ops made, to deliver to the output folder.
+    delivering: Vec<Delivery>,
 }
 
 impl WirDriver {
@@ -98,11 +105,14 @@ impl WirDriver {
             progress,
             children: Vec::new(),
             owners: HashMap::new(),
+            tasks: HashMap::new(),
+            accepted: HashSet::new(),
             last: 0,
             files: None,
             cancel: None,
             folder: None,
             results: None,
+            delivering: Vec::new(),
         })
     }
 
@@ -131,12 +141,49 @@ impl WirDriver {
                     Ok(Vec::new())
                 }
             },
+            Kind::Task(spec) => {
+                self.last += 1;
+                let node = self.progress.node(at);
+                let task = task::build(TaskId(self.last), &node.path, &node.op, &spec, &bound);
+                self.tasks.insert(task.id, (at, task.clone()));
+                Ok(vec![task])
+            }
             Kind::Call(_) => Ok(Vec::new()),
             _ => {
                 let path = &self.progress.node(at).path;
                 Err(DriverError::unsupported(format!(
-                    "op {path}: uwe does not run task ops yet"
+                    "op {path}: uwe does not run this op kind yet"
                 )))
+            }
+        }
+    }
+
+    /// Reads the outputs of a task op from its outcome. An attempt that is not accepted runs
+    /// again while the op's `retry` allows it; then the op fails, or errors when the task
+    /// could not run.
+    fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
+        let (at, task) = &self.tasks[&outcome.id];
+        let (at, node) = (*at, self.progress.node(*at));
+        let Kind::Task(spec) = &node.op.kind else {
+            return Vec::new();
+        };
+        match task::capture(spec, &node.op.outputs, outcome, &self.document.types) {
+            Ok(values) => {
+                self.accepted.insert((outcome.id, outcome.attempt));
+                self.progress.end(at, Status::Succeeded, values, None);
+                Vec::new()
+            }
+            Err(_) if outcome.attempt <= node.op.attributes.retry.unwrap_or(0) => {
+                vec![task.clone()]
+            }
+            Err(why) => {
+                let status = match outcome.error {
+                    Some(_) => Status::Errored,
+                    None => Status::Failed,
+                };
+                let message = format!("op {}: {why}", node.path);
+                self.progress.end(at, status, Map::new(), Some(message));
+                Vec::new()
             }
         }
     }
@@ -297,6 +344,11 @@ impl Driver for WirDriver {
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        if self.tasks.contains_key(&outcome.id) {
+            let mut tasks = self.complete_task(&outcome);
+            tasks.extend(self.advance()?);
+            return Ok(tasks);
+        }
         let index = self.owner(outcome.id)?;
         let last = &mut self.last;
         let tasks = self.children[index].1.complete(outcome, &mut || {
@@ -341,11 +393,19 @@ impl Driver for WirDriver {
             .collect()
     }
 
+    /// A task op hears of failures that no machine retry can mend, so that it errors and
+    /// a dependency on `errored` can hold.
     fn handles_error(&self, task: TaskId, error: &ExecuteError) -> bool {
+        if self.tasks.contains_key(&task) {
+            return !error.retryable();
+        }
         (self.owner(task)).is_ok_and(|index| self.children[index].1.handles_error(task, error))
     }
 
     fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
+        if self.tasks.contains_key(&task) {
+            return self.accepted.remove(&(task, attempt));
+        }
         match self.owner(task) {
             Ok(index) => self.children[index].1.take_acceptance(task, attempt),
             Err(_) => false,
@@ -367,7 +427,9 @@ impl Driver for WirDriver {
         }
         let results = self.progress.outputs().map_err(DriverError::new)?;
         if !self.launch.simulated {
-            let results = Json::Object(results);
+            let mut results = Json::Object(results);
+            let root = self.output_root();
+            deliver(&mut results, &root, &mut self.delivering);
             if self.settings.print {
                 println!(
                     "{}",
@@ -393,9 +455,9 @@ impl Driver for WirDriver {
     }
 
     fn deliveries(&mut self) -> Vec<Delivery> {
-        (self.children.iter_mut())
-            .flat_map(|(_, child)| child.deliveries())
-            .collect()
+        let mut deliveries = std::mem::take(&mut self.delivering);
+        deliveries.extend((self.children.iter_mut()).flat_map(|(_, child)| child.deliveries()));
+        deliveries
     }
 
     fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
@@ -430,5 +492,46 @@ impl Driver for WirDriver {
     fn draining(&self) -> bool {
         (!self.progress.failures.is_empty() && !self.launch.keep_going)
             || self.children.iter().any(|(_, child)| child.draining())
+    }
+}
+
+/// Delivers the files and folders of a result value that are not in the output folder yet,
+/// like those of task ops, to `root` by their basenames, and names them there.
+fn deliver(value: &mut Json, root: &Path, deliveries: &mut Vec<Delivery>) {
+    match value {
+        Json::Array(items) => items
+            .iter_mut()
+            .for_each(|item| deliver(item, root, deliveries)),
+        Json::Object(object) => {
+            let class = object.get("class").and_then(Json::as_str);
+            let location = object
+                .get("location")
+                .and_then(Json::as_str)
+                .map(str::to_owned);
+            if matches!(class, Some("File" | "Directory"))
+                && let Some(location) = location
+            {
+                let local =
+                    cwl_parser::iri::file_path(&location).unwrap_or(PathBuf::from(&location));
+                let name = object.get("basename").and_then(Json::as_str);
+                let name = name
+                    .or_else(|| location.rsplit('/').next())
+                    .unwrap_or("output");
+                if !local.starts_with(root) {
+                    let target = root.join(name).to_string_lossy().into_owned();
+                    deliveries.push(Delivery {
+                        location,
+                        target: target.clone(),
+                        mode: DeliveryMode::Copy,
+                        overwrite: true,
+                    });
+                    object.insert("location".into(), Json::String(target));
+                }
+            }
+            object
+                .values_mut()
+                .for_each(|item| deliver(item, root, deliveries));
+        }
+        _ => {}
     }
 }

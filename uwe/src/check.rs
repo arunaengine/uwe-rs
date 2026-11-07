@@ -347,6 +347,7 @@ fn language_name(language: Language) -> &'static str {
         Language::Cwl => "CWL",
         Language::Argo => "Argo",
         Language::Wdl => "WDL",
+        Language::Wir => "wir",
     }
 }
 

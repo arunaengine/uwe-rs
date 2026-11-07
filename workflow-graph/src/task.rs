@@ -16,6 +16,8 @@ pub enum Language {
     Cwl,
     Argo,
     Wdl,
+    /// A wir document, the workflow intermediate representation of uwe.
+    Wir,
 }
 
 impl std::fmt::Display for Language {
@@ -26,6 +28,7 @@ impl std::fmt::Display for Language {
             Language::Cwl => "cwl",
             Language::Argo => "argo",
             Language::Wdl => "wdl",
+            Language::Wir => "wir",
         })
     }
 }

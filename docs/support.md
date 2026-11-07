@@ -15,6 +15,7 @@ This page describes uwe 0.1.0. `uwe --version` prints the version you run. Where
 | CWL | v1.0, v1.1 and v1.2 | Direct in-place updates of a Directory, and conflicting views of one parent folder (both refused) |
 | Argo Workflows | `argoproj.io/v1alpha1`, as in Argo 4 (older fields are converted as by `argo convert`) | Sidecars and daemon steps on SLURM and TES |
 | WDL | 1.0, 1.1 and 1.2 | `else` clauses, enumerations, `hints`, `input` and `output` literals, `read_object`, `read_objects`, `write_object`, `write_objects`, the header forms of `read_tsv` and `write_tsv`, retries (`maxRetries`), disks, outputs whose files only the task's results name (like `read_lines(stdout())` as `Array[File]`), and the inputs of calls in subworkflows from the input file |
+| wir | Version 0.1, see [Running wir documents](wir.md) | Reserved op kinds, and native blocks other than CWL (refused) |
 
 Each language is a subset that uwe implements in Rust. The exact limits are in [Known pitfalls](pitfalls.md). `uwe check <workflow>` answers the question for one workflow.
 

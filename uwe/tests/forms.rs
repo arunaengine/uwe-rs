@@ -205,6 +205,7 @@ fn describes_native_forms() {
             Language::Cwl => cwl_runtime::driver(&launch),
             Language::Argo => argo_runtime::driver(&launch),
             Language::Wdl => wdl_runtime::driver(&launch),
+            Language::Wir => unreachable!("the list holds no wir document"),
         }
         .expect("a native driver");
         let form = forms::describe(driver.as_mut(), Policy::Relaxed).expect("a native form");

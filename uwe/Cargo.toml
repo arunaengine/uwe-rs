@@ -44,6 +44,7 @@ slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }
 wdl-runtime.workspace = true
+wir-runtime.workspace = true
 workflow-graph.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

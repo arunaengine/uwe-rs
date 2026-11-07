@@ -439,6 +439,7 @@ fn main_file(run: &Run, database: &Database) -> Result<PathBuf, Failure> {
         "snakemake" => Language::Snakemake,
         "cwl" => Language::Cwl,
         "wdl" => Language::Wdl,
+        "wir" => Language::Wir,
         _ => Language::Argo,
     };
     let paths: std::collections::BTreeSet<PathBuf> = match run.workflow_folder.as_deref() {

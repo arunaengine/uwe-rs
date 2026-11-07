@@ -155,12 +155,21 @@ impl WirDriver {
                 problems.join("; ")
             )));
         }
-        let progress = Progress::new(plan(&document)?, document.types.clone());
         let target = std::path::absolute(&launch.target).unwrap_or(launch.target.clone());
+        let base = target.parent().unwrap_or(Path::new("/")).to_owned();
+        let mut document = document;
+        let ports = (document.graphs.iter_mut()).flat_map(|graph| {
+            let inner = graph.ops.iter_mut().flat_map(|op| op.inputs.iter_mut());
+            graph.inputs.iter_mut().chain(inner)
+        });
+        for default in ports.filter_map(|port| port.default.as_mut()) {
+            inputs::absolute(default, &base);
+        }
+        let progress = Progress::new(plan(&document)?, document.types.clone());
         Ok(WirDriver {
             launch: launch.clone(),
             settings,
-            base: target.parent().unwrap_or(Path::new("/")).to_owned(),
+            base,
             document,
             progress,
             children: Vec::new(),

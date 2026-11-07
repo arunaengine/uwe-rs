@@ -26,9 +26,9 @@ The JSON form uses snake_case keys and leaves out fields that hold their default
 
 ## Versioning
 
-`wir_version` is `<major>.<minor>`; this crate reads `0.1` to `0.4`, and `wir::VERSION` is `0.4`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
+`wir_version` is `<major>.<minor>`; this crate reads `0.1` to `0.5`, and `wir::VERSION` is `0.5`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
 
-Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops, defines `map`, `expr` and `branch`, and adds `library` to `expr`. Those three op kinds stay reserved in a document of an earlier version. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
+Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops, defines `map`, `expr` and `branch`, and adds `library` to `expr`. Those three op kinds stay reserved in a document of an earlier version. Version 0.5 adds `default` to input ports. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
 
 - While the major version is 0, every change to the form or the semantics raises the minor version.
 - From 1.0, a minor version only adds optional fields, op kinds, or semantics for reserved op kinds; a reader then accepts its own major version up to its own minor. Any other change raises the major version.
@@ -82,6 +82,8 @@ No op of this version reads or writes streams. The rest of the stream contract b
 **Start.** An op starts once every connected input is bound and every `after` dependency holds. An unconnected optional input is bound to null. An op whose input can no longer be bound, or whose dependency can no longer hold, does not run and ends `omitted`.
 
 **Value edges.** An edge binds the consumer input to the producer's value once the producer has succeeded. One output may feed many inputs; every input and every graph output has at most one producer. An `int` value that flows into a `float` port becomes a float.
+
+**Defaults.** An input port of an op or a graph may have a `default`, a value that fits its type. When the input is bound to null, or has no producer, it takes the default; any other value stays. So a port with a default also takes null from an edge, and its op or graph always sees a value of its type. An op's defaults apply when it starts, a graph's defaults when it runs: for the entry graph to the inputs of the run, else to the inputs of the `call`, the `branch` body or the round of a `map`, after the defaults of that op. Output ports take no default. A relative `location` of a File or Directory in a default starts from the folder of the document.
 
 **`task`** runs one command. A runner gives it a fresh working folder, makes its input files and folders available, and builds the argument vector from `command`: text stays text, a scalar input becomes its text (`true` or `false` for a bool), a File or Directory becomes its path, an array one argument per item, and null no argument. There is no shell. Then every output is read by its one capture:
 
@@ -141,12 +143,13 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - named types exist and are not defined through themselves; unions, enums and tuples are not empty;
 - the entry graph and every graph, source and op named by an op exist; graphs do not call themselves;
 - every edge joins existing ports of equal flow, and the target type accepts the source type;
-- every input and graph output has at most one producer, and every required one has a producer;
+- every input and graph output has at most one producer, and every required one without a default has a producer;
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
 - an expr has one output; a branch has a bool condition, the body's other ports and optional outputs; a call matches the called graph's ports, and a map the ports of its body, with arrays for the `over` inputs and the outputs;
 - a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
 - the stream files of a task are relative paths that stay inside the working folder;
-- a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 before 0.3, none of 0.4 before 0.4.
+- a default sits on an input port and fits its type;
+- a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 before 0.3, none of 0.4 before 0.4, none of 0.5 before 0.5.
 
 Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering`. The runner is the crate `wir-runtime`.

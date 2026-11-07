@@ -52,7 +52,11 @@ pub fn read(
         values.insert(name.to_owned(), parameter(&texts, &port.r#type, defs));
     }
     for port in ports {
-        let value = match values.remove(&port.name) {
+        let given = match values.remove(&port.name) {
+            None | Some(Json::Null) if port.default.is_some() => port.default.clone(),
+            given => given,
+        };
+        let value = match given {
             Some(value) => widen(value, &port.r#type, defs),
             None if port.r#type.is_optional(defs) => Json::Null,
             None => {
@@ -77,7 +81,7 @@ pub fn read(
 
 /// Makes the relative `location` or `path` of Files and Directories absolute, as a
 /// `location`, the one key that wir values use.
-fn absolute(value: &mut Json, base: &Path) {
+pub fn absolute(value: &mut Json, base: &Path) {
     match value {
         Json::Array(items) => items.iter_mut().for_each(|item| absolute(item, base)),
         Json::Object(object) => {

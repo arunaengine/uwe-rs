@@ -194,6 +194,10 @@ impl Progress {
             };
             let value = match node.op.inputs.iter().find(|item| item.name == *port) {
                 Some(item) => {
+                    let value = match (value, &item.default) {
+                        (Json::Null, Some(default)) => default.clone(),
+                        (value, _) => value,
+                    };
                     let value = widen(value, &item.r#type, &self.defs);
                     if self.unchecked(source) && !wir::fits(&value, &item.r#type, &self.defs) {
                         let path = &node.path;
@@ -206,6 +210,11 @@ impl Progress {
                 None => value,
             };
             bound.insert(port.clone(), value);
+        }
+        for (port, default) in &node.defaults {
+            if bound.get(port).is_none_or(Json::is_null) {
+                bound.insert(port.clone(), default.clone());
+            }
         }
         Readiness::Ready(bound)
     }

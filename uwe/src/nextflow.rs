@@ -950,6 +950,22 @@ mod tests {
     }
 
     #[test]
+    fn reads_script_folder() {
+        let folder = tempfile::tempdir().expect("a folder");
+        std::fs::write(folder.path().join("main.nf"), "workflow {}\n").expect("writes");
+        let text = "process.executor = 'awsbatch'\n";
+        std::fs::write(folder.path().join("nextflow.config"), text).expect("writes");
+        let launch = workflow_graph::Launch {
+            target: folder.path().join("main.nf"),
+            ..workflow_graph::Launch::default()
+        };
+        let mut host = super::console(true, &crate::setup::Setup::default());
+        let config = nextflow_runtime::driver::config(&launch.target, &launch, &mut host);
+        let choice = super::choice(&config.expect("a config"));
+        assert_eq!(choice, Ok(Some("aws-batch".to_owned())));
+    }
+
+    #[test]
     fn maps_aws_scope() {
         let text = "workDir = 's3://probe/work'\nprocess.executor = 'awsbatch'\n\
                     aws {\n region = 'eu-west-1'\n batch {\n  jobRole = 'arn:role'\n  \

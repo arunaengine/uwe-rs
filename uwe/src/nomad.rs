@@ -50,6 +50,7 @@ pub fn executor(
     run: &str,
     default_image: Option<String>,
     setup: &crate::setup::Setup,
+    secrets: &config_file::SecretValues,
 ) -> Result<RunnerExecutor<crate::conda_backend::Remote<NomadBackend>>, String> {
     let config = &setup.executors.nomad;
     let stage = config.staging.stage(&setup.storage)?;
@@ -60,7 +61,7 @@ pub fn executor(
         .unwrap_or_else(|| ADDRESS.into());
     let token = match &settings.token {
         Some(token) => Some(token.reveal()?),
-        None => variable("NOMAD_TOKEN"),
+        None => secrets.get("NOMAD_TOKEN"),
     };
     let namespace = settings
         .namespace

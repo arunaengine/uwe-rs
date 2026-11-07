@@ -284,8 +284,15 @@ pub(crate) fn executor(
         "nomad" => {
             let default_image = arguments.default_image.clone();
             let store = setup.store(arguments)?;
-            let executor = nomad::executor(store, &scratch, run, default_image, setup)
-                .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            let executor = nomad::executor(
+                store,
+                &scratch,
+                run,
+                default_image,
+                setup,
+                &arguments.secrets,
+            )
+            .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         "htcondor" => {

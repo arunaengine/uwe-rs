@@ -57,7 +57,7 @@ pub(crate) fn upload_client() -> Result<&'static reqwest::Client, String> {
 /// The client for requests with headers of a provider. It follows no redirect to another
 /// origin, so that the request can go there again without those headers, which may hold
 /// secrets; reqwest drops only `Authorization` and cookies on its own.
-pub(crate) fn origin_client() -> Result<&'static reqwest::Client, String> {
+pub fn origin_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     let client = CLIENT.get_or_init(|| {
         let policy = reqwest::redirect::Policy::custom(|attempt| {

@@ -403,3 +403,64 @@ fn fetches_pinned_repositories() {
         "{error}"
     );
 }
+
+/// A graph output that would be delivered to the folder of a block, by its basename, would
+/// replace the files that the block delivered there.
+#[test]
+fn refuses_nested_places() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    std::fs::create_dir(root.join("data")).unwrap();
+    std::fs::write(root.join("data/a.txt"), "one\n").unwrap();
+    std::fs::create_dir(root.join("other")).unwrap();
+    std::fs::write(root.join("other/block"), "two\n").unwrap();
+    let job = json!({
+        "folder": {"class": "Directory", "location": "data"},
+        "extra": {"class": "File", "location": "other/block"}
+    });
+    std::fs::write(root.join("job.json"), job.to_string()).unwrap();
+    let source = demos().join("directory-copy.cwl");
+    let extra = json!({"name": "extra", "type": {"file": {}}});
+    let document = json!({
+        "wir_version": "0.1",
+        "sources": [{"id": "block", "language": "cwl", "location": source}],
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "folder", "type": "directory"}, extra],
+            "outputs": [extra],
+            "ops": [{
+                "path": "block", "kind": {"native": {"source": "block", "language": "cwl"}},
+                "inputs": [{"name": "folder", "type": "directory"}],
+                "outputs": [{"name": "copies", "type": {"array": {"items": {"file": {}}}}}]
+            }],
+            "edges": [
+                {"from": {"port": "folder"}, "to": {"op": "block", "port": "folder"}},
+                {"from": {"port": "extra"}, "to": {"port": "extra"}}
+            ]
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).unwrap();
+    let settings = Settings {
+        cwl: cwl_runtime::Options {
+            simulated: false,
+            print: false,
+            ..cwl_runtime::Options::default()
+        },
+        ..settings()
+    };
+    let launch = launch(root, target, root.join("job.json"), false);
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let mut copier = Copier {
+        root: root.join("work"),
+    };
+    let error = execute("copy", &mut driver, &mut copier)
+        .into_result()
+        .unwrap_err()
+        .to_string();
+    let block = format!("{} and", root.join("out/block").display());
+    assert!(error.contains(&block), "{error}");
+    assert!(error.contains("/out/block/a.txt"), "{error}");
+    assert!(driver.results().is_none());
+}

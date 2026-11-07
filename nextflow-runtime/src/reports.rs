@@ -133,6 +133,8 @@ struct Row {
     exit: i32,
     attempt: u32,
     cached: bool,
+    /// Whether output validation refused an attempt that exited with 0.
+    rejected: bool,
     image: Option<String>,
     submit: i64,
     start: Option<i64>,
@@ -326,6 +328,7 @@ impl Reports {
             exit: 0,
             attempt: *attempt,
             cached: false,
+            rejected: false,
             image: None,
             submit,
             start: None,
@@ -349,6 +352,7 @@ impl Reports {
             exit: 0,
             attempt,
             cached: false,
+            rejected: false,
             image: None,
             submit: *submit,
             start: Some(now()),
@@ -359,8 +363,8 @@ impl Reports {
         self.notify(Event::TaskStarted(self.task(record, id, None)));
     }
 
-    /// Notes how an attempt of a task ended.
-    pub fn ended(&mut self, outcome: &Outcome) {
+    /// Notes how an attempt of a task ended, and whether its outputs were accepted.
+    pub fn ended(&mut self, outcome: &Outcome, accepted: bool) {
         let Some((task, submit)) = self.asked.get(&outcome.id) else {
             return;
         };
@@ -371,6 +375,7 @@ impl Reports {
             exit: outcome.exit_code,
             attempt: outcome.attempt,
             cached: outcome.cached,
+            rejected: outcome.exit_code == 0 && !accepted,
             image: outcome.image.clone(),
             submit: *submit,
             start: outcome.started.map(millis),
@@ -636,10 +641,10 @@ impl Reports {
 
 impl Row {
     fn status(&self) -> &'static str {
-        match (self.cached, self.exit) {
-            (true, _) => "CACHED",
-            (false, 0) => "COMPLETED",
-            (false, _) => "FAILED",
+        match (self.cached, self.exit, self.rejected) {
+            (true, _, _) => "CACHED",
+            (false, 0, false) => "COMPLETED",
+            (false, _, _) => "FAILED",
         }
     }
 
@@ -898,6 +903,7 @@ mod tests {
             exit: 0,
             attempt: 1,
             cached: false,
+            rejected: false,
             image: None,
             submit: 0,
             start: Some(1000),
@@ -927,6 +933,7 @@ mod tests {
             exit: 0,
             attempt: 1,
             cached: false,
+            rejected: false,
             image: None,
             submit: 0,
             start: None,

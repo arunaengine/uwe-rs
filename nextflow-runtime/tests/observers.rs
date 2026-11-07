@@ -625,3 +625,31 @@ fn numbers_retried_tasks() {
     assert_eq!(flaky.len(), 2, "two attempts of FLAKY: {submitted:?}");
     assert_eq!(flaky[0], flaky[1], "the retry keeps its task_id");
 }
+
+/// A task that exits with 0 without its declared output failed, for observers too.
+#[test]
+fn hears_missing_outputs() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let script = "process MISSING {\n    output:\n    path 'gone.txt'\n    script:\n    \
+                  \"true\"\n}\n\nworkflow {\n    MISSING()\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).expect("writes the script");
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut driver = Nextflow::new(&launch, Settings::default()).expect("a driver");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    driver.observe(Box::new(Recorder {
+        events: events.clone(),
+        gate: Arc::default(),
+    }));
+    let execution = Engine::new(&mut Flaky).run("main.nf", &mut driver);
+    assert!(execution.error.is_some(), "the output is missing");
+    let ended: Vec<String> = (events.borrow().iter())
+        .filter(|event| matches!(event, Event::TaskCompleted(_) | Event::TaskFailed(_)))
+        .map(summary)
+        .collect();
+    assert_eq!(ended.len(), 1, "{ended:?}");
+    assert!(ended[0].starts_with("failed"), "{ended:?}");
+}

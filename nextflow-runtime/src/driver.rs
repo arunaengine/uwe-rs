@@ -579,8 +579,9 @@ impl Driver for Nextflow {
             {
                 outcome.stdout = stdout_text(self.files.as_deref(), log).unwrap_or_default();
             }
-            reports.ended(&outcome);
         }
+        // The observers hear how the attempt ended once its outputs were checked.
+        let heard = self.reports.is_some().then(|| outcome.clone());
         let outcome = match &request.made {
             _ if request.agent.is_some() => self.calls.outcome(&request),
             // An `exec:` section ran when the task was asked for; its files are its outputs.
@@ -607,8 +608,11 @@ impl Driver for Nextflow {
             notes: &mut self.notes,
         };
         let completed = run.complete(outcome, &mut host);
-        self.acceptance
-            .insert(identity, run.take_acceptance(request.id));
+        let accepted = run.take_acceptance(request.id);
+        self.acceptance.insert(identity, accepted);
+        if let (Some(reports), Some(heard)) = (&mut self.reports, heard) {
+            reports.ended(&heard, accepted);
+        }
         let requests = completed.map_err(|failure| self.fault(failure))?;
         self.tasks(requests)
     }

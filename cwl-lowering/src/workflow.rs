@@ -178,7 +178,7 @@ impl Lowerer {
     }
 
     /// The first problem that the verifier finds in a graph, with the graphs it calls.
-    fn check(&self, graph: &Graph) -> Result<(), String> {
+    pub(crate) fn check(&self, graph: &Graph) -> Result<(), String> {
         let mut graphs = self.graphs.clone();
         graphs.push(graph.clone());
         let document = Document {

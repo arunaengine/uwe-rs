@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{RequirementClass, ScatterMethod, Step, short_name};
+use cwl_parser::model::{ScatterMethod, Step, short_name};
 use wir::{ArrayType, Branch, Edge, Expr, Flow, Graph, Kind, Map, Op, Port, Scatter, Type};
 
 use crate::workflow::end;
@@ -91,14 +91,7 @@ impl Lowerer {
         path: &str,
         scope: &Scope,
     ) -> Result<Group, String> {
-        let library = (scope.requirements.iter().rev())
-            .find_map(|entry| match &entry.class {
-                RequirementClass::InlineJavascript { expression_lib } => {
-                    Some(expression_lib.clone())
-                }
-                _ => None,
-            })
-            .unwrap_or_default();
+        let library = scope.library();
         let mut group = values(step, &op, path, &library)?;
         let Some(when) = &step.when else {
             group.edges = feeds(&group, &[&op]);

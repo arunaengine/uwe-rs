@@ -69,8 +69,8 @@ impl Client {
         }
     }
 
-    /// Registers the task of an attempt, whose pod comes from the Job `pod`, before the Job
-    /// exists; the run and the process of the task first, once each.
+    /// Registers the task of an attempt by the name of its pod `pod`; the run and the process
+    /// of the task first, once each.
     pub async fn task(
         &self,
         job: Job<'_>,

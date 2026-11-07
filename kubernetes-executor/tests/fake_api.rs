@@ -2613,8 +2613,8 @@ fn workflow_scheduler() -> (String, Calls) {
     (address, calls)
 }
 
-/// Two tasks of a run with CWS: CWS learns of the run, the process and each task before its
-/// Job exists, and the pods name CWS as their scheduler.
+/// Two tasks of a run with CWS: CWS learns of the run, the process and each task by the name
+/// of its pod, and the pods name CWS as their scheduler.
 #[tokio::test]
 async fn schedules_with_cws() {
     let root = tempfile::tempdir().expect("a folder");
@@ -2664,7 +2664,7 @@ async fn schedules_with_cws() {
         json!([{"label": "UPPER", "type": "PROCESS", "uid": 1}])
     );
     let task = &calls[3].1;
-    assert_eq!(task["runName"], "uwe-run-upper-2-2");
+    assert_eq!(task["runName"], "uwe-run-upper-2-2-pod");
     assert_eq!(task["task"], "UPPER");
     assert_eq!(task["name"], "UPPER (2)");
     assert_eq!(task["repetition"], 1);

@@ -39,7 +39,7 @@ on the PATH and makes [`local-config.toml`](local-config.toml) the config throug
 The rest of this file explains each example, how it compares with the native tool, and what
 was changed.
 
-The official examples of the four languages that uwe runs, each run with plain
+The official examples of the languages that uwe runs, each run with plain
 `uwe run <file>`. On the BCF cluster every task is a SLURM job with its own Apptainer
 container. On a laptop or workstation every task is a Docker container: see
 [On a laptop with Docker](#on-a-laptop-with-docker).
@@ -53,6 +53,7 @@ container. On a laptop or workstation every task is a Docker container: see
 | `cwl/hello_world.cwl` | "Hello World" of the CWL user guide's quick start | [common-workflow-language/user_guide](https://github.com/common-workflow-language/user_guide) 96a5e947, `src/_includes/cwl/` |
 | `cwl/scatter-workflow.cwl` | the first scatter workflow of the user guide | the same, `src/_includes/cwl/workflows/` |
 | `argo/hello-world.yaml`, `argo/dag-diamond.yaml` | two of Argo's examples | [argoproj/argo-workflows](https://github.com/argoproj/argo-workflows) v4.1.4, b5b4d665, `examples/` |
+| `wdl/hello.wdl`, `wdl/scatter.wdl`, `wdl/conditional.wdl` | a task, a scatter and a conditional, written for this demo | this repository |
 
 The files are copies of the originals. The few changes are listed below, with the reason.
 

@@ -164,6 +164,8 @@ pub const PLUGINS: &[Plugin] = &[
     crate::nf_fairscape::PLUGIN,
     crate::nf_flowviewer::PLUGIN,
     crate::nf_gc::PLUGIN,
+    // nf-iridanext: writes its output file and reads sample metadata only on local paths; a
+    // remote one fails the run.
     crate::nf_iridanext::PLUGIN,
     crate::nf_logsaver::PLUGIN,
     crate::nf_metalog::PLUGIN,

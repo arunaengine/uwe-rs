@@ -264,8 +264,21 @@ impl Native for CompositeKey {
     }
 
     fn key(&self) -> Option<String> {
-        Some(self.text())
+        Some(encoded(&self.0))
     }
+}
+
+/// The components of a key with their classes and text lengths: printed alone, `['A, B', 'C']`
+/// and `['A', 'B, C']` would give the same key.
+fn encoded(values: &[Value]) -> String {
+    let part = |value: &Value| match value {
+        Value::List(list) => format!("[{}]", encoded(&list.borrow().items)),
+        other => {
+            let text = other.to_string();
+            format!("{}:{}:{text}", other.java_class_name(), text.len())
+        }
+    };
+    values.iter().map(part).collect()
 }
 
 impl CompositeKey {
@@ -373,5 +386,26 @@ fn fuse(left: &Value, right: &Value) -> Value {
             Value::list(items(left).into_iter().chain(items(right)).collect())
         }
         _ => Value::list(vec![left.clone(), right.clone()]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_compare_components() {
+        let key = |parts: &[&str]| {
+            let parts = parts.iter().map(|part| Value::string(*part)).collect();
+            CompositeKey(parts).value()
+        };
+        let pairs = [
+            Value::list(vec![key(&["A, B", "C"]), Value::integer(1)]),
+            Value::list(vec![key(&["A", "B, C"]), Value::integer(2)]),
+            Value::list(vec![key(&["A", "B, C"]), Value::integer(3)]),
+        ];
+        let groups = items(&grouped(&pairs, 0, true));
+        let sizes: Vec<usize> = groups.iter().map(|group| items(&pair(group).1).len()).collect();
+        assert_eq!(sizes, [1, 2]);
     }
 }

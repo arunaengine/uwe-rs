@@ -142,10 +142,12 @@ pub(crate) fn source(
         true => format!("channel.{name}(*arguments)"),
         false => format!("{name}(*arguments)"),
     };
+    // It runs in the run of the main script, whose host finds the files.
     let mut expr = json!({
         "language": "groovy",
         "code": code,
         "captures": {"arguments": {"value": arguments}},
+        "scope": {"source": "main", "start": 0, "end": 0},
     });
     if let Some(plugin) = plugin {
         expr["library"] = json!([format!(

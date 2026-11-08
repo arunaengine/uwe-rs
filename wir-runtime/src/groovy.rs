@@ -79,7 +79,6 @@ impl Compiled {
     }
 
     /// Calls the closure that the code gives with `arguments`.
-    #[allow(dead_code, reason = "the stream ops of the next commits call it")]
     pub fn call(
         &self,
         values: &Map<String, Json>,

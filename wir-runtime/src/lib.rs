@@ -5,7 +5,6 @@
 
 mod argo;
 mod arrays;
-#[allow(dead_code, reason = "the stream ops of the next commits call it")]
 mod callback;
 mod child;
 pub mod cwl;
@@ -15,7 +14,6 @@ mod expr;
 mod flows;
 mod groovy;
 mod inputs;
-#[allow(dead_code, reason = "the stream ops of the next commits call it")]
 mod javascript;
 pub mod nextflow;
 #[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
@@ -28,8 +26,8 @@ mod spill;
 mod state;
 mod streams;
 mod task;
+mod transforms;
 mod wdl;
-#[allow(dead_code, reason = "the stream ops of the next commits call it")]
 mod wdl_closure;
 
 pub use child::{Block, Child};

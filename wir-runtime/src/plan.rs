@@ -113,7 +113,10 @@ fn refusal(op: &Op) -> Option<&'static str> {
 
 /// Whether this runner runs a stream or control op kind.
 fn supported(kind: &Kind) -> bool {
-    matches!(kind, Kind::Emit(_))
+    matches!(
+        kind,
+        Kind::Emit(_) | Kind::Transform(_) | Kind::Filter(_) | Kind::FlatMap(_) | Kind::Flatten(_)
+    )
 }
 
 /// Why this runner cannot run a field of the format that it does not run yet, if it cannot.

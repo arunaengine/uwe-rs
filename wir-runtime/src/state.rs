@@ -309,6 +309,18 @@ impl Progress {
         }
     }
 
+    /// The ordinal of the innermost round that holds a node, 0 outside rounds.
+    pub fn round_index(&self, at: usize) -> u64 {
+        let mut node = Some(at);
+        while let Some(at) = node {
+            if let Some(ordinal) = self.node(at).ordinal {
+                return ordinal;
+            }
+            node = self.node(at).parent;
+        }
+        0
+    }
+
     /// Why the ops inside a call or a round failed, joined.
     pub fn reasons(&self, at: usize) -> String {
         let reasons: Vec<&str> = (self.inner.iter())

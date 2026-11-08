@@ -206,3 +206,29 @@ fn process_tasks() {
         .collect();
     assert_eq!(basenames.len(), 2);
 }
+
+#[test]
+fn round_index() {
+    let file = json!({"file": {}});
+    // The acceptance check holds only when the index is the ordinal of the round.
+    let accept = json!({"language": "groovy", "code": "{ it.index == (it.inputs.n as int) }"});
+    let task = json!({"path": "t", "kind": {"task": {"command": ["echo", {"input": "n"}],
+        "captures": [{"output": "out", "from": {"glob": "*.out"}}], "accept": accept}},
+        "inputs": [port("n", json!("int"), "value")], "outputs": [port("out", file.clone(), "value")]});
+    let body = json!({"name": "body", "inputs": [port("n", json!("int"), "value")], "outputs": [port("out", file.clone(), "value")],
+        "ops": [task], "edges": [edge((None, "n"), (Some("t"), "n")), edge((Some("t"), "out"), (None, "out"))]});
+    let inputs = json!([port("n", json!("int"), "stream")]);
+    let (ys, _) = run(
+        json!({"body": "body"}),
+        inputs,
+        port("out", file, "stream"),
+        body,
+        json!({"n": [0, 1, 2]}),
+    )
+    .unwrap();
+    assert_eq!(
+        ys.as_array().map(Vec::len),
+        Some(3),
+        "each round sees its own index"
+    );
+}

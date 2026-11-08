@@ -242,6 +242,7 @@ impl Rounding {
                 values,
             )
             .map_err(|error| error.message)?;
+            progress.plan.nodes[node].ordinal = Some(self.ordinal);
             progress.adopt(start);
             self.active.insert(node, self.ordinal);
             self.ordinal += 1;

@@ -228,10 +228,9 @@ impl Executor for Local {
     }
 }
 
-#[test]
-fn collect_file_delivery() {
-    let folder = tempfile::tempdir().unwrap();
-    let results = folder.path().join("results");
+/// The driver of a run that collects its texts `xs` into `results/all.txt` under `root`.
+fn collector(root: &Path) -> WirDriver {
+    let results = root.join("results");
     let text = json!({"name": "xs", "type": "string", "flow": "stream"});
     let file = json!({"name": "out", "type": {"file": {}}, "flow": "stream"});
     let op = json!({"path": "collect", "kind": {"collect_file": {"name": "all.txt", "directory": results}},
@@ -239,19 +238,37 @@ fn collect_file_delivery() {
         "effects": ["write_files", {"publish": results}]});
     let main = json!({"name": "main", "inputs": [text], "outputs": [{"name": "ys", "type": {"file": {}}, "flow": "stream"}],
         "ops": [op], "edges": [edge((None, "xs"), (Some("collect"), "source")), edge((Some("collect"), "out"), (None, "ys"))]});
-    let launch = launch(folder.path(), json!([main]), json!({"xs": ["a\n", "b\n"]}));
+    let launch = launch(root, json!([main]), json!({"xs": ["a\n", "b\n"]}));
     let settings = Settings {
         print: false,
         ..Settings::default()
     };
-    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    WirDriver::new(&launch, settings).unwrap()
+}
+
+#[test]
+fn collect_file_delivery() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut driver = collector(folder.path());
     let run = execute("streams", &mut driver, &mut Local).into_result();
     assert!(run.is_ok(), "{run:?}");
-    let place = results.join("all.txt");
+    let place = folder.path().join("results/all.txt");
     assert_eq!(
         std::fs::read_to_string(&place).unwrap(),
         "a\nb\n",
         "delivered before the File is given"
     );
     assert_eq!(driver.results().unwrap()["ys"][0]["basename"], "all.txt");
+    let mut driver = collector(folder.path());
+    driver.use_files(std::sync::Arc::new(workflow_graph::LocalFiles));
+    assert_eq!(driver.start().unwrap(), []);
+    assert_eq!(driver.deliveries().len(), 1);
+    let error = driver.finish().unwrap_err().message;
+    let results = folder.path().join("results");
+    let results = results.to_string_lossy();
+    assert_eq!(
+        error,
+        format!("op collect: the host never acknowledged the delivery of its files to {results}"),
+        "a delivery that never comes"
+    );
 }

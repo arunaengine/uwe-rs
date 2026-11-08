@@ -236,6 +236,7 @@ impl WirDriver {
         let ops = self.document.graphs.iter().flat_map(|graph| &graph.ops);
         let writes = |op: &wir::Op| match &op.kind {
             Kind::Split(split) => split.files.is_some(),
+            Kind::CollectFile(_) => true,
             _ => false,
         };
         if ops.into_iter().any(writes) {

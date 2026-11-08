@@ -24,6 +24,7 @@ use crate::selecting::{Choice, Selecting};
 use crate::splitting::Splitting;
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
 use crate::transforms::{Mapping, Rule};
+use crate::writing::Observing;
 
 /// The most items one step of an op commits.
 pub const CHUNK: usize = 256;
@@ -250,6 +251,11 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
             stream,
             callbacks: Default::default(),
         })),
+        Kind::Observe(spec) => Some(Box::new(Observing {
+            spec: spec.clone(),
+            callbacks: Default::default(),
+        })),
+        Kind::CollectFile(spec) => Some(Box::new(crate::writing::Collecting::new(spec.clone()))),
         Kind::Take(spec) => selecting(Choice::Take(spec.count)),
         Kind::First(spec) => selecting(Choice::First(spec.predicate.clone(), spec.empty.clone())),
         Kind::Last(spec) => selecting(Choice::Last(

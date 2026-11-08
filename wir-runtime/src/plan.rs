@@ -230,9 +230,6 @@ fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
         {
             Some("uwe does not run expressions with a scope or captures yet")
         }
-        Kind::Dynamic(_) if op.outputs.iter().any(|port| !port.flow.is_value()) => {
-            Some("uwe does not run stream outputs of dynamic regions yet")
-        }
         Kind::Task(task)
             if task
                 .builder

@@ -71,8 +71,8 @@ fn reconciles_instances() {
         )
         .unwrap();
     let (a, _) = progress.next(false).unwrap();
-    assert_eq!(progress.node(a).path, "r/a");
-    let b = node(&progress, "r/b");
+    assert_eq!(progress.node(a).path, "r/0/a");
+    let b = node(&progress, "r/0/b");
     region
         .adopt(
             &mut progress,
@@ -81,7 +81,7 @@ fn reconciles_instances() {
             update(1, &["a", "c"], json!({}), false),
         )
         .unwrap();
-    assert_eq!(node(&progress, "r/a"), a, "a started instance stays");
+    assert_eq!(node(&progress, "r/0/a"), a, "a started instance stays");
     assert!(
         matches!(progress.states[b], State::Ended(Status::Cancelled, _)),
         "b is retired"

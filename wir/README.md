@@ -124,6 +124,8 @@ The output of `select`, `merge` and `flatten` must fit its type, or the op fails
 
 **Attributes** never enter a task cache key: `cache` (`default` reuses a result with an equal key, `never`, `resume` reuses only results of the resumed run; no setting overrides a source's own veto on reuse), `place` (a site or a rule; explicit placement never falls back silently), `resources` (`cpus`, `gpus`, `memory` and `disk` in bytes), `retry` (more attempts after a failed or errored one) and `time` (seconds per attempt). A binding file per run may set them by op path without changing the document.
 
+`place` names a site of the executor. Every task of a placed `task` or `native` op runs at that site, and a run that has no site of that name refuses the task. The other ops run in the engine, so a runner refuses a `place` on them when it plans the run.
+
 ## Reserved ops
 
 These op kinds parse and verify (their body graphs and the op inputs they name must exist), but no runner of this version runs them. Their fields are fixed; their semantics are open.

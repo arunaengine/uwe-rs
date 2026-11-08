@@ -54,10 +54,46 @@ pub struct Plan {
 /// Plans a verified document. Reserved op kinds parse and verify, but no runner of this
 /// version runs them.
 pub fn plan(document: &Document) -> Result<Plan, DriverError> {
+    refuse(document)?;
     let mut nodes = Vec::new();
     let entry = graph(document, &document.entry)?;
     let outputs = instantiate(document, entry, ("", ""), None, &mut nodes)?;
     Ok(Plan { nodes, outputs })
+}
+
+/// Refuses the settings that this runner cannot honour, in every graph that a run of the
+/// entry graph can reach, so that none of them is dropped silently.
+fn refuse(document: &Document) -> Result<(), DriverError> {
+    let mut reached = vec![document.entry.as_str()];
+    let mut next = 0;
+    while let Some(name) = reached.get(next).copied() {
+        next += 1;
+        for op in &graph(document, name)?.ops {
+            if let Some(why) = refusal(op) {
+                let message = format!("op {name}/{}: {why}", op.path);
+                return Err(DriverError::unsupported(message));
+            }
+            let body = match &op.kind {
+                Kind::Call(call) => Some(call.graph.as_str()),
+                Kind::Branch(branch) => Some(branch.body.as_str()),
+                Kind::Map(map) => Some(map.body.as_str()),
+                _ => None,
+            };
+            if let Some(body) = body.filter(|body| !reached.contains(body)) {
+                reached.push(body);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Why this runner cannot run an op with its settings, if it cannot.
+fn refusal(op: &Op) -> Option<&'static str> {
+    let runs = matches!(op.kind, Kind::Task(_) | Kind::Native(_));
+    if op.attributes.place.is_some() && !runs {
+        return Some("only task and native ops run at a place");
+    }
+    None
 }
 
 fn graph<'d>(document: &'d Document, name: &str) -> Result<&'d Graph, DriverError> {

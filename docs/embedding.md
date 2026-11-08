@@ -93,7 +93,7 @@ Set `run::Settings.listener` to a `run::Listener`, which is an `Arc<dyn Fn(run::
 - `Event::Task` carries a `TaskEvent`: the task number, name and step, its `TaskState`, the attempt, times, whether the task reused a cached result, the exit code and an error message.
 - `Event::Ended` is the last event. Its `error` is set when the run failed or stopped. Without strict provenance, a failure to record the run is only a warning, so `Ended` does not prove that the record is complete.
 
-A task goes from `requested` to `started` to `finished`, `reused` or `failed`. A machine failure gives `retried`, then `started` again. Tasks that did not end when the run ended become `stopped`. The workflow's own output checks can still turn a `finished` attempt into `failed`.
+A task goes from `requested` to `started` to `finished`, `reused` or `failed`. A machine failure gives `retried`, then `started` again. Once a failure ends the run, uwe only waits for the attempts that run: it starts no new attempt, also no retry, as the run fails anyway and a retry would submit new work after that. A machine failure in that time leaves its task `failed`, and a task that waited for its retry becomes `stopped`. A new run of the workflow takes the finished tasks from the cache. Tasks that did not end when the run ended become `stopped`. The workflow's own output checks can still turn a `finished` attempt into `failed`.
 
 Times are milliseconds since the Unix epoch, as in the run database. All event types are `Clone`, `Debug` and `serde::Serialize`.
 

@@ -133,43 +133,6 @@ impl Splitter {
         self.read(Lines::text(text), None)
     }
 
-    /// The chunks of one text, read at once.
-    pub fn chunks(&self, text: &str) -> Result<Vec<Value>, Exception> {
-        self.text(text.to_owned())?.collect()
-    }
-
-    /// Whether the records of a text go one by one: CSV records, each a chunk of its own,
-    /// without `by` and `limit`.
-    pub fn streams(&self) -> bool {
-        matches!(self.format, Format::Csv { .. }) && self.by.is_none() && self.limit.is_none()
-    }
-
-    /// The CSV records of a text one by one, when each record is a chunk of its own: without
-    /// `by` and `limit`.
-    pub fn csv_records(&self, text: String) -> Option<csv::Records> {
-        let Format::Csv {
-            separator,
-            quote,
-            header,
-            skip,
-            strip,
-        } = &self.format
-        else {
-            return None;
-        };
-        if self.by.is_some() || self.limit.is_some() {
-            return None;
-        }
-        let options = CsvOptions {
-            separator: *separator,
-            quote: *quote,
-            header: header.clone(),
-            skip: *skip,
-            strip: *strip,
-        };
-        Some(csv::Records::new(text, &options))
-    }
-
     fn read(&self, mut lines: Lines, origin: Option<Origin>) -> Result<Chunks, Exception> {
         let failed = |error: std::io::Error| read_error(origin.as_ref(), &error);
         let source = match &self.format {
@@ -389,17 +352,6 @@ pub fn positive(options: Option<&Value>, name: &str) -> Option<usize> {
         Some(Value::Number(number)) if number.to_i64() > 0 => Some(number.to_i64() as usize),
         _ => None,
     }
-}
-
-/// The bytes of a gzip file, decompressed.
-pub fn decompressed(bytes: &[u8], path: &PathValue) -> Result<Vec<u8>, Exception> {
-    let mut decoded = Vec::new();
-    let mut decoder = flate2::read::MultiGzDecoder::new(bytes);
-    std::io::Read::read_to_end(&mut decoder, &mut decoded).map_err(|error| {
-        let message = format!("Cannot decompress {}: {error}", path.uri());
-        Exception::new("ZipException", message)
-    })?;
-    Ok(decoded)
 }
 
 /// A FASTA or FASTQ record as a map of the requested fields.

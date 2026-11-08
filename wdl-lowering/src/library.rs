@@ -3,27 +3,25 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use serde_json::Value as Json;
 use wdl_analysis::types::Optional;
 
-use wdl_ast::AstToken;
-use wdl_ast::v1::{Decl, Expr, TaskDefinition};
+use wdl_ast::v1::{BoundDecl, Decl, Expr, LiteralString, TaskDefinition};
+use wdl_ast::{AstNode, AstToken};
 use wdl_runtime::Value;
 use wdl_runtime::document::{Unit, declared};
 use wdl_runtime::expression::names;
-use wir::{Port, Type};
+use wir::{KeyType, Port, Type};
 
 use crate::types::{convert, has_files, optional, port};
-use crate::{constant, reads, text};
+use crate::{constant, flag, presence, reads, text, unclaimed};
 
-/// The inputs of a task as graph ports, the declarations that compute their defaults, and
-/// the literal defaults of optional inputs, which the call ops hold.
+/// The inputs of a task as graph ports, with the flags of given inputs, and the declarations
+/// that compute their defaults.
 pub(crate) struct Inputs {
     pub ports: Vec<Port>,
     pub library: Vec<Line>,
-    pub fallbacks: Vec<(String, Json)>,
 }
 
 /// A declaration as WDL text, with its name and the names it uses.
@@ -38,7 +36,7 @@ pub(crate) struct Line {
 pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, String> {
     let mut inputs = Vec::new();
     let mut library = Vec::new();
-    let mut fallbacks = Vec::new();
+    let mut flags = Vec::new();
     for decl in definition
         .input()
         .iter()
@@ -53,20 +51,26 @@ pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, 
         if nested(&r#type) {
             return Err(format!("input {name}: a file inside a struct or map"));
         }
+        unclaimed(&name)?;
         let mut item = port(&name, r#type.clone());
         if let Decl::Bound(bound) = &decl {
             let expr = bound.expr();
             check(&expr)?;
             match constant(&expr).map(|value| value.coerce(&ty)) {
                 Some(Ok(Value::None)) => item.r#type = optional(r#type),
-                Some(Ok(value)) if ty.is_optional() => {
-                    fallbacks.push((name.clone(), value.result_json()))
-                }
-                Some(Ok(value)) => item.default = Some(value.result_json()),
+                Some(Ok(value)) if !ty.is_optional() => item.default = Some(value.result_json()),
                 _ => {
                     item.r#type = optional(r#type);
+                    // A given `None` keeps an optional input from its default.
+                    let given = match ty.is_optional() {
+                        true => {
+                            flags.push(flag(&name));
+                            presence(&name)
+                        }
+                        false => format!("defined({name})"),
+                    };
                     let code = format!(
-                        "{} {name} = if defined({name}) then {name} else ({})",
+                        "{} {name} = if {given} then {name} else ({})",
                         decl.ty().inner().text(),
                         text(&expr)
                     );
@@ -82,10 +86,10 @@ pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, 
         }
         inputs.push(item);
     }
+    inputs.extend(flags);
     Ok(Inputs {
         ports: inputs,
         library,
-        fallbacks,
     })
 }
 
@@ -108,6 +112,34 @@ pub(crate) fn check(expr: &Expr) -> Result<(), String> {
     match names(expr).contains("task") {
         true => Err("the task variable".into()),
         false => Ok(()),
+    }
+}
+
+/// Fails for a declaration that makes files from text, like `File f = path` for a String
+/// `path`: uwe's WDL driver stages those files, while a task op stages only its inputs.
+pub(crate) fn staged(decl: &BoundDecl, types: &BTreeMap<String, Type>) -> Result<(), String> {
+    let name = decl.name().text().to_owned();
+    if !types.get(&name).is_some_and(has_files) {
+        return Ok(());
+    }
+    let literal = decl.descendants::<LiteralString>().next().is_some();
+    let uses = names(&decl.expr());
+    match literal || uses.iter().any(|used| types.get(used).is_none_or(textual)) {
+        true => Err(format!("the declaration {name} makes files from text")),
+        false => Ok(()),
+    }
+}
+
+/// Whether a value of the type can hold text, which an expression can turn into a path.
+fn textual(r#type: &Type) -> bool {
+    match r#type {
+        Type::String | Type::Enum(_) | Type::Dynamic => true,
+        Type::Optional(inner) => textual(inner),
+        Type::Array(array) => textual(&array.items),
+        Type::Map(map) => map.key == KeyType::String || textual(&map.value),
+        Type::Record(fields) => fields.iter().any(|field| textual(&field.r#type)),
+        Type::Union(items) | Type::Tuple(items) => items.iter().any(textual),
+        _ => false,
     }
 }
 

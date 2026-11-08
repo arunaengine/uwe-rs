@@ -6,14 +6,30 @@ use std::sync::Arc;
 
 use cwl_parser::model::Expression;
 use cwl_runtime::{Evaluator, JavaScriptSettings, Value, Variables};
-use serde_json::{Map, Value as Json};
+use serde_json::{Map, Value as Json, json};
 use wir::{Port, Type, TypeDef, resolve};
 
 use crate::cwl::{to_cwl, to_wir};
 use crate::state::widen;
 
-/// The value of the output of an expr op from its input values, or why it has none.
+/// The value of the output of an expr op from its input values, or why it has none. In a
+/// simulated run, whose files are made up, code over `self` that fails gives a placeholder.
 pub fn evaluate(
+    spec: &wir::Expr,
+    bound: &Map<String, Json>,
+    output: &Port,
+    defs: &[TypeDef],
+    (settings, simulated): (&JavaScriptSettings, bool),
+) -> Result<Json, String> {
+    match compute(spec, bound, output, defs, settings) {
+        Err(_) if simulated && spec.code.contains("self") => {
+            Ok(placeholder(&output.r#type, &output.name, defs))
+        }
+        result => result,
+    }
+}
+
+fn compute(
     spec: &wir::Expr,
     bound: &Map<String, Json>,
     output: &Port,
@@ -49,6 +65,47 @@ pub fn evaluate(
             "the value {json} does not fit output {}",
             output.name
         )),
+    }
+}
+
+/// A value of a type named after `name`, like the placeholders of uwe's CWL driver: arrays of
+/// two items, the first member of a union, and files that do not exist.
+pub(crate) fn placeholder(r#type: &Type, name: &str, defs: &[TypeDef]) -> Json {
+    match resolve(r#type, defs) {
+        Some(Type::Bool) => Json::Bool(false),
+        Some(Type::Int) => Json::from(1),
+        Some(Type::Float) => Json::from(1.0),
+        Some(Type::Optional(inner)) => placeholder(inner, name, defs),
+        Some(Type::Union(members)) => match members.first() {
+            Some(member) => placeholder(member, name, defs),
+            None => Json::Null,
+        },
+        Some(Type::Enum(symbols)) => symbols.first().map_or(Json::Null, |symbol| json!(symbol)),
+        Some(Type::Array(array)) => json!([
+            placeholder(&array.items, name, defs),
+            placeholder(&array.items, &format!("{name}_2"), defs)
+        ]),
+        Some(Type::Tuple(items)) => Json::Array(
+            (items.iter())
+                .map(|item| placeholder(item, name, defs))
+                .collect(),
+        ),
+        Some(Type::Record(fields)) => Json::Object(
+            (fields.iter())
+                .map(|field| {
+                    let value = placeholder(&field.r#type, &field.name, defs);
+                    (field.name.clone(), value)
+                })
+                .collect(),
+        ),
+        Some(Type::Map(_)) => json!({}),
+        Some(Type::File(_)) => {
+            json!({"class": "File", "location": format!("_:{name}"), "basename": name})
+        }
+        Some(Type::Directory) => {
+            json!({"class": "Directory", "location": format!("_:{name}"), "basename": name})
+        }
+        _ => json!(name),
     }
 }
 

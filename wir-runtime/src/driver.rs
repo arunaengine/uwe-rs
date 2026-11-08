@@ -281,10 +281,12 @@ impl WirDriver {
                 }
                 Ok(Vec::new())
             }
-            Kind::Expr(spec) if spec.language == ExprLanguage::Groovy => {
+            Kind::Expr(spec)
+                if matches!(spec.language, ExprLanguage::Groovy | ExprLanguage::Python) =>
+            {
                 let node = self.progress.node(at);
                 let (path, output) = (node.path.clone(), node.op.outputs[0].clone());
-                let evaluated = self.groovy_expr(&spec, &bound).and_then(|value| {
+                let evaluated = self.language_expr(&spec, &bound).and_then(|value| {
                     let value = widen(value, &output.r#type, &self.document.types);
                     match wir::fits(&value, &output.r#type, &self.document.types) {
                         true => Ok(value),
@@ -372,9 +374,9 @@ impl WirDriver {
         }
     }
 
-    /// The value of a Groovy expression over the inputs of its op as `inputs` and its
-    /// captures by name, in the source of its scope.
-    fn groovy_expr(&self, spec: &wir::Expr, bound: &Map<String, Json>) -> Result<Json, String> {
+    /// The value of a Groovy or Python expression over the inputs of its op as `inputs` and
+    /// its captures by name; Groovy code sees the definitions of the source of its scope.
+    fn language_expr(&self, spec: &wir::Expr, bound: &Map<String, Json>) -> Result<Json, String> {
         let mut values = Map::from_iter([("inputs".to_owned(), Json::Object(bound.clone()))]);
         for (name, binding) in &spec.captures {
             let value = match binding {
@@ -382,6 +384,13 @@ impl WirDriver {
                 wir::Binding::Value(value) => value.clone(),
             };
             values.insert(name.clone(), value);
+        }
+        if spec.language == ExprLanguage::Python {
+            let code = crate::python::Code {
+                code: &spec.code,
+                library: &spec.library,
+            };
+            return code.value(&values, &self.base);
         }
         let scope = match &spec.scope {
             Some(scope) => Some(self.scope_text(scope).map_err(|error| error.message)?),

@@ -1,5 +1,5 @@
-//! Runs Groovy expr ops: their inputs and captures, the source of their scope, and scopes
-//! that do not fit their source.
+//! Runs Groovy and Python expr ops: their inputs and captures, the source of their scope,
+//! and scopes that do not fit their source.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -25,7 +25,8 @@ fn run(expr: Json, source: &str) -> Result<Json, String> {
     let op = json!({"path": "e", "kind": {"expr": expr}, "inputs": [{"name": "n", "type": "int"}],
         "outputs": [{"name": "out", "type": "dynamic"}]});
     let document = json!({"wir_version": "0.1",
-        "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf"}],
+        "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf"},
+            {"id": "smk", "language": "snakemake", "location": "main.nf"}],
         "graphs": [{"name": "main", "inputs": [{"name": "n", "type": "int"}],
             "outputs": [{"name": "out", "type": "dynamic"}], "ops": [op],
             "edges": [edge((None, "n"), (Some("e"), "n")), edge((Some("e"), "out"), (None, "out"))]}],
@@ -83,5 +84,21 @@ fn scope_checked() {
     assert_eq!(
         run(past, source).unwrap_err(),
         "the scope 0..99 is no range of characters of nf"
+    );
+}
+
+#[test]
+fn python_expressions() {
+    let plain = json!({"language": "python", "code": "[inputs['n'] * k, f\"n{inputs['n']}\"]",
+        "captures": {"k": {"value": 10}}});
+    assert_eq!(run(plain, "").unwrap(), json!([40, "n4"]));
+    let library = json!({"language": "python", "code": "square(inputs['n'])",
+        "library": ["def square(x):\n    return x * x\n"]});
+    assert_eq!(run(library, "").unwrap(), json!(16));
+    let scoped = json!({"language": "python", "code": "1", "scope": {"source": "smk", "start": 0, "end": 0}});
+    let error = run(scoped, "").unwrap_err();
+    assert!(
+        error.ends_with("uwe does not load Snakefile scopes for Python code yet"),
+        "{error}"
     );
 }

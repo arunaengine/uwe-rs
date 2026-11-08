@@ -72,8 +72,16 @@ pub fn pull_script(program: &str, reference: &str, file: &Path, exit: &Path) -> 
     )
 }
 
+/// Whether the file at `path` starts as a SIF file does: a launch script of 32 bytes, then the
+/// magic text of the format.
+pub fn is_sif(path: &Path) -> bool {
+    let mut head = [0; 41];
+    let read = std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut head));
+    read.is_ok() && &head[32..] == b"SIF_MAGIC"
+}
+
 /// Where Apptainer pulls an image from: an address or an archive as it is, else the registry.
-fn source(reference: &str) -> String {
+pub(crate) fn source(reference: &str) -> String {
     match reference.contains("://") || archive_path(reference).is_some() {
         true => reference.to_owned(),
         false => format!("docker://{reference}"),

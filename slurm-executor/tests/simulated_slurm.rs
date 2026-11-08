@@ -163,15 +163,15 @@ kill -TERM -- "-$(cat "$state/$1.pid")"
 const SACCT: &str = "#!/bin/bash\necho 'sacct: accounting storage is disabled' >&2\nexit 1\n";
 
 /// Runs the command after the image in the folder of `--pwd`, without a container. A pull
-/// takes a second, notes itself in `state/pulls` and its web proxy in `state/proxies`, and
-/// makes an empty file; the pull of an image archive fails without the archive.
+/// takes a second, notes itself in `state/pulls` and its proxy in `state/proxies`, and makes
+/// a file with the head of a SIF file; the pull of an archive fails without the archive.
 const APPTAINER: &str = r#"#!/bin/bash
 if [ "$1" = pull ]; then
     case $4 in docker-archive:*) [ -s "${4#docker-archive:}" ] || exit 3 ;; esac
     echo "$4" >> "$(dirname "$0")/state/pulls"
     [ -z "$HTTPS_PROXY" ] || echo "$HTTPS_PROXY $http_proxy" >> "$(dirname "$0")/state/proxies"
     sleep 1
-    touch "$3"
+    printf '%-32sSIF_MAGIC' '#!/usr/bin/env run-singularity' > "$3"
     exit 0
 fi
 while [ $# -gt 0 ]; do
@@ -240,6 +240,14 @@ exec sh "$wrapper"
 
 /// An Apptainer that cannot get the image.
 const BROKEN_APPTAINER: &str = "#!/bin/bash\necho 'FATAL: while making image from oci registry: no such image' >&2\nexit 255\n";
+
+/// An Apptainer that cannot reach the registry and names its web proxy in the error.
+const PROXY_APPTAINER: &str =
+    "#!/bin/bash\necho \"FATAL: no answer through $HTTPS_PROXY\" >&2\nexit 255\n";
+
+/// An Apptainer whose pull ends well but leaves an empty file, and names its web proxy.
+const EMPTY_APPTAINER: &str =
+    "#!/bin/bash\necho \"pulled through $HTTPS_PROXY\" >&2\ntouch \"$3\"\n";
 
 /// The commands of the simulated SLURM in a folder of `root`.
 fn cluster(root: &Path, apptainer: &str) -> PathBuf {
@@ -522,6 +530,57 @@ async fn pulls_tagged_once() {
 }
 
 #[tokio::test]
+async fn shares_image_folder() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let images = root.path().join("shared-images");
+    // Two runs with folders of their own share one folder of images.
+    let run = |name: &str| {
+        let apptainer = Container::Apptainer(text(&bin.join("apptainer")));
+        let mut backend = backend(&root.path().join(name), &bin, apptainer);
+        backend.images = images.clone();
+        backend
+    };
+    let (first_run, second_run) = (run("first"), run("second"));
+    let mut spec = spec("echo shared > out.txt");
+    spec.image = Some(Image {
+        reference: "debian@sha256:ab12".into(),
+        platform: None,
+    });
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let (first, second) = tokio::join!(
+        first_run.run(job("first-P-1-1"), &cancel),
+        second_run.run(job("second-P-1-1"), &cancel)
+    );
+    for finished in [first, second] {
+        assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    }
+    let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
+    assert_eq!(pulls, "docker://debian@sha256:ab12\n");
+    assert!(images.join("sha256-ab12.sif").exists());
+    let names: Vec<String> = (std::fs::read_dir(&images).expect("the images"))
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert!(
+        !names.iter().any(|name| name.contains(".part")),
+        "{names:?}"
+    );
+}
+
+#[tokio::test]
 async fn clears_submission_environment() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
@@ -597,6 +656,130 @@ async fn pulls_through_proxy() {
     let proxies = std::fs::read_to_string(bin.join("state/proxies")).expect("a proxy");
     let proxy = "http://proxy.example.org:3128";
     assert_eq!(proxies, format!("{proxy} {proxy}\n"));
+}
+
+#[tokio::test]
+async fn pulls_on_host() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.host_pull = true;
+    // The pull on this machine comes before any job, which would make the folder of notes.
+    std::fs::create_dir_all(bin.join("state")).expect("makes the folder");
+    let proxy = "http://proxy.example.org:3128";
+    backend.proxy = Some(proxy.into());
+    let mut spec = spec("echo here > out.txt");
+    spec.image = Some(Image {
+        reference: "debian@sha256:ab12".into(),
+        platform: None,
+    });
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let (first, second) = tokio::join!(
+        backend.run(job("run-P-7-1"), &cancel),
+        backend.run(job("run-P-8-1"), &cancel)
+    );
+    for finished in [first, second] {
+        assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    }
+    let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
+    assert_eq!(pulls, "docker://debian@sha256:ab12\n");
+    let proxies = std::fs::read_to_string(bin.join("state/proxies")).expect("a proxy");
+    assert_eq!(proxies, format!("{proxy} {proxy}\n"));
+    // Only the jobs of the two tasks ran, and they run the file.
+    assert_eq!(
+        std::fs::read_to_string(bin.join("state/last")).ok(),
+        Some("102\n".into())
+    );
+    let file = root.path().join("scratch/images/sha256-ab12.sif");
+    let script = std::fs::read_to_string(root.path().join("scratch/run-P-7-1/control/job.sh"))
+        .expect("the job script");
+    assert!(
+        script.contains(&format!("'{}' 'sh'", file.display())),
+        "{script}"
+    );
+}
+
+#[tokio::test]
+async fn checks_host_image() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), EMPTY_APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.host_pull = true;
+    backend.proxy = Some("http://user:secret-word@proxy.example.org:3128".into());
+    backend.pull_pause = Duration::from_millis(100);
+    let spec = spec("true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-7-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).expect_err("a failure");
+    assert!(
+        matches!(error, ExecutorError::MissingImage { .. }),
+        "{error}"
+    );
+    let text = error.to_string();
+    assert!(text.contains("made no SIF file"), "{text}");
+    assert!(
+        text.contains("pulled through http://user:***@proxy.example.org:3128"),
+        "{text}"
+    );
+    assert!(!text.contains("secret-word"), "{text}");
+    // No job ran, and no file is left but the lock.
+    assert!(!bin.join("state/last").exists());
+    let images = std::fs::read_dir(root.path().join("scratch/images")).expect("the images");
+    let names: Vec<String> = (images.flatten())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        names.iter().all(|name| name.ends_with(".lock")),
+        "{names:?}"
+    );
+}
+
+#[tokio::test]
+async fn hides_proxy_password() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), PROXY_APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.proxy = Some("http://user:secret-word@proxy.example.org:3128".into());
+    backend.pull_pause = Duration::from_millis(100);
+    let spec = spec("true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-7-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).expect_err("a failure");
+    let text = error.to_string();
+    assert!(
+        text.contains("no answer through http://user:***@proxy.example.org:3128"),
+        "{text}"
+    );
+    assert!(!text.contains("secret-word"), "{text}");
 }
 
 #[tokio::test]
@@ -2074,6 +2257,7 @@ async fn runs_image_archives() {
     let images = std::fs::read_dir(root.path().join("scratch/images")).expect("the images");
     let names: Vec<String> = (images.flatten())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.ends_with(".lock"))
         .collect();
     assert!(
         matches!(&names[..], [name] if name.starts_with("archive-") && name.ends_with(".sif")),

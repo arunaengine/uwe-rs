@@ -14,6 +14,22 @@ mod common;
 /// The pipelines of the comparison.
 const PIPELINES: &[&str] = &["demo", "fetchngs"];
 
+/// The nf-core pipelines that compile fully into documents that the wir verifier accepts,
+/// with `-profile test`: those of the comparison and the curated pipelines of flowy.
+const COMPILED: &[&str] = &[
+    "demo",
+    "fetchngs",
+    "ampliseq",
+    "mag",
+    "methylseq",
+    "rnaseq",
+    "sarek",
+    "scrnaseq",
+    "smrnaseq",
+    "taxprofiler",
+    "viralrecon",
+];
+
 /// How many pipelines compile into documents that the wir verifier accepts, run natively, run
 /// compiled, give equal tasks (descriptions and resume fingerprints) in both orders, and
 /// publish the same files.
@@ -128,6 +144,40 @@ fn problems(project: &Path, folder: &Path) -> Vec<String> {
     }
 }
 
+/// Why `uwe lower` keeps a pipeline native, or the problems of its document.
+fn native(project: &Path, folder: &Path) -> Vec<String> {
+    let mut command = common::isolated(Command::new("timeout"));
+    command.args(["600", common::BINARY, "lower"]).arg(project);
+    command
+        .args(["-profile", "test", "--outdir"])
+        .arg(folder.join("out"));
+    let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
+        .current_dir(project)
+        .output()
+        .expect("runs uwe");
+    let error = String::from_utf8_lossy(&ran.stderr);
+    let kept = error
+        .lines()
+        .filter(|line| line.contains("keeps the pipeline"));
+    let kept: Vec<String> = kept.map(str::to_owned).collect();
+    if !kept.is_empty() {
+        return kept;
+    }
+    match wir::parse(&String::from_utf8_lossy(&ran.stdout)) {
+        Ok(document) => match wir::verify(&document) {
+            Ok(()) => Vec::new(),
+            Err(problems) => problems.iter().map(ToString::to_string).collect(),
+        },
+        Err(error) => vec![format!("{error}: {}", error_head(&ran))],
+    }
+}
+
+/// The first line of what a run of uwe printed to its standard error.
+fn error_head(ran: &std::process::Output) -> String {
+    let error = String::from_utf8_lossy(&ran.stderr);
+    error.lines().next().unwrap_or_default().to_owned()
+}
+
 fn compare(project: &Path, counts: &mut Counts) -> String {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let problems = problems(project, directory.path());
@@ -178,4 +228,21 @@ fn compiled_pipelines_match() {
         lines.push(format!("{pipeline}: {}", compare(&project, &mut counts)));
     }
     assert_eq!(counts, RECORDED, "the outcomes:\n{}", lines.join("\n"));
+}
+
+#[test]
+#[ignore = "needs the nf-core test workflows and the network; run `just test-workflows` first"]
+fn pipelines_compile_fully() {
+    let test_workflows = PathBuf::from(
+        std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
+    );
+    let mut failed = Vec::new();
+    for pipeline in COMPILED {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let project = test_workflows.join("pipelines").join(pipeline);
+        if let Some(reason) = native(&project, directory.path()).first() {
+            failed.push(format!("{pipeline}: {reason}"));
+        }
+    }
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
 }

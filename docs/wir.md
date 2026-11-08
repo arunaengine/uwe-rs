@@ -67,6 +67,20 @@ Where the runs end differently, the lowered run refuses a job key that the docum
 
 A lowered task is a wir task, so its cache key differs from that of the same task run as WDL: its inputs are staged in `inputs/<port>` and the command comes as an argument. On the simulator the outputs of a lowered task are made up from its captures, as the simulator does not see its command: a glob or a copied path gives a made-up name like `simulated.log`.
 
+### WDL coverage
+
+`wdl-lowering/tests/conformance.rs` lowers each of the 170 examples of the WDL 1.2.1 specification that `just wdl-spec-tests` extracts, and runs it natively and lowered on the simulator; `WDL_SPEC_TESTS` names their folder, and `WDL_TEST=1` prints the outcome of each. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-08 (`SPEC.md` of openwdl/wdl commit `42c106d0`, the data files of openwdl/wdl-tests commit `082340ad`):
+
+| Outcome | Examples |
+| --- | --- |
+| lowers fully | 77 |
+| lowers partly: some tasks stay native | 73 |
+| does not lower: the analysis refuses it (12 of them are meant to fail), or a native op cannot hold an `Object` or a map with float keys | 20 |
+| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 150 |
+| both succeed with equal outputs | 137 |
+
+What keeps tasks native, by the first reason of each: an output that reads files the task makes, like `read_string(stdout())` (49), a write function in the command (10) or in a declaration (2), a file inside a struct or map input (3), a runtime value that depends on inputs (2), a workflow expression that reads a file (2), and one each of the `task` variable, `returnCodes: "*"`, a read in the command, an array of optional output files and an `env` declaration. The one example whose outputs differ globs files that the simulator makes up.
+
 ## Detection
 
 uwe takes a file as a wir document when it is JSON and has a top-level `wir_version` key. The file name does not matter, but `<name>.wir.json` is the convention. `-lang wir` picks wir for any file. uwe parses the document, checks its version, runs the verifier and refuses the document with every problem the verifier found before any task starts.

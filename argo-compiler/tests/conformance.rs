@@ -13,10 +13,8 @@ use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{Driver, Launch, Simulator, Task, execute};
 
-/// How many workflows compile fully, stay one native op or do not compile; how many compiled
-/// runs end as the native run does (both succeed with as many tasks, or both fail); how many of
-/// those that both succeed ask for equal tasks with equal cache keys; and how many give equal
-/// outputs, with Files and Directories compared by class and basename.
+/// Workflows that compile fully, stay native or do not; runs that end as natively, of them
+/// those with equal tasks and cache keys, and those with equal outputs.
 const RECORDED: Counts = Counts {
     full: 545,
     native: 277,

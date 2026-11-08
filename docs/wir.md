@@ -19,7 +19,7 @@ $ uwe lower workflow.cwl > workflow.wir.json
 uwe: op align stays a native CWL op: step align: scatter
 ```
 
-`uwe run workflow.cwl -lowered` runs a CWL document through its lowered wir document, which uwe writes below its scratch folder; `uwe graph -lowered` shows its graph. The crate `cwl-lowering` does the lowering:
+`uwe run workflow.cwl -lowered` runs a CWL document through its lowered wir document, which uwe writes below its scratch folder; `uwe graph -lowered` shows its graph. An embedding host sets `run::Settings.lowered`; the inputs are then checked with the schema of the CWL document. The crate `cwl-lowering` does the lowering:
 
 - A CommandLineTool becomes a `task` op when the task builds the same command: literal base command and arguments, inputs on the command line as one word each (scalars, Files, Directories, enums, and arrays of them without a prefix), `stdout` and `stderr` files, outputs of `stdout` and `stderr` type and outputs read by one literal glob. `DockerRequirement` with `dockerPull` sets the image, else it is `debian:stable-slim`; `NetworkAccess` sets `network`; `ResourceRequirement`, `ToolTimeLimit` and `WorkReuse` set the attributes.
 - A Workflow becomes a graph: an op per step, at the path of the step id, and an edge per link with one source. A step that runs a Workflow becomes a `call` op with a graph of its own, so its tasks have paths like `inner/wc`, as in the CWL run.

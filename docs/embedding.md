@@ -166,6 +166,8 @@ for task in uwe::RunRequest::new(settings).stop_tasks().await? {
 }
 ```
 
+A TES journal of a task that ended, but whose staged objects uwe cannot collect or remove, does not stop later runs. This happens when the staging root lost the objects, or when the config file names no staging or another one. uwe logs a warning that names the journal, keeps it and tries again on the next run. Delete that `remote.json` to drop the journal.
+
 These calls touch only the tasks of this run:
 
 - A journal belongs to the run only when it names the run. Journals from before uwe named the run in them are only reported, as `Unclear` or `Kept`, since the folder name of run `a` also fits a task of run `a-b`.

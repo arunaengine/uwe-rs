@@ -65,29 +65,35 @@ pub fn compile(
     };
     let services = argo_runtime::Services::default();
     let adapter = Adapter::load(&launch, services).map_err(|error| error.message)?;
-    let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
-    let location = match absolute.strip_prefix(base) {
-        Ok(relative) => relative.to_string_lossy().into_owned(),
-        Err(_) => absolute.to_string_lossy().into_owned(),
-    };
-    let source = Source {
-        id: SOURCE.into(),
-        language: Language::Argo,
-        location,
-        version: None,
-        digest: Some(task_model::Digest::sha256(&bytes).to_string()),
-    };
+    let (source, bytes) = argo_source(SOURCE, path, base)?;
+    let mut sources = vec![source];
+    for (index, config) in configs.iter().enumerate() {
+        sources.push(argo_source(&format!("config.{index}"), config, base)?.0);
+    }
     let mut compiler = graphs::Compiler::new(adapter);
     let text = String::from_utf8_lossy(&bytes);
     compiler.reads_status = text.contains("workflow.status") || text.contains("workflow.failures");
-    let (graphs, kept) = match compiler.workflow() {
+    let (mut graphs, kept) = match compiler.workflow() {
         Ok(graphs) => (graphs, Vec::new()),
         Err(kept) => (vec![compiler.native()?], vec![kept]),
     };
+    let ids: Vec<String> = sources[1..]
+        .iter()
+        .map(|source| source.id.clone())
+        .collect();
+    for op in graphs.iter_mut().flat_map(|graph| &mut graph.ops) {
+        match &mut op.kind {
+            Kind::Task(wir::Task {
+                builder: Some(wir::TaskBuilder::ArgoTask(task)),
+                ..
+            }) => task.configs = ids.clone(),
+            Kind::Native(native) => native.configs = ids.clone(),
+            _ => {}
+        }
+    }
     let document = Document {
         wir_version: wir::VERSION.into(),
-        sources: vec![source],
+        sources,
         types: Vec::new(),
         graphs,
         entry: ENTRY.into(),
@@ -100,6 +106,24 @@ pub fn compile(
         ));
     }
     Ok(Compiled { document, kept })
+}
+
+/// The source `id` of an Argo document at `path`, its location relative to `base`, and its bytes.
+fn argo_source(id: &str, path: &Path, base: &Path) -> Result<(Source, Vec<u8>), String> {
+    let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
+    let location = match absolute.strip_prefix(base) {
+        Ok(relative) => relative.to_string_lossy().into_owned(),
+        Err(_) => absolute.to_string_lossy().into_owned(),
+    };
+    let source = Source {
+        id: id.into(),
+        language: Language::Argo,
+        location,
+        version: None,
+        digest: Some(task_model::Digest::sha256(&bytes).to_string()),
+    };
+    Ok((source, bytes))
 }
 
 /// The typed template of a template node.

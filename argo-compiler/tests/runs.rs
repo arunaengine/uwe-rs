@@ -210,3 +210,32 @@ fn hands_errors_to_argo() {
     one.0.as_ref().unwrap();
     assert_eq!(other, one);
 }
+
+const LIBRARY: &str = r#"apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata: {name: library}
+spec:
+  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: hello, template: say, arguments: {parameters: [{name: text, value: "{{workflow.name}}-x"}]}}
+  - name: say
+    inputs: {parameters: [{name: text}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn reads_templates_of_configs() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    // The config sits outside the folder of the workflow, whose templates Argo reads anyway.
+    std::fs::create_dir_all(root.join("flow")).unwrap();
+    let file = workflow(&root.join("flow"), "  workflowTemplateRef: {name: library}\n");
+    let configs = root.join("library.yaml");
+    std::fs::write(&configs, LIBRARY).unwrap();
+    let (one, other) = both(root, &file, &[configs], Writer::new);
+    one.0.as_ref().unwrap();
+    assert_eq!(one.1.len(), 1, "{one:?}");
+    assert_eq!(other, one);
+}

@@ -108,7 +108,8 @@ A run of a compiled document builds, accepts and publishes the tasks of `nextflo
 - Every op carries the plan settings of the run: several targets, the options `until`, `omit-from`, `forcerun` and `forceall`, and config values of the command line, which a source with a `data:` location holds and its digest pins. The job adapter plans with them as the run would.
 - A `cwl:` job is one op whose call runs the tasks of its CWL run, as the native run does; the job ends with the outputs of that run.
 - Commands that workflow code runs while the workflow is planned run while it compiles, as hooks run, so that the plan sees their output. A run starts the adapter, which runs them again as tasks before the jobs, and also those that a job runs while it is prepared, like a `conda:` function; the run checks that it plans every compiled job with its group.
-- The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a rule is a checkpoint, when a group runs jobs of several container images, which a run splits into separate tasks, and when uwe cannot plan the workflow, like a storage plugin that uwe lacks. Such a native op cannot hold config values of the command line, several targets or the options that pick jobs, so a workflow with them does not compile. For a Snakefile, its source is the working folder of the launch, so that it starts there as a native run does; a Snakefile that its working folder does not find itself does not compile.
+- A workflow with a checkpoint is one `dynamic` region whose planner is the Snakemake planner of the job adapter. Its plans hold the jobs that wait for no checkpoint, as tasks with `snakemake_job` builders whose identities are the rule and wildcards; after each checkpoint the adapter plans again, as a native run does, and the plan is final once no needed checkpoint is pending. The region holds the targets of the launch, but not config values of the command line or the options that pick jobs, so such a workflow does not compile. The region gives no target files as outputs yet.
+- The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a group runs jobs of several container images, which a run splits into separate tasks, and when uwe cannot plan the workflow, like a storage plugin that uwe lacks. Such a native op cannot hold config values of the command line, several targets or the options that pick jobs, so a workflow with them does not compile. For a Snakefile, its source is the working folder of the launch, so that it starts there as a native run does; a Snakefile that its working folder does not find itself does not compile.
 
 The wir runtime runs the jobs of a document through one job adapter for the Snakefile, its profiles and config files, which `wir_runtime::snakemake::register` adds to a run. Job tasks keep their native names.
 
@@ -120,14 +121,14 @@ The wir runtime runs the jobs of a document through one job adapter for the Snak
 | --- | --- |
 | test workflows | 890 |
 | the native run succeeds | 633 |
-| compiles fully | 616 |
-| stays one native op | 49 |
-| does not compile: planning fails as the native run fails (219), or a native op cannot start as the run would (5) | 224 |
-| the compiled run ends as the native run does: both fail, or both give the same tasks | 616 |
-| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 594 |
+| compiles fully | 666 |
+| stays one native op | 3 |
+| does not compile: planning fails as the native run fails (219), or a region cannot hold the launch (1) | 220 |
+| the compiled run ends as the native run does: both fail, or both give the same tasks | 666 |
+| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 632 |
 | both succeed with the same target files | 594 |
 
-What keeps a workflow native, by the first reason: a checkpoint (46), a group whose jobs run in several images (1), and features that uwe does not run yet (2). Of the five that a native op cannot start, four launch a Snakefile that their working folder does not find, and one sets config values on the command line. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+The 38 runs with the same tasks and other target files are checkpoint regions, which give no target files yet. What keeps a workflow native: a group whose jobs run in several images (1), and features that uwe does not run yet (2). The one that does not compile for its launch sets config values on the command line beside a checkpoint. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
 
 ## Detection
 

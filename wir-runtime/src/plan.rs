@@ -30,6 +30,35 @@ pub struct Node {
     pub defaults: Map<String, Json>,
     /// The stream inputs whose edge reads `live`.
     pub live: Vec<String>,
+    /// The tree of status tests that must hold too.
+    pub depends: Option<ControlPlan>,
+    /// The nodes whose failures this one handles once it succeeds, with those statuses.
+    pub handles: Vec<(usize, Vec<Status>)>,
+    /// For a status group: the nodes it waits for.
+    pub members: Vec<usize>,
+}
+
+/// A tree of status tests with the ops resolved to nodes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ControlPlan {
+    All(Vec<ControlPlan>),
+    Any(Vec<ControlPlan>),
+    Not(Box<ControlPlan>),
+    Test(usize, Vec<wir::ResultKind>),
+}
+
+/// The tree of `control` with the op paths of a graph resolved by `index`.
+fn resolve(control: &wir::Control, index: &HashMap<&str, usize>) -> ControlPlan {
+    match control {
+        wir::Control::All(items) => {
+            ControlPlan::All(items.iter().map(|item| resolve(item, index)).collect())
+        }
+        wir::Control::Any(items) => {
+            ControlPlan::Any(items.iter().map(|item| resolve(item, index)).collect())
+        }
+        wir::Control::Not(inner) => ControlPlan::Not(Box::new(resolve(inner, index))),
+        wir::Control::Result(test) => ControlPlan::Test(index[test.op.as_str()], test.on.clone()),
+    }
 }
 
 /// Where a value comes from.
@@ -151,6 +180,7 @@ fn supported(kind: &Kind) -> bool {
             | Kind::View(_)
             | Kind::Observe(_)
             | Kind::CollectFile(_)
+            | Kind::StatusGroup(_)
     )
 }
 
@@ -159,9 +189,6 @@ fn unrun(op: &Op) -> Option<&'static str> {
     let streams = (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value());
     if streams && !matches!(op.kind, Kind::Call(_)) && !supported(&op.kind) {
         return Some("uwe does not run stream ports yet");
-    }
-    if op.depends.is_some() || !op.handles.is_empty() {
-        return Some("uwe does not run depends and handles yet");
     }
     if !op.values.is_wir() {
         return Some("uwe compares values only by the wir rules yet");
@@ -239,6 +266,9 @@ pub fn rounds(
             shape: Vec::new(),
             defaults: defaults(graph),
             live: Vec::new(),
+            depends: None,
+            handles: Vec::new(),
+            members: Vec::new(),
         });
         let (inner, steps) = (format!("{path}/"), format!("{step}/"));
         nodes[round].exports = instantiate(document, graph, (&inner, &steps), Some(round), nodes)?;
@@ -332,6 +362,9 @@ fn instantiate(
             shape: Vec::new(),
             defaults: Map::new(),
             live: Vec::new(),
+            depends: None,
+            handles: Vec::new(),
+            members: Vec::new(),
         });
     }
     let source = |from: &Endpoint| match &from.op {
@@ -363,6 +396,17 @@ fn instantiate(
             .collect();
         nodes[at].inputs = inputs;
         nodes[at].after = after;
+        nodes[at].depends = op.depends.as_ref().map(|control| resolve(control, &index));
+        nodes[at].handles = (op.handles.iter())
+            .map(|handled| (index[handled.op.as_str()], handled.on.clone()))
+            .collect();
+        if let Kind::StatusGroup(group) = &op.kind {
+            nodes[at].members = group
+                .members
+                .iter()
+                .map(|member| index[member.as_str()])
+                .collect();
+        }
         let body = match &op.kind {
             Kind::Call(called) => Some(&called.graph),
             Kind::Branch(branch) => Some(&branch.body),

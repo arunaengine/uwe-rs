@@ -338,3 +338,135 @@ fn boundary_close_fence() {
     }];
     assert_eq!(progress.outputs(&ports).unwrap()["ys"], json!([1, 2]));
 }
+
+/// A graph `main` of native ops `a`, `b` and `c` and of `extra`, all without ports, with
+/// the fields of `changes` set on them.
+fn controlled(changes: Json, extra: Json) -> Progress {
+    let op =
+        |path: &str| json!({"path": path, "kind": {"native": {"source": "s", "language": "cwl"}}});
+    let mut ops = vec![op("a"), op("b"), op("c")];
+    ops.extend(extra.as_array().cloned().unwrap_or_default());
+    for item in &mut ops {
+        if let Some(fields) = changes.get(item["path"].as_str().unwrap()) {
+            item.as_object_mut()
+                .unwrap()
+                .extend(fields.as_object().cloned().unwrap());
+        }
+    }
+    let document = json!({"wir_version": "0.1", "sources": [{"id": "s", "language": "cwl", "location": "s.cwl"}],
+        "graphs": [{"name": "main", "ops": ops}], "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    wir::verify(&document).unwrap();
+    Progress::new(plan(&document).unwrap(), Vec::new())
+}
+
+/// Starts the node `path`, which must be next, and ends it with `status`.
+fn run_as(progress: &mut Progress, path: &str, status: Status) {
+    let (node, _) = progress.next(false).unwrap();
+    assert_eq!(progress.node(node).path, path);
+    progress.end(
+        node,
+        status,
+        Map::new(),
+        Some(format!("op {path}: {status:?}")),
+    );
+}
+
+fn status_of(progress: &Progress, path: &str) -> Option<Status> {
+    match &progress.states[at(progress, path)] {
+        State::Ended(status, _) => Some(*status),
+        _ => None,
+    }
+}
+
+#[test]
+fn control_boolean() {
+    let test = |op: &str, on: &str| json!({"result": {"op": op, "on": [on]}});
+    let tree = json!({"any": [test("a", "failed"), {"not": test("b", "succeeded")}]});
+    let mut progress = controlled(json!({"c": {"depends": tree}}), json!([]));
+    run_as(&mut progress, "a", Status::Succeeded);
+    let (b, _) = progress.next(false).unwrap();
+    assert_eq!(progress.node(b).path, "b");
+    assert_eq!(
+        progress.next(false),
+        None,
+        "c waits: not on a running op is pending"
+    );
+    progress.end(b, Status::Succeeded, Map::new(), None);
+    assert_eq!(progress.next(false), None);
+    assert_eq!(
+        status_of(&progress, "c"),
+        Some(Status::Omitted),
+        "the tree is false"
+    );
+    let empty = controlled(
+        json!({"a": {"depends": {"all": []}}, "b": {"depends": {"any": []}}}),
+        json!([]),
+    );
+    let mut empty = empty;
+    run_as(&mut empty, "a", Status::Succeeded);
+    let (c, _) = empty.next(false).unwrap();
+    assert_eq!(empty.node(c).path, "c");
+    assert_eq!(
+        status_of(&empty, "b"),
+        Some(Status::Omitted),
+        "an empty any is false, an empty all true"
+    );
+}
+
+#[test]
+fn control_groups() {
+    let group = json!({"path": "g", "kind": {"status_group": {"members": ["a", "b"], "allow": ["errored"]}}});
+    let tests = json!({"c": {"depends": {"result": {"op": "g", "on": ["any_succeeded"]}}}});
+    let mut progress = controlled(tests, json!([group]));
+    run_as(&mut progress, "a", Status::Errored);
+    run_as(&mut progress, "b", Status::Succeeded);
+    let (c, _) = progress.next(false).unwrap();
+    assert_eq!(progress.node(c).path, "c");
+    assert_eq!(
+        status_of(&progress, "g"),
+        Some(Status::Succeeded),
+        "an allowed error does not count"
+    );
+    let empty = json!({"path": "g", "kind": {"status_group": {"members": []}}});
+    let failed = json!({"c": {"depends": {"result": {"op": "g", "on": ["all_failed"]}}}});
+    let mut progress = controlled(failed, json!([empty]));
+    run_as(&mut progress, "a", Status::Succeeded);
+    run_as(&mut progress, "b", Status::Succeeded);
+    assert_eq!(progress.next(false), None);
+    assert_eq!(
+        status_of(&progress, "g"),
+        Some(Status::Succeeded),
+        "an empty group succeeds"
+    );
+    assert_eq!(
+        status_of(&progress, "c"),
+        Some(Status::Omitted),
+        "all failed needs members"
+    );
+}
+
+#[test]
+fn failure_handler() {
+    let handles = json!({"b": {"handles": [{"op": "a", "on": ["failed"]}], "after": [{"op": "a", "on": ["failed"]}]}});
+    let mut progress = controlled(handles.clone(), json!([]));
+    run_as(&mut progress, "a", Status::Failed);
+    assert!(
+        progress.failures.is_empty(),
+        "the failure waits for its handler"
+    );
+    run_as(&mut progress, "b", Status::Succeeded);
+    run_as(&mut progress, "c", Status::Succeeded);
+    assert!(
+        progress.failures.is_empty(),
+        "a handler that succeeds handles it"
+    );
+    let mut progress = controlled(handles, json!([]));
+    run_as(&mut progress, "a", Status::Failed);
+    run_as(&mut progress, "b", Status::Failed);
+    assert_eq!(
+        progress.failures,
+        ["op a: Failed", "op b: Failed"],
+        "a failed handler handles nothing"
+    );
+}

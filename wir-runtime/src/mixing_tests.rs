@@ -32,6 +32,9 @@ pub fn node(kind: Json, streams: &[&str], values: &[&str], out: &str) -> Node {
         shape: Vec::new(),
         defaults: Map::new(),
         live: Vec::new(),
+        depends: None,
+        handles: Vec::new(),
+        members: Vec::new(),
     }
 }
 

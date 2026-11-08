@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{Map, Value as Json};
 use wir::{Kind, Status, Type, TypeDef, resolve};
 
+use crate::control::Truth;
 use crate::plan::{Node, Plan, Source};
 use crate::streams::Streams;
 
@@ -52,8 +53,11 @@ pub struct Progress {
     /// Why ops failed, for those failures that no dependency waits for.
     pub failures: Vec<String>,
     defs: Vec<TypeDef>,
-    /// The node statuses that an `after` dependency waits for, so they do not fail the run.
-    handled: Vec<(usize, Status)>,
+    /// The nodes that may handle a failure of a node with a status, once they succeed: a
+    /// `handles` of theirs, or an `after` dependency on that status.
+    candidates: HashMap<(usize, Status), Vec<usize>>,
+    /// The failures that wait for their handlers: the node, its status and why.
+    held: Vec<(usize, Status, String)>,
     /// Why ops inside a call failed, by call: the call reports them when it fails.
     inner: Vec<(usize, String)>,
     /// The outputs of ended nodes that closed empty.
@@ -64,21 +68,20 @@ pub struct Progress {
 
 impl Progress {
     pub fn new(plan: Plan, defs: Vec<TypeDef>) -> Progress {
-        let handled = (plan.nodes.iter())
-            .flat_map(|node| &node.after)
-            .flat_map(|(dependency, on)| on.iter().map(|status| (*dependency, *status)))
-            .collect();
-        Progress {
+        let mut progress = Progress {
             states: vec![State::Waiting; plan.nodes.len()],
             plan,
             inputs: Map::new(),
             failures: Vec::new(),
             defs,
-            handled,
+            candidates: HashMap::new(),
+            held: Vec::new(),
             inner: Vec::new(),
             empty: HashSet::new(),
             streams: Streams::default(),
-        }
+        };
+        progress.adopt(0);
+        progress
     }
 
     pub fn node(&self, at: usize) -> &Node {
@@ -88,10 +91,18 @@ impl Progress {
     /// Takes in the nodes added to the plan from `from` on, like the rounds of a map.
     pub fn adopt(&mut self, from: usize) {
         self.states.resize(self.plan.nodes.len(), State::Waiting);
-        let added = (self.plan.nodes[from..].iter()).flat_map(|node| &node.after);
-        let handled =
-            added.flat_map(|(dependency, on)| on.iter().map(|status| (*dependency, *status)));
-        self.handled.extend(handled.collect::<Vec<_>>());
+        for at in from..self.plan.nodes.len() {
+            let node = &self.plan.nodes[at];
+            let handled = node.after.iter().chain(&node.handles);
+            let failures =
+                handled.flat_map(|(dependency, on)| on.iter().map(|status| (*dependency, *status)));
+            for key in failures
+                .filter(|(_, status)| matches!(status, Status::Failed | Status::Errored))
+                .collect::<Vec<_>>()
+            {
+                self.candidates.entry(key).or_default().push(at);
+            }
+        }
     }
 
     /// The next node that can start, with its input values. On the way it ends the nodes
@@ -123,6 +134,14 @@ impl Progress {
                     continue;
                 }
                 match self.readiness(at) {
+                    Readiness::Ready(_)
+                        if matches!(self.node(at).op.kind, Kind::StatusGroup(_)) =>
+                    {
+                        if let Some(status) = self.group_status(at) {
+                            self.end(at, status, Map::new(), None);
+                            changed = true;
+                        }
+                    }
                     Readiness::Wait => {}
                     Readiness::Omit => {
                         self.end(at, Status::Omitted, Map::new(), None);
@@ -188,11 +207,38 @@ impl Progress {
     ) {
         self.states[at] = State::Ended(status, values);
         self.close_streams(at, status, why.as_deref());
-        let failure = matches!(status, Status::Failed | Status::Errored);
-        if failure && !self.handled.contains(&(at, status)) {
-            let node = self.node(at);
-            let why = why.unwrap_or_else(|| format!("op {} failed", node.path));
-            match node.parent {
+        if matches!(status, Status::Failed | Status::Errored) {
+            let why = why.unwrap_or_else(|| format!("op {} failed", self.node(at).path));
+            self.held.push((at, status, why));
+        }
+        self.settle();
+    }
+
+    /// Drops the held failures that a handler handled by succeeding, and records those whose
+    /// handlers all ended otherwise: a failure that no op handles fails the run, or its call.
+    fn settle(&mut self) {
+        let held = std::mem::take(&mut self.held);
+        for (at, status, why) in held {
+            let handlers = self
+                .candidates
+                .get(&(at, status))
+                .cloned()
+                .unwrap_or_default();
+            let ended = |node: &usize| match &self.states[*node] {
+                State::Ended(status, _) => Some(*status),
+                _ => None,
+            };
+            if handlers
+                .iter()
+                .any(|node| ended(node) == Some(Status::Succeeded))
+            {
+                continue;
+            }
+            if !handlers.iter().all(|node| ended(node).is_some()) {
+                self.held.push((at, status, why));
+                continue;
+            }
+            match self.node(at).parent {
                 Some(call) => self.inner.push((call, why)),
                 None => self.failures.push(why),
             }
@@ -251,6 +297,11 @@ impl Progress {
                 State::Ended(..) => return Readiness::Omit,
                 _ => return Readiness::Wait,
             }
+        }
+        match node.depends.as_ref().map(|tree| self.control(tree)) {
+            Some(Truth::Pending) => return Readiness::Wait,
+            Some(Truth::False) => return Readiness::Omit,
+            Some(Truth::True) | None => {}
         }
         let mut bound = Map::new();
         for (port, source) in &node.inputs {

@@ -381,7 +381,7 @@ pub struct Dependency {
 }
 
 /// How an op ended, like the Argo task statuses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Succeeded,

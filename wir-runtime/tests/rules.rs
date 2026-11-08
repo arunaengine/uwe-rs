@@ -241,13 +241,6 @@ fn refuses_block_sizes() {
 
 #[test]
 fn refuses_unrun_fields() {
-    let control = refused(|document| {
-        op(document, 1)["depends"] = json!({"result": {"op": "sort", "on": ["succeeded"]}});
-    });
-    assert_eq!(
-        control,
-        "op main/head: uwe does not run depends and handles yet"
-    );
     let rules = refused(|document| op(document, 0)["values"] = json!("groovy"));
     assert_eq!(
         rules,

@@ -39,8 +39,6 @@ pub struct Records {
     lines: Lines,
     /// Why reading stopped early, which [`Records::error`] gives.
     error: Option<std::io::Error>,
-    /// Whether the last line is read.
-    done: bool,
     separator: char,
     quote: Option<char>,
     strip: bool,
@@ -67,7 +65,6 @@ impl Records {
         let mut records = Records {
             lines,
             error: None,
-            done: false,
             separator: options.separator,
             quote: options.quote,
             strip: options.strip,
@@ -102,11 +99,6 @@ impl Records {
         self.missing_header
     }
 
-    /// Whether the whole text is read.
-    pub fn is_done(&self) -> bool {
-        self.done
-    }
-
     /// The error that ended the records early, once.
     pub fn error(&mut self) -> Option<std::io::Error> {
         self.error.take()
@@ -116,11 +108,7 @@ impl Records {
     fn line(&mut self) -> Option<Vec<String>> {
         loop {
             let text = match self.lines.next_line() {
-                Ok(Some(text)) => text,
-                Ok(None) => {
-                    self.done = true;
-                    return None;
-                }
+                Ok(text) => text?,
                 Err(error) => {
                     self.error = Some(error);
                     return None;

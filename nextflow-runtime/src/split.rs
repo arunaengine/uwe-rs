@@ -7,7 +7,7 @@ use std::rc::Rc;
 use nextflow_evaluator::exception::Exception;
 use nextflow_evaluator::interpreter::Error;
 use nextflow_evaluator::number::Number;
-use nextflow_evaluator::split::{Splitter, decompressed};
+use nextflow_evaluator::split::{Chunks, Splitter};
 use nextflow_evaluator::value::{ChannelId, Closure, PathValue, Value};
 
 use crate::channel::Message;
@@ -28,9 +28,22 @@ pub(crate) struct Split {
     pub count: usize,
     /// For the count operators: the number of records so far, which is emitted at the end.
     pub total: Option<i64>,
-    /// The CSV records of a file that are not emitted yet, with the tuple they go into and
-    /// their position in it.
-    pub pending: Option<(nextflow_evaluator::csv::Records, Option<Vec<Value>>, usize)>,
+    /// The chunks of a value that are not emitted yet.
+    pub pending: Option<Pending>,
+}
+
+/// The chunks of one value, which are read as they are emitted.
+pub(crate) struct Pending {
+    chunks: Chunks,
+    /// The tuple that the chunks go into, at `position`.
+    tuple: Option<Vec<Value>>,
+    position: usize,
+    /// What chunk files are named after: the base name of the file, and its name without
+    /// `.gz`.
+    base: String,
+    source: String,
+    /// The chunks of this value so far.
+    index: usize,
 }
 
 pub(crate) enum SplitFiles {
@@ -38,36 +51,16 @@ pub(crate) enum SplitFiles {
     Named(PathValue, Option<String>),
 }
 
-/// The most records that a split emits before the nodes that read them run.
+/// The most records that a split reads into chunks before the nodes that read them run.
 const BATCH: usize = 10_000;
 
 impl Behaviour for Split {
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         loop {
-            // The records of a large CSV file go out a batch at a time.
-            if let Some((records, tuple, position)) = &mut self.pending {
-                for record in records.by_ref().take(BATCH) {
-                    let item = match tuple {
-                        Some(items) => {
-                            let mut items = items.clone();
-                            if *position < items.len() {
-                                items[*position] = record;
-                            }
-                            Value::list(items)
-                        }
-                        None => record,
-                    };
-                    let item = match &self.each {
-                        Some(closure) => context.interpreter.call_closure(closure, vec![item])?,
-                        None => item,
-                    };
-                    context.emit(self.output, item);
-                }
-                if !records.is_done() {
-                    context.again();
-                    return Ok(State::Running);
-                }
-                self.pending = None;
+            // The chunks of a large file go out a batch at a time.
+            if !self.emit(context)? {
+                context.again();
+                return Ok(State::Running);
             }
             let Some(message) = context.read(0) else {
                 return Ok(State::Running);
@@ -94,82 +87,91 @@ impl Behaviour for Split {
                 Some(items) => items.get(position).cloned().unwrap_or(Value::Null),
                 None => value.clone(),
             };
-            let (text, name) = match &target {
+            let (chunks, base, source) = match &target {
                 Value::Path(path) => {
-                    let mut bytes = context.interpreter.host().read(path)?;
-                    if path.name().ends_with(".gz") && self.decompress {
-                        bytes = decompressed(&bytes, path).map_err(thrown)?;
-                    }
-                    let text = String::from_utf8_lossy(&bytes).into_owned();
-                    (text, path.base_name().to_owned())
+                    let reader = context.interpreter.host().open(path)?;
+                    let chunks = self.splitter.file(reader, path, self.decompress);
+                    let source = path.name().strip_suffix(".gz").unwrap_or(path.name());
+                    (chunks, path.base_name().to_owned(), source.to_owned())
                 }
-                other => (other.to_string(), "chunk".to_owned()),
+                other => (
+                    self.splitter.text(other.to_string()),
+                    "chunk".to_owned(),
+                    "chunk".to_owned(),
+                ),
             };
-            if self.total.is_none() && self.files.is_none() && self.splitter.streams() {
-                if let Some(records) = self.splitter.csv_records(text) {
-                    if records.missing_header() && !self.splitter.simulated {
-                        let exception = nextflow_evaluator::csv::missing_header();
-                        return Err(Error::Thrown {
-                            exception: Rc::new(exception),
-                            span: Default::default(),
-                        });
-                    }
-                    self.pending = Some((records, tuple, position));
-                }
-                continue;
-            }
-            let chunks = self.splitter.chunks(&text).map_err(thrown)?;
-            if let Some(total) = &mut self.total {
-                *total += chunks.len() as i64;
-                continue;
-            }
-            for (index, chunk) in chunks.into_iter().enumerate() {
-                let chunk = match (&self.files, &chunk) {
-                    (Some(files), Value::String(text)) => {
-                        self.count += 1;
-                        let path = match files {
-                            SplitFiles::Implicit(directory) => {
-                                directory.resolve(&format!("{name}.{}.{}", self.count, index + 1))
-                            }
-                            SplitFiles::Named(directory, named) => {
-                                let source = match &target {
-                                    Value::Path(path) => {
-                                        path.name().strip_suffix(".gz").unwrap_or(path.name())
-                                    }
-                                    _ => "chunk",
-                                };
-                                let named = named.as_deref().unwrap_or(source);
-                                let name = match named.rsplit_once('.') {
-                                    Some((base, extension)) if !base.is_empty() => {
-                                        format!("{base}.{}.{extension}", self.count)
-                                    }
-                                    _ => format!("{named}.{}", self.count),
-                                };
-                                directory.resolve(&name)
-                            }
-                        };
-                        context.interpreter.host().write(&path, text.as_bytes())?;
-                        Value::Path(Rc::new(path))
-                    }
-                    _ => chunk,
-                };
-                let item = match &tuple {
-                    Some(items) => {
-                        let mut items = items.clone();
-                        if position < items.len() {
-                            items[position] = chunk;
-                        }
-                        Value::list(items)
-                    }
-                    None => chunk,
-                };
-                let item = match &self.each {
-                    Some(closure) => context.interpreter.call_closure(closure, vec![item])?,
-                    None => item,
-                };
-                context.emit(self.output, item);
-            }
+            self.pending = Some(Pending {
+                chunks: chunks.map_err(thrown)?,
+                tuple,
+                position,
+                base,
+                source,
+                index: 0,
+            });
         }
+    }
+}
+
+impl Split {
+    /// Emits the pending chunks of up to a batch of records, or counts them; whether all
+    /// are out.
+    fn emit(&mut self, context: &mut Context) -> Result<bool, Error> {
+        let Some(mut pending) = self.pending.take() else {
+            return Ok(true);
+        };
+        let start = pending.chunks.records();
+        while pending.chunks.records() - start < BATCH {
+            let Some(chunk) = pending.chunks.next() else {
+                return Ok(true);
+            };
+            let chunk = chunk.map_err(thrown)?;
+            pending.index += 1;
+            if let Some(total) = &mut self.total {
+                *total += 1;
+                continue;
+            }
+            let chunk = match (&self.files, &chunk) {
+                (Some(files), Value::String(text)) => {
+                    self.count += 1;
+                    let path = match files {
+                        SplitFiles::Implicit(directory) => directory.resolve(&format!(
+                            "{}.{}.{}",
+                            pending.base, self.count, pending.index
+                        )),
+                        SplitFiles::Named(directory, named) => {
+                            let named = named.as_deref().unwrap_or(&pending.source);
+                            let name = match named.rsplit_once('.') {
+                                Some((base, extension)) if !base.is_empty() => {
+                                    format!("{base}.{}.{extension}", self.count)
+                                }
+                                _ => format!("{named}.{}", self.count),
+                            };
+                            directory.resolve(&name)
+                        }
+                    };
+                    context.interpreter.host().write(&path, text.as_bytes())?;
+                    Value::Path(Rc::new(path))
+                }
+                _ => chunk,
+            };
+            let item = match &pending.tuple {
+                Some(items) => {
+                    let mut items = items.clone();
+                    if pending.position < items.len() {
+                        items[pending.position] = chunk;
+                    }
+                    Value::list(items)
+                }
+                None => chunk,
+            };
+            let item = match &self.each {
+                Some(closure) => context.interpreter.call_closure(closure, vec![item])?,
+                None => item,
+            };
+            context.emit(self.output, item);
+        }
+        self.pending = Some(pending);
+        Ok(false)
     }
 }
 

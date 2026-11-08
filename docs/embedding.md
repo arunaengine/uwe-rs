@@ -174,6 +174,10 @@ These calls touch only the tasks of this run:
 - An attempt whose uwe process still holds the lock of its journal is kept.
 - A second call finds no journal of the stopped tasks, so it does nothing.
 
+## Large files in Nextflow workflows
+
+The splitters and counters of Nextflow, like `splitFastq`, `splitFasta`, `splitCsv`, `splitText` and `countFastq`, read a file a part at a time, also a gzip file. So a large FASTQ file does not fill the memory of the host. An operator hands on the chunks of up to 10,000 records before the next steps read them. Two cases still hold all of a file: `splitJson` parses the whole document, and a path method without `file:`, like `file(x).splitFasta()`, gives all its chunks in one list.
+
 ## The hosted policy
 
 The policy limits which presets are allowed and which cache, database and output paths a tenant gets. It also limits Argo host roots and volume mappings. Its authorization callback sees the merged inputs before planning, and the normalized inputs before execution.

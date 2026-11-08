@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Document, Effect, ExprLanguage, Kind, Language as Dialect, Native, Status};
+use wir::{Document, Effect, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
     Launch, Note, Outcome, Reuse, Task, TaskId,
@@ -19,10 +19,11 @@ use workflow_graph::{
 use crate::argo;
 use crate::child::Child;
 use crate::cwl;
+use crate::engine;
 use crate::inputs;
 use crate::nextflow;
 use crate::operator;
-use crate::plan::{self, plan};
+use crate::plan::plan;
 use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
@@ -144,6 +145,8 @@ pub struct WirDriver {
     operators: operator::Running,
     /// Stream ops have steps left to take on the next wake.
     stepping: bool,
+    /// The text of each source that a scope names, by source id.
+    scopes: HashMap<String, String>,
 }
 
 impl WirDriver {
@@ -191,12 +194,13 @@ impl WirDriver {
             ended: false,
             operators: operator::Running::new(),
             stepping: false,
+            scopes: HashMap::new(),
         }
         .checked()
     }
 
-    fn checked(self) -> Result<Self, DriverError> {
-        self.check_scopes()?;
+    fn checked(mut self) -> Result<Self, DriverError> {
+        self.scopes = self.read_scopes()?;
         Ok(self)
     }
 
@@ -239,6 +243,15 @@ impl WirDriver {
             self.operators.insert(at, stepped);
             return Ok(Vec::new());
         }
+        let context = engine::Context {
+            document: &self.document,
+            base: &self.base,
+            javascript: &self.settings.cwl.javascript,
+            scopes: &self.scopes,
+        };
+        if engine::begin(&mut self.progress, at, &bound, &context)? {
+            return Ok(Vec::new());
+        }
         match self.progress.node(at).op.kind.clone() {
             Kind::Native(native) => match self.start_native(at, &native, bound) {
                 Ok(tasks) => Ok(tasks),
@@ -259,112 +272,6 @@ impl WirDriver {
                 self.tasks.insert(task.id, (at, task.clone()));
                 Ok(vec![task])
             }
-            Kind::Call(_) => {
-                self.progress.activate(Some(at))?;
-                Ok(Vec::new())
-            }
-            Kind::Branch(branch) => {
-                let node = self.progress.node(at);
-                match bound.get(&branch.condition) {
-                    Some(Json::Bool(true)) => self.progress.activate(Some(at))?,
-                    Some(Json::Bool(false)) => {
-                        let nulls = (node.op.outputs.iter())
-                            .map(|port| (port.name.clone(), Json::Null))
-                            .collect();
-                        self.progress.end(at, Status::Skipped, nulls, None);
-                    }
-                    _ => {
-                        let message = format!("op {}: the condition is not a bool", node.path);
-                        self.progress
-                            .end(at, Status::Failed, Map::new(), Some(message));
-                    }
-                }
-                Ok(Vec::new())
-            }
-            Kind::Expr(spec)
-                if matches!(spec.language, ExprLanguage::Groovy | ExprLanguage::Python) =>
-            {
-                let node = self.progress.node(at);
-                let (path, output) = (node.path.clone(), node.op.outputs[0].clone());
-                let evaluated = self.language_expr(&spec, &bound).and_then(|value| {
-                    let value = widen(value, &output.r#type, &self.document.types);
-                    match wir::fits(&value, &output.r#type, &self.document.types) {
-                        true => Ok(value),
-                        false => Err(format!("output {} does not fit its type", output.name)),
-                    }
-                });
-                match evaluated {
-                    Ok(value) => {
-                        let values = Map::from_iter([(output.name, value)]);
-                        self.progress.end(at, Status::Succeeded, values, None);
-                    }
-                    Err(why) => {
-                        let message = Some(format!("op {path}: {why}"));
-                        self.progress.end(at, Status::Failed, Map::new(), message);
-                    }
-                }
-                Ok(Vec::new())
-            }
-            Kind::Expr(spec) => {
-                let node = self.progress.node(at);
-                let path = node.path.clone();
-                if !matches!(spec.language, ExprLanguage::Js | ExprLanguage::Javascript) {
-                    let message = format!("op {path}: uwe does not run this language here yet");
-                    return Err(DriverError::unsupported(message));
-                }
-                let output = node.op.outputs[0].clone();
-                let settings = &self.settings.cwl.javascript;
-                let defs = &self.document.types;
-                match crate::expr::evaluate(&spec, &bound, &output, defs, settings) {
-                    Ok(value) => {
-                        let values = Map::from_iter([(output.name, value)]);
-                        self.progress.end(at, Status::Succeeded, values, None);
-                    }
-                    Err(why) => {
-                        let message = Some(format!("op {path}: {why}"));
-                        self.progress.end(at, Status::Failed, Map::new(), message);
-                    }
-                }
-                Ok(Vec::new())
-            }
-            Kind::Select(_) | Kind::Merge(_) | Kind::Flatten(_) => {
-                let node = self.progress.node(at);
-                let path = node.path.clone();
-                let ports = node.op.inputs.iter().chain(&node.op.outputs);
-                if ports.into_iter().any(|port| !port.flow.is_value()) {
-                    let message = format!("op {path}: uwe does not run this op on streams yet");
-                    return Err(DriverError::unsupported(message));
-                }
-                let output = node.op.outputs[0].name.clone();
-                match crate::arrays::evaluate(&node.op, &bound, &self.document.types) {
-                    Ok(value) => {
-                        let values = Map::from_iter([(output, value)]);
-                        self.progress.end(at, Status::Succeeded, values, None);
-                    }
-                    Err(why) => {
-                        let message = Some(format!("op {path}: {why}"));
-                        self.progress.end(at, Status::Failed, Map::new(), message);
-                    }
-                }
-                Ok(Vec::new())
-            }
-            Kind::Map(map) => {
-                let path = self.progress.node(at).path.clone();
-                match plan::items(&map, &bound) {
-                    Ok(rounds) => {
-                        let start = self.progress.plan.nodes.len();
-                        let nodes = &mut self.progress.plan.nodes;
-                        plan::rounds(&self.document, nodes, at, &map.body, rounds.items)?;
-                        self.progress.plan.nodes[at].shape = rounds.shape;
-                        self.progress.adopt(start);
-                    }
-                    Err(why) => {
-                        let message = Some(format!("op {path}: {why}"));
-                        self.progress.end(at, Status::Failed, Map::new(), message);
-                    }
-                }
-                Ok(Vec::new())
-            }
             _ => {
                 let path = &self.progress.node(at).path;
                 Err(DriverError::unsupported(format!(
@@ -372,33 +279,6 @@ impl WirDriver {
                 )))
             }
         }
-    }
-
-    /// The value of a Groovy or Python expression over the inputs of its op as `inputs` and
-    /// its captures by name; Groovy code sees the definitions of the source of its scope.
-    fn language_expr(&self, spec: &wir::Expr, bound: &Map<String, Json>) -> Result<Json, String> {
-        let mut values = Map::from_iter([("inputs".to_owned(), Json::Object(bound.clone()))]);
-        for (name, binding) in &spec.captures {
-            let value = match binding {
-                wir::Binding::Input(input) => bound.get(input).cloned().unwrap_or_default(),
-                wir::Binding::Value(value) => value.clone(),
-            };
-            values.insert(name.clone(), value);
-        }
-        if spec.language == ExprLanguage::Python {
-            let code = crate::python::Code {
-                code: &spec.code,
-                library: &spec.library,
-            };
-            return code.value(&values, &self.base);
-        }
-        let scope = match &spec.scope {
-            Some(scope) => Some(self.scope_text(scope).map_err(|error| error.message)?),
-            None => None,
-        };
-        let names = values.keys().cloned().collect();
-        let compiled = crate::groovy::compile(&spec.code, &spec.library, scope.as_deref(), names)?;
-        compiled.value(&values, &self.base)
     }
 
     /// The text of the source of a scope, once its byte range is checked against it.
@@ -418,18 +298,22 @@ impl WirDriver {
         Ok(text)
     }
 
-    /// Checks the scope of every expression against its source before anything runs.
-    fn check_scopes(&self) -> Result<(), DriverError> {
-        let ops = self.document.graphs.iter().flat_map(|graph| &graph.ops);
-        for op in ops {
-            if let Kind::Expr(wir::Expr {
-                scope: Some(scope), ..
-            }) = &op.kind
-            {
-                self.scope_text(scope)?;
-            }
+    /// Reads the source of every scope of the document and checks each scope against it,
+    /// before anything runs.
+    fn read_scopes(&self) -> Result<HashMap<String, String>, DriverError> {
+        let mut scopes = Vec::new();
+        for op in self.document.graphs.iter().flat_map(|graph| &graph.ops) {
+            scopes_in(
+                &serde_json::to_value(&op.kind).unwrap_or_default(),
+                &mut scopes,
+            );
         }
-        Ok(())
+        let mut texts = HashMap::new();
+        for scope in scopes {
+            let text = self.scope_text(&scope)?;
+            texts.insert(scope.source, text);
+        }
+        Ok(texts)
     }
 
     /// Reads the outputs of a task op from its outcome. An attempt that is not accepted runs
@@ -884,6 +768,21 @@ impl Driver for WirDriver {
     fn draining(&self) -> bool {
         (!self.progress.failures.is_empty() && !self.launch.keep_going)
             || self.children.iter().any(|(_, child)| child.draining())
+    }
+}
+
+/// The scopes of the closures and expressions in the JSON form of an op kind.
+fn scopes_in(value: &Json, found: &mut Vec<wir::Scope>) {
+    match value {
+        Json::Object(object) => {
+            let scope = object
+                .get("scope")
+                .and_then(|scope| serde_json::from_value(scope.clone()).ok());
+            found.extend(scope);
+            object.values().for_each(|item| scopes_in(item, found));
+        }
+        Json::Array(items) => items.iter().for_each(|item| scopes_in(item, found)),
+        _ => {}
     }
 }
 

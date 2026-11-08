@@ -8,7 +8,7 @@ use std::rc::Rc;
 use nextflow_evaluator::split::{Format, Splitter};
 use nextflow_evaluator::value::{PathValue, Value};
 use serde_json::Value as Json;
-use wir::reserved::{Header, Split, SplitFormat};
+use wir::reserved::{Header, Pair, SequenceField, Split, SplitFormat};
 
 use crate::callback::Callbacks;
 use crate::engine::Context;
@@ -50,9 +50,9 @@ impl Splitting {
                 skip: csv.skip as usize,
                 strip: csv.strip,
             },
-            SplitFormat::Fasta(_) | SplitFormat::Fastq(_) | SplitFormat::Json(_) => {
-                Format::Text { keep_header: false }
-            }
+            SplitFormat::Fasta(sequence) => Format::Fasta(record(&sequence.fields)),
+            SplitFormat::Fastq(sequence) => Format::Fastq(record(&sequence.fields)),
+            SplitFormat::Json(_) => Format::Text { keep_header: false },
         };
         // One record a chunk is the record itself, more are an array or a joined text.
         let by = (self.spec.size > 1).then_some(self.spec.size as usize);
@@ -81,6 +81,10 @@ impl Splitting {
                 }
                 let bytes = std::fs::read(path)
                     .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?;
+                let gzip = bytes.starts_with(&[0x1f, 0x8b]) || path.ends_with(".gz");
+                if gzip && self.spec.decompress != wir::reserved::Decompress::Never {
+                    return Err(turn.failed(format!("uwe does not decompress {path} yet")));
+                }
                 decode(&bytes, &self.spec.charset)
                     .map(|text| text.replace("\r\n", "\n"))
                     .map_err(|why| turn.failed(format!("{path}: {why}")))
@@ -89,32 +93,58 @@ impl Splitting {
         }
     }
 
-    /// The chunks of one source item, with the item rebuilt around each of them.
+    /// The chunks of one source item, with the item rebuilt around each of them; paired
+    /// FASTQ files give aligned chunks of both.
     fn chunks(&self, turn: &Turn<'_>, item: &Json) -> Result<Vec<Json>, Failure> {
-        let (place, source) = match item {
-            Json::Array(fields) => {
-                let file = fields
-                    .iter()
-                    .position(|field| field.get("class").and_then(Json::as_str) == Some("File"));
-                let place = self
-                    .spec
+        let Json::Array(fields) = item else {
+            return self.pieces(turn, item);
+        };
+        let files: Vec<usize> = (fields.iter().enumerate())
+            .filter(|(_, field)| field.get("class").and_then(Json::as_str) == Some("File"))
+            .map(|(at, _)| at)
+            .collect();
+        let places = match &self.spec.pair {
+            Some(Pair::At([first, second])) => vec![*first as usize, *second as usize],
+            Some(Pair::Auto) if files.len() >= 2 => files[..2].to_vec(),
+            Some(Pair::Auto) => return Err(turn.failed("a paired split needs two File elements")),
+            None => vec![
+                self.spec
                     .elem
                     .map(|elem| elem as usize)
-                    .or(file)
-                    .unwrap_or(0);
-                let source = fields
-                    .get(place)
-                    .ok_or_else(|| turn.failed(format!("the item has no element {place}")))?;
-                (Some(place), source.clone())
-            }
-            other => (None, other.clone()),
+                    .or(files.first().copied())
+                    .unwrap_or(0),
+            ],
         };
-        let mut text = self.text(turn, &source)?;
-        // Text records end with a newline, also the last one.
-        if matches!(self.spec.format, SplitFormat::Text(_))
-            && !text.is_empty()
-            && !text.ends_with('\n')
+        let mut columns = Vec::new();
+        for place in &places {
+            let source = fields
+                .get(*place)
+                .ok_or_else(|| turn.failed(format!("the item has no element {place}")))?;
+            columns.push(self.pieces(turn, source)?);
+        }
+        if columns
+            .iter()
+            .any(|column| column.len() != columns[0].len())
         {
+            return Err(turn.failed("the paired files have different numbers of records"));
+        }
+        Ok((0..columns[0].len())
+            .map(|at| {
+                let mut fields = fields.clone();
+                for (place, column) in places.iter().zip(&columns) {
+                    fields[*place] = column[at].clone();
+                }
+                Json::Array(fields)
+            })
+            .collect())
+    }
+
+    /// The chunks of one text or File.
+    fn pieces(&self, turn: &Turn<'_>, source: &Json) -> Result<Vec<Json>, Failure> {
+        let mut text = self.text(turn, source)?;
+        // Text records end with a newline, also the last one.
+        let lines = !matches!(self.spec.format, SplitFormat::Csv(_) | SplitFormat::Json(_));
+        if lines && !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');
         }
         // A kept header leaves the records and starts every chunk.
@@ -125,27 +155,60 @@ impl Splitting {
             }
             _ => None,
         };
-        let splitter = self.splitter();
-        let chunks = splitter
+        let chunks = self
+            .splitter()
             .text(text)
             .map_err(|error| turn.failed(error.to_string()))?;
-        let mut items = Vec::new();
+        let mut pieces = Vec::new();
         for chunk in chunks {
             let chunk = chunk.map_err(|error| turn.failed(error.to_string()))?;
-            let mut value = groovy::to_json(&chunk).map_err(|why| turn.failed(why))?;
-            if let (Some(header), Json::String(text)) = (&header, &value) {
-                value = Json::String(format!("{header}{text}"));
-            }
-            items.push(match (place, item) {
-                (Some(place), Json::Array(fields)) => {
-                    let mut fields = fields.clone();
-                    fields[place] = value;
-                    Json::Array(fields)
-                }
-                _ => value,
+            let value = self.named(groovy::to_json(&chunk).map_err(|why| turn.failed(why))?);
+            pieces.push(match (&header, value) {
+                (Some(header), Json::String(text)) => Json::String(format!("{header}{text}")),
+                (_, value) => value,
             });
         }
-        Ok(items)
+        Ok(pieces)
+    }
+
+    /// A sequence record, or an array of them, with the field names of the op.
+    fn named(&self, value: Json) -> Json {
+        let fields = match &self.spec.format {
+            SplitFormat::Fasta(sequence) | SplitFormat::Fastq(sequence) => &sequence.fields,
+            _ => return value,
+        };
+        match value {
+            Json::Array(items) => {
+                Json::Array(items.into_iter().map(|item| self.named(item)).collect())
+            }
+            Json::Object(mut record) => Json::Object(
+                (fields.iter())
+                    .map(|field| {
+                        (
+                            field.name.clone(),
+                            record.remove(native(field.field)).unwrap_or_default(),
+                        )
+                    })
+                    .collect(),
+            ),
+            other => other,
+        }
+    }
+}
+
+/// The name of a sequence field in the records of the Nextflow splitter.
+fn native(field: SequenceField) -> &'static str {
+    match field {
+        SequenceField::Id => "id",
+        SequenceField::Header => "header",
+        SequenceField::Desc => "desc",
+        SequenceField::Text => "text",
+        SequenceField::Sequence => "sequence",
+        SequenceField::SeqString => "seqString",
+        SequenceField::ReadHeader => "readHeader",
+        SequenceField::ReadString => "readString",
+        SequenceField::QualityHeader => "qualityHeader",
+        SequenceField::QualityString => "qualityString",
     }
 }
 
@@ -173,6 +236,16 @@ impl Operator for Splitting {
     }
 }
 
+/// The native names of the fields of sequence records, or none for their text.
+fn record(fields: &[wir::reserved::RecordField]) -> Option<Vec<String>> {
+    (!fields.is_empty()).then(|| {
+        fields
+            .iter()
+            .map(|field| native(field.field).to_owned())
+            .collect()
+    })
+}
+
 /// The text of bytes in a charset that a split reads.
 fn decode(bytes: &[u8], charset: &str) -> Result<String, String> {
     match charset.to_ascii_lowercase().as_str() {
@@ -197,7 +270,7 @@ pub fn path_of(location: &str) -> Rc<PathValue> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use serde_json::{Map, Value as Json, json};
 
     use crate::mixing::tests::{commit, node, steps, wired};
@@ -316,6 +389,73 @@ mod tests {
         assert!(
             missing.unwrap_err().contains("cannot read /none/x.txt"),
             "the first File by default"
+        );
+    }
+}
+
+#[cfg(test)]
+mod sequences {
+    use serde_json::json;
+
+    use super::tests::split;
+
+    const FASTA: &str = ">s1 first one\nACGT\nAC\n>s2\nGG\n";
+    const FASTQ: &str = "@r1\nACGT\n+\nIIII\n@r2\nGG\n+\nII\n";
+
+    #[test]
+    fn split_sequences() {
+        let text = split(json!({"format": {"fasta": {}}}), &[json!(FASTA)]);
+        assert_eq!(
+            text,
+            Ok(vec![json!(">s1 first one\nACGT\nAC\n"), json!(">s2\nGG\n")])
+        );
+        let fields = json!({"fasta": {"fields": [{"name": "name", "field": "id"}, {"name": "seq", "field": "seq_string"}]}});
+        let records = split(json!({"format": fields}), &[json!(FASTA)]);
+        assert_eq!(
+            records,
+            Ok(vec![
+                json!({"name": "s1", "seq": "ACGTAC"}),
+                json!({"name": "s2", "seq": "GG"})
+            ])
+        );
+        let reads = json!({"fastq": {"fields": [{"name": "readString", "field": "read_string"}, {"name": "q", "field": "quality_string"}]}});
+        let chunked = split(json!({"format": reads, "size": 2}), &[json!(FASTQ)]);
+        assert_eq!(
+            chunked,
+            Ok(vec![
+                json!([{"readString": "ACGT", "q": "IIII"}, {"readString": "GG", "q": "II"}])
+            ])
+        );
+    }
+
+    #[test]
+    fn split_pairs() {
+        let folder = tempfile::tempdir().unwrap();
+        let file = |name: &str, text: &str| {
+            let path = folder.path().join(name);
+            std::fs::write(&path, text).unwrap();
+            json!({"class": "File", "location": path.to_string_lossy()})
+        };
+        let (one, two) = (file("r1.fq", FASTQ), file("r2.fq", FASTQ));
+        let pairs = split(
+            json!({"format": {"fastq": {}}, "pair": "auto"}),
+            &[json!(["s", one, two])],
+        );
+        let first = pairs.unwrap().remove(0);
+        assert_eq!(
+            first,
+            json!(["s", "@r1\nACGT\n+\nIIII\n", "@r1\nACGT\n+\nIIII\n"]),
+            "aligned chunks of both files"
+        );
+        let short = file("r3.fq", "@r1\nA\n+\nI\n");
+        let unequal = split(
+            json!({"format": {"fastq": {}}, "pair": {"at": [1, 2]}}),
+            &[json!(["s", file("r4.fq", FASTQ), short])],
+        );
+        assert!(
+            unequal
+                .unwrap_err()
+                .contains("different numbers of records")
         );
     }
 }

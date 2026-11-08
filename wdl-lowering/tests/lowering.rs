@@ -165,7 +165,7 @@ task greet {
     // The simulator reads the files a native command makes from its script; a task op shows
     // it no script, so it makes up the files that a glob or a copied path matches.
     assert_eq!(native["logs"], json!(["a.log", "b.log"]));
-    assert_eq!(lowered["logs"], json!(["simulated.log"]));
+    assert_eq!(lowered["logs"], json!(["simulated"]));
     assert_eq!(lowered["named"], json!("simulated"));
 }
 
@@ -446,6 +446,102 @@ task hello {
 }
 
 #[test]
+fn none_skips_defaults() {
+    let workflow = r#"version 1.2
+workflow greet {
+  hints {
+    allow_nested_inputs: true
+  }
+  input {
+    String name
+    String? salutation = "hi"
+    String? mark = name + "!"
+  }
+  call hello as plain { input: name = name, greeting = None }
+  call hello as polite { input: name = name }
+  call kept as bare { input: name = name, greeting = None }
+  call kept as full { input: name = name }
+  output {
+    Array[String] texts = [
+      plain.text, polite.text, bare.text, full.text,
+      select_first([salutation, "none"]), select_first([mark, "none"])
+    ]
+  }
+}
+"#;
+    let tasks = r#"
+task hello {
+  input {
+    String name
+    String? greeting = name + "!"
+  }
+  command <<< >>>
+  output {
+    String text = select_first([greeting, name])
+  }
+}
+
+task kept {
+  input {
+    String name
+    String? greeting = name + "?"
+    env String label = "x"
+  }
+  command <<< >>>
+  output {
+    String text = select_first([greeting, name])
+  }
+}
+"#;
+    let text = format!("{workflow}{tasks}");
+    let omitted = runs(&text, json!({"name": "ada"}));
+    assert_eq!(omitted.native, omitted.lowered);
+    let texts = json!(["ada", "ada!", "ada", "ada?", "hi", "ada!"]);
+    assert_eq!(omitted.lowered.1["texts"], texts);
+    let given = runs(
+        &text,
+        json!({"name": "ada", "salutation": null, "mark": null}),
+    );
+    assert_eq!(given.native, given.lowered);
+    let texts = json!(["ada", "ada!", "ada", "ada?", "none", "none"]);
+    assert_eq!(given.lowered.1["texts"], texts);
+    let nested = json!({"name": "ada", "greet.polite.greeting": null, "full.greeting": null});
+    let nested = runs(&text, nested);
+    assert_eq!(nested.native, nested.lowered);
+    let texts = json!(["ada", "ada", "ada", "ada", "hi", "ada!"]);
+    assert_eq!(nested.lowered.1["texts"], texts);
+}
+
+#[test]
+fn entry_none_stays() {
+    let task = r#"version 1.2
+task kept {
+  input {
+    String name
+    String? greeting = name + "?"
+    LABEL
+  }
+  command <<< >>>
+  output {
+    String text = select_first([greeting, name])
+  }
+}
+"#;
+    for (label, kept) in [("", 0), ("env String label = \"x\"", 1)] {
+        let text = task.replace("LABEL", label);
+        for (inputs, expected) in [
+            (json!({"name": "ada"}), "ada?"),
+            (json!({"name": "ada", "greeting": null}), "ada"),
+        ] {
+            let runs = runs(&text, inputs);
+            assert_eq!(runs.lowering.kept.len(), kept);
+            assert_eq!(runs.native, runs.lowered);
+            assert_eq!(runs.lowered.1["text"], expected);
+        }
+    }
+}
+
+#[test]
 fn nested_inputs_given() {
     let workflow = r#"version 1.2
 workflow nested {
@@ -467,6 +563,109 @@ workflow nested {
     assert_eq!(names, ["say.name"]);
     assert_eq!(runs.native, runs.lowered);
     assert_eq!(runs.lowered.1["texts"], json!(["hi ada", "hi bob"]));
+}
+
+#[test]
+fn nested_bodies_given() {
+    let workflow = r#"version 1.2
+workflow nested {
+  hints {
+    allow_nested_inputs: true
+  }
+  input {
+    Array[String] names
+    Boolean go
+    File? extra
+  }
+  scatter (n in names) {
+    call say as each
+  }
+  if (go) {
+    call say as maybe
+  }
+  EXTRA
+  output {
+    Array[String] texts = each.text
+    String? text = maybe.text
+  }
+}
+"#;
+    let inputs = json!({
+        "names": ["a", "b"],
+        "go": true,
+        "nested.each.name": "ada",
+        "maybe.name": "bob",
+    });
+    for (extra, kept) in [("", 0), ("Float zero = size(extra)", 1)] {
+        let text = format!("{}{SAY}", workflow.replace("EXTRA", extra));
+        let runs = runs(&text, inputs.clone());
+        assert_eq!(runs.lowering.kept.len(), kept, "{:?}", runs.lowering.kept);
+        assert_eq!(runs.native, runs.lowered);
+        assert_eq!(runs.lowered.1["texts"], json!(["hi ada", "hi ada"]));
+        assert_eq!(runs.lowered.1["text"], json!("hi bob"));
+    }
+}
+
+#[test]
+fn skipped_nested_inputs() {
+    let workflow = r#"version 1.2
+workflow nested {
+  hints {
+    allow_nested_inputs: true
+  }
+  input {
+    Array[String] names
+    Boolean go
+  }
+  scatter (n in names) {
+    call say as each
+  }
+  if (go) {
+    call say as maybe
+  }
+  output {
+    Array[String] texts = each.text
+    String? text = maybe.text
+  }
+}
+"#;
+    let text = format!("{workflow}{SAY}");
+    let runs = runs(&text, json!({"names": [], "go": false}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1, json!({"texts": [], "text": null}));
+}
+
+#[test]
+fn private_structs_coerced() {
+    let text = r#"version 1.1
+struct Name {
+  String first
+  String? last
+}
+
+struct Person {
+  Name name
+  String? greeting
+}
+
+task hello {
+  input {
+    String first
+  }
+  Person person = Person { name: Name { first: first } }
+  command <<<
+    echo ~{select_first([person.greeting, "hi"])}
+  >>>
+  output {
+    String text = select_first([person.greeting, person.name.last, person.name.first])
+  }
+}
+"#;
+    let runs = runs(text, json!({"first": "ada"}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1["text"], json!("ada"));
 }
 
 #[test]
@@ -521,6 +720,56 @@ task maybe {
 }
 
 #[test]
+fn optional_arrays_stay() {
+    let text = r#"version 1.1
+task maybe {
+  input {
+    Boolean make
+  }
+  command <<< >>>
+  output {
+    Array[File]? files = if make then [] else None
+  }
+}
+"#;
+    for make in [false, true] {
+        let runs = runs(text, json!({"make": make}));
+        let kept: Vec<&str> = (runs.lowering.kept.iter())
+            .map(|kept| kept.reason.as_str())
+            .collect();
+        assert_eq!(kept, ["output files: files inside this type"]);
+        assert_eq!(runs.native, runs.lowered);
+    }
+}
+
+#[test]
+fn text_files_stay() {
+    let text = r#"version 1.1
+task show {
+  input {
+    String source
+  }
+  File reference = source
+  command <<<
+    cat ~{reference}
+  >>>
+  output {
+    File out = stdout()
+  }
+}
+"#;
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let source = folder.path().join("reference.txt");
+    std::fs::write(&source, "text\n").expect("writes the reference");
+    let runs = runs(text, json!({"source": source}));
+    let kept: Vec<&str> = (runs.lowering.kept.iter())
+        .map(|kept| kept.reason.as_str())
+        .collect();
+    assert_eq!(kept, ["the declaration reference makes files from text"]);
+    assert_eq!(runs.native, runs.lowered);
+}
+
+#[test]
 fn commands_write_files() {
     let text = r#"version 1.1
 task lines {
@@ -538,6 +787,43 @@ task lines {
     let runs = runs(text, json!({"names": ["b", "a"]}));
     assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
     assert_eq!(runs.native, runs.lowered);
+}
+
+#[test]
+fn parameters_convert() {
+    let text = r#"version 1.1
+workflow pairs {
+  input {
+    String name
+    Pair[Int, String] pair
+    Array[File] files
+  }
+  output {
+    String text = "~{name} ~{pair.left}~{pair.right} ~{length(files)}"
+  }
+}
+"#;
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let target = folder.path().join("main.wdl");
+    std::fs::write(&target, text).expect("writes the document");
+    let lowering = wdl_lowering::lower(&target, None, folder.path()).expect("the document lowers");
+    let params: Vec<(String, String)> = [
+        ("pairs.name", "12"),
+        ("pair", r#"{"left": 1, "right": "a"}"#),
+        ("files", "a.txt"),
+        ("files", "/b.txt"),
+    ]
+    .iter()
+    .map(|(name, text)| (name.to_string(), text.to_string()))
+    .collect();
+    let values = lowering.parameters(&params, Path::new("/work"));
+    let file = |location: &str| json!({"class": "File", "location": location});
+    let expected = json!({
+        "name": "12",
+        "pair": [1, "a"],
+        "files": [file("/work/a.txt"), file("/b.txt")],
+    });
+    assert_eq!(values, Ok(expected));
 }
 
 #[test]

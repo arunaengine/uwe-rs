@@ -16,7 +16,10 @@ use wir::{Dependency, Edge, Endpoint, Graph, Kind, Op, Origin, Port, Status, Typ
 
 use crate::bodies::{inner, selected};
 use crate::types::{array, convert, optional, port};
-use crate::{Lowerer, blank, boundary, constant, edge, end, origin, reads, text};
+use crate::{
+    Lowerer, blank, boundary, constant, defaulted, edge, end, flag, origin, presence, reads, text,
+    unclaimed,
+};
 
 /// A value where an op can read it, with its type.
 #[derive(Clone, Debug)]
@@ -54,6 +57,8 @@ pub(crate) struct Frame<'o> {
     /// The inputs of the calls of the entry workflow that the calls do not give, as inputs of
     /// the entry graph `<call>.<input>`, as WDL input files may give them.
     pub nested: Option<Vec<Port>>,
+    /// Whether this graph is the body of a scatter or an `if`, which may not run.
+    pub body: bool,
 }
 
 impl<'o> Frame<'o> {
@@ -67,6 +72,7 @@ impl<'o> Frame<'o> {
             edges: Vec::new(),
             origin,
             nested: None,
+            body: false,
         }
     }
 
@@ -117,13 +123,11 @@ impl Lowerer {
     /// failed workflow leaves no graphs or kept ops of its own behind.
     pub(crate) fn workflow(&mut self, unit: &Unit, name: &str) -> Result<Graph, String> {
         let mark = (self.kept.len(), self.graphs.len(), self.done.len());
-        let held = self.fallbacks.len();
         let graph = self.statements(unit, name);
         if graph.is_err() {
             self.kept.truncate(mark.0);
             self.graphs.truncate(mark.1);
             self.done.truncate(mark.2);
-            self.fallbacks.truncate(held);
         }
         graph
     }
@@ -139,11 +143,6 @@ impl Lowerer {
                 self.prefix = outer;
                 let graph = graph.map(|mut graph| {
                     graph.name = self.graph_name(&unit.name());
-                    let renamed = self
-                        .fallbacks
-                        .iter_mut()
-                        .filter(|item| item.0 == unit.name());
-                    renamed.for_each(|item| item.0 = graph.name.clone());
                     let name = graph.name.clone();
                     self.graphs.push(graph);
                     name
@@ -171,12 +170,14 @@ impl Lowerer {
         frame.nested = entry.then(Vec::new);
         let mut inputs = Vec::new();
         let mut defaults = Vec::new();
+        let mut flags = Vec::new();
         for decl in workflow
             .input()
             .iter()
             .flat_map(|section| section.declarations())
         {
             let input = decl.name().text().to_owned();
+            unclaimed(&input)?;
             let ty = declared(document, &decl.ty())?;
             let r#type = convert(&ty).map_err(|why| format!("input {input}: {why}"))?;
             let mut item = port(&input, r#type.clone());
@@ -188,35 +189,47 @@ impl Lowerer {
                 let expr = bound.expr();
                 match constant(&expr).map(|value| value.coerce(&ty)) {
                     Some(Ok(Value::None)) => item.r#type = optional(r#type),
-                    Some(Ok(value)) if ty.is_optional() && !entry => {
-                        let fallback = (name.to_owned(), input.clone(), value.result_json());
-                        self.fallbacks.push(fallback);
+                    Some(Ok(value)) if !ty.is_optional() => {
+                        item.default = Some(value.result_json())
                     }
-                    Some(Ok(value)) => item.default = Some(value.result_json()),
                     _ => {
                         item.r#type = optional(r#type.clone());
                         held.end = end(Some(&input), "value");
-                        defaults.push((input.clone(), expr, r#type));
+                        if ty.is_optional() {
+                            flags.push(flag(&input));
+                        }
+                        defaults.push((input.clone(), expr, r#type, ty.is_optional()));
                     }
                 }
             }
             frame.local.insert(input, Bound::Value(held));
             inputs.push(item);
         }
+        inputs.extend(flags);
         let statements: Vec<WorkflowStatement> = workflow.statements().collect();
         self.block(document, &statements, &mut frame)?;
-        // A default that is not a literal is an expr op that takes the given value first.
-        for (input, expr, r#type) in defaults {
-            let code = format!("if defined({input}) then {input} else ({})", text(&expr));
+        // A default is an expr op that takes the given value first, also a given `None` of an
+        // optional input.
+        for (input, expr, r#type, flagged) in defaults {
+            let given = match flagged {
+                true => presence(&input),
+                false => format!("defined({input})"),
+            };
+            let code = format!("if {given} then {input} else ({})", text(&expr));
             let mut used = names(&expr);
             used.remove(&input);
             evaluated(&mut frame, &input, code, &expr, used, r#type.clone())?;
-            if let Some(op) = frame.ops.last_mut() {
-                op.inputs.push(port(&input, optional(r#type)));
+            let mut taken = vec![port(&input, optional(r#type))];
+            if flagged {
+                taken.push(port(&given, Type::Bool));
             }
-            frame
-                .edges
-                .push(edge(end(None, &input), end(Some(&input), &input)));
+            for item in taken {
+                let at = end(Some(&input), &item.name);
+                frame.edges.push(edge(end(None, &item.name), at));
+                if let Some(op) = frame.ops.last_mut() {
+                    op.inputs.push(item);
+                }
+            }
         }
         let mut outputs = Vec::new();
         for decl in workflow
@@ -348,18 +361,37 @@ impl Lowerer {
             if let Some(port) = op.inputs.iter_mut().find(|port| port.name == name) {
                 port.default = None;
             }
+            let flag = presence(&name);
+            if let Some(port) = op.inputs.iter_mut().find(|port| port.name == flag) {
+                port.default = Some(serde_json::Value::Bool(true));
+                given.insert(flag);
+            }
         }
         if let Some(nested) = &mut frame.nested {
+            unclaimed(&alias)?;
             for item in op.inputs.iter().filter(|item| !given.contains(&item.name)) {
                 let outer = format!("{alias}.{}", item.name);
+                let required = !matches!(item.r#type, Type::Optional(_) | Type::Dynamic);
+                let to = end(Some(&alias), &item.name);
                 let r#type = match item.default.is_some() {
                     true => optional(item.r#type.clone()),
                     false => item.r#type.clone(),
                 };
+                // A required input of a call in a body is missing only when the call runs.
+                if frame.body && required && item.default.is_none() {
+                    nested.push(port(&outer, optional(r#type.clone())));
+                    let mut op = blank(&outer, guard(&outer), frame.origin.clone());
+                    op.inputs = vec![port(&outer, optional(r#type.clone()))];
+                    op.outputs = vec![port("value", r#type)];
+                    frame.ops.push(op);
+                    frame
+                        .edges
+                        .push(edge(end(None, &outer), end(Some(&outer), &outer)));
+                    frame.edges.push(edge(end(Some(&outer), "value"), to));
+                    continue;
+                }
                 nested.push(port(&outer, r#type));
-                frame
-                    .edges
-                    .push(edge(end(None, &outer), end(Some(&alias), &item.name)));
+                frame.edges.push(edge(end(None, &outer), to));
             }
         }
         for after in call.after() {
@@ -433,12 +465,78 @@ pub(crate) fn place(document: &Analyzed, statement: &WorkflowStatement) -> Resul
     })
 }
 
+/// The nested call inputs of a workflow that runs as one native op: `<call>.<input>` for each
+/// input that a call, also inside a scatter or an `if`, does not give, with its flag.
+pub(crate) fn nested_inputs(unit: &Unit) -> Vec<Port> {
+    let Callable::Workflow(workflow) = &unit.callable else {
+        return Vec::new();
+    };
+    let mut ports = Vec::new();
+    calls(&unit.document, workflow.statements(), &mut ports);
+    ports
+}
+
+fn calls(
+    document: &Analyzed,
+    statements: impl Iterator<Item = WorkflowStatement>,
+    ports: &mut Vec<Port>,
+) {
+    for statement in statements {
+        let call = match statement {
+            WorkflowStatement::Call(call) => call,
+            WorkflowStatement::Scatter(scatter) => {
+                calls(document, scatter.statements(), ports);
+                continue;
+            }
+            WorkflowStatement::Conditional(conditional) => {
+                for clause in conditional.clauses() {
+                    calls(document, clause.statements(), ports);
+                }
+                continue;
+            }
+            WorkflowStatement::Declaration(_) => continue,
+        };
+        let Ok(unit) = document::called(document, &call.target()) else {
+            continue;
+        };
+        let name = alias(&call, &unit);
+        let (Ok((inputs, _)), Ok(())) = (boundary(&unit), unclaimed(&name)) else {
+            continue;
+        };
+        let given: BTreeSet<String> = (call.inputs())
+            .map(|input| input.name().text().to_owned())
+            .collect();
+        let flagged = defaulted(&unit);
+        for item in inputs
+            .into_iter()
+            .filter(|item| !given.contains(&item.name))
+        {
+            let nested = format!("{name}.{}", item.name);
+            if flagged.contains(&item.name) {
+                ports.push(port(&presence(&nested), optional(Type::Bool)));
+            }
+            ports.push(port(&nested, optional(item.r#type)));
+        }
+    }
+}
+
 /// The name of a call: its alias, else the name of what it calls.
 fn alias(call: &CallStatement, unit: &Unit) -> String {
     match call.alias() {
         Some(alias) => alias.name().text().to_owned(),
         None => unit.name(),
     }
+}
+
+/// An expr op that gives a nested call input, and fails when it has no value.
+fn guard(name: &str) -> Kind {
+    Kind::Expr(wir::Expr {
+        language: wir::ExprLanguage::Wdl,
+        code: name.to_owned(),
+        library: Vec::new(),
+        scope: None,
+        captures: Default::default(),
+    })
 }
 
 /// The value of a plain reference, like `name` or `call.output`.

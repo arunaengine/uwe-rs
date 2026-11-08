@@ -10,18 +10,22 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Document, Effect, ExprLanguage, Kind, Language as Dialect, Native, Status};
+use wir::{Document, Effect, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
     Launch, Note, Outcome, Reuse, Task, TaskId,
 };
 
+use crate::adapter::{self, Adapters, Changes, Ending, TaskCall};
 use crate::argo;
 use crate::child::Child;
 use crate::cwl;
+use crate::engine;
 use crate::inputs;
 use crate::nextflow;
-use crate::plan::{self, plan};
+use crate::operator;
+use crate::plan::{Node, plan};
+use crate::processes;
 use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
@@ -45,6 +49,36 @@ pub struct Settings {
     pub print: bool,
     /// How the run fetches the repository of a source with a `git:` digest.
     pub repositories: Repositories,
+    /// Where `view` ops print.
+    pub print_sink: Printer,
+    /// The adapters that run dialect tasks, by builder name.
+    pub adapters: Adapters,
+}
+
+/// A function of the host that takes printed text.
+type Printing = dyn Fn(&str) + Send + Sync;
+
+/// Where the ops of a run print: a function of the host, else standard output.
+#[derive(Clone, Default)]
+pub struct Printer(Option<Arc<Printing>>);
+
+impl Printer {
+    pub fn new(sink: impl Fn(&str) + Send + Sync + 'static) -> Printer {
+        Printer(Some(Arc::new(sink)))
+    }
+
+    pub fn print(&self, text: &str) {
+        match &self.0 {
+            Some(sink) => sink(text),
+            None => print!("{text}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for Printer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Printer { .. }")
+    }
 }
 
 /// Fetches a repository at a commit and gives the folder of its checkout.
@@ -92,6 +126,8 @@ impl Default for Settings {
             wdl: wdl_runtime::Options::default(),
             print: true,
             repositories: Repositories::default(),
+            print_sink: Printer::default(),
+            adapters: Adapters::default(),
         }
     }
 }
@@ -122,10 +158,12 @@ pub struct WirDriver {
     children: Vec<(usize, Child)>,
     /// The child of each task, by its id in this run.
     owners: HashMap<TaskId, usize>,
+    /// The adapters of dialect tasks that started, with their tasks.
+    dialects: adapter::Dialects,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
     /// The tasks of task ops, by id, with the node of each.
-    tasks: HashMap<TaskId, (usize, Task)>,
+    tasks: HashMap<TaskId, (usize, Task, Map<String, Json>)>,
     /// The attempts of task ops that their captures accepted.
     accepted: HashSet<(TaskId, u32)>,
     last: u64,
@@ -139,6 +177,16 @@ pub struct WirDriver {
     /// A native block ended in this call. Its results name the files it delivers, which the
     /// engine delivers after the call, so the ops after it start on the next wake.
     ended: bool,
+    /// The stream ops that run, by node.
+    operators: operator::Running,
+    /// Stream ops have steps left to take on the next wake.
+    stepping: bool,
+    /// The processes that run, by node.
+    processes: processes::Processes,
+    /// The text of each source that a scope names, by source id.
+    scopes: HashMap<String, String>,
+    /// The file area of the run, made when an op of the document writes files.
+    file_area: PathBuf,
 }
 
 impl WirDriver {
@@ -165,8 +213,8 @@ impl WirDriver {
         for default in ports.filter_map(|port| port.default.as_mut()) {
             inputs::absolute(default, &base);
         }
-        let progress = Progress::new(plan(&document)?, document.types.clone());
-        Ok(WirDriver {
+        let progress = Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
+        WirDriver {
             launch: launch.clone(),
             settings,
             base,
@@ -174,6 +222,7 @@ impl WirDriver {
             progress,
             children: Vec::new(),
             owners: HashMap::new(),
+            dialects: adapter::Dialects::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
             accepted: HashSet::new(),
@@ -184,7 +233,27 @@ impl WirDriver {
             results: None,
             delivering: Vec::new(),
             ended: false,
-        })
+            operators: operator::Running::new(),
+            stepping: false,
+            processes: processes::Processes::new(),
+            scopes: HashMap::new(),
+            file_area: PathBuf::new(),
+        }
+        .checked()
+    }
+
+    fn checked(mut self) -> Result<Self, DriverError> {
+        self.scopes = self.read_scopes()?;
+        let ops = self.document.graphs.iter().flat_map(|graph| &graph.ops);
+        let writes = |op: &wir::Op| match &op.kind {
+            Kind::Split(split) => split.files.is_some(),
+            Kind::CollectFile(_) => true,
+            _ => false,
+        };
+        if ops.into_iter().any(writes) {
+            self.file_area = self.job_folder()?.join("files");
+        }
+        Ok(self)
     }
 
     /// The values of the outputs of the entry graph once the run ended, also of a simulated
@@ -196,20 +265,65 @@ impl WirDriver {
     }
 
     /// Starts every node that can start, until a native block ends; the tasks they ask for.
+    /// Steps of stream ops run in passes; after this many, the driver wakes again later.
     fn advance(&mut self) -> Result<Vec<Task>, DriverError> {
+        const PASSES: usize = 64;
         let mut tasks = Vec::new();
+        let mut passes = 0;
+        self.stepping = false;
         while !self.ended {
             let draining = self.draining();
-            let Some((at, bound)) = self.progress.next(draining) else {
-                return Ok(tasks);
+            if let Some((at, bound)) = self.progress.next(draining) {
+                tasks.extend(self.begin(at, bound)?);
+                continue;
+            }
+            if passes == PASSES {
+                self.stepping = !self.operators.is_empty() || !self.processes.is_empty();
+                break;
+            }
+            passes += 1;
+            let context = engine::Context {
+                document: &self.document,
+                base: &self.base,
+                javascript: &self.settings.cwl.javascript,
+                scopes: &self.scopes,
+                files: &self.file_area,
+                printer: &self.settings.print_sink,
+                simulated: self.launch.simulated,
             };
-            tasks.extend(self.begin(at, bound)?);
+            let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
+            let rounds =
+                processes::step_all(&mut self.progress, &self.document, &mut self.processes);
+            if !stepped && !rounds {
+                break;
+            }
         }
         Ok(tasks)
     }
 
     /// Starts a node with its input values; the tasks it asks for.
     fn begin(&mut self, at: usize, bound: Map<String, Json>) -> Result<Vec<Task>, DriverError> {
+        if let Kind::Process(spec) = &self.progress.node(at).op.kind {
+            let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at));
+            self.processes.insert(at, rounding);
+            return Ok(Vec::new());
+        }
+        if let Some(stepped) = operator::make(self.progress.node(at)) {
+            self.operators.insert(at, stepped);
+            return Ok(Vec::new());
+        }
+        let context = engine::Context {
+            document: &self.document,
+            base: &self.base,
+            javascript: &self.settings.cwl.javascript,
+            scopes: &self.scopes,
+            files: &self.file_area,
+            printer: &self.settings.print_sink,
+            simulated: self.launch.simulated,
+        };
+        if engine::begin(&mut self.progress, at, &bound, &context)? {
+            return Ok(Vec::new());
+        }
         match self.progress.node(at).op.kind.clone() {
             Kind::Native(native) => match self.start_native(at, &native, bound) {
                 Ok(tasks) => Ok(tasks),
@@ -221,101 +335,18 @@ impl WirDriver {
                     Ok(Vec::new())
                 }
             },
+            Kind::Task(wir::Task {
+                builder: Some(builder),
+                ..
+            }) => self.start_dialect(at, &builder, &bound),
             Kind::Task(spec) => {
                 self.last += 1;
                 let node = self.progress.node(at);
                 let names = (node.path.as_str(), node.step.as_str());
                 let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
                 task.site = node.op.attributes.place.clone();
-                self.tasks.insert(task.id, (at, task.clone()));
+                self.tasks.insert(task.id, (at, task.clone(), bound));
                 Ok(vec![task])
-            }
-            Kind::Call(_) => Ok(Vec::new()),
-            Kind::Branch(branch) => {
-                let node = self.progress.node(at);
-                match bound.get(&branch.condition) {
-                    Some(Json::Bool(true)) => {}
-                    Some(Json::Bool(false)) => {
-                        let nulls = (node.op.outputs.iter())
-                            .map(|port| (port.name.clone(), Json::Null))
-                            .collect();
-                        self.progress.end(at, Status::Skipped, nulls, None);
-                    }
-                    _ => {
-                        let message = format!("op {}: the condition is not a bool", node.path);
-                        self.progress
-                            .end(at, Status::Failed, Map::new(), Some(message));
-                    }
-                }
-                Ok(Vec::new())
-            }
-            Kind::Expr(spec) => {
-                let node = self.progress.node(at);
-                let path = node.path.clone();
-                let output = node.op.outputs[0].clone();
-                let settings = &self.settings.cwl.javascript;
-                let defs = &self.document.types;
-                let value = match spec.language {
-                    ExprLanguage::Js | ExprLanguage::Javascript => {
-                        crate::expr::evaluate(&spec, &bound, &output, defs, settings)
-                    }
-                    ExprLanguage::Wdl => {
-                        crate::wdl_expr::evaluate(&self.document, &node.op, &spec, &bound)
-                    }
-                    _ => {
-                        let message = format!("op {path}: uwe does not run this language here yet");
-                        return Err(DriverError::unsupported(message));
-                    }
-                };
-                match value {
-                    Ok(value) => {
-                        let values = Map::from_iter([(output.name, value)]);
-                        self.progress.end(at, Status::Succeeded, values, None);
-                    }
-                    Err(why) => {
-                        let message = Some(format!("op {path}: {why}"));
-                        self.progress.end(at, Status::Failed, Map::new(), message);
-                    }
-                }
-                Ok(Vec::new())
-            }
-            Kind::Select(_) | Kind::Merge(_) | Kind::Flatten(_) => {
-                let node = self.progress.node(at);
-                let path = node.path.clone();
-                let ports = node.op.inputs.iter().chain(&node.op.outputs);
-                if ports.into_iter().any(|port| !port.flow.is_value()) {
-                    let message = format!("op {path}: uwe does not run this op on streams yet");
-                    return Err(DriverError::unsupported(message));
-                }
-                let output = node.op.outputs[0].name.clone();
-                match crate::arrays::evaluate(&node.op, &bound, &self.document.types) {
-                    Ok(value) => {
-                        let values = Map::from_iter([(output, value)]);
-                        self.progress.end(at, Status::Succeeded, values, None);
-                    }
-                    Err(why) => {
-                        let message = Some(format!("op {path}: {why}"));
-                        self.progress.end(at, Status::Failed, Map::new(), message);
-                    }
-                }
-                Ok(Vec::new())
-            }
-            Kind::Map(map) => {
-                let path = self.progress.node(at).path.clone();
-                match plan::items(&map, &bound) {
-                    Ok(rounds) => {
-                        let start = self.progress.plan.nodes.len();
-                        let nodes = &mut self.progress.plan.nodes;
-                        plan::rounds(&self.document, nodes, at, &map.body, rounds.items)?;
-                        self.progress.plan.nodes[at].shape = rounds.shape;
-                        self.progress.adopt(start);
-                    }
-                    Err(why) => {
-                        let message = Some(format!("op {path}: {why}"));
-                        self.progress.end(at, Status::Failed, Map::new(), message);
-                    }
-                }
-                Ok(Vec::new())
             }
             _ => {
                 let path = &self.progress.node(at).path;
@@ -326,16 +357,57 @@ impl WirDriver {
         }
     }
 
+    /// The text of the source of a scope, once its byte range is checked against it.
+    fn scope_text(&self, scope: &wir::Scope) -> Result<String, DriverError> {
+        let path = self.locate(&scope.source)?;
+        let text = std::fs::read_to_string(&path).map_err(|error| {
+            DriverError::new(format!("cannot read {}: {error}", path.display()))
+        })?;
+        let (start, end) = (scope.start as usize, scope.end as usize);
+        if end > text.len() || !text.is_char_boundary(start) || !text.is_char_boundary(end) {
+            let message = format!(
+                "the scope {start}..{end} is no range of characters of {}",
+                scope.source
+            );
+            return Err(DriverError::unsupported(message));
+        }
+        Ok(text)
+    }
+
+    /// Reads the source of every scope of the document and checks each scope against it,
+    /// before anything runs.
+    fn read_scopes(&self) -> Result<HashMap<String, String>, DriverError> {
+        let mut scopes = Vec::new();
+        for op in self.document.graphs.iter().flat_map(|graph| &graph.ops) {
+            scopes_in(
+                &serde_json::to_value(&op.kind).unwrap_or_default(),
+                &mut scopes,
+            );
+        }
+        let mut texts = HashMap::new();
+        for scope in scopes {
+            let text = self.scope_text(&scope)?;
+            texts.insert(scope.source, text);
+        }
+        Ok(texts)
+    }
+
     /// Reads the outputs of a task op from its outcome. An attempt that is not accepted runs
     /// again while the op's `retry` allows it; then the op fails, or errors when the task
     /// could not run.
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
-        let (at, task) = &self.tasks[&outcome.id];
+        let (at, task, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
         let Kind::Task(spec) = &node.op.kind else {
             return Vec::new();
         };
-        match task::capture(spec, &node.op.outputs, outcome, &self.document.types) {
+        let files = self.files.as_deref();
+        let ended = task::Ended {
+            outcome,
+            files,
+            bound,
+        };
+        match task::capture(spec, &node.op.outputs, ended, &self.document.types) {
             Ok(values) => {
                 self.accepted.insert((outcome.id, outcome.attempt));
                 self.progress.end(at, Status::Succeeded, values, None);
@@ -381,7 +453,7 @@ impl WirDriver {
             Dialect::Wdl => {
                 let ports = &self.progress.node(at).op.inputs;
                 let values = wdl::pairs(bound.clone(), ports, &self.document.types);
-                (folder.join("inputs.json"), nextflow::params(&values))
+                (folder.join("inputs.json"), wdl::job(values))
             }
             _ => (
                 folder.join("job.json"),
@@ -458,24 +530,9 @@ impl WirDriver {
     fn adopt(&mut self, index: usize, mut tasks: Vec<Task>) -> Vec<Task> {
         let (at, child) = &mut self.children[index];
         let node = self.progress.node(*at);
-        // A block publishes as its language does, also for the tasks it reuses.
-        let effects = &node.op.effects;
-        let lineage = node.op.attributes.cache == Some(wir::Cache::Resume)
-            || effects
-                .iter()
-                .any(|effect| !matches!(effect, Effect::Publish(_)));
         for task in &mut tasks {
             self.owners.insert(task.id, index);
-            task.name = format!("{}: {}", node.path, task.name);
-            // A cache rule only makes reuse stricter, never overriding the block's own veto.
-            match node.op.attributes.cache {
-                Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
-                _ if lineage && task.reuse == Reuse::Allowed => task.reuse = Reuse::Lineage,
-                _ => {}
-            }
-            if let Some(place) = &node.op.attributes.place {
-                task.site = Some(place.clone());
-            }
+            mark(task, node, true);
         }
         if !child.busy() && !child.finished() {
             self.end_child(index);
@@ -502,20 +559,12 @@ impl WirDriver {
             }
             (finished, _) => finished,
         };
+        // A simulated CWL block reads made-up files, which can leave an output null.
+        let lenient = self.launch.simulated
+            && matches!(&node.op.kind, Kind::Native(native) if native.language == Dialect::Cwl);
         let result = match finished {
-            Ok(Some(Json::Object(results))) => (node.op.outputs.iter())
-                .map(|port| {
-                    let value = results.get(&port.name).cloned().unwrap_or_default();
-                    let value = widen(value, &port.r#type, defs);
-                    match wir::fits(&value, &port.r#type, defs) {
-                        true => Ok((port.name.clone(), value)),
-                        false => Err(format!(
-                            "op {path}: output {} does not fit its type",
-                            port.name
-                        )),
-                    }
-                })
-                .collect::<Result<Map<String, Json>, String>>(),
+            Ok(Some(Json::Object(results))) => typed(&results, &node.op.outputs, defs, lenient)
+                .map_err(|port| format!("op {path}: output {port} does not fit its type")),
             Ok(_) => Err(format!("op {path}: the block gave no results")),
             Err(error) => Err(format!("op {path}: {}", error.message)),
         };
@@ -525,6 +574,112 @@ impl WirDriver {
                 .progress
                 .end(at, Status::Failed, Map::new(), Some(message)),
         }
+    }
+
+    /// Starts a dialect task op through the adapter of its source context. An adapter that
+    /// cannot start the op errors it.
+    fn start_dialect(
+        &mut self,
+        at: usize,
+        builder: &wir::TaskBuilder,
+        bound: &Map<String, Json>,
+    ) -> Result<Vec<Task>, DriverError> {
+        let index = self.open_dialect(builder);
+        let node = self.progress.node(at);
+        let call = TaskCall {
+            call: adapter::CallId(at),
+            frame: adapter::frame(&self.progress, at),
+            builder,
+            op: &node.op,
+            inputs: bound,
+        };
+        let last = &mut self.last;
+        let started = index.and_then(|index| {
+            let next = &mut || {
+                *last += 1;
+                TaskId(*last)
+            };
+            self.dialects.start(index, &call, next)
+        });
+        match started {
+            Ok(changes) => Ok(self.take_changes(changes)),
+            Err(error) if error.unsupported => Err(error),
+            Err(error) => {
+                let message = format!("op {}: {}", self.progress.node(at).path, error.message);
+                (self.progress).end(at, Status::Errored, Map::new(), Some(message));
+                Ok(Vec::new())
+            }
+        }
+    }
+
+    /// The adapter of the source context of a builder, opened the first time.
+    fn open_dialect(&mut self, builder: &wir::TaskBuilder) -> Result<usize, DriverError> {
+        let task = builder.task();
+        let name = adapter::builder_name(builder);
+        let key = (
+            name,
+            task.source.clone(),
+            task.profiles.clone(),
+            task.configs.clone(),
+        );
+        if let Some(index) = self.dialects.find(&key) {
+            return Ok(index);
+        }
+        let folder = self.job_folder()?.join(format!("{name}-{}", task.source));
+        let configs = task.configs.iter().map(|id| self.locate(id));
+        let opening = adapter::Opening {
+            builder,
+            source: self.locate(&task.source)?,
+            configs: configs.collect::<Result<_, _>>()?,
+            inputs: &self.progress.inputs,
+            launch: &self.launch,
+            folder,
+            output: self.output_root(),
+            files: self.files.clone(),
+            cancel: self.cancel.clone(),
+        };
+        let opened = self.settings.adapters.open(&opening)?;
+        Ok(self.dialects.add(key, opened))
+    }
+
+    /// Ends the op instances that an adapter ended; the tasks it asks for, under their op.
+    fn take_changes(&mut self, changes: Changes) -> Vec<Task> {
+        let mut tasks = Vec::with_capacity(changes.tasks.len());
+        for (call, mut task) in changes.tasks {
+            let prefixed = self.dialects.prefixed(task.id);
+            mark(&mut task, self.progress.node(call.0), prefixed);
+            tasks.push(task);
+        }
+        for (call, ending) in changes.ended {
+            let node = self.progress.node(call.0);
+            let (path, at) = (node.path.clone(), call.0);
+            let failed = |why| Some(format!("op {path}: {why}"));
+            match ending {
+                Ending::Succeeded(results) => {
+                    match typed(&results, &node.op.outputs, &self.document.types, false) {
+                        Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
+                        Err(port) => {
+                            let why = failed(format!("output {port} does not fit its type"));
+                            self.progress.end(at, Status::Failed, Map::new(), why);
+                        }
+                    }
+                }
+                Ending::Skipped => self.progress.end(at, Status::Skipped, Map::new(), None),
+                Ending::Ignored(_) => {
+                    let empty = node.op.outputs.iter().map(|port| port.name.clone());
+                    let empty = empty.collect();
+                    (self.progress).end_with(at, Status::Succeeded, Map::new(), empty);
+                }
+                Ending::Failed(why) => {
+                    self.progress
+                        .end(at, Status::Failed, Map::new(), failed(why))
+                }
+                Ending::Errored(why) => {
+                    (self.progress).end(at, Status::Errored, Map::new(), failed(why));
+                }
+            }
+        }
+        tasks
     }
 
     /// Where the document source `id` is: the checkout of a repository at the commit of a
@@ -586,13 +741,45 @@ impl Driver for WirDriver {
         let ports = entry
             .map(|graph| graph.inputs.as_slice())
             .unwrap_or_default();
-        self.progress.inputs = inputs::read(&self.launch, ports, &self.document.types)?;
+        // A stream input is given as the array of its items.
+        let given: Vec<wir::Port> = (ports.iter())
+            .map(|port| match port.flow.is_value() {
+                true => port.clone(),
+                false => wir::Port {
+                    r#type: wir::Type::Array(wir::ArrayType {
+                        items: Box::new(port.r#type.clone()),
+                        nonempty: false,
+                    }),
+                    flow: wir::Flow::Value,
+                    ..port.clone()
+                },
+            })
+            .collect();
+        let mut values = inputs::read(&self.launch, &given, &self.document.types)?;
+        let streams: Vec<String> = (ports.iter())
+            .filter(|port| !port.flow.is_value())
+            .map(|port| port.name.clone())
+            .collect();
+        self.progress.feed(&values, &streams)?;
+        values.retain(|name, _| !streams.contains(name));
+        self.progress.inputs = values;
+        self.progress.activate(None)?;
         self.advance()
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         if self.tasks.contains_key(&outcome.id) {
             let mut tasks = self.complete_task(&outcome);
+            tasks.extend(self.advance()?);
+            return Ok(tasks);
+        }
+        if self.dialects.owns(outcome.id) {
+            let last = &mut self.last;
+            let changes = self.dialects.complete(outcome, &mut || {
+                *last += 1;
+                TaskId(*last)
+            })?;
+            let mut tasks = self.take_changes(changes);
             tasks.extend(self.advance()?);
             return Ok(tasks);
         }
@@ -608,13 +795,14 @@ impl Driver for WirDriver {
     }
 
     fn wake_at(&self) -> Option<Instant> {
-        if self.ended {
+        if self.ended || self.stepping {
             return Some(Instant::now());
         }
-        self.children
+        let children = self
+            .children
             .iter()
-            .filter_map(|(_, child)| child.wake_at())
-            .min()
+            .filter_map(|(_, child)| child.wake_at());
+        children.chain(self.dialects.wake_at()).min()
     }
 
     fn wake(&mut self) -> Result<Vec<Task>, DriverError> {
@@ -634,14 +822,22 @@ impl Driver for WirDriver {
                 tasks.extend(self.adopt(index, woken));
             }
         }
+        let last = &mut self.last;
+        let changes = self.dialects.wake(&mut || {
+            *last += 1;
+            TaskId(*last)
+        })?;
+        tasks.extend(self.take_changes(changes));
         tasks.extend(self.advance()?);
         Ok(tasks)
     }
 
     fn cancellations(&mut self) -> Vec<TaskId> {
-        (self.children.iter_mut())
+        let mut tasks: Vec<TaskId> = (self.children.iter_mut())
             .flat_map(|(_, child)| child.cancellations())
-            .collect()
+            .collect();
+        tasks.extend(self.dialects.cancellations());
+        tasks
     }
 
     /// A task op hears of failures that no machine retry can mend, so that it errors and
@@ -650,10 +846,14 @@ impl Driver for WirDriver {
         if self.tasks.contains_key(&task) {
             return !error.retryable();
         }
+        if self.dialects.owns(task) {
+            return self.dialects.handles_error(task, error);
+        }
         (self.owner(task)).is_ok_and(|index| self.children[index].1.handles_error(task, error))
     }
 
     fn started(&mut self, task: TaskId, attempt: u32) {
+        self.dialects.started(task, attempt);
         if let Ok(index) = self.owner(task) {
             self.children[index].1.started(task, attempt);
         }
@@ -663,6 +863,9 @@ impl Driver for WirDriver {
         if self.tasks.contains_key(&task) {
             return self.accepted.remove(&(task, attempt));
         }
+        if self.dialects.owns(task) {
+            return self.dialects.take_acceptance(task, attempt);
+        }
         match self.owner(task) {
             Ok(index) => self.children[index].1.take_acceptance(task, attempt),
             Err(_) => false,
@@ -670,6 +873,24 @@ impl Driver for WirDriver {
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
+        operator::cancel_all(&mut self.progress, &mut self.operators);
+        for at in std::mem::take(&mut self.processes).into_keys() {
+            let path = self.progress.node(at).path.clone();
+            self.progress.end(at, Status::Cancelled, Map::new(), None);
+            self.progress
+                .failures
+                .push(format!("op {path}: its rounds never ended"));
+        }
+        for at in self.dialects.open_calls() {
+            let path = self.progress.node(at).path.clone();
+            self.progress.end(at, Status::Cancelled, Map::new(), None);
+            let failures = &mut self.progress.failures;
+            failures.push(format!("op {path}: its task never ended"));
+        }
+        let failure = self.progress.failures.first().cloned();
+        if let Err(error) = self.dialects.end(failure.as_deref()) {
+            self.progress.failures.push(error.message);
+        }
         for index in 0..self.children.len() {
             if !self.children[index].1.finished() {
                 self.end_child(index);
@@ -722,6 +943,9 @@ impl Driver for WirDriver {
 
     fn failed(&mut self, error: &ExecuteError) -> Result<(), DriverError> {
         let mut problems = Vec::new();
+        if let Err(problem) = self.dialects.end(Some(&error.to_string())) {
+            problems.push(problem.message);
+        }
         for (_, child) in &mut self.children {
             if let Err(problem) = child.failed(error) {
                 problems.push(problem.message);
@@ -736,10 +960,14 @@ impl Driver for WirDriver {
     fn deliveries(&mut self) -> Vec<Delivery> {
         let mut deliveries = std::mem::take(&mut self.delivering);
         deliveries.extend((self.children.iter_mut()).flat_map(|(_, child)| child.deliveries()));
+        deliveries.extend(self.dialects.deliveries());
         deliveries
     }
 
     fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        if let Some(result) = self.dialects.delivered(delivery) {
+            return result;
+        }
         for (_, child) in &mut self.children {
             if let Some(result) = child.delivered(delivery) {
                 return result;
@@ -771,6 +999,67 @@ impl Driver for WirDriver {
     fn draining(&self) -> bool {
         (!self.progress.failures.is_empty() && !self.launch.keep_going)
             || self.children.iter().any(|(_, child)| child.draining())
+    }
+}
+
+/// Names a task under its op path when `prefixed`, and gives it the cache rule and place of
+/// its op. A cache rule only makes reuse stricter, never overriding the native veto.
+fn mark(task: &mut Task, node: &Node, prefixed: bool) {
+    // A native task publishes as its language does, also for the tasks it reuses.
+    let effects = &node.op.effects;
+    let lineage = node.op.attributes.cache == Some(wir::Cache::Resume)
+        || effects
+            .iter()
+            .any(|effect| !matches!(effect, Effect::Publish(_)));
+    if prefixed {
+        task.name = format!("{}: {}", node.path, task.name);
+    }
+    match node.op.attributes.cache {
+        Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
+        _ if lineage && task.reuse == Reuse::Allowed => task.reuse = Reuse::Lineage,
+        _ => {}
+    }
+    if let Some(place) = &node.op.attributes.place {
+        task.site = Some(place.clone());
+    }
+}
+
+/// The values of the output ports in `results`, widened to their types; else the name of a
+/// port whose value does not fit. A `lenient` run gives a null output a made-up value.
+fn typed(
+    results: &Map<String, Json>,
+    ports: &[wir::Port],
+    defs: &[wir::TypeDef],
+    lenient: bool,
+) -> Result<Map<String, Json>, String> {
+    (ports.iter())
+        .map(|port| {
+            let value = results.get(&port.name).cloned().unwrap_or_default();
+            let value = widen(value, &port.r#type, defs);
+            match wir::fits(&value, &port.r#type, defs) {
+                true => Ok((port.name.clone(), value)),
+                false if lenient && value.is_null() => {
+                    let made = crate::expr::placeholder(&port.r#type, &port.name, defs);
+                    Ok((port.name.clone(), made))
+                }
+                false => Err(port.name.clone()),
+            }
+        })
+        .collect()
+}
+
+/// The scopes of the closures and expressions in the JSON form of an op kind.
+fn scopes_in(value: &Json, found: &mut Vec<wir::Scope>) {
+    match value {
+        Json::Object(object) => {
+            let scope = object
+                .get("scope")
+                .and_then(|scope| serde_json::from_value(scope.clone()).ok());
+            found.extend(scope);
+            object.values().for_each(|item| scopes_in(item, found));
+        }
+        Json::Array(items) => items.iter().for_each(|item| scopes_in(item, found)),
+        _ => {}
     }
 }
 

@@ -3,13 +3,15 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
 use serde_json::Value as Json;
-use snakemake_runtime::{JobKey, JobResult, Prepared, RunSettings, Settings, SnakemakeDriver};
+use snakemake_runtime::{
+    Answer, JobKey, JobResult, Prepared, RunSettings, Settings, SnakemakeDriver,
+};
 use wir::{Document, Kind, TaskBuilder};
 use workflow_graph::{
     Delivery, Driver, DriverError, ExecutionGraph, Files, Language, Launch, Note, Order, Outcome,
@@ -83,6 +85,14 @@ struct JobOp {
     outputs: BTreeMap<String, String>,
 }
 
+/// The call of the adapter that commands of workflow code hold up.
+#[derive(Clone, Copy, Debug)]
+enum Call {
+    Start,
+    Prepare(usize),
+    Take(usize),
+}
+
 /// Runs the dialect tasks of a compiled document through the job adapter, each once the ops
 /// that feed it have ended, as a wir run of dialect tasks does.
 struct Runner {
@@ -95,10 +105,13 @@ struct Runner {
     waiting: Vec<usize>,
     queue: Vec<usize>,
     owners: HashMap<TaskId, usize>,
+    /// The call that waits for commands, and the outcomes of jobs that came meanwhile.
+    held: Option<Call>,
+    parked: VecDeque<Outcome>,
 }
 
 impl Runner {
-    /// The runner of a document, with the launch that its sources and first op name.
+    /// The runner of a document, with the launch of its jobs.
     fn new(document: &Document, base: &Path, scratch: &Path) -> Result<Runner, String> {
         let graph = (document.graphs.iter())
             .find(|graph| graph.name == document.entry)
@@ -106,16 +119,7 @@ impl Runner {
         let index: HashMap<&str, usize> = (graph.ops.iter().enumerate())
             .map(|(position, op)| (op.path.as_str(), position))
             .collect();
-        let located = |id: &str| {
-            let source = document.sources.iter().find(|source| source.id == id);
-            source.map(|source| base.join(&source.location))
-        };
-        let mut launch = Launch {
-            target: located(snakemake_compiler::SOURCE).ok_or("no source")?,
-            scratch: scratch.to_owned(),
-            simulated: true,
-            ..Launch::default()
-        };
+        let mut launch = None;
         let mut ops = Vec::new();
         for op in &graph.ops {
             let Kind::Task(task) = &op.kind else {
@@ -125,13 +129,7 @@ impl Runner {
                 return Err(format!("op {} is no Snakemake job", op.path));
             };
             let reference = &rule.task;
-            launch.configs = reference
-                .configs
-                .iter()
-                .filter_map(|id| located(id))
-                .collect();
-            launch.profiles = reference.profiles.clone();
-            launch.targets = vec![reference.entry.clone()];
+            launch = Some(snakemake_compiler::job_launch(document, rule, base)?);
             let mut inputs = Vec::new();
             for map in &reference.inputs {
                 let edge = (graph.edges.iter())
@@ -145,17 +143,17 @@ impl Runner {
             let outputs = (reference.outputs.iter())
                 .map(|map| (map.native.clone(), map.port.clone()))
                 .collect();
-            let key = JobKey {
-                rule: reference.call.clone(),
-                wildcards: rule.wildcards.clone(),
-                outputs: Vec::new(),
-            };
             ops.push(JobOp {
-                key,
+                key: snakemake_compiler::job_key(rule),
                 inputs,
                 outputs,
             });
         }
+        let launch = Launch {
+            scratch: scratch.to_owned(),
+            simulated: true,
+            ..launch.ok_or("no job")?
+        };
         let run = RunSettings {
             workdir: Some(base.to_owned()),
             ..RunSettings::default()
@@ -186,30 +184,63 @@ impl Runner {
             waiting,
             queue,
             owners: HashMap::new(),
+            held: None,
+            parked: VecDeque::new(),
         })
     }
 
-    /// Prepares the ops that wait for nothing, in the order of the document.
-    fn ready(&mut self) -> Result<Vec<Task>, DriverError> {
-        let mut tasks = Vec::new();
-        while let Some(index) = self.queue.pop() {
-            let op = &self.ops[index];
-            let staged = (op.inputs.iter())
-                .map(|(native, from, port)| {
-                    let values = self.values[*from].as_ref().expect("ended");
-                    (native.clone(), values[port].clone())
-                })
-                .collect();
-            match self.adapter.prepare_job(&op.key.clone(), staged)? {
-                Prepared::Run(task) => {
-                    self.owners.insert(task.id, index);
-                    tasks.push(*task);
-                }
-                Prepared::Skipped(made) => self.ended(index, made),
-                Prepared::Failed(message) => return Err(DriverError::new(message)),
+    /// Takes what a call gave, then prepares the ops that wait for nothing, in the order of
+    /// the document, and takes the outcomes that came while commands ran.
+    fn answered(&mut self, call: Call, answer: Answer) -> Result<Vec<Task>, DriverError> {
+        let mut tasks = self.taken(call, answer)?;
+        while self.held.is_none() {
+            if let Some(index) = self.queue.pop() {
+                let op = &self.ops[index];
+                let staged = (op.inputs.iter())
+                    .map(|(native, from, port)| {
+                        let values = self.values[*from].as_ref().expect("ended");
+                        (native.clone(), values[port].clone())
+                    })
+                    .collect();
+                let answer = self.adapter.prepare_job(&op.key.clone(), staged)?;
+                tasks.extend(self.taken(Call::Prepare(index), answer)?);
+            } else if let Some(outcome) = self.parked.pop_front() {
+                let index = self.owners[&outcome.id];
+                let answer = self.adapter.take_job(outcome)?;
+                tasks.extend(self.taken(Call::Take(index), answer)?);
+            } else {
+                break;
             }
         }
         Ok(tasks)
+    }
+
+    /// The tasks of one answer of the adapter to `call`.
+    fn taken(&mut self, call: Call, answer: Answer) -> Result<Vec<Task>, DriverError> {
+        Ok(match (call, answer) {
+            (_, Answer::Commands(commands)) => {
+                self.held = Some(call);
+                commands
+            }
+            (Call::Start, Answer::Jobs(_)) => Vec::new(),
+            (Call::Prepare(index), Answer::Prepared(Prepared::Run(task))) => {
+                self.owners.insert(task.id, index);
+                vec![*task]
+            }
+            (Call::Prepare(index), Answer::Prepared(Prepared::Skipped(made)))
+            | (Call::Take(index), Answer::Taken(JobResult::Accepted(made))) => {
+                self.ended(index, made);
+                Vec::new()
+            }
+            (Call::Prepare(_), Answer::Prepared(Prepared::Failed(message))) => {
+                return Err(DriverError::new(message));
+            }
+            (Call::Take(_), Answer::Taken(JobResult::Retry(task))) => vec![*task],
+            (Call::Take(_), Answer::Taken(JobResult::Failed(_))) => Vec::new(),
+            (call, answer) => {
+                return Err(DriverError::new(format!("{call:?} gave {answer:?}")));
+            }
+        })
     }
 
     /// Records the files of an op that ended and queues the ops that wait for nothing else.
@@ -243,20 +274,23 @@ impl Driver for Runner {
     }
 
     fn start(&mut self) -> Result<Vec<Task>, DriverError> {
-        self.adapter.start_jobs()?;
-        self.ready()
+        let answer = self.adapter.start_jobs()?;
+        self.answered(Call::Start, answer)
     }
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
-        let index = self.owners[&outcome.id];
-        match self.adapter.take_job(outcome)? {
-            JobResult::Accepted(made) => {
-                self.ended(index, made);
-                self.ready()
+        let call = match (self.held, self.owners.get(&outcome.id)) {
+            (Some(_), Some(_)) => {
+                self.parked.push_back(outcome);
+                return Ok(Vec::new());
             }
-            JobResult::Retry(task) => Ok(vec![*task]),
-            JobResult::Failed(_) => Ok(Vec::new()),
-        }
+            (Some(call), None) => call,
+            (None, Some(index)) => Call::Take(*index),
+            (None, None) => return Err(DriverError::new("an outcome of no op")),
+        };
+        self.held = None;
+        let answer = self.adapter.take_job(outcome)?;
+        self.answered(call, answer)
     }
 
     fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
@@ -471,19 +505,39 @@ fn first_line(text: &str) -> String {
         .collect()
 }
 
-#[test]
-fn compiled_runs_match() {
+/// Compares the runs of `snakefile` with the targets of the command line.
+fn compared(snakefile: &str, targets: &[&str]) -> Compared {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path().join("work");
     std::fs::create_dir(&root).expect("makes the working folder");
-    std::fs::write(root.join("Snakefile"), SNAKEFILE).expect("writes the Snakefile");
+    std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
     let launch = Launch {
         target: root.join("Snakefile"),
+        targets: targets.iter().map(|target| (*target).to_owned()).collect(),
         simulated: true,
         ..Launch::default()
     };
-    let compared = compare(&launch, &root, &folder.path().join("scratch"));
+    compare(&launch, &root, &folder.path().join("scratch"))
+}
+
+#[test]
+fn compiled_runs_match() {
+    let compared = compared(SNAKEFILE, &[]);
     assert_eq!(compared.shown, "same: 6 tasks");
+    assert!(compared.equal);
+}
+
+/// Commands of workflow code run while the run plans and while a job is prepared, for two
+/// targets.
+#[test]
+fn compiled_commands_match() {
+    let snakefile = SNAKEFILE.replace("rule all:", "shell(\"echo planned\")\n\nrule all:");
+    let snakefile = snakefile.replace(
+        "    threads: 2",
+        "    threads: 2\n    conda: lambda wildcards: shell(\"echo env.yaml\", read=True).strip()",
+    );
+    let compared = compared(&snakefile, &["summary.txt", "counts/a.txt"]);
+    assert_eq!(compared.shown, "same: 7 tasks");
     assert!(compared.equal);
 }
 

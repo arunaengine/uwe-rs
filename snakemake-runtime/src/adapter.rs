@@ -88,17 +88,21 @@ pub enum JobResult {
     Failed(String),
 }
 
-/// What the session answers to a request of a job, beside its reply.
-pub(crate) enum Answer {
+/// What a call of the job adapter gave: its answer, or commands of workflow code that run
+/// first, whose outcomes go to [`SnakemakeDriver::take_job`] before any other call.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Answer {
     Jobs(Vec<PlannedJob>),
     Prepared(Prepared),
     Taken(JobResult),
+    Commands(Vec<Task>),
 }
 
 pub(crate) type Answers = Arc<Mutex<Option<Answer>>>;
 
 impl SnakemakeDriver {
-    /// The planned jobs of the workflow, as a run would plan them, without starting the run.
+    /// The planned jobs of the workflow, as a run would plan them, without starting the run;
+    /// commands of workflow code run at once, as hooks do.
     pub fn plan_jobs(&mut self) -> Result<Vec<PlannedJob>, DriverError> {
         match self.ask_job(Request::Jobs(false))? {
             Answer::Jobs(jobs) => Ok(jobs),
@@ -108,41 +112,36 @@ impl SnakemakeDriver {
 
     /// Starts a run whose jobs run one by one through [`SnakemakeDriver::prepare_job`]: plans
     /// the jobs, takes the lock and runs `onstart`, as a native run does before its tasks.
-    pub fn start_jobs(&mut self) -> Result<Vec<PlannedJob>, DriverError> {
-        match self.ask_job(Request::Jobs(true))? {
-            Answer::Jobs(jobs) => Ok(jobs),
-            _ => Err(DriverError::new("the Snakemake session gave no jobs")),
-        }
+    /// It gives the jobs, or commands first.
+    pub fn start_jobs(&mut self) -> Result<Answer, DriverError> {
+        self.ask_job(Request::Jobs(true))
     }
 
     /// The first task of the job of `key`, with input files given as wir values by their
-    /// selectors, like `input/0`; the task the native run builds for that job.
+    /// selectors, like `input/0`; the task the native run builds for that job, or commands.
     pub fn prepare_job(
         &mut self,
         key: &JobKey,
         staged: Vec<(String, Json)>,
-    ) -> Result<Prepared, DriverError> {
-        match self.ask_job(Request::Prepare(Box::new((key.clone(), staged))))? {
-            Answer::Prepared(prepared) => Ok(prepared),
-            _ => Err(DriverError::new("the Snakemake session prepared no job")),
-        }
+    ) -> Result<Answer, DriverError> {
+        self.ask_job(Request::Prepare(Box::new((key.clone(), staged))))
     }
 
-    /// Takes the outcome of a task that [`SnakemakeDriver::prepare_job`] gave, or a retry.
-    pub fn take_job(&mut self, outcome: Outcome) -> Result<JobResult, DriverError> {
-        match self.ask_job(Request::Take(Box::new(outcome)))? {
-            Answer::Taken(result) => Ok(result),
-            _ => Err(DriverError::new("the Snakemake session took no outcome")),
-        }
+    /// Takes the outcome of a task that a call gave: of a job, which gives the result or a
+    /// retry, or of a command, which gives more commands or the answer of that call.
+    pub fn take_job(&mut self, outcome: Outcome) -> Result<Answer, DriverError> {
+        let request = match self.commands.remove(&outcome.id) {
+            true => Request::Complete(Box::new(outcome)),
+            false => Request::Take(Box::new(outcome)),
+        };
+        self.ask_job(request)
     }
 
     fn ask_job(&mut self, request: Request) -> Result<Answer, DriverError> {
         let tasks = self.ask(request)?;
-        // Commands of workflow code need a run that takes their tasks, which jobs alone lack.
         if !tasks.is_empty() {
-            return Err(DriverError::unsupported(
-                "workflow code ran a command while a job was planned or prepared",
-            ));
+            self.commands.extend(tasks.iter().map(|task| task.id));
+            return Ok(Answer::Commands(tasks));
         }
         let mut answers = self.answers.lock().unwrap_or_else(PoisonError::into_inner);
         answers

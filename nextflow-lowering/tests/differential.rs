@@ -1,0 +1,216 @@
+//! Runs small Nextflow pipelines natively and lowered on the simulator, in both completion
+//! orders, and compares their tasks and resume fingerprints with the recorded counts.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::{Path, PathBuf};
+
+use nextflow_runtime::driver::{Nextflow, Settings};
+use serde_json::Value as Json;
+use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute_with};
+
+/// How many pipelines lower fully, run natively, run lowered, and how many lowered runs give
+/// the native tasks in both orders: equal task descriptions and resume fingerprints.
+const RECORDED: Counts = Counts {
+    pipelines: 8,
+    full: 8,
+    native: 8,
+    lowered: 0,
+    same: 0,
+};
+
+#[derive(Debug, Default, PartialEq)]
+struct Counts {
+    pipelines: usize,
+    full: usize,
+    native: usize,
+    lowered: usize,
+    same: usize,
+}
+
+const PROCESSES: &str = r#"
+process GREET {
+    tag "${meta.id}"
+    memory { 1.GB * task.attempt }
+    input:
+    tuple val(meta), val(name)
+    output:
+    tuple val(meta), path("${name}.txt"), emit: text
+    tuple val("${task.process}"), val('greet'), val('1.0'), topic: versions
+    script:
+    "echo ${params.greeting} ${name} > ${name}.txt"
+}
+
+process COUNT {
+    input:
+    path texts
+    val label
+    output:
+    path 'count.txt'
+    script:
+    "cat ${texts} | wc -l > count.txt; echo ${label}"
+}
+"#;
+
+/// The pipelines, each with its workflow body after the processes.
+const PIPELINES: &[(&str, &str)] = &[
+    (
+        "map",
+        "workflow { GREET(channel.of('a', 'b').map { [[id: it], it] }) }",
+    ),
+    (
+        "collect",
+        "workflow { COUNT(GREET(channel.of([[id: 'a'], 'a'], [[id: 'b'], 'b'])).text.map { it[1] }.collect(), 'all') }",
+    ),
+    (
+        "branch",
+        "workflow {\n    words = channel.of('a', 'bb', 'ccc').branch { w ->\n        small: w.size() < 2\n        large: true\n    }\n    GREET(words.large.map { [[id: it], it] })\n}",
+    ),
+    (
+        "join",
+        "workflow {\n    left = channel.of([[id: 'a'], 'a'], [[id: 'b'], 'b'])\n    GREET(left)\n    GREET.out.text.join(left).map { meta, text, name -> text }.collect().set { texts }\n    COUNT(texts, 'joined')\n}",
+    ),
+    (
+        "group",
+        "workflow {\n    GREET(channel.of(['x', 'a'], ['x', 'b'], ['y', 'c']).map { k, v -> [[id: v, group: k], v] })\n    GREET.out.text.map { meta, text -> [meta.group, text] }.groupTuple().map { it[1] }.flatMap { it }.collect().set { texts }\n    COUNT(texts, 'grouped')\n}",
+    ),
+    (
+        "topic",
+        "workflow {\n    GREET(channel.of([[id: 'a'], 'a']))\n    channel.topic('versions').map { it[1] }.unique().collect().view()\n}",
+    ),
+    (
+        "subworkflow",
+        "workflow GREETING {\n    take:\n    names\n    main:\n    GREET(names.map { [[id: it], it] })\n    emit:\n    texts = GREET.out.text.map { it[1] }\n}\n\nworkflow {\n    GREETING(channel.of('a', 'b', 'c'))\n    COUNT(GREETING.out.texts.collect(), 'sub')\n}",
+    ),
+    (
+        "combine",
+        "workflow {\n    GREET(channel.of('a', 'b').combine(channel.of(1, 2)).map { n, i -> [[id: \"${n}${i}\"], n] })\n    COUNT(GREET.out.text.map { it[1] }.toSortedList(), 'combined')\n}",
+    ),
+];
+
+/// A host in the folder of a run that prints nothing.
+struct Quiet(String);
+
+impl nextflow_evaluator::interpreter::Host for Quiet {
+    fn print(&mut self, _: &str) {}
+
+    fn launch_dir(&self) -> String {
+        self.0.clone()
+    }
+}
+
+fn settings(folder: &Path) -> Settings {
+    Settings {
+        host: Box::new(Quiet(folder.to_string_lossy().into_owned())),
+        ..Settings::default()
+    }
+}
+
+/// The tasks of a simulated run as the resume database and the task cache see them, sorted,
+/// with the resume fingerprint of each; or the error of the run.
+fn tasks(
+    driver: &mut dyn Driver,
+    folder: &Path,
+    order: Order,
+) -> Result<Vec<(Json, String)>, String> {
+    let mut simulator = Simulator::new(folder.join(format!("simulator-{order:?}")));
+    let options = RunOptions {
+        max_pending: 4,
+        order,
+    };
+    let execution = execute_with("pipeline", driver, &mut simulator, &options);
+    let graph = execution.into_result().map_err(|error| error.to_string())?;
+    let mut tasks: Vec<(Json, String)> = (graph.nodes.iter())
+        .map(|node| {
+            let task = Task {
+                id: workflow_graph::TaskId(0),
+                after: Vec::new(),
+                ..node.task.clone()
+            };
+            let fingerprint = run_database::fingerprint(&task, &[]);
+            (serde_json::to_value(&task).unwrap_or_default(), fingerprint)
+        })
+        .collect();
+    tasks.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(tasks)
+}
+
+/// Lowers and runs one pipeline in a folder of its own.
+fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let folder = directory.path();
+    std::fs::write(folder.join("main.nf"), format!("{PROCESSES}\n{script}\n")).unwrap();
+    std::fs::write(folder.join("nextflow.config"), "params.greeting = 'hi'\n").unwrap();
+    let launch = |target: PathBuf| Launch {
+        target,
+        scratch: folder.join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    counts.pipelines += 1;
+    let lowering =
+        match nextflow_lowering::lower(&launch(folder.to_owned()), settings(folder), folder) {
+            Ok(lowering) => lowering,
+            Err(error) => return format!("{name}: does not lower: {error}"),
+        };
+    if let Some(kept) = lowering.kept.first() {
+        return format!("{name}: partly ({}: {})", kept.path, kept.reason);
+    }
+    counts.full += 1;
+    let document = folder.join("lowered.wir.json");
+    let text = serde_json::to_string(&lowering.document).expect("serializes");
+    std::fs::write(&document, text).expect("writes the document");
+    let mut outcomes = Vec::new();
+    for order in [Order::AsAsked, Order::Reversed] {
+        let native = Nextflow::new(&launch(folder.to_owned()), settings(folder));
+        let native = native.map_err(|error| error.message);
+        let native = native.and_then(|mut driver| tasks(&mut driver, folder, order));
+        let wir = wir_runtime::Settings {
+            print: false,
+            ..wir_runtime::Settings::default()
+        };
+        let lowered = wir_runtime::WirDriver::new(&launch(document.clone()), wir);
+        let lowered = lowered.map_err(|error| error.message);
+        let lowered = lowered.and_then(|mut driver| tasks(&mut driver, folder, order));
+        outcomes.push((native, lowered));
+    }
+    if outcomes.iter().all(|(native, _)| native.is_ok()) {
+        counts.native += 1;
+    }
+    if outcomes.iter().all(|(_, lowered)| lowered.is_ok()) {
+        counts.lowered += 1;
+    }
+    let same = outcomes
+        .iter()
+        .all(|(native, lowered)| match (native, lowered) {
+            (Ok(native), Ok(lowered)) => native == lowered,
+            _ => false,
+        });
+    if same {
+        counts.same += 1;
+    }
+    let (native, lowered) = &outcomes[0];
+    match (native, lowered) {
+        (Err(error), _) => format!("{name}: the native run fails: {error}"),
+        (Ok(_), Err(error)) => format!("{name}: the lowered run fails: {}", first(error)),
+        (Ok(native), Ok(lowered)) if !same => format!(
+            "{name}: {} native tasks, {} lowered tasks, or other tasks",
+            native.len(),
+            lowered.len()
+        ),
+        (Ok(native), Ok(_)) => format!("{name}: same {} tasks", native.len()),
+    }
+}
+
+fn first(text: &str) -> &str {
+    text.lines().next().unwrap_or_default()
+}
+
+#[test]
+fn matches_recorded_counts() {
+    let mut counts = Counts::default();
+    let lines: Vec<String> = (PIPELINES.iter())
+        .map(|(name, script)| compare(name, script, &mut counts))
+        .collect();
+    assert_eq!(counts, RECORDED, "the outcomes:\n{}", lines.join("\n"));
+}

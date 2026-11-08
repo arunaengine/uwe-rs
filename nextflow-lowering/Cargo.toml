@@ -18,4 +18,6 @@ serde_json.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]
+run-database.workspace = true
 tempfile.workspace = true
+wir-runtime.workspace = true

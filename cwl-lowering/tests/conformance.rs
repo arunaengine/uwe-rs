@@ -10,11 +10,9 @@ use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{Driver, Launch, Simulator, execute};
 
-/// How many tests lower fully, partly or not at all, how many lowered runs end as the native
-/// run does (both succeed with as many tasks, or both fail), and how many of those that both
-/// succeed give equal outputs, with Files and Directories compared by class and basename. The
-/// stricter counts: lowered runs that end as the test expects, its outputs or its failure, and
-/// runs with equal outputs where Files also have equal sizes and contents.
+/// Tests compiled into wir fully, partly or not at all; compiled runs that end as native ones,
+/// with outputs equal by class and basename; that end as the test expects (outputs or failure);
+/// and with outputs whose Files also have equal sizes and contents.
 const RECORDED: Counts = Counts {
     full: 227,
     partly: 131,

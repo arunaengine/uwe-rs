@@ -169,7 +169,14 @@ impl Host for Builder<'_> {
                 mode: 0o644,
             }));
         }
-        self.base.metadata(path)
+        let metadata = self.base.metadata(path)?;
+        // What the build learns of a file, like `exists()`, pins the document too.
+        if self.defer {
+            let known = metadata.as_ref().map(|found| (found.directory, found.size));
+            let location = format!("{}#metadata", path.uri());
+            self.keep_digest(location, format!("{known:?}").as_bytes());
+        }
+        Ok(metadata)
     }
 
     /// Writes, or for the compiler keeps the file, which the compiled run writes when it starts.
@@ -258,7 +265,14 @@ impl Host for Builder<'_> {
     }
 
     fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
-        self.base.list(directory)
+        let listed = self.base.list(directory)?;
+        if self.defer {
+            let mut names: Vec<&(String, bool)> = listed.iter().collect();
+            names.sort();
+            let location = format!("{}#listing", directory.uri());
+            self.keep_digest(location, format!("{names:?}").as_bytes());
+        }
+        Ok(listed)
     }
 
     fn plugin_function(
@@ -885,7 +899,12 @@ impl Builder<'_> {
 
     /// Keeps the digest of a file that the build for the compiler read.
     fn keep_read(&mut self, path: &PathValue, bytes: &[u8]) {
-        let location = path.uri();
+        self.keep_digest(path.uri(), bytes);
+    }
+
+    /// Keeps the digest of what the build for the compiler learned at a location: the bytes of
+    /// a file, or the metadata or listing of one, at `#metadata` or `#listing` after it.
+    fn keep_digest(&mut self, location: String, bytes: &[u8]) {
         if !self.reads.iter().any(|(known, _)| *known == location) {
             let digest = sha2::Sha256::digest(bytes);
             let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();

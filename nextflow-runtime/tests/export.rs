@@ -271,3 +271,29 @@ fn keeps_binary_writes() {
     );
     assert!(!kinds.iter().any(|kind| matches!(kind, Kind::Write { .. })));
 }
+
+#[test]
+fn pins_file_checks() {
+    let directory = tempfile::tempdir().unwrap();
+    let script = "workflow {\n    def found = file(\"${projectDir}/index\").exists()\n    \
+                  def names = file(\"${projectDir}/data\").list()\n    \
+                  channel.of(found, names.size()).view()\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::create_dir(directory.path().join("data")).unwrap();
+    std::fs::write(directory.path().join("data").join("a.txt"), "a").unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Silent(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let network = Nextflow::new(&launch, settings).unwrap().export().unwrap();
+    let pinned: Vec<&str> = (network.reads.iter())
+        .map(|(location, _)| location.rsplit('/').next().unwrap())
+        .collect();
+    assert!(pinned.contains(&"index#metadata"), "{pinned:?}");
+    assert!(pinned.contains(&"data#listing"), "{pinned:?}");
+}

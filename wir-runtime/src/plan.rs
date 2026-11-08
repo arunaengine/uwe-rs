@@ -111,17 +111,10 @@ fn refusal(op: &Op) -> Option<&'static str> {
     unrun(op)
 }
 
-/// Whether a split needs what this runner does not run yet: sequence and JSON formats,
-/// pairs, chunk files and gzip.
+/// Whether a split needs what this runner does not run yet: JSON, chunk files and gzip.
 fn unsplit(split: &wir::reserved::Split) -> bool {
-    let formats = !matches!(
-        split.format,
-        wir::reserved::SplitFormat::Text(_) | wir::reserved::SplitFormat::Csv(_)
-    );
-    formats
-        || split.pair.is_some()
-        || split.files.is_some()
-        || split.decompress != wir::reserved::Decompress::Never
+    let json = matches!(split.format, wir::reserved::SplitFormat::Json(_));
+    json || split.files.is_some() || split.decompress == wir::reserved::Decompress::Always
 }
 
 /// Whether this runner runs a stream or control op kind.

@@ -244,3 +244,31 @@ fn empty_values_filled() {
         Some(json!(9))
     );
 }
+
+#[test]
+fn split_runs() {
+    let texts = (json!("string"), json!("string"));
+    let lines = run(
+        json!({"split": {"format": {"text": {}}}}),
+        "stream",
+        texts.clone(),
+        json!([]),
+        json!(["a\nb", "c\n"]),
+    );
+    assert_eq!(
+        lines.unwrap(),
+        Some(json!(["a\n", "b\n", "c\n"])),
+        "a run plans and runs a split"
+    );
+    let json_split = run(
+        json!({"split": {"format": {"json": {}}, "decompress": "never"}}),
+        "stream",
+        texts,
+        json!([]),
+        json!([]),
+    );
+    assert_eq!(
+        json_split.unwrap_err(),
+        "op main/op: uwe does not run this split yet"
+    );
+}

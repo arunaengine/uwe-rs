@@ -326,7 +326,8 @@ pub(crate) fn computed(mut task: Op, values: &[Computed], library: &[String]) ->
                 ..found.clone()
             });
         }
-        expr.outputs = vec![port("out", words.clone())];
+        let made = value.r#type.clone().unwrap_or_else(|| words.clone());
+        expr.outputs = vec![port("out", made.clone())];
         group.edges.push(Edge {
             from: end(Some(&at), "out"),
             to: end(Some(&task.path), &value.port),
@@ -336,7 +337,12 @@ pub(crate) fn computed(mut task: Op, values: &[Computed], library: &[String]) ->
         }
         group.ops.push(expr);
     }
-    let filled = values.iter().map(|value| port(&value.port, words.clone()));
+    let filled = (values.iter()).map(|value| {
+        port(
+            &value.port,
+            value.r#type.clone().unwrap_or_else(|| words.clone()),
+        )
+    });
     task.inputs.extend(filled);
     group.ops.push(task);
     group

@@ -110,6 +110,7 @@ pub fn known(class: &RequirementClass) -> bool {
             | RequirementClass::MultipleInputFeature
             | RequirementClass::StepInputExpression
             | RequirementClass::SchemaDef { .. }
+            | RequirementClass::InitialWorkDir { .. }
     )
 }
 

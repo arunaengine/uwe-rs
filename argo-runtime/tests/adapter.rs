@@ -284,3 +284,90 @@ fn daemon_control() {
     assert!(ending.facts.daemoned && ending.facts.succeeded);
     assert!(adapter.take_acceptance(adapted[0].id, 1));
 }
+
+/// A loop over the result of a step, a loop over a sequence, and a step that reads the
+/// results of the first loop, as JSON.
+const LOOPS: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: gen, template: say, arguments: {parameters: [{name: text, value: start}]}}
+    - - name: each
+        template: say
+        withParam: "{{steps.gen.outputs.result}}"
+        when: "{{steps.gen.outputs.result}} != none"
+        arguments: {parameters: [{name: text, value: "{{item.name}}-{{workflow.name}}"}]}
+      - name: count
+        template: say
+        withSequence: {count: "2", format: "n%02d"}
+        arguments: {parameters: [{name: text, value: "{{item}}"}]}
+    - - {name: last, template: say, arguments: {parameters: [{name: text, value: "{{steps.each.outputs.result}}"}]}}
+  - name: say
+    inputs: {parameters: [{name: text}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn lowered_expressions() {
+    use argo_runtime::adapter::Form;
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let launch = launch(root, LOOPS);
+    let mut native = load_driver(&launch, Services::default()).unwrap();
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let first = native.start().unwrap().remove(0);
+    let mut printed = outcome(root, &first, 1, 0, &[]);
+    let list = r#"[{"name": "a"}, {"name": "b(1)"}]"#;
+    printed.stdout = list.into();
+    let looped = native.complete(printed).unwrap();
+    let names: Vec<&str> = looped.iter().map(|task| task.name.as_str()).collect();
+    let commands: Vec<&str> = looped.iter().map(|task| task.command[1].as_str()).collect();
+    let values = serde_json::Map::from_iter([("steps.gen.outputs.result".into(), json!(list))]);
+    let mut evaluate = |text: &str, form, site: &str, values: &serde_json::Map<String, Json>| {
+        adapter.evaluate(text, form, site, values).unwrap()
+    };
+    let text = "{{steps.gen.outputs.result}}";
+    let items = evaluate(text, Form::Items, "[1].each", &values);
+    assert_eq!(items, json!([{"name": "a"}, {"name": "b(1)"}]));
+    let labels = evaluate(text, Form::Labels, "[1].each", &values);
+    let sequence = r#"{"count": "2", "format": "n%02d"}"#;
+    let counted = evaluate(sequence, Form::Items, "[1].count", &serde_json::Map::new());
+    let counts = evaluate(sequence, Form::Labels, "[1].count", &serde_json::Map::new());
+    let mut expected = Vec::new();
+    for (index, item) in items.as_array().unwrap().iter().enumerate() {
+        let label = labels[index].as_str().unwrap();
+        let mut values = values.clone();
+        values.insert("item".into(), item.clone());
+        let when = "{{steps.gen.outputs.result}} != none";
+        let decided = evaluate(when, Form::Condition, "[1].each", &values);
+        assert_eq!(decided, json!(true));
+        let text = evaluate("{{item.name}}-{{workflow.name}}", Form::Text, "", &values);
+        expected.push((format!("parity[1].each{label}"), text));
+    }
+    for (index, item) in counted.as_array().unwrap().iter().enumerate() {
+        let values = serde_json::Map::from_iter([("item".into(), item.clone())]);
+        let text = evaluate("{{item}}", Form::Text, "", &values);
+        let label = counts[index].as_str().unwrap();
+        expected.push((format!("parity[1].count{label}"), text));
+    }
+    let found: Vec<(String, Json)> = (names.iter().zip(&commands))
+        .map(|(name, command)| ((*name).to_owned(), json!(command)))
+        .collect();
+    assert_eq!(found, expected, "node names and arguments of the loops");
+    let mut results = Vec::new();
+    let mut next = Vec::new();
+    for (position, task) in looped.iter().enumerate() {
+        let mut done = outcome(root, task, 1, 0, &[]);
+        done.stdout = format!("{{\"n\": {position}}}\n");
+        results.push(json!(done.stdout.trim_end()));
+        next = native.complete(done).unwrap();
+    }
+    results.truncate(2);
+    let values = serde_json::Map::from_iter([("steps.each.outputs.result".into(), json!(results))]);
+    let text = evaluate("{{steps.each.outputs.result}}", Form::Text, "", &values);
+    assert_eq!(
+        json!(next[0].command[1]),
+        text,
+        "the results of a loop as JSON"
+    );
+}

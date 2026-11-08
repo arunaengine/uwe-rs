@@ -89,6 +89,21 @@ pub(crate) fn load(
     Adapter::load(&launch, services.clone())
 }
 
+/// The configs of an Argo source: those of its task or native ops, which an argo expr op
+/// substitutes its text with too.
+pub(crate) fn configs_of(document: &wir::Document, source: &str) -> Vec<String> {
+    let ops = document.graphs.iter().flat_map(|graph| &graph.ops);
+    let configs = ops.filter_map(|op| match &op.kind {
+        wir::Kind::Task(wir::Task {
+            builder: Some(TaskBuilder::ArgoTask(task)),
+            ..
+        }) if task.source == source => Some(&task.configs),
+        wir::Kind::Native(native) if native.source == source => Some(&native.configs),
+        _ => None,
+    });
+    configs.into_iter().next().cloned().unwrap_or_default()
+}
+
 /// The value of an argo expr op, substituted by the adapter of its source.
 pub(crate) fn evaluate(
     adapter: &mut Adapter,

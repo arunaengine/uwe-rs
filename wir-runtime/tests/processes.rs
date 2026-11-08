@@ -206,3 +206,80 @@ fn process_tasks() {
         .collect();
     assert_eq!(basenames.len(), 2);
 }
+
+#[test]
+fn round_index() {
+    let file = json!({"file": {}});
+    // The acceptance check holds only when the index is the ordinal of the round.
+    let accept = json!({"language": "groovy", "code": "{ it.index == (it.inputs.n as int) }"});
+    let task = json!({"path": "t", "kind": {"task": {"command": ["echo", {"input": "n"}],
+        "captures": [{"output": "out", "from": {"glob": "*.out"}}], "accept": accept}},
+        "inputs": [port("n", json!("int"), "value")], "outputs": [port("out", file.clone(), "value")]});
+    let body = json!({"name": "body", "inputs": [port("n", json!("int"), "value")], "outputs": [port("out", file.clone(), "value")],
+        "ops": [task], "edges": [edge((None, "n"), (Some("t"), "n")), edge((Some("t"), "out"), (None, "out"))]});
+    let inputs = json!([port("n", json!("int"), "stream")]);
+    let (ys, _) = run(
+        json!({"body": "body"}),
+        inputs,
+        port("out", file, "stream"),
+        body,
+        json!({"n": [0, 1, 2]}),
+    )
+    .unwrap();
+    assert_eq!(
+        ys.as_array().map(Vec::len),
+        Some(3),
+        "each round sees its own index"
+    );
+}
+
+/// Runs `proc` over the stream `n` and the value `k`, which a filter drops, so that it closes
+/// empty; the output `ys`, or why the run failed.
+fn emptied(spec: Json, n_flow: &str, out_flow: &str) -> Result<Json, String> {
+    let folder = tempfile::tempdir().unwrap();
+    let drop = json!({"path": "drop", "kind": {"filter": {"body": {"language": "groovy", "code": "{ false }"}}},
+        "inputs": [port("source", json!("dynamic"), "value")], "outputs": [port("out", json!("dynamic"), "value")]});
+    let proc = json!({"path": "proc", "kind": {"process": spec},
+        "inputs": [port("n", json!("dynamic"), n_flow), port("k", json!("dynamic"), "value")],
+        "outputs": [port("out", json!("dynamic"), out_flow)]});
+    let main = json!({"name": "main", "inputs": [port("n", json!("dynamic"), n_flow), port("k", json!("dynamic"), "value")],
+        "outputs": [port("ys", json!("dynamic"), out_flow)], "ops": [drop, proc],
+        "edges": [edge((None, "k"), (Some("drop"), "source")), edge((None, "n"), (Some("proc"), "n")),
+            edge((Some("drop"), "out"), (Some("proc"), "k")), edge((Some("proc"), "out"), (None, "ys"))]});
+    let document = json!({"wir_version": "0.1", "graphs": [main, pair()], "entry": "main"});
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let values = json!({"n": if n_flow == "stream" { json!([1, 2]) } else { json!(1) }, "k": "x"});
+    std::fs::write(folder.path().join("inputs.json"), values.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        inputs: Some(folder.path().join("inputs.json")),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).map_err(|error| error.message)?;
+    let mut executor = Echoing {
+        root: folder.path().to_owned(),
+        names: Vec::new(),
+    };
+    execute("processes", &mut driver, &mut executor)
+        .into_result()
+        .map_err(|error| error.to_string())?;
+    Ok(driver.results().unwrap())
+}
+
+#[test]
+fn empty_inputs() {
+    let streamed = emptied(json!({"body": "pair"}), "stream", "stream").unwrap();
+    assert_eq!(
+        streamed["ys"],
+        json!([]),
+        "no round runs beside a stream input"
+    );
+    let single = emptied(json!({"body": "pair"}), "value", "value").unwrap();
+    assert_eq!(single, json!({}), "a value output closes empty");
+}

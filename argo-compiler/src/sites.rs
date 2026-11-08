@@ -162,7 +162,7 @@ impl Compiler {
         let Some(raw) = &site.exit else {
             return Ok(built);
         };
-        let looping = !site.with_items.is_empty() || !site.with_param.is_empty();
+        let looping = site.raw.get("withItems").is_some() || !site.with_param.is_empty();
         if looping || site.with_sequence.is_some() {
             return Err(kept(&at, "exit hooks of the rounds of a loop"));
         }
@@ -242,6 +242,11 @@ impl Compiler {
             });
         }
         let looping = rounds.is_some();
+        if looping && site.continue_on != ContinueOn::default() {
+            return fail(
+                "a loop whose rounds continue on failures gives the outputs of the others",
+            );
+        }
         let calls_graph = matches!(target, Target::Graph(..));
         let mut available: Vec<(String, Type)> = (needs.iter())
             .map(|need| (need.port.name.clone(), need.port.r#type.clone()))
@@ -389,7 +394,8 @@ impl Compiler {
         if !site.with_param.is_empty() {
             return Ok(Some(Rounds::Computed(site.with_param.clone())));
         }
-        let text = if !site.with_items.is_empty() {
+        // An empty `withItems` list still loops, over no rounds.
+        let text = if site.raw.get("withItems").is_some() {
             Json::Array(site.with_items.iter().map(crate::json_of).collect()).to_string()
         } else if let Some(sequence) = &site.with_sequence {
             let mut object = serde_json::Map::new();

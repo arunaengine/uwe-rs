@@ -35,6 +35,8 @@ pub(crate) fn ops(network: &Network, main: &mut Json) -> Result<(), Kept> {
                         "code": format!("{function}(*arguments)"),
                         "library": [include],
                         "captures": {"arguments": {"value": arguments}},
+                        // It runs in the run of the main script, with its params and plugins.
+                        "scope": {"source": "main", "start": 0, "end": 0},
                     }},
                     "outputs": [port("out", false)],
                     "effects": ["log", "read_files"],

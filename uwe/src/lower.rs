@@ -182,13 +182,15 @@ fn wdl(
     Ok(lowering)
 }
 
-/// The wir document that an Argo workflow compiles into, with the template files of `-c`.
+/// The wir document that an Argo workflow compiles into, with the template files of `-c`,
+/// from the template that `-entry` names, else its entrypoint.
 fn argo(
     target: &Path,
     arguments: &Arguments,
     base: &Path,
 ) -> Result<argo_compiler::Compiled, Failure> {
-    let compiled = argo_compiler::compile(target, &arguments.configs, base)
+    let entry = arguments.targets.first().map(String::as_str);
+    let compiled = argo_compiler::compile_with(target, &arguments.configs, entry, base)
         .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
     for kept in &compiled.kept {
         eprintln!(

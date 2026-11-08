@@ -71,6 +71,9 @@ pub struct Reduce {
     pub empty: EmptyRule,
     #[serde(default, skip_serializing_if = "FoldNull::is_keep")]
     pub nulls: FoldNull,
+    /// Whether the output is a stream of the value after every item, like nf-boost `scan`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub steps: bool,
 }
 
 /// The rules of a reduce.

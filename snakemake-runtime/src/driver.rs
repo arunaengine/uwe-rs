@@ -2188,63 +2188,11 @@ impl Session {
         services: &[String],
         retry: Option<TaskId>,
     ) -> Result<Option<Task>, DriverError> {
+        let (users, expanded) = self.service_users(job, services)?;
         let planner = self
             .planner
             .as_ref()
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
-        let mut users: Vec<usize> = (self.order.iter().copied())
-            .filter(|user| {
-                (planner.jobs[*user].dependencies.iter())
-                    .any(|(file, producer)| *producer == job && services.contains(file))
-            })
-            .filter(|user| self.needrun.get(user).copied().unwrap_or(false))
-            .collect();
-        let direct_users = users.clone();
-        let mut expanded = false;
-        for user in direct_users {
-            if let Some(component) = self.components.get(&user) {
-                for member in component.iter() {
-                    if !users.contains(member) {
-                        users.push(*member);
-                        expanded = true;
-                    }
-                }
-            }
-        }
-        let mut connected = HashSet::from([job]);
-        for member in &self.order {
-            if planner.jobs[*member]
-                .dependencies
-                .iter()
-                .any(|(_, producer)| connected.contains(producer))
-            {
-                connected.insert(*member);
-            }
-        }
-        let mut required = HashSet::new();
-        let mut pending = users;
-        while let Some(member) = pending.pop() {
-            if required.insert(member) {
-                pending.extend(
-                    planner.jobs[member]
-                        .dependencies
-                        .iter()
-                        .map(|(_, producer)| *producer),
-                );
-            }
-        }
-        let users: Vec<usize> = self
-            .order
-            .iter()
-            .copied()
-            .filter(|member| {
-                *member != job
-                    && connected.contains(member)
-                    && required.contains(member)
-                    && self.needrun.get(member).copied().unwrap_or(false)
-                    && !self.done.contains(member)
-            })
-            .collect();
         let waiting = |user: &usize| {
             planner.jobs[*user].incomplete
                 || planner.jobs[*user]
@@ -2353,6 +2301,73 @@ impl Session {
         self.groups.insert(id, declared);
         self.outstanding += 1;
         Ok(Some(task))
+    }
+
+    /// The jobs that use the `services` of `job` and run in its task, with the jobs that run
+    /// together with them, and whether those came in through groups or pipes.
+    fn service_users(
+        &self,
+        job: usize,
+        services: &[String],
+    ) -> Result<(Vec<usize>, bool), DriverError> {
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
+        let mut users: Vec<usize> = (self.order.iter().copied())
+            .filter(|user| {
+                (planner.jobs[*user].dependencies.iter())
+                    .any(|(file, producer)| *producer == job && services.contains(file))
+            })
+            .filter(|user| self.needrun.get(user).copied().unwrap_or(false))
+            .collect();
+        let direct_users = users.clone();
+        let mut expanded = false;
+        for user in direct_users {
+            if let Some(component) = self.components.get(&user) {
+                for member in component.iter() {
+                    if !users.contains(member) {
+                        users.push(*member);
+                        expanded = true;
+                    }
+                }
+            }
+        }
+        let mut connected = HashSet::from([job]);
+        for member in &self.order {
+            if planner.jobs[*member]
+                .dependencies
+                .iter()
+                .any(|(_, producer)| connected.contains(producer))
+            {
+                connected.insert(*member);
+            }
+        }
+        let mut required = HashSet::new();
+        let mut pending = users;
+        while let Some(member) = pending.pop() {
+            if required.insert(member) {
+                pending.extend(
+                    planner.jobs[member]
+                        .dependencies
+                        .iter()
+                        .map(|(_, producer)| *producer),
+                );
+            }
+        }
+        let users = self
+            .order
+            .iter()
+            .copied()
+            .filter(|member| {
+                *member != job
+                    && connected.contains(member)
+                    && required.contains(member)
+                    && self.needrun.get(member).copied().unwrap_or(false)
+                    && !self.done.contains(member)
+            })
+            .collect();
+        Ok((users, expanded))
     }
 
     fn retry_group(

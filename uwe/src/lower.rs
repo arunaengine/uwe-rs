@@ -33,10 +33,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The wir document that a run with `-lowered` runs instead of a CWL or WDL file, and for WDL
-/// the inputs file of its entry graph. The document is written below the scratch folder,
-/// named by its digest, and the sources keep absolute locations. The values of the run go
-/// to files that only the user reads, which are removed when the last value is dropped.
+/// The wir document that a `-lowered` run runs, below the scratch folder by its digest with
+/// absolute source locations, the WDL inputs file of its entry graph, and the files of the
+/// values of the run, which only the user reads and which go when they are dropped.
 pub fn document(
     target: &Path,
     language: Language,

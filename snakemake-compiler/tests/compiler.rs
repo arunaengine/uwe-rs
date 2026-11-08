@@ -178,7 +178,7 @@ fn compiles_groups() {
 
 /// A job outside a group that makes an input of the group feeds it, whatever its position.
 #[test]
-fn feeds_groups_from_outside() {
+fn feeds_group_inputs() {
     let snakefile = "rule z:\n    input: \"y.txt\", \"w.txt\"\n    output: \"z.txt\"\n    group: \"g\"\n    shell: \"cat {input} > {output}\"\n\nrule y:\n    input: \"x.txt\"\n    output: \"y.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n\nrule x:\n    output: \"x.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule w:\n    output: \"w.txt\"\n    shell: \"touch {output}\"\n";
     let (_folder, compiled, document) = compiled(snakefile);
     assert!(compiled.full(), "{:?}", compiled.kept);
@@ -200,7 +200,7 @@ fn updates_after_readers() {
 /// A group whose jobs run in other images splits into separate tasks in a run, which a group
 /// op cannot, so the workflow stays native.
 #[test]
-fn keeps_groups_of_images() {
+fn keeps_mixed_images() {
     let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
     let (_folder, compiled, _) = compiled(snakefile);
     let reason = compiled.kept.first().map(|kept| kept.reason.as_str());

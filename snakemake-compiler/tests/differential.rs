@@ -383,7 +383,7 @@ fn compiled_targets_match() {
 
 /// A `cwl:` job runs the tasks of its CWL run, as natively.
 #[test]
-fn compiled_cwl_jobs_match() {
+fn cwl_jobs_match() {
     let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: sort\ninputs:\n  input:\n    type: File\n    inputBinding: {position: 1}\nstdout: sorted.txt\noutputs:\n  output:\n    type: stdout\n";
     let snakefile = "rule all:\n    input: \"sorted.txt\"\n\nrule make:\n    output: \"test.txt\"\n    shell: \"echo b > {output}\"\n\nrule a:\n    input: input=\"test.txt\"\n    output: output=\"sorted.txt\"\n    cwl: \"tool.cwl\"\n";
     let compared = compared_with(snakefile, &[], &[("tool.cwl", tool)]);

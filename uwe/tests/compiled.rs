@@ -120,7 +120,7 @@ fn takes_config_inputs() {
 
 /// A Snakefile that stays one native op runs in the launch folder, where its inputs are.
 #[test]
-fn runs_native_parts_in_place() {
+fn starts_in_place() {
     let snakefile = "rule all:\n    input: \"c.txt\"\n\ncheckpoint c:\n    input: \"in.txt\"\n    output: \"c.txt\"\n    shell: \"cp {input} {output}\"\n";
     let (folder, graph) = graph_lowered(snakefile, &[("in.txt", "raw\n")], &[]);
     let nodes = graph["nodes"].as_array().expect("nodes");

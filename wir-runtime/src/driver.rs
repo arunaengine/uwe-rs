@@ -821,9 +821,15 @@ impl WirDriver {
             let (path, at) = (node.path.clone(), call.0);
             let failed = |why| Some(format!("op {path}: {why}"));
             match ending {
-                Ending::Succeeded(results) => {
-                    match typed(&results, &node.op.outputs, &self.document.types, false) {
-                        Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
+                Ending::Succeeded { values, empty } => {
+                    let ports: Vec<wir::Port> = (node.op.outputs.iter())
+                        .filter(|port| !empty.contains(&port.name))
+                        .cloned()
+                        .collect();
+                    match typed(&values, &ports, &self.document.types, false) {
+                        Ok(values) => {
+                            (self.progress).end_with(at, Status::Succeeded, values, empty);
+                        }
                         Err(port) => {
                             let why = failed(format!("output {port} does not fit its type"));
                             self.progress.end(at, Status::Failed, Map::new(), why);

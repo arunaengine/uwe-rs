@@ -189,3 +189,69 @@ fn plan_stream() {
         "the region settles once its plans ended"
     );
 }
+
+#[test]
+fn forwarded_prefix() {
+    let ints = json!({"array": {"items": "int"}});
+    let ys = json!({"name": "ys", "type": "int", "flow": "stream"});
+    let op = json!({"path": "r", "kind": {"dynamic": {"plan": "plan"}},
+        "inputs": [{"name": "plan", "type": "dynamic"}], "outputs": [ys]});
+    let document =
+        json!({"wir_version": "0.1", "graphs": [{"name": "main", "ops": [op]}], "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    let mut progress = Progress::new(
+        plan::plan(&document, &Adapters::default()).unwrap(),
+        Vec::new(),
+    );
+    progress.activate(None).unwrap();
+    let (at, bound) = progress.next(false).unwrap();
+    let Kind::Dynamic(spec) = &progress.node(at).op.kind else {
+        panic!("no region");
+    };
+    let mut region = Region::new(spec.clone(), bound);
+    let emit = json!({"path": "e", "kind": {"emit": {"each": true}},
+        "inputs": [{"name": "source", "type": ints, "default": [1]}], "outputs": [{"name": "out", "type": "int", "flow": "stream"}]});
+    let graph = json!({"name": "p", "outputs": [ys], "ops": [emit],
+        "edges": [{"from": {"op": "e", "port": "out"}, "to": {"port": "ys"}}]});
+    let update = json!({"revision": 0, "graph": graph, "final_plan": true});
+    region
+        .adopt(&mut progress, (&document, &Adapters::default()), at, update)
+        .unwrap();
+    let watcher = ReaderId {
+        owner: "test".into(),
+        input: "ys".into(),
+    };
+    let output = crate::flows::output_stream("r", "ys");
+    progress
+        .streams
+        .subscribe(&output, watcher.clone(), wir::Subscription::All)
+        .unwrap();
+    let produced = crate::flows::output_stream("r/0/e", "out");
+    let failure = crate::streams::Failure {
+        status: Status::Failed,
+        message: "broke".into(),
+        source: "r/0/e".into(),
+    };
+    let batch = crate::streams::StreamBatch {
+        event: 0,
+        items: vec![(produced.clone(), json!(1)), (produced.clone(), json!(2))],
+        ends: vec![(produced, StreamEnd::Error(failure))],
+    };
+    progress.streams.commit(batch).unwrap();
+    assert_eq!(region.forward(&mut progress, at).unwrap_err(), "broke");
+    let mut seen = Vec::new();
+    while let Ok(Read::Item(_)) = progress.streams.peek(&watcher) {
+        seen.extend(
+            progress
+                .streams
+                .consume(std::slice::from_ref(&watcher))
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    assert_eq!(
+        seen,
+        [json!(1), json!(2)],
+        "the prefix leaves before the error"
+    );
+}

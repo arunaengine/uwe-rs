@@ -320,7 +320,13 @@ impl Region {
                     }
                     Read::Pending => break,
                     Read::End(terminal) => {
+                        // The prefix of an attached producer leaves before its error.
                         if let StreamEnd::Error(failure) = terminal.end {
+                            let prefix = std::mem::take(&mut batch);
+                            progress
+                                .streams
+                                .commit(prefix)
+                                .map_err(|error| error.message)?;
                             return Err(failure.message);
                         }
                         item.ended = true;

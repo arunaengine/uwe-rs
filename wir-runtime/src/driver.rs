@@ -746,9 +746,14 @@ impl WirDriver {
 
     /// Finishes a child, once, and binds its results to the node's outputs.
     fn end_child(&mut self, index: usize) {
-        self.ended = true;
         let (at, child) = &mut self.children[index];
         let at = *at;
+        // A block whose op was cancelled already gives no results.
+        if matches!(self.progress.states[at], State::Ended(..)) {
+            child.stop();
+            return;
+        }
+        self.ended = true;
         let finished = child.finish();
         let node = self.progress.node(at);
         let (path, defs) = (&node.path, &self.document.types);
@@ -1175,6 +1180,10 @@ impl Driver for WirDriver {
             return Ok(tasks);
         }
         let index = self.owner(outcome.id)?;
+        // A stopped child of a cancelled op takes no more outcomes.
+        if self.children[index].1.finished() {
+            return self.advance();
+        }
         let last = &mut self.last;
         let tasks = self.children[index].1.complete(outcome, &mut || {
             *last += 1;
@@ -1228,6 +1237,16 @@ impl Driver for WirDriver {
             .flat_map(|(_, child)| child.cancellations())
             .collect();
         tasks.extend(self.dialects.cancellations());
+        // The native blocks of cancelled ops stop with their tasks.
+        for (at, child) in &mut self.children {
+            let cancelled = matches!(
+                self.progress.states[*at],
+                State::Ended(Status::Cancelled, _)
+            );
+            if cancelled && !child.finished() {
+                tasks.extend(child.stop());
+            }
+        }
         // The tasks of ops that a failed process cancelled stop too.
         let cancelled =
             |at: usize| matches!(self.progress.states[at], State::Ended(Status::Cancelled, _));

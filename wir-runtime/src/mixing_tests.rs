@@ -99,6 +99,7 @@ pub struct Fixture {
     pub printer: crate::driver::Printer,
     pub files: PathBuf,
     pub provider: Option<Arc<dyn workflow_graph::Files>>,
+    pub deliveries: crate::publishing::Deliveries,
 }
 
 impl Default for Fixture {
@@ -112,6 +113,7 @@ impl Default for Fixture {
             printer: Default::default(),
             files: PathBuf::from("/nonexistent"),
             provider: None,
+            deliveries: Default::default(),
         }
     }
 }
@@ -127,6 +129,7 @@ impl Fixture {
             printer: &self.printer,
             simulated: false,
             provider: self.provider.as_deref(),
+            deliveries: &self.deliveries,
         }
     }
 }

@@ -30,6 +30,8 @@ pub struct Context<'a> {
     pub simulated: bool,
     /// The files provider of the executor, which gives local paths of task outputs.
     pub provider: Option<&'a dyn workflow_graph::Files>,
+    /// The deliveries that the file effects of stream ops ask the host for.
+    pub deliveries: &'a crate::publishing::Deliveries,
 }
 
 impl Context<'_> {

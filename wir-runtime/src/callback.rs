@@ -159,6 +159,7 @@ mod tests {
             printer: &crate::driver::Printer::default(),
             simulated: false,
             provider: None,
+            deliveries: &Default::default(),
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("next".into());

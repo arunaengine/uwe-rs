@@ -608,3 +608,143 @@ fn report_places() {
         "the graph output takes another place: {targets:?}"
     );
 }
+
+/// Answers the op `think` like a model call, on a wake-up and without a task, and runs the
+/// op `run` as one task that it runs again when the task could not run.
+#[derive(Default)]
+struct Agent {
+    thinking: Option<CallId>,
+    running: Option<(CallId, Task)>,
+}
+
+impl TaskAdapter for Agent {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        if call.frame.path == "think" {
+            self.thinking = Some(call.call);
+            return Ok(Changes::default());
+        }
+        let task = Task {
+            id: TaskId(1),
+            name: "run".into(),
+            ..Task::default()
+        };
+        self.running = Some((call.call, task.clone()));
+        Ok(Changes {
+            tasks: vec![(call.call, task)],
+            ..Changes::default()
+        })
+    }
+
+    fn complete(&mut self, outcome: Outcome) -> Result<Changes, DriverError> {
+        let (call, task) = self.running.clone().unwrap();
+        if outcome.error.is_some() {
+            return Ok(Changes {
+                tasks: vec![(call, task)],
+                ..Changes::default()
+            });
+        }
+        let ending = Ending::Succeeded {
+            values: Map::from_iter([("a".to_owned(), json!("ran"))]),
+            empty: Vec::new(),
+        };
+        Ok(Changes {
+            ended: vec![(call, ending)],
+            ..Changes::default()
+        })
+    }
+
+    fn handles_error(&self, _: TaskId, _: &workflow_graph::ExecuteError) -> bool {
+        true
+    }
+
+    fn wake_at(&self) -> Option<std::time::Instant> {
+        self.thinking.map(|_| std::time::Instant::now())
+    }
+
+    fn wake(&mut self) -> Result<Changes, DriverError> {
+        let Some(call) = self.thinking.take() else {
+            return Ok(Changes::default());
+        };
+        let ending = Ending::Succeeded {
+            values: Map::from_iter([("a".to_owned(), json!("answer"))]),
+            empty: Vec::new(),
+        };
+        Ok(Changes {
+            ended: vec![(call, ending)],
+            ..Changes::default()
+        })
+    }
+}
+
+#[test]
+fn agent_tasks() {
+    let folder = tempfile::tempdir().unwrap();
+    let maps = json!([{"port": "a", "native": "output/0"}]);
+    let op = |path: &str| {
+        let builder = json!({"nextflow_process": {"source": "nf", "entry": "main", "call": path, "outputs": maps}});
+        json!({"path": path, "kind": {"task": {"builder": builder}}, "outputs": [{"name": "a", "type": "string"}]})
+    };
+    let outputs = json!([{"name": "think", "type": "string"}, {"name": "run", "type": "string"}]);
+    let edge = |op: &str| json!({"from": {"op": op, "port": "a"}, "to": {"port": op}});
+    let document = json!({
+        "wir_version": wir::VERSION,
+        "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"}],
+        "graphs": [{"name": "main", "outputs": outputs, "ops": [op("think"), op("run")],
+            "edges": [edge("think"), edge("run")]}],
+        "entry": "main"
+    });
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let mut settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    settings
+        .adapters
+        .register("nextflow_process", |_| Ok(Box::new(Agent::default())));
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    use workflow_graph::Driver as _;
+    let tasks = driver.start().unwrap();
+    assert_eq!(tasks.len(), 1, "the model call asks for no task");
+    assert!(
+        driver.wake_at().is_some(),
+        "the driver wakes for the model call"
+    );
+    assert!(driver.wake().unwrap().is_empty());
+    let error = workflow_graph::ExecuteError::Executor {
+        task: "run".into(),
+        message: "the node was lost".into(),
+    };
+    assert!(
+        driver.handles_error(tasks[0].id, &error),
+        "the adapter hears execution errors"
+    );
+    let lost = Outcome {
+        id: tasks[0].id,
+        attempt: 1,
+        error: Some(workflow_graph::TaskError::System),
+        ..Outcome::default()
+    };
+    let again = driver.complete(lost).unwrap();
+    assert_eq!(
+        again.iter().map(|task| task.id).collect::<Vec<_>>(),
+        [tasks[0].id],
+        "a retry"
+    );
+    let done = Outcome {
+        id: tasks[0].id,
+        attempt: 2,
+        ..Outcome::default()
+    };
+    assert!(driver.complete(done).unwrap().is_empty());
+    driver.finish().unwrap();
+    assert_eq!(
+        driver.results().unwrap(),
+        json!({"think": "answer", "run": "ran"})
+    );
+}

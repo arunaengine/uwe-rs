@@ -3,12 +3,14 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Map, Value as Json};
 use wir::{Kind, Status, Type, TypeDef, resolve};
 
+use crate::control::Truth;
 use crate::plan::{Node, Plan, Source};
+use crate::streams::Streams;
 
 /// Where a node is in its run.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -19,6 +21,18 @@ pub enum State {
     Running(Map<String, Json>),
     /// Ended, with its output values when it succeeded.
     Ended(Status, Map<String, Json>),
+}
+
+/// What a source supplies.
+#[derive(Clone, Debug, PartialEq)]
+enum Supply {
+    /// Not yet.
+    Pending,
+    Bound(Json),
+    /// Closed empty: no value, which is not null.
+    Empty,
+    /// Never, since its producer did not succeed.
+    Never,
 }
 
 /// Whether a waiting node can start.
@@ -39,27 +53,35 @@ pub struct Progress {
     /// Why ops failed, for those failures that no dependency waits for.
     pub failures: Vec<String>,
     defs: Vec<TypeDef>,
-    /// The node statuses that an `after` dependency waits for, so they do not fail the run.
-    handled: Vec<(usize, Status)>,
+    /// The nodes that may handle a failure of a node with a status, once they succeed: a
+    /// `handles` of theirs, or an `after` dependency on that status.
+    candidates: HashMap<(usize, Status), Vec<usize>>,
+    /// The failures that wait for their handlers: the node, its status and why.
+    held: Vec<(usize, Status, String)>,
     /// Why ops inside a call failed, by call: the call reports them when it fails.
     inner: Vec<(usize, String)>,
+    /// The outputs of ended nodes that closed empty.
+    empty: HashSet<(usize, String)>,
+    /// The streams of the run.
+    pub streams: Streams,
 }
 
 impl Progress {
     pub fn new(plan: Plan, defs: Vec<TypeDef>) -> Progress {
-        let handled = (plan.nodes.iter())
-            .flat_map(|node| &node.after)
-            .flat_map(|(dependency, on)| on.iter().map(|status| (*dependency, *status)))
-            .collect();
-        Progress {
+        let mut progress = Progress {
             states: vec![State::Waiting; plan.nodes.len()],
             plan,
             inputs: Map::new(),
             failures: Vec::new(),
             defs,
-            handled,
+            candidates: HashMap::new(),
+            held: Vec::new(),
             inner: Vec::new(),
-        }
+            empty: HashSet::new(),
+            streams: Streams::default(),
+        };
+        progress.adopt(0);
+        progress
     }
 
     pub fn node(&self, at: usize) -> &Node {
@@ -69,10 +91,18 @@ impl Progress {
     /// Takes in the nodes added to the plan from `from` on, like the rounds of a map.
     pub fn adopt(&mut self, from: usize) {
         self.states.resize(self.plan.nodes.len(), State::Waiting);
-        let added = (self.plan.nodes[from..].iter()).flat_map(|node| &node.after);
-        let handled =
-            added.flat_map(|(dependency, on)| on.iter().map(|status| (*dependency, *status)));
-        self.handled.extend(handled.collect::<Vec<_>>());
+        for at in from..self.plan.nodes.len() {
+            let node = &self.plan.nodes[at];
+            let handled = node.after.iter().chain(&node.handles);
+            let failures =
+                handled.flat_map(|(dependency, on)| on.iter().map(|status| (*dependency, *status)));
+            for key in failures
+                .filter(|(_, status)| matches!(status, Status::Failed | Status::Errored))
+                .collect::<Vec<_>>()
+            {
+                self.candidates.entry(key).or_default().push(at);
+            }
+        }
     }
 
     /// The next node that can start, with its input values. On the way it ends the nodes
@@ -88,6 +118,7 @@ impl Progress {
                     State::Running(_)
                         if matches!(self.node(at).op.kind, Kind::Call(_) | Kind::Branch(_)) =>
                     {
+                        changed |= self.forward(at);
                         changed |= self.end_call(at);
                         continue;
                     }
@@ -103,6 +134,14 @@ impl Progress {
                     continue;
                 }
                 match self.readiness(at) {
+                    Readiness::Ready(_)
+                        if matches!(self.node(at).op.kind, Kind::StatusGroup(_)) =>
+                    {
+                        if let Some(status) = self.group_status(at) {
+                            self.end(at, status, Map::new(), None);
+                            changed = true;
+                        }
+                    }
                     Readiness::Wait => {}
                     Readiness::Omit => {
                         self.end(at, Status::Omitted, Map::new(), None);
@@ -145,6 +184,32 @@ impl Progress {
         counts
     }
 
+    /// Why the ops inside a call or a round failed, joined.
+    pub fn reasons(&self, at: usize) -> String {
+        let reasons: Vec<&str> = (self.inner.iter())
+            .filter(|(call, _)| *call == at)
+            .map(|(_, why)| why.as_str())
+            .collect();
+        reasons.join("; ")
+    }
+
+    /// Whether an output of an ended node closed empty.
+    pub fn closed_empty(&self, at: usize, port: &str) -> bool {
+        self.empty.contains(&(at, port.to_owned()))
+    }
+
+    /// Ends a node whose outputs `empty` closed empty, with the values of its other outputs.
+    pub fn end_with(
+        &mut self,
+        at: usize,
+        status: Status,
+        values: Map<String, Json>,
+        empty: Vec<String>,
+    ) {
+        self.empty.extend(empty.into_iter().map(|port| (at, port)));
+        self.end(at, status, values, None);
+    }
+
     /// Ends a node. A failure that no dependency waits for fails the run; one inside a call
     /// fails the call instead.
     pub fn end(
@@ -155,24 +220,58 @@ impl Progress {
         why: Option<String>,
     ) {
         self.states[at] = State::Ended(status, values);
-        let failure = matches!(status, Status::Failed | Status::Errored);
-        if failure && !self.handled.contains(&(at, status)) {
-            let node = self.node(at);
-            let why = why.unwrap_or_else(|| format!("op {} failed", node.path));
-            match node.parent {
+        self.close_streams(at, status, why.as_deref());
+        if matches!(status, Status::Failed | Status::Errored) {
+            let why = why.unwrap_or_else(|| format!("op {} failed", self.node(at).path));
+            self.held.push((at, status, why));
+        }
+        self.settle();
+    }
+
+    /// Drops the held failures that a handler handled by succeeding, and records those whose
+    /// handlers all ended otherwise: a failure that no op handles fails the run, or its call.
+    fn settle(&mut self) {
+        let held = std::mem::take(&mut self.held);
+        for (at, status, why) in held {
+            let handlers = self
+                .candidates
+                .get(&(at, status))
+                .cloned()
+                .unwrap_or_default();
+            let ended = |node: &usize| match &self.states[*node] {
+                State::Ended(status, _) => Some(*status),
+                _ => None,
+            };
+            if handlers
+                .iter()
+                .any(|node| ended(node) == Some(Status::Succeeded))
+            {
+                continue;
+            }
+            if !handlers.iter().all(|node| ended(node).is_some()) {
+                self.held.push((at, status, why));
+                continue;
+            }
+            match self.node(at).parent {
                 Some(call) => self.inner.push((call, why)),
                 None => self.failures.push(why),
             }
         }
     }
 
-    /// The values of the outputs of the entry graph, or the first one that has none.
-    /// A `dynamic` value must fit the type of its port in `ports`.
+    /// The values of the outputs of the entry graph, without those that closed empty, or the
+    /// first one that has none. A `dynamic` value must fit the type of its port in `ports`.
     pub fn outputs(&self, ports: &[wir::Port]) -> Result<Map<String, Json>, String> {
         let mut values = Map::new();
         for (port, source) in &self.plan.outputs {
+            let typed = ports.iter().find(|item| item.name == *port);
+            if typed.is_some_and(|item| !item.flow.is_value()) {
+                values.insert(port.clone(), self.stream_output(port, source)?);
+                continue;
+            }
             match self.value(source) {
-                Ok(Some(value)) => {
+                Supply::Empty => {}
+                Supply::Bound(value) => {
                     let typed = ports.iter().find(|item| item.name == *port);
                     if let Some(typed) = typed.filter(|_| self.unchecked(source))
                         && !wir::fits(&value, &typed.r#type, &self.defs)
@@ -213,12 +312,27 @@ impl Progress {
                 _ => return Readiness::Wait,
             }
         }
+        match node.depends.as_ref().map(|tree| self.control(tree)) {
+            Some(Truth::Pending) => return Readiness::Wait,
+            Some(Truth::False) => return Readiness::Omit,
+            Some(Truth::True) | None => {}
+        }
         let mut bound = Map::new();
         for (port, source) in &node.inputs {
+            let declared = node.op.inputs.iter().find(|item| item.name == *port);
+            if declared.is_some_and(|item| !item.flow.is_value()) {
+                match self.stream_ready(source) {
+                    Ok(Some(())) => continue,
+                    Ok(None) => return Readiness::Wait,
+                    Err(()) => return Readiness::Omit,
+                }
+            }
             let value = match self.value(source) {
-                Ok(Some(value)) => value,
-                Ok(None) => return Readiness::Wait,
-                Err(()) => return Readiness::Omit,
+                Supply::Bound(value) => value,
+                Supply::Pending => return Readiness::Wait,
+                // An op that takes an empty value sees no value for it.
+                Supply::Empty if takes_empty(&node.op.kind) => continue,
+                Supply::Empty | Supply::Never => return Readiness::Omit,
             };
             let value = match node.op.inputs.iter().find(|item| item.name == *port) {
                 Some(item) => {
@@ -247,24 +361,31 @@ impl Progress {
         Readiness::Ready(bound)
     }
 
-    /// The value from a source: `None` while it is not bound yet, an error when it will
-    /// never be bound because its producer did not succeed.
-    fn value(&self, source: &Source) -> Result<Option<Json>, ()> {
+    /// What a source supplies. An absent input of the entry graph, or of a running call, is
+    /// null; an output that an ended node neither bound nor closed empty is never bound.
+    fn value(&self, source: &Source) -> Supply {
         match source {
-            Source::Input(name) => Ok(Some(self.inputs.get(name).cloned().unwrap_or_default())),
-            Source::Null => Ok(Some(Json::Null)),
-            Source::Value(value) => Ok(Some(value.clone())),
+            Source::Input(name) => {
+                Supply::Bound(self.inputs.get(name).cloned().unwrap_or_default())
+            }
+            Source::Null => Supply::Bound(Json::Null),
+            Source::Value(value) => Supply::Bound(value.clone()),
             Source::Call(call, port) => match &self.states[*call] {
-                State::Running(bound) => Ok(Some(bound.get(port).cloned().unwrap_or_default())),
-                _ => Ok(None),
+                State::Running(bound) => {
+                    Supply::Bound(bound.get(port).cloned().unwrap_or_default())
+                }
+                _ => Supply::Pending,
             },
             Source::Output(node, port) => match &self.states[*node] {
                 // A skipped branch binds null to its outputs.
-                State::Ended(Status::Succeeded | Status::Skipped, values) => {
-                    Ok(Some(values.get(port).cloned().unwrap_or_default()))
-                }
-                State::Ended(..) => Err(()),
-                _ => Ok(None),
+                State::Ended(Status::Succeeded | Status::Skipped, values) => match values.get(port)
+                {
+                    Some(value) => Supply::Bound(value.clone()),
+                    None if self.empty.contains(&(*node, port.clone())) => Supply::Empty,
+                    None => Supply::Never,
+                },
+                State::Ended(..) => Supply::Never,
+                _ => Supply::Pending,
             },
         }
     }
@@ -272,6 +393,10 @@ impl Progress {
     /// Ends a call once every op of its graph ended: it succeeds when none of them failed
     /// and every output of the graph is bound.
     fn end_call(&mut self, at: usize) -> bool {
+        if !self.exports_ended(at) {
+            return false;
+        }
+        self.forward(at);
         let mut failed = false;
         for member in (0..self.plan.nodes.len()).filter(|node| self.node(*node).parent == Some(at))
         {
@@ -283,9 +408,18 @@ impl Progress {
         }
         let mut values = Map::new();
         let mut unfit = None;
+        let mut empty = Vec::new();
         for (port, source) in &self.node(at).exports {
+            let ports = &self.node(at).op.outputs;
+            if ports
+                .iter()
+                .any(|item| item.name == *port && !item.flow.is_value())
+            {
+                continue;
+            }
             match self.value(source) {
-                Ok(Some(value)) => {
+                Supply::Empty => empty.push(port.clone()),
+                Supply::Bound(value) => {
                     let ports = &self.node(at).op.outputs;
                     let typed = ports.iter().find(|item| item.name == *port);
                     if let Some(typed) = typed.filter(|_| self.unchecked(source))
@@ -304,7 +438,7 @@ impl Progress {
             return true;
         }
         match failed {
-            false => self.end(at, Status::Succeeded, values, None),
+            false => self.end_with(at, Status::Succeeded, values, empty),
             true => {
                 let reasons: Vec<&str> = (self.inner.iter())
                     .filter(|(call, _)| *call == at)
@@ -384,6 +518,11 @@ impl Progress {
         }
         true
     }
+}
+
+/// Whether an op kind runs on an empty value input.
+fn takes_empty(kind: &Kind) -> bool {
+    matches!(kind, Kind::Emit(_) | Kind::IfEmpty(_))
 }
 
 /// Values in round order as nested arrays of `shape`, one level per number.

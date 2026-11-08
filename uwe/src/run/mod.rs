@@ -230,9 +230,14 @@ fn execute_with(
     let (target, language, arguments) = match arguments.lowered {
         true => {
             let (path, inputs) = crate::lower::document(&target, language, arguments, &setup)?;
-            // A WDL input file becomes one for the entry graph of the lowered document.
+            // A WDL input file and parameters become one file for the entry graph.
+            let params = match inputs {
+                Some(_) => Vec::new(),
+                None => arguments.params.clone(),
+            };
             converted = Arguments {
                 inputs: inputs.or(arguments.inputs.clone()),
+                params,
                 ..arguments.clone()
             };
             (path, Language::Wir, &converted)

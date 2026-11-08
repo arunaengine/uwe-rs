@@ -125,10 +125,14 @@ pub struct Task {
     /// The container image; none runs the command on the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// The argument vector, run without a shell, in a fresh working folder; a task with a
-    /// builder has none.
+    /// The argument vector, run without a shell, in a fresh working folder, unless `shell`; a
+    /// task with a builder has none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub command: Vec<Argument>,
+    /// Whether the arguments form one `/bin/sh` command line, each quoted apart from raw text
+    /// and input values that are not quoted, like CWL `ShellCommandRequirement`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shell: bool,
     /// How each output is read once the command has ended. Every output has one capture.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub captures: Vec<Capture>,
@@ -142,10 +146,29 @@ pub struct Task {
     /// The file in the working folder that standard output goes to, like CWL `stdout`; a
     /// `stdout` capture then reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stdout: Option<String>,
+    pub stdout: Option<FileName>,
     /// The file that standard error goes to, like CWL `stderr`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stderr: Option<String>,
+    pub stderr: Option<FileName>,
+    /// The absolute path of the working folder in the container, like the output folder of
+    /// CWL; without it the runner picks one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workdir: Option<String>,
+    /// The absolute folder that the Files and Directories of the task inputs go to first, in
+    /// the order of the op's inputs, each top-level one in a numbered folder of its own, like
+    /// the input folder of CWL; without it, each goes below `inputs/<port>` when used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staging: Option<String>,
+    /// What the working folder holds before the command starts, like CWL
+    /// `InitialWorkDirRequirement`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<Staged>,
+    /// The environment variables of the command, by name; null sets none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub environment: BTreeMap<String, Content>,
+    /// What standard input reads: a path, or a task input whose File gives its path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stdin: Option<Content>,
     /// The language runtime that builds the task, instead of the command form.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub builder: Option<TaskBuilder>,
@@ -206,16 +229,79 @@ pub struct TaskPatch {
     pub success_codes: Option<Vec<i32>>,
 }
 
+/// One entry of the working folder: a value placed at a path.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Staged {
+    pub value: Content,
+    /// The path in the working folder; without it, a File or Directory keeps its basename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<FileName>,
+    /// Whether the command may change it, in a copy of its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub writable: bool,
+}
+
+/// The value of an entry of the working folder: text, or the value of a task input.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum Content {
+    Text(String),
+    Input { input: String },
+}
+
 /// One command argument: literal text, or the value of a task input.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Argument {
     Text(String),
     /// A scalar becomes its text, a File or Directory its path, an array one argument per
-    /// item, and a null no argument.
+    /// item, and a null no argument. `separator` joins the items of an array into one.
     Input {
         input: String,
+        /// Comes before the value; with it, false and an empty array give no argument and
+        /// true only the prefix, as in CWL.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prefix: Option<String>,
+        /// Whether the prefix is an argument of its own, else joined to the value.
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        separate: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        separator: Option<String>,
+        /// In a shell command, whether the words of the value and prefix are quoted.
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        quote: bool,
     },
+    /// Text that a shell command holds as it is, unquoted; otherwise like text.
+    Raw {
+        raw: String,
+    },
+}
+
+/// The name of a file in the working folder: text, or the string value of a task input, where
+/// null or an empty string names none.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum FileName {
+    Text(String),
+    Input { input: String },
+}
+
+fn separate() -> bool {
+    true
+}
+
+impl Argument {
+    /// An argument of the plain value of an input.
+    pub fn input(name: &str) -> Argument {
+        Argument::Input {
+            input: name.to_owned(),
+            prefix: None,
+            separate: true,
+            separator: None,
+            quote: true,
+        }
+    }
 }
 
 /// How one task output is read. An `optional` capture that matches nothing leaves the
@@ -225,6 +311,10 @@ pub enum Argument {
 pub struct Capture {
     pub output: String,
     pub from: CaptureRule,
+    /// Whether each File it reads holds its text as `contents`, as CWL `loadContents`; a
+    /// file over 64 KiB fails the task.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub load_contents: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub optional: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -247,6 +337,9 @@ pub enum CaptureRule {
     /// Paths in the working folder that match the pattern, sorted by path. No match binds null
     /// to an optional output and fails the task otherwise; several need an array output.
     Glob(String),
+    /// Paths that match any pattern that a task input holds, a string or an array of strings,
+    /// in the order of the patterns and sorted by path for each.
+    Patterns(String),
     Stdout,
     Stderr,
 }
@@ -277,10 +370,9 @@ pub struct Branch {
     pub condition: String,
 }
 
-/// Runs the `body` graph once per round: each round takes items of the array inputs in `over`
-/// and the other inputs as they are. Each output is the array of what the rounds gave, in
-/// round order. `parallelism` limits the rounds that run at once, and `min_success` lets the
-/// map succeed with failed rounds, which give null.
+/// Runs the `body` graph once per round over items of the array inputs in `over`; other inputs
+/// stay as they are. Outputs are arrays of the round results, in round order. `parallelism`
+/// limits rounds at once; `min_success` lets the map succeed with failed rounds, which give null.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Map {
@@ -381,7 +473,7 @@ pub struct Dependency {
 }
 
 /// How an op ended, like the Argo task statuses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Succeeded,

@@ -3,11 +3,12 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{Expression, ScatterMethod, Step, short_name};
+use cwl_parser::model::{ScatterMethod, Step, short_name};
 use wir::{
     ArrayType, Branch, Edge, Expr, ExprLanguage, Flow, Graph, Kind, Map, Op, Port, Scatter, Type,
 };
 
+use crate::tool::Computed;
 use crate::workflow::end;
 use crate::{Lowerer, Scope, blank};
 
@@ -15,7 +16,7 @@ use crate::{Lowerer, Scope, blank};
 const CONDITION: &str = "when";
 
 /// The input of a `valueFrom` expr that holds the value of its step input.
-const SELF: &str = "self";
+pub(crate) const SELF: &str = "self";
 
 /// The suffix of the task input that the `valueFrom` of a tool input fills.
 pub(crate) const VALUE: &str = "valueFrom";
@@ -64,7 +65,7 @@ impl Group {
 
     /// The ports that the group takes from outside, by name, with the type of the op of the
     /// step where it has one.
-    fn inputs(&self) -> Vec<Port> {
+    pub fn inputs(&self) -> Vec<Port> {
         let mut ports: Vec<Port> = Vec::new();
         for op in self.ops.iter().rev() {
             for port in &op.inputs {
@@ -236,12 +237,19 @@ impl Lowerer {
         });
     }
 
-    /// A graph name from `stem` that no graph has yet.
-    pub(crate) fn graph_name(&self, stem: &str) -> String {
+    /// A graph name from `stem` that no graph has or will have, as a graph is added once the
+    /// graphs it calls are.
+    pub(crate) fn graph_name(&mut self, stem: &str) -> String {
         let mut name = stem.to_owned();
-        while name == "main" || self.graphs.iter().any(|graph| graph.name == name) {
-            name = format!("{stem}-{}", self.graphs.len() + 1);
+        let mut number = self.graphs.len() + 1;
+        while name == "main"
+            || self.graphs.iter().any(|graph| graph.name == name)
+            || self.names.contains(&name)
+        {
+            name = format!("{stem}-{number}");
+            number += 1;
         }
+        self.names.push(name.clone());
         name
     }
 }
@@ -298,12 +306,18 @@ fn feeds(group: &Group, inner: &Group) -> Vec<Edge> {
     edges
 }
 
-/// The group of a task whose inputs `values` give their words through `valueFrom`: an expr
-/// `<task>.<input>.valueFrom` each, which sees the task inputs and fills the task input of
-/// that name with text, numbers or a list of them.
-pub(crate) fn computed(mut task: Op, values: &[(String, Expression)], library: &[String]) -> Group {
+/// The group of a task whose inputs `values` fill: an expr `<task>.<port>` each, which sees
+/// the task inputs and fills that task input with text, numbers, files or a list of them.
+pub(crate) fn computed(mut task: Op, values: &[Computed], library: &[String]) -> Group {
     let mut group = Group::of(Vec::new());
-    let words = Type::Union(vec![Type::String, Type::Int, Type::Float]);
+    let file = Type::File(wir::FileType::default());
+    let words = Type::Union(vec![
+        Type::String,
+        Type::Int,
+        Type::Float,
+        file,
+        Type::Directory,
+    ]);
     let words = crate::types::optional(Type::Union(vec![
         words.clone(),
         Type::Array(ArrayType {
@@ -311,36 +325,44 @@ pub(crate) fn computed(mut task: Op, values: &[(String, Expression)], library: &
             nonempty: false,
         }),
     ]));
-    for (name, code) in values {
-        let input = format!("{name}.{VALUE}");
-        let at = format!("{}.{input}", task.path);
+    for value in values {
+        let at = format!("{}.{}", task.path, value.port);
         let kind = Kind::Expr(Expr {
             language: ExprLanguage::Js,
-            code: code.text.clone(),
+            code: value.code.clone(),
             library: library.to_vec(),
             scope: None,
             captures: Default::default(),
         });
         let mut expr = blank(&at, kind, task.origin.clone());
         expr.inputs = task.inputs.clone();
-        if let Some(this) = task.inputs.iter().find(|item| item.name == *name) {
+        let this = value.this.as_ref();
+        if let Some(found) =
+            this.and_then(|name| task.inputs.iter().find(|item| item.name == *name))
+        {
             expr.inputs.push(Port {
                 name: SELF.into(),
-                ..this.clone()
+                ..found.clone()
             });
         }
-        expr.outputs = vec![port("out", words.clone())];
+        let made = value.r#type.clone().unwrap_or_else(|| words.clone());
+        expr.outputs = vec![port("out", made.clone())];
         group.edges.push(Edge {
             from: end(Some(&at), "out"),
-            to: end(Some(&task.path), &input),
+            to: end(Some(&task.path), &value.port),
             read: Default::default(),
         });
-        group.selves.push((at, name.clone()));
+        if let Some(name) = this {
+            group.selves.push((at, name.clone()));
+        }
         group.ops.push(expr);
     }
-    let filled = values
-        .iter()
-        .map(|(name, _)| port(&format!("{name}.{VALUE}"), words.clone()));
+    let filled = (values.iter()).map(|value| {
+        port(
+            &value.port,
+            value.r#type.clone().unwrap_or_else(|| words.clone()),
+        )
+    });
     task.inputs.extend(filled);
     group.ops.push(task);
     group

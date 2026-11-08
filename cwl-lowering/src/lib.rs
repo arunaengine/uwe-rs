@@ -7,9 +7,12 @@ mod defaults;
 mod expression;
 mod group;
 mod links;
+mod outputs;
 mod requirements;
+mod runtime;
 mod tool;
 mod types;
+mod workdir;
 mod workflow;
 
 use std::path::{Path, PathBuf};
@@ -52,22 +55,32 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
         sources: Vec::new(),
         kept: Vec::new(),
         graphs: Vec::new(),
+        names: Vec::new(),
         prefix: String::new(),
     };
     let process = &document.process;
-    let scope = Scope::default().with(&process.requirements, &process.hints);
+    // With an ontology, or prefixes that a job may use, formats match beyond equal text.
+    let unreadable = (document.schemas.iter())
+        .filter_map(|schema| cwl_parser::iri::file_path(schema))
+        .any(|path| !path.is_file());
+    let outer = Scope {
+        ontology: !document.schemas.is_empty() || !document.namespaces.is_empty(),
+        unreadable,
+        ..Scope::default()
+    };
+    let scope = outer.with(&process.requirements, &process.hints);
     let name = process_name(&process.id);
     let main = match &process.class {
         Class::Workflow(workflow) => match lowerer.workflow(process, workflow, &scope, "main") {
             Ok(graph) => graph,
             Err(reason) => {
-                let op = lowerer.native(process, &name, reason)?;
-                single(process, one(op))?
+                let op = lowerer.native(process, &name, reason, &scope)?;
+                single(process, one(op), &scope)?
             }
         },
         _ => {
-            let op = lowerer.op(process, &Scope::default(), &name)?;
-            single(process, op)?
+            let op = lowerer.op(process, &outer, &name)?;
+            single(process, op, &scope)?
         }
     };
     let mut graphs = vec![main];
@@ -93,8 +106,8 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
 }
 
 /// The entry graph of a process that the ops of a group run, with its ports.
-fn single(process: &Process, group: Group) -> Result<Graph, String> {
-    let (inputs, outputs) = boundary(process)?;
+fn single(process: &Process, group: Group, scope: &Scope) -> Result<Graph, String> {
+    let (inputs, outputs) = boundary(process, scope)?;
     let name = group.main().path.clone();
     let mut edges = group.edges.clone();
     for port in &inputs {
@@ -123,6 +136,11 @@ fn one(op: Op) -> Group {
 pub(crate) struct Scope {
     pub requirements: Vec<Requirement>,
     pub hints: Vec<Requirement>,
+    /// Whether the document has `$schemas` or `$namespaces`, so formats may match otherwise
+    /// than by equal text.
+    pub ontology: bool,
+    /// Whether a local file of `$schemas` is missing, which fails CWL format checks.
+    pub unreadable: bool,
 }
 
 impl Scope {
@@ -160,6 +178,8 @@ struct Lowerer {
     kept: Vec<Kept>,
     /// The graphs that call ops run, apart from the entry graph.
     graphs: Vec<Graph>,
+    /// The graph names given out, also to graphs that are not added yet.
+    names: Vec<String>,
     /// The path of the call whose graph is being lowered, like `inner/`, for the kept ops.
     prefix: String,
 }
@@ -175,14 +195,18 @@ impl Lowerer {
             at: entry.clone(),
         });
         let lowered = match &process.class {
-            Class::CommandLineTool(tool) => {
-                tool::lower(process, tool, &scope, &self.base).map(|lowered| {
+            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope, &self.base)
+                .and_then(|lowered| {
                     let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
                     (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
                     op.attributes = lowered.attributes;
-                    group::computed(op, &lowered.values, &scope.library())
-                })
-            }
+                    let library = scope.library();
+                    let group = group::computed(op, &lowered.values, &library);
+                    match lowered.evaluated.is_empty() {
+                        true => Ok(group),
+                        false => self.evaluated(process, group, &lowered.evaluated, &library, path),
+                    }
+                }),
             Class::Workflow(workflow) => self.call(process, workflow, &scope, path).map(one),
             Class::ExpressionTool(tool) => self.expression(process, tool, &scope, path).map(one),
             Class::Operation => Err("this process class has no lowering yet".into()),
@@ -194,12 +218,18 @@ impl Lowerer {
                 }
                 Ok(group)
             }
-            Err(reason) => self.native(process, path, reason).map(one),
+            Err(reason) => self.native(process, path, reason, &scope).map(one),
         }
     }
 
-    /// A native op at `path` that runs a process, kept for `reason`.
-    fn native(&mut self, process: &Process, path: &str, reason: String) -> Result<Op, String> {
+    /// A native op at `path` that runs a process in `scope`, kept for `reason`.
+    fn native(
+        &mut self,
+        process: &Process,
+        path: &str,
+        reason: String,
+        scope: &Scope,
+    ) -> Result<Op, String> {
         let (source, entry) = self.source(process);
         let origin = Some(Origin {
             source: source.clone(),
@@ -210,7 +240,7 @@ impl Lowerer {
                 "{path}: {reason}, and its inline process cannot run alone"
             ));
         }
-        let (inputs, outputs) = boundary(process)?;
+        let (inputs, outputs) = boundary(process, scope)?;
         if (inputs.iter().chain(&outputs)).any(|port| dynamic(&port.r#type)) {
             return Err(format!(
                 "{path}: {reason}, and a native block cannot take Any"
@@ -282,7 +312,8 @@ impl Lowerer {
 }
 
 /// The ports of a process as a whole: an input with a default may be null.
-fn boundary(process: &Process) -> Result<(Vec<Port>, Vec<Port>), String> {
+fn boundary(process: &Process, scope: &Scope) -> Result<(Vec<Port>, Vec<Port>), String> {
+    let named = types::named(scope);
     let port = |name: &str, r#type: Type| Port {
         name: short_name(name).to_owned(),
         r#type,
@@ -291,7 +322,14 @@ fn boundary(process: &Process) -> Result<(Vec<Port>, Vec<Port>), String> {
     };
     let mut inputs = Vec::new();
     for input in &process.inputs {
-        let r#type = types::convert(&input.value_type)
+        let r#type = types::convert(&input.value_type, &named)
+            .map(|r#type| {
+                // A native op checks formats and finds secondary files itself.
+                let formatted = types::formatted(r#type.clone(), &input.format, &named);
+                let r#type = formatted.unwrap_or(r#type);
+                let found = types::secondary(r#type.clone(), &input.secondary_files, true);
+                found.unwrap_or(r#type)
+            })
             .map_err(|why| format!("input {}: {why}", short_name(&input.id)))?;
         let r#type = match input.default {
             Some(_) => types::optional(r#type),
@@ -301,7 +339,7 @@ fn boundary(process: &Process) -> Result<(Vec<Port>, Vec<Port>), String> {
     }
     let mut outputs = Vec::new();
     for output in &process.outputs {
-        let r#type = types::convert(&output.value_type)
+        let r#type = types::convert(&output.value_type, &named)
             .map_err(|why| format!("output {}: {why}", short_name(&output.id)))?;
         outputs.push(port(&output.id, r#type));
     }

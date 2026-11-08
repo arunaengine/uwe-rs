@@ -3,20 +3,48 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod adapter;
 mod argo;
 mod arrays;
+mod buffering;
+mod callback;
 mod child;
+mod collecting;
+mod control;
 pub mod cwl;
 mod driver;
+mod effects;
+mod engine;
 mod expr;
+mod flows;
+mod groovy;
+mod grouping;
 mod inputs;
+mod javascript;
+mod mixing;
 pub mod nextflow;
+#[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
+mod operator;
+mod pairing;
 mod plan;
+mod processes;
+mod python;
+mod reducing;
+mod routing;
+mod selecting;
 pub mod snakemake;
+#[allow(dead_code, reason = "the stream ops of the next commits use it")]
+mod spill;
+mod splitting;
 mod state;
+mod streams;
 mod task;
+mod transforms;
+mod values;
 mod wdl;
+mod wdl_closure;
 mod wdl_expr;
+mod writing;
 
 pub use child::{Block, Child};
-pub use driver::{Repositories, Settings, WirDriver, driver};
+pub use driver::{Printer, Repositories, Settings, WirDriver, driver};

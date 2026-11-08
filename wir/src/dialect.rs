@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::closure::{Binding, Scope};
 use crate::document::Language;
+use crate::reserved::RuleKey;
 
 /// Who builds the task. The language keeps its own task construction, acceptance, retry,
 /// publication and cache key; it does not run the workflow around the task.
@@ -73,11 +74,32 @@ pub struct PortMap {
     pub native: String,
 }
 
-/// A Snakemake job: a rule with its wildcard values.
+/// A Snakemake job: a rule with its wildcard values, and the settings of the plan it is in.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuleTask {
     pub task: TaskRef,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub wildcards: BTreeMap<String, String>,
+    /// The other jobs that run in the same task, as a group job, a pipe or a service.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub group: Vec<RuleKey>,
+    /// The targets of the plan when there are several, `entry` first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<String>,
+    /// The id of a source with the config values of the command line, `--config`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_values: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub until: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub omit_from: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forcerun: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub forceall: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }

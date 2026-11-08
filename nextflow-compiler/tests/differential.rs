@@ -12,11 +12,11 @@ use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
-    pipelines: 10,
-    full: 10,
-    native: 10,
-    compiled: 10,
-    same: 10,
+    pipelines: 11,
+    full: 11,
+    native: 11,
+    compiled: 11,
+    same: 11,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -89,6 +89,10 @@ const PIPELINES: &[(&str, &str)] = &[
     (
         "files",
         "workflow {\n    GREET(channel.fromPath(\"${projectDir}/*.csv\").map { [[id: it.baseName], it.baseName] })\n    COUNT(channel.fromFilePairs(\"${projectDir}/*_{1,2}.fq\").map { it[1] }, 'pairs')\n}",
+    ),
+    (
+        "optional",
+        "process OPT {\n    input:\n    val x\n    output:\n    path 'a.txt', emit: a\n    path 'b.txt', optional: true, emit: b\n    script:\n    'touch a.txt'\n}\nworkflow {\n    OPT(channel.of(1, 2))\n    GREET(OPT.out.b.count().map { [[id: \"n${it}\"], \"n${it}\"] })\n}",
     ),
     (
         "closures",

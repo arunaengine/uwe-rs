@@ -170,14 +170,16 @@ impl Tasks {
                 let mut known = self.names.lock().unwrap_or_else(PoisonError::into_inner);
                 known.extend(names);
                 drop(known);
-                let given = ports.into_iter().filter_map(|(index, port)| {
-                    let value = outputs.get(index).cloned().flatten()?;
-                    Some((port, value))
-                });
-                Ending::Succeeded {
-                    values: given.collect(),
-                    empty: Vec::new(),
+                // A missing optional output closes empty, as Nextflow emits nothing for it.
+                let mut values = Map::new();
+                let mut empty = Vec::new();
+                for (index, port) in ports {
+                    match outputs.get(index).cloned().flatten() {
+                        Some(value) => drop(values.insert(port, value)),
+                        None => empty.push(port),
+                    }
                 }
+                Ending::Succeeded { values, empty }
             }
             Completed::Ignored(message) => Ending::Ignored(message),
             Completed::Failed(message) => Ending::Failed(message),

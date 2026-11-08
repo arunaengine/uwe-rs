@@ -248,6 +248,11 @@ pub(crate) fn piece(
             }
             streams("buffer", payload)
         }
+        // A mix of one channel, like a topic with one writer, passes its items on.
+        Kind::Mix | Kind::Concat if place.values_in.len() == 1 => {
+            let keep = written("{ it -> true }".into());
+            unary(path, "filter", json!({"body": keep}), true, true)
+        }
         Kind::Mix => several(path, "mix", json!({}), place, true),
         Kind::Concat => several(path, "concat", json!({}), place, true),
         Kind::Merge(callback) => {

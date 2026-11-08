@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod adapter;
 mod archives;
 mod checks;
 mod child;
@@ -56,6 +57,7 @@ use workflow_graph::{
 
 pub use git::{Checkout, GitClient, GitSource};
 pub use library::{Document, Kind, Library, load_file, repository_of};
+pub use node::Facts;
 pub use sync::SharedLocks;
 pub use validate::{Rejection, validate};
 

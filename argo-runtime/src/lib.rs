@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub mod adapter;
 mod archives;
 mod checks;
 mod child;
@@ -56,6 +57,7 @@ use workflow_graph::{
 
 pub use git::{Checkout, GitClient, GitSource};
 pub use library::{Document, Kind, Library, load_file, repository_of};
+pub use node::Facts;
 pub use sync::SharedLocks;
 pub use validate::{Rejection, validate};
 
@@ -169,13 +171,8 @@ impl ArgoDriver {
         let mut values = serde_json::Map::new();
         if let Some(root) = run.root {
             let outputs = &run.nodes[root].outputs;
-            for (name, value) in &outputs.parameters {
-                values.entry(name).or_insert(value.as_str().into());
-            }
-            for artifact in &outputs.artifacts {
-                values
-                    .entry(&artifact.name)
-                    .or_insert(artifact_value(artifact));
+            for (name, value) in output_values(outputs) {
+                values.entry(name).or_insert(value);
             }
         }
         for (key, value) in &run.globals {
@@ -190,6 +187,16 @@ impl ArgoDriver {
         }
         Some(serde_json::Value::Object(values))
     }
+}
+
+/// The output parameters of a node as texts and its output artifacts as Files or Directories,
+/// by name, in the order of the node.
+fn output_values(outputs: &node::NodeOutputs) -> Vec<(String, serde_json::Value)> {
+    let parameters =
+        (outputs.parameters.iter()).map(|(name, value)| (name.clone(), value.as_str().into()));
+    let artifacts = (outputs.artifacts.iter())
+        .map(|artifact| (artifact.name.clone(), artifact_value(artifact)));
+    parameters.chain(artifacts).collect()
 }
 
 /// An output artifact as a File, or a Directory where it is one, named by the basename of its
@@ -373,6 +380,28 @@ pub fn driver_with(launch: &Launch, services: Services) -> Result<Box<dyn Driver
 
 /// The driver for an Argo workflow file with the services of its host, once it is loaded.
 pub fn load_driver(launch: &Launch, services: Services) -> Result<ArgoDriver, DriverError> {
+    let (document, library, options) = load_launch(launch, services)?;
+    let mut driver = ArgoDriver::new(document, Rc::new(library), options);
+    if !launch.simulated {
+        let folder = launch
+            .output_dir
+            .clone()
+            .unwrap_or_else(|| "results".into());
+        // An address of a storage provider, like `s3://bucket/results`, stays as it is.
+        let address = folder.to_string_lossy().contains("://");
+        driver.results = Some(match address {
+            true => folder,
+            false => std::path::absolute(&folder).unwrap_or(folder),
+        });
+    }
+    Ok(driver)
+}
+
+/// The document that a launch runs, its library of templates and the options of its run.
+fn load_launch(
+    launch: &Launch,
+    services: Services,
+) -> Result<(Rc<Document>, Library, Options), DriverError> {
     let target = &launch.target;
     if target.is_dir() {
         return Err(DriverError::new(format!(
@@ -421,20 +450,7 @@ pub fn load_driver(launch: &Launch, services: Services) -> Result<ArgoDriver, Dr
         policy: services.policy,
         locks: services.locks,
     };
-    let mut driver = ArgoDriver::new(document, Rc::new(library), options);
-    if !launch.simulated {
-        let folder = launch
-            .output_dir
-            .clone()
-            .unwrap_or_else(|| "results".into());
-        // An address of a storage provider, like `s3://bucket/results`, stays as it is.
-        let address = folder.to_string_lossy().contains("://");
-        driver.results = Some(match address {
-            true => folder,
-            false => std::path::absolute(&folder).unwrap_or(folder),
-        });
-    }
-    Ok(driver)
+    Ok((document, library, options))
 }
 
 /// The parameters of a parameter file, a YAML or JSON mapping, as `argo submit

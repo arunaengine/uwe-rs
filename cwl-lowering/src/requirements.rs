@@ -109,6 +109,7 @@ pub fn known(class: &RequirementClass) -> bool {
             | RequirementClass::ScatterFeature
             | RequirementClass::MultipleInputFeature
             | RequirementClass::StepInputExpression
+            | RequirementClass::SchemaDef { .. }
     )
 }
 

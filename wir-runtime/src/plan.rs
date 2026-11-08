@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use serde_json::{Map, Value as Json};
-use wir::{Call, Document, Endpoint, Graph, Kind, Op, Scatter, Status};
+use wir::{Call, Document, Effect, Endpoint, Graph, Kind, Op, Scatter, Status};
 use workflow_graph::DriverError;
 
 use crate::adapter::Adapters;
@@ -97,7 +97,17 @@ pub fn plan(document: &Document, adapters: &Adapters) -> Result<Plan, DriverErro
 /// Refuses the settings that this runner cannot honour, in every graph that a run of the
 /// entry graph can reach, so that none of them is dropped silently.
 fn refuse(document: &Document, adapters: &Adapters) -> Result<(), DriverError> {
-    let mut reached = vec![document.entry.as_str()];
+    refuse_from(document, adapters, &document.entry)
+}
+
+/// Refuses the settings that this runner cannot honour in the graph `start` and every graph
+/// it reaches, like the graph of a plan update.
+pub fn refuse_from(
+    document: &Document,
+    adapters: &Adapters,
+    start: &str,
+) -> Result<(), DriverError> {
+    let mut reached = vec![start];
     let mut next = 0;
     while let Some(name) = reached.get(next).copied() {
         next += 1;
@@ -112,6 +122,7 @@ fn refuse(document: &Document, adapters: &Adapters) -> Result<(), DriverError> {
                 Kind::Branch(branch) => Some(branch.body.as_str()),
                 Kind::Map(map) => Some(map.body.as_str()),
                 Kind::Process(process) => Some(process.body.as_str()),
+                Kind::Loop(looped) => Some(looped.body.as_str()),
                 _ => None,
             };
             if let Some(body) = body.filter(|body| !reached.contains(body)) {
@@ -132,8 +143,16 @@ fn refusal(op: &Op, adapters: &Adapters) -> Option<&'static str> {
         op.kind,
         Kind::View(_) | Kind::Observe(_) | Kind::CollectFile(_) | Kind::Split(_)
     );
-    if !op.effects.is_empty() && !runs && !effectful {
-        return Some("only task, native and effect ops have effects");
+    // A check at the start of a run, like Nextflow `validateParameters`, may print and read.
+    let checks = matches!(op.kind, Kind::Expr(_))
+        && (op.effects.iter()).all(|effect| {
+            matches!(
+                effect,
+                Effect::Log | Effect::ReadFiles | Effect::Nondeterministic
+            )
+        });
+    if !op.effects.is_empty() && !runs && !effectful && !checks {
+        return Some("only task, native, effect and check ops have effects");
     }
     if let Kind::Map(map) = &op.kind
         && map.parallelism == Some(0)
@@ -185,6 +204,8 @@ fn supported(kind: &Kind) -> bool {
             | Kind::CollectFile(_)
             | Kind::StatusGroup(_)
             | Kind::Process(_)
+            | Kind::Loop(_)
+            | Kind::Dynamic(_)
     )
 }
 
@@ -209,6 +230,9 @@ fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
         {
             Some("uwe does not run expressions with a scope or captures yet")
         }
+        Kind::Dynamic(_) if op.outputs.iter().any(|port| !port.flow.is_value()) => {
+            Some("uwe does not run stream outputs of dynamic regions yet")
+        }
         Kind::Task(task)
             if task
                 .builder
@@ -216,14 +240,6 @@ fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
                 .is_some_and(|built| !adapters.knows(built)) =>
         {
             Some("uwe does not run dialect tasks yet")
-        }
-        Kind::Task(task) if task.accept.is_some() || task.retry.is_some() => {
-            Some("uwe does not run task acceptance and retry rules yet")
-        }
-        Kind::Task(task)
-            if (task.captures.iter()).any(|item| item.optional || item.arity.is_some()) =>
-        {
-            Some("uwe does not run optional captures and arity yet")
         }
         _ => None,
     }
@@ -367,9 +383,25 @@ fn instantiate(
     call: Option<usize>,
     nodes: &mut Vec<Node>,
 ) -> Result<Vec<(String, Source)>, DriverError> {
+    extend(document, graph, prefixes, (call, &HashMap::new()), nodes)
+}
+
+/// Adds the ops of `graph` as [`instantiate`] does, apart from those that `reuse` maps to a
+/// node already there by op path, like the started instances of a dynamic region.
+pub fn extend(
+    document: &Document,
+    graph: &Graph,
+    prefixes: (&str, &str),
+    (call, reuse): (Option<usize>, &HashMap<String, usize>),
+    nodes: &mut Vec<Node>,
+) -> Result<Vec<(String, Source)>, DriverError> {
     let (prefix, steps) = prefixes;
     let mut index = HashMap::new();
     for op in &graph.ops {
+        if let Some(node) = reuse.get(&op.path) {
+            index.insert(op.path.as_str(), *node);
+            continue;
+        }
         if op.kind.is_reserved() && !supported(&op.kind) {
             let message = format!("op {prefix}{}: uwe does not run this op kind yet", op.path);
             return Err(DriverError::unsupported(message));
@@ -399,7 +431,7 @@ fn instantiate(
         },
     };
     let mut outputs = Vec::new();
-    for op in &graph.ops {
+    for op in graph.ops.iter().filter(|op| !reuse.contains_key(&op.path)) {
         let at = index[op.path.as_str()];
         let inputs = (op.inputs.iter())
             .map(|port| {

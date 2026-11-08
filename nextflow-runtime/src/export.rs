@@ -11,7 +11,7 @@ use crate::adapter::Call;
 pub use nextflow_plugins::observer::Process;
 
 /// The network of a run before it starts.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Network {
     pub channels: Vec<Channel>,
     pub nodes: Vec<Node>,

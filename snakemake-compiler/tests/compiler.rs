@@ -157,6 +157,16 @@ fn feeds_groups_from_outside() {
     assert!(fed, "{edges:?}");
 }
 
+/// A job that updates a file runs after the jobs that read the file as it was before.
+#[test]
+fn updates_after_readers() {
+    let snakefile = "rule all:\n    input: \"out.txt\", \"test.txt\"\n\nrule b:\n    input: before_update(\"test.txt\")\n    output: \"out.txt\"\n    shell: \"cp {input} {output}\"\n\nrule a:\n    input: \"in.txt\"\n    output: update(\"test.txt\")\n    shell: \"cat {input} >> {output}\"\n";
+    let (_folder, compiled, document) = compiled(snakefile);
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let after = &op(&document, "a")["after"];
+    assert_eq!(*after, json!([{"op": "b", "on": ["succeeded"]}]));
+}
+
 #[test]
 fn compiles_planning_commands() {
     let snakefile = "shell(\"echo planned\")\n\nrule all:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n";

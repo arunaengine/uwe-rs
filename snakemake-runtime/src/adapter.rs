@@ -38,7 +38,8 @@ pub struct PlannedJob {
     pub outputs: Vec<JobFile>,
     /// The inputs that other jobs make, by input index, with that job and its output index.
     pub producers: Vec<Producer>,
-    /// Jobs that end before it besides its producers: checkpoints its input functions read.
+    /// Jobs that end before it besides its producers: checkpoints its input functions read,
+    /// and the jobs that read a file of its `update()` outputs as it was before.
     pub after: Vec<usize>,
     pub checkpoint: bool,
     /// The rule of its job or group job that a target of the run names, like the first rule
@@ -235,7 +236,23 @@ impl Session {
                         .find(|other| planner.jobs[**other].output_files().contains(file))?;
                     position.get(maker).map(|(job, _)| *job)
                 }));
+                // An `update()` waits for the jobs that read the file as it was before.
+                let updated: Vec<&str> = (entry.output.values.iter())
+                    .filter(|value| value.tag("update").is_some())
+                    .filter_map(Value::as_str)
+                    .collect();
+                let readers = (self.order.iter()).filter(|reader| {
+                    !members.contains(reader)
+                        && (planner.jobs[**reader].input.values.iter()).any(|value| {
+                            value.tag("before_update").is_some()
+                                && value.as_str().is_some_and(|file| updated.contains(&file))
+                        })
+                });
+                after
+                    .extend(readers.filter_map(|reader| position.get(reader).map(|(job, _)| *job)));
             }
+            after.sort_unstable();
+            after.dedup();
             let native = members.iter().find_map(|member| {
                 let entry = &planner.jobs[*member];
                 if entry.incomplete {

@@ -27,7 +27,9 @@ pub fn evaluate(
 ) -> Result<Json, String> {
     let version = version(document, op);
     let defs = &document.types;
-    let command = spec.code.trim_start().starts_with("command");
+    let rest = spec.code.trim_start().strip_prefix("command");
+    // A name like `command_prefix` starts an expression, not a command section.
+    let command = rest.is_some_and(|rest| rest.trim_start().starts_with(['<', '{']));
     let mut scope = Scope {
         written: command.then(Vec::new),
         ..Scope::default()
@@ -455,6 +457,13 @@ mod tests {
         let library = ["Float half = n / 2", "Float x = n"];
         let text = run("\"~{x} ~{half}\"", &library, inputs, json!("string"));
         assert_eq!(text, Ok(json!("2.000000 1.000000")));
+    }
+
+    #[test]
+    fn names_start_expressions() {
+        let inputs = json!({"command_prefix": {"type": "string", "value": "out"}});
+        let text = run("command_prefix + \".txt\"", &[], inputs, json!("string"));
+        assert_eq!(text, Ok(json!("out.txt")));
     }
 
     #[test]

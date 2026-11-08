@@ -333,7 +333,8 @@
             "code": { "type": "string" },
             "library": { "$ref": "#/$defs/texts" },
             "scope": { "$ref": "#/$defs/scope" },
-            "captures": { "$ref": "#/$defs/captures" }
+            "captures": { "$ref": "#/$defs/captures" },
+            "form": { "enum": ["text", "condition", "items", "labels"] }
           }
         },
         "map": {
@@ -852,7 +853,7 @@
         "sort": { "$ref": "#/$defs/sort" }
       }
     },
-    "expr_language": { "enum": ["js", "javascript", "groovy", "python", "wdl"] },
+    "expr_language": { "enum": ["js", "javascript", "groovy", "python", "wdl", "argo"] },
     "value_rules": { "enum": ["wir", "groovy", "python", "wdl", "javascript"] },
     "scope": {
       "type": "object",

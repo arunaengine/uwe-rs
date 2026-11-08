@@ -123,6 +123,7 @@ impl Lowerer {
                 library,
                 scope: None,
                 captures: Default::default(),
+                form: None,
             });
             let mut op = blank(path, kind, at.clone());
             op.inputs = inputs.clone();

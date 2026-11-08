@@ -166,8 +166,8 @@ pub struct WirDriver {
     /// Counts the calls of the engine, so that a planner hears of an instance after the call
     /// it ended in, once its files were delivered.
     turn: u64,
-    /// Whether the hooks of the document ran.
-    hooked: bool,
+    /// Whether the `complete` hooks, and the `error` hooks, of the document ran.
+    hooked: (bool, bool),
     texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
@@ -245,7 +245,7 @@ impl WirDriver {
             owners: HashMap::new(),
             dialects: adapter::Dialects::default(),
             turn: 0,
-            hooked: false,
+            hooked: (false, false),
             texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
@@ -1049,12 +1049,11 @@ impl WirDriver {
         Ok(moved || forwarded)
     }
 
-    /// Runs the hooks of the document once, at the end of the run: the `complete` hooks, and
-    /// the `error` hooks when it failed; why hooks failed.
+    /// Runs the hooks of the document at the end of the run, each kind once: the `complete`
+    /// hooks, and the `error` hooks when it failed, also after `finish`; why hooks failed.
     fn run_hooks(&mut self, failure: Option<&str>) -> Vec<String> {
-        if std::mem::replace(&mut self.hooked, true) {
-            return Vec::new();
-        }
+        let complete = !std::mem::replace(&mut self.hooked.0, true);
+        let error = failure.is_some() && !std::mem::replace(&mut self.hooked.1, true);
         let context = engine::Context {
             document: &self.document,
             base: &self.base,
@@ -1070,8 +1069,8 @@ impl WirDriver {
         let mut problems = Vec::new();
         for (index, hook) in self.document.hooks.iter().enumerate() {
             let closure = match hook {
-                wir::Hook::Complete(closure) => closure,
-                wir::Hook::Error(closure) if failure.is_some() => closure,
+                wir::Hook::Complete(closure) if complete => closure,
+                wir::Hook::Error(closure) if error => closure,
                 _ => continue,
             };
             let body = wir::Body::Closure(closure.clone());

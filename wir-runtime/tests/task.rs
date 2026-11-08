@@ -200,6 +200,22 @@ fn binds_task_outputs() {
 }
 
 #[test]
+fn delivers_like_wdl() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut executor = scripted(folder.path(), |_| 0, true);
+    let (driver, execution) = run(folder.path(), &mut executor, |document| {
+        document["sources"][0]["language"] = json!("wdl");
+    });
+    execution.into_result().unwrap();
+    let top = &workflow_graph::Driver::results(&driver).unwrap()["top"];
+    let location = top["location"].as_str().unwrap();
+    assert!(
+        location.ends_with("/out/top/top.stdout"),
+        "a WDL output goes to a folder of its name: {location}"
+    );
+}
+
+#[test]
 fn retries_failed_tasks() {
     let folder = tempfile::tempdir().unwrap();
     let mut executor = scripted(folder.path(), |_| 1, true);

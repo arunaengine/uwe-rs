@@ -1032,6 +1032,7 @@
         "stdin": { "$ref": "#/$defs/file_name" },
         "library": { "type": "array", "items": { "type": "string" } },
         "results": { "type": "string" },
+        "limits": { "$ref": "#/$defs/name" },
         "files": {
           "type": "array",
           "items": {

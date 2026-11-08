@@ -131,6 +131,8 @@ The stream log is not a replacement for the task cache or resume database. This 
 - `"empty"`: no paths, for a capture with `code`.
 - `"results"`: the field of the output in the object of the `results` file; null when the command writes no such file.
 
+`limits` names a task input whose value, an object, sets the resources of the task over its attributes: `cpus`, `memory` and `disk` in bytes, `gpus`, and `time` in seconds. A field that is null or missing keeps what the attributes set. A value that is no object sets nothing.
+
 `results` names a file in the working folder, like CWL `cwl.output.json`. When the command writes it, its JSON object gives every output in place of the captures: the field of its name, null when it has none. A File or Directory there with a `path`, or else a `location`, names a place in the container, absolute or from the working folder, and becomes the file that the task made or the input staged there. A runner lists the file among the outputs of the task and as its output manifest.
 
 A capture with `load_contents` puts the text of each File it reads into `contents`, like CWL `loadContents`; a file over 64 KiB fails the task. The output must hold Files. With `listing`, each Directory it reads holds its listing, `shallow` or `deep` as with a `load` op.

@@ -111,6 +111,7 @@ impl<'d> Checker<'d> {
         if let Some(name) = task.results.as_ref().filter(|name| !inside(name)) {
             self.report(at, Problem::Outside(name.clone()));
         }
+        used.extend(&task.limits);
         let given = task.environment.values().chain(&task.stdin);
         for content in given {
             if let Content::Input { input } = content {

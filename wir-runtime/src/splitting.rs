@@ -59,8 +59,10 @@ impl Splitting {
                 path: json.path.clone(),
             },
         };
-        // One record a chunk is the record itself, more are an array or a joined text.
-        let by = (self.spec.size > 1).then_some(self.spec.size as usize);
+        // One record a chunk is the record itself, more are an array or a joined text; the
+        // splitter joins JSON records as text, so `pieces` groups them.
+        let json = matches!(self.spec.format, SplitFormat::Json(_));
+        let by = (self.spec.size > 1 && !json).then_some(self.spec.size as usize);
         Splitter {
             format,
             by,
@@ -203,6 +205,10 @@ impl Splitting {
                 (Some(header), Json::String(text)) => Json::String(format!("{header}{text}")),
                 (_, value) => value,
             });
+        }
+        if matches!(self.spec.format, SplitFormat::Json(_)) && self.spec.size > 1 {
+            let size = self.spec.size as usize;
+            pieces = (pieces.chunks(size).map(|group| Json::Array(group.to_vec()))).collect();
         }
         let pieces = match &self.spec.files {
             Some(files) => self.written(turn, context, (files, mate), source, pieces)?,
@@ -655,6 +661,15 @@ mod files {
             items,
             Ok(vec![Json::Null, json!({"x": 2})]),
             "null elements stay"
+        );
+        let grouped = split(
+            json!({"format": {"json": {}}, "size": 2}),
+            &[json!("[1,2,3]")],
+        );
+        assert_eq!(
+            grouped,
+            Ok(vec![json!([1, 2]), json!([3])]),
+            "records grouped into arrays"
         );
         let missing = split(json!({"format": {"json": {"path": "a[3]"}}}), &[document]);
         assert!(

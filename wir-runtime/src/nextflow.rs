@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError};
 
@@ -12,7 +12,7 @@ use nextflow_runtime::driver::{Nextflow, Settings};
 use nextflow_runtime::{Adapter, Completed, Prepared};
 use serde_json::{Map, Value as Json, json};
 use wir::{Binding, Port, Type, TypeDef};
-use workflow_graph::{Delivery, DriverError, Launch, Outcome, TaskId};
+use workflow_graph::{Delivery, DriverError, Launch, Outcome, Task, TaskId};
 
 use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use crate::child::Block;
@@ -130,6 +130,7 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
         deliveries: Vec::new(),
         names: options.names.clone(),
         folder: (opening.source.parent()).map_or_else(PathBuf::new, Path::to_owned),
+        limits: Limits::default(),
     }))
 }
 
@@ -147,9 +148,89 @@ struct Tasks {
     names: Arc<std::sync::Mutex<HashMap<String, String>>>,
     /// The folder of the main script, which the scripts of processes are named from.
     folder: PathBuf,
+    limits: Limits,
+}
+
+/// The `maxForks` and `fair` rules of the process calls: the tasks held back while a call runs
+/// as many as it may, and the endings held back until those of the earlier tasks went.
+#[derive(Default)]
+struct Limits {
+    /// The call name and the task index of each op instance.
+    rounds: HashMap<CallId, (String, u32)>,
+    natives: HashMap<String, nextflow_runtime::Call>,
+    running: HashMap<String, usize>,
+    held: HashMap<String, VecDeque<(CallId, Task)>>,
+    /// Per call: the index of the next ending to give, and the endings that wait for it.
+    waiting: HashMap<String, (u32, BTreeMap<u32, (CallId, Ending)>)>,
 }
 
 impl Tasks {
+    /// The `maxForks` and `fair` of the call of an op instance.
+    fn rules(&self, call: CallId) -> (String, u32, Option<usize>, bool) {
+        let (name, index) = self.limits.rounds.get(&call).cloned().unwrap_or_default();
+        let (forks, fair) = (self.limits.natives.get(&name))
+            .map_or((None, false), |native| self.adapter.limits(native));
+        (name, index, forks, fair)
+    }
+
+    /// The task of an op instance, or none while its call runs as many tasks as it may.
+    fn launch(&mut self, call: CallId, task: Task) -> Vec<(CallId, Task)> {
+        let (name, _, forks, _) = self.rules(call);
+        let running = self.limits.running.entry(name.clone()).or_default();
+        if forks.is_some_and(|forks| *running >= forks) {
+            self.limits
+                .held
+                .entry(name)
+                .or_default()
+                .push_back((call, task));
+            return Vec::new();
+        }
+        *running += 1;
+        vec![(call, task)]
+    }
+
+    /// The changes when an op instance ends: the held tasks that may run now, and the endings
+    /// that may go, in task order for a `fair` call.
+    fn finish(&mut self, call: CallId, ending: Ending, ran: bool) -> Changes {
+        let (name, index, forks, fair) = self.rules(call);
+        let mut tasks = Vec::new();
+        if ran {
+            let running = self.limits.running.entry(name.clone()).or_default();
+            *running = running.saturating_sub(1);
+            while forks.is_none_or(|forks| self.limits.running[&name] < forks) {
+                let held = self.limits.held.get_mut(&name);
+                let Some((next, task)) = held.and_then(VecDeque::pop_front) else {
+                    break;
+                };
+                *self.limits.running.entry(name.clone()).or_default() += 1;
+                tasks.push((next, task));
+            }
+        }
+        self.limits.rounds.remove(&call);
+        let ended = match fair {
+            false => vec![(call, ending)],
+            true => {
+                let (next, waiting) = self
+                    .limits
+                    .waiting
+                    .entry(name)
+                    .or_insert((1, BTreeMap::new()));
+                waiting.insert(index, (call, ending));
+                let mut ended = Vec::new();
+                while let Some(given) = waiting.remove(next) {
+                    ended.push(given);
+                    *next += 1;
+                }
+                ended
+            }
+        };
+        Changes {
+            tasks,
+            ended,
+            ready: Vec::new(),
+        }
+    }
+
     /// What an attempt that the native driver judged gives: a retry, or the ending.
     fn judged(&mut self, id: TaskId, attempt: u32, completed: Completed) -> Changes {
         let Some((call, ports)) = self.calls.get(&id).cloned() else {
@@ -188,11 +269,8 @@ impl Tasks {
             Completed::Failed(message) => Ending::Failed(message),
         };
         self.calls.remove(&id);
-        Changes {
-            tasks: Vec::new(),
-            ended: vec![(call, ending)],
-            ready: Vec::new(),
-        }
+        // A task from its `storeDir` ran nothing.
+        self.finish(call, ending, attempt > 0)
     }
 }
 
@@ -241,19 +319,21 @@ impl TaskAdapter for Tasks {
         self.next += 1;
         let id = TaskId(self.next);
         self.calls.insert(id, (call.call, ports));
-        Ok(match self.adapter.prepare(&native, &inputs, *count, id)? {
+        let index = *count;
+        self.limits
+            .rounds
+            .insert(call.call, (task.call.clone(), index));
+        let prepared = self.adapter.prepare(&native, &inputs, index, id)?;
+        self.limits.natives.insert(task.call.clone(), native);
+        Ok(match prepared {
             Prepared::Run(task) => Changes {
-                tasks: vec![(call.call, *task)],
+                tasks: self.launch(call.call, *task),
                 ended: Vec::new(),
                 ready: Vec::new(),
             },
             Prepared::Skipped => {
                 self.calls.remove(&id);
-                Changes {
-                    tasks: Vec::new(),
-                    ended: vec![(call.call, Ending::Skipped(serde_json::Map::new()))],
-                    ready: Vec::new(),
-                }
+                self.finish(call.call, Ending::Skipped(serde_json::Map::new()), false)
             }
             Prepared::Done(completed) => self.judged(id, 0, completed),
         })

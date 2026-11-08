@@ -173,7 +173,7 @@ pub(crate) struct Binding {
 }
 
 /// The directives of a process call that its first task fixes for all its tasks.
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub(crate) struct Limits {
     pub max_forks: Option<usize>,
     /// The `fair` directive: the outputs of each task wait for those of the tasks before it,

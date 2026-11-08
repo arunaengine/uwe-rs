@@ -34,6 +34,7 @@ impl Lowerer {
         let visible = frame.visible();
         let mut inner = Frame::new(&visible, frame.origin.clone());
         inner.nested = frame.nested.is_some().then(Vec::new);
+        inner.body = true;
         let held = Held {
             end: end(None, &variable),
             r#type: items.clone(),
@@ -80,6 +81,7 @@ impl Lowerer {
         let visible = frame.visible();
         let mut inner = Frame::new(&visible, frame.origin.clone());
         inner.nested = frame.nested.is_some().then(Vec::new);
+        inner.body = true;
         self.nested(document, &body, &mut inner, path)?;
         let nested = names(&inner);
         let (graph, outputs) = self.body(document, &body, inner, path, None)?;

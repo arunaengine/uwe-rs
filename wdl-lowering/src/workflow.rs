@@ -57,6 +57,8 @@ pub(crate) struct Frame<'o> {
     /// The inputs of the calls of the entry workflow that the calls do not give, as inputs of
     /// the entry graph `<call>.<input>`, as WDL input files may give them.
     pub nested: Option<Vec<Port>>,
+    /// Whether this graph is the body of a scatter or an `if`, which may not run.
+    pub body: bool,
 }
 
 impl<'o> Frame<'o> {
@@ -70,6 +72,7 @@ impl<'o> Frame<'o> {
             edges: Vec::new(),
             origin,
             nested: None,
+            body: false,
         }
     }
 
@@ -368,14 +371,27 @@ impl Lowerer {
             unclaimed(&alias)?;
             for item in op.inputs.iter().filter(|item| !given.contains(&item.name)) {
                 let outer = format!("{alias}.{}", item.name);
+                let required = !matches!(item.r#type, Type::Optional(_) | Type::Dynamic);
+                let to = end(Some(&alias), &item.name);
                 let r#type = match item.default.is_some() {
                     true => optional(item.r#type.clone()),
                     false => item.r#type.clone(),
                 };
+                // A required input of a call in a body is missing only when the call runs.
+                if frame.body && required && item.default.is_none() {
+                    nested.push(port(&outer, optional(r#type.clone())));
+                    let mut op = blank(&outer, guard(&outer), frame.origin.clone());
+                    op.inputs = vec![port(&outer, optional(r#type.clone()))];
+                    op.outputs = vec![port("value", r#type)];
+                    frame.ops.push(op);
+                    frame
+                        .edges
+                        .push(edge(end(None, &outer), end(Some(&outer), &outer)));
+                    frame.edges.push(edge(end(Some(&outer), "value"), to));
+                    continue;
+                }
                 nested.push(port(&outer, r#type));
-                frame
-                    .edges
-                    .push(edge(end(None, &outer), end(Some(&alias), &item.name)));
+                frame.edges.push(edge(end(None, &outer), to));
             }
         }
         for after in call.after() {
@@ -510,6 +526,17 @@ fn alias(call: &CallStatement, unit: &Unit) -> String {
         Some(alias) => alias.name().text().to_owned(),
         None => unit.name(),
     }
+}
+
+/// An expr op that gives a nested call input, and fails when it has no value.
+fn guard(name: &str) -> Kind {
+    Kind::Expr(wir::Expr {
+        language: wir::ExprLanguage::Wdl,
+        code: name.to_owned(),
+        library: Vec::new(),
+        scope: None,
+        captures: Default::default(),
+    })
 }
 
 /// The value of a plain reference, like `name` or `call.output`.

@@ -719,13 +719,16 @@ fn split_options() {
             "the publish target {target:?}"
         );
     }
-    let traversing = [
-        ("/data/chunks/../other", "/data/chunks"),
-        ("/data/./chunks", "/data"),
-        ("/data//chunks", "/data"),
-        ("s3://bucket/../other", "s3://bucket"),
+    let folders = [
+        ("/data/chunks/../other", "/data/chunks", false),
+        ("/data/./chunks", "/data", false),
+        ("/data//chunks", "/data", false),
+        ("s3://bucket/../other", "s3://bucket", false),
+        ("/data/allowed/../other://out", "/data/allowed", false),
+        ("file:///data/allowed/out", "file:///data/allowed", true),
+        ("s3://bucket/out/", "s3://bucket", true),
     ];
-    for (directory, target) in traversing {
+    for (directory, target, plain) in folders {
         let split = json!({"format": {"text": {}}, "files": {"directory": directory}});
         let mut document = many(
             json!({"split": split}),
@@ -733,13 +736,13 @@ fn split_options() {
             typed("out", json!("dynamic"), "stream"),
         );
         document["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": target}]);
-        assert_eq!(
-            problems(&document),
-            needs(&format!(
+        let wanted = match plain {
+            true => Vec::new(),
+            false => needs(&format!(
                 "a folder without empty, . or .. parts, not {directory}"
             )),
-            "the folder {directory}"
-        );
+        };
+        assert_eq!(problems(&document), wanted, "the folder {directory}");
     }
     let escaping = json!({"format": {"text": {}}, "files": {"directory": "../up", "name": "a/b"}});
     let found = split(escaping);

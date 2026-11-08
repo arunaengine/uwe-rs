@@ -543,10 +543,17 @@ impl Effect {
 /// parts are not empty, `.` or `..`.
 pub fn plain_folder(folder: &str) -> bool {
     let folder = folder.trim_end_matches('/');
-    let rest = match folder.split_once("://") {
-        Some((_, rest)) => rest,
-        None => folder.strip_prefix('/').unwrap_or(folder),
+    let scheme = |name: &str| {
+        name.starts_with(|c: char| c.is_ascii_alphabetic())
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
     };
+    let rest = match folder.split_once("://") {
+        Some((name, rest)) if scheme(name) => rest,
+        _ => folder,
+    };
+    let rest = rest.strip_prefix('/').unwrap_or(rest);
     let plain = |part: &str| !part.is_empty() && part != "." && part != "..";
     !rest.is_empty() && rest.split('/').all(plain)
 }

@@ -446,6 +446,73 @@ task hello {
 }
 
 #[test]
+fn none_skips_defaults() {
+    let workflow = r#"version 1.2
+workflow greet {
+  hints {
+    allow_nested_inputs: true
+  }
+  input {
+    String name
+    String? salutation = "hi"
+    String? mark = name + "!"
+  }
+  call hello as plain { input: name = name, greeting = None }
+  call hello as polite { input: name = name }
+  call kept as bare { input: name = name, greeting = None }
+  call kept as full { input: name = name }
+  output {
+    Array[String] texts = [
+      plain.text, polite.text, bare.text, full.text,
+      select_first([salutation, "none"]), select_first([mark, "none"])
+    ]
+  }
+}
+"#;
+    let tasks = r#"
+task hello {
+  input {
+    String name
+    String? greeting = name + "!"
+  }
+  command <<< >>>
+  output {
+    String text = select_first([greeting, name])
+  }
+}
+
+task kept {
+  input {
+    String name
+    String? greeting = name + "?"
+    env String label = "x"
+  }
+  command <<< >>>
+  output {
+    String text = select_first([greeting, name])
+  }
+}
+"#;
+    let text = format!("{workflow}{tasks}");
+    let omitted = runs(&text, json!({"name": "ada"}));
+    assert_eq!(omitted.native, omitted.lowered);
+    let texts = json!(["ada", "ada!", "ada", "ada?", "hi", "ada!"]);
+    assert_eq!(omitted.lowered.1["texts"], texts);
+    let given = runs(
+        &text,
+        json!({"name": "ada", "salutation": null, "mark": null}),
+    );
+    assert_eq!(given.native, given.lowered);
+    let texts = json!(["ada", "ada!", "ada", "ada?", "none", "none"]);
+    assert_eq!(given.lowered.1["texts"], texts);
+    let nested = json!({"name": "ada", "greet.polite.greeting": null, "full.greeting": null});
+    let nested = runs(&text, nested);
+    assert_eq!(nested.native, nested.lowered);
+    let texts = json!(["ada", "ada", "ada", "ada", "hi", "ada!"]);
+    assert_eq!(nested.lowered.1["texts"], texts);
+}
+
+#[test]
 fn nested_inputs_given() {
     let workflow = r#"version 1.2
 workflow nested {

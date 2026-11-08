@@ -9,7 +9,7 @@ use serde_json::{Map, Value as Json, json};
 use wdl_runtime::value::located;
 use wir::Type;
 
-use crate::Lowering;
+use crate::{Lowering, presence};
 
 impl Lowering {
     /// The input values of the entry graph from the object of a WDL input file, like
@@ -27,6 +27,10 @@ impl Lowering {
             let found = ports.iter().find(|port| port.name == name);
             let port = found.ok_or_else(|| format!("{} has no input {name}", self.name))?;
             values.insert(name.to_owned(), value_of(value, &port.r#type, base));
+            let flag = presence(name);
+            if ports.iter().any(|port| port.name == flag) {
+                values.insert(flag, Json::Bool(true));
+            }
         }
         Ok(Json::Object(values))
     }

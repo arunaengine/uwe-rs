@@ -5,7 +5,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde_json::Value as Json;
 use wdl_analysis::types::Optional;
 
 use wdl_ast::v1::{BoundDecl, Decl, Expr, LiteralString, TaskDefinition};
@@ -16,14 +15,13 @@ use wdl_runtime::expression::names;
 use wir::{KeyType, Port, Type};
 
 use crate::types::{convert, has_files, optional, port};
-use crate::{constant, reads, text};
+use crate::{constant, flag, presence, reads, text, unclaimed};
 
-/// The inputs of a task as graph ports, the declarations that compute their defaults, and
-/// the literal defaults of optional inputs, which the call ops hold.
+/// The inputs of a task as graph ports, with the flags of given inputs, and the declarations
+/// that compute their defaults.
 pub(crate) struct Inputs {
     pub ports: Vec<Port>,
     pub library: Vec<Line>,
-    pub fallbacks: Vec<(String, Json)>,
 }
 
 /// A declaration as WDL text, with its name and the names it uses.
@@ -38,7 +36,7 @@ pub(crate) struct Line {
 pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, String> {
     let mut inputs = Vec::new();
     let mut library = Vec::new();
-    let mut fallbacks = Vec::new();
+    let mut flags = Vec::new();
     for decl in definition
         .input()
         .iter()
@@ -53,20 +51,26 @@ pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, 
         if nested(&r#type) {
             return Err(format!("input {name}: a file inside a struct or map"));
         }
+        unclaimed(&name)?;
         let mut item = port(&name, r#type.clone());
         if let Decl::Bound(bound) = &decl {
             let expr = bound.expr();
             check(&expr)?;
             match constant(&expr).map(|value| value.coerce(&ty)) {
                 Some(Ok(Value::None)) => item.r#type = optional(r#type),
-                Some(Ok(value)) if ty.is_optional() => {
-                    fallbacks.push((name.clone(), value.result_json()))
-                }
-                Some(Ok(value)) => item.default = Some(value.result_json()),
+                Some(Ok(value)) if !ty.is_optional() => item.default = Some(value.result_json()),
                 _ => {
                     item.r#type = optional(r#type);
+                    // A given `None` keeps an optional input from its default.
+                    let given = match ty.is_optional() {
+                        true => {
+                            flags.push(flag(&name));
+                            presence(&name)
+                        }
+                        false => format!("defined({name})"),
+                    };
                     let code = format!(
-                        "{} {name} = if defined({name}) then {name} else ({})",
+                        "{} {name} = if {given} then {name} else ({})",
                         decl.ty().inner().text(),
                         text(&expr)
                     );
@@ -82,10 +86,10 @@ pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, 
         }
         inputs.push(item);
     }
+    inputs.extend(flags);
     Ok(Inputs {
         ports: inputs,
         library,
-        fallbacks,
     })
 }
 

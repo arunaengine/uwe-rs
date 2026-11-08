@@ -70,7 +70,6 @@ pub fn lower_with(
         graphs: Vec::new(),
         prefix: String::new(),
         done: Vec::new(),
-        fallbacks: Vec::new(),
     };
     let name = unit.name();
     let main = match &unit.callable {
@@ -144,9 +143,6 @@ struct Lowerer {
     /// The graph of each task and workflow lowered so far, by document and name, or why it
     /// has none, so that every call of it shares one graph.
     done: Vec<((String, String), Result<String, String>)>,
-    /// The literal defaults of optional inputs, by graph and port. A call op holds them for
-    /// the inputs that it is not given, so that a given `None` stays `None`, as in WDL.
-    fallbacks: Vec<(String, String, serde_json::Value)>,
 }
 
 impl Lowerer {
@@ -171,7 +167,12 @@ impl Lowerer {
             configs: Vec::new(),
         });
         let mut op = blank(path, kind, origin(&source, &unit.name()));
-        (op.inputs, op.outputs) = (inputs, outputs);
+        let flags = defaulted(unit).into_iter().map(|name| {
+            let r#type = types::optional(wir::Type::Bool);
+            types::port(&presence(&name), r#type)
+        });
+        op.inputs = inputs.into_iter().chain(flags).collect();
+        op.outputs = outputs;
         Ok(op)
     }
 
@@ -244,11 +245,6 @@ impl Lowerer {
         if let Some(called) = called {
             (op.inputs, op.outputs) = (called.inputs.clone(), called.outputs.clone());
         }
-        for (_, input, value) in self.fallbacks.iter().filter(|item| item.0 == graph) {
-            if let Some(port) = op.inputs.iter_mut().find(|port| port.name == *input) {
-                port.default = Some(value.clone());
-            }
-        }
         op
     }
 }
@@ -289,6 +285,48 @@ fn boundary(unit: &Unit) -> Result<(Vec<Port>, Vec<Port>), String> {
         results.push(types::port(output, r#type));
     }
     Ok((ports, results))
+}
+
+/// The name of the Boolean port that tells whether an input was given, also as `None`:
+/// `given.<input>`, and `<call>.given.<input>` for a nested input `<call>.<input>`.
+pub(crate) fn presence(input: &str) -> String {
+    match input.rsplit_once('.') {
+        Some((call, name)) => format!("{call}.{GIVEN}.{name}"),
+        None => format!("{GIVEN}.{input}"),
+    }
+}
+
+/// The flag port of an input that is false unless a call or an input file gives the input.
+pub(crate) fn flag(input: &str) -> Port {
+    let mut port = types::port(&presence(input), wir::Type::Bool);
+    port.default = Some(serde_json::Value::Bool(false));
+    port
+}
+
+/// The name before the flags of given inputs, which no input or declaration may have.
+const GIVEN: &str = "given";
+
+/// Fails for a name that the flags of given inputs need.
+fn unclaimed(name: &str) -> Result<(), String> {
+    match name == GIVEN {
+        true => Err(format!("the name {GIVEN}, which given inputs use")),
+        false => Ok(()),
+    }
+}
+
+/// The optional inputs of a task or workflow that have a default, which a given `None`
+/// replaces.
+fn defaulted(unit: &Unit) -> Vec<String> {
+    let section = match &unit.callable {
+        Callable::Task(task) => task.input(),
+        Callable::Workflow(workflow) => workflow.input(),
+    };
+    let decls = section.iter().flat_map(|section| section.declarations());
+    let bound = decls.filter_map(|decl| match decl {
+        wdl_ast::v1::Decl::Bound(bound) if bound.ty().is_optional() => Some(bound),
+        _ => None,
+    });
+    bound.map(|decl| decl.name().text().to_owned()).collect()
 }
 
 /// The value of an expression that uses no names, like the literal default of an input.

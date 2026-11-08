@@ -15,7 +15,7 @@ use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 use crate::library::{Inputs, Line, check, ordered, ports, staged};
 use crate::outputs::{Output, Read, listing, outputs, patterns};
 use crate::types::{convert, has_files, port};
-use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text};
+use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text, unclaimed};
 
 /// Runs the command as uwe's WDL driver does, then copies below `.wdl/out/<output>/` the files
 /// that match each `<output>\t<regex>` line of `$4`, then each `<output>\t<path>` line of `$2`.
@@ -89,7 +89,6 @@ impl Lowerer {
         let Inputs {
             ports: inputs,
             mut library,
-            fallbacks,
         } = ports(unit, definition)?;
         let defaulted: BTreeSet<String> = library.iter().map(|line| line.name.clone()).collect();
         let mut types: BTreeMap<String, Type> = (inputs.iter())
@@ -97,6 +96,7 @@ impl Lowerer {
             .collect();
         for decl in definition.declarations() {
             let name = decl.name().text().to_owned();
+            unclaimed(&name)?;
             if decl.env().is_some() {
                 return Err("an env declaration".into());
             }
@@ -139,10 +139,6 @@ impl Lowerer {
         let mut task = runtime(definition, &self.image)?;
         let outputs = outputs(unit, definition)?;
         let name = self.graph_name(&format!("task.{}", unit.name()));
-        let held = fallbacks
-            .into_iter()
-            .map(|(port, value)| (name.clone(), port, value));
-        self.fallbacks.extend(held);
         let path = unit.name();
         let mut graph = Graph {
             name: name.clone(),

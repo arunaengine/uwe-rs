@@ -36,7 +36,8 @@ fn lowers_plain_tools() {
         "stdout": "out.txt",
         "workdir": "/var/spool/cwl",
         "staging": "/var/lib/cwl/inputs",
-        "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"}
+        "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"},
+        "results": "cwl.output.json"
     });
     assert_eq!(op["path"], "echo");
     assert_eq!(op["kind"]["task"], task);
@@ -198,26 +199,23 @@ fn lowers_named_types() {
 fn lowers_argument_expressions() {
     let lowering = lowered("compile.cwl");
     assert!(lowering.full(), "{:?}", lowering.kept);
-    let ops = &lowering.document.graphs[0].ops;
-    let paths: Vec<&str> = ops.iter().map(|op| op.path.as_str()).collect();
+    let task = &only_op(&lowering)["kind"]["task"];
+    let command = task["command"].as_array().unwrap();
     assert_eq!(
-        paths,
-        ["compile.argument.1", "compile.argument.2", "compile"]
+        (command[0].clone(), command[1].clone()),
+        (json!("javac"), json!("-d"))
     );
-    let task = serde_json::to_value(&ops[2]).unwrap();
-    let command = json!(["javac", "-d", {"input": "argument.1"},
-        {"input": "argument.2", "prefix": "-J-Xss", "separate": false}, {"input": "src"}]);
-    assert_eq!(task["kind"]["task"]["command"], command);
-    let wir::Kind::Expr(expr) = &ops[0].kind else {
-        panic!("an expr: {:?}", ops[0].kind);
-    };
-    assert!(expr.code.starts_with("${ var runtime = {"), "{}", expr.code);
-    assert!(
-        expr.code.contains(r#""outdir":"/var/spool/cwl""#),
-        "{}",
-        expr.code
+    assert_eq!(command[4], json!({"input": "src"}));
+    let code = command[2]["code"].as_str().unwrap();
+    assert!(code.starts_with("${ var runtime = {"), "{code}");
+    assert!(code.contains(r#""outdir":"/var/spool/cwl""#), "{code}");
+    let joined = &command[3];
+    assert_eq!(
+        (&joined["prefix"], &joined["separate"]),
+        (&json!("-J-Xss"), &json!(false))
     );
-    assert!(expr.code.contains(r#""cores":2"#), "{}", expr.code);
+    let code = joined["code"].as_str().unwrap();
+    assert!(code.contains(r#""cores":2"#), "{code}");
 }
 
 #[test]

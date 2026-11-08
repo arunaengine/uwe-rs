@@ -5,7 +5,7 @@
 
 use nextflow_evaluator::split::Splitter;
 use nextflow_evaluator::value::{Closure, Value};
-use serde_json::Value as Json;
+use serde_json::{Value as Json, json};
 
 use crate::adapter::Call;
 pub use nextflow_plugins::observer::Process;
@@ -262,6 +262,11 @@ impl Callback {
     /// The code and captured values of a closure; it fails for a capture that has no JSON
     /// form, like a channel or another closure.
     pub(crate) fn of(closure: &Closure) -> Result<Callback, String> {
+        Callback::nested(closure, 0)
+    }
+
+    /// A closure whose captured closures, down to `depth` 8, are reserved `Closure` forms.
+    fn nested(closure: &Closure, depth: usize) -> Result<Callback, String> {
         let span = closure.code.span;
         let module = &closure.module;
         let source = module.source.borrow();
@@ -275,8 +280,17 @@ impl Callback {
             .and_then(|text| text.get(span.start as usize..span.end as usize))
             .ok_or_else(|| format!("the code of a closure in {script}"))?;
         let captures = (closure.captured.iter())
-            .map(|value| crate::bridge::to_json(&value.borrow()))
-            .collect::<Result<_, _>>()
+            .map(|value| match &*value.borrow() {
+                Value::Closure(inner) if depth < 8 => {
+                    let inner = Callback::nested(inner, depth + 1)?;
+                    Ok(
+                        json!({"class": "Closure", "script": inner.script, "start": inner.start,
+                        "end": inner.end, "code": inner.code, "captures": inner.captures}),
+                    )
+                }
+                other => crate::bridge::to_json(other),
+            })
+            .collect::<Result<_, String>>()
             .map_err(|message| format!("a closure captures {message}"))?;
         Ok(Callback {
             script,

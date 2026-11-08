@@ -129,6 +129,33 @@ fn keeps_closure_captures() {
 }
 
 #[test]
+fn keeps_captured_closures() {
+    let directory = tempfile::tempdir().unwrap();
+    let script = "workflow {\n    def keep = { w -> w != 'b' }\n    \
+                  channel.of(['a', 'b']).map { it.findAll(keep) }.view()\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Silent(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let network = Nextflow::new(&launch, settings).unwrap().export().unwrap();
+    let map = network.nodes.iter().find_map(|node| match &node.kind {
+        Kind::Map(callback) => Some(callback),
+        _ => None,
+    });
+    let inner = &map.expect("the map").captures[0];
+    assert_eq!(inner["class"], "Closure");
+    assert_eq!(inner["code"], "{ w -> w != 'b' }");
+    let span = inner["start"].as_u64().unwrap() as usize..inner["end"].as_u64().unwrap() as usize;
+    assert_eq!(&script[span], inner["code"]);
+}
+
+#[test]
 fn defers_data_sources() {
     let directory = tempfile::tempdir().unwrap();
     let network = export(directory.path());

@@ -501,6 +501,7 @@ pub(crate) fn evaluated(
         library: Vec::new(),
         scope: None,
         captures: Default::default(),
+        form: None,
     });
     let mut op = blank(path, kind, frame.origin.clone());
     for name in used {

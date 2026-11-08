@@ -118,6 +118,7 @@ impl Lowerer {
                 library,
                 scope: None,
                 captures: Default::default(),
+                form: None,
             }),
             op.origin.clone(),
         );
@@ -267,6 +268,7 @@ fn values(step: &Step, op: &Op, path: &str, library: &[String]) -> Result<Group,
             library: library.to_vec(),
             scope: None,
             captures: Default::default(),
+            form: None,
         });
         let mut expr = blank(&at, kind, op.origin.clone());
         expr.inputs = (step.inputs.iter())
@@ -320,6 +322,7 @@ pub(crate) fn computed(mut task: Op, values: &[(String, Expression)], library: &
             library: library.to_vec(),
             scope: None,
             captures: Default::default(),
+            form: None,
         });
         let mut expr = blank(&at, kind, task.origin.clone());
         expr.inputs = task.inputs.clone();

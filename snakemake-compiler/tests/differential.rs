@@ -151,10 +151,18 @@ impl Runner {
                 outputs,
             });
         }
+        // A plan without jobs still starts and finishes a run of the Snakefile.
+        let source = (document.sources.iter())
+            .find(|source| source.id == snakemake_compiler::SOURCE)
+            .ok_or("no source")?;
+        let launch = launch.unwrap_or_else(|| Launch {
+            target: base.join(&source.location),
+            ..Launch::default()
+        });
         let launch = Launch {
             scratch: scratch.to_owned(),
             simulated: true,
-            ..launch.ok_or("no job")?
+            ..launch
         };
         let run = RunSettings {
             workdir: Some(base.to_owned()),

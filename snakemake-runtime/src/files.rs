@@ -83,6 +83,14 @@ impl WorkflowFiles {
         }
     }
 
+    /// Like [`WorkflowFiles::reach`], but also lets a read of a read-only folder through.
+    fn reach_read(&self, path: &Path) -> std::io::Result<()> {
+        match &*self.roots.borrow() {
+            Some(roots) => roots.check_read(path),
+            None => Ok(()),
+        }
+    }
+
     /// Lets the writes of workflow code reach the disk, for a real run.
     pub fn write_to_disk(&self) {
         self.on_disk.set(true);
@@ -176,7 +184,7 @@ impl Host for WorkflowFiles {
                         .map_err(std::io::Error::other)?;
                     return std::fs::read(local);
                 }
-                self.reach(path)?;
+                self.reach_read(path)?;
                 self.mirrors.fetch(path)?;
                 self.local.read(path)
             }
@@ -216,7 +224,11 @@ impl Host for WorkflowFiles {
         // A file on the web that cannot be downloaded counts as missing, as does a file that
         // workflow code may not reach.
         let _ = self.mirrors.fetch(path);
-        if let Some(stat) = self.reach(path).ok().and_then(|()| self.local.stat(path)) {
+        if let Some(stat) = self
+            .reach_read(path)
+            .ok()
+            .and_then(|()| self.local.stat(path))
+        {
             return Some(stat);
         }
         // A folder that only holds outputs of tasks.

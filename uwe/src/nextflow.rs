@@ -14,7 +14,7 @@ use storage::{Blocking, StorageError};
 use workflow_graph::{Driver, DriverError, Language, Launch};
 
 use crate::arguments::Arguments;
-use crate::run::driver::isolation;
+use crate::run::driver::{isolation, shared_folders};
 use crate::setup::Setup;
 
 /// Prints what the workflow prints, and downloads remote files into a cache.
@@ -51,12 +51,22 @@ impl Console {
         }
     }
 
+    /// Like [`Console::reach`], but also lets a read of a shared folder through.
+    fn reach_read(&self, path: &PathValue) -> Result<(), Error> {
+        match (&self.roots, &path.prefix) {
+            (Some(roots), None) => (roots.check_read(std::path::Path::new(&path.path)))
+                .map_err(|error| io_error(error.to_string())),
+            _ => Ok(()),
+        }
+    }
+
     /// The same host, limited to the folders of the launch and of the isolation of the run.
     fn confined(
         mut self,
         launch: &Launch,
         folder: Option<&std::path::Path>,
         isolation: Option<&crate::hosted::Isolation>,
+        shared: &[PathBuf],
     ) -> Self {
         let Some(isolation) = isolation else {
             return self;
@@ -72,11 +82,11 @@ impl Console {
             true => Some(target),
             false => target.parent().map(std::path::Path::to_owned),
         });
-        folders.push(launch.scratch.clone());
         folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
         folders.extend(self.operators.clone());
         folders.extend(self.launch.clone());
-        self.roots = Some(workflow_graph::Roots::new(folders));
+        let shared = shared.iter().chain([&launch.scratch]).cloned();
+        self.roots = Some(workflow_graph::Roots::new(folders).with_read_only(shared));
         self
     }
 }
@@ -147,7 +157,7 @@ impl Host for Console {
     }
 
     fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
-        self.reach(path)?;
+        self.reach_read(path)?;
         let local = match path.prefix {
             Some(_) => self.download(path)?,
             None => PathBuf::from(&path.path),
@@ -156,7 +166,7 @@ impl Host for Console {
     }
 
     fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
-        self.reach(path)?;
+        self.reach_read(path)?;
         let local = match path.prefix {
             Some(_) => self.download(path)?,
             None => PathBuf::from(&path.path),
@@ -199,7 +209,7 @@ impl Host for Console {
     }
 
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
-        self.reach(path)?;
+        self.reach_read(path)?;
         if path.prefix.is_none() {
             return match std::fs::metadata(&path.path) {
                 Ok(metadata) => Ok(Some(FileMetadata::of(&metadata))),
@@ -242,7 +252,7 @@ impl Host for Console {
     }
 
     fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
-        self.reach(source)?;
+        self.reach_read(source)?;
         self.reach(target)?;
         let local = match source.prefix {
             Some(_) => self.download(source)?,
@@ -444,13 +454,14 @@ pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::n
     let resume = arguments.resume.is_some();
     let run = run.to_owned();
     let isolation = isolation(arguments, setup);
+    let shared = shared_folders(arguments, setup);
     wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
         let console = Console {
             operators: Some(run_folder(&launch.scratch, &run)),
             launch: Some(folder.to_owned()),
             ..console.clone()
         }
-        .confined(launch, Some(folder), isolation.as_ref());
+        .confined(launch, Some(folder), isolation.as_ref(), &shared);
         Settings {
             host: Box::new(console),
             container_engine: Some(engine.clone()),
@@ -482,7 +493,12 @@ pub fn driver(
         launch: own,
         ..console(quiet, setup, &arguments.secrets)
     }
-    .confined(launch, None, isolation(arguments, setup).as_ref());
+    .confined(
+        launch,
+        None,
+        isolation(arguments, setup).as_ref(),
+        &shared_folders(arguments, setup),
+    );
     let settings = Settings {
         host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),

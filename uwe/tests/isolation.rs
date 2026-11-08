@@ -86,6 +86,97 @@ fn confines_workflow_code() {
     }
 }
 
+/// Tries to change and list the shared store and cache, then reads a stored file by its path,
+/// splits a file into chunk files and reads the output of its own task.
+const NEXTFLOW_SHARED: &str = "process MAKE {\n  output: path 'own.txt'\n  \
+    script: 'echo own > own.txt'\n}\nworkflow {\n  def seen = []\n  \
+    try { file(params.stored).delete(); seen << 'deleted' } catch (e) { seen << 'refused delete' }\n  \
+    try { file(params.stored).text = 'changed'; seen << 'written' } catch (e) { seen << 'refused write' }\n  \
+    try { file(params.cached).text = 'changed'; seen << 'written' } catch (e) { seen << 'refused write' }\n  \
+    try { file(params.store).listFiles(); seen << 'listed' } catch (e) { seen << 'refused list' }\n  \
+    seen << file(params.stored).text\n  \
+    seen << file(params.reads).splitFastq(by: 1, file: true).size()\n  \
+    MAKE().map { own -> seen << own.exists(); file(params.report).text = seen.join('\\n') }\n}\n";
+
+/// The same at the top level of a Snakefile.
+const SNAKEFILE_SHARED: &str = "import os\nseen = []\ntry:\n    os.remove(config['stored'])\n    \
+    seen.append('deleted')\nexcept OSError:\n    seen.append('refused delete')\n\
+    for name in ['stored', 'cached']:\n    try:\n        open(config[name], 'w').write('changed')\n        \
+    seen.append('written')\n    except OSError:\n        seen.append('refused write')\ntry:\n    \
+    os.listdir(config['store'])\n    seen.append('listed')\nexcept OSError:\n    \
+    seen.append('refused list')\nseen.append(open(config['stored']).read())\n\
+    with open(config['report'], 'w') as written:\n    written.write('\\n'.join(seen))\n\n\
+    rule all:\n    input: []\n";
+
+/// Workflow code of an isolated run reads a file of the shared store or cache by its path,
+/// but cannot change, remove or list what other runs keep there.
+#[test]
+fn protects_shared_files() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("protects_shared_files");
+    }
+    let root = tempfile::tempdir().unwrap();
+    for (name, script, seen) in [
+        (
+            "main.nf",
+            NEXTFLOW_SHARED,
+            "refused delete\nrefused write\nrefused write\nrefused list\nkept\n2\ntrue",
+        ),
+        (
+            "Snakefile",
+            SNAKEFILE_SHARED,
+            "refused delete\nrefused write\nrefused write\nrefused list\nkept",
+        ),
+    ] {
+        let folder = root.path().join(name);
+        let data = folder.join("data");
+        let workflow = folder.join("workflow").join(name);
+        std::fs::create_dir_all(workflow.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(&workflow, script).unwrap();
+        std::fs::write(data.join("reads.fq"), "@a\nAC\n+\nII\n@b\nGT\n+\nII\n").unwrap();
+        let stored = folder.join("store/other-run/result.txt");
+        let cached = folder.join("cache/scratch/other-run/result.txt");
+        for file in [&stored, &cached] {
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, "kept").unwrap();
+        }
+        let mut settings = settings(&folder, &workflow);
+        // The simulator makes up the output of the task; a simulated Snakefile writes nothing.
+        settings.executor = (name == "main.nf").then(|| "simulator".into());
+        let path = |path: &Path| json!(path.to_string_lossy());
+        for (key, value) in [
+            ("stored", stored.clone()),
+            ("cached", cached.clone()),
+            ("store", folder.join("store")),
+            ("reads", data.join("reads.fq")),
+            ("report", data.join("report.txt")),
+        ] {
+            settings.params.insert(key.into(), path(&value));
+        }
+        settings.isolation = Some(Isolation {
+            roots: vec![data.clone()],
+            launch: Some(folder.join("launch")),
+            ..Isolation::default()
+        });
+        let mut request = RunRequest::new(settings);
+        request.policy = uwe::application::Policy::Relaxed;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let ran = runtime.block_on(request.run());
+        let ran = ran.unwrap_or_else(|failure| panic!("{name}: {}", failure.message));
+        assert!(
+            ran.execution.error.is_none(),
+            "{name}: {:?}",
+            ran.execution.error
+        );
+        let report = std::fs::read_to_string(data.join("report.txt")).unwrap();
+        assert_eq!(report, seen, "{name}");
+        for file in [&stored, &cached] {
+            assert_eq!(std::fs::read_to_string(file).unwrap(), "kept", "{name}");
+        }
+    }
+}
+
 /// An isolated Nextflow run without a launch folder of the host launches in one of its own.
 #[test]
 fn launches_isolated_run() {

@@ -74,29 +74,28 @@ fn compute(
     }
 }
 
-/// The value of the code of a task argument over input values whose Files and Directories
-/// have the paths where the task stages them.
-pub fn argument(
-    (code, this): (&str, Option<&str>),
-    staged: Json,
+/// The value of the code of a task argument or capture over input values, `self` and
+/// `runtime`, whose Files and Directories have their paths in the container.
+pub fn code(
+    code: &str,
+    (inputs, this, runtime): (Json, Json, Json),
     (library, settings): (&[String], &JavaScriptSettings),
 ) -> Result<Json, String> {
     let expression = Expression::parse(code, false)?;
-    let mut inputs = value(staged)?;
+    let (mut inputs, mut this) = (value(inputs)?, value(this)?);
     listed(&mut inputs);
-    let this = this.and_then(|name| inputs.get(name)).cloned();
+    listed(&mut this);
     let evaluator = Evaluator {
         javascript: Some(Arc::new(library.to_vec())),
         settings: settings.clone(),
     };
     let variables = Variables {
         inputs: &inputs,
-        this: &this.unwrap_or(Value::Null),
-        runtime: &Value::Map(Default::default()),
+        this: &this,
+        runtime: &Value::parse(&runtime.to_string())?,
     };
     let result = evaluator.evaluate(&expression, variables)?;
-    let json: Json = serde_json::from_str(&result.to_json()).map_err(|error| error.to_string())?;
-    Ok(to_wir(json))
+    serde_json::from_str(&result.to_json()).map_err(|error| error.to_string())
 }
 
 /// Gives each entry of the listing of a staged Directory that has no path its path inside.

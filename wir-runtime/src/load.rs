@@ -24,16 +24,31 @@ pub fn load(
         return Err("a load needs one input and one output".into());
     };
     let given = bound.get(&input.name).cloned().unwrap_or(Json::Null);
-    let mut value = Value::parse(&to_cwl(located(given, &urls)).to_string())?;
-    if let Some(listing) = spec.listing {
-        access.load_listings(&mut value, listing == Listing::Deep)?;
-    }
-    if spec.contents {
-        contents(&mut value, access)?;
-    }
-    let json: Json = serde_json::from_str(&value.to_json()).map_err(|error| error.to_string())?;
-    let value = located(to_wir(json), &paths);
+    let value = read(given, &|value| {
+        if let Some(listing) = spec.listing {
+            access.load_listings(value, listing == Listing::Deep)?;
+        }
+        match spec.contents {
+            true => contents(value, access),
+            false => Ok(()),
+        }
+    })?;
     Ok(Map::from_iter([(output.name.clone(), value)]))
+}
+
+/// A value with the listing of each Directory read.
+pub(crate) fn listings(value: Json, listing: Listing, access: &Access) -> Result<Json, String> {
+    read(value, &|value| {
+        access.load_listings(value, listing == Listing::Deep)
+    })
+}
+
+/// A value after `change` read files into it as a CWL value.
+fn read(value: Json, change: &dyn Fn(&mut Value) -> Result<(), String>) -> Result<Json, String> {
+    let mut value = Value::parse(&to_cwl(located(value, &urls)).to_string())?;
+    change(&mut value)?;
+    let json: Json = serde_json::from_str(&value.to_json()).map_err(|error| error.to_string())?;
+    Ok(located(to_wir(json), &paths))
 }
 
 /// Reads the text of each File, alone or in arrays.

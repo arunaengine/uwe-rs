@@ -256,7 +256,7 @@ impl WirDriver {
                     return Err(DriverError::unsupported(message));
                 }
                 let output = node.op.outputs[0].clone();
-                let settings = &self.settings.cwl.javascript;
+                let settings = (&self.settings.cwl.javascript, self.launch.simulated);
                 let defs = &self.document.types;
                 match crate::expr::evaluate(&spec, &bound, &output, defs, settings) {
                     Ok(value) => {

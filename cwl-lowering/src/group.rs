@@ -13,7 +13,7 @@ use crate::{Lowerer, Scope, blank};
 const CONDITION: &str = "when";
 
 /// The input of a `valueFrom` expr that holds the value of its step input.
-const SELF: &str = "self";
+pub(crate) const SELF: &str = "self";
 
 /// The suffix of the task input that the `valueFrom` of a tool input fills.
 pub(crate) const VALUE: &str = "valueFrom";
@@ -62,7 +62,7 @@ impl Group {
 
     /// The ports that the group takes from outside, by name, with the type of the op of the
     /// step where it has one.
-    fn inputs(&self) -> Vec<Port> {
+    pub fn inputs(&self) -> Vec<Port> {
         let mut ports: Vec<Port> = Vec::new();
         for op in self.ops.iter().rev() {
             for port in &op.inputs {

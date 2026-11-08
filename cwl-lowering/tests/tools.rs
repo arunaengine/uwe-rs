@@ -150,3 +150,23 @@ fn keeps_required_any() {
     let error = lower(&document, &fixtures()).unwrap_err();
     assert!(error.contains("the Any input value"), "{error}");
 }
+
+#[test]
+fn lowers_output_evaluation() {
+    let lowering = lowered("names.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    assert_eq!(only_op(&lowering)["kind"]["call"]["graph"], "names");
+    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
+    let ops = graph["ops"].as_array().unwrap();
+    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
+    assert_eq!(paths, ["names", "names.count.outputEval"]);
+    let files = json!({"array": {"items": {"file": {}}}});
+    assert_eq!(ops[0]["outputs"][0], json!({"name": "count", "type": files}));
+    assert_eq!(ops[1]["kind"]["expr"]["code"], "$(self.length)");
+    assert_eq!(ops[1]["inputs"][1], json!({"name": "self", "type": files}));
+    assert_eq!(ops[1]["outputs"], json!([{"name": "count", "type": "int"}]));
+    let outputs: Vec<&str> = (graph["outputs"].as_array().unwrap().iter())
+        .map(|port| port["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(outputs, ["count", "made"]);
+}

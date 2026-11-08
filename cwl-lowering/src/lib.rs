@@ -7,6 +7,7 @@ mod defaults;
 mod expression;
 mod group;
 mod links;
+mod outputs;
 mod requirements;
 mod tool;
 mod types;
@@ -175,14 +176,18 @@ impl Lowerer {
             at: entry.clone(),
         });
         let lowered = match &process.class {
-            Class::CommandLineTool(tool) => {
-                tool::lower(process, tool, &scope, &self.base).map(|lowered| {
+            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope, &self.base)
+                .and_then(|lowered| {
                     let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
                     (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
                     op.attributes = lowered.attributes;
-                    group::computed(op, &lowered.values, &scope.library())
-                })
-            }
+                    let library = scope.library();
+                    let group = group::computed(op, &lowered.values, &library);
+                    match lowered.evaluated.is_empty() {
+                        true => Ok(group),
+                        false => self.evaluated(process, group, &lowered.evaluated, &library, path),
+                    }
+                }),
             Class::Workflow(workflow) => self.call(process, workflow, &scope, path).map(one),
             Class::ExpressionTool(tool) => self.expression(process, tool, &scope, path).map(one),
             Class::Operation => Err("this process class has no lowering yet".into()),

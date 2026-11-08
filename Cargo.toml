@@ -93,6 +93,7 @@ run-database = { path = "run-database" }
 run-page = { path = "run-page" }
 run-telemetry = { path = "run-telemetry" }
 slurm-executor = { path = "slurm-executor" }
+snakemake-compiler = { path = "snakemake-compiler" }
 snakemake-parser = { path = "snakemake-parser" }
 snakemake-runtime = { path = "snakemake-runtime" }
 snowflake-executor = { path = "snowflake-executor" }

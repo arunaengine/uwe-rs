@@ -7,7 +7,8 @@ use std::collections::BTreeSet;
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
-use crate::op::{Argument, Branch, CaptureRule, Kind, Map, Native, Op, Scatter, Task};
+use crate::flow::Flow;
+use crate::op::{Argument, Branch, CaptureRule, Kind, Map, Native, Op, Process, Scatter, Task};
 use crate::reserved::Pick;
 use crate::types::{ArrayType, Type, TypeDef, resolve};
 
@@ -33,6 +34,7 @@ impl<'d> Checker<'d> {
             Kind::Filter(filter) => self.filter(at, op, &filter.body),
             Kind::FlatMap(flat) => self.flat_map(at, op, flat),
             Kind::Branch(branch) => self.branch(at, op, branch),
+            Kind::Process(process) => self.process(at, op, process),
             Kind::Select(select) => self.select(at, op, select.rule),
             Kind::Merge(merge) if merge.takes_rounds(streams(op)) => {
                 self.merge_rounds(at, op, merge)
@@ -197,6 +199,74 @@ impl<'d> Checker<'d> {
                     let graph = map.body.clone();
                     self.report(at, Problem::CallPort { port, graph });
                 }
+            }
+        }
+    }
+
+    /// The body has the op's ports: the item type of a stream input, an element of an
+    /// `each` input, and each output the stream or value of what the body gives.
+    fn process(&mut self, at: &str, op: &Op, process: &Process) {
+        self.inputs(at, op, process.each.iter());
+        let mut seen = BTreeSet::new();
+        for name in process.each.iter().filter(|name| !seen.insert(*name)) {
+            self.report(at, Problem::Duplicate(format!("each input {name}")));
+        }
+        if process.parallelism == Some(0) {
+            self.report(
+                at,
+                Problem::Shape("a process".into(), "a positive parallelism".into()),
+            );
+        }
+        let streaming =
+            !process.each.is_empty() || op.inputs.iter().any(|port| !port.flow.is_value());
+        let Some(body) = self.graph(&process.body) else {
+            return;
+        };
+        let names: BTreeSet<&str> = (op
+            .inputs
+            .iter()
+            .chain(&op.outputs)
+            .chain(&body.inputs)
+            .chain(&body.outputs))
+        .map(|port| port.name.as_str())
+        .collect();
+        for name in names {
+            let mine = op.inputs.iter().find(|port| port.name == name);
+            let theirs = body.inputs.iter().find(|port| port.name == name);
+            let (made, side) = match (mine, theirs) {
+                (Some(mine), Some(theirs)) => {
+                    let each = process.each.iter().any(|item| item == name);
+                    let item = match each {
+                        true if !mine.flow.is_value() => None,
+                        true => match resolve(&mine.r#type, self.defs) {
+                            Some(Type::Array(array)) => Some((*array.items).clone()),
+                            _ => Some(mine.r#type.clone()),
+                        },
+                        false => Some(mine.r#type.clone()),
+                    };
+                    let fits = item.is_some_and(|item| theirs.takes().accepts(&item, self.defs));
+                    (fits && theirs.flow.is_value(), "input")
+                }
+                (None, None) => {
+                    let mine = op.outputs.iter().find(|port| port.name == name);
+                    let theirs = body.outputs.iter().find(|port| port.name == name);
+                    let fits = match (mine, theirs) {
+                        (Some(mine), Some(theirs)) => {
+                            let flow = if streaming { Flow::Stream } else { Flow::Value };
+                            mine.flow == flow
+                                && theirs.flow.is_value()
+                                && mine.r#type.accepts(&theirs.r#type, self.defs)
+                        }
+                        _ => false,
+                    };
+                    (fits, "output")
+                }
+                _ => (false, "input"),
+            };
+            if !made {
+                let port = format!("{side} {name}");
+                let graph = process.body.clone();
+                self.report(at, Problem::CallPort { port, graph });
             }
         }
     }

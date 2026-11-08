@@ -543,6 +543,17 @@
             }
           }
         },
+        "process": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body"],
+          "properties": {
+            "body": { "$ref": "#/$defs/name" },
+            "each": { "$ref": "#/$defs/names" },
+            "order": { "enum": ["completion", "fair"] },
+            "parallelism": { "$ref": "#/$defs/count" }
+          }
+        },
         "branch": {
           "type": "object",
           "additionalProperties": false,

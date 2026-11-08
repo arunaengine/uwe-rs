@@ -358,3 +358,16 @@ fn effect_forms() {
         json!(["write_files", "log", "read_files"])
     );
 }
+
+#[test]
+fn process_forms() {
+    let good = [
+        json!({"process": {"body": "align"}}),
+        json!({"process": {"body": "align", "each": ["mode"], "order": "fair", "parallelism": 4}}),
+    ];
+    let bad = [
+        json!({"process": {"body": "align", "order": "random"}}),
+        json!({"process": {}}),
+    ];
+    kinds_round_trip(&good, &bad);
+}

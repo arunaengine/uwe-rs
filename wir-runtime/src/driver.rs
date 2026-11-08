@@ -454,8 +454,12 @@ impl WirDriver {
             self.owners.insert(task.id, index);
             task.name = format!("{}: {}", node.path, task.name);
             // A cache rule only makes reuse stricter, never overriding the block's own veto.
-            if node.op.attributes.cache == Some(wir::Cache::Never) {
-                task.reuse = Reuse::Disabled;
+            match node.op.attributes.cache {
+                Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
+                Some(wir::Cache::Resume) if task.reuse == Reuse::Allowed => {
+                    task.reuse = Reuse::Lineage;
+                }
+                _ => {}
             }
             if let Some(place) = &node.op.attributes.place {
                 task.site = Some(place.clone());

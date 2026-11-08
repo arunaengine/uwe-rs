@@ -167,6 +167,9 @@ pub enum Reuse {
     Denied,
     /// The task neither reads nor writes cached results, like Nextflow's `cache false`.
     Disabled,
+    /// Only a result of the run that is resumed answers the task, never one of another run,
+    /// like a wir op with `cache: resume`.
+    Lineage,
 }
 
 impl Reuse {

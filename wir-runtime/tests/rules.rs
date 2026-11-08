@@ -172,3 +172,14 @@ fn places_native_tasks() {
         assert_eq!(task.reuse, Reuse::Disabled);
     }
 }
+
+#[test]
+fn reuses_resumed_results() {
+    let graph = simulate(|document| {
+        op(document, 0)["attributes"]["cache"] = json!("resume");
+    });
+    let reuses: Vec<Reuse> = graph.nodes.iter().map(|node| node.task.reuse).collect();
+    assert_eq!(reuses, [Reuse::Lineage, Reuse::Allowed]);
+    let tasks = native(json!({"cache": "resume"})).unwrap();
+    assert!(tasks.iter().all(|task| task.reuse == Reuse::Lineage));
+}

@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use cwl_runtime::JavaScriptSettings;
+use cwl_runtime::files::Access;
 
 use serde_json::{Map, Value as Json, json};
 use wir::{Argument, CaptureRule, Content, FileName, Op, Port, Type, TypeDef, resolve};
@@ -84,9 +85,10 @@ pub fn build(
                     continue;
                 }
                 let staged = staging.adjusted(&Json::Object(bound.clone()), workdir);
-                let context = (&spec.library[..], settings);
-                let value = match crate::expr::argument((code, this.as_deref()), staged, context) {
-                    Ok(value) => value,
+                let given = this.as_ref().and_then(|name| staged.get(name)).cloned();
+                let values = (staged, given.unwrap_or(Json::Null), json!({}));
+                let value = match crate::expr::code(code, values, (&spec.library, settings)) {
+                    Ok(value) => crate::cwl::to_wir(value),
                     // As uwe's CWL driver, a simulated run marks code over made-up contents.
                     Err(_) if simulated && code.contains("contents") => {
                         json!(cwl_runtime::tool::FAKE_ARGUMENT)
@@ -134,6 +136,14 @@ pub fn build(
                 }
             }
         }
+    }
+    // Code may name any file it made, so a real run takes them all, as uwe's CWL driver.
+    let named = (spec.captures.iter()).any(|capture| {
+        let port = op.outputs.iter().find(|port| port.name == capture.output);
+        capture.code.is_some() && port.is_some_and(|port| holds_files(&port.r#type))
+    });
+    if named && !simulated && !outputs.iter().any(|output| output == "*") {
+        outputs.push("*".into());
     }
     // A simulated run lists the results file only where an output needs it, as uwe's CWL driver.
     let listed = !simulated || (spec.captures.iter()).any(|item| item.from == CaptureRule::Results);
@@ -237,13 +247,16 @@ pub fn build(
 }
 
 /// What a task gave back: its outcome, how to read its files, its input values and staged
-/// inputs, and whether the run is simulated.
+/// inputs, whether the run is simulated, and how code reads files.
+#[derive(Clone, Copy)]
 pub struct Ended<'a> {
     pub outcome: &'a Outcome,
     pub files: Option<&'a dyn Files>,
     pub bound: &'a Map<String, Json>,
     pub inputs: &'a [Input],
     pub simulated: bool,
+    pub settings: &'a JavaScriptSettings,
+    pub access: &'a Access,
 }
 
 /// The output values that the captures of a task read from an outcome, or why the attempt
@@ -260,6 +273,7 @@ pub fn capture(
         bound,
         inputs,
         simulated,
+        ..
     } = ended;
     let names = streams(spec, bound);
     let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
@@ -288,16 +302,13 @@ pub fn capture(
             _ => None,
         };
         if results.is_some() || given.is_some() {
-            let value = located(given.unwrap_or(Json::Null), (outcome, inputs, workdir))
-                .map_err(|problem| format!("output {}: {problem}", port.name))?;
-            let value = crate::state::widen(crate::cwl::to_wir(value), &port.r#type, defs);
-            let value = match wir::fits(&value, &port.r#type, defs) {
-                true => value,
-                // A simulated run makes no results, so it makes the value up.
-                false if simulated => crate::expr::placeholder(&port.r#type, &port.name, defs),
-                false => return Err(format!("output {} does not fit its type", port.name)),
-            };
-            values.insert(port.name.clone(), value);
+            let value = located(
+                given.unwrap_or(Json::Null),
+                (outcome, inputs, workdir, simulated),
+            )
+            .map_err(|problem| format!("output {}: {problem}", port.name))?;
+            let value = crate::cwl::to_wir(value);
+            values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
             continue;
         }
         let found: Vec<&OutputFile> = match &capture.from {
@@ -316,7 +327,7 @@ pub fn capture(
                 }
                 found
             }
-            CaptureRule::Results => Vec::new(),
+            CaptureRule::Results | CaptureRule::Empty => Vec::new(),
             rule => {
                 let name = stream_name(&names, &port.name, rule);
                 outcome
@@ -326,6 +337,22 @@ pub fn capture(
                     .collect()
             }
         };
+        if let Some(code) = &capture.code {
+            let value = match evaluated((code, capture), &found, spec, ended) {
+                // A simulated run makes files up, so code over them may fail.
+                Err(_)
+                    if simulated && ["self", "contents"].iter().any(|word| code.contains(word)) =>
+                {
+                    crate::expr::placeholder(&port.r#type, &port.name, defs)
+                }
+                other => other.map_err(|problem| format!("output {}: {problem}", port.name))?,
+            };
+            let mut value = crate::cwl::to_wir(value);
+            attach(&mut value, &port.r#type, outcome, defs)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+            values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
+            continue;
+        }
         let mut value = fill(&port.r#type, &found, defs)
             .and_then(|mut value| {
                 attach(&mut value, &port.r#type, outcome, defs)?;
@@ -336,12 +363,70 @@ pub fn capture(
             load(&mut value, files)
                 .map_err(|problem| format!("output {}: {problem}", port.name))?;
         }
+        if let Some(listing) = capture.listing {
+            value = crate::load::listings(value, listing, ended.access)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+        }
         if !wir::fits(&value, &port.r#type, defs) {
             return Err(format!("output {} does not fit its type", port.name));
         }
         values.insert(port.name.clone(), value);
     }
     Ok(values)
+}
+
+/// An output value from the results or code, as wir holds it; a simulated run makes up one
+/// that does not fit.
+fn settled(value: Json, port: &Port, defs: &[TypeDef], simulated: bool) -> Result<Json, String> {
+    let value = crate::state::widen(value, &port.r#type, defs);
+    match wir::fits(&value, &port.r#type, defs) {
+        true => Ok(value),
+        false if simulated => Ok(crate::expr::placeholder(&port.r#type, &port.name, defs)),
+        false => Err(format!("output {} does not fit its type", port.name)),
+    }
+}
+
+/// The value of the code of a capture over the paths it matched, as uwe's CWL driver
+/// evaluates `outputEval`.
+fn evaluated(
+    (code, capture): (&str, &wir::Capture),
+    found: &[&OutputFile],
+    spec: &wir::Task,
+    ended: Ended<'_>,
+) -> Result<Json, String> {
+    let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
+    let mut this = Json::Array(found.iter().map(|file| entry(file, None)).collect());
+    if capture.load_contents {
+        load(&mut this, ended.files)?;
+    }
+    if let Some(listing) = capture.listing {
+        this = crate::load::listings(this, listing, ended.access)?;
+    }
+    let location = |item: &Json| {
+        item.get("location")
+            .and_then(Json::as_str)
+            .map(str::to_owned)
+    };
+    let made = |item: &Json| {
+        let location = location(item)?;
+        let file = (ended.outcome.files.iter()).find(|file| file.location == location)?;
+        Some(absolute(file.path.trim_end_matches('/'), workdir))
+    };
+    let given = |item: &Json| {
+        let location = location(item)?;
+        let source = cwl_parser::iri::file_path(&location)
+            .map_or(location, |path| path.to_string_lossy().into_owned());
+        let input = ended.inputs.iter().find(|input| input.source == source)?;
+        Some(absolute(&input.path, workdir))
+    };
+    let inputs = with_paths(&Json::Object(ended.bound.clone()), &given);
+    let runtime = json!({"exitCode": ended.outcome.exit_code});
+    let values = (inputs, with_paths(&this, &made), runtime);
+    let value = crate::expr::code(code, values, (&spec.library, ended.settings))?;
+    located(
+        value,
+        (ended.outcome, ended.inputs, workdir, ended.simulated),
+    )
 }
 
 /// The object of the results file that the task wrote, if any; the made-up file of a
@@ -367,8 +452,8 @@ fn results(
 
 /// A value of the results where each File and Directory that names a place in the container
 /// becomes the file that the task made there, or the input staged there.
-fn located(value: Json, task: (&Outcome, &[Input], &str)) -> Result<Json, String> {
-    let (outcome, inputs, workdir) = task;
+fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, String> {
+    let (outcome, inputs, workdir, simulated) = task;
     let mut object = match value {
         Json::Array(items) => {
             let items = items.into_iter().map(|item| located(item, task));
@@ -402,11 +487,12 @@ fn located(value: Json, task: (&Outcome, &[Input], &str)) -> Result<Json, String
                 (file.location.trim_end_matches('/').strip_suffix(made))
                     .map(|folder| folder.trim_end_matches('/').to_owned())
             });
-            let inner = relative(&path, workdir).zip(folder);
-            let location = match (staged, inner) {
-                (Some(input), _) => input.source.clone(),
-                (None, Some((inner, folder))) => join(&folder, &inner),
-                (None, None) => {
+            let location = match (staged, relative(&path, workdir), folder) {
+                (Some(input), _, _) => input.source.clone(),
+                (None, Some(inner), Some(folder)) => join(&folder, &inner),
+                // A simulated run that made no files takes them as present.
+                (None, Some(inner), None) if simulated => format!("_:{inner}"),
+                _ => {
                     return Err(format!(
                         "the results name {place}, which the task did not make"
                     ));
@@ -609,30 +695,11 @@ impl Staging {
         }
     }
 
-    /// A value whose staged Files and Directories have their `path`, `dirname` and `basename`
-    /// in the container, as uwe's CWL driver adjusts them.
+    /// A value whose staged Files and Directories have their paths in the container.
     fn adjusted(&self, value: &Json, workdir: &str) -> Json {
-        match value {
-            Json::Array(items) => Json::Array(
-                (items.iter())
-                    .map(|item| self.adjusted(item, workdir))
-                    .collect(),
-            ),
-            Json::Object(object) => {
-                let path = self.path(value).map(|path| absolute(path, workdir));
-                let mut object: Map<String, Json> = (object.iter())
-                    .map(|(key, item)| (key.clone(), self.adjusted(item, workdir)))
-                    .collect();
-                if let Some(path) = path {
-                    let (folder, name) = path.rsplit_once('/').unwrap_or(("", &path));
-                    object.insert("dirname".into(), json!(folder));
-                    object.insert("basename".into(), json!(name));
-                    object.insert("path".into(), json!(path));
-                }
-                Json::Object(object)
-            }
-            other => other.clone(),
-        }
+        with_paths(value, &|item| {
+            self.path(item).map(|path| absolute(path, workdir))
+        })
     }
 
     /// Places the value of an entry of the working folder at `path`, else by basename.
@@ -732,6 +799,30 @@ fn join(folder: &str, name: &str) -> String {
     match folder.is_empty() {
         true => name.to_owned(),
         false => format!("{folder}/{name}"),
+    }
+}
+
+/// A value whose Files and Directories have the `path`, `dirname` and `basename` that
+/// `path_of` gives them, as uwe's CWL driver adjusts them.
+fn with_paths(value: &Json, path_of: &dyn Fn(&Json) -> Option<String>) -> Json {
+    match value {
+        Json::Array(items) => {
+            Json::Array(items.iter().map(|item| with_paths(item, path_of)).collect())
+        }
+        Json::Object(object) => {
+            let path = path_of(value);
+            let mut object: Map<String, Json> = (object.iter())
+                .map(|(key, item)| (key.clone(), with_paths(item, path_of)))
+                .collect();
+            if let Some(path) = path {
+                let (folder, name) = path.rsplit_once('/').unwrap_or(("", &path));
+                object.insert("dirname".into(), json!(folder));
+                object.insert("basename".into(), json!(name));
+                object.insert("path".into(), json!(path));
+            }
+            Json::Object(object)
+        }
+        other => other.clone(),
     }
 }
 
@@ -859,6 +950,18 @@ fn directories(r#type: &Type) -> bool {
     }
 }
 
+/// Whether a type may hold Files or Directories; a named type counts.
+fn holds_files(r#type: &Type) -> bool {
+    match r#type {
+        Type::File(_) | Type::Directory | Type::Dynamic | Type::Named(_) => true,
+        Type::Optional(inner) => holds_files(inner),
+        Type::Array(array) => holds_files(&array.items),
+        Type::Union(members) | Type::Tuple(members) => members.iter().any(holds_files),
+        Type::Record(fields) => fields.iter().any(|field| holds_files(&field.r#type)),
+        _ => false,
+    }
+}
+
 /// Whether a pattern is relative and stays inside the working folder.
 fn inside(pattern: &str) -> bool {
     !pattern.is_empty() && !pattern.starts_with('/') && !pattern.split('/').any(|part| part == "..")
@@ -962,6 +1065,8 @@ mod tests {
             load_contents: false,
             optional: false,
             arity: None,
+            listing: None,
+            code: None,
         };
         let spec = wir::Task {
             workdir: Some("/w".into()),
@@ -996,6 +1101,8 @@ mod tests {
             bound: &Map::new(),
             inputs: &inputs,
             simulated: false,
+            settings: &JavaScriptSettings::default(),
+            access: &Access::default(),
         };
         let values = capture(&spec, &ports, ended, &[]).unwrap();
         assert_eq!(

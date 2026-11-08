@@ -359,12 +359,16 @@ impl WirDriver {
             return Vec::new();
         };
         let files = self.files.as_deref();
+        let mut access = self.settings.cwl.access();
+        access.assume_present |= self.launch.simulated;
         let ended = task::Ended {
             outcome,
             files,
             bound,
             inputs: &task.inputs,
             simulated: self.launch.simulated,
+            settings: &self.settings.cwl.javascript,
+            access: &access,
         };
         match task::capture(spec, &node.op.outputs, ended, &self.document.types) {
             Ok(values) => {

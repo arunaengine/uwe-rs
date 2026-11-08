@@ -9,7 +9,7 @@ use crate::exception::Exception;
 use crate::lines::Lines;
 use crate::value::{Key, PathValue, Value};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Format {
     Csv {
         separator: char,
@@ -37,7 +37,7 @@ const FASTA_FIELDS: &[&str] = &["id", "desc", "header", "text", "seqString", "se
 const FASTQ_FIELDS: &[&str] = &["readHeader", "readString", "qualityHeader", "qualityString"];
 
 /// How to split a text: its format, the records of each chunk and the most records to read.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Splitter {
     pub format: Format,
     /// Records per chunk.

@@ -29,6 +29,7 @@ input-schema.workspace = true
 jiff.workspace = true
 k8s-openapi.workspace = true
 kube.workspace = true
+nextflow-compiler.workspace = true
 nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
@@ -65,6 +66,7 @@ tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }
 wdl-lowering.workspace = true
 wdl-runtime.workspace = true
+wir.workspace = true
 wir-runtime.workspace = true
 workflow-graph.workspace = true
 tracing.workspace = true

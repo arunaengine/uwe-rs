@@ -214,6 +214,15 @@ impl Child {
         self.driver.exported()
     }
 
+    /// Stops a child whose op was cancelled, like a sibling of a failed round: it takes no
+    /// more calls and gives no results; the parent ids of its tasks that still run.
+    pub fn stop(&mut self) -> Vec<TaskId> {
+        self.finished = true;
+        let mut running: Vec<TaskId> = self.running.drain().collect();
+        running.sort();
+        running
+    }
+
     /// Ends a child that did not finish when the run failed.
     pub fn failed(&mut self, error: &ExecuteError) -> Result<(), DriverError> {
         if self.finished {

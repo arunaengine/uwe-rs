@@ -166,6 +166,34 @@ These still come from the environment of the process, for every run alike:
 - where the Nextflow secret store is: `NXF_HOME`, `HOME` and `NXF_SECRETS_FILE`; an isolated run reads the store only when its host allows it, see [Isolated runs](#isolated-runs),
 - the terminal: `TERM` and `NXF_AGENT_MODE`, which nf-seqlab-progress reads.
 
+## RO-Crates without the data
+
+`run_crate::export` copies each input and output file of a run into the `data/` folder of the crate. For a large run this doubles the disk use and takes as long as the copy. Set `run_crate::Options.describe_data` to describe the files where the run left them instead. It is off by default.
+
+- Each file keeps its entity with `name`, `alternateName` (its path in the task), `contentSize`, `sha256` and its location as `contentUrl`, a `file://` URL. A directory gives its location as `url`, because a schema.org `Dataset` has no `contentUrl`. The `description` says that the file is not in the crate.
+- The id is the local identifier `#data/<hex>`, or `#data/<hex>/` for a directory, from its SHA-256 digest. RO-Crate 1.1 reads a relative id like `data/<hex>` as a file that the crate holds, and a `file://` URL is not a web-based data entity. So a file outside the crate gets a local identifier, as RO-Crate 1.2 describes for files that are deliberately not in a crate. The root does not list these files in `hasPart`; the actions of the run and its tasks name them as objects and results.
+- The size and the digest come from the run database. uwe reads a file only to hash it when the database lacks its digest or size. It does not read a file whose digest and size the database holds, so the file may have changed since the run; its `sha256` is the one of the run. A file that is gone is described as absent, as without the option. Copies in `Options.sources` are not used for these files.
+- The files that the command line named are described in the same way. Files on the web or in a bucket keep their URL as id, as before.
+- The crate still holds the metadata, the README, the workflow file, the files of the workflow in `workflow/` and the JSON Schemas. It also still copies the files that a workflow writes from its own text, like CWL `InitialWorkDir` entries, because they have no other location.
+- `secrets` and `folders` apply as before. With the run folder in `folders`, the `contentUrl` of `/srv/runs/01JBXQ5Z7C2W9M/work/a.txt` is `work/a.txt`: a path relative to the run folder, not to the crate.
+- `Summary` counts only what the crate holds, so `files` and `bytes` are 0 unless the workflow wrote files from its text.
+
+A host that offers a crate without the data, like the packed layout of flowy, passes the option with the secret values of the run and the folders of the server:
+
+```rust
+let options = run_crate::Options {
+    workflow,
+    license,
+    secrets,  // the secret values of the run
+    folders,  // the run folder and the local data folders
+    describe_data: true,
+    ..run_crate::Options::default()
+};
+run_crate::export(&database, &run, &directory, &options)?;
+```
+
+It then has no `data/` folder to delete, and the files have the `#data/<hex>` ids that flowy gave them when it packed a copied crate.
+
 ## Isolated runs
 
 A host that runs the workflows of many users in one process sets `run::Settings.isolation` to a `hosted::Isolation`. A run with a hosted policy and no isolation of its own gets `Isolation::default()`, with the tenant root among its folders. The command line is not isolated.

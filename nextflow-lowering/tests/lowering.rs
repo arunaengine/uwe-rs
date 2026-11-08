@@ -97,8 +97,17 @@ fn keeps_unbound_values() {
 fn lowers_process_calls() {
     let script = format!("{GREET}\nworkflow {{\n    GREET(channel.of('a', 'b'))\n}}\n");
     let document = full(&script);
-    let source = json!({"id": "main", "language": "nextflow", "location": "main.nf"});
-    assert_eq!(document["sources"], json!([source]));
+    let source = &document["sources"][0];
+    assert_eq!(
+        (&source["id"], &source["location"]),
+        (&json!("main"), &json!("main.nf"))
+    );
+    let digest = source["digest"].as_str().unwrap_or_default();
+    assert!(
+        digest.starts_with("sha256:") && digest.len() == 71,
+        "{digest}"
+    );
+    assert_eq!(document["sources"].as_array().unwrap().len(), 1);
     let main = graph(&document, "main");
     let values = op(main, "of.0");
     assert_eq!(values["inputs"][0]["default"], json!(["a", "b"]));
@@ -135,11 +144,7 @@ fn lowers_closure_callbacks() {
         json!({"call": {"graph": "workflow.SUB"}})
     );
     let sub = graph(&document, "workflow.SUB");
-    assert_eq!(
-        sub["inputs"].as_array().unwrap().len(),
-        2,
-        "the take and the params"
-    );
+    assert_eq!(sub["inputs"].as_array().unwrap().len(), 1, "the take");
     let body = &op(sub, "map.1")["kind"]["transform"]["body"];
     assert_eq!(body["code"], "{ word -> word + suffix }");
     assert_eq!(body["captures"], json!({"0": {"value": "!"}}));

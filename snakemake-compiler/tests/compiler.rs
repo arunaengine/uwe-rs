@@ -130,3 +130,12 @@ fn keeps_groups() {
         "{reason:?}"
     );
 }
+
+#[test]
+fn keeps_planning_commands() {
+    let snakefile = "shell(\"echo planned\")\n\nrule all:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n";
+    let (_folder, compiled, _) = compiled(snakefile);
+    let reason = compiled.kept.first().map(|kept| kept.reason.as_str());
+    let expected = "workflow code ran a command while a job was planned or prepared";
+    assert_eq!(reason, Some(expected));
+}

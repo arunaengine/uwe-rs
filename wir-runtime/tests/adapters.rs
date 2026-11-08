@@ -57,6 +57,7 @@ impl TaskAdapter for Sorting {
         Ok(Changes {
             tasks: vec![(call.call, task)],
             ended: Vec::new(),
+            ready: Vec::new(),
         })
     }
 
@@ -66,6 +67,7 @@ impl TaskAdapter for Sorting {
             return Ok(Changes {
                 tasks: vec![(call, task)],
                 ended: Vec::new(),
+                ready: Vec::new(),
             });
         }
         self.accepted.insert((outcome.id, outcome.attempt));
@@ -74,6 +76,7 @@ impl TaskAdapter for Sorting {
         Ok(Changes {
             tasks: Vec::new(),
             ended: vec![(call, Ending::Succeeded(values))],
+            ready: Vec::new(),
         })
     }
 
@@ -268,4 +271,69 @@ fn errors_refused_ops() {
     let ended = &log.lock().unwrap().ended;
     let failure = ended[0].as_deref().unwrap_or_default();
     assert!(failure.contains("the process has no binding"), "{ended:?}");
+}
+
+/// Runs each op as one task; the op `d` reports its daemon ready as it starts.
+#[derive(Default)]
+struct Daemons {
+    started: u64,
+}
+
+impl TaskAdapter for Daemons {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        self.started += 1;
+        let task = Task {
+            id: TaskId(self.started),
+            name: call.frame.path.clone(),
+            ..Task::default()
+        };
+        let ready = match call.frame.path.as_str() {
+            "d" => vec![call.call],
+            _ => Vec::new(),
+        };
+        Ok(Changes {
+            tasks: vec![(call.call, task)],
+            ended: Vec::new(),
+            ready,
+        })
+    }
+
+    fn complete(&mut self, _: Outcome) -> Result<Changes, DriverError> {
+        Ok(Changes::default())
+    }
+}
+
+#[test]
+fn daemon_readiness() {
+    let folder = tempfile::tempdir().unwrap();
+    let task = |call: &str| json!({"task": {"builder": {"argo_task": {"source": "wf", "entry": "main", "call": call}}}});
+    let after = json!({"result": {"op": "d", "on": ["daemoned"]}});
+    let document = json!({
+        "wir_version": wir::VERSION,
+        "sources": [{"id": "wf", "language": "argo", "location": "wf.yaml", "digest": "sha256:ab"}],
+        "graphs": [{"name": "main", "ops": [
+            {"path": "d", "kind": task(".d")},
+            {"path": "c", "kind": task(".c"), "depends": after}
+        ]}],
+        "entry": "main"
+    });
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    (settings.adapters).register("argo_task", |_| Ok(Box::new(Daemons::default())));
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let tasks = workflow_graph::Driver::start(&mut driver).unwrap();
+    let names: Vec<&str> = tasks.iter().map(|task| task.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["d: d", "c: c"],
+        "c starts once the daemon d is ready"
+    );
 }

@@ -62,6 +62,8 @@ pub struct Progress {
     inner: Vec<(usize, String)>,
     /// The outputs of ended nodes that closed empty.
     empty: HashSet<(usize, String)>,
+    /// The nodes whose daemon is ready.
+    pub daemons: HashSet<usize>,
     /// The streams of the run.
     pub streams: Streams,
 }
@@ -78,6 +80,7 @@ impl Progress {
             held: Vec::new(),
             inner: Vec::new(),
             empty: HashSet::new(),
+            daemons: HashSet::new(),
             streams: Streams::default(),
         };
         progress.adopt(0);

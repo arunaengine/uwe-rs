@@ -807,7 +807,10 @@ impl WirDriver {
             ended: (changes.ended.into_iter())
                 .filter(|(call, _)| !ended(&self.progress, *call))
                 .collect(),
+            ready: changes.ready,
         };
+        // A ready daemon has its control result before it ends.
+        (self.progress.daemons).extend(changes.ready.iter().map(|call| call.0));
         for (call, mut task) in changes.tasks {
             let prefixed = self.dialects.prefixed(task.id);
             mark(&mut task, self.progress.node(call.0), prefixed);

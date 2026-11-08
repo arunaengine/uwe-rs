@@ -105,6 +105,19 @@ impl Progress {
             {
                 self.candidates.entry(key).or_default().push(at);
             }
+            // A status group that succeeds handles the failures it allows of its members.
+            if let Kind::StatusGroup(group) = &node.op.kind {
+                let allowed = (group.allow.iter())
+                    .filter(|status| matches!(status, Status::Failed | Status::Errored));
+                for status in allowed {
+                    for member in &node.members {
+                        self.candidates
+                            .entry((*member, *status))
+                            .or_default()
+                            .push(at);
+                    }
+                }
+            }
         }
     }
 
@@ -414,15 +427,14 @@ impl Progress {
             return false;
         }
         self.forward(at);
-        let mut failed = false;
         for member in (0..self.plan.nodes.len()).filter(|node| self.node(*node).parent == Some(at))
         {
-            match &self.states[member] {
-                State::Ended(Status::Failed | Status::Errored, _) => failed = true,
-                State::Ended(..) => {}
-                _ => return false,
+            if !matches!(self.states[member], State::Ended(..)) {
+                return false;
             }
         }
+        // Only a failure that no successful handler handled fails the call.
+        let mut failed = self.inner.iter().any(|(call, _)| *call == at);
         let mut values = Map::new();
         let mut unfit = None;
         let mut empty = Vec::new();

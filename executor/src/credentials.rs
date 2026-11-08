@@ -2,21 +2,38 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use base64::Engine;
 use config_file::{ConfigError, ConfigFile, RegistryAuth};
 
 static CONFIGURED: RwLock<Settings> = RwLock::new(Settings {
     configured: BTreeMap::new(),
-    active: None,
+    active: Vec::new(),
 });
+
+static NEXT_SCOPE: AtomicU64 = AtomicU64::new(0);
+
+tokio::task_local! {
+    /// The settings of the request whose work this task does, from [`Registry::scope`].
+    static REQUEST: Registry;
+}
+
+thread_local! {
+    /// The settings of the requests entered on this thread, the last one counts.
+    static ENTERED: RefCell<Vec<(u64, Registry)>> = const { RefCell::new(Vec::new()) };
+}
 
 struct Settings {
     configured: BTreeMap<String, RegistryAuth>,
-    active: Option<(Registry, usize)>,
+    /// The settings of the requests that run now, with how many hold each. They give the same
+    /// values for their credentials and differ at most in the credential files they read.
+    active: Vec<(Registry, usize)>,
 }
 
 /// Registry settings of one request, independent of legacy process defaults.
@@ -50,31 +67,45 @@ impl Registry {
         self
     }
 
-    /// All overlapping requests must use the same registry settings, across worker threads.
-    /// Hold the returned scope until their asynchronous work has joined.
+    /// Overlapping requests must give the same values for their credentials, across worker
+    /// threads, but each one may leave out the credential files. Hold the returned scope on
+    /// this thread until the asynchronous work of the request has joined.
     pub fn enter(&self) -> Result<Scope, String> {
         let mut settings = CONFIGURED
             .write()
             .unwrap_or_else(|poison| poison.into_inner());
-        match &mut settings.active {
-            Some((active, count)) => {
-                if active.paths != self.paths || !same_auth(&active.configured, &self.configured) {
-                    return Err(
-                        "concurrent requests with different registry settings require separate worker processes"
-                            .into(),
-                    );
-                }
-                *count += 1;
-            }
-            None => settings.active = Some((self.clone(), 1)),
+        if (settings.active.iter())
+            .any(|(active, _)| !same_auth(&active.configured, &self.configured))
+        {
+            return Err(
+                "concurrent requests with different registry settings require separate worker processes"
+                    .into(),
+            );
         }
-        Ok(Scope { _private: () })
+        match (settings.active.iter_mut()).find(|(active, _)| active.paths == self.paths) {
+            Some((_, count)) => *count += 1,
+            None => settings.active.push((self.clone(), 1)),
+        }
+        drop(settings);
+        let id = NEXT_SCOPE.fetch_add(1, Ordering::Relaxed);
+        ENTERED.with(|entered| entered.borrow_mut().push((id, self.clone())));
+        Ok(Scope {
+            id,
+            paths: self.paths.clone(),
+        })
+    }
+
+    /// Runs `work` with these settings, also where it leaves the thread of the request, like
+    /// the task attempts on the runtime that all runs share.
+    pub fn scope<F: Future>(&self, work: F) -> impl Future<Output = F::Output> + use<F> {
+        REQUEST.scope(self.clone(), work)
     }
 }
 
-/// Keeps a request's registry settings active on every executor and helper thread.
+/// Keeps a request's registry settings active in the process and on the thread that entered them.
 pub struct Scope {
-    _private: (),
+    id: u64,
+    paths: Vec<PathBuf>,
 }
 
 impl Drop for Scope {
@@ -82,12 +113,18 @@ impl Drop for Scope {
         let mut settings = CONFIGURED
             .write()
             .unwrap_or_else(|poison| poison.into_inner());
-        if let Some((_, count)) = &mut settings.active {
-            *count -= 1;
-            if *count == 0 {
-                settings.active = None;
+        let active = &mut settings.active;
+        if let Some(index) = active
+            .iter()
+            .position(|(entry, _)| entry.paths == self.paths)
+        {
+            active[index].1 -= 1;
+            if active[index].1 == 0 {
+                active.remove(index);
             }
         }
+        drop(settings);
+        let _ = ENTERED.try_with(|entered| entered.borrow_mut().retain(|(id, _)| *id != self.id));
     }
 }
 
@@ -147,11 +184,7 @@ pub fn configure(config: &ConfigFile) -> Result<(), ConfigError> {
     let mut settings = CONFIGURED
         .write()
         .unwrap_or_else(|poison| poison.into_inner());
-    if settings
-        .active
-        .as_ref()
-        .is_some_and(|(active, _)| !same_auth(&active.configured, &auth))
-    {
+    if (settings.active.iter()).any(|(active, _)| !same_auth(&active.configured, &auth)) {
         return Err(config.root().invalid(
             "registry",
             "registry settings cannot change while a request is active",
@@ -162,18 +195,41 @@ pub fn configure(config: &ConfigFile) -> Result<(), ConfigError> {
 }
 
 pub(crate) fn lookup(host: &str) -> Result<Found, String> {
+    let request = (REQUEST.try_with(Registry::clone).ok()).or_else(|| {
+        let last = |entered: &RefCell<Vec<(u64, Registry)>>| entered.borrow().last().cloned();
+        ENTERED
+            .try_with(last)
+            .ok()
+            .flatten()
+            .map(|(_, registry)| registry)
+    });
+    if let Some(registry) = request {
+        return lookup_in(host, &registry.configured, &registry.paths);
+    }
     let settings = CONFIGURED
         .read()
         .unwrap_or_else(|poison| poison.into_inner());
-    let registry = settings.active.as_ref().map_or_else(
-        || Registry {
-            configured: settings.configured.clone(),
-            paths: paths(),
-        },
-        |(active, _)| active.clone(),
-    );
+    let (registry, mixed) = match settings.active.as_slice() {
+        [] => {
+            let configured = settings.configured.clone();
+            let registry = Registry {
+                configured,
+                paths: paths(),
+            };
+            (registry, false)
+        }
+        [(active, _)] => (active.clone(), false),
+        [(active, _), ..] => (active.clone().without_files(), true),
+    };
     drop(settings);
-    lookup_in(host, &registry.configured, &registry.paths)
+    let found = lookup_in(host, &registry.configured, &registry.paths)?;
+    // Without its request, a lookup cannot tell whether it may read the files of the service user.
+    if mixed && found.credential.is_none() {
+        return Err(format!(
+            "the registry credentials for {host} are asked outside of their request, while the running requests differ in whether they read the credential files of the service user"
+        ));
+    }
+    Ok(found)
 }
 
 fn paths() -> Vec<PathBuf> {
@@ -283,6 +339,74 @@ fn read_file(path: &Path) -> Result<Option<serde_json::Value>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two overlapping requests, one without the credential files of the service user, each
+    /// get their own credentials. Runs again in a child process whose home has a Docker file.
+    #[test]
+    fn scopes_registry_files() {
+        if std::env::var_os("UWE_TEST_REGISTRY_FILES").is_none() {
+            let home = tempfile::tempdir().unwrap();
+            let docker = home.path().join(".docker");
+            std::fs::create_dir_all(&docker).unwrap();
+            let file = r#"{"auths":{"private.example":{"identitytoken":"service"}}}"#;
+            std::fs::write(docker.join("config.json"), file).unwrap();
+            let test = "credentials::tests::scopes_registry_files";
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", test, "--test-threads=1"])
+                .env("UWE_TEST_REGISTRY_FILES", "1")
+                .env("HOME", home.path())
+                .env_remove("DOCKER_CONFIG")
+                .env_remove("XDG_RUNTIME_DIR")
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{stdout}{stderr}");
+            assert!(
+                stdout.contains("1 passed"),
+                "the child ran no test: {stdout}"
+            );
+            return;
+        }
+        let found = |registry: Option<&Registry>| {
+            let ask = || lookup("private.example").map(|found| found.credential.is_some());
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let task = match registry.cloned() {
+                Some(registry) => runtime.spawn(registry.scope(async move { ask() })),
+                None => runtime.spawn(async move { ask() }),
+            };
+            runtime.block_on(task).unwrap()
+        };
+        let service = Registry::default();
+        let isolated = Registry::default().without_files();
+        let _service = service.enter().unwrap();
+        let (ready, overlapping) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let request = std::thread::spawn(move || {
+            let _isolated = (isolated.enter())
+                .expect("a request without the files of the service user may overlap");
+            let here = lookup("private.example").unwrap().credential.is_some();
+            ready.send(here).unwrap();
+            released.recv().unwrap();
+        });
+        assert!(
+            !overlapping.recv().unwrap(),
+            "the isolated request read the service files"
+        );
+        assert_eq!(found(Some(&Registry::default().without_files())), Ok(false));
+        assert_eq!(found(Some(&service)), Ok(true));
+        assert!(lookup("private.example").unwrap().credential.is_some());
+        assert!(
+            found(None).is_err(),
+            "a lookup outside both requests must not pick the files of either"
+        );
+        let other = "[registry.\"private.example\"]\ntoken = \"other\"";
+        let other = ConfigFile::parse(other, Path::new("other.toml")).unwrap();
+        assert!(Registry::from_config(&other).unwrap().enter().is_err());
+        release.send(()).unwrap();
+        request.join().unwrap();
+        assert_eq!(found(None), Ok(true));
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn fences_concurrent_settings() {

@@ -373,10 +373,9 @@ impl Access {
         }
     }
 
-    /// Whether a file next to a primary file, like a secondary file, exists. When the primary
-    /// file is on disk, the data is at hand, so the other file must be on disk too; a web or
-    /// storage address exists unless its provider finds none, as cwltool drops it; else as
-    /// [`Access::exists`].
+    /// Whether a file next to a primary file, like a secondary file, exists: on disk beside a
+    /// primary on disk, at a web or storage address unless its provider finds none, as cwltool
+    /// drops it, else as [`Access::exists`].
     pub fn exists_next_to(&self, location: &str, primary: &str) -> bool {
         let on_disk = |location: &str| local_path(location).is_some_and(|path| path.exists());
         if on_disk(primary) && local_path(location).is_some() {

@@ -414,7 +414,7 @@ impl WirDriver {
             Kind::Load(spec) => {
                 let node = self.progress.node(at);
                 let mut access = self.settings.cwl.access();
-                access.assume_present |= self.launch.simulated;
+                access.assume_present = self.launch.simulated;
                 match crate::load::load(&spec, &node.op, &bound, &access) {
                     Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
                     Err(why) => {
@@ -583,7 +583,7 @@ impl WirDriver {
         };
         let files = self.files.as_deref();
         let mut access = self.settings.cwl.access();
-        access.assume_present |= self.launch.simulated;
+        access.assume_present = self.launch.simulated;
         let ended = task::Ended {
             outcome,
             files,

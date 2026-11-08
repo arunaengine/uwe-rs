@@ -317,7 +317,8 @@ fn to_wir(
     })
 }
 
-/// A record, or a map with text keys, from WDL entries with text keys.
+/// A record, or a map with text keys, from WDL entries with text keys. A record has every
+/// field, null where the entries have none, as WDL coerces a struct.
 fn record(
     r#type: &Type,
     entries: Vec<(Value, Value)>,
@@ -334,6 +335,18 @@ fn record(
             _ => Type::Dynamic,
         };
         object.insert(name, to_wir(item, &want, defs, files)?);
+    }
+    if let Type::Record(fields) = r#type {
+        let mut ordered: Map<String, Json> = (fields.iter())
+            .map(|field| {
+                (
+                    field.name.clone(),
+                    object.remove(&field.name).unwrap_or_default(),
+                )
+            })
+            .collect();
+        ordered.extend(object);
+        object = ordered;
     }
     Ok(Json::Object(object))
 }
@@ -461,6 +474,15 @@ mod tests {
         let map = json!({"map": {"key": "string", "value": "float"}});
         let counts = run("{\"a\": 1, \"b\": 2.5}", &[], json!({}), map);
         assert_eq!(counts, Ok(json!({"a": 1.0, "b": 2.5})));
+    }
+
+    #[test]
+    fn records_have_fields() {
+        let fields =
+            json!([{"name": "a", "type": "int"}, {"name": "b", "type": {"optional": "string"}}]);
+        let output = json!({"record": fields});
+        let made = run("object { a: 1 }", &[], json!({}), output);
+        assert_eq!(made, Ok(json!({"a": 1, "b": null})));
     }
 
     #[test]

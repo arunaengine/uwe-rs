@@ -782,6 +782,7 @@ impl WirDriver {
         let configs = task.configs.iter().map(|id| self.locate(id));
         let opening = adapter::Opening {
             builder,
+            sources: &self.document.sources,
             source: self.locate(&task.source)?,
             configs: configs.collect::<Result<_, _>>()?,
             inputs: &self.progress.inputs,
@@ -1166,9 +1167,11 @@ impl Driver for WirDriver {
     }
 
     fn notes(&mut self) -> Vec<Note> {
-        (self.children.iter_mut())
+        let mut notes: Vec<Note> = (self.children.iter_mut())
             .flat_map(|(_, child)| child.notes())
-            .collect()
+            .collect();
+        notes.extend(self.dialects.notes());
+        notes
     }
 
     fn use_files(&mut self, files: Arc<dyn Files>) {

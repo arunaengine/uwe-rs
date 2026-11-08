@@ -11,7 +11,8 @@ use std::time::Instant;
 use serde_json::{Map, Value as Json};
 use wir::{Kind, Op, TaskBuilder};
 use workflow_graph::{
-    CancellationToken, Delivery, DriverError, ExecuteError, Files, Launch, Outcome, Task, TaskId,
+    CancellationToken, Delivery, DriverError, ExecuteError, Files, Launch, Note, Outcome, Task,
+    TaskId,
 };
 
 use crate::state::Progress;
@@ -112,6 +113,12 @@ pub trait TaskAdapter {
         Ok(())
     }
 
+    /// What it noticed since the last call, like checkpoint marks or files that workflow code
+    /// read, with the task ids it gave.
+    fn notes(&mut self) -> Vec<Note> {
+        Vec::new()
+    }
+
     /// Ends the source context once the run ends, with why the run failed, if it did.
     fn end(&mut self, _failure: Option<&str>) -> Result<(), DriverError> {
         Ok(())
@@ -126,6 +133,8 @@ pub trait TaskAdapter {
 /// What an adapter opens with: the source context of its first op and the run around it.
 pub struct Opening<'a> {
     pub builder: &'a TaskBuilder,
+    /// The sources of the document, like the config values a compiler pinned.
+    pub sources: &'a [wir::Source],
     pub source: PathBuf,
     pub configs: Vec<PathBuf>,
     /// The input values of the run.
@@ -367,6 +376,26 @@ impl Dialects {
             deliveries.extend(given);
         }
         deliveries
+    }
+
+    /// What the adapters noticed, with the tasks that notes name under their run ids.
+    pub fn notes(&mut self) -> Vec<Note> {
+        let mut notes = Vec::new();
+        for opened in &mut self.opened {
+            notes.extend(
+                opened
+                    .adapter
+                    .notes()
+                    .into_iter()
+                    .filter_map(|note| match note {
+                        Note::Mark(task, marker) => {
+                            (opened.outer.get(&task)).map(|id| Note::Mark(*id, marker))
+                        }
+                        other => Some(other),
+                    }),
+            );
+        }
+        notes
     }
 
     /// Acknowledges a delivery to the adapter that gave it; `None` when none gave it.

@@ -4,7 +4,6 @@
 
 use std::collections::BTreeSet;
 
-use super::callbacks::Arity;
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
@@ -28,12 +27,14 @@ impl<'d> Checker<'d> {
                     self.scope(at, scope, expr.language);
                 }
             }
-            Kind::Filter(filter) => {
-                self.body(at, op, &filter.body, Arity::Unary, Some(&Type::Bool))
-            }
+            Kind::Emit(emit) => self.emit(at, op, emit),
+            Kind::Transform(transform) => self.transform(at, op, transform),
+            Kind::Filter(filter) => self.filter(at, op, &filter.body),
+            Kind::FlatMap(flat) => self.flat_map(at, op, flat),
             Kind::Branch(branch) => self.branch(at, op, branch),
             Kind::Select(select) => self.select(at, op, select.rule),
             Kind::Merge(_) => self.merge(at, op),
+            Kind::Flatten(flatten) if streams(op) => self.flatten_stream(at, op, flatten.depth),
             Kind::Flatten(_) => self.flatten(at, op),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
             _ => {}
@@ -267,11 +268,8 @@ impl<'d> Checker<'d> {
         }
     }
 
-    /// The output is an array of the items of the input's array items; streams stay reserved.
+    /// The output is an array of the items of the input's array items.
     fn flatten(&mut self, at: &str, op: &Op) {
-        if streams(op) {
-            return;
-        }
         let Some((items, output)) = self.unary(at, op, "a flatten") else {
             return;
         };
@@ -301,7 +299,7 @@ impl<'d> Checker<'d> {
     }
 
     /// The output port must accept what the op makes.
-    fn gives(&mut self, at: &str, output: &Port, made: &Type) {
+    pub(super) fn gives(&mut self, at: &str, output: &Port, made: &Type) {
         if !output.r#type.accepts(made, self.defs) {
             let port = format!("output {}", output.name);
             let (found, want) = (show(made), show(&output.r#type));
@@ -357,12 +355,12 @@ impl<'d> Checker<'d> {
     }
 }
 
-/// Whether an op has a stream port, which keeps `merge` and `flatten` reserved.
-fn streams(op: &Op) -> bool {
+/// Whether an op has a stream port, which selects the stream form of `merge` and `flatten`.
+pub(super) fn streams(op: &Op) -> bool {
     (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value())
 }
 
-fn array_of(items: Type) -> Type {
+pub(super) fn array_of(items: Type) -> Type {
     Type::Array(ArrayType {
         items: Box::new(items),
         nonempty: false,

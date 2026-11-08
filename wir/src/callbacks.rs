@@ -27,22 +27,37 @@ impl Arity {
 }
 
 impl<'d> Checker<'d> {
-    /// Checks a callback of `op` with `arity`; `returns` is the type its result must have.
+    /// Checks a callback of `op` with `arity`, whose positional arguments have the types
+    /// `args` where known; `returns` is the type its result must have.
     pub(super) fn body(
         &mut self,
         at: &str,
         op: &Op,
         body: &Body,
-        arity: Arity,
+        (arity, args): (Arity, &[&Type]),
         returns: Option<&Type>,
     ) {
         match body {
-            Body::Graph(name) => self.callback(at, op, name, arity, returns),
+            Body::Graph(name) => self.callback(at, op, name, (arity, args), returns),
             Body::Closure(closure) => self.closure(at, op, closure, arity),
         }
     }
 
-    fn callback(&mut self, at: &str, op: &Op, name: &str, arity: Arity, returns: Option<&Type>) {
+    /// The type of the output `out` of a callback graph.
+    pub(super) fn gives_type(&self, body: &Body) -> Option<&'d Type> {
+        let graph = self.graph(body.graph()?)?;
+        let out = graph.outputs.iter().find(|port| port.name == "out")?;
+        Some(&out.r#type)
+    }
+
+    fn callback(
+        &mut self,
+        at: &str,
+        op: &Op,
+        name: &str,
+        (arity, args): (Arity, &[&Type]),
+        returns: Option<&Type>,
+    ) {
         let Some(graph) = self.graph(name) else {
             self.report(at, Problem::NoGraph(name.to_owned()));
             return;
@@ -66,9 +81,16 @@ impl<'d> Checker<'d> {
             }
             _ => why.push("a callback graph has one output, out".to_owned()),
         }
-        for position in arity.names() {
-            if !graph.inputs.iter().any(|port| port.name == *position) {
-                why.push(format!("input {position} is missing"));
+        for (index, position) in arity.names().iter().enumerate() {
+            match graph.inputs.iter().find(|port| port.name == *position) {
+                None => why.push(format!("input {position} is missing")),
+                Some(port) => {
+                    if let Some(arg) = args.get(index)
+                        && !port.takes().accepts(arg, self.defs)
+                    {
+                        why.push(format!("input {position} does not take {}", show(*arg)));
+                    }
+                }
             }
         }
         for port in graph

@@ -78,7 +78,7 @@ fn merged(path: &str, sources: &[(Endpoint, Type)], mode: LinkMerge) -> (Link, T
         Type::Array(inner) => (*inner.items).clone(),
         other => other.clone(),
     };
-    let kind = Kind::Flatten(Flatten {});
+    let kind = Kind::Flatten(Flatten::default());
     then(
         &mut link,
         &format!("{path}.flatten"),

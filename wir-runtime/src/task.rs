@@ -1276,7 +1276,7 @@ mod tests {
     }
 
     #[test]
-    fn simulated_runs_take_first() {
+    fn simulations_take_first() {
         let file = |path: &str| OutputFile {
             path: path.into(),
             location: format!("/out/{path}"),

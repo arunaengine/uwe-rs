@@ -211,7 +211,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn references_need_no_javascript() {
+    fn references_skip_javascript() {
         let mut settings = JavaScriptSettings::default();
         settings.engine = "/no/engine".into();
         let inputs = json!({"name": "reads", "file": {"class": "File", "location": "/d/a.txt"}});

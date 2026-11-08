@@ -220,7 +220,7 @@ fn reads_provider_content() {
 }
 
 #[test]
-fn finds_web_secondary_files() {
+fn finds_web_neighbours() {
     use std::sync::atomic::Ordering;
     let (server, requests) = serve();
     let text = format!(

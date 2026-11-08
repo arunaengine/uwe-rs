@@ -140,3 +140,45 @@ fn region_streams() {
     let moved = json!([emitters(0, &["a"], false), emitters(1, &["a", "b"], true)]);
     assert_eq!(streamed(moved, json!([3])).unwrap(), json!([3]));
 }
+
+#[test]
+fn region_inner_streams() {
+    // The plan's instances emit a stream and gather it, and the region exports only a value.
+    let folder = tempfile::tempdir().unwrap();
+    let ints = json!({"array": {"items": "int"}});
+    let emit = json!({"path": "e", "kind": {"emit": {"each": true}}, "inputs": [{"name": "source", "type": ints}],
+        "outputs": [{"name": "out", "type": "int", "flow": "stream"}]});
+    let gather = json!({"path": "l", "kind": {"to_list": {}},
+        "inputs": [{"name": "source", "type": "int", "flow": "stream"}], "outputs": [{"name": "out", "type": ints}]});
+    let graph = json!({"name": "plan", "inputs": [{"name": "xs", "type": ints}], "outputs": [{"name": "ys", "type": ints}],
+        "ops": [emit, gather], "edges": [edge((None, "xs"), (Some("e"), "source")),
+            edge((Some("e"), "out"), (Some("l"), "source")), edge((Some("l"), "out"), (None, "ys"))]});
+    let plan = json!({"revision": 0, "graph": graph, "final_plan": true});
+    let op = json!({"path": "r", "kind": {"dynamic": {"plan": "plan"}},
+        "inputs": [{"name": "plan", "type": "dynamic"}, {"name": "xs", "type": ints}],
+        "outputs": [{"name": "ys", "type": ints}]});
+    let main = json!({"name": "main", "inputs": [{"name": "plan", "type": "dynamic"}, {"name": "xs", "type": ints}],
+        "outputs": [{"name": "ys", "type": ints}], "ops": [op],
+        "edges": [edge((None, "plan"), (Some("r"), "plan")), edge((None, "xs"), (Some("r"), "xs")),
+            edge((Some("r"), "ys"), (None, "ys"))]});
+    let document = json!({"wir_version": "0.1", "graphs": [main], "entry": "main"});
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let inputs = json!({"plan": plan, "xs": [4, 5]});
+    std::fs::write(folder.path().join("inputs.json"), inputs.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        inputs: Some(folder.path().join("inputs.json")),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    execute("regions", &mut driver, &mut Idle)
+        .into_result()
+        .unwrap();
+    assert_eq!(driver.results().unwrap()["ys"], json!([4, 5]));
+}

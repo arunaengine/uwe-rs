@@ -9381,6 +9381,7 @@ dependencies = [
  "cwl-runtime",
  "input-schema",
  "nextflow-evaluator",
+ "nextflow-parser",
  "nextflow-runtime",
  "serde_json",
  "snakemake-runtime",

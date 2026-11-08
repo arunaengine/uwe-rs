@@ -10,6 +10,7 @@ pub mod cwl;
 mod driver;
 mod expr;
 mod flows;
+mod groovy;
 mod inputs;
 pub mod nextflow;
 #[allow(dead_code, reason = "the stream ops of the next commits use the rest")]

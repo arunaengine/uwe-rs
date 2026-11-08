@@ -17,6 +17,7 @@ cwl-parser.workspace = true
 cwl-runtime.workspace = true
 input-schema.workspace = true
 nextflow-evaluator.workspace = true
+nextflow-parser.workspace = true
 nextflow-runtime.workspace = true
 serde_json.workspace = true
 snakemake-runtime.workspace = true

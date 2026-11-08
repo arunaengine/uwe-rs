@@ -69,6 +69,16 @@ fn schema_matches_parser() {
             "parser rejects {kind}"
         );
     }
+    let closure = json!({"language": "groovy", "code": "{ println it.success }"});
+    let observe = json!({"source": "nf", "processes": [{"id": 1, "name": "A:B", "definition": "B",
+        "script": "main.nf", "feeds": [2]}, {"id": 2, "name": "C"}]});
+    let hooked = json!({"wir_version": wir::VERSION, "graphs": [{"name": "g"}], "entry": "g",
+        "hooks": [{"complete": closure}, {"error": closure}, {"observe": observe}]});
+    assert!(validator.is_valid(&hooked), "schema rejects hooks");
+    assert!(
+        wir::parse(&hooked.to_string()).is_ok(),
+        "parser rejects hooks"
+    );
     let wrong = json!({"wir_version": wir::VERSION, "graphs": [{"name": "g", "ops": [
         {"path": "a", "kind": {"collect": {}, "merge": {}}}
     ]}], "entry": "g"});

@@ -11,13 +11,13 @@ use wdl_runtime::expression::names;
 use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 
 use crate::library::{Inputs, Line, check, ordered, ports};
-use crate::outputs::{Output, Read, listing, outputs};
+use crate::outputs::{Output, Read, listing, outputs, patterns};
 use crate::types::{has_files, port};
 use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text};
 
-/// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
-/// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
-/// A missing path fails with code `$3` unless its output starts with `?`, as optional ones do.
+/// Runs the command as uwe's WDL driver does, then copies below `.wdl/out/<output>/` the files
+/// that match each `<output>\t<regex>` line of `$4`, then each `<output>\t<path>` line of `$2`.
+/// A missing path fails with code `$3`, unless its output starts with `?` as optional ones do.
 pub(crate) const RUNNER: &str = r#"mkdir -p .wdl
 printf '%s' "$1" > .wdl/command.sh
 bash .wdl/command.sh > .wdl/stdout 2> .wdl/stderr
@@ -25,6 +25,18 @@ status=$?
 cat .wdl/stdout
 cat .wdl/stderr >&2
 tab=$(printf '\t')
+place() {
+  folder=.wdl/out/$1/$(printf '%06d' "$2")
+  mkdir -p "$folder" && cp -R "$3" "$folder/"
+}
+printf '%s\n' "$4" | while IFS="$tab" read -r name pattern; do
+  [ -n "$name" ] || continue
+  find . ! -type d ! -path './.wdl/out/*' | cut -c3- | LC_ALL=C sort | grep -E -x -e "$pattern" |
+    { count=0; while IFS= read -r path; do
+      count=$((count + 1))
+      place "$name" "$count" "$path" || exit 1
+    done; } || exit 1
+done || [ "$status" -ne 0 ] || status=${3:-1}
 line=0
 printf '%s\n' "$2" | while IFS="$tab" read -r name path; do
   line=$((line + 1))
@@ -37,8 +49,7 @@ printf '%s\n' "$2" | while IFS="$tab" read -r name path; do
     echo "the task did not make $path" >&2
     exit 1
   fi
-  folder=.wdl/out/$name/$(printf '%06d' "$line")
-  mkdir -p "$folder" && cp -R "$path" "$folder/" || exit 1
+  place "$name" "$line" "$path" || exit 1
 done || [ "$status" -ne 0 ] || status=${3:-1}
 exit $status
 "#;
@@ -152,12 +163,11 @@ impl Lowerer {
             task.task.command.push(Argument::Input {
                 input: PATHS.into(),
             });
-            task.task.command.push(Argument::Text(failure(&task.task)));
             let mut lines = library.clone();
             lines.extend(
                 outputs
                     .iter()
-                    .filter(|item| !matches!(item.read, Read::Glob(_)))
+                    .filter(|item| !matches!(item.read, Read::Glob(_) | Read::Matched(_)))
                     .map(|item| item.decl.clone()),
             );
             graph
@@ -168,6 +178,9 @@ impl Lowerer {
                 .edges
                 .push(edge(end(Some(PATHS), "value"), end(Some(&path), PATHS)));
         }
+        let code = failure(&task.task);
+        task.task.command.push(Argument::Text(code));
+        task.task.command.push(Argument::Text(patterns(&outputs)));
         graph
             .edges
             .push(edge(end(Some(COMMAND), "value"), end(Some(&path), COMMAND)));
@@ -181,7 +194,7 @@ impl Lowerer {
         for output in &outputs {
             let pattern = match &output.read {
                 Read::Glob(pattern) => pattern.clone(),
-                Read::Placed => format!(".wdl/out/{}/*/*", output.name),
+                Read::Placed | Read::Matched(_) => format!(".wdl/out/{}/*/*", output.name),
                 Read::Value => continue,
             };
             task.task.captures.push(Capture {
@@ -354,7 +367,7 @@ mod tests {
             "mkdir -p d && echo x > d/a.txt && echo y > 'b c.txt' && echo shown && exit 3";
         let paths = "first\td/a.txt\nlist\tb c.txt\n?list\tmissing.txt\nlist\td/\n";
         let status = Command::new("bash")
-            .args(["-c", RUNNER, "wdl", command, paths])
+            .args(["-c", RUNNER, "wdl", command, paths, "1", ""])
             .current_dir(work)
             .status()
             .expect("bash runs");
@@ -379,7 +392,7 @@ mod tests {
         let run = |command: &str| {
             let paths = "files\ta.txt\nfiles\tb.txt\n";
             let status = Command::new("bash")
-                .args(["-c", RUNNER, "wdl", command, paths, "7"])
+                .args(["-c", RUNNER, "wdl", command, paths, "7", ""])
                 .current_dir(folder.path())
                 .status()
                 .expect("bash runs");
@@ -388,5 +401,49 @@ mod tests {
         assert_eq!(run("touch a.txt"), Some(7), "a required file is missing");
         assert_eq!(run("exit 3"), Some(3), "the code of a failed command");
         assert_eq!(run("touch a.txt b.txt"), Some(0));
+    }
+
+    #[test]
+    fn globs_match_files() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let work = folder.path();
+        let command = "mkdir -p out/sub && touch out/a.txt out/sub/b.txt";
+        let globs = "files\tout/[^/]*\nall\t.*\\.txt\n";
+        let status = Command::new("bash")
+            .args([
+                "-c",
+                RUNNER,
+                "wdl",
+                command,
+                "copy\tout/a.txt\n",
+                "1",
+                globs,
+            ])
+            .current_dir(work)
+            .status()
+            .expect("bash runs");
+        assert_eq!(status.code(), Some(0));
+        let found = |output: &str| {
+            let mut paths = Vec::new();
+            for entry in std::fs::read_dir(work.join(".wdl/out").join(output))
+                .into_iter()
+                .flatten()
+            {
+                let folder = entry.expect("an entry").path();
+                for file in std::fs::read_dir(&folder).expect("a folder") {
+                    let name = file.expect("a file").file_name();
+                    paths.push(name.to_string_lossy().into_owned());
+                }
+            }
+            paths.sort();
+            paths
+        };
+        assert_eq!(found("files"), ["a.txt"], "a glob matches no folders");
+        assert_eq!(
+            found("all"),
+            ["a.txt", "b.txt"],
+            "nor the copies of outputs"
+        );
+        assert_eq!(found("copy"), ["a.txt"]);
     }
 }

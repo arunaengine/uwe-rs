@@ -371,3 +371,26 @@ fn process_forms() {
     ];
     kinds_round_trip(&good, &bad);
 }
+
+#[test]
+fn control_forms() {
+    let depends = json!({"any": [{"result": {"op": "a", "on": ["succeeded", "skipped", "daemoned"]}},
+        {"all": [{"not": {"result": {"op": "g", "on": ["all_failed"]}}}, {"all": []}]}]});
+    let op = json!({"path": "b", "kind": {"call": {"graph": "g"}}, "depends": depends,
+        "handles": [{"op": "a", "on": ["failed"]}], "after": [{"op": "a", "on": ["cancelled"]}]});
+    let group = json!({"path": "g", "kind": {"status_group": {"members": ["a", "b"], "allow": ["failed"]}}});
+    let document = document(json!([op, group]), json!([]));
+    assert!(accepted(&document));
+    assert_eq!(written(&document), document);
+    let parsed: wir::Control = serde_json::from_value(depends).expect("a control tree");
+    assert_eq!(parsed.tests().len(), 2);
+    let unknown = json!({"path": "b", "kind": {"call": {"graph": "g"}}, "depends": {"xor": []}});
+    assert!(!accepted(&document_of(unknown)));
+    let extra = json!({"path": "b", "kind": {"call": {"graph": "g"}},
+        "depends": {"result": {"op": "a", "on": ["failed"], "why": 1}}});
+    assert!(!accepted(&document_of(extra)));
+}
+
+fn document_of(op: Json) -> Json {
+    document(json!([op]), json!([]))
+}

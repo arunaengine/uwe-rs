@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod closure;
+mod control;
 mod document;
 mod flow;
 mod op;
@@ -13,6 +14,7 @@ mod value;
 mod verify;
 
 pub use closure::{Binding, Body, Closure, ExprLanguage, Scope, ValueRules};
+pub use control::{Control, ResultKind, StatusGroup, StatusTest};
 pub use document::{
     Document, Edge, Endpoint, Graph, Language, ParseError, Port, SCHEMA, Source, VERSION, parse,
 };

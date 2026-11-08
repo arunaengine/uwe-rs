@@ -68,6 +68,54 @@ fn compute(
     }
 }
 
+/// The value of the code of a task argument over input values whose Files and Directories
+/// have the paths where the task stages them.
+pub fn argument(
+    (code, this): (&str, Option<&str>),
+    staged: Json,
+    (library, settings): (&[String], &JavaScriptSettings),
+) -> Result<Json, String> {
+    let expression = Expression::parse(code, false)?;
+    let mut inputs = value(staged)?;
+    listed(&mut inputs);
+    let this = this.and_then(|name| inputs.get(name)).cloned();
+    let evaluator = Evaluator {
+        javascript: Some(Arc::new(library.to_vec())),
+        settings: settings.clone(),
+    };
+    let variables = Variables {
+        inputs: &inputs,
+        this: &this.unwrap_or(Value::Null),
+        runtime: &Value::Map(Default::default()),
+    };
+    let result = evaluator.evaluate(&expression, variables)?;
+    let json: Json = serde_json::from_str(&result.to_json()).map_err(|error| error.to_string())?;
+    Ok(to_wir(json))
+}
+
+/// Gives each entry of the listing of a staged Directory that has no path its path inside.
+fn listed(value: &mut Value) {
+    match value {
+        Value::List(items) => items.iter_mut().for_each(listed),
+        Value::Map(map) => {
+            let path = map.get("path").and_then(Value::as_str).map(str::to_owned);
+            if let (Some(path), Some(Value::List(items))) = (path, map.get_mut("listing")) {
+                for item in items {
+                    let Value::Map(entry) = item else { continue };
+                    let name = entry.get("basename").and_then(Value::as_str);
+                    if let Some(name) = name.filter(|_| !entry.contains_key("path")) {
+                        let inside = format!("{path}/{name}");
+                        entry.insert("dirname".into(), Value::string(&path));
+                        entry.insert("path".into(), Value::String(inside));
+                    }
+                }
+            }
+            map.values_mut().for_each(listed);
+        }
+        _ => {}
+    }
+}
+
 /// A value of a type named after `name`, like the placeholders of uwe's CWL driver: arrays of
 /// two items, the first member of a union, and files that do not exist.
 pub(crate) fn placeholder(r#type: &Type, name: &str, defs: &[TypeDef]) -> Json {
@@ -120,7 +168,7 @@ fn value(json: Json) -> Result<Value, String> {
             true => Some(text.to_owned()),
             false => cwl_runtime::files::local_path(text).map(|path| path.display().to_string()),
         });
-        if let Some(path) = path {
+        if let Some(path) = path.filter(|_| !file.contains_key("path")) {
             file.insert("path".into(), Value::String(path));
         }
     });

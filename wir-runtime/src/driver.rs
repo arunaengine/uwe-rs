@@ -225,7 +225,17 @@ impl WirDriver {
                 self.last += 1;
                 let node = self.progress.node(at);
                 let names = (node.path.as_str(), node.step.as_str());
-                let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
+                let script = (&self.settings.cwl.javascript, self.launch.simulated);
+                let built = task::build(TaskId(self.last), names, &node.op, &spec, &bound, script);
+                let mut task = match built {
+                    Ok(task) => task,
+                    Err(why) => {
+                        let message = format!("op {}: {why}", node.path);
+                        self.progress
+                            .end(at, Status::Failed, Map::new(), Some(message));
+                        return Ok(Vec::new());
+                    }
+                };
                 task.site = node.op.attributes.place.clone();
                 self.tasks.insert(task.id, (at, task.clone(), bound));
                 Ok(vec![task])

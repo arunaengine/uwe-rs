@@ -93,6 +93,9 @@ fn refusal(op: &Op) -> Option<&'static str> {
     if op.attributes.place.is_some() && !runs {
         return Some("only task and native ops run at a place");
     }
+    if !op.effects.is_empty() && !runs {
+        return Some("only task and native ops have effects");
+    }
     None
 }
 

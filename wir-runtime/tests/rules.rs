@@ -281,13 +281,10 @@ fn refuses_unrun_fields() {
         "op main/same: uwe does not run expressions with a scope or captures yet"
     );
     let streams = refused(|document| {
-        let main = &mut document["graphs"][0];
-        main["inputs"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({"name": "items", "type": "int", "flow": "stream"}));
+        document["graphs"][0]["inputs"][0]["flow"] = json!("stream");
+        op(document, 0)["inputs"][0]["flow"] = json!("stream");
     });
-    assert_eq!(streams, "graph main: uwe does not run stream ports yet");
+    assert_eq!(streams, "op main/sort: uwe does not run stream ports yet");
     let built = refused(|document| {
         let source = json!({"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"});
         document["sources"].as_array_mut().unwrap().push(source);

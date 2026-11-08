@@ -230,11 +230,14 @@ impl WirDriver {
                 self.tasks.insert(task.id, (at, task.clone()));
                 Ok(vec![task])
             }
-            Kind::Call(_) => Ok(Vec::new()),
+            Kind::Call(_) => {
+                self.progress.activate(Some(at))?;
+                Ok(Vec::new())
+            }
             Kind::Branch(branch) => {
                 let node = self.progress.node(at);
                 match bound.get(&branch.condition) {
-                    Some(Json::Bool(true)) => {}
+                    Some(Json::Bool(true)) => self.progress.activate(Some(at))?,
                     Some(Json::Bool(false)) => {
                         let nulls = (node.op.outputs.iter())
                             .map(|port| (port.name.clone(), Json::Null))
@@ -574,7 +577,29 @@ impl Driver for WirDriver {
         let ports = entry
             .map(|graph| graph.inputs.as_slice())
             .unwrap_or_default();
-        self.progress.inputs = inputs::read(&self.launch, ports, &self.document.types)?;
+        // A stream input is given as the array of its items.
+        let given: Vec<wir::Port> = (ports.iter())
+            .map(|port| match port.flow.is_value() {
+                true => port.clone(),
+                false => wir::Port {
+                    r#type: wir::Type::Array(wir::ArrayType {
+                        items: Box::new(port.r#type.clone()),
+                        nonempty: false,
+                    }),
+                    flow: wir::Flow::Value,
+                    ..port.clone()
+                },
+            })
+            .collect();
+        let mut values = inputs::read(&self.launch, &given, &self.document.types)?;
+        let streams: Vec<String> = (ports.iter())
+            .filter(|port| !port.flow.is_value())
+            .map(|port| port.name.clone())
+            .collect();
+        self.progress.feed(&values, &streams)?;
+        values.retain(|name, _| !streams.contains(name));
+        self.progress.inputs = values;
+        self.progress.activate(None)?;
         self.advance()
     }
 

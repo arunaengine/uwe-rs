@@ -9,6 +9,7 @@ use serde_json::{Map, Value as Json};
 use wir::{Kind, Status, Type, TypeDef, resolve};
 
 use crate::plan::{Node, Plan, Source};
+use crate::streams::Streams;
 
 /// Where a node is in its run.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -57,6 +58,8 @@ pub struct Progress {
     inner: Vec<(usize, String)>,
     /// The outputs of ended nodes that closed empty.
     empty: HashSet<(usize, String)>,
+    /// The streams of the run.
+    pub streams: Streams,
 }
 
 impl Progress {
@@ -74,6 +77,7 @@ impl Progress {
             handled,
             inner: Vec::new(),
             empty: HashSet::new(),
+            streams: Streams::default(),
         }
     }
 
@@ -103,6 +107,7 @@ impl Progress {
                     State::Running(_)
                         if matches!(self.node(at).op.kind, Kind::Call(_) | Kind::Branch(_)) =>
                     {
+                        changed |= self.forward(at);
                         changed |= self.end_call(at);
                         continue;
                     }
@@ -182,6 +187,7 @@ impl Progress {
         why: Option<String>,
     ) {
         self.states[at] = State::Ended(status, values);
+        self.close_streams(at, status, why.as_deref());
         let failure = matches!(status, Status::Failed | Status::Errored);
         if failure && !self.handled.contains(&(at, status)) {
             let node = self.node(at);
@@ -198,6 +204,11 @@ impl Progress {
     pub fn outputs(&self, ports: &[wir::Port]) -> Result<Map<String, Json>, String> {
         let mut values = Map::new();
         for (port, source) in &self.plan.outputs {
+            let typed = ports.iter().find(|item| item.name == *port);
+            if typed.is_some_and(|item| !item.flow.is_value()) {
+                values.insert(port.clone(), self.stream_output(port, source)?);
+                continue;
+            }
             match self.value(source) {
                 Supply::Empty => {}
                 Supply::Bound(value) => {
@@ -243,6 +254,14 @@ impl Progress {
         }
         let mut bound = Map::new();
         for (port, source) in &node.inputs {
+            let declared = node.op.inputs.iter().find(|item| item.name == *port);
+            if declared.is_some_and(|item| !item.flow.is_value()) {
+                match self.stream_ready(source) {
+                    Ok(Some(())) => continue,
+                    Ok(None) => return Readiness::Wait,
+                    Err(()) => return Readiness::Omit,
+                }
+            }
             let value = match self.value(source) {
                 Supply::Bound(value) => value,
                 Supply::Pending => return Readiness::Wait,
@@ -307,6 +326,10 @@ impl Progress {
     /// Ends a call once every op of its graph ended: it succeeds when none of them failed
     /// and every output of the graph is bound.
     fn end_call(&mut self, at: usize) -> bool {
+        if !self.exports_ended(at) {
+            return false;
+        }
+        self.forward(at);
         let mut failed = false;
         for member in (0..self.plan.nodes.len()).filter(|node| self.node(*node).parent == Some(at))
         {
@@ -320,6 +343,13 @@ impl Progress {
         let mut unfit = None;
         let mut empty = Vec::new();
         for (port, source) in &self.node(at).exports {
+            let ports = &self.node(at).op.outputs;
+            if ports
+                .iter()
+                .any(|item| item.name == *port && !item.flow.is_value())
+            {
+                continue;
+            }
             match self.value(source) {
                 Supply::Empty => empty.push(port.clone()),
                 Supply::Bound(value) => {

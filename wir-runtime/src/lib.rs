@@ -9,6 +9,7 @@ mod child;
 pub mod cwl;
 mod driver;
 mod expr;
+mod flows;
 mod inputs;
 pub mod nextflow;
 mod plan;
@@ -16,7 +17,7 @@ pub mod snakemake;
 #[allow(dead_code, reason = "the stream ops of the next commits use it")]
 mod spill;
 mod state;
-#[allow(dead_code, reason = "the stream ops of the next commits use it")]
+#[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
 mod streams;
 mod task;
 mod wdl;

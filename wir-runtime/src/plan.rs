@@ -28,6 +28,8 @@ pub struct Node {
     pub shape: Vec<usize>,
     /// For a call, a branch or a round: the defaults of the inputs of the graph it runs.
     pub defaults: Map<String, Json>,
+    /// The stream inputs whose edge reads `live`.
+    pub live: Vec<String>,
 }
 
 /// Where a value comes from.
@@ -69,10 +71,6 @@ fn refuse(document: &Document) -> Result<(), DriverError> {
     while let Some(name) = reached.get(next).copied() {
         next += 1;
         let graph = graph(document, name)?;
-        if (graph.inputs.iter().chain(&graph.outputs)).any(|port| !port.flow.is_value()) {
-            let message = format!("graph {name}: uwe does not run stream ports yet");
-            return Err(DriverError::unsupported(message));
-        }
         for op in &graph.ops {
             if let Some(why) = refusal(op) {
                 let message = format!("op {name}/{}: {why}", op.path);
@@ -115,7 +113,8 @@ fn refusal(op: &Op) -> Option<&'static str> {
 
 /// Why this runner cannot run a field of the format that it does not run yet, if it cannot.
 fn unrun(op: &Op) -> Option<&'static str> {
-    if (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value()) {
+    let streams = (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value());
+    if streams && !matches!(op.kind, Kind::Call(_)) {
         return Some("uwe does not run stream ports yet");
     }
     if op.depends.is_some() || !op.handles.is_empty() {
@@ -181,6 +180,7 @@ pub fn rounds(
             exports: Vec::new(),
             shape: Vec::new(),
             defaults: defaults(graph),
+            live: Vec::new(),
         });
         let (inner, steps) = (format!("{path}/"), format!("{step}/"));
         nodes[round].exports = instantiate(document, graph, (&inner, &steps), Some(round), nodes)?;
@@ -273,6 +273,7 @@ fn instantiate(
             exports: Vec::new(),
             shape: Vec::new(),
             defaults: Map::new(),
+            live: Vec::new(),
         });
     }
     let source = |from: &Endpoint| match &from.op {
@@ -296,6 +297,11 @@ fn instantiate(
             .collect();
         let after = (op.after.iter())
             .map(|dependency| (index[dependency.op.as_str()], dependency.on.clone()))
+            .collect();
+        nodes[at].live = (graph.edges.iter())
+            .filter(|edge| edge.to.op.as_deref() == Some(op.path.as_str()))
+            .filter(|edge| edge.read == wir::Subscription::Live)
+            .map(|edge| edge.to.port.clone())
             .collect();
         nodes[at].inputs = inputs;
         nodes[at].after = after;

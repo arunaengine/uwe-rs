@@ -476,3 +476,53 @@ fn compiles_recursion_loops() {
     let (_, kept) = compiled(folder.path(), &later);
     assert!(kept[0].reason.contains("after"), "{kept:?}");
 }
+
+const HOOKS: &str = r#"  entrypoint: main
+  onExit: bye
+  templates:
+  - name: main
+    steps:
+    - - name: hello
+        template: say
+        hooks:
+          exit:
+            template: say
+            arguments: {parameters: [{name: text, value: "{{steps.hello.outputs.result}}"}]}
+    - - {name: next, template: say}
+  - name: say
+    inputs: {parameters: [{name: text, value: hi}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+  - name: bye
+    container: {image: alpine:3.20, command: [echo, bye]}
+"#;
+
+#[test]
+fn compiles_exit_hooks() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), HOOKS);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let hook = op(main, "hello.onExit");
+    assert_eq!(
+        hook["kind"]["task"]["builder"]["argo_task"]["call"],
+        "[0].hello.onExit"
+    );
+    assert_eq!(hook["after"][0]["op"], "hello");
+    let handled = &op(main, "hello.onExit.continue")["kind"]["status_group"];
+    assert_eq!(handled["allow"], json!(["failed", "errored"]));
+    let waits: Vec<&Json> = (op(main, "next")["after"].as_array().unwrap().iter())
+        .map(|after| &after["op"])
+        .collect();
+    assert_eq!(waits, [&json!("hello"), &json!("hello.onExit")]);
+    let entry = graph(&document, "workflow");
+    let exit = op(entry, "onExit");
+    assert_eq!(
+        exit["kind"]["task"]["builder"]["argo_task"]["call"],
+        ".onExit"
+    );
+    assert_eq!(exit["after"][0]["op"], "main");
+    assert_eq!(exit["inputs"][0]["default"], json!([]));
+    let status = HOOKS.replace("echo, bye", "echo, \"{{workflow.status}}\"");
+    let (_, kept) = compiled(folder.path(), &status);
+    assert!(kept[0].reason.contains("workflow.status"), "{kept:?}");
+}

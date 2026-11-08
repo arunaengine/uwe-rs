@@ -472,6 +472,59 @@ fn keeps_stdout_free() {
     }
 }
 
+/// A secret value of a run that its Nextflow workflow prints.
+const PRINTED: &str = "sentinel-printed-secret";
+
+/// One run, in a child process of this test, of a Nextflow workflow that prints a secret value
+/// to a print sink: the sink gets the line with `[secret]`, and the process prints nothing.
+#[test]
+fn prints_to_sink() {
+    if std::env::var_os("UWE_EMBEDDED_SINK").is_some() {
+        let root = tempfile::tempdir().unwrap();
+        let mut request = printing(root.path(), "nextflow", false);
+        let target = &request.settings.target;
+        std::fs::write(
+            target,
+            "workflow {\n  println \"token ${env('LAB_TOKEN')}\"\n  \
+            log.info 'logged'\n  System.out.println('said')\n}\n",
+        )
+        .unwrap();
+        request
+            .settings
+            .secrets
+            .insert("LAB_TOKEN", PRINTED)
+            .unwrap();
+        let printed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = printed.clone();
+        request.settings.print_sink = Some(uwe::run::PrintSink::new(move |text: &str| {
+            sink.lock().unwrap().push_str(text);
+        }));
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let run = runtime.block_on(request.run()).unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        let printed = printed.lock().unwrap();
+        assert!(printed.contains("token [secret]\n"), "{printed}");
+        assert!(
+            printed.contains("logged\n") && printed.contains("said\n"),
+            "{printed}"
+        );
+        assert!(!printed.contains(PRINTED));
+        return;
+    }
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command.args(["--exact", "prints_to_sink", "--nocapture"]);
+    let output = command.env("UWE_EMBEDDED_SINK", "1").output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    for text in [&stdout, &stderr] {
+        assert!(
+            !text.contains(PRINTED) && !text.contains("token "),
+            "{text}"
+        );
+    }
+}
+
 /// A TES server that answers every request with an empty list, enough for a run without tasks.
 fn empty_server() -> String {
     use std::io::{Read, Write};

@@ -13,6 +13,34 @@ use workflow_graph::{Observer, TaskId};
 /// return fast and must not block, so send the event on, for example into an unbounded channel.
 pub type Listener = Arc<dyn Fn(Event) + Send + Sync>;
 
+/// Takes what the workflow of a run prints, with the secret values of the run as `[secret]`.
+/// uwe calls it on its worker thread, so it must return fast, like a [`Listener`].
+#[derive(Clone)]
+pub struct PrintSink(Arc<dyn Fn(&str) + Send + Sync>);
+
+impl PrintSink {
+    pub fn new(sink: impl Fn(&str) + Send + Sync + 'static) -> PrintSink {
+        PrintSink(Arc::new(sink))
+    }
+
+    pub(crate) fn print(&self, text: &str) {
+        (self.0)(text);
+    }
+}
+
+impl std::fmt::Debug for PrintSink {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("PrintSink")
+    }
+}
+
+/// Two sinks are equal when they share their function.
+impl PartialEq for PrintSink {
+    fn eq(&self, other: &PrintSink) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// One event of a run. Times are milliseconds since the Unix epoch, as in the run database.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

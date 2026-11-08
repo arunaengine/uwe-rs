@@ -79,6 +79,15 @@ The returned `Run` holds the CWL output object in `outputs`, as JSON, with the l
 
 Set `run::Settings.print` to `true` to write to standard output what `uwe run` writes there. `Settings::new` leaves it `false`. The command line sets it `true`.
 
+A host that runs the workflows of many users keeps what they print out of its own logs with `run::Settings.print_sink`, a `run::PrintSink`. uwe gives it the text that a Nextflow workflow prints, also from the Nextflow blocks of a wir run: `println`, `log.info`, `log.warn`, `System.out`, `System.err` and the banner. This text then goes neither to standard error nor to standard output. Each value of `run::Settings.secrets` in it becomes `[secret]` first. A value that a workflow prints in pieces, across two `print` calls, is not found. uwe calls the sink on its worker thread, so it must return fast, like a listener. What Snakemake code prints stays in the run, except what its `onstart`, `onsuccess` and `onerror` handlers print, which goes to standard error.
+
+```rust
+let (sender, receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
+settings.print_sink = Some(uwe::run::PrintSink::new(move |text: &str| {
+    let _ = sender.send(text.to_owned());
+}));
+```
+
 ## JSON key order
 
 The JSON objects of uwe keep their keys in the order in which they were added, also in `Run.outputs`, the run database and the files that plugins write. An object read from a file keeps the order of that file. Where a format needs sorted keys, like a digest or the file of a tool that sorts its keys, uwe sorts them itself. Help texts list the inputs of a group by name.

@@ -9,7 +9,7 @@ mod settings;
 pub(crate) mod support;
 
 pub use config_file::SecretValues;
-pub use events::{Event, Listener, TaskEvent, TaskState};
+pub use events::{Event, Listener, PrintSink, TaskEvent, TaskState};
 pub use executor::orphans;
 pub use settings::Settings;
 pub use task_runner::NetworkRule;

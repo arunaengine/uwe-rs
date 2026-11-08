@@ -175,6 +175,8 @@ pub struct Arguments {
     pub secrets: config_file::SecretValues,
     /// Whether a host runs this through the Rust API, not the command line.
     pub embedded: bool,
+    /// Where an embedded run sends what its workflow prints, from `run::Settings.print_sink`.
+    pub print_sink: Option<crate::run::PrintSink>,
 }
 
 /// Which run `-resume` continues.

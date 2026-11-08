@@ -39,6 +39,8 @@ struct Console {
     launch: Option<PathBuf>,
     /// The folders that workflow code may reach in an isolated run; `None` reaches all.
     roots: Option<workflow_graph::Roots>,
+    /// Takes what the workflow prints instead of the standard output or error of the process.
+    sink: Option<crate::run::PrintSink>,
 }
 
 impl Console {
@@ -58,6 +60,18 @@ impl Console {
                 .map_err(|error| io_error(error.to_string())),
             _ => Ok(()),
         }
+    }
+
+    /// `text` with each secret value of the run as `[secret]`, the longest values first, so
+    /// that a value inside another one leaves no part of the other.
+    fn hidden(&self, text: &str) -> String {
+        let names = self.variables.names();
+        let mut values: Vec<String> = names.filter_map(|name| self.variables.get(name)).collect();
+        values.retain(|value| !value.is_empty());
+        values.sort_by_key(|value| std::cmp::Reverse(value.len()));
+        (values.iter()).fold(text.to_owned(), |text, value| {
+            text.replace(value, "[secret]")
+        })
     }
 
     /// The same host, limited to the folders of the launch and of the isolation of the run.
@@ -109,7 +123,9 @@ impl Host for Console {
     }
 
     fn print(&mut self, text: &str) {
-        if self.quiet {
+        if let Some(sink) = &self.sink {
+            sink.print(&self.hidden(text));
+        } else if self.quiet {
             eprint!("{text}");
         } else {
             print!("{text}");
@@ -125,6 +141,11 @@ impl Host for Console {
     ) -> Result<Option<Value>, Error> {
         let end = if name == "println" { "\n" } else { "" };
         match (namespace, name, arguments.as_slice()) {
+            ("System.out" | "System.err", "println" | "print", [message])
+                if self.sink.is_some() =>
+            {
+                self.print(&format!("{message}{end}"))
+            }
             ("System.out", "println" | "print", [message]) if self.print => {
                 print!("{message}{end}")
             }
@@ -432,6 +453,7 @@ fn console(quiet: bool, setup: &Setup, variables: &config_file::SecretValues) ->
         operators: None,
         launch: None,
         roots: None,
+        sink: None,
     }
 }
 
@@ -440,6 +462,7 @@ fn console(quiet: bool, setup: &Setup, variables: &config_file::SecretValues) ->
 pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::nextflow::Options {
     let console = Console {
         print: !arguments.no_print,
+        sink: arguments.print_sink.clone(),
         ..console(false, setup, &arguments.secrets)
     };
     let engine = setup.engine_kind(arguments);
@@ -491,6 +514,7 @@ pub fn driver(
         operators: Some(run_folder(&launch.scratch, run)),
         print: !arguments.no_print,
         launch: own,
+        sink: arguments.print_sink.clone(),
         ..console(quiet, setup, &arguments.secrets)
     }
     .confined(

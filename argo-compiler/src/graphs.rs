@@ -145,6 +145,10 @@ impl Compiler {
                     "an input parameter of a steps or DAG template reads valueFrom",
                 ));
             }
+            if value.is_some_and(|value| crate::tags::has_tag(&value.0)) {
+                let reason = format!("input parameter {} has a value with tags", parameter.name);
+                return Err(at(&reason));
+            }
             inputs.push(input);
         }
         for artifact in &template.inputs.artifacts {

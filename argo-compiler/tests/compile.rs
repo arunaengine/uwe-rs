@@ -695,3 +695,21 @@ fn prints_output_expressions() {
         .unwrap();
     assert_eq!(value, json!("[1 2]"));
 }
+
+#[test]
+fn keeps_tagged_input_values_native() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    inputs: {parameters: [{name: list, value: "{{= toJSON(['a']) }}"}]}
+    steps:
+    - - {name: say, template: say, arguments: {parameters: [{name: text, value: "{{inputs.parameters.list}}"}]}}
+  - name: say
+    inputs: {parameters: [{name: text}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+    let (_, kept) = compiled(folder.path(), spec);
+    assert_eq!(kept.len(), 1);
+    assert!(kept[0].reason.contains("value with tags"), "{kept:?}");
+}

@@ -33,12 +33,14 @@ impl Lowerer {
         };
         let visible = frame.visible();
         let mut inner = Frame::new(&visible, frame.origin.clone());
+        inner.nested = frame.nested.is_some().then(Vec::new);
         let held = Held {
             end: end(None, &variable),
             r#type: items.clone(),
         };
         inner.local.insert(variable.clone(), Bound::Value(held));
         self.nested(document, &body, &mut inner, path)?;
+        let nested = names(&inner);
         let variable_port = port(&variable, items.clone());
         let (graph, outputs) = self.body(document, &body, inner, path, Some(variable_port))?;
         let kind = Kind::Map(Map {
@@ -59,7 +61,7 @@ impl Lowerer {
         frame
             .edges
             .push(edge(source.end, end(Some(path), &variable)));
-        takes(frame, &graph, path, Some(&variable));
+        takes(frame, &graph, path, Some(&variable), &nested);
         self.graphs.push(graph);
         frame.ops.push(map);
         Ok(())
@@ -77,7 +79,9 @@ impl Lowerer {
         let body: Vec<WorkflowStatement> = clause.statements().collect();
         let visible = frame.visible();
         let mut inner = Frame::new(&visible, frame.origin.clone());
+        inner.nested = frame.nested.is_some().then(Vec::new);
         self.nested(document, &body, &mut inner, path)?;
+        let nested = names(&inner);
         let (graph, outputs) = self.body(document, &body, inner, path, None)?;
         let kind = Kind::Branch(Branch {
             body: graph.name.clone(),
@@ -94,7 +98,7 @@ impl Lowerer {
         frame
             .edges
             .push(edge(condition.end, end(Some(path), CONDITION)));
-        takes(frame, &graph, path, None);
+        takes(frame, &graph, path, None, &nested);
         self.graphs.push(graph);
         frame.ops.push(branch);
         Ok(())
@@ -141,6 +145,7 @@ impl Lowerer {
                 graph.inputs.push(port(&item, held.r#type));
             }
         }
+        graph.inputs.extend(inner.nested.take().unwrap_or_default());
         for statement in statements {
             for (name, _) in place(document, statement)?.1 {
                 let Some(bound) = inner.local.get(&name) else {
@@ -162,12 +167,30 @@ impl Lowerer {
     }
 }
 
-/// The edges into a map or branch op from the names its body graph takes.
-fn takes(frame: &mut Frame, graph: &Graph, path: &str, variable: Option<&str>) {
+/// The nested call inputs of a body, which the graph around it takes as nested inputs too.
+fn names(inner: &Frame) -> Vec<String> {
+    let nested = inner.nested.iter().flatten();
+    nested.map(|item| item.name.clone()).collect()
+}
+
+/// The edges into a map or branch op from the names its body graph takes, and from the
+/// nested call inputs of its body.
+fn takes(frame: &mut Frame, graph: &Graph, path: &str, variable: Option<&str>, nested: &[String]) {
     for item in graph
         .inputs
         .iter()
-        .filter(|item| Some(item.name.as_str()) != variable)
+        .filter(|item| nested.contains(&item.name))
+    {
+        if let Some(outer) = &mut frame.nested {
+            outer.push(item.clone());
+            let to = end(Some(path), &item.name);
+            frame.edges.push(edge(end(None, &item.name), to));
+        }
+    }
+    for item in graph
+        .inputs
+        .iter()
+        .filter(|item| Some(item.name.as_str()) != variable && !nested.contains(&item.name))
     {
         let (name, member) = match item.name.split_once('.') {
             Some((name, member)) => (name, Some(member)),

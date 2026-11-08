@@ -169,6 +169,10 @@ pub struct Task {
     /// What standard input reads: a path, or a task input whose File gives its path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stdin: Option<Content>,
+    /// The file whose JSON object, when the command writes it, gives the outputs in place of
+    /// the captures, like CWL `cwl.output.json`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub results: Option<String>,
     /// The JavaScript library that `code` arguments see, like the library of an expr.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<String>,
@@ -361,6 +365,8 @@ pub enum CaptureRule {
     Patterns(String),
     Stdout,
     Stderr,
+    /// The field of the output in the task's `results`; null without that file.
+    Results,
 }
 
 /// A pure expression over the op's inputs, which binds its one output. `js` and `javascript`

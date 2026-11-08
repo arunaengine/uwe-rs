@@ -388,3 +388,30 @@ fn uses_consumer_defaults() {
     assert_eq!(one.1, ["runs.consumer"]);
     assert_eq!(other, one);
 }
+
+const INHERITED: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: bad, template: say}
+      - {name: b, template: say, depends: bad.Succeeded}
+      - {name: c, template: say, depends: bad.Failed}
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+
+#[test]
+fn targets_inherit_failures() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, INHERITED);
+    let failing = |folder| Writer {
+        fails: "bad",
+        ..Writer::new(folder)
+    };
+    let (one, other) = both(root, &file, &[], failing);
+    assert!(one.0.is_err(), "target b inherits the failure: {one:?}");
+    assert_eq!(other.1, one.1);
+    assert!(other.0.is_err(), "{other:?}");
+}

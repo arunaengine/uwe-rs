@@ -142,15 +142,22 @@ pub struct Nextflow {
     calls: Calls,
 }
 
+/// A finished attempt, with its request and the outcome that the observers hear.
+pub(crate) struct Ended {
+    pub request: TaskRequest,
+    pub outcome: TaskOutcome,
+    pub heard: Option<Outcome>,
+}
+
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
-struct Loaded {
+pub(crate) struct Loaded {
     /// The project directory, where the main script and `nextflow.config` are.
     project: PathBuf,
     script: PathBuf,
-    config: Config,
+    pub config: Config,
     /// The config files that were read, in order.
     files: Vec<PathBuf>,
-    module: Rc<Module>,
+    pub module: Rc<Module>,
     /// Whether the run reads command-line params as numbers and booleans, as Nextflow 26.04.6
     /// does with `NXF_SYNTAX_PARSER=v1`, which scripts with legacy syntax need.
     legacy: bool,
@@ -242,7 +249,7 @@ impl Nextflow {
     }
 
     /// The options of a run of the loaded script with a config.
-    fn options(&self, loaded: &Loaded, config: Config) -> Options {
+    pub(crate) fn options(&self, loaded: &Loaded, config: Config) -> Options {
         let text = |path: &Path| {
             std::path::absolute(path)
                 .unwrap_or_else(|_| path.to_owned())
@@ -351,7 +358,7 @@ impl Nextflow {
     }
 
     /// The container tasks of the requests of the network, which are kept until they finish.
-    fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
+    pub(crate) fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
         let host = self.settings.host.as_mut();
         let mut asked = Vec::new();
         for request in requests {
@@ -442,53 +449,9 @@ impl Nextflow {
             .collect()
     }
 
-    /// Writes report artifacts for either successful or failed runs.
-    fn write_reports(&mut self) -> Result<(), DriverError> {
-        if let Some(reports) = &self.reports {
-            // The reports go to the folder of this run, from where the engine delivers them.
-            let folder = self.folder().join("reports");
-            self.report_deliveries = reports.write(&folder).map_err(|error| {
-                DriverError::new(format!("cannot write the reports of the run: {error}"))
-            })?;
-        }
-        Ok(())
-    }
-
-    fn folder(&self) -> PathBuf {
-        run_folder(&self.launch.scratch, &self.settings.run_name)
-    }
-
-    /// The error of a failed run, remembering the message of its first exception.
-    fn fault(&mut self, failure: Error) -> DriverError {
-        if let Some(exception) = failure.exception() {
-            self.cause.get_or_insert_with(|| exception.message.clone());
-        }
-        error(failure)
-    }
-
-    /// What the entry workflow emitted so far, by emit name: a value channel gives its value,
-    /// a queue channel the array of its values. `None` before the run started.
-    pub fn emitted(&self) -> Result<Option<serde_json::Value>, DriverError> {
-        let Some(run) = &self.run else {
-            return Ok(None);
-        };
-        run.emitted().map(Some).map_err(DriverError::new)
-    }
-}
-
-/// The engine has run and delivered everything once the driver goes.
-impl Drop for Nextflow {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(self.folder());
-    }
-}
-
-impl Driver for Nextflow {
-    fn language(&self) -> Language {
-        Language::Nextflow
-    }
-
-    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+    /// Loads the run and sets up what every task of it gets, like the `env` scope, the
+    /// registry and the `bin` folder, without starting its network.
+    pub(crate) fn setup(&mut self) -> Result<Loaded, DriverError> {
         self.load()?;
         let loaded = self.loaded.take().ok_or_else(not_started)?;
         let bin = loaded.project.join("bin");
@@ -553,24 +516,12 @@ impl Driver for Nextflow {
             reports.observe(std::mem::take(&mut self.observers));
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
         }
-        let options = self.options(&loaded, loaded.config.clone());
-        let mut host = Noting {
-            host: self.settings.host.as_mut(),
-            notes: &mut self.notes,
-        };
-        let (run, requests) = Run::start_retained(&loaded.module, &options, &mut host);
-        // Observers hear the start once the network is built, so they get the process graph.
-        if let Some(reports) = &mut self.reports {
-            let repository = self.settings.repository.as_ref();
-            reports.run_started(&options, &launch_dir, run.processes(), repository);
-        }
-        self.run = Some(run);
-        let requests = requests.map_err(|failure| self.fault(failure))?;
-        self.tasks(requests)
+        Ok(loaded)
     }
 
-    fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
-        let identity = (outcome.id, outcome.attempt);
+    /// A finished attempt as its process reads it: the files, the standard output and the
+    /// `env` and `eval` values, or the files that an `exec:` section made.
+    pub(crate) fn ended(&mut self, outcome: Outcome) -> Result<Ended, DriverError> {
         let id = TaskId(outcome.id.0);
         let request = self.requests.remove(&id).ok_or_else(|| {
             DriverError::new(format!("the task {} was not asked for", outcome.id))
@@ -609,6 +560,132 @@ impl Driver for Nextflow {
                 )?
             }
         };
+        Ok(Ended {
+            request,
+            outcome,
+            heard,
+        })
+    }
+
+    /// The network that the workflow builds, without starting it, for the compiler into wir.
+    pub fn export(&mut self) -> Result<crate::export::Network, DriverError> {
+        let loaded = self.setup()?;
+        let options = self.options(&loaded, loaded.config.clone());
+        let host = self.settings.host.as_mut();
+        let network = crate::export(&loaded.module, &options, host);
+        self.loaded = Some(loaded);
+        network.map_err(|failure| self.fault(failure))
+    }
+
+    /// The host of the run, which prints and reads files.
+    pub(crate) fn host(&mut self) -> &mut dyn Host {
+        self.settings.host.as_mut()
+    }
+
+    /// Starts the reports of a run whose tasks the adapter asks for, with its processes.
+    pub(crate) fn reports_started(
+        &mut self,
+        options: &Options,
+        processes: Vec<nextflow_plugins::observer::Process>,
+    ) {
+        let launch_dir = launch_folder(self.settings.host.as_ref());
+        if let Some(reports) = &mut self.reports {
+            let repository = self.settings.repository.as_ref();
+            reports.run_started(options, &launch_dir, processes, repository);
+        }
+    }
+
+    /// Tells the reports how an attempt ended, once its outputs were checked.
+    pub(crate) fn reports_ended(&mut self, heard: Option<Outcome>, accepted: bool) {
+        if let (Some(reports), Some(heard)) = (&mut self.reports, heard) {
+            reports.ended(&heard, accepted);
+        }
+    }
+
+    /// Ends the reports of a run without a network, with the error that failed it, and writes
+    /// them; a run that succeeds checks them first, as [`Driver::finish`] does.
+    pub(crate) fn reports_finished(&mut self, error: Option<&str>) -> Result<(), DriverError> {
+        if let Some(reports) = &mut self.reports {
+            if error.is_none() {
+                reports.check().map_err(DriverError::new)?;
+            }
+            reports.run_ended(error, None, Vec::new());
+        }
+        self.write_reports()
+    }
+
+    /// Writes report artifacts for either successful or failed runs.
+    fn write_reports(&mut self) -> Result<(), DriverError> {
+        if let Some(reports) = &self.reports {
+            // The reports go to the folder of this run, from where the engine delivers them.
+            let folder = self.folder().join("reports");
+            self.report_deliveries = reports.write(&folder).map_err(|error| {
+                DriverError::new(format!("cannot write the reports of the run: {error}"))
+            })?;
+        }
+        Ok(())
+    }
+
+    fn folder(&self) -> PathBuf {
+        run_folder(&self.launch.scratch, &self.settings.run_name)
+    }
+
+    /// The error of a failed run, remembering the message of its first exception.
+    fn fault(&mut self, failure: Error) -> DriverError {
+        if let Some(exception) = failure.exception() {
+            self.cause.get_or_insert_with(|| exception.message.clone());
+        }
+        error(failure)
+    }
+
+    /// What the entry workflow emitted so far, by emit name: a value channel gives its value,
+    /// a queue channel the array of its values. `None` before the run started.
+    pub fn emitted(&self) -> Result<Option<serde_json::Value>, DriverError> {
+        let Some(run) = &self.run else {
+            return Ok(None);
+        };
+        run.emitted().map(Some).map_err(DriverError::new)
+    }
+}
+
+/// The engine has run and delivered everything once the driver goes.
+impl Drop for Nextflow {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(self.folder());
+    }
+}
+
+impl Driver for Nextflow {
+    fn language(&self) -> Language {
+        Language::Nextflow
+    }
+
+    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        let loaded = self.setup()?;
+        let launch_dir = launch_folder(self.settings.host.as_ref());
+        let options = self.options(&loaded, loaded.config.clone());
+        let mut host = Noting {
+            host: self.settings.host.as_mut(),
+            notes: &mut self.notes,
+        };
+        let (run, requests) = Run::start_retained(&loaded.module, &options, &mut host);
+        // Observers hear the start once the network is built, so they get the process graph.
+        if let Some(reports) = &mut self.reports {
+            let repository = self.settings.repository.as_ref();
+            reports.run_started(&options, &launch_dir, run.processes(), repository);
+        }
+        self.run = Some(run);
+        let requests = requests.map_err(|failure| self.fault(failure))?;
+        self.tasks(requests)
+    }
+
+    fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        let identity = (outcome.id, outcome.attempt);
+        let Ended {
+            request,
+            outcome,
+            heard,
+        } = self.ended(outcome)?;
         let run = self.run.as_mut().ok_or_else(not_started)?;
         let mut host = Noting {
             host: self.settings.host.as_mut(),
@@ -857,7 +934,7 @@ fn not_started() -> DriverError {
     DriverError::new("the Nextflow run has not started")
 }
 
-fn error(error: Error) -> DriverError {
+pub(crate) fn error(error: Error) -> DriverError {
     DriverError {
         unsupported: error.unsupported(),
         message: error.to_string(),

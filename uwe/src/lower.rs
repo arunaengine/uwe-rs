@@ -1,5 +1,5 @@
-//! `uwe lower` prints the wir of a CWL, WDL or Argo document or a Snakemake workflow, and
-//! `-lowered` runs one through it.
+//! `uwe lower` prints the wir of a CWL, WDL or Argo document, a Snakemake workflow or a
+//! Nextflow pipeline, and `-lowered` runs one through it.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -18,6 +18,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
     let document = match language {
         Language::Wdl => wdl(&target, arguments, &base)?.document,
+        Language::Nextflow => {
+            let setup = Setup::load(arguments)?;
+            let _registry = setup.registry.enter().map_err(Failure::setup)?;
+            nextflow(arguments, &setup, &target, &base)?
+        }
         Language::Snakemake => snakemake(&target, arguments, &base)?.document,
         Language::Argo => argo(&target, arguments, &base)?.document,
         _ => lowered(&target, language, &base)?.document,
@@ -35,6 +40,7 @@ pub fn document(
     target: &Path,
     language: Language,
     arguments: &Arguments,
+    setup: &Setup,
 ) -> Result<(PathBuf, Option<PathBuf>), Failure> {
     let folder = cache_directory().join("scratch").join("lowered");
     let (document, inputs) = match language {
@@ -43,6 +49,7 @@ pub fn document(
             let inputs = converted(&lowering, arguments, &folder)?;
             (lowering.document, inputs)
         }
+        Language::Nextflow => (nextflow(arguments, setup, target, &folder)?, None),
         Language::Snakemake => (snakemake(target, arguments, &folder)?.document, None),
         Language::Argo => (argo(target, arguments, &folder)?.document, None),
         _ => (lowered(target, language, &folder)?.document, None),
@@ -64,7 +71,8 @@ fn lowered(
 ) -> Result<cwl_lowering::Lowering, Failure> {
     if language != Language::Cwl {
         return Err(Failure::usage(
-            "uwe: only CWL, WDL and Argo documents and Snakemake workflows compile into wir yet",
+            "uwe: only CWL, WDL and Argo documents, Snakemake workflows and Nextflow pipelines compile \
+             into wir yet",
         ));
     }
     let shown = target.display();
@@ -79,6 +87,26 @@ fn lowered(
         );
     }
     Ok(lowering)
+}
+
+/// The wir document of a Nextflow pipeline as the command line launches it, for its params and
+/// config; it names on standard error what keeps it one native op.
+fn nextflow(
+    arguments: &Arguments,
+    setup: &Setup,
+    target: &Path,
+    base: &Path,
+) -> Result<wir::Document, Failure> {
+    let launch = crate::launch(arguments, target.to_owned());
+    let compiled = crate::nextflow::compile(&launch, arguments, setup, base)
+        .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
+    for kept in &compiled.kept {
+        eprintln!(
+            "uwe: {} keeps the pipeline a native Nextflow op: {}",
+            kept.path, kept.reason
+        );
+    }
+    Ok(compiled.document)
 }
 
 /// The wir document that a Snakemake workflow compiles into, planned for the targets, config
@@ -142,23 +170,35 @@ fn argo(
     Ok(compiled)
 }
 
-/// The inputs file of the entry graph from the WDL input file of a run, below `folder`.
+/// The inputs file of the entry graph from the WDL input file and the parameters of a run,
+/// below `folder`.
 fn converted(
     lowering: &wdl_lowering::Lowering,
     arguments: &Arguments,
     folder: &Path,
 ) -> Result<Option<PathBuf>, Failure> {
-    let Some(file) = &arguments.inputs else {
-        return Ok(None);
+    let mut values = match &arguments.inputs {
+        None if arguments.params.is_empty() => return Ok(None),
+        None => serde_json::Value::Object(Default::default()),
+        Some(file) => {
+            let shown = file.display();
+            let text = std::fs::read_to_string(file)
+                .map_err(|error| failure(format!("uwe: cannot read {shown}: {error}")))?;
+            let json = serde_json::from_str(&text)
+                .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
+            let absolute = std::path::absolute(file).unwrap_or(file.clone());
+            (lowering.inputs(&json, absolute.parent().unwrap_or(Path::new("/"))))
+                .map_err(|error| failure(format!("uwe: {shown}: {error}")))?
+        }
     };
-    let shown = file.display();
-    let text = std::fs::read_to_string(file)
-        .map_err(|error| failure(format!("uwe: cannot read {shown}: {error}")))?;
-    let json =
-        serde_json::from_str(&text).map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
-    let absolute = std::path::absolute(file).unwrap_or(file.clone());
-    let values = (lowering.inputs(&json, absolute.parent().unwrap_or(Path::new("/"))))
-        .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
+    let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
+    let given = (lowering.parameters(&arguments.params, &base))
+        .map_err(|error| failure(format!("uwe: {error}")))?;
+    if let (serde_json::Value::Object(values), serde_json::Value::Object(given)) =
+        (&mut values, given)
+    {
+        values.extend(given);
+    }
     let text = values.to_string();
     let digest = task_model::Digest::sha256(text.as_bytes());
     let path = folder.join(format!("{}.inputs.json", digest.hex()));

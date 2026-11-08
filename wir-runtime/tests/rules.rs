@@ -222,7 +222,22 @@ fn refuses_engine_effects() {
     });
     assert_eq!(
         message,
-        "op main/same: only task and native ops have effects"
+        "op main/same: only task, native, effect and check ops have effects"
+    );
+    let folder = tempfile::tempdir().unwrap();
+    let launch = example(folder.path(), |document| {
+        let mut check = expr(json!({}));
+        check["effects"] = json!(["log", "read_files"]);
+        document["graphs"][0]["ops"]
+            .as_array_mut()
+            .unwrap()
+            .push(check);
+    });
+    let planned = WirDriver::new(&launch, settings());
+    assert!(
+        planned.is_ok(),
+        "an expr may check the start of a run: {:?}",
+        planned.err()
     );
 }
 
@@ -241,32 +256,10 @@ fn refuses_block_sizes() {
 
 #[test]
 fn refuses_unrun_fields() {
-    let control = refused(|document| {
-        op(document, 1)["depends"] = json!({"result": {"op": "sort", "on": ["succeeded"]}});
-    });
-    assert_eq!(
-        control,
-        "op main/head: uwe does not run depends and handles yet"
-    );
     let rules = refused(|document| op(document, 0)["values"] = json!("groovy"));
     assert_eq!(
         rules,
         "op main/sort: uwe compares values only by the wir rules yet"
-    );
-    let accept = refused(|document| {
-        op(document, 0)["kind"]["task"]["accept"] =
-            json!({"language": "groovy", "code": "{ true }"});
-    });
-    assert_eq!(
-        accept,
-        "op main/sort: uwe does not run task acceptance and retry rules yet"
-    );
-    let optional = refused(|document| {
-        op(document, 0)["kind"]["task"]["captures"][0]["optional"] = json!(true);
-    });
-    assert_eq!(
-        optional,
-        "op main/sort: uwe does not run optional captures and arity yet"
     );
     let captured = refused(|document| {
         let mut same = expr(json!({}));
@@ -281,13 +274,10 @@ fn refuses_unrun_fields() {
         "op main/same: uwe does not run expressions with a scope or captures yet"
     );
     let streams = refused(|document| {
-        let main = &mut document["graphs"][0];
-        main["inputs"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({"name": "items", "type": "int", "flow": "stream"}));
+        document["graphs"][0]["inputs"][0]["flow"] = json!("stream");
+        op(document, 0)["inputs"][0]["flow"] = json!("stream");
     });
-    assert_eq!(streams, "graph main: uwe does not run stream ports yet");
+    assert_eq!(streams, "op main/sort: uwe does not run stream ports yet");
     let built = refused(|document| {
         let source = json!({"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"});
         document["sources"].as_array_mut().unwrap().push(source);

@@ -56,13 +56,13 @@ Where the runs end differently, the lowered run refuses a job key that the docum
 
 ## Lowering WDL
 
-`uwe lower` and `-lowered` take WDL 1.0, 1.1 and 1.2 documents too, and `-entry` picks the workflow or task as for `uwe run`. A run with `-lowered` turns its WDL input file into one for the entry graph: the keys lose the name of the workflow, paths become Files and Directories from the folder of the file, and a pair becomes a tuple. The crate `wdl-lowering` does the lowering:
+`uwe lower` and `-lowered` take WDL 1.0, 1.1 and 1.2 documents too, and `-entry` picks the workflow or task as for `uwe run`. A run with `-lowered` turns its WDL input file into one for the entry graph: the keys lose the name of the workflow, paths become Files and Directories from the folder of the file, and a pair becomes a tuple. A key `<call>.<input>` gives an input that a call does not give, also inside a scatter or an `if` and when the workflow stays one native op. Inside a scatter or an `if`, such a required input is an optional entry input, and an `expr` op `<call>.<input>` fails when the call runs without it. The crate `wdl-lowering` does the lowering:
 
-- A workflow becomes a graph with its inputs and outputs. A literal default of an input becomes the default of its port; another default is an `expr` op at the path of the input that takes the given value first.
+- A workflow becomes a graph with its inputs and outputs. A literal default of a required input becomes the default of its port; another default is an `expr` op at the path of the input that takes the given value first. An optional input with a default has a Boolean input `given.<input>`, which a call or an input file sets when it gives the input, so that a given `None` stays `None`; a task input does the same in the library of its `expr` ops, and a native WDL op gets these inputs too. A task or workflow with an input, a declaration or an entry call named `given` stays native.
 - A declaration becomes an `expr` op in WDL at the path of its name, and `select_first` or `select_all` of plain references becomes a `merge` op and a `select` op. A call becomes a `call` op at the path of its alias; an input that is not a plain reference is an `expr` op `<call>.<input>`, and `after` is a dependency.
 - A scatter becomes a `map` op `scatter.<name>`, after the first name defined in its body, and an `if` a `branch` op `if.<name>`, whose condition is an `expr` op `if.<name>.condition` unless it is a plain reference. Outside, the names defined inside are arrays or optional, as in WDL.
 - A call of a subworkflow becomes a `call` op of the graph of that workflow, which all its calls share.
-- A task becomes a graph `task.<name>` that all its calls share. The `expr` op `command` evaluates the command section after the input defaults and private declarations, with each File at the path where the task op stages it; the files of `write_lines` and the other write functions are made by the command before it runs. The `task` op at the task name runs the command with `bash`, as uwe's WDL driver does. An output `stdout()`, `stderr()`, a literal path or `glob("<pattern>")` is a capture. The paths of other file outputs come from the `expr` op `command.outputs`, and the command copies those files below `.wdl/out/<output>/`, where a capture finds them. An output without files is an `expr` op `output.<name>`. Literal `container`, `cpu`, `memory`, `gpu` and `returnCodes` set the image, the resources and the success codes. The task may use the network, as WDL tasks run by uwe may.
+- A task becomes a graph `task.<name>` that all its calls share. The `expr` op `command` evaluates the command section after the input defaults and private declarations, which the definitions of the structs they use precede in its library, with each File at the path where the task op stages it; the files of `write_lines` and the other write functions are made by the command before it runs. The `task` op at the task name runs the command with `bash`, as uwe's WDL driver does. An output `stdout()`, `stderr()`, a literal path or `glob("<pattern>")` is a capture. The paths of other file outputs come from the `expr` op `command.outputs`, and the command copies those files below `.wdl/out/<output>/`, where a capture finds them. An output without files is an `expr` op `output.<name>`. Literal `container`, `cpu`, `memory`, `gpu` and `returnCodes` set the image, the resources and the success codes. The task may use the network, as WDL tasks run by uwe may.
 - A task stays a `native` WDL op, and `uwe lower` names it, when a task op cannot run it the same way: an output that reads files the task makes, like `read_string(stdout())`, a declaration that reads or writes files, a command that reads files, a runtime value that depends on inputs, `returnCodes: "*"`, `env` declarations, the `task` variable and files inside struct or map inputs. A workflow keeps its statements only when each lowers, so a declaration that reads files or an `else` clause keeps the whole workflow one native op.
 
 A lowered task is a wir task, so its cache key differs from that of the same task run as WDL: its inputs are staged in `inputs/<port>` and the command comes as an argument. On the simulator the outputs of a lowered task are made up from its captures, as the simulator does not see its command: a glob or a copied path gives a made-up name like `simulated.log`.
@@ -81,6 +81,20 @@ A lowered task is a wir task, so its cache key differs from that of the same tas
 
 What keeps tasks native, by the first reason of each: an output that reads files the task makes, like `read_string(stdout())` (59), a write function in a declaration (2), a file inside a struct or map input (3), a runtime value that depends on inputs (2), a workflow expression that reads a file (2), and one each of the `task` variable, `returnCodes: "*"`, a read in the command, an array of optional output files and an `env` declaration. The one example whose outputs differ globs files that the simulator makes up.
 
+## Compiling Nextflow
+
+`uwe lower` and `-lowered` take Nextflow pipelines too, with `-profile`, `-c`, `-entry` and the params of the command line as for `uwe run`. A Nextflow document is compiled for the params and config of one run, as Nextflow builds its dataflow once per run from them; the crate `nextflow-compiler` compiles it from the network that the build phase of uwe's Nextflow driver wires up, without running a task:
+
+- A process call becomes a `process` op whose body graph has one dialect task `nextflow_process`, which builds, accepts, retries and publishes each task as the native driver does, so the tasks and their cache keys are those of a native run. An `each` input is an `each` port; a call with a queue channel input has stream outputs, one without has value outputs.
+- An operator becomes the stream op of its meaning, such as `transform` for `map`, `route` for `branch`, `join`, `group_tuple` and `collect`; its closures are Groovy callbacks found by their place in the source, with the values they capture. A value channel that an op reads as a stream goes through an `emit` op.
+- A workflow call becomes a `call` op of a graph of its own, whose ports are the channels that cross the call. The mix of a topic sits in the deepest call that holds its readers.
+- The params become typed inputs of the entry graph, with the types of `nextflow_schema.json` and the values of the run as defaults. The source `run` pins the params and the resolved config by their digests, and the config files of the run are sources with their digests.
+- What the build prints or writes, and checks like `validateParameters`, become ops at the start of the run, before every other op. Channel factories, like `channel.fromPath` and factories of plugins, read when the run starts. Files that the build reads, like the samplesheet of `samplesheetToList`, are read when the pipeline is compiled, as Nextflow reads them when it builds the workflow; each is a source of the document with its digest.
+- Each workflow output of the `output { }` block becomes an `observe` op with the `publish` effect of the output folder. Its Groovy callback publishes the files of each item with the options of the output, to the places the native driver uses, and writes the index file when the channel closes.
+- Constructs without a wir op keep the whole pipeline one `native` op, and `uwe lower` names the first: nf-boost's `scan`, and the typed operators `groupBy`, `join` of records and `combine` of typed workflows, whose results depend on tuple and record kinds that wir values do not keep. A value channel that is never bound, like `channel.value()`, closes empty. An agent process compiles like a process, but its dialect task does not run agents yet.
+
+A run of a compiled document builds, accepts and publishes the tasks of `nextflow_process` ops through the task adapter of the native driver, with the names of the native tasks. It still stops at the first op that compares values by Groovy's rules, which uwe does not do yet; `nextflow-compiler/tests/differential.rs` counts the runs that give the native tasks when the ops use the wir rules instead.
+
 ## Compiling Snakemake
 
 `uwe lower` and `-lowered` take Snakefiles and Snakemake project folders too, with the targets, config files and profiles of the command line. The crate `snakemake-compiler` compiles the jobs that the planner of uwe plans for them, as a run plans them:
@@ -89,26 +103,28 @@ What keeps tasks native, by the first reason of each: an output that reads files
 - Each file that one job makes and another reads is an edge with a File, or a Directory for a `directory()` output, from the output `output_<n>` of the maker to the input `input_<n>` of the reader. The ports map to the native selectors `output/<n>`, the outputs, logs and benchmark of the job in this order, and `input/<n>`, its input files. Inputs that no job makes are read where they are.
 - An output that the native run delivers to the working directory is a `publish` effect. `temp()`, `pipe()` and `service()` outputs are not.
 - The command, script, wrapper, notebook, `run:` block, conda and container settings, resources, retries, `touch()` and `protected()` stay as the native job builds and checks them: the builder runs the job through the job adapter of `snakemake-runtime`, which prepares its task and takes its outcome with the code of the native driver, so the task, its cache key and its acceptance are those of the native run.
-- The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a rule is a checkpoint, when jobs run together in one task (group jobs of a run that is not local, pipes and services), when a job runs a CWL document, when workflow code runs commands while it is planned, and when the run sets config values on the command line, several targets, `until`, `omit-from`, `forcerun` or `forceall`.
+- Jobs that run together in one task, group jobs of a run that is not local, pipes, and a service with the jobs that use it, are one op: its `group` names the other jobs, its inputs are the files that no job of the group makes, and its outputs the files of each job in turn.
+- Every op carries the plan settings of the run: several targets, the options `until`, `omit-from`, `forcerun` and `forceall`, and config values of the command line, which a source with a `data:` location holds and its digest pins. The job adapter plans with them as the run would.
+- Commands that workflow code runs while the workflow is planned run while it compiles, as hooks run, so that the plan sees their output. A run starts the adapter, which runs them again as tasks before the jobs, and also those that a job runs while it is prepared, like a `conda:` function; the run checks that it plans every compiled job with its group.
+- The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a rule is a checkpoint, when a job runs a CWL document, and when uwe cannot plan the workflow, like a storage plugin that uwe lacks. Such a native op drops the plan settings, and `uwe lower` names each one.
 
-A compiled document runs only once the wir runtime runs dialect tasks, which it does not yet.
+The wir runtime runs the jobs of a document through one job adapter for the Snakefile, its profiles and config files, which `wir_runtime::snakemake::register` adds to a run. Job tasks keep their native names.
 
 ### Snakemake coverage
 
-`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled on the simulator, and compares the tasks (their descriptions, cache keys, resume fingerprints and acceptance) and the target files of both runs. The compiled run goes through the job adapter as a wir run of dialect tasks would. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
+`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs: their descriptions, cache keys, resume fingerprints and acceptance. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
 
 | Outcome | Workflows |
 | --- | --- |
 | test workflows | 890 |
 | the native run succeeds | 633 |
-| compiles fully | 565 |
-| stays one native op | 110 |
-| does not compile: planning fails, as the native run fails | 214 |
-| the compiled run ends as the native run does: both fail, or both give the same tasks | 564 |
-| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 545 |
-| both succeed with the same target files | 545 |
+| compiles fully | 616 |
+| stays one native op | 54 |
+| does not compile: planning fails, as the native run fails | 219 |
+| the compiled run ends as the native run does: both fail, or both give the same tasks | 616 |
+| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 593 |
 
-What keeps a workflow native, by the first reason: a checkpoint (50), jobs that run together in one task, as groups, pipes or services (28), workflow code that runs commands while it is planned (15), several targets (10), config values on the command line (4), a CWL job (1), and features that uwe does not run yet (2). The one compiled run that ends otherwise, `test_conda_function`, runs a command in a `conda:` function while its job is prepared, which the job adapter cannot run alone. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+What keeps a workflow native, by the first reason: a checkpoint (51), a CWL job (1), and features that uwe does not run yet (2). `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
 
 ## Detection
 

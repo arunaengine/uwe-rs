@@ -118,7 +118,7 @@ pub(crate) fn driver(
         Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
         Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments)),
         Language::Wir => {
-            let settings = wir_runtime::Settings {
+            let mut settings = wir_runtime::Settings {
                 // A block runs no `uwe resume` requests: they name the steps of a whole run.
                 argo: argo_runtime::Services {
                     resume: None,
@@ -132,6 +132,14 @@ pub(crate) fn driver(
                 },
                 wdl: wdl_options(arguments),
                 print: !arguments.no_print,
+                print_sink: match arguments.print_sink.clone() {
+                    Some(sink) => wir_runtime::Printer::new(move |text| sink.print(text)),
+                    None => wir_runtime::Printer::default(),
+                },
+                adapters: wir_runtime::argo::register(
+                    Default::default(),
+                    argo_services(run, setup),
+                ),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();
@@ -141,6 +149,8 @@ pub(crate) fn driver(
                     })
                 },
             };
+            wir_runtime::snakemake::register(&mut settings.adapters, settings.snakemake.clone());
+            wir_runtime::nextflow::register(&mut settings.adapters, settings.nextflow.clone());
             let downloads = cache_directory().join("downloads");
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
         }

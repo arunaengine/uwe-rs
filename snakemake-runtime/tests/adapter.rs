@@ -8,7 +8,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::Value as Json;
-use snakemake_runtime::{JobResult, PlannedJob, Prepared, RunSettings, Settings, SnakemakeDriver};
+use snakemake_runtime::{
+    Answer, JobResult, PlannedJob, Prepared, RunSettings, Settings, SnakemakeDriver,
+};
 use workflow_graph::{
     Delivery, Driver, DriverError, Files, Language, Launch, Note, Order, Outcome, OutputFile,
     RunOptions, Simulator, Task, TaskId, execute_with,
@@ -42,6 +44,20 @@ rule summary:
         with open(output[0], "w") as handle:
             handle.write(str(len(input)))
 "#;
+
+fn prepared(answer: Answer) -> Prepared {
+    match answer {
+        Answer::Prepared(prepared) => prepared,
+        other => panic!("not prepared: {other:?}"),
+    }
+}
+
+fn taken(answer: Answer) -> JobResult {
+    match answer {
+        Answer::Taken(result) => result,
+        other => panic!("not taken: {other:?}"),
+    }
+}
 
 /// A driver that runs each planned job alone once its producers ended, as a wir run of
 /// dialect tasks does, with the files of the producers as the inputs of the job.
@@ -88,7 +104,7 @@ impl Single {
                     .collect();
                 self.started[index] = true;
                 moved = true;
-                match self.driver.prepare_job(&job.key.clone(), staged)? {
+                match prepared(self.driver.prepare_job(&job.key.clone(), staged)?) {
                     Prepared::Run(task) => {
                         self.owners.insert(task.id, index);
                         tasks.push(*task);
@@ -108,7 +124,10 @@ impl Driver for Single {
     }
 
     fn start(&mut self) -> Result<Vec<Task>, DriverError> {
-        self.jobs = self.driver.start_jobs()?;
+        self.jobs = match self.driver.start_jobs()? {
+            Answer::Jobs(jobs) => jobs,
+            other => panic!("no jobs: {other:?}"),
+        };
         self.files = vec![None; self.jobs.len()];
         self.started = vec![false; self.jobs.len()];
         self.ready()
@@ -116,7 +135,7 @@ impl Driver for Single {
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         let index = self.owners[&outcome.id];
-        match self.driver.take_job(outcome)? {
+        match taken(self.driver.take_job(outcome)?) {
             JobResult::Accepted(made) => {
                 self.files[index] = Some(made);
                 self.ready()
@@ -252,14 +271,16 @@ fn retries_match() {
         let mut seen = Vec::new();
         let single = folder == single_folder.path();
         let (mut task, key) = if single {
-            let jobs = driver.start_jobs().expect("plans");
+            let Answer::Jobs(jobs) = driver.start_jobs().expect("plans") else {
+                panic!("no jobs");
+            };
             let key = jobs
                 .iter()
                 .find(|job| job.key.rule == "make")
                 .expect("make")
                 .key
                 .clone();
-            match driver.prepare_job(&key, Vec::new()).expect("prepares") {
+            match prepared(driver.prepare_job(&key, Vec::new()).expect("prepares")) {
                 Prepared::Run(task) => (*task, Some(key)),
                 other => panic!("the job does not run: {other:?}"),
             }
@@ -281,7 +302,7 @@ fn retries_match() {
             };
             seen.push(serde_json::to_string(&shown).expect("serializes"));
             let next = match key {
-                Some(_) => match driver.take_job(outcome).expect("takes") {
+                Some(_) => match taken(driver.take_job(outcome).expect("takes")) {
                     JobResult::Retry(task) => Some(*task),
                     JobResult::Accepted(made) => {
                         seen.push(format!("accepted {}", made.len()));
@@ -329,8 +350,9 @@ fn keys_name_jobs() {
     assert_eq!(jobs[producer.job].key.rule, "make");
     assert_eq!(jobs[producer.job].outputs[producer.output].flags, ["temp"]);
     assert!(jobs.iter().all(|job| job.needed && job.native.is_none()));
-    let targets: Vec<&str> = (jobs.iter().filter(|job| job.target))
-        .map(|job| job.key.rule.as_str())
+    let targets: Vec<&str> = jobs
+        .iter()
+        .filter_map(|job| job.target.as_deref())
         .collect();
     assert_eq!(targets, ["all"]);
 }

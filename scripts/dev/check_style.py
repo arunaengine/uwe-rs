@@ -43,6 +43,7 @@ SMALL_DOMAINS = {
     "uwe/src/run": "grouped shared-prefix domain; hoisting recreates run_*",
     "run-database/src/compare": "grouped shared-prefix domain; hoisting recreates compare_*",
     "workflow-graph/src/shell": "grouped shared-prefix domain; hoisting recreates shell_*",
+    "wir-runtime/src/wdl": "grouped shared-prefix domain; hoisting recreates wdl_*",
 }
 FOLDER_MIN = 5
 TERM_MAX = 3

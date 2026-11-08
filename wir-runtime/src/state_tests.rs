@@ -171,7 +171,7 @@ fn dynamic_progress() -> (Progress, Vec<wir::Port>) {
                 "inputs": [{"name": "x", "type": "int"}], "outputs": []}],
         "edges": [{"from": {"op": "emit", "port": "y"}, "to": {"op": "use", "port": "x"}},
             {"from": {"op": "emit", "port": "y"}, "to": {"port": "z"}}]});
-    let document = json!({"wir_version": "0.3",
+    let document = json!({"wir_version": "0.1",
         "sources": [{"id": "n", "language": "nextflow", "location": "main.nf"},
             {"id": "c", "language": "cwl", "location": "c.cwl"}],
         "graphs": [main], "entry": "main"});

@@ -26,11 +26,9 @@ The JSON form uses snake_case keys and leaves out fields that hold their default
 
 ## Versioning
 
-`wir_version` is `<major>.<minor>`; this crate reads `0.1` to `0.5`, and `wir::VERSION` is `0.5`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
+`wir_version` is `<major>.<minor>`, and `wir::VERSION` is `0.1`. A reader accepts only the versions it knows, and the parser checks the version before anything else.
 
-Version 0.2 adds `profiles` and `configs` to `native` ops and lets the outputs of a Nextflow block be `dynamic`. Version 0.3 adds `network` to `task` ops. Version 0.4 adds `stdout` and `stderr` to `task` ops, defines `map`, `expr` and `branch`, and adds `library` to `expr`. Those three op kinds stay reserved in a document of an earlier version. Version 0.5 adds `default` to input ports, defines `select`, and defines `merge` and `flatten` on values; these three op kinds stay reserved in a document of an earlier version. An older document is read as it is; the verifier refuses the additions of a later version in a document that says an earlier one.
-
-- While the major version is 0, every change to the form or the semantics raises the minor version.
+- wir stays at 0.1 while the format grows, until it covers most of what the workflow languages need.
 - From 1.0, a minor version only adds optional fields, op kinds, or semantics for reserved op kinds; a reader then accepts its own major version up to its own minor. Any other change raises the major version.
 
 ## Types
@@ -159,6 +157,5 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
 - the stream files of a task are relative paths that stay inside the working folder;
 - a default sits on an input port and fits its type;
-- a document uses no additions of a later version: none of 0.2 in 0.1, none of 0.3 before 0.3, none of 0.4 before 0.4, none of 0.5 before 0.5.
 
 Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering`. The runner is the crate `wir-runtime`.

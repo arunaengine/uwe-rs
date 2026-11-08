@@ -176,9 +176,7 @@ fn defaults_checked() {
     assert_eq!(only(document), ("main".into(), output));
     let mut document = base();
     document["graphs"][0]["inputs"][0]["default"] = file;
-    document["wir_version"] = json!("0.4");
-    let later = Problem::Later("the default of a port".into(), "0.5".into());
-    assert_eq!(only(document), ("main".into(), later));
+    assert!(problems(document).is_empty());
 }
 
 #[test]
@@ -302,23 +300,6 @@ fn nextflow_outputs_dynamic() {
         found.contains(&Problem::Untyped("port input".into())),
         "{found:?}"
     );
-    document["wir_version"] = json!("0.1");
-    let found: Vec<Problem> = problems(document).into_iter().map(|e| e.problem).collect();
-    let later = [
-        Problem::Later("native profiles".into(), "0.2".into()),
-        Problem::Later("a dynamic native output".into(), "0.2".into()),
-    ];
-    assert_eq!(found, later);
-}
-
-#[test]
-fn network_needs_version() {
-    let mut document = base();
-    document["graphs"][0]["ops"][1]["kind"]["task"]["network"] = json!(true);
-    assert!(problems(document.clone()).is_empty());
-    document["wir_version"] = json!("0.2");
-    let later = Problem::Later("the network of a task".into(), "0.3".into());
-    assert_eq!(only(document), ("main/head".into(), later));
 }
 
 #[test]
@@ -330,9 +311,7 @@ fn stream_files_checked() {
     let outside = Problem::Outside("../err.txt".into());
     assert_eq!(only(document.clone()), ("main/head".into(), outside));
     document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("err.txt");
-    document["wir_version"] = json!("0.3");
-    let later = Problem::Later("the stream files of a task".into(), "0.4".into());
-    assert_eq!(only(document), ("main/head".into(), later));
+    assert!(problems(document).is_empty());
 }
 
 /// A map `each` over the files `texts`, whose body `round` runs one task.
@@ -393,10 +372,7 @@ fn single_expr_output() {
         .as_array_mut()
         .unwrap()
         .pop();
-    assert!(problems(document.clone()).is_empty());
-    document["wir_version"] = json!("0.3");
-    let later = Problem::Later("the library of an expr".into(), "0.4".into());
-    assert_eq!(only(document), ("main/pick".into(), later));
+    assert!(problems(document).is_empty());
 }
 
 /// A branch `maybe` that runs the task of its body `inner` when `go` holds.

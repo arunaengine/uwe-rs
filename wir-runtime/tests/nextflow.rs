@@ -28,7 +28,7 @@ fn block(path: &str, outputs: Json) -> Json {
 /// A wir document of `ops` and `edges`, with the graph inputs `inputs` and outputs `outputs`.
 fn document(root: &Path, ops: Json, edges: Json, ports: (Json, Json)) -> PathBuf {
     let document = json!({
-        "wir_version": "0.2",
+        "wir_version": "0.1",
         "sources": [{"id": "greetings", "language": "nextflow", "location": pipeline()}],
         "graphs": [{
             "name": "main", "inputs": ports.0, "outputs": ports.1, "ops": ops, "edges": edges

@@ -41,7 +41,7 @@ fn greetings_ports() -> Json {
 /// fixtures and of `configs`.
 fn document(root: &Path, ops: Json, edges: Vec<Json>, ports: (Json, Json)) -> PathBuf {
     let document = json!({
-        "wir_version": "0.2",
+        "wir_version": "0.1",
         "sources": [
             {"id": "greetings", "language": "snakemake", "location": fixture("greetings.smk")},
             {"id": "checkpoint", "language": "snakemake", "location": fixture("checkpoint.smk")},

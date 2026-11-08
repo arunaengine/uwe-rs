@@ -546,7 +546,7 @@ impl TesBackend {
                 continue;
             };
             if journal["stopped"] == true {
-                backend.settle_journal(&root, &journal).await?;
+                backend.settle_ended(&root, &journal).await;
                 continue;
             }
             if journal["id"].is_null() {
@@ -584,7 +584,7 @@ impl TesBackend {
                             "the task of an unclear submission is not on the TES server; the attempt is lost");
                         journal["stopped"] = serde_json::json!(true);
                         journal_at(&root, &journal)?;
-                        backend.settle_journal(&root, &journal).await?;
+                        backend.settle_ended(&root, &journal).await;
                         continue;
                     }
                     Submitted::Unclear(reason) => {
@@ -598,9 +598,19 @@ impl TesBackend {
             backend.stop(id, &root, CANCEL_GRACE).await?;
             let journal = serde_json::from_slice(&std::fs::read(&path)?)
                 .map_err(|error| unresolved(&root, error))?;
-            backend.settle_journal(&root, &journal).await?;
+            backend.settle_ended(&root, &journal).await;
         }
         Ok(())
+    }
+
+    /// Settles the journal of an attempt whose task ended. A failure, like staged objects that
+    /// are gone, keeps the journal for a later try, but blocks no run, since no task runs.
+    async fn settle_ended(&self, root: &Path, journal: &serde_json::Value) {
+        if let Err(error) = self.settle_journal(root, journal).await {
+            let journal = root.join("remote.json");
+            tracing::warn!(journal = %journal.display(), %error,
+                "cannot settle the journal of an ended TES task; later runs try again, and deleting the journal drops it");
+        }
     }
 
     /// Removes the objects in the staging root that the journal of an attempt names.
@@ -1111,6 +1121,48 @@ mod tests {
         backend.settle_journal(root.path(), &journal).await.unwrap();
         assert!(!root.path().join("remote.json").exists());
         assert!(objects.objects("attempts/test/").await.unwrap().is_empty());
+    }
+
+    /// The journal of an ended task whose staged objects are gone stays for a later try, and
+    /// the next run still starts.
+    #[tokio::test]
+    async fn skips_unsettled_journal() {
+        let scratch = tempfile::tempdir().unwrap();
+        let operator = opendal::Operator::new(opendal::services::Memory::default()).unwrap();
+        let objects = content_store::Store::remote(operator, "s3://bucket/stage").unwrap();
+        let settings = Settings::default();
+        let backend = TesBackend {
+            run: String::new(),
+            client: Client::new("http://127.0.0.1:1", None).unwrap(),
+            scratch: scratch.path().into(),
+            configs: Default::default(),
+            staging: Some(
+                ObjectStage::new(
+                    content_store::Store::memory().unwrap(),
+                    objects.clone(),
+                    settings.clone(),
+                )
+                .unwrap(),
+            ),
+            settings,
+        };
+        let root = scratch.path().join("crashed-1");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("remote.lock"), "").unwrap();
+        let task = Task {
+            executors: vec![ExecutorSpec {
+                command: vec!["sh".into(), WRAPPER.into()],
+                ..ExecutorSpec::default()
+            }],
+            ..Task::default()
+        };
+        let journal = serde_json::json!({"backend":"TES","server":backend.client.server(),
+            "auth":backend.client.identity(),"locked":true,"stopped":true,"collect":true,
+            "task":task,"status":{"id":"done","state":"COMPLETE"},
+            "staging":{"prefix":"attempts/gone","root":objects.url(""),"cleanup":true}});
+        journal_at(&root, &journal).unwrap();
+        backend.reconcile(&[&backend]).await.unwrap();
+        assert!(root.join("remote.json").exists());
     }
 
     #[test]

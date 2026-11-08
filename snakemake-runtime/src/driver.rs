@@ -1439,17 +1439,7 @@ impl Session {
             return self.complete_cwl(job, outcome);
         }
         let mut outcome = outcome;
-        if let Some(placed) = self.placed.remove(&outcome.id) {
-            let succeeded = outcome.exit_code == 0;
-            let written = placed.written.clone();
-            crate::shared::finish(placed, &mut outcome, succeeded).map_err(|error| {
-                DriverError::new(format!("cannot finish task {}: {error}", outcome.id))
-            })?;
-            self.release_written(&written);
-            if outcome.cached && succeeded {
-                self.restore(&outcome)?;
-            }
-        }
+        self.unplace(&mut outcome)?;
         if let Some(members) = self.groups.remove(&outcome.id) {
             return self.complete_group(members, outcome);
         }
@@ -1468,6 +1458,24 @@ impl Session {
                 next
             }
         }
+    }
+
+    /// Ends the task of the shared directory that gave the outcome: takes its outputs from
+    /// where the job left them, or puts a stored result there.
+    fn unplace(&mut self, outcome: &mut Outcome) -> Result<(), DriverError> {
+        let Some(placed) = self.placed.remove(&outcome.id) else {
+            return Ok(());
+        };
+        let succeeded = outcome.exit_code == 0;
+        let written = placed.written.clone();
+        crate::shared::finish(placed, outcome, succeeded).map_err(|error| {
+            DriverError::new(format!("cannot finish task {}: {error}", outcome.id))
+        })?;
+        self.release_written(&written);
+        if outcome.cached && succeeded {
+            self.restore(outcome)?;
+        }
+        Ok(())
     }
 
     /// Takes the outcome of the task of one job as Snakemake does: a failed attempt runs

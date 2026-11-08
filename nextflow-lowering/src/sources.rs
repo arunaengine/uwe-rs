@@ -1,17 +1,19 @@
 //! The sources of a lowered pipeline: its main script, the scripts that define its processes
-//! and closures, and its config files, each with a stable id.
+//! and closures, and its config files, each with a stable id and the digest of its bytes.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value as Json, json};
+use sha2::{Digest, Sha256};
 
 /// The source files of a document by id, in the order they were first named.
 #[derive(Clone, Debug)]
 pub struct Sources {
     base: PathBuf,
-    files: Vec<(String, String)>,
+    /// The id, location and digest of each file.
+    files: Vec<(String, String, Option<String>)>,
 }
 
 impl Sources {
@@ -22,9 +24,10 @@ impl Sources {
             base: base.to_owned(),
             files: Vec::new(),
         };
+        let location = sources.location(Path::new(main));
         sources
             .files
-            .push(("main".into(), sources.location(Path::new(main))));
+            .push(("main".into(), location, digest(Path::new(main))));
         sources
     }
 
@@ -36,7 +39,7 @@ impl Sources {
     /// The id of a script or config file, named by its location.
     pub fn script(&mut self, path: &str) -> String {
         let location = self.location(Path::new(path));
-        if let Some((id, _)) = self.files.iter().find(|(_, known)| *known == location) {
+        if let Some((id, ..)) = self.files.iter().find(|(_, known, _)| *known == location) {
             return id.clone();
         }
         let mut id: String = (location.trim_start_matches(['/', '.']).chars())
@@ -45,10 +48,11 @@ impl Sources {
                 _ => '.',
             })
             .collect();
-        while self.files.iter().any(|(known, _)| *known == id) {
+        while self.files.iter().any(|(known, ..)| *known == id) {
             id.push('_');
         }
-        self.files.push((id.clone(), location));
+        self.files
+            .push((id.clone(), location, digest(Path::new(path))));
         id
     }
 
@@ -81,7 +85,24 @@ impl Sources {
     /// The sources as the document lists them.
     pub fn list(&self) -> Vec<Json> {
         (self.files.iter())
-            .map(|(id, location)| json!({"id": id, "language": "nextflow", "location": location}))
+            .map(|(id, location, digest)| {
+                let mut source = json!({"id": id, "language": "nextflow", "location": location});
+                if let Some(digest) = digest {
+                    source["digest"] = json!(digest);
+                }
+                source
+            })
             .collect()
     }
+}
+
+/// The SHA-256 digest of a file, which pins the source that a dialect task loads; a folder,
+/// like a project folder, has none.
+fn digest(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    let hex: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Some(format!("sha256:{hex}"))
 }

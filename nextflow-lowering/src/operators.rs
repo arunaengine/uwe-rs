@@ -18,8 +18,6 @@ pub(crate) struct Piece {
     pub edges: Vec<Json>,
     pub inputs: Vec<End>,
     pub outputs: Vec<End>,
-    /// The ops of the piece that read the params of the run, at their port `params`.
-    pub params: Vec<String>,
 }
 
 /// An op port of a piece, and whether it carries a stream.

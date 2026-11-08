@@ -52,7 +52,7 @@ pub(crate) fn process(
         "scope": {"source": source, "start": definition.span.0, "end": definition.span.1},
         "inputs": maps(&inputs, "input"),
         "outputs": maps(&outputs, "output"),
-        "captures": {"params": {"input": "params"}, "singleton": {"value": call.singleton}},
+        "captures": {"singleton": {"value": call.singleton}},
     });
     if !place.context.profiles.is_empty() {
         task["profiles"] = json!(place.context.profiles);
@@ -62,15 +62,14 @@ pub(crate) fn process(
     }
     let value_ports =
         |names: &[String]| -> Vec<Json> { names.iter().map(|name| port(name, false)).collect() };
-    let mut body_inputs = value_ports(&inputs);
-    body_inputs.push(port("params", false));
+    let body_inputs = value_ports(&inputs);
     let task_op = json!({
         "path": "task",
         "kind": {"task": {"builder": {"nextflow_process": task}}},
         "inputs": body_inputs,
         "outputs": value_ports(&outputs),
     });
-    let mut edges: Vec<Json> = (inputs.iter().chain(std::iter::once(&"params".to_owned())))
+    let mut edges: Vec<Json> = (inputs.iter())
         .map(|name| json!({"from": {"port": name}, "to": {"op": "task", "port": name}}))
         .collect();
     edges.extend(
@@ -93,10 +92,9 @@ pub(crate) fn process(
     if !each.is_empty() {
         process["each"] = json!(each);
     }
-    let mut op_inputs: Vec<Json> = (inputs.iter().zip(&place.values_in))
+    let op_inputs: Vec<Json> = (inputs.iter().zip(&place.values_in))
         .map(|(name, value)| port(name, !value))
         .collect();
-    op_inputs.push(port("params", false));
     let op_outputs: Vec<Json> = outputs.iter().map(|name| port(name, streams)).collect();
     let op = json!({
         "path": path,
@@ -116,7 +114,6 @@ pub(crate) fn process(
             .iter()
             .map(|name| end(path, name, streams))
             .collect(),
-        params: vec![path.to_owned()],
     }
 }
 

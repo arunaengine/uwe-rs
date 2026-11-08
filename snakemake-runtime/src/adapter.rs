@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use python_evaluator::Value;
 use serde_json::{Value as Json, json};
-use snakemake_parser::keyword::GlobalKeyword;
 use workflow_graph::{DriverError, Outcome, Task};
 
 use super::{Session, SnakemakeDriver, Taken};
@@ -172,12 +171,7 @@ impl Session {
         self.sources = std::rc::Rc::new(crate::sources::Sources::find(&self.state.borrow()));
         self.plan()?;
         if start {
-            self.report_assumed();
-            self.take_lock()?;
-            if self.needrun.values().any(|needed| *needed) {
-                self.run_hook(GlobalKeyword::OnStart)?;
-                self.hooks_started = true;
-            }
+            self.begin_run()?;
         }
         let planner = (self.planner.as_ref())
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
@@ -190,7 +184,11 @@ impl Session {
             let entry = &planner.jobs[*job];
             let rule = &planner.rules[entry.rule];
             let key = job_key(planner, *job);
-            self.keys.insert(key.clone(), *job);
+            let named = JobKey {
+                outputs: Vec::new(),
+                ..key.clone()
+            };
+            self.keys.insert(named, *job);
             let inputs = entry.input_files();
             let mut producers = Vec::new();
             for (file, producer) in &entry.dependencies {
@@ -315,16 +313,17 @@ impl Session {
         })
     }
 
-    /// The job of a key; a key without outputs names the job by its rule and wildcards.
+    /// The job of a key, by its rule and wildcards; the outputs of a key must match when given.
     fn job_of(&self, key: &JobKey) -> Result<usize, DriverError> {
-        let named = (self.keys.iter())
-            .find(|(known, _)| {
-                known.rule == key.rule
-                    && known.wildcards == key.wildcards
-                    && (key.outputs.is_empty() || known.outputs == key.outputs)
-            })
-            .map(|(_, job)| *job);
-        named.ok_or_else(|| {
+        let named = JobKey {
+            outputs: Vec::new(),
+            ..key.clone()
+        };
+        let job = self.keys.get(&named).copied().filter(|job| {
+            let planner = self.planner.as_ref();
+            key.outputs.is_empty() || planner.is_some_and(|planner| job_key(planner, *job) == *key)
+        });
+        job.ok_or_else(|| {
             DriverError::new(format!(
                 "the plan has no job of rule {} with these wildcards and outputs",
                 key.rule

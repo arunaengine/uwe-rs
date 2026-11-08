@@ -38,6 +38,11 @@ impl Deliveries {
         asked
     }
 
+    /// Asks the host for deliveries, like the files of a Nextflow workflow output.
+    pub fn ask(&self, deliveries: &[Delivery]) {
+        self.shelves().asked.extend_from_slice(deliveries);
+    }
+
     /// Takes the acknowledgement of a delivery; whether an op asked for it.
     pub fn acknowledge(&self, delivery: &Delivery) -> bool {
         let mut shelves = self.shelves();

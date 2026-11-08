@@ -33,10 +33,7 @@ impl Viewing {
             }
             None => item.clone(),
         };
-        let mut text = match shown {
-            Json::String(text) => text,
-            other => other.to_string(),
-        };
+        let mut text = crate::values::text(turn.rules, context, &shown);
         if self.new_line {
             text.push('\n');
         }

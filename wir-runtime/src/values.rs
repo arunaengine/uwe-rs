@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 
 use serde_json::{Map, Value as Json};
 use sha2::{Digest, Sha256};
+use wir::ValueRules;
 
 use crate::engine::Context;
 
@@ -111,6 +112,43 @@ pub fn deep_hash(value: &Json, context: &Context<'_>) -> Option<Vec<u8>> {
     }
     walk(value, &mut hasher, context)?;
     Some(hasher.finalize().to_vec())
+}
+
+/// The order of two values by the value rules of an op.
+pub fn order(
+    rules: ValueRules,
+    context: &Context<'_>,
+    left: &Json,
+    right: &Json,
+) -> Result<Ordering, String> {
+    match rules {
+        ValueRules::Groovy => Ok(crate::groovy::compare(left, right, context.base)),
+        _ => compare(left, right),
+    }
+}
+
+/// The key that `hash` and `deep` sorting order a value by, by the value rules of an op;
+/// `None` when a File cannot be read.
+pub fn sort_hash(
+    rules: ValueRules,
+    context: &Context<'_>,
+    value: &Json,
+    deep: bool,
+) -> Result<Vec<u8>, String> {
+    match (rules, deep) {
+        (ValueRules::Groovy, _) => crate::groovy::hash_key(value, deep, context.base),
+        (_, true) => deep_hash(value, context).ok_or_else(|| "cannot read a file to sort".into()),
+        (_, false) => Ok(hash(value)),
+    }
+}
+
+/// The text that `view` prints for a value by the value rules of an op.
+pub fn text(rules: ValueRules, context: &Context<'_>, value: &Json) -> String {
+    match (rules, value) {
+        (ValueRules::Groovy, value) => crate::groovy::text(value, context.base),
+        (_, Json::String(text)) => text.clone(),
+        (_, other) => other.to_string(),
+    }
 }
 
 /// The location of a File or Directory value.

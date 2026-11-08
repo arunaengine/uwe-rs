@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod adapter;
-mod argo;
+pub mod argo;
 mod arrays;
 mod buffering;
 mod callback;

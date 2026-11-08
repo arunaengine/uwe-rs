@@ -1325,6 +1325,13 @@ impl Session {
         self.evaluate_once()?;
         self.sources = Rc::new(crate::sources::Sources::find(&self.state.borrow()));
         self.plan()?;
+        self.begin_run()?;
+        self.ready_tasks(None)
+    }
+
+    /// What a run does once it has planned, before its first task: it reports assumed
+    /// inputs, takes the lock and runs `onstart` when a job runs.
+    fn begin_run(&mut self) -> Result<(), DriverError> {
         self.report_assumed();
         self.take_lock()?;
         if self.needrun.values().any(|needed| *needed) {
@@ -1341,7 +1348,7 @@ impl Session {
             self.run_hook(GlobalKeyword::OnStart)?;
             self.hooks_started = true;
         }
-        self.ready_tasks(None)
+        Ok(())
     }
 
     /// Locks the working directory for the files of the planned jobs, as Snakemake does

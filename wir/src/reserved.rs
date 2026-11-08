@@ -6,6 +6,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::closure::Body;
+pub use crate::splits::{
+    ChunkFiles, CsvSplit, Decompress, Header, JsonSplit, Pair, RecordField, SequenceField,
+    SequenceSplit, Split, SplitFormat, TextSplit,
+};
 
 /// Binds the array of the items of a stream once it closes: through the optional body,
 /// flattened one level unless `flat` is false, and sorted. An empty result closes empty.

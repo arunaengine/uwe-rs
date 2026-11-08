@@ -76,6 +76,7 @@ pub enum Kind {
     Distinct(reserved::Distinct),
     Until(reserved::Until),
     IfEmpty(reserved::IfEmpty),
+    Split(reserved::Split),
     Route(reserved::Route),
     MultiMap(reserved::MultiMap),
     Branch(Branch),

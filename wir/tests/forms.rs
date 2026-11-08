@@ -286,3 +286,43 @@ fn selection_forms() {
         "remainder is true by default"
     );
 }
+
+#[test]
+fn splitter_forms() {
+    let split = |fields: Json| json!({"split": fields});
+    let good = [
+        split(json!({"format": {"text": {"keep_header": true}}, "size": 10, "limit": 100})),
+        split(
+            json!({"format": {"csv": {"separator": ";", "quote": null, "header": "read", "skip": 1, "strip": true}}}),
+        ),
+        split(json!({"format": {"csv": {"header": {"names": ["id", "path"]}}}, "elem": 1})),
+        split(
+            json!({"format": {"fasta": {"fields": [{"name": "seqString", "field": "seq_string"}]}}}),
+        ),
+        split(
+            json!({"format": {"fastq": {}}, "pair": {"at": [1, 2]}, "decompress": "always",
+            "files": {"name": "reads", "compress": true}}),
+        ),
+        split(json!({"format": {"fastq": {}}, "pair": "auto", "charset": "latin-1"})),
+        split(json!({"format": {"json": {"path": "samples[0].files"}}, "body": "f"})),
+    ];
+    let bad = [
+        split(json!({"format": {"tsv": {}}})),
+        split(json!({"format": {"text": {}, "csv": {}}})),
+        split(json!({"format": {"csv": {"separator": ";;"}}})),
+        split(json!({"format": {"fastq": {}}, "pair": {"at": [1]}})),
+        split(json!({"format": {"fasta": {"fields": [{"name": "x", "field": "quality"}]}}})),
+    ];
+    kinds_round_trip(&good, &bad);
+    let defaults = split(
+        json!({"format": {"csv": {"separator": ",", "quote": "\"", "header": "none"}},
+        "size": 1, "decompress": "auto", "charset": "utf-8"}),
+    );
+    let document = document(json!([{"path": "a", "kind": defaults}]), json!([]));
+    let stored = &written(&document)["graphs"][0]["ops"][0]["kind"];
+    assert_eq!(
+        *stored,
+        split(json!({"format": {"csv": {}}})),
+        "every default is left out"
+    );
+}

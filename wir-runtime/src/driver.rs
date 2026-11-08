@@ -230,7 +230,13 @@ impl WirDriver {
                 break;
             }
             passes += 1;
-            if !operator::step_all(&mut self.progress, &mut self.operators) {
+            let context = engine::Context {
+                document: &self.document,
+                base: &self.base,
+                javascript: &self.settings.cwl.javascript,
+                scopes: &self.scopes,
+            };
+            if !operator::step_all(&mut self.progress, &mut self.operators, &context) {
                 break;
             }
         }

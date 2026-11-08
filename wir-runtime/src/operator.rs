@@ -8,9 +8,11 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value as Json};
 use wir::{Kind, Status};
 
+use crate::engine::Context;
 use crate::flows::output_stream;
 use crate::plan::Node;
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
+use crate::transforms::{Mapping, Rule};
 
 /// The most items one step of an op commits.
 pub const CHUNK: usize = 256;
@@ -151,12 +153,23 @@ impl<'s> Turn<'s> {
 
 /// A stream op that runs in the engine.
 pub trait Operator {
-    fn step(&mut self, turn: &mut Turn<'_>) -> Result<Step, Failure>;
+    fn step(&mut self, turn: &mut Turn<'_>, context: &Context<'_>) -> Result<Step, Failure>;
 }
 
 /// The op of a node, when its kind runs as a stream op.
 pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
+    let stream = node
+        .op
+        .inputs
+        .iter()
+        .any(|port| port.name == "source" && !port.flow.is_value());
+    let mapping =
+        |rule| -> Option<Box<dyn Operator>> { Some(Box::new(Mapping::new(rule, stream))) };
     match &node.op.kind {
+        Kind::Transform(spec) => mapping(Rule::Transform(spec.body.clone(), spec.nulls)),
+        Kind::Filter(spec) => mapping(Rule::Filter(spec.body.clone())),
+        Kind::FlatMap(spec) => mapping(Rule::FlatMap(spec.body.clone())),
+        Kind::Flatten(spec) if stream => mapping(Rule::Flatten(spec.depth, spec.drop_null)),
         Kind::Emit(emit) => Some(Box::new(Emitting {
             each: emit.each,
             next: 0,
@@ -172,7 +185,7 @@ struct Emitting {
 }
 
 impl Operator for Emitting {
-    fn step(&mut self, turn: &mut Turn<'_>) -> Result<Step, Failure> {
+    fn step(&mut self, turn: &mut Turn<'_>, _context: &Context<'_>) -> Result<Step, Failure> {
         // An empty source closes the stream without items.
         let items = match (self.each, turn.values.get("source").cloned()) {
             (_, None) => Vec::new(),
@@ -199,7 +212,11 @@ pub type Running = BTreeMap<usize, Box<dyn Operator>>;
 
 /// Takes one step of every running stream op, in node order, and ends those that ended or
 /// failed. Whether any of them moved.
-pub fn step_all(progress: &mut crate::state::Progress, running: &mut Running) -> bool {
+pub fn step_all(
+    progress: &mut crate::state::Progress,
+    running: &mut Running,
+    context: &Context<'_>,
+) -> bool {
     let mut moved = false;
     let nodes: Vec<usize> = running.keys().copied().collect();
     for at in nodes {
@@ -211,7 +228,7 @@ pub fn step_all(progress: &mut crate::state::Progress, running: &mut Running) ->
         let mut turn = Turn::new(node, values, &mut progress.streams);
         let step = running
             .get_mut(&at)
-            .map(|operator| operator.step(&mut turn));
+            .map(|operator| operator.step(&mut turn, context));
         let Turn {
             batch,
             bound,

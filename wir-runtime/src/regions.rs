@@ -281,3 +281,7 @@ pub fn settle(progress: &mut Progress, regions: &mut Regions) -> bool {
     }
     moved
 }
+
+#[cfg(test)]
+#[path = "regions_tests.rs"]
+mod tests;

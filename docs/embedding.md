@@ -218,6 +218,8 @@ While uwe interprets the code of an isolated workflow, that code reaches only th
 
 Other runs share the cache folder, `run::Settings.cache_folder`, with its scratch folder and downloads, and the local store, `run::Settings.store`, where the outputs of tasks are. Workflow code reads a file there by its path, like the output of one of its tasks, which it gets from the task. It cannot list these folders, and it cannot write, delete or make anything in them outside the folders of its run above. So one run cannot change the cached results of another.
 
+Folders that workflow code may read and list but never change are in `Isolation.read_only`, like shared input data of the host. Workflow code reads their files, lists them and checks whether a path in them exists. A write, delete or rename there, and a new file or folder, fails with "workflow code may not reach PATH: it is in a read-only folder of the run". A writable folder of the run inside a read-only folder, like a folder of `Isolation.roots`, stays writable.
+
 The environment that such code reads is the secret values of the run (`run::Settings.secrets`) and the variables of the process that `Isolation.variables` names, nothing else. This holds for `env()`, `System.getenv`, `os.environ` and the `envvars` of Snakemake, and also for the `{ environment = "NAME" }` secrets of the config files. `SecretValues::limit_environment` does the same for a host that builds its own `SecretValues`.
 
 An isolated run also leaves out two stores of the service user, unless the host turns them on:

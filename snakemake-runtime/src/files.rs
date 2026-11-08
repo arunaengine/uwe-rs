@@ -91,6 +91,14 @@ impl WorkflowFiles {
         }
     }
 
+    /// Like [`WorkflowFiles::reach`], but also lets a listing of a read-only folder through.
+    fn reach_list(&self, path: &Path) -> std::io::Result<()> {
+        match &*self.roots.borrow() {
+            Some(roots) => roots.check_list(path),
+            None => Ok(()),
+        }
+    }
+
     /// Lets the writes of workflow code reach the disk, for a real run.
     pub fn write_to_disk(&self) {
         self.on_disk.set(true);
@@ -254,7 +262,7 @@ impl Host for WorkflowFiles {
             }
             found = true;
         }
-        let reached = self.reach(path);
+        let reached = self.reach_list(path);
         if let Ok(local) =
             (reached.as_ref().ok()).map_or(Err(()), |()| self.local.list(path).map_err(|_| ()))
         {

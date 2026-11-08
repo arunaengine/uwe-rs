@@ -62,6 +62,15 @@ impl Console {
         }
     }
 
+    /// Like [`Console::reach`], but also lets a listing of a read-only folder through.
+    fn reach_list(&self, path: &PathValue) -> Result<(), Error> {
+        match (&self.roots, &path.prefix) {
+            (Some(roots), None) => (roots.check_list(std::path::Path::new(&path.path)))
+                .map_err(|error| io_error(error.to_string())),
+            _ => Ok(()),
+        }
+    }
+
     /// `text` with each secret value of the run as `[secret]`, the longest values first, so
     /// that a value inside another one leaves no part of the other.
     fn hidden(&self, text: &str) -> String {
@@ -100,7 +109,8 @@ impl Console {
         folders.extend(self.operators.clone());
         folders.extend(self.launch.clone());
         let shared = shared.iter().chain([&launch.scratch]).cloned();
-        self.roots = Some(workflow_graph::Roots::new(folders).with_read_only(shared));
+        let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
+        self.roots = Some(roots.with_readable(isolation.read_only.clone()));
         self
     }
 }
@@ -214,7 +224,7 @@ impl Host for Console {
     /// Local directories, and directories of storage providers that can list them, like
     /// buckets.
     fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
-        self.reach(directory)?;
+        self.reach_list(directory)?;
         if directory.prefix.is_none() {
             return nextflow_evaluator::interpreter::list_local(directory);
         }

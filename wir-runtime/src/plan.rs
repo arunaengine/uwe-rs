@@ -134,6 +134,8 @@ fn supported(kind: &Kind) -> bool {
             | Kind::GroupTuple(_)
             | Kind::Cross(_)
             | Kind::Reduce(_)
+            | Kind::Buffer(_)
+            | Kind::Window(_)
     )
 }
 

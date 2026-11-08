@@ -49,8 +49,10 @@ impl Compiler {
         let main = "main";
         let ports = match self.target(&entry, ENTRY)? {
             Target::Leaf(template) => crate::sites::entry_task(&mut graph, main, &entry, &template),
+            Target::Recursion => return at("the entrypoint calls itself"),
             Target::Graph(called, takes, gives) => {
-                let mut call = op(main, Kind::Call(wir::Call { graph: called }));
+                let carry = self.loops.get(&called).map(|(_, carry)| carry.clone());
+                let mut call = op(main, crate::recursion::call_kind(&called, carry));
                 for input in takes {
                     let name = input.name.clone();
                     if name == "node.path" {

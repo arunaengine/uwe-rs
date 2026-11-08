@@ -412,3 +412,60 @@ fn compiles_argo_texts() {
     let outputs = json!({"steps.each.outputs.parameters.text": ["a", null, "b"]});
     assert_eq!(evaluate(joined, outputs), json!("[\"a\",\"b\"]"));
 }
+
+const RECURSION: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: start, template: loop, arguments: {parameters: [{name: count, value: "0"}]}}
+  - name: loop
+    inputs: {parameters: [{name: count}, {name: limit, value: "3"}]}
+    steps:
+    - - {name: add, template: add, arguments: {parameters: [{name: count, value: "{{inputs.parameters.count}}"}]}}
+    - - {name: say, template: add, arguments: {parameters: [{name: count, value: "1"}]}}
+      - name: again
+        template: loop
+        when: "{{steps.add.outputs.result}} < {{inputs.parameters.limit}}"
+        arguments: {parameters: [{name: count, value: "{{steps.add.outputs.result}}"}]}
+  - name: add
+    inputs: {parameters: [{name: count}]}
+    script: {image: alpine:3.20, command: [sh], source: "echo $(({{inputs.parameters.count}} + 1))"}
+"#;
+
+#[test]
+fn compiles_recursion_loops() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), RECURSION);
+    assert!(kept.is_empty(), "{kept:?}");
+    let start = &op(graph(&document, "template.main"), "start")["kind"]["loop"];
+    assert_eq!(start["body"], "template.loop");
+    assert_eq!(start["condition"], "recurse");
+    let carried: Vec<&Json> = (start["carry"].as_array().unwrap().iter())
+        .map(|carry| &carry["input"])
+        .collect();
+    let expected = [
+        "node.path",
+        "inputs.parameters.count",
+        "inputs.parameters.limit",
+    ];
+    assert_eq!(carried, expected.map(Json::from).iter().collect::<Vec<_>>());
+    let body = graph(&document, "template.loop");
+    let when = op(body, "again.when");
+    assert_eq!(when["kind"]["expr"]["form"], "condition");
+    assert_eq!(
+        op(body, "again.inputs.parameters.limit")["kind"]["expr"]["code"],
+        "3"
+    );
+    let names: Vec<&Json> = (body["outputs"].as_array().unwrap().iter())
+        .map(|port| &port["name"])
+        .collect();
+    assert!(
+        names.contains(&&json!("recurse.inputs.parameters.count")),
+        "{names:?}"
+    );
+    let again = "value: \"{{steps.add.outputs.result}}\"}]}\n";
+    let late = "    - - {name: late, template: add, arguments: {parameters: [{name: count, value: \"1\"}]}}\n";
+    let later = RECURSION.replace(again, &format!("{again}{late}"));
+    let (_, kept) = compiled(folder.path(), &later);
+    assert!(kept[0].reason.contains("after"), "{kept:?}");
+}

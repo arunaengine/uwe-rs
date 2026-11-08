@@ -11,7 +11,7 @@ use argo_parser::model::{
 use argo_parser::{Node, decode};
 use argo_runtime::adapter::Form;
 use serde_json::{Value as Json, json};
-use wir::reserved::{Flatten, Merge};
+use wir::reserved::{Carry, Flatten, Merge};
 use wir::{
     Binding, Edge, Endpoint, ExprForm, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type,
 };
@@ -97,11 +97,11 @@ struct Need {
 
 /// The ops of a site before they go into the graph of the site or into the body of a map;
 /// `None` endpoints name the needs, which are graph inputs in a body.
-struct Piece {
-    ops: Vec<Op>,
-    edges: Vec<Edge>,
-    main: String,
-    outputs: Vec<Port>,
+pub(crate) struct Piece {
+    pub ops: Vec<Op>,
+    pub edges: Vec<Edge>,
+    pub main: String,
+    pub outputs: Vec<Port>,
 }
 
 impl Compiler {
@@ -173,14 +173,22 @@ impl Compiler {
                     Rounds::Known(items, _) => items.iter().all(Json::is_string),
                     Rounds::Computed(_) => false,
                 });
-                let piece = call(site, &called, &takes, &gives, &available, scope, strings)
-                    .map_err(|reason| kept(&at, &reason))?;
+                let carry = self.loops.get(&called).map(|(_, carry)| carry.clone());
+                let piece = call(
+                    site, &called, &takes, &gives, &available, scope, strings, carry,
+                )
+                .map_err(|reason| kept(&at, &reason))?;
                 match site.when.is_empty() {
                     true => piece,
                     false => (self.guard(&graph.name, site, piece, &available))
                         .map_err(|reason| kept(&at, &reason))?,
                 }
             }
+            Target::Recursion if looping || site.continue_on != ContinueOn::default() => {
+                return fail("a recursive call in a loop or with continueOn");
+            }
+            Target::Recursion => (self.recursion(graph, site, &available, scope))
+                .map_err(|reason| kept(&at, &reason))?,
         };
         let Some(rounds) = rounds else {
             for need in &needs {
@@ -404,7 +412,9 @@ impl Compiler {
 }
 
 /// Where a tag comes from in a piece: the value of that name among `available`.
-fn from_available(available: &[(String, Type)]) -> impl Fn(&Tag) -> Option<(Endpoint, Type)> + '_ {
+pub(crate) fn from_available(
+    available: &[(String, Type)],
+) -> impl Fn(&Tag) -> Option<(Endpoint, Type)> + '_ {
     |tag| {
         (available.iter())
             .find(|(name, _)| *name == tag.name())
@@ -531,7 +541,8 @@ fn task_op(
 
 /// The call of the graph of a steps or DAG template, with its node name made from the path
 /// of the holding template: `merge` gives the parts and `flatten` joins them into one list.
-fn call(
+#[allow(clippy::too_many_arguments, reason = "the parts of one call")]
+pub(crate) fn call(
     site: &Site,
     called: &str,
     takes: &[Port],
@@ -539,6 +550,7 @@ fn call(
     available: &[(String, Type)],
     scope: &Scope,
     strings: Option<bool>,
+    carry: Option<Vec<Carry>>,
 ) -> Result<Piece, String> {
     let main = site.name.clone();
     let parts = format!("{main}.parts");
@@ -564,12 +576,7 @@ fn call(
     if strings.is_some() {
         edges.push(edge(end(None, "label"), end(Some(&parts), "label")));
     }
-    let mut call = op(
-        main.clone(),
-        Kind::Call(wir::Call {
-            graph: called.to_owned(),
-        }),
-    );
+    let mut call = op(main.clone(), crate::recursion::call_kind(called, carry));
     call.origin = origin(&site.raw);
     let mut computed = Vec::new();
     for take in takes {

@@ -43,6 +43,7 @@ pub struct Op {
 /// version; the others are reserved, see [`reserved`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[allow(clippy::large_enum_variant, reason = "a parsed document holds few ops")]
 pub enum Kind {
     Task(Task),
     Call(Call),
@@ -53,6 +54,10 @@ pub enum Kind {
     Transform(reserved::Transform),
     FlatMap(reserved::FlatMap),
     Collect(reserved::Collect),
+    ToList(reserved::ToList),
+    Reduce(reserved::Reduce),
+    First(reserved::First),
+    Last(reserved::Last),
     Filter(reserved::Filter),
     Flatten(reserved::Flatten),
     Mix(reserved::Mix),

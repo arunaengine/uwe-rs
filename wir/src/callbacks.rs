@@ -18,6 +18,8 @@ pub(super) enum Arity {
     Unary,
     /// `left` and `right`.
     Binary,
+    /// `state` and `item`.
+    Fold,
     /// The inputs of the op by name, an item of each stream input and each value input.
     Ports,
 }
@@ -27,6 +29,7 @@ impl Arity {
         match self {
             Arity::Unary => &["item"],
             Arity::Binary => &["left", "right"],
+            Arity::Fold => &["state", "item"],
             Arity::Ports => &[],
         }
     }

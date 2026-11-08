@@ -220,3 +220,38 @@ fn routing_forms() {
         "keep is the default here"
     );
 }
+
+#[test]
+fn null_seed() {
+    let good = [
+        json!({"collect": {}}),
+        json!({"collect": {"body": "f", "flat": false, "sort": {"compare": "cmp"}}}),
+        json!({"to_list": {}}),
+        json!({"reduce": {"rule": "fold", "body": "add", "seed": {"value": null}, "nulls": "keep_state"}}),
+        json!({"reduce": {"rule": "sum", "empty": {"value": 0}}}),
+        json!({"reduce": {"rule": "max", "empty": "error"}}),
+        json!({"first": {"predicate": "big", "empty": "null"}}),
+        json!({"last": {}}),
+    ];
+    let bad = [
+        json!({"reduce": {"rule": "mean"}}),
+        json!({"reduce": {"rule": "fold", "seed": null}}),
+        json!({"first": {"empty": "nothing"}}),
+    ];
+    kinds_round_trip(&good, &bad);
+    let seeded: wir::reserved::Reduce =
+        serde_json::from_value(json!({"rule": "fold", "seed": {"value": null}})).expect("a reduce");
+    let unseeded: wir::reserved::Reduce =
+        serde_json::from_value(json!({"rule": "fold"})).expect("a reduce");
+    assert_eq!(
+        seeded.seed,
+        Some(wir::reserved::Literal { value: Json::Null })
+    );
+    assert_eq!(unseeded.seed, None, "no seed differs from a null seed");
+    let flat = document(
+        json!([{"path": "a", "kind": {"collect": {"flat": true}}}]),
+        json!([]),
+    );
+    let stored = &written(&flat)["graphs"][0]["ops"][0]["kind"];
+    assert_eq!(*stored, json!({"collect": {}}), "flat is true by default");
+}

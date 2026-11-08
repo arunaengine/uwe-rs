@@ -458,6 +458,20 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Join(join) => join.body.iter().filter_map(Body::graph).collect(),
         Kind::Combine(combine) => combine.body.iter().filter_map(Body::graph).collect(),
         Kind::Cross(cross) => cross.key.iter().filter_map(Body::graph).collect(),
+        Kind::Collect(collect) => {
+            let sort = sorted(&collect.sort).into_iter();
+            collect
+                .body
+                .iter()
+                .chain(sort)
+                .filter_map(Body::graph)
+                .collect()
+        }
+        Kind::Reduce(reduce) => (reduce.body.iter().chain(&reduce.compare))
+            .filter_map(Body::graph)
+            .collect(),
+        Kind::First(first) => first.predicate.iter().filter_map(Body::graph).collect(),
+        Kind::Last(last) => last.predicate.iter().filter_map(Body::graph).collect(),
         Kind::Route(route) => (route.cases.iter())
             .flat_map(|case| std::iter::once(&case.condition).chain(&case.body))
             .filter_map(Body::graph)
@@ -576,6 +590,8 @@ mod keyed;
 mod kinds;
 #[path = "operators.rs"]
 mod operators;
+#[path = "reductions.rs"]
+mod reductions;
 
 #[cfg(test)]
 #[path = "verify_tests.rs"]

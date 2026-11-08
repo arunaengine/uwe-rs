@@ -524,3 +524,63 @@ fn routing_outputs() {
         "{found:?}"
     );
 }
+
+#[test]
+fn reduction_options() {
+    let source = json!([typed("source", json!("int"), "stream")]);
+    let reduced =
+        |kind: Json, out: Json| problems(&many(kind, source.clone(), typed("out", out, "value")));
+    assert_eq!(
+        reduced(json!({"reduce": {"rule": "count"}}), json!("int")),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        reduced(json!({"reduce": {"rule": "fold"}}), json!("int")),
+        ["main/op: a reduce needs a fold needs a body"]
+    );
+    let seeded = reduced(
+        json!({"reduce": {"rule": "sum", "seed": {"value": 0}}}),
+        json!("int"),
+    );
+    assert_eq!(seeded, ["main/op: a reduce needs a seed only for a fold"]);
+    let nulls = reduced(
+        json!({"reduce": {"rule": "min", "nulls": "keep_state"}}),
+        json!("int"),
+    );
+    assert_eq!(
+        nulls,
+        ["main/op: a reduce needs a null rule only for a fold"]
+    );
+    let compared = reduced(
+        json!({"reduce": {"rule": "sum", "compare": {"language": "groovy", "code": "{ a, b -> a <=> b }"}}}),
+        json!("int"),
+    );
+    assert_eq!(
+        compared,
+        ["main/op: a reduce needs a comparison only for min and max"]
+    );
+    let both = json!({"reduce": {"rule": "max", "body": {"language": "groovy", "code": "{ it }"},
+        "compare": {"language": "groovy", "code": "{ a, b -> a <=> b }"}}});
+    assert_eq!(
+        reduced(both, json!("int")),
+        ["main/op: a reduce needs a key body or a comparison, not both"]
+    );
+    let counted = reduced(json!({"reduce": {"rule": "count"}}), json!("string"));
+    assert_eq!(
+        counted,
+        ["main/op: output out gets \"int\" but accepts \"string\""]
+    );
+    let empty = reduced(json!({"first": {"empty": {"value": "none"}}}), json!("int"));
+    assert_eq!(
+        empty,
+        ["main/op: the default of empty value of output out does not fit its type"]
+    );
+    let listed = reduced(json!({"to_list": {}}), json!({"array": {"items": "int"}}));
+    assert_eq!(listed, Vec::<String>::new());
+    let streamed = problems(&many(
+        json!({"to_list": {}}),
+        source.clone(),
+        typed("out", json!("dynamic"), "stream"),
+    ));
+    assert_eq!(streamed, ["main/op: a to_list needs a value output"]);
+}

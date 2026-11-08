@@ -152,6 +152,26 @@ fn mix_arrivals() {
         steps(operator.as_mut(), &node, &mut streams, &Map::new()).2,
         Ok(Step::Done)
     );
+    let mut streams = wired(&node);
+    let mut operator = make(&node).unwrap();
+    let failure = Failure {
+        status: Status::Failed,
+        message: "a broke".into(),
+        source: "up".into(),
+    };
+    streams
+        .commit(StreamBatch {
+            items: vec![(StreamId("a".into()), json!(1))],
+            ends: vec![(StreamId("a".into()), StreamEnd::Error(failure))],
+            ..StreamBatch::default()
+        })
+        .unwrap();
+    let (emitted, _, step) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+    assert_eq!(
+        (emitted, step.unwrap_err().message),
+        (vec![json!(1)], "a broke".to_owned()),
+        "the items before an error first"
+    );
 }
 
 #[test]

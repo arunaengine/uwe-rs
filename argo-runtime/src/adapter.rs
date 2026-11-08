@@ -545,6 +545,11 @@ fn tag_values(name: &str, value: &Json) -> Result<Vec<(String, String)>, String>
     };
     Ok(match value {
         Json::Null => Vec::new(),
+        // An item is one item of the loop, also a list, as the native run gives it.
+        _ if name == "item" => {
+            let (values, _) = item_variables("", 0, &Value::from_json(value))?;
+            values.into_iter().collect()
+        }
         Json::Array(list) => {
             let results = name.ends_with(".outputs.result");
             let items = (list.iter().filter(|item| !item.is_null()))
@@ -554,10 +559,6 @@ fn tag_values(name: &str, value: &Json) -> Result<Vec<(String, String)>, String>
                 })
                 .collect();
             vec![(name.to_owned(), Value::Array(items).to_json())]
-        }
-        Json::Object(_) if name == "item" => {
-            let (values, _) = item_variables("", 0, &Value::from_json(value))?;
-            values.into_iter().collect()
         }
         other => vec![(name.to_owned(), text(other))],
     })

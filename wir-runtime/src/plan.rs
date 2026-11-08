@@ -239,41 +239,54 @@ pub fn rounds(
     body: &str,
     items: Vec<Map<String, Json>>,
 ) -> Result<(), DriverError> {
-    let graph = self::graph(document, body)?;
     for (index, item) in items.into_iter().enumerate() {
-        let (path, step) = (
-            format!("{}/{index}", nodes[at].path),
-            nodes[at].step.clone(),
-        );
-        let mut op = nodes[at].op.clone();
-        op.kind = Kind::Call(Call {
-            graph: body.to_owned(),
-        });
-        op.after.clear();
-        // The map took its own defaults when it started; the items are not its inputs.
-        op.inputs.iter_mut().for_each(|port| port.default = None);
-        let round = nodes.len();
-        nodes.push(Node {
-            path: path.clone(),
-            step: step.clone(),
-            op,
-            inputs: (item.into_iter())
-                .map(|(port, value)| (port, Source::Value(value)))
-                .collect(),
-            after: Vec::new(),
-            parent: Some(at),
-            exports: Vec::new(),
-            shape: Vec::new(),
-            defaults: defaults(graph),
-            live: Vec::new(),
-            depends: None,
-            handles: Vec::new(),
-            members: Vec::new(),
-        });
-        let (inner, steps) = (format!("{path}/"), format!("{step}/"));
-        nodes[round].exports = instantiate(document, graph, (&inner, &steps), Some(round), nodes)?;
+        round(document, nodes, (at, &index.to_string()), body, item)?;
     }
     Ok(())
+}
+
+/// Adds one round of the node `at`, at `<path of at>/<name>`, as a call of `body` with the
+/// values of `item`, and the ops of the body below it; the node of the round.
+pub fn round(
+    document: &Document,
+    nodes: &mut Vec<Node>,
+    (at, name): (usize, &str),
+    body: &str,
+    item: Map<String, Json>,
+) -> Result<usize, DriverError> {
+    let graph = self::graph(document, body)?;
+    let (path, step) = (format!("{}/{name}", nodes[at].path), nodes[at].step.clone());
+    let mut op = nodes[at].op.clone();
+    op.kind = Kind::Call(Call {
+        graph: body.to_owned(),
+    });
+    op.after.clear();
+    op.depends = None;
+    op.handles.clear();
+    // A round has the value ports of its body; the graph's defaults apply to its inputs.
+    (op.inputs, op.outputs) = (graph.inputs.clone(), graph.outputs.clone());
+    op.inputs.iter_mut().for_each(|port| port.default = None);
+    let round = nodes.len();
+    nodes.push(Node {
+        path: path.clone(),
+        step: step.clone(),
+        op,
+        inputs: (item.into_iter())
+            .map(|(port, value)| (port, Source::Value(value)))
+            .collect(),
+        after: Vec::new(),
+        parent: Some(at),
+        exports: Vec::new(),
+        shape: Vec::new(),
+        defaults: defaults(graph),
+        live: Vec::new(),
+        depends: None,
+        handles: Vec::new(),
+        members: Vec::new(),
+    });
+    let (inner, steps) = (format!("{path}/"), format!("{step}/"));
+    nodes[round].exports = instantiate(document, graph, (&inner, &steps), Some(round), nodes)?;
+    Ok(round)
 }
 
 /// The rounds of a map that started.

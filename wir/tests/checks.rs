@@ -830,3 +830,95 @@ fn process_ports() {
     let zero = processing(json!({"body": "body", "parallelism": 0}), streamed, out);
     reports(&zero, "main/op: a process needs a positive parallelism");
 }
+
+/// A graph `main` of the ops `a`, `b` and `g`, which call the empty graph `leaf`, with the
+/// fields of `changes` set on them.
+fn controlled(changes: Json) -> Json {
+    let call = |path: &str| json!({"path": path, "kind": {"call": {"graph": "leaf"}}});
+    let mut ops = vec![call("a"), call("b"), call("g")];
+    for op in &mut ops {
+        if let Some(fields) = changes.get(op["path"].as_str().unwrap()) {
+            op.as_object_mut()
+                .unwrap()
+                .extend(fields.as_object().cloned().unwrap());
+        }
+    }
+    json!({"wir_version": wir::VERSION, "graphs": [{"name": "main", "ops": ops}, {"name": "leaf"}], "entry": "main"})
+}
+
+#[test]
+fn control_cycles() {
+    let test = |op: &str, on: Json| json!({"result": {"op": op, "on": on}});
+    let good = controlled(
+        json!({"b": {"depends": {"any": [test("a", json!(["failed"])), {"not": test("g", json!(["succeeded"]))}]}}}),
+    );
+    assert_eq!(problems(&good), Vec::<String>::new());
+    let cycle = controlled(
+        json!({"a": {"depends": test("b", json!(["succeeded"]))}, "b": {"depends": {"not": test("a", json!(["failed"]))}}}),
+    );
+    let found = problems(&cycle);
+    assert!(
+        found.iter().any(|problem| problem.contains("form a cycle")),
+        "{found:?}"
+    );
+    let grouped = controlled(
+        json!({"g": {"kind": {"status_group": {"members": ["a", "b"]}}},
+        "a": {"depends": test("g", json!(["succeeded"]))}}),
+    );
+    let found = problems(&grouped);
+    assert!(
+        found.iter().any(|problem| problem.contains("form a cycle")),
+        "members feed the group: {found:?}"
+    );
+    let handler = controlled(
+        json!({"a": {"handles": [{"op": "b", "on": ["failed"]}]}, "b": {"after": [{"op": "a", "on": ["succeeded"]}]}}),
+    );
+    let found = problems(&handler);
+    assert!(
+        found.iter().any(|problem| problem.contains("form a cycle")),
+        "{found:?}"
+    );
+    let missing = controlled(json!({"a": {"depends": test("z", json!(["succeeded"]))}}));
+    reports(&missing, "main/a: no op z in this graph");
+    let empty = controlled(json!({"a": {"depends": test("b", json!([]))}}));
+    reports(&empty, "main/a: the results of b must not be empty");
+}
+
+#[test]
+fn control_results() {
+    let test = |op: &str, on: Json| json!({"result": {"op": op, "on": on}});
+    let group = controlled(json!({"g": {"kind": {"status_group": {"members": ["a"]}}},
+        "b": {"depends": test("g", json!(["any_succeeded", "all_failed"]))}}));
+    assert_eq!(problems(&group), Vec::<String>::new());
+    let plain = controlled(json!({"b": {"depends": test("a", json!(["all_failed"]))}}));
+    reports(
+        &plain,
+        "main/b: a control test needs a to have the result AllFailed",
+    );
+    let daemon = controlled(json!({"b": {"depends": test("a", json!(["daemoned"]))}}));
+    reports(
+        &daemon,
+        "main/b: a control test needs a to have the result Daemoned",
+    );
+    let own = controlled(json!({"a": {"handles": [{"op": "a", "on": ["failed"]}]}}));
+    let found = problems(&own);
+    assert!(
+        found.contains(&"main/a: a handler needs another op to handle".into()),
+        "{found:?}"
+    );
+    let skipped = controlled(json!({"a": {"handles": [{"op": "b", "on": ["skipped"]}]}}));
+    reports(
+        &skipped,
+        "main/a: a handler needs failed or errored, not Skipped",
+    );
+    let itself = controlled(json!({"g": {"kind": {"status_group": {"members": ["g", "a", "a"]}}}}));
+    let found = problems(&itself);
+    assert!(
+        found.contains(&"main/g: a status group needs members besides itself".into()),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&"main/g: member a is defined twice".into()),
+        "{found:?}"
+    );
+}

@@ -7,10 +7,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use argo_parser::model::{ContinueOn, Template};
 use argo_parser::{Node, Value as Yaml};
 use argo_runtime::adapter::Adapter;
-use wir::{Dependency, Graph, Kind, Port, Status, StatusGroup, Type};
+use wir::{Dependency, ExprForm, Graph, Kind, Port, Status, StatusGroup, Type};
 
 use crate::sites::Site;
 use crate::tags::single_tag;
+use crate::texts::{VALUE, text_op};
 use crate::{Kept, edge, end, op, path_type, port, text, typed};
 
 /// Where a template is: its name, and the WorkflowTemplate that holds it with whether that
@@ -161,24 +162,28 @@ impl Compiler {
             });
             let source = tag
                 .filter(|_| plain)
-                .and_then(|tag| made_port(&scope, prefix, tag));
-            let Some((producer, found)) = source else {
-                let reason = format!(
-                    "output parameter {} needs an Argo expression op",
-                    parameter.name
-                );
-                return Err(at(&reason));
-            };
+                .and_then(|tag| made_port(&scope, prefix, tag))
+                .filter(|(_, found)| !matches!(found.r#type, Type::Array(_)));
             let name = format!("outputs.parameters.{}", parameter.name);
-            push_output(&mut graph, &name, &producer, found)?;
+            if let Some((producer, found)) = source {
+                push_output(&mut graph, &name, &producer, found)?;
+                continue;
+            }
+            let code = output_text(parameter).map_err(|reason| at(&reason))?;
+            let found = |tag: &crate::tags::Tag| crate::sites::source(&scope, tag);
+            let (made, wires) =
+                text_op(&name, &code, ExprForm::Text, found).map_err(|reason| at(&reason))?;
+            graph.ops.push(made);
+            graph.edges.extend(wires);
+            graph.outputs.push(port(name.clone(), text()));
+            graph
+                .edges
+                .push(edge(end(Some(&name), VALUE), end(None, &name)));
         }
         for artifact in &template.outputs.artifacts {
             let tag = single_tag(&artifact.from);
             let Some((producer, found)) = tag.and_then(|tag| made_port(&scope, prefix, tag)) else {
-                let reason = format!(
-                    "output artifact {} needs an Argo expression op",
-                    artifact.name
-                );
+                let reason = format!("output artifact {} is no File of one tag", artifact.name);
                 return Err(at(&reason));
             };
             let name = format!("outputs.artifacts.{}", artifact.name);
@@ -402,7 +407,7 @@ fn push_output(graph: &mut Graph, name: &str, producer: &str, found: Port) -> Re
     if matches!(found.r#type, Type::Array(_)) {
         return Err(kept(
             &graph.name,
-            &format!("{name} reads a loop, which needs an Argo expression op"),
+            &format!("{name} reads the Files of a loop, which wir does not list"),
         ));
     }
     graph.outputs.push(port(name, found.r#type));
@@ -410,6 +415,27 @@ fn push_output(graph: &mut Graph, name: &str, producer: &str, found: Port) -> Re
         .edges
         .push(edge(end(Some(producer), &found.name), end(None, name)));
     Ok(())
+}
+
+/// The Argo text that gives an output parameter of a steps or DAG template.
+fn output_text(parameter: &argo_parser::model::Parameter) -> Result<String, String> {
+    let name = &parameter.name;
+    let Some(from) = &parameter.value_from else {
+        let value = parameter.value.as_ref();
+        return value
+            .map(|value| value.0.clone())
+            .ok_or_else(|| format!("output parameter {name} has no value"));
+    };
+    if from.default.is_some() {
+        return Err(format!(
+            "output parameter {name} has a default for when its source fails"
+        ));
+    }
+    match (from.expression.is_empty(), from.parameter.is_empty()) {
+        (false, _) => Ok(format!("{{{{={}}}}}", from.expression)),
+        (true, false) => Ok(from.parameter.clone()),
+        (true, true) => Err(format!("output parameter {name} has no source")),
+    }
 }
 
 /// A name of an input or output of a template that is no wir name, like one with a tag.

@@ -12,10 +12,13 @@ use argo_parser::{Node, decode};
 use argo_runtime::adapter::Form;
 use serde_json::{Value as Json, json};
 use wir::reserved::{Flatten, Merge};
-use wir::{Binding, Edge, Endpoint, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type};
+use wir::{
+    Binding, Edge, Endpoint, ExprForm, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type,
+};
 
 use crate::graphs::{Built, Compiler, Place, Scope, Target, kept};
 use crate::tags::{Tag, has_tag, read_tags, single_tag};
+use crate::texts::{VALUE, text_node, text_op};
 use crate::{Kept, SOURCE, array, artifact, edge, end, op, origin, path_type, port, text};
 
 /// A step or DAG task as the compiler reads it.
@@ -77,8 +80,12 @@ impl Site {
     }
 }
 
-/// The items of a loop and the labels that they give the node names.
-type Rounds = (Vec<Json>, Vec<Json>);
+/// The items of a loop: known before the run, with the labels that they give the node names,
+/// or the text that argo expr ops read them from.
+enum Rounds {
+    Known(Vec<Json>, Vec<Json>),
+    Computed(String),
+}
 
 /// A value that the op of a site reads: its port, where it comes from in the graph of the
 /// site, and its native selector when a dialect task reads it.
@@ -151,20 +158,31 @@ impl Compiler {
             });
         }
         let looping = rounds.is_some();
+        let calls_graph = matches!(target, Target::Graph(..));
+        let mut available: Vec<(String, Type)> = (needs.iter())
+            .map(|need| (need.port.name.clone(), need.port.r#type.clone()))
+            .collect();
+        if looping {
+            available.push(("item".into(), Type::Dynamic));
+            available.push(("label".into(), text()));
+        }
         let piece = match target {
             Target::Leaf(template) => dialect(site, holding, &template, &needs, looping),
             Target::Graph(called, takes, gives) => {
-                if !site.when.is_empty() {
-                    return fail(
-                        "a when of a call of a steps or DAG template needs an Argo expression op",
-                    );
+                let strings = rounds.as_ref().map(|rounds| match rounds {
+                    Rounds::Known(items, _) => items.iter().all(Json::is_string),
+                    Rounds::Computed(_) => false,
+                });
+                let piece = call(site, &called, &takes, &gives, &available, scope, strings)
+                    .map_err(|reason| kept(&at, &reason))?;
+                match site.when.is_empty() {
+                    true => piece,
+                    false => (self.guard(&graph.name, site, piece, &available))
+                        .map_err(|reason| kept(&at, &reason))?,
                 }
-                let items = rounds.as_ref().map(|(items, _)| items.as_slice());
-                call(site, &called, &takes, &gives, &needs, scope, items)
-                    .map_err(|reason| kept(&at, &reason))?
             }
         };
-        let Some((items, labels)) = rounds else {
+        let Some(rounds) = rounds else {
             for need in &needs {
                 for wire in &piece.edges {
                     if wire.from.op.is_none() && wire.from.port == need.port.name {
@@ -187,7 +205,6 @@ impl Compiler {
         let body = format!("{}.{}", graph.name, crate::safe(&site.name));
         let mut inputs: Vec<Port> = needs.iter().map(|need| need.port.clone()).collect();
         inputs.push(port("item", Type::Dynamic));
-        let calls_graph = piece.ops.iter().any(|op| matches!(op.kind, Kind::Call(_)));
         if calls_graph {
             inputs.push(port("label", text()));
         }
@@ -221,15 +238,39 @@ impl Compiler {
                 end(Some(&site.name), &need.port.name),
             ));
         }
-        map.inputs.push(crate::with_default(
-            port("item", array(Type::Dynamic)),
-            Json::Array(items),
-        ));
+        let mut over = vec![("item", ExprForm::Items, array(Type::Dynamic))];
         if calls_graph {
-            map.inputs.push(crate::with_default(
-                port("label", array(text())),
-                Json::Array(labels),
-            ));
+            over.push(("label", ExprForm::Labels, array(text())));
+        }
+        for (name, form, r#type) in over {
+            let given = port(name, r#type);
+            let (items, labels, code) = match &rounds {
+                Rounds::Known(items, labels) => (items, labels, None),
+                Rounds::Computed(code) => (&Vec::new(), &Vec::new(), Some(code)),
+            };
+            let Some(code) = code else {
+                let known = match form {
+                    ExprForm::Items => items.clone(),
+                    _ => labels.clone(),
+                };
+                map.inputs
+                    .push(crate::with_default(given, Json::Array(known)));
+                continue;
+            };
+            let path = format!("{}.{name}s", site.name);
+            let found = |tag: &Tag| {
+                (needs.iter())
+                    .find(|need| need.port.name == tag.name())
+                    .map(|need| (need.from.clone(), need.port.r#type.clone()))
+            };
+            let (made, wires) =
+                text_op(&path, code, form, found).map_err(|reason| kept(&at, &reason))?;
+            graph.ops.push(made);
+            graph.edges.extend(wires);
+            graph
+                .edges
+                .push(edge(end(Some(&path), VALUE), end(Some(&site.name), name)));
+            map.inputs.push(given);
         }
         map.outputs = (outputs.iter())
             .map(|output| port(output.name.clone(), array(output.r#type.clone())))
@@ -249,13 +290,10 @@ impl Compiler {
         Ok(built)
     }
 
-    /// The items and node name labels of a loop whose list is known before the run.
+    /// The items of a loop, and their node name labels when the list is known before the run.
     fn rounds(&mut self, site: &Site, at: &str) -> Result<Option<Rounds>, Kept> {
         if !site.with_param.is_empty() {
-            return Err(kept(
-                at,
-                "withParam needs an Argo expression op to read its list",
-            ));
+            return Ok(Some(Rounds::Computed(site.with_param.clone())));
         }
         let text = if !site.with_items.is_empty() {
             Json::Array(site.with_items.iter().map(crate::json_of).collect()).to_string()
@@ -276,7 +314,7 @@ impl Compiler {
             return Ok(None);
         };
         if has_tag(&text) {
-            return Err(kept(at, "loop items with tags need an Argo expression op"));
+            return Ok(Some(Rounds::Computed(text)));
         }
         let empty = serde_json::Map::new();
         let mut evaluate = |form| {
@@ -289,12 +327,100 @@ impl Compiler {
         };
         let items = evaluate(Form::Items)?;
         let labels = evaluate(Form::Labels)?;
-        Ok(Some((items, labels)))
+        Ok(Some(Rounds::Known(items, labels)))
+    }
+
+    /// Runs a piece only when the `when` of its site holds: an argo expr op gives the condition
+    /// of a branch, whose body graph holds the piece.
+    fn guard(
+        &mut self,
+        holder: &str,
+        site: &Site,
+        piece: Piece,
+        available: &[(String, Type)],
+    ) -> Result<Piece, String> {
+        let main = piece.main.clone();
+        let body = format!("{holder}.{}.when", crate::safe(&site.name));
+        let mut inputs: Vec<Port> = Vec::new();
+        for wire in piece.edges.iter().filter(|wire| wire.from.op.is_none()) {
+            if inputs.iter().any(|input| input.name == wire.from.port) {
+                continue;
+            }
+            let (name, r#type) = (available.iter())
+                .find(|(name, _)| *name == wire.from.port)
+                .ok_or_else(|| format!("the call reads {}, which has no value", wire.from.port))?;
+            inputs.push(port(name.clone(), r#type.clone()));
+        }
+        let mut edges = piece.edges;
+        for output in &piece.outputs {
+            let from = end(Some(&main), &output.name);
+            edges.push(edge(from, end(None, &output.name)));
+        }
+        // Optional outputs of the body would nest in those of the branch; dynamic ones do not.
+        let outputs = (piece.outputs.iter())
+            .map(|output| port(output.name.clone(), Type::Dynamic))
+            .collect();
+        self.graphs.push(Graph {
+            name: body.clone(),
+            inputs: inputs.clone(),
+            outputs,
+            ops: piece.ops,
+            edges,
+        });
+        let condition = format!("{main}.when");
+        let (when, mut wires) = text_op(
+            &condition,
+            &site.when,
+            ExprForm::Condition,
+            from_available(available),
+        )?;
+        let mut branch = op(
+            main.clone(),
+            Kind::Branch(wir::Branch {
+                body,
+                condition: "condition".into(),
+            }),
+        );
+        branch.origin = origin(&site.raw);
+        for input in &inputs {
+            wires.push(edge(end(None, &input.name), end(Some(&main), &input.name)));
+        }
+        branch.inputs = inputs;
+        branch.inputs.push(port("condition", Type::Bool));
+        wires.push(edge(
+            end(Some(&condition), VALUE),
+            end(Some(&main), "condition"),
+        ));
+        branch.outputs = (piece.outputs.iter())
+            .map(|output| port(output.name.clone(), optional(output.r#type.clone())))
+            .collect();
+        Ok(Piece {
+            outputs: branch.outputs.clone(),
+            ops: vec![when, branch],
+            edges: wires,
+            main,
+        })
+    }
+}
+
+/// Where a tag comes from in a piece: the value of that name among `available`.
+fn from_available(available: &[(String, Type)]) -> impl Fn(&Tag) -> Option<(Endpoint, Type)> + '_ {
+    |tag| {
+        (available.iter())
+            .find(|(name, _)| *name == tag.name())
+            .map(|(name, r#type)| (end(None, name), r#type.clone()))
+    }
+}
+
+fn optional(r#type: Type) -> Type {
+    match r#type {
+        Type::Optional(_) => r#type,
+        other => Type::Optional(Box::new(other)),
     }
 }
 
 /// Where the value of a tag comes from in a graph, and its type.
-fn source(scope: &Scope, tag: &Tag) -> Option<(Endpoint, Type)> {
+pub(crate) fn source(scope: &Scope, tag: &Tag) -> Option<(Endpoint, Type)> {
     match tag {
         Tag::Input(name) | Tag::Status(name) => (scope.inputs.iter())
             .find(|input| &input.name == name)
@@ -410,9 +536,9 @@ fn call(
     called: &str,
     takes: &[Port],
     gives: &[Port],
-    needs: &[Need],
+    available: &[(String, Type)],
     scope: &Scope,
-    items: Option<&[Json]>,
+    strings: Option<bool>,
 ) -> Result<Piece, String> {
     let main = site.name.clone();
     let parts = format!("{main}.parts");
@@ -423,7 +549,7 @@ fn call(
         port("step", text()),
         site.call.clone().into(),
     ));
-    if items.is_some() {
+    if strings.is_some() {
         merge.inputs.push(port("label", text()));
     }
     merge.outputs.push(port("parts", array(Type::Dynamic)));
@@ -435,7 +561,7 @@ fn call(
         edge(end(Some(&parts), "parts"), end(Some(&joined), "parts")),
         edge(end(Some(&joined), "path"), end(Some(&main), "node.path")),
     ];
-    if items.is_some() {
+    if strings.is_some() {
         edges.push(edge(end(None, "label"), end(Some(&parts), "label")));
     }
     let mut call = op(
@@ -445,6 +571,7 @@ fn call(
         }),
     );
     call.origin = origin(&site.raw);
+    let mut computed = Vec::new();
     for take in takes {
         let name = &take.name;
         let mut input = take.clone();
@@ -453,7 +580,7 @@ fn call(
             call.inputs.push(input);
             continue;
         }
-        let from = match name.strip_prefix("inputs.parameters.") {
+        match name.strip_prefix("inputs.parameters.") {
             Some(parameter) => {
                 let given = site
                     .arguments
@@ -476,8 +603,18 @@ fn call(
                         .push(crate::with_default(input, value.0.clone().into()));
                     continue;
                 }
-                single_tag(&value.0)
-                    .ok_or_else(|| format!("argument {parameter} needs an Argo expression op"))?
+                if let Some(from) = direct(&value.0, available, scope, strings) {
+                    edges.push(edge(end(None, &from), end(Some(&main), name)));
+                } else {
+                    let path = format!("{main}.arguments.{}", crate::safe(parameter));
+                    let (made, wires) =
+                        text_op(&path, &value.0, ExprForm::Text, from_available(available))?;
+                    computed.push(made);
+                    edges.extend(wires);
+                    edges.push(edge(end(Some(&path), VALUE), end(Some(&main), name)));
+                }
+                call.inputs.push(input);
+                continue;
             }
             None => {
                 let artifact = name.strip_prefix("inputs.artifacts.").unwrap_or(name);
@@ -490,51 +627,58 @@ fn call(
                     call.inputs.push(input);
                     continue;
                 };
-                single_tag(&given.from)
-                    .ok_or_else(|| format!("argument {artifact} needs an Argo expression op"))?
-            }
-        };
-        if from == "item" {
-            let strings = items.is_some_and(|items| items.iter().all(Json::is_string));
-            if !strings {
-                return Err("an argument reads an item that is not a text".into());
-            }
-            edges.push(edge(end(None, "item"), end(Some(&main), name)));
-        } else {
-            let tags = read_tags(&json_node(&format!("{{{{{from}}}}}")))?;
-            let Some(tag) = tags.into_iter().next() else {
-                return Err(format!(
-                    "argument {name} reads {from}, which wir has no value for"
-                ));
-            };
-            let source = source(scope, &tag);
-            if source
-                .as_ref()
-                .is_some_and(|(_, r#type)| matches!(r#type, Type::Array(_)))
-            {
-                return Err(format!(
-                    "argument {name} reads a loop, which needs an Argo expression op"
-                ));
-            }
-            if source.is_some() && needs.iter().any(|need| need.port.name == tag.name()) {
-                edges.push(edge(end(None, &tag.name()), end(Some(&main), name)));
+                let from = single_tag(&given.from)
+                    .ok_or_else(|| format!("argument {artifact} is no File of one tag"))?;
+                let tags = read_tags(&text_node(&format!("{{{{{from}}}}}")))?;
+                let Some(tag) = tags.into_iter().next().filter(|_| from != "item") else {
+                    return Err(format!(
+                        "argument {name} reads {from}, which wir has no File for"
+                    ));
+                };
+                let source = source(scope, &tag);
+                if source
+                    .as_ref()
+                    .is_some_and(|(_, r#type)| matches!(r#type, Type::Array(_)))
+                {
+                    return Err(format!(
+                        "argument {name} reads the Files of a loop, which wir does not list"
+                    ));
+                }
+                if source.is_some() && available.iter().any(|(known, _)| *known == tag.name()) {
+                    edges.push(edge(end(None, &tag.name()), end(Some(&main), name)));
+                }
             }
         }
         call.inputs.push(input);
     }
     call.outputs = gives.to_vec();
+    let mut ops = vec![merge, flatten];
+    ops.append(&mut computed);
+    ops.push(call);
     Ok(Piece {
-        ops: vec![merge, flatten, call],
+        ops,
         edges,
         main,
         outputs: gives.to_vec(),
     })
 }
 
-/// A YAML node of one text, to read its tags.
-fn json_node(text: &str) -> Node {
-    Node::new(
-        argo_parser::Value::String(text.to_owned()),
-        argo_parser::Position::default(),
-    )
+/// The value that an argument of one plain tag takes as it is: a text item of a loop, or a
+/// value of the piece that is no list.
+fn direct(
+    value: &str,
+    available: &[(String, Type)],
+    scope: &Scope,
+    strings: Option<bool>,
+) -> Option<String> {
+    let from = single_tag(value)?;
+    if from == "item" {
+        return (strings == Some(true)).then(|| from.to_owned());
+    }
+    let tags = read_tags(&text_node(&format!("{{{{{from}}}}}"))).ok()?;
+    let tag = tags.into_iter().next().filter(|tag| tag.name() == from)?;
+    let (_, r#type) = source(scope, &tag)?;
+    let listed = matches!(r#type, Type::Array(_));
+    let known = available.iter().any(|(name, _)| *name == from);
+    (known && !listed).then(|| from.to_owned())
 }

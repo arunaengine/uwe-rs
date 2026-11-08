@@ -145,6 +145,7 @@ A `task` with a `snakemake_job` builder runs one job of a Snakemake plan, its ru
 - `targets` lists the targets of the plan when there are several, the `entry` first.
 - `config_values` names a source with the config values of the command line, like `--config`: a JSON list of name and value pairs, in order.
 - `until`, `omit_from` and `forcerun` list the targets of the options of the same names, and `forceall` forces every job, as the Snakemake options do.
+- `layout` is a `sha256:` digest of the files the job reads and makes and of which inputs other jobs make, as planned. A run that plans the job with another layout refuses it, so that no file is staged under another name.
 
 **`map`** runs its `body` graph once per round. The inputs named in `over` are arrays; each round takes one item of each, and every other input as it is, so the body has the op's port names with the item type for an `over` input. The rounds of `mode`:
 
@@ -214,7 +215,7 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
 - an expr has one output; a select and a flatten have one array input and one output, and a merge at least one input and one array output, each output accepting what the op gives; a branch has a bool condition, the body's other ports and optional outputs; a call matches the called graph's ports, and a map the ports of its body, with arrays for the `over` inputs and the outputs;
-- a Snakemake job names its `targets` from its `entry` on, no empty target, and the jobs of its `group` once each, in its source;
+- a Snakemake job names its `targets` from its `entry` on, no empty target, the jobs of its `group` once each, in its source, and a `layout` that is a `sha256:` digest;
 - a native op's source and config sources exist in its language, and none of its ports uses `dynamic`, apart from the outputs of a Nextflow block;
 - the stream files of a task are relative paths that stay inside the working folder;
 - a default sits on an input port and fits its type;

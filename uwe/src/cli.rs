@@ -34,7 +34,7 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
         if arguments.preset.is_some() && matches!(command, "check" | "inputs" | "outputs") {
             let prepared = crate::catalogue::Catalogue::load(arguments.config_file.as_deref())?
                 .prepare(&mut resolved)?;
-            Defaults::load(arguments)?.apply(command, &mut resolved);
+            Defaults::load(arguments)?.apply(command, &mut resolved)?;
             prepared
         } else {
             None

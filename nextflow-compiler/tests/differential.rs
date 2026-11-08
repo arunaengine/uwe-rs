@@ -12,11 +12,11 @@ use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
-    pipelines: 12,
-    full: 12,
-    native: 12,
-    compiled: 12,
-    same: 12,
+    pipelines: 13,
+    full: 13,
+    native: 13,
+    compiled: 13,
+    same: 13,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -99,6 +99,10 @@ const PIPELINES: &[(&str, &str)] = &[
         "process E {\n    input:\n    val x\n    each n\n    output:\n    val \"${x}${n}\"\n    script:\n    'true'\n}\nworkflow {\n    E('s', [1, 2])\n    GREET(E.out.map { [[id: it], it] })\n}",
     ),
     (
+        "modules",
+        "include { P as PA } from './modules/a/main.nf'\ninclude { P as PB } from './modules/b/main.nf'\nworkflow {\n    PA(channel.of(1))\n    PB(channel.of(1))\n}",
+    ),
+    (
         "closures",
         "def shout(word) { word.toUpperCase() }\nworkflow {\n    def keep = { w -> w != 'b' }\n    GREET(channel.of('a', 'b', 'c').map { [it] }.map { it.findAll(keep) }.filter { it }.map { [[id: shout(it[0]) + params.greeting], it[0]] })\n}",
     ),
@@ -178,6 +182,13 @@ fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
     std::fs::write(folder.join("nextflow.config"), "params.greeting = 'hi'\n").unwrap();
     for name in ["a.csv", "b.csv", "s_1.fq", "s_2.fq"] {
         std::fs::write(folder.join(name), name).unwrap();
+    }
+    // Two modules with a process of one name at the same place, which differ in their script.
+    for module in ["a", "b"] {
+        std::fs::create_dir_all(folder.join("modules").join(module)).unwrap();
+        let process =
+            format!("process P {{\n    input:\n    val x\n    script:\n    'echo {module}'\n}}\n");
+        std::fs::write(folder.join("modules").join(module).join("main.nf"), process).unwrap();
     }
     let launch = |target: PathBuf| Launch {
         target,

@@ -56,7 +56,10 @@ pub(crate) fn process(
         "scope": {"source": source, "start": definition.span.0, "end": definition.span.1},
         "inputs": maps(&inputs, "input"),
         "outputs": maps(&outputs, "output"),
-        "captures": {"singleton": {"value": call.singleton}},
+        "captures": {
+            "singleton": {"value": call.singleton},
+            "script": {"value": sources.beside_main(&call.script)},
+        },
     });
     // Observers of the run, like nf-prov, know the process by its id and the ids it feeds.
     if let Some(process) = place.observer {

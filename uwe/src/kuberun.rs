@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Duration;
 
-use k8s_openapi::api::core::v1::{ConfigMap, Pod, ServiceAccount};
+use k8s_openapi::api::core::v1::{Pod, Secret, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{Role, RoleBinding};
 use kube::api::{
     ApiResource, DeleteParams, DynamicObject, LogParams, Patch, PatchParams, PostParams,
@@ -18,7 +18,7 @@ use serde_json::{Value as Json, json};
 use crate::arguments::Arguments;
 use crate::{Failure, failure};
 
-/// Where the ConfigMap with the config files appears in the pod.
+/// Where the Secret with the config files appears in the pod.
 const FILES: &str = "/etc/uwe";
 
 /// The folder of the pod's own files without a volume mount.
@@ -31,7 +31,7 @@ struct Plan {
     namespace: String,
     image: String,
     command: Vec<String>,
-    /// The entries of the ConfigMap: config files by their name in [`FILES`].
+    /// The entries of the Secret: config files by their name in [`FILES`].
     files: BTreeMap<String, String>,
     /// Persistent volume claims and their paths; the first holds uwe's cache.
     mounts: Vec<(String, String)>,
@@ -83,7 +83,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
 }
 
 /// The plan of a launch: the workflow must be a repository or an absolute path in the
-/// cluster, and local config files travel in the ConfigMap.
+/// cluster, and local config files travel in a Secret.
 fn plan(arguments: &Arguments, name: &str, namespace: &str) -> Result<Plan, Failure> {
     let target = (arguments.target.as_deref())
         .ok_or_else(|| Failure::usage("No project name was specified"))?;
@@ -252,12 +252,13 @@ fn labels(plan: &Plan) -> Json {
     json!({ "app": "uwe", "runName": plan.name })
 }
 
-/// The ConfigMap with the config files of the launch.
-fn config_map(plan: &Plan) -> Json {
+/// The Secret with the config files of the launch, which can hold credentials, like the
+/// tokens of a uwe config file or the parameters of a run.
+fn files(plan: &Plan) -> Json {
     json!({
-        "apiVersion": "v1", "kind": "ConfigMap",
+        "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
         "metadata": { "name": plan.name, "labels": labels(plan) },
-        "data": plan.files,
+        "stringData": plan.files,
     })
 }
 
@@ -265,7 +266,7 @@ fn config_map(plan: &Plan) -> Json {
 /// capabilities, with a read-only root file system.
 fn pod(plan: &Plan) -> Json {
     let work = (plan.mounts.first()).map_or(WORK, |(_, path)| path.as_str());
-    let mut volumes = vec![json!({ "name": "files", "configMap": { "name": plan.name } })];
+    let mut volumes = vec![json!({ "name": "files", "secret": { "secretName": plan.name } })];
     let mut mounts = vec![json!({ "name": "files", "mountPath": FILES, "readOnly": true })];
     if plan.mounts.is_empty() {
         volumes.push(json!({ "name": "work", "emptyDir": {} }));
@@ -315,7 +316,7 @@ fn pod(plan: &Plan) -> Json {
     })
 }
 
-/// Makes the service account, its Role, the ConfigMap and the pod, which owns the others so
+/// Makes the service account, its Role, the Secret and the pod, which owns the others so
 /// that they go with it; then follows the pod and gives its exit code.
 async fn launch(
     cluster: &Cluster,
@@ -372,7 +373,7 @@ fn owned() -> [ApiResource; 4] {
         ApiResource::erase::<ServiceAccount>(&()),
         ApiResource::erase::<Role>(&()),
         ApiResource::erase::<RoleBinding>(&()),
-        ApiResource::erase::<ConfigMap>(&()),
+        ApiResource::erase::<Secret>(&()),
     ]
 }
 
@@ -380,7 +381,7 @@ fn owned() -> [ApiResource; 4] {
 async fn make(client: &Client, plan: &Plan) -> Result<String, String> {
     let post = PostParams::default();
     let [account, role, binding] = access(plan);
-    let objects = [account, role, binding, config_map(plan)];
+    let objects = [account, role, binding, files(plan)];
     for (resource, object) in owned().iter().zip(objects) {
         let api: Api<DynamicObject> =
             Api::namespaced_with(client.clone(), &plan.namespace, resource);

@@ -7734,6 +7734,7 @@ dependencies = [
  "task-runner",
  "tempfile",
  "wir",
+ "wir-runtime",
  "workflow-graph",
 ]
 
@@ -9459,6 +9460,7 @@ dependencies = [
  "python-evaluator",
  "serde_json",
  "sha2 0.11.0",
+ "snakemake-compiler",
  "snakemake-runtime",
  "storage",
  "tempfile",

@@ -25,13 +25,21 @@ rule count:
 "#;
 
 fn compiled(snakefile: &str) -> (tempfile::TempDir, snakemake_compiler::Compiled, Json) {
+    compiled_with(snakefile, Launch::default())
+}
+
+/// Compiles `snakefile` with the settings of `launch`.
+fn compiled_with(
+    snakefile: &str,
+    launch: Launch,
+) -> (tempfile::TempDir, snakemake_compiler::Compiled, Json) {
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(folder.path().join("Snakefile"), snakefile).expect("writes the Snakefile");
     let launch = Launch {
         target: folder.path().join("Snakefile"),
         scratch: folder.path().join("scratch"),
         simulated: true,
-        ..Launch::default()
+        ..launch
     };
     let run = RunSettings {
         workdir: Some(folder.path().to_owned()),
@@ -121,21 +129,84 @@ fn keeps_checkpoints() {
 }
 
 #[test]
-fn keeps_groups() {
+fn compiles_groups() {
     let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n";
-    let (_folder, compiled, _) = compiled(snakefile);
-    let reason = compiled.kept.first().map(|kept| kept.reason.as_str());
-    assert!(
-        reason.is_some_and(|reason| reason.contains("as a group")),
-        "{reason:?}"
+    let (_folder, compiled, document) = compiled(snakefile);
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let group = op(&document, "a");
+    let builder = &group["kind"]["task"]["builder"]["snakemake_job"];
+    assert_eq!(
+        builder["group"],
+        json!([{"source": "snakefile", "rule": "b"}])
     );
+    assert!(group.get("inputs").is_none(), "{group}");
+    assert_eq!(group["outputs"].as_array().map(Vec::len), Some(2));
+    let edge =
+        json!({"from": {"op": "a", "port": "output_1"}, "to": {"op": "all", "port": "input_0"}});
+    assert_eq!(document["graphs"][0]["edges"], json!([edge]));
 }
 
 #[test]
-fn keeps_planning_commands() {
+fn compiles_planning_commands() {
     let snakefile = "shell(\"echo planned\")\n\nrule all:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n";
     let (_folder, compiled, _) = compiled(snakefile);
-    let reason = compiled.kept.first().map(|kept| kept.reason.as_str());
-    let expected = "workflow code ran a command while a job was planned or prepared";
-    assert_eq!(reason, Some(expected));
+    assert!(compiled.full(), "{:?}", compiled.kept);
+}
+
+const TWO: &str = "rule a:\n    output: \"a.txt\"\n    params: x=config[\"x\"]\n    shell: \"touch {output}\"\n\nrule b:\n    output: \"b.txt\"\n    shell: \"touch {output}\"\n";
+
+#[test]
+fn compiles_plan_settings() {
+    let launch = Launch {
+        targets: vec!["a.txt".into(), "b.txt".into()],
+        params: vec![("x".into(), "{y: 1}".into())],
+        forcerun: vec!["a".into()],
+        ..Launch::default()
+    };
+    let (folder, compiled, document) = compiled_with(TWO, launch);
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let builder = &op(&document, "a")["kind"]["task"]["builder"]["snakemake_job"];
+    assert_eq!(builder["task"]["entry"], "a.txt");
+    assert_eq!(builder["targets"], json!(["a.txt", "b.txt"]));
+    assert_eq!(builder["forcerun"], json!(["a"]));
+    let values = (document["sources"].as_array().expect("sources").iter())
+        .find(|source| source["id"] == builder["config_values"])
+        .expect("a source of config values");
+    assert!(values["digest"].is_string(), "{values}");
+    let wir::Kind::Task(task) = &compiled.document.graphs[0].ops[0].kind else {
+        panic!("no task");
+    };
+    let Some(wir::TaskBuilder::SnakemakeJob(rule)) = &task.builder else {
+        panic!("no job");
+    };
+    let launch =
+        snakemake_compiler::job_launch(&compiled.document, rule, folder.path()).expect("a launch");
+    assert_eq!(launch.params, [("x".to_owned(), "{y: 1}".to_owned())]);
+    assert_eq!((launch.targets.len(), launch.forcerun.len()), (2, 1));
+    assert_eq!(launch.target, folder.path().join("Snakefile"));
+}
+
+#[test]
+fn keeps_dropped_settings() {
+    let snakefile =
+        format!("checkpoint c:\n    output: \"c.txt\"\n    shell: \"touch {{output}}\"\n\n{TWO}");
+    let launch = Launch {
+        targets: vec!["c.txt".into()],
+        params: vec![("x".into(), "1".into())],
+        ..Launch::default()
+    };
+    let (_folder, compiled, document) = compiled_with(&snakefile, launch);
+    let reasons: Vec<&str> = compiled
+        .kept
+        .iter()
+        .map(|kept| kept.reason.as_str())
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "rule c is a checkpoint",
+            "it drops config values of the command line"
+        ]
+    );
+    assert_eq!(document["sources"].as_array().map(Vec::len), Some(1));
 }

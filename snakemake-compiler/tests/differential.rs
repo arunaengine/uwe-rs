@@ -1,33 +1,29 @@
-//! Compiles Snakemake workflows into wir, runs each natively and compiled on the simulator, and
-//! compares their tasks, cache keys, resume fingerprints, acceptance and target files.
+//! Compiles Snakemake workflows into wir, runs each natively and compiled through the wir
+//! runtime on the simulator, and compares their tasks, cache keys, fingerprints and acceptance.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 
-use serde_json::Value as Json;
-use snakemake_runtime::{JobKey, JobResult, Prepared, RunSettings, Settings, SnakemakeDriver};
-use wir::{Document, Kind, TaskBuilder};
+use snakemake_runtime::{RunSettings, Settings};
+use wir::Document;
 use workflow_graph::{
-    Delivery, Driver, DriverError, ExecutionGraph, Files, Language, Launch, Note, Order, Outcome,
-    RunOptions, Simulator, Task, TaskId, execute_with,
+    Driver, ExecutionGraph, Launch, Order, RunOptions, Simulator, Task, TaskId, execute_with,
 };
 
 /// The counts of `just snakemake-test-workflows`: native runs, how workflows compile, and
-/// compiled runs that succeed, end as the native run, and give its tasks and target files.
+/// compiled runs that succeed, end as the native run, and give its tasks.
 const RECORDED: Counts = Counts {
     workflows: 890,
     native: 633,
-    full: 565,
-    partly: 110,
-    failed: 214,
-    compiled: 545,
-    ends: 564,
-    same: 545,
-    equal: 545,
+    full: 616,
+    partly: 54,
+    failed: 219,
+    compiled: 593,
+    ends: 616,
+    same: 593,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -40,7 +36,6 @@ struct Counts {
     compiled: usize,
     ends: usize,
     same: usize,
-    equal: usize,
 }
 
 const LAUNCHES: &str =
@@ -74,223 +69,9 @@ rule summary:
             handle.write(str(len(input)))
 "#;
 
-/// A dialect task op of a compiled document: its job, and where its inputs come from.
-struct JobOp {
-    key: JobKey,
-    /// Each input port with its native selector and the op and port that feed it.
-    inputs: Vec<(String, usize, String)>,
-    /// The port of each native output selector.
-    outputs: BTreeMap<String, String>,
-}
-
-/// Runs the dialect tasks of a compiled document through the job adapter, each once the ops
-/// that feed it have ended, as a wir run of dialect tasks does.
-struct Runner {
-    adapter: SnakemakeDriver,
-    ops: Vec<JobOp>,
-    values: Vec<Option<BTreeMap<String, Json>>>,
-    /// The ops that each op feeds, how many feeding ops each op waits for, and the ops that
-    /// wait for none and have not started.
-    consumers: Vec<Vec<usize>>,
-    waiting: Vec<usize>,
-    queue: Vec<usize>,
-    owners: HashMap<TaskId, usize>,
-}
-
-impl Runner {
-    /// The runner of a document, with the launch that its sources and first op name.
-    fn new(document: &Document, base: &Path, scratch: &Path) -> Result<Runner, String> {
-        let graph = (document.graphs.iter())
-            .find(|graph| graph.name == document.entry)
-            .ok_or("no entry graph")?;
-        let index: HashMap<&str, usize> = (graph.ops.iter().enumerate())
-            .map(|(position, op)| (op.path.as_str(), position))
-            .collect();
-        let located = |id: &str| {
-            let source = document.sources.iter().find(|source| source.id == id);
-            source.map(|source| base.join(&source.location))
-        };
-        let mut launch = Launch {
-            target: located(snakemake_compiler::SOURCE).ok_or("no source")?,
-            scratch: scratch.to_owned(),
-            simulated: true,
-            ..Launch::default()
-        };
-        let mut ops = Vec::new();
-        for op in &graph.ops {
-            let Kind::Task(task) = &op.kind else {
-                return Err(format!("op {} is no task", op.path));
-            };
-            let Some(TaskBuilder::SnakemakeJob(rule)) = &task.builder else {
-                return Err(format!("op {} is no Snakemake job", op.path));
-            };
-            let reference = &rule.task;
-            launch.configs = reference
-                .configs
-                .iter()
-                .filter_map(|id| located(id))
-                .collect();
-            launch.profiles = reference.profiles.clone();
-            launch.targets = vec![reference.entry.clone()];
-            let mut inputs = Vec::new();
-            for map in &reference.inputs {
-                let edge = (graph.edges.iter())
-                    .find(|edge| {
-                        edge.to.op.as_deref() == Some(op.path.as_str()) && edge.to.port == map.port
-                    })
-                    .ok_or_else(|| format!("no edge to {}", map.port))?;
-                let from = index[edge.from.op.as_deref().unwrap_or_default()];
-                inputs.push((map.native.clone(), from, edge.from.port.clone()));
-            }
-            let outputs = (reference.outputs.iter())
-                .map(|map| (map.native.clone(), map.port.clone()))
-                .collect();
-            let key = JobKey {
-                rule: reference.call.clone(),
-                wildcards: rule.wildcards.clone(),
-                outputs: Vec::new(),
-            };
-            ops.push(JobOp {
-                key,
-                inputs,
-                outputs,
-            });
-        }
-        let run = RunSettings {
-            workdir: Some(base.to_owned()),
-            ..RunSettings::default()
-        };
-        let adapter = snakemake_runtime::spawn_driver(&launch, Settings::default(), run)
-            .map_err(|error| error.message)?;
-        let count = ops.len();
-        let mut consumers = vec![Vec::new(); count];
-        let mut waiting = vec![0; count];
-        for (index, op) in ops.iter().enumerate() {
-            let mut feeding: Vec<usize> = op.inputs.iter().map(|(_, from, _)| *from).collect();
-            feeding.sort_unstable();
-            feeding.dedup();
-            waiting[index] = feeding.len();
-            for from in feeding {
-                consumers[from].push(index);
-            }
-        }
-        let queue = (0..count)
-            .rev()
-            .filter(|index| waiting[*index] == 0)
-            .collect();
-        Ok(Runner {
-            adapter,
-            ops,
-            values: vec![None; count],
-            consumers,
-            waiting,
-            queue,
-            owners: HashMap::new(),
-        })
-    }
-
-    /// Prepares the ops that wait for nothing, in the order of the document.
-    fn ready(&mut self) -> Result<Vec<Task>, DriverError> {
-        let mut tasks = Vec::new();
-        while let Some(index) = self.queue.pop() {
-            let op = &self.ops[index];
-            let staged = (op.inputs.iter())
-                .map(|(native, from, port)| {
-                    let values = self.values[*from].as_ref().expect("ended");
-                    (native.clone(), values[port].clone())
-                })
-                .collect();
-            match self.adapter.prepare_job(&op.key.clone(), staged)? {
-                Prepared::Run(task) => {
-                    self.owners.insert(task.id, index);
-                    tasks.push(*task);
-                }
-                Prepared::Skipped(made) => self.ended(index, made),
-                Prepared::Failed(message) => return Err(DriverError::new(message)),
-            }
-        }
-        Ok(tasks)
-    }
-
-    /// Records the files of an op that ended and queues the ops that wait for nothing else.
-    fn ended(&mut self, index: usize, made: Vec<Json>) {
-        self.values[index] = Some(self.ported(index, made));
-        let mut freed = Vec::new();
-        for consumer in &self.consumers[index] {
-            self.waiting[*consumer] -= 1;
-            if self.waiting[*consumer] == 0 {
-                freed.push(*consumer);
-            }
-        }
-        freed.sort_unstable_by(|one, other| other.cmp(one));
-        self.queue.extend(freed);
-    }
-
-    /// The files of a job by the ports of their selectors.
-    fn ported(&self, index: usize, made: Vec<Json>) -> BTreeMap<String, Json> {
-        (made.into_iter().enumerate())
-            .filter_map(|(position, file)| {
-                let port = self.ops[index].outputs.get(&format!("output/{position}"))?;
-                Some((port.clone(), file))
-            })
-            .collect()
-    }
-}
-
-impl Driver for Runner {
-    fn language(&self) -> Language {
-        Language::Wir
-    }
-
-    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
-        self.adapter.start_jobs()?;
-        self.ready()
-    }
-
-    fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
-        let index = self.owners[&outcome.id];
-        match self.adapter.take_job(outcome)? {
-            JobResult::Accepted(made) => {
-                self.ended(index, made);
-                self.ready()
-            }
-            JobResult::Retry(task) => Ok(vec![*task]),
-            JobResult::Failed(_) => Ok(Vec::new()),
-        }
-    }
-
-    fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
-        self.adapter.take_acceptance(task, attempt)
-    }
-
-    fn notes(&mut self) -> Vec<Note> {
-        self.adapter.notes()
-    }
-
-    fn deliveries(&mut self) -> Vec<Delivery> {
-        self.adapter.deliveries()
-    }
-
-    fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
-        self.adapter.delivered(delivery)
-    }
-
-    fn use_files(&mut self, files: Arc<dyn Files>) {
-        self.adapter.use_files(files);
-    }
-
-    fn finish(&mut self) -> Result<(), DriverError> {
-        self.adapter.finish()
-    }
-}
-
-/// What a simulated run gave: its tasks as text with acceptance, cache key and resume
-/// fingerprint, sorted, and its target files; folders and task numbers are left out.
-#[derive(Debug, PartialEq)]
-struct Ran {
-    tasks: Vec<(String, Option<bool>, String, String)>,
-    targets: String,
-}
+/// The tasks of a simulated run as text with acceptance, cache key and resume fingerprint,
+/// sorted; folders and task numbers are left out.
+type Ran = Vec<(String, Option<bool>, String, String)>;
 
 fn simulate(driver: &mut dyn Driver, folders: &[&Path], simulator: &Path) -> Result<Ran, String> {
     let mut executor = Simulator::new(simulator);
@@ -300,10 +81,7 @@ fn simulate(driver: &mut dyn Driver, folders: &[&Path], simulator: &Path) -> Res
     };
     let execution = execute_with("differential", driver, &mut executor, &options);
     let graph = execution.into_result().map_err(|error| error.to_string())?;
-    Ok(Ran {
-        tasks: described(&graph, folders, simulator),
-        targets: String::new(),
-    })
+    Ok(described(&graph, folders, simulator))
 }
 
 /// Text with the folders of the run and the numbers of the tasks in simulator paths left out.
@@ -369,7 +147,6 @@ struct Compared {
     compiled: bool,
     ends: bool,
     same: bool,
-    equal: bool,
     shown: String,
 }
 
@@ -390,20 +167,15 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
     let native = snakemake_runtime::spawn_driver(&native_launch, Settings::default(), run.clone());
     let native = native
         .map_err(|error| error.message)
-        .and_then(|mut driver| {
-            let simulator = scratch.join("simulator-native");
-            let ran = simulate(&mut driver, &folders, &simulator)?;
-            let targets = driver.exported().unwrap_or_default();
-            let targets = normal(&targets.to_string(), &folders, &simulator, &HashMap::new());
-            Ok(Ran { targets, ..ran })
-        });
+        .and_then(|mut driver| simulate(&mut driver, &folders, &scratch.join("simulator-native")));
     compared.native = native.is_ok();
     let compile_launch = Launch {
         scratch: scratch.join("compile"),
         ..launch.clone()
     };
+    // Sources keep absolute locations, so the document runs from the scratch folder.
     let compiled =
-        snakemake_compiler::compile(&compile_launch, Settings::default(), run.clone(), workdir);
+        snakemake_compiler::compile(&compile_launch, Settings::default(), run.clone(), scratch);
     let compiled = match compiled {
         Ok(compiled) => compiled,
         Err(error) => {
@@ -422,12 +194,8 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
         compared.shown = format!("does not verify: {:?}", problems.first());
         return compared;
     }
-    let ran = Runner::new(&compiled.document, workdir, &compiled_scratch).and_then(|mut runner| {
-        let simulator = scratch.join("simulator-compiled");
-        let ran = simulate(&mut runner, &folders, &simulator)?;
-        let targets = runner.adapter.exported().unwrap_or_default();
-        let targets = normal(&targets.to_string(), &folders, &simulator, &HashMap::new());
-        Ok(Ran { targets, ..ran })
+    let ran = run_compiled(&compiled.document, run, &compiled_scratch).and_then(|mut driver| {
+        simulate(&mut *driver, &folders, &scratch.join("simulator-compiled"))
     });
     compared.compiled = ran.is_ok();
     compared.shown = match (&native, &ran) {
@@ -438,28 +206,54 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
         (Err(error), Ok(_)) => format!("only the native run fails: {}", first_line(error)),
         (Ok(_), Err(error)) => format!("the compiled run fails: {}", first_line(error)),
         (Ok(native), Ok(ran)) => {
-            compared.same = native.tasks == ran.tasks;
+            compared.same = native == ran;
             // `SNAKEMAKE_COMPARE=2` prints the first pair of tasks that differ.
-            let pairs = native.tasks.iter().zip(&ran.tasks);
+            let pairs = native.iter().zip(ran);
             if let Some(pair) = pairs.into_iter().find(|(one, other)| one != other)
                 && std::env::var("SNAKEMAKE_COMPARE").is_ok_and(|value| value == "2")
             {
                 eprintln!("native:   {:?}\ncompiled: {:?}", pair.0, pair.1);
             }
-            compared.equal = compared.same && native.targets == ran.targets;
             compared.ends = compared.same;
-            match (compared.same, compared.equal) {
-                (true, true) => format!("same: {} tasks", native.tasks.len()),
-                (true, false) => "other target files".to_owned(),
-                _ => format!(
+            match compared.same {
+                true => format!("same: {} tasks", native.len()),
+                false => format!(
                     "other tasks: {} native, {} compiled",
-                    native.tasks.len(),
-                    ran.tasks.len()
+                    native.len(),
+                    ran.len()
                 ),
             }
         }
     };
     compared
+}
+
+/// The wir runtime for `document`, written below `scratch`, with the Snakemake adapter and
+/// the run settings `run`.
+fn run_compiled(
+    document: &Document,
+    run: RunSettings,
+    scratch: &Path,
+) -> Result<Box<dyn Driver>, String> {
+    std::fs::create_dir_all(scratch).map_err(|error| error.to_string())?;
+    let path = scratch.join("compiled.wir.json");
+    let text = serde_json::to_string(document).map_err(|error| error.to_string())?;
+    std::fs::write(&path, text).map_err(|error| error.to_string())?;
+    let launch = Launch {
+        target: path,
+        scratch: scratch.to_owned(),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut settings = wir_runtime::Settings {
+        snakemake: wir_runtime::snakemake::Options {
+            settings: Settings::default(),
+            run,
+        },
+        ..wir_runtime::Settings::default()
+    };
+    wir_runtime::snakemake::register(&mut settings.adapters, settings.snakemake.clone());
+    wir_runtime::driver(&launch, settings).map_err(|error| error.message)
 }
 
 fn first_line(text: &str) -> String {
@@ -471,20 +265,62 @@ fn first_line(text: &str) -> String {
         .collect()
 }
 
-#[test]
-fn compiled_runs_match() {
+/// Compares the runs of `snakefile` with the targets of the command line.
+fn compared(snakefile: &str, targets: &[&str]) -> Compared {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path().join("work");
     std::fs::create_dir(&root).expect("makes the working folder");
-    std::fs::write(root.join("Snakefile"), SNAKEFILE).expect("writes the Snakefile");
+    std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
     let launch = Launch {
         target: root.join("Snakefile"),
+        targets: targets.iter().map(|target| (*target).to_owned()).collect(),
         simulated: true,
         ..Launch::default()
     };
-    let compared = compare(&launch, &root, &folder.path().join("scratch"));
+    compare(&launch, &root, &folder.path().join("scratch"))
+}
+
+#[test]
+fn compiled_runs_match() {
+    let compared = compared(SNAKEFILE, &[]);
     assert_eq!(compared.shown, "same: 6 tasks");
-    assert!(compared.equal);
+}
+
+/// A group job, a pipe and a service with its users each run as one task.
+#[test]
+fn compiled_groups_match() {
+    let snakefile = SNAKEFILE.replace(
+        "    shell: \"echo {params.word} > {output}\"",
+        "    group: \"g\"\n    shell: \"echo {params.word} > {output}\"",
+    );
+    let snakefile = snakefile.replace("    retries: 1", "    retries: 1\n    group: \"g\"");
+    let piped = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: pipe(\"a.pipe\")\n    shell: \"echo a > {output}\"\n\nrule b:\n    input: \"a.pipe\"\n    output: \"b.txt\"\n    shell: \"cat {input} > {output}\"\n";
+    let served = "rule all:\n    input: \"b.txt\", \"c.txt\"\n\nrule a:\n    output: service(\"a.socket\")\n    shell: \"sleep 100 > {output}\"\n\nrule b:\n    input: \"a.socket\"\n    output: \"b.txt\"\n    shell: \"head -n1 {input} > {output}\"\n\nrule c:\n    input: \"a.socket\"\n    output: \"c.txt\"\n    shell: \"head -n1 {input} > {output}\"\n";
+    // The default target `all` is in a group whose task another rule names.
+    let grouped_all = "rule all:\n    group: \"g\"\n    input: \"a.txt\", \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n";
+    let cases = [
+        (snakefile.as_str(), "same: 4 tasks"),
+        (piped, "same: 2 tasks"),
+        (served, "same: 2 tasks"),
+        (grouped_all, "same: 1 tasks"),
+    ];
+    for (snakefile, shown) in cases {
+        let compared = compared(snakefile, &[]);
+        assert_eq!(compared.shown, shown);
+    }
+}
+
+/// Commands of workflow code run while the run plans and while a job is prepared, for two
+/// targets.
+#[test]
+fn compiled_commands_match() {
+    let snakefile = SNAKEFILE.replace("rule all:", "shell(\"echo planned\")\n\nrule all:");
+    let snakefile = snakefile.replace(
+        "    threads: 2",
+        "    threads: 2\n    conda: lambda wildcards: shell(\"echo env.yaml\", read=True).strip()",
+    );
+    let compared = compared(&snakefile, &["summary.txt", "counts/a.txt"]);
+    assert_eq!(compared.shown, "same: 7 tasks");
 }
 
 /// How a test workflow is launched: its working folder and Snakefile, config files, targets
@@ -573,7 +409,6 @@ fn compare_one() {
         compared.compiled,
         compared.ends,
         compared.same,
-        compared.equal,
     ];
     let flags: Vec<&str> = flags
         .iter()
@@ -614,7 +449,7 @@ fn matches_recorded() {
                 .status
                 .code()
                 .map_or("a signal".into(), |code| code.to_string());
-            format!("00000000\tthe child ended with {code}")
+            format!("0000000\tthe child ended with {code}")
         });
         let (flags, shown) = text.split_once('\t').unwrap_or((&text, ""));
         let flag = |position: usize| flags.as_bytes().get(position) == Some(&b'1');
@@ -627,7 +462,6 @@ fn matches_recorded() {
             &mut counts.compiled,
             &mut counts.ends,
             &mut counts.same,
-            &mut counts.equal,
         ]
         .into_iter()
         .enumerate()

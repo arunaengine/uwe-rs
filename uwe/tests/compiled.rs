@@ -1,5 +1,5 @@
-//! Prints the wir documents that Snakefiles compile into with `uwe lower`, and names the
-//! parts that stay native Snakemake ops.
+//! Prints the wir documents that Snakefiles compile into with `uwe lower`, names the parts
+//! that stay native Snakemake ops, and runs compiled Snakefiles through the wir runtime.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -56,4 +56,41 @@ fn names_native_parts() {
     let document: Json = serde_json::from_str(&printed).expect("prints JSON");
     let native = &document["graphs"][0]["ops"][0]["kind"]["native"];
     assert_eq!(native["language"], "snakemake");
+}
+
+/// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
+/// the config values of the command line in the document.
+#[test]
+fn runs_compiled_snakefiles() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let root = folder.path();
+    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
+    std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    let output = common::command()
+        .args([
+            "graph",
+            "Snakefile",
+            "-lowered",
+            "-format",
+            "json",
+            "--config",
+            "word=hello",
+        ])
+        .current_dir(root)
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .output()
+        .expect("runs uwe");
+    let errors = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{errors}");
+    let graph: Json = serde_json::from_slice(&output.stdout).expect("prints JSON");
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let names: Vec<&str> = (nodes.iter())
+        .filter_map(|node| node["task"]["name"].as_str())
+        .collect();
+    assert_eq!(names, ["a", "b", "all"]);
+    assert!(
+        nodes[0]["task"]["script"]
+            .as_str()
+            .is_some_and(|script| script.contains("echo hello"))
+    );
 }

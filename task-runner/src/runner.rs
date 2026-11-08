@@ -226,6 +226,8 @@ pub struct Runner<B> {
     /// The input snapshots of daemons, which run on after their result until the run
     /// releases them.
     pub(crate) daemon_inputs: Arc<Mutex<Vec<Snapshots>>>,
+    /// The registry settings of the run, which the backend uses wherever its work goes on.
+    pub(crate) registry: Option<executor::credentials::Registry>,
 }
 
 /// Whose turn it is to run a task whose key another run may run at the same moment.
@@ -254,6 +256,7 @@ impl<B> Clone for Runner<B> {
             verbose_groups: self.verbose_groups,
             lineage: self.lineage.clone(),
             daemon_inputs: self.daemon_inputs.clone(),
+            registry: self.registry.clone(),
         }
     }
 }
@@ -277,6 +280,7 @@ impl<B: Backend> Runner<B> {
             verbose_groups: false,
             lineage: Arc::default(),
             daemon_inputs: Arc::default(),
+            registry: None,
         }
     }
 
@@ -318,7 +322,7 @@ impl<B: Backend> Runner<B> {
     /// The image pinned to its digest where it has one, found once per run.
     pub async fn pin(&self, image: &str) -> Result<String, RunnerError> {
         if task_model::conda_image(image) {
-            let pinned = self.backend.pin(image).await?;
+            let pinned = self.scoped(self.backend.pin(image)).await?;
             return Ok(pinned.unwrap_or_else(|| image.to_owned()));
         }
         let cell = {
@@ -328,8 +332,16 @@ impl<B: Backend> Runner<B> {
                 .unwrap_or_else(|poison| poison.into_inner());
             pinned.entry(image.to_owned()).or_default().clone()
         };
-        let digest = cell.get_or_try_init(|| self.backend.pin(image)).await?;
+        let digest = (cell.get_or_try_init(|| self.scoped(self.backend.pin(image)))).await?;
         Ok(digest.clone().unwrap_or_else(|| image.to_owned()))
+    }
+
+    /// Runs `work` of the backend with the registry settings of the run, where it has some.
+    pub(crate) async fn scoped<T>(&self, work: impl Future<Output = T>) -> T {
+        match &self.registry {
+            Some(registry) => registry.scope(work).await,
+            None => work.await,
+        }
     }
 
     /// Stores a local file by its content, for tasks that take it as input.
@@ -514,7 +526,7 @@ impl<B: Backend> Runner<B> {
         };
         let begun = Instant::now();
         let stop = cancel.child_token();
-        let work = async {
+        let work = self.scoped(async {
             match prepared.per_container > 1 && crate::together::joinable(&job) {
                 true => {
                     self.together(job, prepared.per_container, &stop, &prepared.snapshots)
@@ -522,7 +534,7 @@ impl<B: Backend> Runner<B> {
                 }
                 false => self.backend.run(job, &stop).await,
             }
-        };
+        });
         let finished = self.work(_turn.as_ref(), cancel, &stop, work).await?;
         let milliseconds = begun.elapsed().as_millis() as u64;
         let digests = self.settings.digests.as_ref();

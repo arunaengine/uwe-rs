@@ -212,7 +212,7 @@ The environment that such code reads is the secret values of the run (`run::Sett
 An isolated run also leaves out two stores of the service user, unless the host turns them on:
 
 - `Isolation.secret_store`: the Nextflow secret store, `$HOME/.nextflow/secrets/store.json` or `NXF_SECRETS_FILE`. Without it, `secrets.NAME` and the secrets of a process come only from the `[secrets]` section of the config file and the secret values of the run.
-- `Isolation.registry_files`: the Docker and Podman credentials, `~/.docker/config.json`, `$DOCKER_CONFIG` and the files of Podman. Without them, only the `[registry]` section of the config file signs in to registries.
+- `Isolation.registry_files`: the Docker and Podman credentials, `~/.docker/config.json`, `$DOCKER_CONFIG` and the files of Podman. Without them, only the `[registry]` section of the config file signs in to registries, also while other requests that read the files run, see [Sharing between requests](#sharing-between-requests).
 
 ```rust
 let mut settings = uwe::run::Settings::new("/srv/runs/01JBXQ5Z7C2W9M/workflow/main.nf");
@@ -283,7 +283,9 @@ A service that starts many SLURM runs with Apptainer can give them one shared fo
 
 ## Sharing between requests
 
-Share one `argo_runtime::SharedLocks` coordinator between related hosted policies, so that Argo mutexes and semaphores hold across requests. Requests that overlap must use the same registry settings: the same credentials, by their values, and the same use of the credential files of the service user. uwe refuses an overlapping request whose credentials differ, also when two requests give different secret values for the same variable. Use separate worker processes for different registry identities.
+Share one `argo_runtime::SharedLocks` coordinator between related hosted policies, so that Argo mutexes and semaphores hold across requests. Requests that overlap must give the same registry credentials, by their values. uwe refuses an overlapping request whose credentials differ, also when two requests give different secret values for the same variable. Use separate worker processes for different registry identities.
+
+Each request chooses on its own whether it reads the credential files of the service user, so an isolated run without `registry_files` can overlap with a run or a description that reads them. The pins and tasks of each run sign in with the settings of their own run. While such requests overlap, a sign-in that uwe cannot tie to one of them uses only the `[registry]` section, and fails for a registry that only the files know. The local executor lets Docker or Podman pull the images of tasks, and uwe gives the engine no credentials for it, so the engine signs in with its own settings, also in an isolated run.
 
 The web clients of uwe are shared by the whole process, so the first request settles the web proxy of `[network] proxy`, or that there is none. uwe refuses a later request with another proxy, or without the proxy, with "this process sends its web requests through another proxy than the config file names". Run requests with other proxy settings in another process.
 

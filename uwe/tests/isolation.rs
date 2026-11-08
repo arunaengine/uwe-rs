@@ -18,6 +18,7 @@ const CHILD: &str = "UWE_ISOLATION_CHILD";
 /// Tries to read, delete and overwrite a file outside the run, and to read `SERVICE`.
 const NEXTFLOW: &str = "workflow {\n  def seen = []\n  \
     try { seen << file(params.outside).text } catch (e) { seen << 'refused read' }\n  \
+    try { seen << file(params.outside).countLines() } catch (e) { seen << 'refused count' }\n  \
     try { file(params.outside).delete(); seen << 'deleted' } catch (e) { seen << 'refused delete' }\n  \
     try { file(params.outside).text = 'changed'; seen << 'written' } catch (e) { seen << 'refused write' }\n  \
     seen << (env('UWE_TEST_SERVICE_TOKEN') ?: 'no variable')\n  \
@@ -34,7 +35,7 @@ const SNAKEFILE: &str = "import os\nseen = []\ntry:\n    seen.append(open(config
     written.write('\\n'.join(seen))\n\nrule all:\n    input: []\n";
 
 const NEXTFLOW_SEEN: &str =
-    "refused read\nrefused delete\nrefused write\nno variable\nno variable\ninside";
+    "refused read\nrefused count\nrefused delete\nrefused write\nno variable\nno variable\ninside";
 const SNAKEMAKE_SEEN: &str = "refused read\nrefused delete\nno variable\ninside";
 
 #[test]
@@ -83,6 +84,34 @@ fn confines_workflow_code() {
         assert_eq!(report, seen, "{name}");
         assert_eq!(std::fs::read_to_string(&outside).unwrap(), "server file");
     }
+}
+
+/// An isolated Nextflow run without a launch folder of the host launches in one of its own.
+#[test]
+fn launches_isolated_run() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("launches_isolated_run");
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = folder.path().join("main.nf");
+    std::fs::write(
+        &workflow,
+        "workflow {\n  file('marker.txt').text = 'here'\n}\n",
+    )
+    .unwrap();
+    let mut settings = settings(folder.path(), &workflow);
+    settings.isolation = Some(Isolation::default());
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let ran = runtime.block_on(request.run());
+    let ran = ran.unwrap_or_else(|failure| panic!("{}", failure.message));
+    assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+    let launch = folder.path().join("cache/scratch/launch").join(&ran.id);
+    assert_eq!(
+        std::fs::read_to_string(launch.join("marker.txt")).unwrap(),
+        "here"
+    );
 }
 
 /// A run of `workflow` with its database, store, cache and outputs in `folder`.

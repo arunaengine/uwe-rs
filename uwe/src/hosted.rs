@@ -131,7 +131,8 @@ pub struct Isolation {
     /// input and output folders of the host.
     pub roots: Vec<PathBuf>,
     /// The folder that the run starts in, which relative paths start from and workflow code
-    /// may reach; `None` keeps the working directory of the process, which it may not.
+    /// may reach; `None` keeps the working directory of the process, which it may not. An
+    /// embedded Nextflow run then starts in a folder of its own instead.
     pub launch: Option<PathBuf>,
     /// The variables of the process environment that a run may read besides its secret
     /// values, like `PATH`.

@@ -61,9 +61,11 @@ impl Console {
         let Some(isolation) = isolation else {
             return self;
         };
+        let own = self.launch.take();
         self.launch = folder
             .map(std::path::Path::to_owned)
-            .or(isolation.launch.clone());
+            .or(isolation.launch.clone())
+            .or(own);
         let mut folders = isolation.roots.clone();
         let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
         folders.extend(match target.is_dir() {
@@ -151,6 +153,17 @@ impl Host for Console {
             None => PathBuf::from(&path.path),
         };
         std::fs::read(local).map_err(|error| interpreter::file_error(path, &error))
+    }
+
+    fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
+        self.reach(path)?;
+        let local = match path.prefix {
+            Some(_) => self.download(path)?,
+            None => PathBuf::from(&path.path),
+        };
+        let file =
+            std::fs::File::open(local).map_err(|error| interpreter::file_error(path, &error))?;
+        Ok(Box::new(file))
     }
 
     fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {

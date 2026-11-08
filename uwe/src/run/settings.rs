@@ -54,6 +54,9 @@ pub struct Settings {
     pub default_image: Option<String>,
     /// Overrides the network policy from `setup` or configuration files.
     pub network: Option<task_runner::NetworkRule>,
+    /// The CPUs and memory that the local tasks of this run share with the other runs that
+    /// get the same pool, like `Setup.local_pool`. It wins over that of `setup`.
+    pub local_pool: Option<executor::Pool>,
     /// Maximum CPUs per task, at least one; backend allocation may be smaller.
     pub cpus: Option<u32>,
     /// Maximum memory per task, at least 6 MiB, including tasks without a memory request.
@@ -117,6 +120,7 @@ impl Default for Settings {
             forceall: false,
             default_image: None,
             network: None,
+            local_pool: None,
             cpus: None,
             memory_bytes: None,
             max_pending: None,
@@ -282,6 +286,8 @@ impl Settings {
                 ));
             }
             if backend == "local"
+                && self.local_pool.is_none()
+                && setup.local_pool.is_none()
                 && (setup.executors.local_cpus.is_none() || setup.executors.local_memory.is_none())
             {
                 return Err(Failure::usage(

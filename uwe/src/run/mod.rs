@@ -194,6 +194,7 @@ fn execute_with(
     if let Some(id) = &chosen {
         settings::check_id(id)?;
     }
+    let pool = settings.local_pool.clone();
     let (mut arguments, setup, _inputs) = settings.prepare()?;
     if network.is_some() {
         arguments.no_network = false;
@@ -214,6 +215,9 @@ fn execute_with(
         Some(setup) => setup,
         None => crate::setup::Setup::load(arguments)?,
     };
+    if pool.is_some() {
+        setup.local_pool = pool;
+    }
     setup.variables = arguments.secrets.clone();
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();

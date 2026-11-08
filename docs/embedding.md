@@ -106,6 +106,19 @@ let run = running.await??;
 
 The channel closes when uwe drops the settings at the end of the run, so the loop ends then.
 
+## Sharing the CPUs and memory of the host
+
+A local run starts a task once its CPUs and memory are free in a pool. Without more, each run gets a pool of its own, of `local_cpus` and `local_memory` of `[executor.local]`, or of the whole machine. Runs at the same time then each count on all of it. A host that runs several workflows at once makes one `executor::Pool` and gives it to each run in `run::Settings.local_pool`, or in `Setup.local_pool` of a setup that it passes. The runs then share it: a task of any of them starts only when its share is free. A run that fails stops starting its own tasks, not those of the other runs.
+
+The pool wins over `local_cpus` and `local_memory`, and it counts as the explicit capacity that a hosted local run needs. The command line keeps one pool for each run.
+
+```rust
+let pool = executor::Pool::new(16, 64 << 30);
+let mut settings = uwe::run::Settings::new("/srv/workflows/main.cwl");
+settings.local_pool = Some(pool.clone());
+let run = uwe::RunRequest::new(settings).run().await?;
+```
+
 ## Secrets of a run
 
 A config file names its secrets as `{ environment = "NAME" }`. On the command line uwe reads them from the environment of the process. A host that runs several workflows at once can give each run its own values instead, in `run::Settings.secrets`, a `run::SecretValues`. So the host does not need to change its environment while runs read it, and two runs can use different values for the same name.

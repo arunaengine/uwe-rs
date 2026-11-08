@@ -7,6 +7,7 @@ mod graph;
 mod groovy;
 mod operators;
 mod process;
+mod shapes;
 mod sources;
 
 use std::path::{Path, PathBuf};

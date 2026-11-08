@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
-use crate::op::{Argument, Branch, CaptureRule, Kind, Map, Native, Op, Scatter, Task};
+use crate::op::{Argument, Branch, CaptureRule, FileName, Kind, Map, Native, Op, Scatter, Task};
 use crate::reserved::Pick;
 use crate::types::{ArrayType, Type, TypeDef, resolve};
 
@@ -36,11 +36,22 @@ impl<'d> Checker<'d> {
         if task.command.is_empty() {
             self.report(at, Problem::Empty("command".into()));
         }
-        let streams = [&task.stdout, &task.stderr];
-        let named: Vec<&String> = streams.into_iter().flatten().collect();
-        for name in named.into_iter().filter(|name| !inside(name)) {
-            self.report(at, Problem::Outside(name.clone()));
+        let mut used = Vec::new();
+        for name in [&task.stdout, &task.stderr].into_iter().flatten() {
+            match name {
+                FileName::Text(text) if !inside(text) => {
+                    self.report(at, Problem::Outside(text.clone()));
+                }
+                FileName::Text(_) => {}
+                FileName::Input { input } => used.push(input),
+            }
         }
+        for capture in &task.captures {
+            if let CaptureRule::Patterns(input) = &capture.from {
+                used.push(input);
+            }
+        }
+        self.inputs(at, op, used);
         if let Some(folder) = task.workdir.as_ref().filter(|folder| !absolute(folder)) {
             self.report(at, Problem::Absolute(folder.clone()));
         }
@@ -393,8 +404,8 @@ fn capture_fits(rule: &CaptureRule, r#type: &Type, defs: &[TypeDef]) -> bool {
     match (rule, r#type) {
         (_, Type::Optional(inner)) => capture_fits(rule, inner, defs),
         (_, Type::File(_) | Type::Dynamic) => true,
-        (CaptureRule::Glob(_), Type::Directory) => true,
-        (CaptureRule::Glob(_), Type::Array(array)) => {
+        (CaptureRule::Glob(_) | CaptureRule::Patterns(_), Type::Directory) => true,
+        (CaptureRule::Glob(_) | CaptureRule::Patterns(_), Type::Array(array)) => {
             matches!(
                 resolve(&array.items, defs),
                 Some(Type::File(_) | Type::Directory)

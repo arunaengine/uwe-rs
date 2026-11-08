@@ -58,12 +58,32 @@ pub fn with(code: &Expression, runtime: &str) -> String {
     if !code.text.contains("runtime") {
         return code.text.clone();
     }
+    format!(
+        "${{ var runtime = {runtime}; {TEXT} return {}; }}",
+        value(code)
+    )
+}
+
+/// The code of a list of expressions, like the globs of an output, as one array of their
+/// values, where a value that is an array adds its items.
+pub fn list(codes: &[Expression]) -> String {
+    let values: Vec<String> = codes.iter().map(value).collect();
+    format!("${{ {TEXT} return [].concat({}); }}", values.join(", "))
+}
+
+/// The function `text` that the code of text with parts uses.
+const TEXT: &str =
+    "var text = function(v) { return typeof v === \"string\" ? v : JSON.stringify(v); };";
+
+/// An expression as JavaScript code of its value.
+fn value(code: &Expression) -> String {
     let part = |part: &Part| match part {
         Part::Text(text) => serde_json::to_string(text).unwrap_or_default(),
         Part::Function(body) => format!("(function() {{{body}}})()"),
         Part::Javascript(code) | Part::Reference(code) => format!("({code})"),
     };
-    let value = match code.parts.as_slice() {
+    match code.parts.as_slice() {
+        [] => "\"\"".into(),
         [one] => part(one),
         parts => {
             // Text with parts becomes a string, with values other than strings as JSON.
@@ -75,10 +95,5 @@ pub fn with(code: &Expression, runtime: &str) -> String {
                 .collect();
             format!("[{}].join(\"\")", texts.join(", "))
         }
-    };
-    format!(
-        "${{ var runtime = {runtime}; \
-         var text = function(v) {{ return typeof v === \"string\" ? v : JSON.stringify(v); }}; \
-         return {value}; }}"
-    )
+    }
 }

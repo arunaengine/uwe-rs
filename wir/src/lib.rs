@@ -16,7 +16,7 @@ pub use document::{
 pub use flow::Flow;
 pub use op::{
     Argument, Attributes, Branch, Cache, Call, Capture, CaptureRule, Dependency, Effect, Expr,
-    Kind, Map, Native, Op, Origin, Resources, Scatter, Status, Task,
+    FileName, Kind, Map, Native, Op, Origin, Resources, Scatter, Status, Task,
 };
 pub use types::{
     ArrayType, Field, FileType, KeyType, MapType, SecondaryFile, Type, TypeDef, resolve,

@@ -235,9 +235,15 @@ pub enum Kind {
         arguments: Vec<Option<Json>>,
         property: bool,
     },
-    /// A workflow output of the `output { }` block.
+    /// A workflow output of the `output { }` block: the folder it publishes below, how it
+    /// delivers, and its options and index options, closures as reserved `Closure` forms.
     Publish {
         name: String,
+        directory: String,
+        mode: Json,
+        overwrite: bool,
+        options: Json,
+        index: Json,
     },
     /// A plugin function that checks the run when it starts, like `validateParameters()`.
     Check {
@@ -281,13 +287,7 @@ impl Callback {
             .ok_or_else(|| format!("the code of a closure in {script}"))?;
         let captures = (closure.captured.iter())
             .map(|value| match &*value.borrow() {
-                Value::Closure(inner) if depth < 8 => {
-                    let inner = Callback::nested(inner, depth + 1)?;
-                    Ok(
-                        json!({"class": "Closure", "script": inner.script, "start": inner.start,
-                        "end": inner.end, "code": inner.code, "captures": inner.captures}),
-                    )
-                }
+                Value::Closure(inner) if depth < 8 => Callback::nested(inner, depth + 1).map(form),
                 other => crate::bridge::to_json(other),
             })
             .collect::<Result<_, String>>()
@@ -300,6 +300,20 @@ impl Callback {
             parameters: closure.code.parameters.len(),
             captures,
         })
+    }
+}
+
+/// A callback as the reserved `Closure` form of a value.
+fn form(callback: Callback) -> Json {
+    json!({"class": "Closure", "script": callback.script, "start": callback.start,
+        "end": callback.end, "code": callback.code, "captures": callback.captures})
+}
+
+/// An option of a workflow output as JSON, a closure as its reserved `Closure` form.
+pub(crate) fn option(value: &Value) -> Result<Json, String> {
+    match value {
+        Value::Closure(closure) => Callback::of(closure).map(form),
+        other => crate::bridge::to_json(other),
     }
 }
 

@@ -19,9 +19,9 @@ const RECORDED: Counts = Counts {
     full: 663,
     native: 158,
     failed: 138,
-    same: 791,
-    keys: 750,
-    equal: 740,
+    same: 792,
+    keys: 751,
+    equal: 741,
 };
 
 /// Workflows left out: wir-runtime picks ready ops in a time that grows with the cube of the

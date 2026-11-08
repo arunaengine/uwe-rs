@@ -366,3 +366,16 @@ fn places_topics_by_readers() {
     let mix = ops.iter().find(|op| op["kind"].get("mix").is_some());
     assert!(mix.is_some(), "the mix sits with its reader: {sub}");
 }
+
+#[test]
+fn passes_single_topics() {
+    let script = "process A {\n    output:\n    val 'a', topic: names\n    script:\n    'true'\n}\n\n\
+                  workflow {\n    A()\n    channel.topic('names').view()\n}\n";
+    let document = full(script);
+    let main = graph(&document, "main");
+    let ops = main["ops"].as_array().unwrap();
+    let topic = ops
+        .iter()
+        .find(|op| op["path"].as_str().unwrap().starts_with("topic-"));
+    assert_eq!(topic.map(|op| op["kind"]["filter"].is_object()), Some(true));
+}

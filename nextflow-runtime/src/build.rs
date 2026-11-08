@@ -97,6 +97,9 @@ pub(crate) struct Builder<'a> {
     pub defer: bool,
     /// The files that the build of the lowering wrote, by location, which it keeps instead.
     pub written: Vec<(String, Vec<u8>)>,
+    /// The value channels of the plugin functions that read data, which the lowering calls when
+    /// the run starts, with the names of the functions.
+    pub sources: Vec<(ChannelId, String)>,
     pub base: &'a mut dyn Host,
     /// Whether tasks run their `stub:` section.
     pub stub: bool,
@@ -206,6 +209,7 @@ impl Host for Builder<'_> {
         let Value::Channel(source) = channel else {
             return Ok(None);
         };
+        self.refuse_data(*source)?;
         if !self.network.is_value(*source) {
             return Ok(None);
         }
@@ -253,8 +257,12 @@ impl Host for Builder<'_> {
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
         if self.defer && DATA_SOURCES.contains(&name) {
-            let name = format!("{plugin}:{name}");
-            return Ok(self.deferred_factory(&name, arguments, true));
+            let call = format!("{plugin}:{name}");
+            let list = self.deferred_factory(&call, arguments, true);
+            if let Value::Channel(channel) = list {
+                self.sources.push((channel, name.into()));
+            }
+            return Ok(list);
         }
         if self.defer && RUN_CHECKS.contains(&name) {
             let arguments: Result<_, _> = arguments.iter().map(crate::bridge::to_json).collect();
@@ -543,7 +551,10 @@ impl Host for Builder<'_> {
         arguments: Vec<Value>,
     ) -> Result<Option<Value>, Error> {
         let (source, arguments) = match source {
-            Value::Channel(channel) => (*channel, arguments),
+            Value::Channel(channel) => {
+                self.refuse_data(*channel)?;
+                (*channel, arguments)
+            }
             Value::ChannelOut(out) => match (out.values.as_slice(), arguments.is_empty()) {
                 ([], _) => {
                     return Err(thrown(format!(
@@ -865,6 +876,20 @@ impl Builder<'_> {
             let text = String::from_utf8_lossy(&bytes).into_owned();
             let write = crate::export::Kind::Write { path, text };
             self.network.add("write", &[], Box::new(Deferred(write)));
+        }
+    }
+
+    /// Fails for code that reads the data of a plugin function while the workflow is built,
+    /// which the lowering reads only when the run starts.
+    fn refuse_data(&self, channel: ChannelId) -> Result<(), Error> {
+        match self.sources.iter().find(|(known, _)| *known == channel) {
+            Some((_, name)) => Err(Error::Unsupported {
+                message: format!(
+                    "code that reads the data of `{name}` while the workflow is built"
+                ),
+                span: Default::default(),
+            }),
+            None => Ok(()),
         }
     }
 

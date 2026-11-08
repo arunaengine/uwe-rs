@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Document, Kind, Language as Dialect, Native, Status};
+use wir::{Document, Effect, ExprLanguage, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
     Launch, Note, Outcome, Reuse, Task, TaskId,
@@ -225,7 +225,8 @@ impl WirDriver {
                 self.last += 1;
                 let node = self.progress.node(at);
                 let names = (node.path.as_str(), node.step.as_str());
-                let task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
+                let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
+                task.site = node.op.attributes.place.clone();
                 self.tasks.insert(task.id, (at, task.clone()));
                 Ok(vec![task])
             }
@@ -254,11 +255,15 @@ impl WirDriver {
                 let output = node.op.outputs[0].clone();
                 let settings = &self.settings.cwl.javascript;
                 let defs = &self.document.types;
-                let value = match spec.language.as_str() {
-                    "js" => crate::expr::evaluate(&spec, &bound, &output, defs, settings),
-                    "wdl" => crate::wdl_expr::evaluate(&self.document, &node.op, &spec, &bound),
-                    other => {
-                        let message = format!("op {path}: the language {other} is reserved");
+                let value = match spec.language {
+                    ExprLanguage::Js | ExprLanguage::Javascript => {
+                        crate::expr::evaluate(&spec, &bound, &output, defs, settings)
+                    }
+                    ExprLanguage::Wdl => {
+                        crate::wdl_expr::evaluate(&self.document, &node.op, &spec, &bound)
+                    }
+                    _ => {
+                        let message = format!("op {path}: uwe does not run this language here yet");
                         return Err(DriverError::unsupported(message));
                     }
                 };
@@ -297,10 +302,6 @@ impl WirDriver {
             }
             Kind::Map(map) => {
                 let path = self.progress.node(at).path.clone();
-                if map.parallelism.is_some() || map.min_success.is_some() {
-                    let message = format!("op {path}: parallelism and min_success are reserved");
-                    return Err(DriverError::unsupported(message));
-                }
                 match plan::items(&map, &bound) {
                     Ok(rounds) => {
                         let start = self.progress.plan.nodes.len();
@@ -344,9 +345,12 @@ impl WirDriver {
                 vec![task.clone()]
             }
             Err(why) => {
-                let status = match outcome.error {
-                    Some(_) => Status::Errored,
-                    None => Status::Failed,
+                // A task that could not run says why in the last line of its error output.
+                let said = outcome.stderr.trim().lines().last();
+                let (status, why) = match (&outcome.error, said) {
+                    (Some(_), Some(said)) => (Status::Errored, said.to_owned()),
+                    (Some(_), None) => (Status::Errored, why),
+                    (None, _) => (Status::Failed, why),
                 };
                 let message = format!("op {}: {why}", node.path);
                 self.progress.end(at, status, Map::new(), Some(message));
@@ -454,12 +458,23 @@ impl WirDriver {
     fn adopt(&mut self, index: usize, mut tasks: Vec<Task>) -> Vec<Task> {
         let (at, child) = &mut self.children[index];
         let node = self.progress.node(*at);
+        // A block publishes as its language does, also for the tasks it reuses.
+        let effects = &node.op.effects;
+        let lineage = node.op.attributes.cache == Some(wir::Cache::Resume)
+            || effects
+                .iter()
+                .any(|effect| !matches!(effect, Effect::Publish(_)));
         for task in &mut tasks {
             self.owners.insert(task.id, index);
             task.name = format!("{}: {}", node.path, task.name);
             // A cache rule only makes reuse stricter, never overriding the block's own veto.
-            if node.op.attributes.cache == Some(wir::Cache::Never) {
-                task.reuse = Reuse::Disabled;
+            match node.op.attributes.cache {
+                Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
+                _ if lineage && task.reuse == Reuse::Allowed => task.reuse = Reuse::Lineage,
+                _ => {}
+            }
+            if let Some(place) = &node.op.attributes.place {
+                task.site = Some(place.clone());
             }
         }
         if !child.busy() && !child.finished() {

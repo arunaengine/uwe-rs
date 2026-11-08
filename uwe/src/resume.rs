@@ -74,7 +74,7 @@ impl Resumed {
 impl Executor for Resumed {
     fn run(&mut self, attempt: Attempt) -> Running {
         let task = &attempt.task;
-        if task.reuse != Reuse::Allowed {
+        if !matches!(task.reuse, Reuse::Allowed | Reuse::Lineage) {
             return self.executor.run(attempt);
         }
         let key = fingerprint(task, &input_states(task));
@@ -377,7 +377,13 @@ mod tests {
     #[test]
     fn respects_reuse_policy() {
         let runtime = workflow_graph::runtime().unwrap();
-        for policy in [Reuse::Allowed, Reuse::Denied, Reuse::Disabled] {
+        let policies = [
+            Reuse::Allowed,
+            Reuse::Lineage,
+            Reuse::Denied,
+            Reuse::Disabled,
+        ];
+        for policy in policies {
             let task = Arc::new(Task {
                 id: TaskId(1),
                 reuse: policy,
@@ -399,7 +405,7 @@ mod tests {
                 false,
             );
             let outcome = runtime.block_on(resumed.run(attempt(task))).unwrap();
-            let reused = policy == Reuse::Allowed;
+            let reused = matches!(policy, Reuse::Allowed | Reuse::Lineage);
             assert_eq!(outcome.cached, reused);
             assert_eq!(calls.load(Ordering::SeqCst), usize::from(!reused));
             assert_eq!(taken.take(TaskId(1)).is_some(), reused);

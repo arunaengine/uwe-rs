@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use cwl_parser::model::{ExpressionTool, Part, Process, Type as Cwl};
-use wir::{Call, Edge, Expr, Graph, Kind, Op, Port};
+use wir::{Call, Edge, Expr, ExprLanguage, Graph, Kind, Op, Port};
 
 use crate::workflow::end;
 use crate::{Lowerer, Scope, blank, boundary, defaults, process_name, requirements, types};
@@ -64,9 +64,11 @@ impl Lowerer {
                 "${{ var value = {value}[{field}]; return value === undefined ? null : value; }}"
             );
             let kind = Kind::Expr(Expr {
-                language: "js".into(),
+                language: ExprLanguage::Js,
                 code,
                 library: library.clone(),
+                scope: None,
+                captures: Default::default(),
             });
             let mut op = blank(&output.name, kind, None);
             // The graph applies the defaults before its exprs see the inputs.
@@ -83,11 +85,13 @@ impl Lowerer {
                 edges.push(Edge {
                     from: end(None, &port.name),
                     to: end(Some(&output.name), &port.name),
+                    read: Default::default(),
                 });
             }
             edges.push(Edge {
                 from: end(Some(&output.name), "out"),
                 to: end(None, &output.name),
+                read: Default::default(),
             });
             ops.push(op);
         }

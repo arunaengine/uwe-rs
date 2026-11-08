@@ -170,7 +170,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["from", "to"],
-      "properties": { "from": { "$ref": "#/$defs/endpoint" }, "to": { "$ref": "#/$defs/endpoint" } }
+      "properties": {
+        "from": { "$ref": "#/$defs/endpoint" },
+        "to": { "$ref": "#/$defs/endpoint" },
+        "read": { "enum": ["all", "live"] }
+      }
     },
     "endpoint": {
       "type": "object",
@@ -188,8 +192,11 @@
         "inputs": { "$ref": "#/$defs/ports" },
         "outputs": { "$ref": "#/$defs/ports" },
         "after": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+        "depends": { "$ref": "#/$defs/control" },
+        "handles": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
         "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
         "attributes": { "$ref": "#/$defs/attributes" },
+        "values": { "$ref": "#/$defs/value_rules" },
         "origin": {
           "type": "object",
           "additionalProperties": false,
@@ -206,13 +213,58 @@
         "op": { "$ref": "#/$defs/path" },
         "on": {
           "type": "array",
-          "items": { "enum": ["succeeded", "failed", "errored", "skipped", "omitted"] }
+          "items": { "$ref": "#/$defs/status" }
         }
       }
     },
+    "status": { "enum": ["succeeded", "failed", "errored", "skipped", "omitted", "cancelled"] },
+    "control": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": { "all": { "type": "array", "items": { "$ref": "#/$defs/control" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": { "any": { "type": "array", "items": { "$ref": "#/$defs/control" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": { "not": { "$ref": "#/$defs/control" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["result"],
+          "properties": {
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["op", "on"],
+              "properties": {
+                "op": { "$ref": "#/$defs/path" },
+                "on": {
+                  "type": "array",
+                  "items": {
+                    "enum": ["succeeded", "failed", "errored", "skipped", "omitted", "cancelled",
+                      "daemoned", "any_succeeded", "all_failed"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
     "effect": {
       "oneOf": [
-        { "const": "nondeterministic" },
+        { "enum": ["nondeterministic", "log", "read_files", "write_files"] },
         {
           "type": "object",
           "additionalProperties": false,
@@ -277,9 +329,11 @@
           "additionalProperties": false,
           "required": ["language", "code"],
           "properties": {
-            "language": { "type": "string" },
+            "language": { "$ref": "#/$defs/expr_language" },
             "code": { "type": "string" },
-            "library": { "type": "array", "items": { "type": "string" } }
+            "library": { "$ref": "#/$defs/texts" },
+            "scope": { "$ref": "#/$defs/scope" },
+            "captures": { "$ref": "#/$defs/captures" }
           }
         },
         "map": {
@@ -294,35 +348,266 @@
             "min_success": { "$ref": "#/$defs/count" }
           }
         },
-        "collect": { "$ref": "#/$defs/empty" },
-        "filter": { "$ref": "#/$defs/body" },
-        "flatten": { "$ref": "#/$defs/empty" },
-        "merge": { "$ref": "#/$defs/empty" },
+        "emit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "each": { "type": "boolean" } }
+        },
+        "transform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body"],
+          "properties": {
+            "body": { "$ref": "#/$defs/callback" },
+            "nulls": { "$ref": "#/$defs/null_rule" }
+          }
+        },
+        "flat_map": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "body": { "$ref": "#/$defs/callback" } }
+        },
+        "collect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body": { "$ref": "#/$defs/callback" },
+            "flat": { "type": "boolean" },
+            "sort": { "$ref": "#/$defs/sort" }
+          }
+        },
+        "to_list": { "$ref": "#/$defs/empty" },
+        "reduce": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule"],
+          "properties": {
+            "rule": { "enum": ["count", "sum", "min", "max", "fold"] },
+            "body": { "$ref": "#/$defs/callback" },
+            "compare": { "$ref": "#/$defs/callback" },
+            "seed": { "$ref": "#/$defs/literal" },
+            "empty": { "$ref": "#/$defs/empty_rule" },
+            "nulls": { "enum": ["keep", "keep_state"] }
+          }
+        },
+        "first": { "$ref": "#/$defs/pick" },
+        "last": { "$ref": "#/$defs/pick" },
+        "filter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body"],
+          "properties": { "body": { "$ref": "#/$defs/callback" } }
+        },
+        "flatten": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "depth": { "enum": ["one", "all"] },
+            "drop_null": { "type": "boolean" }
+          }
+        },
+        "mix": { "$ref": "#/$defs/empty" },
+        "concat": { "$ref": "#/$defs/empty" },
+        "merge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "rounds": { "type": "boolean" }, "body": { "$ref": "#/$defs/callback" } }
+        },
         "zip": {
           "type": "object",
           "additionalProperties": false,
           "properties": { "remainder": { "type": "boolean" } }
         },
-        "cross": { "$ref": "#/$defs/empty" },
-        "group": {
+        "cross": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["by"],
           "properties": {
-            "by": { "type": "array", "items": { "$ref": "#/$defs/count" } },
-            "size": { "$ref": "#/$defs/count" },
-            "remainder": { "type": "boolean" }
+            "key": { "$ref": "#/$defs/callback" },
+            "left": { "enum": ["first", "last", "error"] }
           }
         },
+        "group": { "$ref": "#/$defs/group_tuple" },
+        "group_tuple": { "$ref": "#/$defs/group_tuple" },
         "join": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["by"],
           "properties": {
-            "by": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+            "by": { "$ref": "#/$defs/positions" },
             "remainder": { "type": "boolean" },
-            "fail_on_mismatch": { "type": "boolean" },
-            "fail_on_duplicate": { "type": "boolean" }
+            "mismatch_error": { "type": "boolean" },
+            "duplicate_error": { "type": "boolean" },
+            "body": { "$ref": "#/$defs/callback" }
+          }
+        },
+        "combine": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "by": { "$ref": "#/$defs/positions" },
+            "body": { "$ref": "#/$defs/callback" }
+          }
+        },
+        "buffer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule"],
+          "properties": {
+            "rule": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["size"],
+                  "properties": {
+                    "size": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["size"],
+                      "properties": { "size": { "$ref": "#/$defs/count" }, "skip": { "$ref": "#/$defs/count" } }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["match"],
+                  "properties": {
+                    "match": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["close"],
+                      "properties": {
+                        "open": { "$ref": "#/$defs/callback" },
+                        "close": { "$ref": "#/$defs/callback" }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "remainder": { "type": "boolean" }
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["size"],
+          "properties": {
+            "size": { "$ref": "#/$defs/count" },
+            "step": { "$ref": "#/$defs/count" },
+            "remainder": { "type": "boolean" }
+          }
+        },
+        "take": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count"],
+          "properties": { "count": { "type": "integer" } }
+        },
+        "unique": { "$ref": "#/$defs/keyed" },
+        "distinct": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "key": { "$ref": "#/$defs/callback" }, "initial": { "$ref": "#/$defs/literal" } }
+        },
+        "until": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["predicate"],
+          "properties": { "predicate": { "$ref": "#/$defs/callback" }, "inclusive": { "type": "boolean" } }
+        },
+        "if_empty": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "value": { "$ref": "#/$defs/literal" }, "body": { "$ref": "#/$defs/callback" } }
+        },
+        "split": { "$ref": "#/$defs/split" },
+        "collect_file": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body": { "$ref": "#/$defs/callback" },
+            "name": { "type": "string" },
+            "directory": { "type": "string" },
+            "sort": { "$ref": "#/$defs/sort" },
+            "new_line": { "type": "boolean" },
+            "skip": { "$ref": "#/$defs/count" },
+            "keep_header": { "type": "boolean" },
+            "seed": { "type": "string" }
+          }
+        },
+        "view": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "body": { "$ref": "#/$defs/callback" }, "new_line": { "type": "boolean" } }
+        },
+        "observe": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "item": { "$ref": "#/$defs/closure" },
+            "close": { "$ref": "#/$defs/closure" },
+            "error": { "$ref": "#/$defs/closure" }
+          }
+        },
+        "route": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cases"],
+          "properties": {
+            "cases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["output", "condition"],
+                "properties": {
+                  "output": { "$ref": "#/$defs/name" },
+                  "condition": { "$ref": "#/$defs/callback" },
+                  "body": { "$ref": "#/$defs/callback" }
+                }
+              }
+            }
+          }
+        },
+        "multi_map": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outputs"],
+          "properties": {
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["output", "body"],
+                "properties": {
+                  "output": { "$ref": "#/$defs/name" },
+                  "body": { "$ref": "#/$defs/callback" },
+                  "nulls": { "$ref": "#/$defs/null_rule" }
+                }
+              }
+            }
+          }
+        },
+        "process": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body"],
+          "properties": {
+            "body": { "$ref": "#/$defs/name" },
+            "each": { "$ref": "#/$defs/names" },
+            "order": { "enum": ["completion", "fair"] },
+            "parallelism": { "$ref": "#/$defs/count" }
+          }
+        },
+        "status_group": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["members"],
+          "properties": {
+            "members": { "type": "array", "items": { "$ref": "#/$defs/path" } },
+            "allow": { "type": "array", "items": { "$ref": "#/$defs/status" } }
           }
         },
         "branch": {
@@ -347,6 +632,7 @@
           "properties": {
             "body": { "$ref": "#/$defs/name" },
             "condition": { "$ref": "#/$defs/name" },
+            "limit": { "$ref": "#/$defs/count" },
             "carry": {
               "type": "array",
               "items": {
@@ -364,23 +650,277 @@
         "dynamic": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["plan"],
-          "properties": { "plan": { "$ref": "#/$defs/name" } }
+          "properties": {
+            "plan": { "$ref": "#/$defs/name" },
+            "planner": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["snakemake"],
+              "properties": {
+                "snakemake": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["source"],
+                  "properties": {
+                    "source": { "$ref": "#/$defs/name" },
+                    "targets": { "$ref": "#/$defs/texts" },
+                    "profiles": { "$ref": "#/$defs/texts" },
+                    "configs": { "$ref": "#/$defs/names" }
+                  }
+                }
+              }
+            },
+            "order": { "enum": ["completion", "fair"] }
+          }
         }
       }
     },
     "empty": { "type": "object", "additionalProperties": false },
-    "body": {
+    "texts": { "type": "array", "items": { "type": "string" } },
+    "null_rule": { "enum": ["drop", "keep"] },
+    "literal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["body"],
-      "properties": { "body": { "$ref": "#/$defs/name" } }
+      "required": ["value"],
+      "properties": { "value": true }
     },
+    "empty_rule": {
+      "oneOf": [{ "enum": ["default", "close", "null", "error"] }, { "$ref": "#/$defs/literal" }]
+    },
+    "split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format"],
+      "properties": {
+        "format": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "keep_header": { "type": "boolean" } }
+            },
+            "csv": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "separator": { "$ref": "#/$defs/character" },
+                "quote": { "oneOf": [{ "$ref": "#/$defs/character" }, { "type": "null" }] },
+                "header": {
+                  "oneOf": [
+                    { "enum": ["none", "read"] },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["names"],
+                      "properties": { "names": { "$ref": "#/$defs/texts" } }
+                    }
+                  ]
+                },
+                "skip": { "$ref": "#/$defs/count" },
+                "strip": { "type": "boolean" }
+              }
+            },
+            "fasta": { "$ref": "#/$defs/sequence_split" },
+            "fastq": { "$ref": "#/$defs/sequence_split" },
+            "json": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "path": { "type": "string" } }
+            }
+          }
+        },
+        "size": { "$ref": "#/$defs/count" },
+        "limit": { "$ref": "#/$defs/count" },
+        "elem": { "$ref": "#/$defs/count" },
+        "pair": {
+          "oneOf": [
+            { "const": "auto" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["at"],
+              "properties": {
+                "at": { "type": "array", "items": { "$ref": "#/$defs/count" }, "minItems": 2, "maxItems": 2 }
+              }
+            }
+          ]
+        },
+        "decompress": { "enum": ["auto", "always", "never"] },
+        "charset": { "type": "string" },
+        "files": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "directory": { "type": "string" },
+            "compress": { "type": "boolean" }
+          }
+        },
+        "body": { "$ref": "#/$defs/callback" }
+      }
+    },
+    "character": { "type": "string", "minLength": 1, "maxLength": 1 },
+    "sequence_split": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "field"],
+            "properties": {
+              "name": { "type": "string" },
+              "field": {
+                "enum": ["id", "header", "desc", "text", "sequence", "seq_string", "read_header",
+                  "read_string", "quality_header", "quality_string"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "task_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "entry", "call"],
+      "properties": {
+        "source": { "$ref": "#/$defs/name" },
+        "entry": { "type": "string" },
+        "call": { "type": "string" },
+        "scope": { "$ref": "#/$defs/scope" },
+        "inputs": { "$ref": "#/$defs/port_maps" },
+        "outputs": { "$ref": "#/$defs/port_maps" },
+        "profiles": { "$ref": "#/$defs/texts" },
+        "configs": { "$ref": "#/$defs/names" },
+        "captures": { "$ref": "#/$defs/captures" }
+      }
+    },
+    "port_maps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["port", "native"],
+        "properties": { "port": { "$ref": "#/$defs/name" }, "native": { "type": "string" } }
+      }
+    },
+    "keyed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "key": { "$ref": "#/$defs/callback" } }
+    },
+    "pick": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "predicate": { "$ref": "#/$defs/callback" },
+        "empty": { "$ref": "#/$defs/empty_rule" }
+      }
+    },
+    "positions": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+    "sort": {
+      "oneOf": [
+        { "enum": ["none", "natural", "index", "hash", "deep"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key"],
+          "properties": { "key": { "$ref": "#/$defs/callback" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["compare"],
+          "properties": { "compare": { "$ref": "#/$defs/callback" } }
+        }
+      ]
+    },
+    "group_tuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "by": { "$ref": "#/$defs/positions" },
+        "size": { "$ref": "#/$defs/count" },
+        "size_body": { "$ref": "#/$defs/callback" },
+        "remainder": { "type": "boolean" },
+        "sort": { "$ref": "#/$defs/sort" }
+      }
+    },
+    "expr_language": { "enum": ["js", "javascript", "groovy", "python", "wdl"] },
+    "value_rules": { "enum": ["wir", "groovy", "python", "wdl", "javascript"] },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "start", "end"],
+      "properties": {
+        "source": { "$ref": "#/$defs/name" },
+        "start": { "$ref": "#/$defs/count" },
+        "end": { "$ref": "#/$defs/count" }
+      }
+    },
+    "captures": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["input"],
+            "properties": { "input": { "$ref": "#/$defs/name" } }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": { "value": true }
+          }
+        ]
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "code"],
+      "properties": {
+        "language": { "$ref": "#/$defs/expr_language" },
+        "code": { "type": "string" },
+        "parameters": { "$ref": "#/$defs/texts" },
+        "library": { "$ref": "#/$defs/texts" },
+        "scope": { "$ref": "#/$defs/scope" },
+        "captures": { "$ref": "#/$defs/captures" }
+      }
+    },
+    "callback": { "oneOf": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/closure" }] },
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command"],
       "properties": {
+        "builder": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "nextflow_process": { "$ref": "#/$defs/task_ref" },
+            "snakemake_job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["task"],
+              "properties": {
+                "task": { "$ref": "#/$defs/task_ref" },
+                "wildcards": { "type": "object", "additionalProperties": { "type": "string" } }
+              }
+            },
+            "argo_task": { "$ref": "#/$defs/task_ref" },
+            "wdl_task": { "$ref": "#/$defs/task_ref" }
+          }
+        },
         "image": { "type": "string" },
         "command": {
           "type": "array",
@@ -404,6 +944,13 @@
             "required": ["output", "from"],
             "properties": {
               "output": { "$ref": "#/$defs/name" },
+              "optional": { "type": "boolean" },
+              "arity": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["min"],
+                "properties": { "min": { "$ref": "#/$defs/count" }, "max": { "$ref": "#/$defs/count" } }
+              },
               "from": {
                 "oneOf": [
                   { "enum": ["stdout", "stderr"] },
@@ -421,7 +968,18 @@
         "success_codes": { "type": "array", "items": { "type": "integer" } },
         "network": { "type": "boolean" },
         "stdout": { "type": "string" },
-        "stderr": { "type": "string" }
+        "stderr": { "type": "string" },
+        "accept": { "$ref": "#/$defs/closure" },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "limit": { "$ref": "#/$defs/count" },
+            "retry_if": { "$ref": "#/$defs/closure" },
+            "directives": { "$ref": "#/$defs/closure" },
+            "failure": { "enum": ["fail", "ignore"] }
+          }
+        }
       }
     }
   }

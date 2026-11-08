@@ -496,9 +496,11 @@ pub(crate) fn evaluated(
         return Err(format!("{function} in the expression of {path}"));
     }
     let kind = Kind::Expr(wir::Expr {
-        language: "wdl".into(),
+        language: wir::ExprLanguage::Wdl,
         code,
         library: Vec::new(),
+        scope: None,
+        captures: Default::default(),
     });
     let mut op = blank(path, kind, frame.origin.clone());
     for name in used {

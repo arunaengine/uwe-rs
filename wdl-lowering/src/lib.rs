@@ -353,11 +353,18 @@ fn blank(path: &str, kind: Kind, origin: Option<Origin>) -> Op {
         effects: Vec::new(),
         attributes: Default::default(),
         origin,
+        depends: None,
+        handles: Vec::new(),
+        values: Default::default(),
     }
 }
 
 fn edge(from: Endpoint, to: Endpoint) -> Edge {
-    Edge { from, to }
+    Edge {
+        from,
+        to,
+        read: Default::default(),
+    }
 }
 
 fn end(op: Option<&str>, port: &str) -> Endpoint {

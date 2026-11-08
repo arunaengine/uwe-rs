@@ -138,6 +138,7 @@ mod tests {
             network: false,
             stdout: None,
             stderr: None,
+            ..Task::default()
         };
         (apply(&scope, &mut task), task)
     }

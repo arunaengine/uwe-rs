@@ -118,9 +118,11 @@ impl Lowerer {
         };
         let expr = |path: &str, code: String, library: Vec<String>, output: Type| {
             let kind = Kind::Expr(Code {
-                language: "wdl".into(),
+                language: wir::ExprLanguage::Wdl,
                 code,
                 library,
+                scope: None,
+                captures: Default::default(),
             });
             let mut op = blank(path, kind, at.clone());
             op.inputs = inputs.clone();
@@ -177,6 +179,8 @@ impl Lowerer {
             task.task.captures.push(Capture {
                 output: output.name.clone(),
                 from: CaptureRule::Glob(pattern),
+                optional: false,
+                arity: None,
             });
             captured.push(port(&output.name, output.r#type.clone()));
         }
@@ -314,6 +318,9 @@ fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
         network: true,
         stdout: None,
         stderr: None,
+        builder: None,
+        accept: None,
+        retry: None,
     };
     let resources = (resources != wir::Resources::default()).then_some(resources);
     Ok(Built { task, resources })

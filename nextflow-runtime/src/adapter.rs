@@ -112,6 +112,12 @@ impl Adapter {
         self.attempt(binding, values, index, TaskId(id.0), 1)
     }
 
+    /// Reads the files of outcomes, like the standard output of a task, through the files
+    /// provider of the executor.
+    pub fn use_files(&mut self, files: std::sync::Arc<dyn workflow_graph::Files>) {
+        Driver::use_files(&mut self.driver, files);
+    }
+
     /// The `maxForks` and `fair` directives of a call, once its first task fixed them.
     pub fn limits(&self, call: &Call) -> (Option<usize>, bool) {
         let limits = self

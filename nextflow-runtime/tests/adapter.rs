@@ -296,3 +296,61 @@ fn matches_native_traces() {
         "a header and four tasks: {expected}"
     );
 }
+
+/// A files provider whose locations `store://<name>` are files in its folder.
+struct Store(std::path::PathBuf);
+
+impl workflow_graph::Files for Store {
+    fn local(&self, location: &str) -> std::io::Result<std::path::PathBuf> {
+        let name = location.strip_prefix("store://").unwrap_or(location);
+        Ok(self.0.join(name))
+    }
+
+    fn deliver(&self, _: &Delivery) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn reads_provided_stdout() {
+    let directory = tempfile::tempdir().unwrap();
+    let script = "process SAY {\n    output:\n    stdout\n    script:\n    'echo hi'\n}\n\
+                  workflow {\n    SAY()\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::write(directory.path().join("out"), "hi\n").unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut adapter = Adapter::new(&launch, settings(directory.path()), json!({})).unwrap();
+    adapter.use_files(std::sync::Arc::new(Store(directory.path().to_owned())));
+    let call = Call {
+        script: directory
+            .path()
+            .join("main.nf")
+            .to_string_lossy()
+            .into_owned(),
+        process: "SAY".into(),
+        name: "SAY".into(),
+        singleton: true,
+    };
+    let task = run(adapter.prepare(&call, &[], 1, TaskId(1)).unwrap());
+    let log = workflow_graph::Stream {
+        location: "store://out".into(),
+        digest: String::new(),
+        size: 3,
+    };
+    let outcome = Outcome {
+        id: task.id,
+        attempt: 1,
+        stdout_log: Some(log),
+        ..Outcome::default()
+    };
+    let (outputs, _) = accepted(adapter.complete(outcome).unwrap());
+    assert_eq!(
+        outputs,
+        [Some(json!("hi\n"))],
+        "the output read through the provider"
+    );
+}

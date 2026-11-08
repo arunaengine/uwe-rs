@@ -120,6 +120,9 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
         .map_err(|error| DriverError::new(format!("no working folder: {error}")))?;
     let settings = (options.settings)(&launch, &folder);
     let mut adapter = Adapter::new(&launch, settings, params(opening.inputs))?;
+    if let Some(files) = opening.files.clone() {
+        adapter.use_files(files);
+    }
     adapter.start(Vec::new());
     Ok(Box::new(Tasks {
         adapter,

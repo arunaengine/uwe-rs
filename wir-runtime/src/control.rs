@@ -117,9 +117,7 @@ impl Progress {
     fn members(&self, node: usize) -> Vec<usize> {
         match &self.node(node).op.kind {
             Kind::StatusGroup(_) => self.node(node).members.clone(),
-            _ => (0..self.plan.nodes.len())
-                .filter(|at| self.node(*at).parent == Some(node))
-                .collect(),
+            _ => self.children(Some(node)).to_vec(),
         }
     }
 

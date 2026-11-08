@@ -216,3 +216,53 @@ fn checks_dynamic_values() {
     );
     assert_eq!(progress.outputs(&ports).unwrap()["z"], json!(7));
 }
+
+#[test]
+fn value_empty() {
+    let mut progress = progress();
+    progress.next(false).unwrap();
+    let (work, _) = progress.next(false).unwrap();
+    progress.end_with(work, Status::Succeeded, Map::new(), vec!["y".into()]);
+    assert_eq!(
+        progress.next(false),
+        None,
+        "an empty value starts no reader"
+    );
+    let first = &progress.states[at(&progress, "first")];
+    assert_eq!(
+        *first,
+        State::Ended(Status::Succeeded, Map::new()),
+        "the call closes empty too"
+    );
+    let second = &progress.states[at(&progress, "second")];
+    assert_eq!(*second, State::Ended(Status::Omitted, Map::new()));
+    assert!(progress.failures.is_empty());
+    assert!(
+        progress.outputs(&[]).is_err(),
+        "an omitted producer binds no output"
+    );
+}
+
+#[test]
+fn empty_outputs_omitted() {
+    let mut progress = progress();
+    progress.next(false).unwrap();
+    let (work, _) = progress.next(false).unwrap();
+    progress.end(
+        work,
+        Status::Succeeded,
+        Map::from_iter([("y".into(), Json::Null)]),
+        None,
+    );
+    let (second, bound) = progress.next(false).unwrap();
+    assert_eq!(progress.node(second).path, "second");
+    assert_eq!(bound["x"], Json::Null, "a bound null is a value");
+    let (work, _) = progress.next(false).unwrap();
+    progress.end_with(work, Status::Succeeded, Map::new(), vec!["y".into()]);
+    assert_eq!(progress.next(false), None);
+    assert_eq!(
+        progress.outputs(&[]).unwrap(),
+        Map::new(),
+        "an empty output is left out"
+    );
+}

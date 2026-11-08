@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Map, Value as Json};
 use wir::{Kind, Status, Type, TypeDef, resolve};
@@ -19,6 +19,18 @@ pub enum State {
     Running(Map<String, Json>),
     /// Ended, with its output values when it succeeded.
     Ended(Status, Map<String, Json>),
+}
+
+/// What a source supplies.
+#[derive(Clone, Debug, PartialEq)]
+enum Supply {
+    /// Not yet.
+    Pending,
+    Bound(Json),
+    /// Closed empty: no value, which is not null.
+    Empty,
+    /// Never, since its producer did not succeed.
+    Never,
 }
 
 /// Whether a waiting node can start.
@@ -43,6 +55,8 @@ pub struct Progress {
     handled: Vec<(usize, Status)>,
     /// Why ops inside a call failed, by call: the call reports them when it fails.
     inner: Vec<(usize, String)>,
+    /// The outputs of ended nodes that closed empty.
+    empty: HashSet<(usize, String)>,
 }
 
 impl Progress {
@@ -59,6 +73,7 @@ impl Progress {
             defs,
             handled,
             inner: Vec::new(),
+            empty: HashSet::new(),
         }
     }
 
@@ -145,6 +160,18 @@ impl Progress {
         counts
     }
 
+    /// Ends a node whose outputs `empty` closed empty, with the values of its other outputs.
+    pub fn end_with(
+        &mut self,
+        at: usize,
+        status: Status,
+        values: Map<String, Json>,
+        empty: Vec<String>,
+    ) {
+        self.empty.extend(empty.into_iter().map(|port| (at, port)));
+        self.end(at, status, values, None);
+    }
+
     /// Ends a node. A failure that no dependency waits for fails the run; one inside a call
     /// fails the call instead.
     pub fn end(
@@ -166,13 +193,14 @@ impl Progress {
         }
     }
 
-    /// The values of the outputs of the entry graph, or the first one that has none.
-    /// A `dynamic` value must fit the type of its port in `ports`.
+    /// The values of the outputs of the entry graph, without those that closed empty, or the
+    /// first one that has none. A `dynamic` value must fit the type of its port in `ports`.
     pub fn outputs(&self, ports: &[wir::Port]) -> Result<Map<String, Json>, String> {
         let mut values = Map::new();
         for (port, source) in &self.plan.outputs {
             match self.value(source) {
-                Ok(Some(value)) => {
+                Supply::Empty => {}
+                Supply::Bound(value) => {
                     let typed = ports.iter().find(|item| item.name == *port);
                     if let Some(typed) = typed.filter(|_| self.unchecked(source))
                         && !wir::fits(&value, &typed.r#type, &self.defs)
@@ -216,9 +244,9 @@ impl Progress {
         let mut bound = Map::new();
         for (port, source) in &node.inputs {
             let value = match self.value(source) {
-                Ok(Some(value)) => value,
-                Ok(None) => return Readiness::Wait,
-                Err(()) => return Readiness::Omit,
+                Supply::Bound(value) => value,
+                Supply::Pending => return Readiness::Wait,
+                Supply::Empty | Supply::Never => return Readiness::Omit,
             };
             let value = match node.op.inputs.iter().find(|item| item.name == *port) {
                 Some(item) => {
@@ -247,24 +275,31 @@ impl Progress {
         Readiness::Ready(bound)
     }
 
-    /// The value from a source: `None` while it is not bound yet, an error when it will
-    /// never be bound because its producer did not succeed.
-    fn value(&self, source: &Source) -> Result<Option<Json>, ()> {
+    /// What a source supplies. An absent input of the entry graph, or of a running call, is
+    /// null; an output that an ended node neither bound nor closed empty is never bound.
+    fn value(&self, source: &Source) -> Supply {
         match source {
-            Source::Input(name) => Ok(Some(self.inputs.get(name).cloned().unwrap_or_default())),
-            Source::Null => Ok(Some(Json::Null)),
-            Source::Value(value) => Ok(Some(value.clone())),
+            Source::Input(name) => {
+                Supply::Bound(self.inputs.get(name).cloned().unwrap_or_default())
+            }
+            Source::Null => Supply::Bound(Json::Null),
+            Source::Value(value) => Supply::Bound(value.clone()),
             Source::Call(call, port) => match &self.states[*call] {
-                State::Running(bound) => Ok(Some(bound.get(port).cloned().unwrap_or_default())),
-                _ => Ok(None),
+                State::Running(bound) => {
+                    Supply::Bound(bound.get(port).cloned().unwrap_or_default())
+                }
+                _ => Supply::Pending,
             },
             Source::Output(node, port) => match &self.states[*node] {
                 // A skipped branch binds null to its outputs.
-                State::Ended(Status::Succeeded | Status::Skipped, values) => {
-                    Ok(Some(values.get(port).cloned().unwrap_or_default()))
-                }
-                State::Ended(..) => Err(()),
-                _ => Ok(None),
+                State::Ended(Status::Succeeded | Status::Skipped, values) => match values.get(port)
+                {
+                    Some(value) => Supply::Bound(value.clone()),
+                    None if self.empty.contains(&(*node, port.clone())) => Supply::Empty,
+                    None => Supply::Never,
+                },
+                State::Ended(..) => Supply::Never,
+                _ => Supply::Pending,
             },
         }
     }
@@ -283,9 +318,11 @@ impl Progress {
         }
         let mut values = Map::new();
         let mut unfit = None;
+        let mut empty = Vec::new();
         for (port, source) in &self.node(at).exports {
             match self.value(source) {
-                Ok(Some(value)) => {
+                Supply::Empty => empty.push(port.clone()),
+                Supply::Bound(value) => {
                     let ports = &self.node(at).op.outputs;
                     let typed = ports.iter().find(|item| item.name == *port);
                     if let Some(typed) = typed.filter(|_| self.unchecked(source))
@@ -304,7 +341,7 @@ impl Progress {
             return true;
         }
         match failed {
-            false => self.end(at, Status::Succeeded, values, None),
+            false => self.end_with(at, Status::Succeeded, values, empty),
             true => {
                 let reasons: Vec<&str> = (self.inner.iter())
                     .filter(|(call, _)| *call == at)

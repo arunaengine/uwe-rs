@@ -94,3 +94,59 @@ fn keeps_requirements_native() {
     assert_eq!(lowering.kept[0].reason, reason);
     assert!(wir::verify(&lowering.document).is_ok());
 }
+
+#[test]
+fn lowers_expression_tools() {
+    let lowering = lowered("sum.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let op = only_op(&lowering);
+    assert_eq!(op["kind"]["call"]["graph"], "sum");
+    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
+    assert_eq!(
+        graph["inputs"][1],
+        json!({"name": "b", "type": "int", "default": 2})
+    );
+    let ops = graph["ops"].as_array().unwrap();
+    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
+    assert_eq!(paths, ["both", "sum"], "an expr per output");
+    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    assert!(code.starts_with("${ var value = (function() {"), "{code}");
+    assert!(code.ends_with(r#"})()["sum"]; return value === undefined ? null : value; }"#));
+    assert_eq!(ops[1]["outputs"], json!([{"name": "out", "type": "int"}]));
+    assert_eq!(
+        ops[1]["inputs"][1],
+        json!({"name": "b", "type": "int"}),
+        "no default"
+    );
+}
+
+#[test]
+fn lowers_input_values() {
+    let lowering = lowered("shout.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let graph = serde_json::to_value(&lowering.document.graphs[0]).unwrap();
+    let ops = graph["ops"].as_array().unwrap();
+    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
+    assert_eq!(
+        paths,
+        ["shout.count.valueFrom", "shout.message.valueFrom", "shout"]
+    );
+    let command = json!(["echo", {"input": "message.valueFrom"}, {"input": "count.valueFrom"}]);
+    assert_eq!(ops[2]["kind"]["task"]["command"], command);
+    let this = json!({"name": "self", "type": "int", "default": 2});
+    assert_eq!(
+        ops[0]["inputs"][2], this,
+        "self is the input with its default"
+    );
+    let edge =
+        json!({"from": {"port": "count"}, "to": {"op": "shout.count.valueFrom", "port": "self"}});
+    assert!(graph["edges"].as_array().unwrap().contains(&edge));
+}
+
+#[test]
+fn keeps_required_any() {
+    let path = fixtures().join("twice.cwl");
+    let document = cwl_parser::load_file(&path, Default::default()).unwrap();
+    let error = lower(&document, &fixtures()).unwrap_err();
+    assert!(error.contains("the Any input value"), "{error}");
+}

@@ -155,12 +155,21 @@ impl WirDriver {
                 problems.join("; ")
             )));
         }
-        let progress = Progress::new(plan(&document)?, document.types.clone());
         let target = std::path::absolute(&launch.target).unwrap_or(launch.target.clone());
+        let base = target.parent().unwrap_or(Path::new("/")).to_owned();
+        let mut document = document;
+        let ports = (document.graphs.iter_mut()).flat_map(|graph| {
+            let inner = graph.ops.iter_mut().flat_map(|op| op.inputs.iter_mut());
+            graph.inputs.iter_mut().chain(inner)
+        });
+        for default in ports.filter_map(|port| port.default.as_mut()) {
+            inputs::absolute(default, &base);
+        }
+        let progress = Progress::new(plan(&document)?, document.types.clone());
         Ok(WirDriver {
             launch: launch.clone(),
             settings,
-            base: target.parent().unwrap_or(Path::new("/")).to_owned(),
+            base,
             document,
             progress,
             children: Vec::new(),
@@ -176,6 +185,14 @@ impl WirDriver {
             delivering: Vec::new(),
             ended: false,
         })
+    }
+
+    /// The values of the outputs of the entry graph once the run ended, also of a simulated
+    /// run, whose results stay unset.
+    pub fn outputs(&self) -> Option<Json> {
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        let ports = entry.map_or(&[][..], |graph| &graph.outputs);
+        self.progress.outputs(ports).ok().map(Json::Object)
     }
 
     /// Starts every node that can start, until a native block ends; the tasks they ask for.
@@ -244,6 +261,27 @@ impl WirDriver {
                 match crate::expr::evaluate(&spec, &bound, &output, defs, settings) {
                     Ok(value) => {
                         let values = Map::from_iter([(output.name, value)]);
+                        self.progress.end(at, Status::Succeeded, values, None);
+                    }
+                    Err(why) => {
+                        let message = Some(format!("op {path}: {why}"));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
+            Kind::Select(_) | Kind::Merge(_) | Kind::Flatten(_) => {
+                let node = self.progress.node(at);
+                let path = node.path.clone();
+                let ports = node.op.inputs.iter().chain(&node.op.outputs);
+                if ports.into_iter().any(|port| !port.flow.is_value()) {
+                    let message = format!("op {path}: uwe does not run this op on streams yet");
+                    return Err(DriverError::unsupported(message));
+                }
+                let output = node.op.outputs[0].name.clone();
+                match crate::arrays::evaluate(&node.op, &bound, &self.document.types) {
+                    Ok(value) => {
+                        let values = Map::from_iter([(output, value)]);
                         self.progress.end(at, Status::Succeeded, values, None);
                     }
                     Err(why) => {

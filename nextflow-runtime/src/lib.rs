@@ -156,6 +156,7 @@ impl Run {
             {
                 let mut builder = build::Builder {
                     network: &mut network,
+                    defer: false,
                     base: &mut session,
                     stub: options.stub,
                     config: &options.config,
@@ -366,6 +367,60 @@ impl Run {
             None => Ok(()),
         }
     }
+}
+
+/// Builds the network of the entry workflow without starting it, for the lowering to wir:
+/// factories that read files and plugin functions that read data stay calls.
+pub fn export(
+    module: &Rc<Module>,
+    options: &Options,
+    host: &mut dyn Host,
+) -> Result<export::Network, Error> {
+    let mut network = Network::default();
+    let workflow = workflow::metadata(options, &host.launch_dir());
+    let mut operator_directory = None;
+    let mut session = Session {
+        base: host,
+        options,
+        network: None,
+        operator_directory: &mut operator_directory,
+    };
+    let mut builder = build::Builder {
+        network: &mut network,
+        defer: true,
+        base: &mut session,
+        stub: options.stub,
+        config: &options.config,
+        output_dir: options.output_dir.clone(),
+        exec_folder: options.exec_folder.clone().map(Rc::from),
+    };
+    let mut interpreter = Interpreter::new(&mut builder);
+    set_globals(&mut interpreter, options, &workflow);
+    let params = options.config.params();
+    let emitted = script_params(&mut interpreter, module, &params, &mut Vec::new())
+        .and_then(|()| typed_params(&mut interpreter, module, &params))
+        .and_then(|()| interpreter.start_statements(module))
+        .and_then(|()| match options.entry.as_deref() {
+            Some(name) => interpreter.run_named_entry(module, name),
+            None => interpreter.run_entry(module),
+        })
+        .map_err(|error| interpreter.locate(error))?;
+    drop(interpreter);
+    let emits = match &emitted {
+        Value::ChannelOut(out) => (out.values.iter().zip(&out.names))
+            .filter_map(|(value, name)| match (value, name) {
+                (Value::Channel(channel), Some(name)) => {
+                    Some((name.to_string(), channel.0 as usize))
+                }
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    network.export(emits).map_err(|message| Error::Unsupported {
+        message,
+        span: Default::default(),
+    })
 }
 
 /// Runs a script whose workflow runs no tasks.

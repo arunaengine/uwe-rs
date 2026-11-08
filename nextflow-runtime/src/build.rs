@@ -85,8 +85,16 @@ const OPERATORS: &[&str] = &[
     "view",
 ];
 
+/// The plugin functions that read data, like a samplesheet, which a lowered run calls when it
+/// starts, and those that check the run, which a lowered run checks at its entry.
+const DATA_SOURCES: &[&str] = &["samplesheetToList"];
+const RUN_CHECKS: &[&str] = &["validateParameters"];
+
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
+    /// Whether the build is for the lowering to wir: factories and plugin functions that read
+    /// data stay calls, and nothing reads files that a run reads.
+    pub defer: bool,
     pub base: &'a mut dyn Host,
     /// Whether tasks run their `stub:` section.
     pub stub: bool,
@@ -98,7 +106,13 @@ pub(crate) struct Builder<'a> {
 }
 
 impl Host for Builder<'_> {
+    /// Prints, or for the lowering keeps the text, which the lowered run prints when it starts.
     fn print(&mut self, text: &str) {
+        if self.defer {
+            let print = crate::export::Kind::Print(text.into());
+            self.network.add("print", &[], Box::new(Deferred(print)));
+            return;
+        }
         self.base.print(text);
     }
 
@@ -130,15 +144,25 @@ impl Host for Builder<'_> {
         self.base.metadata(path)
     }
 
+    /// Writes, or for the lowering keeps the file, which the lowered run writes when it starts.
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        if self.defer {
+            let path = path.uri();
+            let text = String::from_utf8_lossy(bytes).into_owned();
+            let write = crate::export::Kind::Write { path, text };
+            self.network.add("write", &[], Box::new(Deferred(write)));
+            return Ok(());
+        }
         self.base.write(path, bytes)
     }
 
     fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        self.refuse_change("copying files")?;
         self.base.copy_file(source, target)
     }
 
     fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        self.refuse_change("deleting files")?;
         self.base.delete(path)
     }
 
@@ -184,7 +208,10 @@ impl Host for Builder<'_> {
     }
 
     fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
-        self.base.create_directories(path)
+        match self.defer {
+            true => Ok(()),
+            false => self.base.create_directories(path),
+        }
     }
 
     fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
@@ -205,7 +232,42 @@ impl Host for Builder<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
+        if self.defer && DATA_SOURCES.contains(&name) {
+            return Ok(self.deferred_factory(name, arguments, true));
+        }
+        if self.defer && RUN_CHECKS.contains(&name) {
+            let arguments: Result<_, _> = arguments.iter().map(crate::bridge::to_json).collect();
+            let arguments = arguments.map_err(thrown)?;
+            let check = crate::export::Kind::Check {
+                plugin: plugin.into(),
+                function: name.into(),
+                arguments,
+            };
+            self.network.add(name, &[], Box::new(Deferred(check)));
+            return Ok(Value::Null);
+        }
         self.base.plugin_function(plugin, name, arguments)
+    }
+
+    fn enter_workflow(&mut self, name: &str, arguments: &[Value]) {
+        let takes = arguments.iter().filter_map(channels).flatten();
+        let takes = takes.map(|channel| channel.0 as usize).collect();
+        self.network.enter(name, takes);
+    }
+
+    fn leave_workflow(&mut self, emitted: Option<&Value>) {
+        let emits = match emitted {
+            Some(Value::ChannelOut(out)) => (out.values.iter().zip(&out.names))
+                .filter_map(|(value, name)| match value {
+                    Value::Channel(channel) => {
+                        Some((name.as_deref().map(str::to_owned), channel.0 as usize))
+                    }
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        self.network.leave(emits);
     }
 
     fn plugin_method(
@@ -267,9 +329,32 @@ impl Host for Builder<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Option<Value>, Error> {
+        if let Some(text) = crate::session::printed(namespace, name, &arguments)
+            && self.defer
+        {
+            if !text.is_empty() {
+                self.print(&text);
+            }
+            return Ok(Some(Value::Null));
+        }
         if namespace == "channel" && name != "fromList" && arguments.iter().any(is_channel) {
             let message = format!("Argument of `channel.{name}` cannot be a channel object");
             return Err(thrown(message));
+        }
+        let reads = nextflow_plugins::factory_plugin(name).is_some()
+            || matches!(name, "fromPath" | "fromFilePairs");
+        if self.defer && namespace == "channel" && reads {
+            return Ok(Some(self.deferred_factory(name, arguments, false)));
+        }
+        // The items of a list that a data source of the lowering gives when the run starts.
+        if let ("channel", "fromList", [Value::Channel(list)]) = (namespace, name, &arguments[..])
+            && self.defer
+            && self.network.is_value(*list)
+        {
+            let output = self.network.channel(false);
+            let spread = Deferred(crate::export::Kind::Spread);
+            self.network.add(name, &[*list], Box::new(spread));
+            return Ok(Some(Value::Channel(output)));
         }
         // A factory of a plugin, like `Channel.fromSamplesheet`, gives the list of its values.
         if namespace == "channel"
@@ -732,6 +817,32 @@ impl Builder<'_> {
         Value::Channel(output)
     }
 
+    /// Fails for the lowering, which changes no files while the workflow is built.
+    fn refuse_change(&self, what: &str) -> Result<(), Error> {
+        match self.defer {
+            true => Err(Error::Unsupported {
+                message: format!("{what} while the workflow is built, for the lowering"),
+                span: Default::default(),
+            }),
+            false => Ok(()),
+        }
+    }
+
+    /// A factory of the lowering that keeps its call, which reads its values when the run
+    /// starts: one list into a value channel when `value`, else each value.
+    fn deferred_factory(&mut self, name: &str, arguments: Vec<Value>, value: bool) -> Value {
+        let output = self.network.channel(value);
+        let factory = Factory {
+            values: Vec::new(),
+            output,
+            close: true,
+            failure: None,
+            call: Some((name.into(), arguments)),
+        };
+        self.network.add(name, &[], Box::new(factory));
+        Value::Channel(output)
+    }
+
     /// A channel factory node that fails when it starts.
     fn failing_factory(&mut self, name: &str, failure: Error) -> Value {
         let output = self.network.channel(false);
@@ -827,6 +938,22 @@ impl Builder<'_> {
             .into_iter()
             .map(|path| Value::Path(Rc::new(path)))
             .collect())
+    }
+}
+
+/// A node that only the lowering builds, which never runs.
+struct Deferred(crate::export::Kind);
+
+impl crate::network::Behaviour for Deferred {
+    fn run(&mut self, _: &mut crate::network::Context) -> Result<crate::network::State, Error> {
+        Err(Error::Unsupported {
+            message: "running a node of the lowering".into(),
+            span: Default::default(),
+        })
+    }
+
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Ok(self.0.clone())
     }
 }
 

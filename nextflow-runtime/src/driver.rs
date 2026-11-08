@@ -567,6 +567,16 @@ impl Nextflow {
         })
     }
 
+    /// The network that the workflow builds, without starting it, for the lowering to wir.
+    pub fn export(&mut self) -> Result<crate::export::Network, DriverError> {
+        let loaded = self.setup()?;
+        let options = self.options(&loaded, loaded.config.clone());
+        let host = self.settings.host.as_mut();
+        let network = crate::export(&loaded.module, &options, host);
+        self.loaded = Some(loaded);
+        network.map_err(|failure| self.fault(failure))
+    }
+
     /// The host of the run, which prints and reads files.
     pub(crate) fn host(&mut self) -> &mut dyn Host {
         self.settings.host.as_mut()

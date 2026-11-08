@@ -74,11 +74,7 @@ async fn runs_lowered_documents() {
     let Err(refused) = request.run().await else {
         panic!("a lowered run refuses an input of the wrong type");
     };
-    assert!(
-        refused.message.contains("cwl workflow"),
-        "{}",
-        refused.message
-    );
+    assert!(refused.message.contains("not valid"), "{}", refused.message);
 }
 
 #[tokio::test]

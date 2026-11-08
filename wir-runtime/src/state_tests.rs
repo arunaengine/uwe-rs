@@ -266,3 +266,75 @@ fn empty_outputs_omitted() {
         "an empty output is left out"
     );
 }
+
+/// A graph `main` whose call `wrap` passes the stream input `xs` on to its output, and whose
+/// graph also runs an op `work` that may fail.
+fn fenced() -> Progress {
+    let stream = |name: &str| json!({"name": name, "type": "int", "flow": "stream"});
+    let edge = |from: (Option<&str>, &str), to: (Option<&str>, &str)| json!({"from": {"op": from.0, "port": from.1}, "to": {"op": to.0, "port": to.1}});
+    let work = json!({"path": "work", "kind": {"native": {"source": "s", "language": "cwl"}}});
+    let pass = json!({"name": "pass", "inputs": [stream("x")], "outputs": [stream("y")], "ops": [work],
+        "edges": [edge((None, "x"), (None, "y"))]});
+    let wrap = json!({"path": "wrap", "kind": {"call": {"graph": "pass"}}, "inputs": [stream("x")], "outputs": [stream("y")]});
+    let main = json!({"name": "main", "inputs": [stream("xs")], "outputs": [stream("ys")], "ops": [wrap],
+        "edges": [edge((None, "xs"), (Some("wrap"), "x")), edge((Some("wrap"), "y"), (None, "ys"))]});
+    let document = json!({"wir_version": "0.1", "sources": [{"id": "s", "language": "cwl", "location": "s.cwl"}],
+        "graphs": [main, pass], "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    wir::verify(&document).unwrap();
+    let mut progress = Progress::new(plan(&document).unwrap(), Vec::new());
+    let values = Map::from_iter([("xs".into(), json!([1, 2]))]);
+    progress.feed(&values, &["xs".into()]).unwrap();
+    progress.activate(None).unwrap();
+    progress
+}
+
+/// How the stream output `y` of `wrap` ended, if it did.
+fn wrapped_end(progress: &Progress) -> Option<crate::streams::StreamEnd> {
+    let channel = &progress.streams.channels[&crate::flows::output_stream("wrap", "y")];
+    channel
+        .terminal
+        .as_ref()
+        .map(|terminal| terminal.end.clone())
+}
+
+#[test]
+fn boundary_close_fence() {
+    let mut progress = fenced();
+    let (wrap, _) = progress.next(false).unwrap();
+    progress.activate(Some(wrap)).unwrap();
+    let (work, _) = progress.next(false).unwrap();
+    assert_eq!(progress.node(work).path, "wrap/work");
+    assert_eq!(progress.next(false), None);
+    let channel = &progress.streams.channels[&crate::flows::output_stream("wrap", "y")];
+    assert_eq!(channel.next, 2, "the items pass before the graph ends");
+    assert_eq!(wrapped_end(&progress), None, "the close waits for the call");
+    progress.end(
+        work,
+        Status::Failed,
+        Map::new(),
+        Some("op wrap/work: broke".into()),
+    );
+    assert_eq!(progress.next(false), None);
+    let Some(crate::streams::StreamEnd::Error(failure)) = wrapped_end(&progress) else {
+        panic!("a failure inside the call ends its output with an error");
+    };
+    assert_eq!(failure.message, "op wrap/work: broke");
+    let mut progress = fenced();
+    let (wrap, _) = progress.next(false).unwrap();
+    progress.activate(Some(wrap)).unwrap();
+    let (work, _) = progress.next(false).unwrap();
+    progress.end(work, Status::Succeeded, Map::new(), None);
+    assert_eq!(progress.next(false), None);
+    assert_eq!(
+        wrapped_end(&progress),
+        Some(crate::streams::StreamEnd::Close)
+    );
+    let ports = [wir::Port {
+        name: "ys".into(),
+        r#type: wir::Type::Int,
+        flow: wir::Flow::Stream,
+        default: None,
+    }];
+    assert_eq!(progress.outputs(&ports).unwrap()["ys"], json!([1, 2]));
+}

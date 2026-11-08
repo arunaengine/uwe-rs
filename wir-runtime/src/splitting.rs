@@ -54,7 +54,15 @@ impl Splitting {
                 strip: csv.strip,
             },
             SplitFormat::Fasta(sequence) => Format::Fasta(record(&sequence.fields)),
-            SplitFormat::Fastq(sequence) => Format::Fastq(record(&sequence.fields)),
+            SplitFormat::Fastq(sequence) => {
+                Format::Fastq(record(&sequence.fields).map(|mut names| {
+                    // The splitter gives no FASTQ text; `named` makes it of the four lines.
+                    if names.iter().any(|name| name == "text") {
+                        names.extend(FASTQ_LINES.map(str::to_owned));
+                    }
+                    names
+                }))
+            }
             SplitFormat::Json(json) => Format::Json {
                 path: json.path.clone(),
             },
@@ -303,20 +311,34 @@ impl Splitting {
             Json::Array(items) => {
                 Json::Array(items.into_iter().map(|item| self.named(item)).collect())
             }
-            Json::Object(mut record) => Json::Object(
-                (fields.iter())
-                    .map(|field| {
-                        (
-                            field.name.clone(),
-                            record.remove(native(field.field)).unwrap_or_default(),
-                        )
-                    })
-                    .collect(),
-            ),
+            Json::Object(mut record) => {
+                let text = fields
+                    .iter()
+                    .any(|field| field.field == SequenceField::Text);
+                if text && matches!(self.spec.format, SplitFormat::Fastq(_)) {
+                    let line = |name| record.get(name).and_then(Json::as_str).unwrap_or_default();
+                    let [header, read, quality, string] = FASTQ_LINES.map(line);
+                    let text = format!("@{header}\n{read}\n+{quality}\n{string}\n");
+                    record.insert("text".into(), Json::String(text));
+                }
+                Json::Object(
+                    (fields.iter())
+                        .map(|field| {
+                            (
+                                field.name.clone(),
+                                record.remove(native(field.field)).unwrap_or_default(),
+                            )
+                        })
+                        .collect(),
+                )
+            }
             other => other,
         }
     }
 }
+
+/// The fields of the four lines of a FASTQ record in the records of the Nextflow splitter.
+const FASTQ_LINES: [&str; 4] = ["readHeader", "readString", "qualityHeader", "qualityString"];
 
 /// The name of a sequence field in the records of the Nextflow splitter.
 fn native(field: SequenceField) -> &'static str {
@@ -557,6 +579,15 @@ mod sequences {
             ])
         );
         let reads = json!({"fastq": {"fields": [{"name": "readString", "field": "read_string"}, {"name": "q", "field": "quality_string"}]}});
+        let texts = json!({"fastq": {"fields": [{"name": "t", "field": "text"}, {"name": "id", "field": "read_header"}]}});
+        assert_eq!(
+            split(json!({"format": texts}), &[json!(FASTQ)]),
+            Ok(vec![
+                json!({"t": "@r1\nACGT\n+\nIIII\n", "id": "r1"}),
+                json!({"t": "@r2\nGG\n+\nII\n", "id": "r2"})
+            ]),
+            "the text of a FASTQ record"
+        );
         let chunked = split(json!({"format": reads, "size": 2}), &[json!(FASTQ)]);
         assert_eq!(
             chunked,

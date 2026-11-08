@@ -123,3 +123,31 @@ fn matches_native_tasks() {
         ["scatter.greet/greet/greet", "scatter.greet/greet/greet"]
     );
 }
+
+#[test]
+fn parameters_convert() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("check.wdl"), WORKFLOW).expect("writes the document");
+    std::fs::write(root.join("text.txt"), "hi\n").expect("writes the text");
+    let given = [
+        "check.wdl",
+        "--check.text",
+        "text.txt",
+        "--check.names",
+        "ada",
+    ];
+    let lowered: Vec<&str> = ["run", "-executor", "simulator", "-lowered"]
+        .into_iter()
+        .chain(given)
+        .chain(["--names", "bob"])
+        .collect();
+    let (code, _, errors) = uwe(root, &cache, &lowered);
+    assert_eq!(code, 0, "{errors}");
+    let (language, tasks) = latest(&cache);
+    assert_eq!(
+        (language.as_str(), tasks.len()),
+        ("wir", 2),
+        "a task per name"
+    );
+}

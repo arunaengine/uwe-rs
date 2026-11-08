@@ -3,20 +3,23 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use wdl_ast::v1::{Expr, NameRefExpr, TaskDefinition};
+use std::collections::{BTreeMap, BTreeSet};
+
+use wdl_ast::v1::{Decl, Expr, NameRefExpr, TaskDefinition};
 use wdl_ast::{AstNode, AstToken};
 use wdl_runtime::Value;
-use wdl_runtime::document::{Callable, Unit};
+use wdl_runtime::document::{Callable, Unit, declared};
 use wdl_runtime::expression::names;
 use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 
-use crate::library::{Inputs, Line, check, ordered, ports};
-use crate::outputs::{Output, Read, listing, outputs};
-use crate::types::{has_files, port};
-use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text};
+use crate::library::{Inputs, Line, check, ordered, ports, staged};
+use crate::outputs::{Output, Read, listing, outputs, patterns};
+use crate::types::{convert, has_files, port};
+use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text, unclaimed};
 
-/// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
-/// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
+/// Runs the command as uwe's WDL driver does, then copies below `.wdl/out/<output>/` the files
+/// that match each `<output>\t<regex>` line of `$4`, then each `<output>\t<path>` line of `$2`.
+/// A missing path fails with code `$3`, unless its output starts with `?` as optional ones do.
 pub(crate) const RUNNER: &str = r#"mkdir -p .wdl
 printf '%s' "$1" > .wdl/command.sh
 bash .wdl/command.sh > .wdl/stdout 2> .wdl/stderr
@@ -24,15 +27,32 @@ status=$?
 cat .wdl/stdout
 cat .wdl/stderr >&2
 tab=$(printf '\t')
+place() {
+  folder=.wdl/out/$1/$(printf '%06d' "$2")
+  mkdir -p "$folder" && cp -R "$3" "$folder/"
+}
+printf '%s\n' "$4" | while IFS="$tab" read -r name pattern; do
+  [ -n "$name" ] || continue
+  find . ! -type d ! -path './.wdl/out/*' | cut -c3- | LC_ALL=C sort | grep -E -x -e "$pattern" |
+    { count=0; while IFS= read -r path; do
+      count=$((count + 1))
+      place "$name" "$count" "$path" || exit 1
+    done; } || exit 1
+done || [ "$status" -ne 0 ] || status=${3:-1}
 line=0
 printf '%s\n' "$2" | while IFS="$tab" read -r name path; do
   line=$((line + 1))
   path=${path%/}
-  if [ -n "$name" ] && [ -e "$path" ]; then
-    folder=.wdl/out/$name/$(printf '%06d' "$line")
-    mkdir -p "$folder" && cp -R "$path" "$folder/"
+  required=true
+  case $name in '?'*) name=${name#?}; required=false;; esac
+  [ -n "$name" ] || continue
+  if [ ! -e "$path" ]; then
+    $required || continue
+    echo "the task did not make $path" >&2
+    exit 1
   fi
-done
+  place "$name" "$line" "$path" || exit 1
+done || [ "$status" -ne 0 ] || status=${3:-1}
 exit $status
 "#;
 
@@ -69,18 +89,36 @@ impl Lowerer {
         let Inputs {
             ports: inputs,
             mut library,
-            fallbacks,
         } = ports(unit, definition)?;
+        let defaulted: BTreeSet<String> = library.iter().map(|line| line.name.clone()).collect();
+        let mut types: BTreeMap<String, Type> = (inputs.iter())
+            .map(|port| (port.name.clone(), port.r#type.clone()))
+            .collect();
         for decl in definition.declarations() {
+            let name = decl.name().text().to_owned();
+            unclaimed(&name)?;
             if decl.env().is_some() {
                 return Err("an env declaration".into());
             }
             check(&decl.expr())?;
+            let ty = declared(&unit.document, &decl.ty())?;
+            let r#type = convert(&ty).map_err(|why| format!("{name}: {why}"))?;
+            types.insert(name.clone(), r#type);
             library.push(Line {
-                name: decl.name().text().to_owned(),
+                name,
                 uses: names(&decl.expr()),
                 code: text(&decl),
             });
+        }
+        let given: Vec<Decl> = (definition.input())
+            .map(|section| section.declarations().collect())
+            .unwrap_or_default();
+        let computed = given.into_iter().filter_map(|decl| match decl {
+            Decl::Bound(bound) if defaulted.contains(bound.name().text()) => Some(bound),
+            _ => None,
+        });
+        for decl in computed.chain(definition.declarations()) {
+            staged(&decl, &types)?;
         }
         let library = ordered(library)?;
         let command = match definition.command() {
@@ -101,10 +139,6 @@ impl Lowerer {
         let mut task = runtime(definition, &self.image)?;
         let outputs = outputs(unit, definition)?;
         let name = self.graph_name(&format!("task.{}", unit.name()));
-        let held = fallbacks
-            .into_iter()
-            .map(|(port, value)| (name.clone(), port, value));
-        self.fallbacks.extend(held);
         let path = unit.name();
         let mut graph = Graph {
             name: name.clone(),
@@ -140,22 +174,25 @@ impl Lowerer {
         if placed.is_empty() {
             task.task.command.push(Argument::Text(String::new()));
         } else {
+            task.task.command.push(Argument::input(PATHS));
             let mut lines = library.clone();
             lines.extend(
                 outputs
                     .iter()
-                    .filter(|item| !matches!(item.read, Read::Glob(_)))
+                    .filter(|item| !matches!(item.read, Read::Glob(_) | Read::Matched(_)))
                     .map(|item| item.decl.clone()),
             );
             graph
                 .ops
                 .push(expr(PATHS, listing(&placed), lines, Type::String));
-            task.task.command.push(Argument::input(PATHS));
             ports.push(port(PATHS, Type::String));
             graph
                 .edges
                 .push(edge(end(Some(PATHS), "value"), end(Some(&path), PATHS)));
         }
+        let code = failure(&task.task);
+        task.task.command.push(Argument::Text(code));
+        task.task.command.push(Argument::Text(patterns(&outputs)));
         graph
             .edges
             .push(edge(end(Some(COMMAND), "value"), end(Some(&path), COMMAND)));
@@ -167,7 +204,7 @@ impl Lowerer {
         for output in &outputs {
             let pattern = match &output.read {
                 Read::Glob(pattern) => pattern.clone(),
-                Read::Placed => format!(".wdl/out/{}/*/*", output.name),
+                Read::Placed | Read::Matched(_) => format!(".wdl/out/{}/*/*", output.name),
                 Read::Value => continue,
             };
             task.task.captures.push(Capture {
@@ -238,6 +275,12 @@ fn produced(task: &str, output: &Output) -> wir::Endpoint {
 struct Built {
     task: wir::Task,
     resources: Option<wir::Resources>,
+}
+
+/// The exit code of a run whose required outputs are missing: one that is not a success.
+fn failure(task: &wir::Task) -> String {
+    let code = (1..).find(|code| !task.success_codes.contains(code));
+    code.unwrap_or(1).to_string()
 }
 
 /// The task op of the `runtime` or `requirements` section, whose values must not depend on
@@ -329,9 +372,9 @@ mod tests {
         let work = folder.path();
         let command =
             "mkdir -p d && echo x > d/a.txt && echo y > 'b c.txt' && echo shown && exit 3";
-        let paths = "first\td/a.txt\nlist\tb c.txt\nlist\tmissing.txt\nlist\td/\n";
+        let paths = "first\td/a.txt\nlist\tb c.txt\n?list\tmissing.txt\nlist\td/\n";
         let status = Command::new("bash")
-            .args(["-c", RUNNER, "wdl", command, paths])
+            .args(["-c", RUNNER, "wdl", command, paths, "1", ""])
             .current_dir(work)
             .status()
             .expect("bash runs");
@@ -342,11 +385,72 @@ mod tests {
         assert_eq!(read(".wdl/out/list/000002/b c.txt").as_deref(), Some("y\n"));
         assert!(
             !work.join(".wdl/out/list/000003").exists(),
-            "a missing path is left out"
+            "a missing optional path is left out"
         );
         assert!(
             work.join(".wdl/out/list/000004/d/a.txt").is_file(),
             "a folder is copied"
         );
+    }
+
+    #[test]
+    fn missing_files_fail() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let run = |command: &str| {
+            let paths = "files\ta.txt\nfiles\tb.txt\n";
+            let status = Command::new("bash")
+                .args(["-c", RUNNER, "wdl", command, paths, "7", ""])
+                .current_dir(folder.path())
+                .status()
+                .expect("bash runs");
+            status.code()
+        };
+        assert_eq!(run("touch a.txt"), Some(7), "a required file is missing");
+        assert_eq!(run("exit 3"), Some(3), "the code of a failed command");
+        assert_eq!(run("touch a.txt b.txt"), Some(0));
+    }
+
+    #[test]
+    fn globs_match_files() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let work = folder.path();
+        let command = "mkdir -p out/sub && touch out/a.txt out/sub/b.txt";
+        let globs = "files\tout/[^/]*\nall\t.*\\.txt\n";
+        let status = Command::new("bash")
+            .args([
+                "-c",
+                RUNNER,
+                "wdl",
+                command,
+                "copy\tout/a.txt\n",
+                "1",
+                globs,
+            ])
+            .current_dir(work)
+            .status()
+            .expect("bash runs");
+        assert_eq!(status.code(), Some(0));
+        let found = |output: &str| {
+            let mut paths = Vec::new();
+            for entry in std::fs::read_dir(work.join(".wdl/out").join(output))
+                .into_iter()
+                .flatten()
+            {
+                let folder = entry.expect("an entry").path();
+                for file in std::fs::read_dir(&folder).expect("a folder") {
+                    let name = file.expect("a file").file_name();
+                    paths.push(name.to_string_lossy().into_owned());
+                }
+            }
+            paths.sort();
+            paths
+        };
+        assert_eq!(found("files"), ["a.txt"], "a glob matches no folders");
+        assert_eq!(
+            found("all"),
+            ["a.txt", "b.txt"],
+            "nor the copies of outputs"
+        );
+        assert_eq!(found("copy"), ["a.txt"]);
     }
 }

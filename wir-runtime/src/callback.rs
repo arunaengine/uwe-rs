@@ -58,15 +58,10 @@ impl Callbacks {
                 let compiled = match self.lowered.get(&key) {
                     Some(compiled) => compiled.clone(),
                     None => {
-                        let scope = (closure.scope.as_ref())
-                            .and_then(|scope| context.scopes.get(&scope.source));
+                        let scope = groovy::scope(context, closure.scope.as_ref());
                         let names = captures.keys().cloned().collect();
-                        let compiled = groovy::compile(
-                            &closure.code,
-                            &closure.library,
-                            scope.map(String::as_str),
-                            names,
-                        )?;
+                        let compiled =
+                            groovy::compile(&closure.code, &closure.library, scope, names)?;
                         let compiled = Rc::new(compiled);
                         self.lowered.insert(key, compiled.clone());
                         compiled

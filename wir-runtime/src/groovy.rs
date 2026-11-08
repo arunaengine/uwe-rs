@@ -15,24 +15,58 @@ use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{Object, PathValue, State, Value};
 use serde_json::{Map, Value as Json, json};
 
+use crate::engine::Context;
+use crate::nextflow_scope::{Launching, Scoped};
+
 /// The name of the function that gives the callback.
-const ENTRY: &str = "wir_callback";
+pub(crate) const ENTRY: &str = "wir_callback";
 
 /// Code of a source that a callback runs in, lowered once.
 pub struct Compiled {
     module: Rc<Module>,
     /// The names of the parameters of the entry function, in order.
     names: Vec<String>,
+    /// The callback of a Nextflow scope, which runs in an interpreter of the run instead.
+    nextflow: Option<Scoped>,
+}
+
+/// Where callback code runs: after the text of its scope, if it has one, or in the run of the
+/// Nextflow script of its scope.
+pub enum Scope<'a> {
+    Text(Option<&'a str>),
+    Nextflow(Box<Launching>),
+}
+
+/// The scope of a callback or expression of an op.
+pub fn scope<'a>(context: &Context<'a>, scope: Option<&wir::Scope>) -> Scope<'a> {
+    let Some(scope) = scope else {
+        return Scope::Text(None);
+    };
+    match crate::nextflow_scope::launching(context, &scope.source) {
+        Some(launching) => Scope::Nextflow(Box::new(launching)),
+        None => Scope::Text(context.scopes.get(&scope.source).map(String::as_str)),
+    }
 }
 
 /// Lowers `code` as the body of a function of `names`, after the `library` definitions and
-/// the text of the source of its scope, if it has one.
+/// the text of the source of its scope; a Nextflow scope loads its script with its includes.
 pub fn compile(
     code: &str,
     library: &[String],
-    scope: Option<&str>,
+    scope: Scope<'_>,
     names: Vec<String>,
 ) -> Result<Compiled, String> {
+    let scope = match scope {
+        Scope::Nextflow(launching) => {
+            let scoped = Scoped::load(*launching, code, library, names.clone())?;
+            return Ok(Compiled {
+                module: Rc::new(Module::default()),
+                names,
+                nextflow: Some(scoped),
+            });
+        }
+        Scope::Text(text) => text,
+    };
     let mut source = String::new();
     if let Some(text) = scope {
         source.push_str(text);
@@ -60,6 +94,7 @@ pub fn compile(
     Ok(Compiled {
         module: Rc::new(module),
         names,
+        nextflow: None,
     })
 }
 
@@ -73,6 +108,9 @@ impl Host for Quiet {
 impl Compiled {
     /// The value of the code for the values of its names.
     pub fn value(&self, values: &Map<String, Json>, base: &Path) -> Result<Json, String> {
+        if let Some(scoped) = &self.nextflow {
+            return scoped.run(values, None, base);
+        }
         let mut host = Quiet;
         let mut interpreter = Interpreter::new(&mut host);
         let result = self.run(&mut interpreter, values, base)?;
@@ -86,6 +124,9 @@ impl Compiled {
         arguments: &[Json],
         base: &Path,
     ) -> Result<Json, String> {
+        if let Some(scoped) = &self.nextflow {
+            return scoped.run(values, Some(arguments), base);
+        }
         let mut host = Quiet;
         let mut interpreter = Interpreter::new(&mut host);
         let Value::Closure(closure) = self.run(&mut interpreter, values, base)? else {
@@ -131,7 +172,7 @@ pub fn text(value: &Json, base: &Path) -> String {
 
 /// The sum of two values by Groovy's `+`, as Nextflow's `sum` adds them.
 pub fn add(left: &Json, right: &Json, base: &Path) -> Result<Json, String> {
-    let plus = compile("{ a, b -> a + b }", &[], None, Vec::new())?;
+    let plus = compile("{ a, b -> a + b }", &[], Scope::Text(None), Vec::new())?;
     plus.call(&Map::new(), &[left.clone(), right.clone()], base)
 }
 
@@ -267,10 +308,22 @@ mod tests {
     #[test]
     fn groovy_callbacks() {
         let base = Path::new("/data");
-        let twice = compile("{ x -> x * factor }", &[], None, vec!["factor".into()]).unwrap();
+        let twice = compile(
+            "{ x -> x * factor }",
+            &[],
+            Scope::Text(None),
+            vec!["factor".into()],
+        )
+        .unwrap();
         let values = Map::from_iter([("factor".into(), json!(3))]);
         assert_eq!(twice.call(&values, &[json!(7)], base).unwrap(), json!(21));
-        let pairs = compile("{ id, reads -> [id, reads.size()] }", &[], None, Vec::new()).unwrap();
+        let pairs = compile(
+            "{ id, reads -> [id, reads.size()] }",
+            &[],
+            Scope::Text(None),
+            Vec::new(),
+        )
+        .unwrap();
         let item = json!(["a", [1, 2]]);
         assert_eq!(
             pairs.call(&Map::new(), &[item], base).unwrap(),
@@ -278,10 +331,16 @@ mod tests {
             "a tuple fills the parameters"
         );
         let library = vec!["def shout(text) { text.toUpperCase() }".to_owned()];
-        let loud = compile("shout(inputs.word)", &library, None, vec!["inputs".into()]).unwrap();
+        let loud = compile(
+            "shout(inputs.word)",
+            &library,
+            Scope::Text(None),
+            vec!["inputs".into()],
+        )
+        .unwrap();
         let values = Map::from_iter([("inputs".into(), json!({"word": "hi"}))]);
         assert_eq!(loud.value(&values, base).unwrap(), json!("HI"));
-        assert!(compile("{ x -> ", &[], None, Vec::new()).is_err());
+        assert!(compile("{ x -> ", &[], Scope::Text(None), Vec::new()).is_err());
     }
 
     #[test]
@@ -297,10 +356,16 @@ mod tests {
         for form in forms {
             assert_eq!(to_json(&to_value(&form, base)).unwrap(), form, "{form}");
         }
-        let target = compile("{ key -> key.getGroupTarget() }", &[], None, Vec::new()).unwrap();
+        let target = compile(
+            "{ key -> key.getGroupTarget() }",
+            &[],
+            Scope::Text(None),
+            Vec::new(),
+        )
+        .unwrap();
         let key = json!({"class": "GroupKey", "target": "s1", "size": 2});
         assert_eq!(target.call(&Map::new(), &[key], base).unwrap(), json!("s1"));
-        let closure = compile("{ x -> { -> x } }", &[], None, Vec::new()).unwrap();
+        let closure = compile("{ x -> { -> x } }", &[], Scope::Text(None), Vec::new()).unwrap();
         let error = closure.call(&Map::new(), &[json!(1)], base).unwrap_err();
         assert!(error.contains("cannot cross a port"), "{error}");
     }

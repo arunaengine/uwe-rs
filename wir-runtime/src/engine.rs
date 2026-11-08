@@ -182,12 +182,8 @@ fn language_expr(
         };
         return code.value(&values, context.base);
     }
-    let scope = spec
-        .scope
-        .as_ref()
-        .and_then(|scope| context.scopes.get(&scope.source));
+    let scope = crate::groovy::scope(context, spec.scope.as_ref());
     let names = values.keys().cloned().collect();
-    let compiled =
-        crate::groovy::compile(&spec.code, &spec.library, scope.map(String::as_str), names)?;
+    let compiled = crate::groovy::compile(&spec.code, &spec.library, scope, names)?;
     compiled.value(&values, context.base)
 }

@@ -14,6 +14,8 @@ pub mod nextflow;
 mod plan;
 pub mod snakemake;
 mod state;
+#[allow(dead_code, reason = "the stream ops of the next commits use it")]
+mod streams;
 mod task;
 mod wdl;
 

@@ -124,6 +124,10 @@ pub struct Network {
     /// stay when nodes stop, for the cleanup.
     consumers: Vec<Vec<usize>>,
     wrote: Vec<Vec<ChannelId>>,
+    /// The workflow call that each node was made in, the calls, and the current one.
+    node_scopes: Vec<usize>,
+    scopes: Vec<crate::export::Scope>,
+    scope: usize,
 }
 
 /// What a running node can see: its inputs, the channels it writes, and the interpreter for
@@ -341,6 +345,97 @@ impl Network {
         });
         self.queued.push(false);
         self.wrote.push(Vec::new());
+        self.node_scopes.push(self.scope);
+    }
+
+    /// Starts a workflow call, whose nodes the export keeps together.
+    pub(crate) fn enter(&mut self, name: &str, takes: Vec<usize>) {
+        if self.scopes.is_empty() {
+            self.scopes.push(crate::export::Scope {
+                name: String::new(),
+                parent: None,
+                takes: Vec::new(),
+                emits: Vec::new(),
+            });
+        }
+        self.scopes.push(crate::export::Scope {
+            name: name.into(),
+            parent: Some(self.scope),
+            takes,
+            emits: Vec::new(),
+        });
+        self.scope = self.scopes.len() - 1;
+    }
+
+    /// Ends the current workflow call with the channels it emits.
+    pub(crate) fn leave(&mut self, emits: Vec<(Option<String>, usize)>) {
+        let Some(scope) = self.scopes.get_mut(self.scope) else {
+            return;
+        };
+        scope.emits = emits;
+        self.scope = scope.parent.unwrap_or(0);
+    }
+
+    /// The network as plain data, before it starts; `emits` are the entry workflow's.
+    pub(crate) fn export(
+        &mut self,
+        emits: Vec<(String, usize)>,
+    ) -> Result<crate::export::Network, String> {
+        self.wire_topics();
+        let written: HashSet<ChannelId> = (self.nodes.iter())
+            .flat_map(|node| node.outputs.iter().copied())
+            .collect();
+        let channels = (0..self.channels.len())
+            .map(|index| {
+                let channel = ChannelId(index as u32);
+                let bound = match written.contains(&channel) {
+                    true => None,
+                    false => self
+                        .bound(channel)
+                        .map(|value| crate::bridge::to_json(&value)),
+                };
+                Ok(crate::export::Channel {
+                    value: self.is_value(channel),
+                    bound: bound.transpose()?,
+                })
+            })
+            .collect::<Result<_, String>>()?;
+        let mut nodes = Vec::new();
+        for (index, node) in self.nodes.iter().enumerate() {
+            let behaviour = node.behaviour.as_ref();
+            let kind = behaviour.map_or(Err("a running node".into()), |node| node.export());
+            let kind = kind.unwrap_or_else(crate::export::Kind::Opaque);
+            nodes.push(crate::export::Node {
+                name: node.name.to_string(),
+                scope: self.node_scopes[index],
+                inputs: node
+                    .inputs
+                    .iter()
+                    .map(|input| input.channel.0 as usize)
+                    .collect(),
+                outputs: node
+                    .outputs
+                    .iter()
+                    .map(|output| output.0 as usize)
+                    .collect(),
+                kind,
+            });
+        }
+        let mut scopes = std::mem::take(&mut self.scopes);
+        if scopes.is_empty() {
+            scopes.push(crate::export::Scope {
+                name: String::new(),
+                parent: None,
+                takes: Vec::new(),
+                emits: Vec::new(),
+            });
+        }
+        Ok(crate::export::Network {
+            channels,
+            nodes,
+            scopes,
+            emits,
+        })
     }
 
     /// Frees the files of the run's folder once no node can pass them on any more.
@@ -427,7 +522,16 @@ impl Network {
 
     /// Starts every node in the order it was created, then runs until nothing is waiting.
     pub fn ignite(&mut self, interpreter: &mut Interpreter) -> Result<(), Error> {
-        // Each topic that a script reads mixes all its sources, or is empty without any.
+        self.wire_topics();
+        for index in 0..self.nodes.len() {
+            self.step(index, interpreter, Step::Ignite)?;
+            self.enqueue(index);
+        }
+        self.run(interpreter)
+    }
+
+    /// Each topic that a script reads mixes all its sources, or is empty without any.
+    fn wire_topics(&mut self) {
         for (name, (channel, sources)) in std::mem::take(&mut self.topics) {
             let Some(output) = channel else {
                 continue;
@@ -441,11 +545,6 @@ impl Network {
             self.fresh = vec![output];
             self.add(&format!("topic {name}"), &sources, Box::new(mix));
         }
-        for index in 0..self.nodes.len() {
-            self.step(index, interpreter, Step::Ignite)?;
-            self.enqueue(index);
-        }
-        self.run(interpreter)
     }
 
     /// Runs the nodes that have messages waiting until there are none.

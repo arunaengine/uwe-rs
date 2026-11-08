@@ -282,7 +282,10 @@ impl Interpreter<'_> {
             }
             (None, Some(workflow)) => {
                 self.workflow_path.push(name.into());
+                self.host
+                    .enter_workflow(&self.workflow_path.join(":"), &arguments);
                 let result = self.call_workflow(&target, &workflow, arguments, span);
+                self.host.leave_workflow(result.as_ref().ok());
                 self.workflow_path.pop();
                 match target.types {
                     true => typed_result(result?),

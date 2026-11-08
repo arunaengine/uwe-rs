@@ -3,12 +3,12 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nextflow_runtime::export::{Kind, Network};
 use serde_json::{Value as Json, json};
 
-use crate::operators::{End, Piece, Place, end, piece, port};
+use crate::operators::{End, Piece, Place, edge, end, piece, port};
 use crate::{Context, Kept, Sources};
 
 /// What a channel without a node that writes it holds.
@@ -73,6 +73,10 @@ struct Lowerer<'a> {
 struct Draft {
     ops: Vec<Json>,
     edges: Vec<Json>,
+    /// The ops that turn a value channel into a stream, or a literal into one, by channel.
+    streams: BTreeMap<usize, String>,
+    /// The ops that turn a stream of a node into its value channel, by channel.
+    values: BTreeMap<usize, String>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -297,7 +301,7 @@ impl<'a> Lowerer<'a> {
             outputs.push(port(&output, stream));
             let from = match self.literal(channel) {
                 Some(_) => return Err(kept(&output, "an output that the graph binds")),
-                None => self.writer(scope, channel)?,
+                None => self.writer(scope, channel, &mut draft)?,
             };
             if from.stream != stream {
                 return Err(kept(&output, "an output of the wrong flow"));
@@ -329,12 +333,50 @@ impl<'a> Lowerer<'a> {
                 default(draft, reader, value);
                 return Ok(());
             }
-            Some(_) => return Err(kept(&reader.op, "a literal where the op reads a stream")),
-            None => self.writer(scope, channel)?,
+            Some(literal) => {
+                let path = format!("literal.{channel}");
+                if !draft.streams.contains_key(&channel) {
+                    let (each, value) = match literal {
+                        Literal::Value(value) => (false, value),
+                        Literal::Empty => (true, json!([])),
+                    };
+                    let source = json!({"name": "source", "type": "dynamic", "default": value});
+                    let mut kind = json!({});
+                    if each {
+                        kind["each"] = json!(true);
+                    }
+                    draft.ops.push(json!({
+                        "path": path,
+                        "kind": {"emit": kind},
+                        "inputs": [source],
+                        "outputs": [port("out", true)],
+                    }));
+                    draft.streams.insert(channel, path.clone());
+                }
+                end(&draft.streams[&channel], "out", true)
+            }
+            None => self.writer(scope, channel, draft)?,
         };
-        if from.stream != reader.stream {
-            return Err(kept(&reader.op, "a channel of the other flow"));
-        }
+        let from = match (from.stream, reader.stream) {
+            (false, true) => {
+                let path = format!("emit.{channel}");
+                if !draft.streams.contains_key(&channel) {
+                    draft.ops.push(json!({
+                        "path": path,
+                        "kind": {"emit": {}},
+                        "inputs": [port("source", false)],
+                        "outputs": [port("out", true)],
+                    }));
+                    draft.edges.push(
+                        json!({"from": endpoint(&from), "to": {"op": path, "port": "source"}}),
+                    );
+                    draft.streams.insert(channel, path.clone());
+                }
+                end(&draft.streams[&channel], "out", true)
+            }
+            (true, false) => return Err(kept(&reader.op, "a stream where the op reads a value")),
+            _ => from,
+        };
         draft
             .edges
             .push(json!({"from": endpoint(&from), "to": {"op": reader.op, "port": reader.port}}));
@@ -343,7 +385,7 @@ impl<'a> Lowerer<'a> {
 
     /// Where a channel comes from in a graph: a piece of the graph, a call of a child graph
     /// that holds its writer, or an input of the graph.
-    fn writer(&self, scope: usize, channel: usize) -> Result<End, Kept> {
+    fn writer(&self, scope: usize, channel: usize, draft: &mut Draft) -> Result<End, Kept> {
         let value = self.network.channels[channel].value;
         let Some((node, output)) = self.producer[channel] else {
             return Err(kept(
@@ -356,7 +398,26 @@ impl<'a> Lowerer<'a> {
             let piece = self.pieces[node]
                 .as_ref()
                 .ok_or_else(|| kept(&self.paths[node], "a node without ops"))?;
-            return Ok(piece.outputs[output].clone());
+            let from = piece.outputs[output].clone();
+            if !(from.stream && value) {
+                return Ok(from);
+            }
+            // A stream op that writes a value channel, like a branch of a value, gives its
+            // first item.
+            let path = format!("first.{channel}");
+            if !draft.values.contains_key(&channel) {
+                draft.ops.push(json!({
+                    "path": path,
+                    "kind": {"first": {}},
+                    "inputs": [port("source", true)],
+                    "outputs": [port("out", false)],
+                }));
+                draft
+                    .edges
+                    .push(edge(&from.op, &from.port, &path, "source"));
+                draft.values.insert(channel, path.clone());
+            }
+            return Ok(end(&draft.values[&channel], "out", false));
         }
         let port_name = format!("channel.{channel}");
         if self.inside(scope, writer_scope) {

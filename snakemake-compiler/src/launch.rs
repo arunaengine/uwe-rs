@@ -37,35 +37,55 @@ pub(crate) fn values(params: &[(String, String)]) -> Json {
 /// The launch that the job of `rule` plans with: its Snakefile and config files below `base`,
 /// its profiles, targets, config values and options; the caller sets the scratch folder.
 pub fn job_launch(document: &Document, rule: &RuleTask, base: &Path) -> Result<Launch, String> {
-    let location = |id: &str| {
-        let source = document.sources.iter().find(|source| source.id == id);
-        let source = source.ok_or_else(|| format!("no source {id}"))?;
-        Ok::<_, String>(source.location.clone())
-    };
+    let location = |id: &str| located(document, id).map(|location| base.join(location));
     let reference = &rule.task;
-    let configs = (reference.configs.iter())
-        .map(|id| location(id).map(|location| base.join(location)))
-        .collect::<Result<_, _>>()?;
-    let params = match &rule.config_values {
-        Some(id) => read_values(&location(id)?, base)?,
-        None => Vec::new(),
+    let configs = reference.configs.iter().map(|id| location(id));
+    let run = Launch {
+        target: location(&reference.source)?,
+        configs: configs.collect::<Result<_, _>>()?,
+        ..Launch::default()
     };
+    Ok(plan_launch(rule, rule_values(document, rule, base)?, run))
+}
+
+/// The launch `run` with the profiles, targets, options and config values `params` of the
+/// plan of `rule`.
+pub fn plan_launch(rule: &RuleTask, params: Vec<(String, String)>, run: Launch) -> Launch {
     let targets = match rule.targets.is_empty() {
-        true => vec![reference.entry.clone()],
+        true => vec![rule.task.entry.clone()],
         false => rule.targets.clone(),
     };
-    Ok(Launch {
-        target: base.join(location(&reference.source)?),
+    Launch {
         params,
-        configs,
-        profiles: reference.profiles.clone(),
+        profiles: rule.task.profiles.clone(),
         targets,
         until: rule.until.clone(),
         omit_from: rule.omit_from.clone(),
         forcerun: rule.forcerun.clone(),
         forceall: rule.forceall,
-        ..Launch::default()
-    })
+        ..run
+    }
+}
+
+/// The config values of the command line that the plan of `rule` has, from the sources of
+/// `document`, whose relative locations start from `base`.
+pub fn rule_values(
+    document: &Document,
+    rule: &RuleTask,
+    base: &Path,
+) -> Result<Vec<(String, String)>, String> {
+    match &rule.config_values {
+        Some(id) => read_values(&located(document, id)?, base),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn located(document: &Document, id: &str) -> Result<String, String> {
+    let source = document.sources.iter().find(|source| source.id == id);
+    Ok(source
+        .ok_or_else(|| format!("no source {id}"))?
+        .location
+        .clone())
 }
 
 /// The identity of the job of `rule` in the plan of its launch.

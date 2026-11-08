@@ -85,6 +85,20 @@ pub(crate) fn piece(
                 ..Piece::default()
             }
         }
+        // A value channel that is never bound, like `channel.value()`, closes empty.
+        Kind::Values {
+            values,
+            close: false,
+        } if values.is_empty() && place.values_out[0] => {
+            let mut piece = chain(
+                path,
+                ("emit", json!({"each": true}), false, true),
+                ("first", json!({}), true, false),
+            );
+            piece.ops[0]["inputs"][0]["default"] = json!([]);
+            piece.inputs.clear();
+            piece
+        }
         Kind::Values { .. } => return Err("a value channel that the graph binds".into()),
         Kind::Source { factory, arguments } => source(path, factory, arguments, place)?,
         Kind::Map(callback) => same("transform", json!({"body": body(callback)})),

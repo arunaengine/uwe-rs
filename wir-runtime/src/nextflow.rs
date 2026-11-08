@@ -93,7 +93,6 @@ impl Block for Nextflow {
 /// Runs `nextflow_process` tasks through adapters whose drivers get their settings from
 /// `options`, launched in the working folder, as a Nextflow run alone is.
 pub fn register(adapters: &mut Adapters, options: Options) {
-    crate::nextflow_scope::use_options(options.clone());
     adapters.register("nextflow_process", move |opening| open(opening, &options));
 }
 

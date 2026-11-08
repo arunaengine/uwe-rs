@@ -131,49 +131,37 @@ impl Interpreter<'_> {
     ) -> Result<Option<Value>, Error> {
         let host_error = |error: Error| error.or_at(span);
         match (name, arguments) {
-            // Records of a file, which is decompressed first when its name ends with `.gz`.
-            ("splitCsv", [] | [Value::Map(_)]) => {
-                let mut bytes = self.host.read(path).map_err(host_error)?;
-                if path.name().ends_with(".gz") {
-                    let mut decoded = Vec::new();
-                    let mut decoder = flate2::read::MultiGzDecoder::new(bytes.as_slice());
-                    std::io::Read::read_to_end(&mut decoder, &mut decoded).map_err(|error| {
-                        let message = format!("Cannot decompress {}: {error}", path.uri());
-                        let exception = crate::exception::Exception::new("ZipException", message);
-                        super::super::thrown(exception, span)
-                    })?;
-                    bytes = decoded;
-                }
-                let text = String::from_utf8_lossy(&bytes);
-                let simulated = self.host.simulated();
-                return super::csv_records(&text, arguments.first(), simulated)
-                    .map(Some)
-                    .map_err(|exception| super::super::thrown(exception, span));
-            }
-            // The records of a file, as the operators of these names read them. With
-            // `file: true`, or a folder, each chunk is a file.
+            // The records of a file, as the operators of these names read them, a part at a
+            // time. `splitCsv` gives single records and always decompresses `.gz` files. With
+            // `file: true`, or a folder, each chunk of the others is a file.
             (
-                "splitText" | "splitFasta" | "splitFastq" | "splitJson" | "countLines"
+                "splitCsv" | "splitText" | "splitFasta" | "splitFastq" | "splitJson" | "countLines"
                 | "countFasta" | "countFastq",
                 [] | [Value::Map(_)],
             ) => {
                 let options = arguments.first();
-                let mut bytes = self.host.read(path).map_err(host_error)?;
-                let decompress = split::option(options, "decompress").is_none_or(|v| v.truth());
-                if path.name().ends_with(".gz") && decompress {
-                    bytes = split::decompressed(&bytes, path)
-                        .map_err(|exception| super::super::thrown(exception, span))?;
-                }
-                let text = String::from_utf8_lossy(&bytes);
+                let csv = name == "splitCsv";
+                let decompress =
+                    csv || split::option(options, "decompress").is_none_or(|v| v.truth());
                 let mut splitter = Splitter::new(name, options);
                 splitter.simulated = self.host.simulated();
-                let chunks = splitter
-                    .chunks(&text)
-                    .map_err(|exception| super::super::thrown(exception, span))?;
-                if name.starts_with("count") {
-                    return Ok(Some(Value::Number(Number::Long(chunks.len() as i64))));
+                if csv {
+                    splitter.by = None;
                 }
-                let Some(files) = split::option(options, "file").filter(Value::truth) else {
+                let thrown = |exception| super::super::thrown(exception, span);
+                let reader = self.host.open(path).map_err(host_error)?;
+                let chunks = splitter.file(reader, path, decompress).map_err(thrown)?;
+                if name.starts_with("count") {
+                    let mut count = 0;
+                    for chunk in chunks {
+                        chunk.map_err(thrown)?;
+                        count += 1;
+                    }
+                    return Ok(Some(Value::Number(Number::Long(count))));
+                }
+                let files = split::option(options, "file").filter(|file| !csv && file.truth());
+                let Some(files) = files else {
+                    let chunks = chunks.collect::<Result<Vec<_>, _>>().map_err(thrown)?;
                     return Ok(Some(Value::list(chunks)));
                 };
                 // As Nextflow's `AbstractTextSplitter`: a folder gets chunks named after the
@@ -200,8 +188,9 @@ impl Interpreter<'_> {
                     ),
                 };
                 let mut paths = Vec::new();
-                for (index, chunk) in chunks.iter().enumerate() {
+                for (index, chunk) in chunks.enumerate() {
                     let file = directory.resolve(&chunk_name(&named, index + 1));
+                    let chunk = chunk.map_err(thrown)?;
                     self.host
                         .write(&file, chunk.to_string().as_bytes())
                         .map_err(host_error)?;

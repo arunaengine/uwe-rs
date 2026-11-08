@@ -183,7 +183,7 @@ impl<B: Backend> Runner<B> {
         }
         for group in groups {
             let runner = self.clone();
-            tokio::spawn(async move { runner.run_group(group).await });
+            tokio::spawn(async move { runner.scoped(runner.run_group(group)).await });
         }
     }
 

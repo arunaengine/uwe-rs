@@ -104,6 +104,7 @@ pub(crate) fn real<B: executor::Backend>(
     executor.check_reproducibility(arguments.check_reproducibility.unwrap_or(0.0));
     executor.pin_images(&pinned.images);
     executor.network = network_rule(arguments, setup);
+    executor.use_registry(setup.registry.clone());
     // A resumed run takes the results of its lineage, also of images without a digest.
     if arguments.resume.is_some() {
         let broken = |error: run_database::DatabaseError| Failure::setup(format!("uwe: {error}"));

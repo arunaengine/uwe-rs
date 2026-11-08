@@ -312,7 +312,7 @@ impl<'a> Engine<'a> {
                 }
             }
             // After a failure that ends the run once the running tasks have ended, no task
-            // starts: neither one of the queue nor one that waits in the executor.
+            // starts: not one of the queue, a planned retry or one that waits in the executor.
             if !draining && driver.draining() {
                 draining = true;
                 queue.clear();

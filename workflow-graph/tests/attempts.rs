@@ -778,6 +778,80 @@ fn draining_skips_retries() {
 }
 
 #[test]
+fn draining_drops_planned() {
+    // Task 1 fails only once task 2 waits for its retry after a machine failure, so the run
+    // drains before that retry is due.
+    struct Planned {
+        calls: Vec<TaskId>,
+        planned: CancellationToken,
+    }
+    impl Executor for Planned {
+        fn run(&mut self, attempt: Attempt) -> Running {
+            let id = attempt.task.id;
+            self.calls.push(id);
+            if id == TaskId(2) {
+                return Running::ended(Err(ExecuteError::Machine {
+                    task: attempt.task.name.clone(),
+                    message: "machine failed".into(),
+                }));
+            }
+            let planned = self.planned.clone();
+            Running::new(async move {
+                planned.cancelled().await;
+                Ok(Outcome {
+                    id,
+                    exit_code: 1,
+                    ..Outcome::default()
+                })
+            })
+        }
+    }
+    struct Watch {
+        finished: Vec<(TaskId, u32, bool)>,
+        planned: CancellationToken,
+    }
+    impl Observer for Watch {
+        fn event(&mut self, event: Event<'_>) {
+            if let Event::Finished {
+                outcome,
+                attempt,
+                retried,
+            } = event
+            {
+                self.finished.push((outcome.id, attempt, retried));
+                if retried {
+                    self.planned.cancel();
+                }
+            }
+        }
+    }
+    let planned = CancellationToken::new();
+    let mut driver = Draining {
+        first: vec![task(1, &[]), task(2, &[])],
+        ..Draining::default()
+    };
+    let mut executor = Planned {
+        calls: Vec::new(),
+        planned: planned.clone(),
+    };
+    let mut watch = Watch {
+        finished: Vec::new(),
+        planned,
+    };
+    let execution = Engine::new(&mut executor)
+        .options(options(2, Order::Finished))
+        .retry_delay(Duration::from_secs(60))
+        .observer(&mut watch)
+        .run("draining-planned", &mut driver);
+    assert_eq!(execution.error.unwrap().to_string(), "a task failed");
+    assert_eq!(executor.calls, [TaskId(1), TaskId(2)]);
+    assert_eq!(
+        watch.finished,
+        [(TaskId(2), 1, true), (TaskId(1), 1, false)]
+    );
+}
+
+#[test]
 fn preserves_failure_cause() {
     struct Hook {
         calls: usize,

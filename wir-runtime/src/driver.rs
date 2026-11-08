@@ -24,6 +24,7 @@ use crate::inputs;
 use crate::nextflow;
 use crate::operator;
 use crate::plan::plan;
+use crate::processes;
 use crate::snakemake;
 use crate::state::{Progress, widen};
 use crate::task;
@@ -174,6 +175,8 @@ pub struct WirDriver {
     operators: operator::Running,
     /// Stream ops have steps left to take on the next wake.
     stepping: bool,
+    /// The processes that run, by node.
+    processes: processes::Processes,
     /// The text of each source that a scope names, by source id.
     scopes: HashMap<String, String>,
     /// The file area of the run, made when an op of the document writes files.
@@ -225,6 +228,7 @@ impl WirDriver {
             ended: false,
             operators: operator::Running::new(),
             stepping: false,
+            processes: processes::Processes::new(),
             scopes: HashMap::new(),
             file_area: PathBuf::new(),
         }
@@ -267,7 +271,7 @@ impl WirDriver {
                 continue;
             }
             if passes == PASSES {
-                self.stepping = !self.operators.is_empty();
+                self.stepping = !self.operators.is_empty() || !self.processes.is_empty();
                 break;
             }
             passes += 1;
@@ -279,7 +283,10 @@ impl WirDriver {
                 files: &self.file_area,
                 printer: &self.settings.print_sink,
             };
-            if !operator::step_all(&mut self.progress, &mut self.operators, &context) {
+            let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
+            let rounds =
+                processes::step_all(&mut self.progress, &self.document, &mut self.processes);
+            if !stepped && !rounds {
                 break;
             }
         }
@@ -288,6 +295,11 @@ impl WirDriver {
 
     /// Starts a node with its input values; the tasks it asks for.
     fn begin(&mut self, at: usize, bound: Map<String, Json>) -> Result<Vec<Task>, DriverError> {
+        if let Kind::Process(spec) = &self.progress.node(at).op.kind {
+            let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at));
+            self.processes.insert(at, rounding);
+            return Ok(Vec::new());
+        }
         if let Some(stepped) = operator::make(self.progress.node(at)) {
             self.operators.insert(at, stepped);
             return Ok(Vec::new());
@@ -734,6 +746,13 @@ impl Driver for WirDriver {
 
     fn finish(&mut self) -> Result<(), DriverError> {
         operator::cancel_all(&mut self.progress, &mut self.operators);
+        for at in std::mem::take(&mut self.processes).into_keys() {
+            let path = self.progress.node(at).path.clone();
+            self.progress.end(at, Status::Cancelled, Map::new(), None);
+            self.progress
+                .failures
+                .push(format!("op {path}: its rounds never ended"));
+        }
         for index in 0..self.children.len() {
             if !self.children[index].1.finished() {
                 self.end_child(index);

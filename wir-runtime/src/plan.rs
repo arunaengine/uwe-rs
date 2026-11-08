@@ -181,6 +181,7 @@ fn supported(kind: &Kind) -> bool {
             | Kind::Observe(_)
             | Kind::CollectFile(_)
             | Kind::StatusGroup(_)
+            | Kind::Process(_)
     )
 }
 

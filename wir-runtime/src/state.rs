@@ -184,6 +184,20 @@ impl Progress {
         counts
     }
 
+    /// Why the ops inside a call or a round failed, joined.
+    pub fn reasons(&self, at: usize) -> String {
+        let reasons: Vec<&str> = (self.inner.iter())
+            .filter(|(call, _)| *call == at)
+            .map(|(_, why)| why.as_str())
+            .collect();
+        reasons.join("; ")
+    }
+
+    /// Whether an output of an ended node closed empty.
+    pub fn closed_empty(&self, at: usize, port: &str) -> bool {
+        self.empty.contains(&(at, port.to_owned()))
+    }
+
     /// Ends a node whose outputs `empty` closed empty, with the values of its other outputs.
     pub fn end_with(
         &mut self,

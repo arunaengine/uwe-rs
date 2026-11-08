@@ -32,6 +32,10 @@ impl<'d> Checker<'d> {
                     self.scope(at, scope, expr.language);
                 }
             }
+            Kind::Load(_) => match (op.inputs.as_slice(), op.outputs.as_slice()) {
+                ([input], [output]) => self.gives(at, output, &input.r#type),
+                _ => self.report(at, Problem::Unary("a load".into())),
+            },
             Kind::Emit(emit) => self.emit(at, op, emit),
             Kind::Transform(transform) => self.transform(at, op, transform),
             Kind::Filter(filter) => self.filter(at, op, &filter.body),

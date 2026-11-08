@@ -336,6 +336,14 @@
             "captures": { "$ref": "#/$defs/captures" }
           }
         },
+        "load": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "contents": { "type": "boolean" },
+            "listing": { "enum": ["shallow", "deep"] }
+          }
+        },
         "map": {
           "type": "object",
           "additionalProperties": false,

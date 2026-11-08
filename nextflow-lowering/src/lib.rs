@@ -9,6 +9,7 @@ mod operators;
 mod process;
 mod shapes;
 mod sources;
+mod start;
 
 use std::path::{Path, PathBuf};
 

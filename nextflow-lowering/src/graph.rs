@@ -56,6 +56,7 @@ pub(crate) fn lower(
     for scope in 0..network.scopes.len() {
         graphs.push(lowerer.graph(scope)?);
     }
+    crate::start::ops(network, &mut graphs[0])?;
     graphs.extend(bodies);
     Ok(graphs)
 }

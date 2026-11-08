@@ -31,7 +31,8 @@ pub(crate) fn process(
     // A call of value channels reads them as streams, so that an empty one runs no task and
     // closes the outputs empty, as in Nextflow; it runs at most one round.
     let reads = |value: &bool| !value || call.singleton;
-    let streams = place.values_in.iter().any(reads);
+    // `each` inputs run several rounds, which give streams too.
+    let streams = place.values_in.iter().any(reads) || !definition.each.is_empty();
     let source = sources.script(&call.script);
     let inputs: Vec<String> = (0..place.values_in.len())
         .map(|index| format!("input.{index}"))

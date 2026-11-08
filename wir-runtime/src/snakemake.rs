@@ -1,6 +1,5 @@
-//! Snakemake native blocks: the Snakemake driver of uwe as a child that starts in a folder of
-//! its own, with the op inputs as config, and its target files as op outputs. And the adapter
-//! of `snakemake_job` tasks, which runs the jobs of a compiled plan through one session.
+//! Snakemake native blocks, a child driver in a folder of its own with the op inputs as config,
+//! and the adapter of `snakemake_job` tasks, which runs compiled jobs through one session.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

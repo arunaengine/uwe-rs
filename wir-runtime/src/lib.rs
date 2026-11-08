@@ -5,6 +5,8 @@
 
 mod argo;
 mod arrays;
+#[allow(dead_code, reason = "the stream ops of the next commits call it")]
+mod callback;
 mod child;
 pub mod cwl;
 mod driver;

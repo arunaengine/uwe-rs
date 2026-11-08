@@ -153,6 +153,13 @@ fn unrun(op: &Op) -> Option<&'static str> {
     }
 }
 
+/// Plans one graph of a document as if it were the entry, like the graph of a callback.
+pub fn graph_plan(document: &Document, name: &str) -> Result<Plan, DriverError> {
+    let mut nodes = Vec::new();
+    let outputs = instantiate(document, graph(document, name)?, ("", ""), None, &mut nodes)?;
+    Ok(Plan { nodes, outputs })
+}
+
 fn graph<'d>(document: &'d Document, name: &str) -> Result<&'d Graph, DriverError> {
     (document.graphs.iter().find(|graph| graph.name == name))
         .ok_or_else(|| DriverError::new(format!("the document has no graph {name}")))

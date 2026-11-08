@@ -568,3 +568,45 @@ fn runs_compiled_texts() {
     assert_eq!(ran_tasks(&mut wir, &root.join("wir")), expected);
     assert_eq!(expected.len(), 2, "{expected:?}");
 }
+
+#[test]
+fn compiles_dag_in_dependency_order() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - name: b
+        template: say
+        depends: a
+        hooks: {exit: {template: say}}
+        arguments: {parameters: [{name: text, value: "{{tasks.a.outputs.result}}"}]}
+      - name: a
+        template: say
+        onExit: say
+      - {name: c, template: say, depends: b}
+  - name: say
+    inputs: {parameters: [{name: text, value: x}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+    let (document, kept) = compiled(folder.path(), spec);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let edges = main["edges"].as_array().unwrap();
+    let read = json!({"op": "b", "port": "tasks.a.outputs.result"});
+    let wired = edges.iter().find(|edge| edge["to"] == read);
+    assert_eq!(
+        wired.unwrap()["from"],
+        json!({"op": "a", "port": "outputs.result"})
+    );
+    let waits = |path: &str| -> Vec<Json> {
+        let after = op(main, path)["after"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        after.iter().map(|after| after["op"].clone()).collect()
+    };
+    assert_eq!(waits("b"), [json!("a.onExit")]);
+    assert_eq!(waits("c"), [json!("b.onExit")]);
+}

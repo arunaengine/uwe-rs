@@ -338,8 +338,11 @@ impl Compiler {
             ancestors.insert(name.clone(), all);
         }
         let mut hooks: BTreeMap<String, String> = BTreeMap::new();
-        let declared = (dag.tasks.iter()).filter(|task| order.contains(&task.name));
-        for task in declared.collect::<Vec<_>>() {
+        // Dependencies first, so that a task sees the outputs and hooks of those it waits for.
+        let ordered = order
+            .iter()
+            .filter_map(|name| dag.tasks.iter().find(|t| t.name == *name));
+        for task in ordered.collect::<Vec<_>>() {
             let raw = (raw.iter())
                 .find(|node| node.get("name").and_then(Node::as_str) == Some(&task.name));
             let Some(raw) = raw else { continue };

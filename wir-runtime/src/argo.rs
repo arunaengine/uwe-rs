@@ -10,7 +10,7 @@ use std::time::Instant;
 use argo_runtime::adapter::{Adapter, CallId as ArgoCall, Form, Instance};
 use serde_json::{Map, Value as Json};
 use wir::{Binding, ExprForm, Port, PortMap, TaskBuilder, TaskRef, TypeDef};
-use workflow_graph::{DriverError, Launch, Outcome, Task, TaskId};
+use workflow_graph::{Delivery, DriverError, ExecuteError, Launch, Outcome, Task, TaskId};
 
 use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use crate::child::Block;
@@ -44,9 +44,11 @@ pub fn register(mut adapters: Adapters, services: argo_runtime::Services) -> Ada
         if let Some(files) = &opening.files {
             adapter.use_files(files.clone());
         }
+        let results = (!opening.launch.simulated).then(|| opening.output.clone());
         let tasks = ArgoTasks {
             adapter,
             calls: BTreeMap::new(),
+            results,
         };
         Ok(Box::new(tasks) as Box<dyn TaskAdapter>)
     });
@@ -87,6 +89,21 @@ pub(crate) fn load(
     Adapter::load(&launch, services.clone())
 }
 
+/// The configs of an Argo source: those of its task or native ops, which an argo expr op
+/// substitutes its text with too.
+pub(crate) fn configs_of(document: &wir::Document, source: &str) -> Vec<String> {
+    let ops = document.graphs.iter().flat_map(|graph| &graph.ops);
+    let configs = ops.filter_map(|op| match &op.kind {
+        wir::Kind::Task(wir::Task {
+            builder: Some(TaskBuilder::ArgoTask(task)),
+            ..
+        }) if task.source == source => Some(&task.configs),
+        wir::Kind::Native(native) if native.source == source => Some(&native.configs),
+        _ => None,
+    });
+    configs.into_iter().next().cloned().unwrap_or_default()
+}
+
 /// The value of an argo expr op, substituted by the adapter of its source.
 pub(crate) fn evaluate(
     adapter: &mut Adapter,
@@ -120,6 +137,8 @@ struct ArgoTasks {
     adapter: Adapter,
     /// The calls that have not ended, with the op instance and the outputs of their task.
     calls: BTreeMap<ArgoCall, (CallId, Vec<PortMap>)>,
+    /// The results folder that the output artifacts go to once the run ends, as natively.
+    results: Option<PathBuf>,
 }
 
 impl ArgoTasks {
@@ -177,6 +196,10 @@ impl TaskAdapter for ArgoTasks {
         self.adapter.take_acceptance(task, attempt)
     }
 
+    fn handles_error(&self, task: TaskId, error: &ExecuteError) -> bool {
+        self.adapter.handles_error(task, error)
+    }
+
     /// A call that waits, like for the backoff of a retry; the deadline of the workflow alone
     /// keeps no run waiting once its calls ended.
     fn wake_at(&self) -> Option<Instant> {
@@ -190,6 +213,17 @@ impl TaskAdapter for ArgoTasks {
 
     fn cancellations(&mut self) -> Vec<TaskId> {
         self.adapter.cancellations()
+    }
+
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        self.adapter.take_deliveries()
+    }
+
+    fn end(&mut self, _failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        if let Some(results) = &self.results {
+            self.adapter.finish(results);
+        }
+        Ok(self.adapter.take_deliveries())
     }
 
     /// Argo names its tasks by their node names, as the native run does.
@@ -236,21 +270,28 @@ fn tag(map: &PortMap) -> &str {
     (map.native.split_once('/')).map_or(map.native.as_str(), |(_, name)| name)
 }
 
-/// How a call ended in wir: its outputs by port when it succeeded.
+/// How a call ended in wir: its outputs by port when it succeeded, and those that Argo gives a
+/// skipped step, like the defaults of its output parameters.
 fn ended(ending: &argo_runtime::adapter::Ending, outputs: &[PortMap]) -> Ending {
     let facts = &ending.facts;
+    let given = |map: &PortMap| {
+        ending
+            .outputs
+            .get(tag(map))
+            .map(|v| (map.port.clone(), v.clone()))
+    };
+    // An output that Argo gives no value is null, so that a step reading it still runs and
+    // takes its own default, as the native run does.
+    let values =
+        (outputs.iter()).map(|map| given(map).unwrap_or_else(|| (map.port.clone(), Json::Null)));
     if facts.succeeded {
-        let values = (outputs.iter()).map(|map| {
-            let value = ending.outputs.get(tag(map)).cloned().unwrap_or(Json::Null);
-            (map.port.clone(), value)
-        });
         return Ending::Succeeded {
             values: values.collect(),
             empty: Vec::new(),
         };
     }
     match (facts.skipped || facts.omitted, facts.errored) {
-        (true, _) => Ending::Skipped(serde_json::Map::new()),
+        (true, _) => Ending::Skipped(values.collect()),
         (false, true) => Ending::Errored(ending.message.clone()),
         (false, false) => Ending::Failed(ending.message.clone()),
     }

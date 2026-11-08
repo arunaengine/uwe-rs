@@ -145,6 +145,10 @@ impl Compiler {
                     "an input parameter of a steps or DAG template reads valueFrom",
                 ));
             }
+            if value.is_some_and(|value| crate::tags::has_tag(&value.0)) {
+                let reason = format!("input parameter {} has a value with tags", parameter.name);
+                return Err(at(&reason));
+            }
             inputs.push(input);
         }
         for artifact in &template.inputs.artifacts {
@@ -338,8 +342,12 @@ impl Compiler {
             ancestors.insert(name.clone(), all);
         }
         let mut hooks: BTreeMap<String, String> = BTreeMap::new();
-        let declared = (dag.tasks.iter()).filter(|task| order.contains(&task.name));
-        for task in declared.collect::<Vec<_>>() {
+        let mut built_ops: BTreeMap<String, String> = BTreeMap::new();
+        // Dependencies first, so that a task sees the outputs and hooks of those it waits for.
+        let ordered = order
+            .iter()
+            .filter_map(|name| dag.tasks.iter().find(|t| t.name == *name));
+        for task in ordered.collect::<Vec<_>>() {
             let raw = (raw.iter())
                 .find(|node| node.get("name").and_then(Node::as_str) == Some(&task.name));
             let Some(raw) = raw else { continue };
@@ -383,11 +391,39 @@ impl Compiler {
                 let reason = "tasks that depend on a recursive call run after all its rounds";
                 return Err(kept(&graph.name, reason));
             }
+            built_ops.insert(task.name.clone(), built.op.clone());
             scope
                 .made
                 .insert(format!("tasks.{}", site.name), (built.op, built.outputs));
         }
+        for target in &targets {
+            let handled = (ancestors[target].iter()).filter_map(|name| built_ops.get(name));
+            let handled: Vec<String> = handled.cloned().collect();
+            let found = built_ops.get(target);
+            if let Some(op) = (graph.ops.iter_mut()).find(|op| Some(&op.path) == found) {
+                handle_failures(op, &handled);
+            }
+        }
         Ok(())
+    }
+}
+
+/// Lets a target of a DAG handle the failures of the tasks before it, once it succeeds: Argo
+/// judges a DAG by its targets, so a failure that a target ran past does not fail it.
+fn handle_failures(op: &mut wir::Op, handled: &[String]) {
+    for path in handled {
+        let on = [Status::Failed, Status::Errored];
+        match op.handles.iter_mut().find(|known| known.op == *path) {
+            Some(known) => {
+                let missing: Vec<Status> =
+                    on.into_iter().filter(|s| !known.on.contains(s)).collect();
+                known.on.extend(missing);
+            }
+            None => op.handles.push(Dependency {
+                op: path.clone(),
+                on: on.to_vec(),
+            }),
+        }
     }
 }
 
@@ -516,7 +552,8 @@ fn output_text(parameter: &argo_parser::model::Parameter) -> Result<String, Stri
         ));
     }
     match (from.expression.is_empty(), from.parameter.is_empty()) {
-        (false, _) => Ok(format!("{{{{={}}}}}", from.expression)),
+        // The native run gives the value of the expression as Go prints it, like `[1 2]`.
+        (false, _) => Ok(format!("{{{{=string({})}}}}", from.expression)),
         (true, false) => Ok(from.parameter.clone()),
         (true, true) => Err(format!("output parameter {name} has no source")),
     }

@@ -25,7 +25,7 @@ pub use flow::{Flow, Subscription};
 pub use op::{
     Argument, Arity, Attributes, Branch, Cache, Call, Capture, CaptureRule, Content, Dependency,
     Effect, Emission, Expr, ExprForm, FailureRule, FileName, Kind, Map, Native, Op, Origin,
-    Process, Resources, Retry, Scatter, Staged, Status, Task, TaskPatch,
+    Process, Resources, Retry, Scatter, Staged, Status, Task, TaskPatch, plain_folder,
 };
 pub use types::{
     ArrayType, Field, FileType, KeyType, MapType, SecondaryFile, Type, TypeDef, resolve,

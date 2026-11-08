@@ -181,31 +181,34 @@ impl Publish {
             return Ok(());
         }
         let file = self.directory.join(path.to_string());
-        let text = match file.extension().and_then(|extension| extension.to_str()) {
-            Some("csv") => {
-                let header = self.options.index("header").cloned();
-                let separator = self
-                    .options
-                    .index("sep")
-                    .map_or(",".into(), Value::to_string);
-                csv(&self.published, header.as_ref(), &separator)?
-            }
-            // JSON is YAML too.
-            Some("json" | "yaml" | "yml") => {
-                let mut text = String::new();
-                json(&Value::list(self.published.clone()), &mut text);
-                text + "\n"
-            }
-            _ => {
-                let message = format!(
-                    "Invalid extension for index file '{}' -- should be CSV, JSON, or YAML",
-                    file.display()
-                );
-                return Err(thrown(message));
-            }
-        };
+        let header = self.options.index("header");
+        let separator = self.options.index("sep").map(Value::to_string);
+        let text = index_text(&file, &self.published, header, separator.as_deref())?;
         let path = PathValue::parse(&file.to_string_lossy(), "/");
         context.interpreter.host().write(&path, text.as_bytes())
+    }
+}
+
+/// The text of the index file of a workflow output as CSV, JSON or YAML by its extension, with
+/// the published values whose files are at their new places.
+pub fn index_text(
+    file: &Path,
+    records: &[Value],
+    header: Option<&Value>,
+    separator: Option<&str>,
+) -> Result<String, Error> {
+    match file.extension().and_then(|extension| extension.to_str()) {
+        Some("csv") => csv(records, header, separator.unwrap_or(",")),
+        // JSON is YAML too.
+        Some("json" | "yaml" | "yml") => {
+            let mut text = String::new();
+            json(&Value::list(records.to_vec()), &mut text);
+            Ok(text + "\n")
+        }
+        _ => Err(thrown(format!(
+            "Invalid extension for index file '{}' -- should be CSV, JSON, or YAML",
+            file.display()
+        ))),
     }
 }
 

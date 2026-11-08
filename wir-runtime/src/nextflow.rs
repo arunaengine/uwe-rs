@@ -24,7 +24,7 @@ type Making = dyn Fn(&Launch, &Path) -> Settings + Send + Sync;
 /// block and its launch folder. The host of the settings must start in that folder.
 #[derive(Clone)]
 pub struct Options {
-    settings: Arc<Making>,
+    pub(crate) settings: Arc<Making>,
 }
 
 impl Options {
@@ -93,6 +93,7 @@ impl Block for Nextflow {
 /// Runs `nextflow_process` tasks through adapters whose drivers get their settings from
 /// `options`, launched in the working folder, as a Nextflow run alone is.
 pub fn register(adapters: &mut Adapters, options: Options) {
+    crate::nextflow_scope::use_options(options.clone());
     adapters.register("nextflow_process", move |opening| open(opening, &options));
 }
 

@@ -38,6 +38,11 @@ impl Deliveries {
         asked
     }
 
+    /// Asks the host for deliveries, like the files of a Nextflow workflow output.
+    pub fn ask(&self, deliveries: &[Delivery]) {
+        self.shelves().asked.extend_from_slice(deliveries);
+    }
+
     /// Takes the acknowledgement of a delivery; whether an op asked for it.
     pub fn acknowledge(&self, delivery: &Delivery) -> bool {
         let mut shelves = self.shelves();
@@ -77,6 +82,9 @@ pub fn folder(
         return Ok((own, None));
     };
     if directory.starts_with('/') || directory.contains("://") {
+        if !wir::plain_folder(directory) {
+            return Err(turn.failed(format!("the folder {directory} has an empty, . or .. part")));
+        }
         return match effects.iter().any(|effect| effect.publishes(directory)) {
             true => Ok((own, Some(directory.trim_end_matches('/').to_owned()))),
             false => Err(turn.failed(format!(

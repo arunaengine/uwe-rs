@@ -107,6 +107,31 @@ pub struct Task {
     /// CWL; without it the runner picks one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workdir: Option<String>,
+    /// What the working folder holds before the command starts, like CWL
+    /// `InitialWorkDirRequirement`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<Staged>,
+}
+
+/// One entry of the working folder: a value placed at a path.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Staged {
+    pub value: Content,
+    /// The path in the working folder; without it, a File or Directory keeps its basename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<FileName>,
+    /// Whether the command may change it, in a copy of its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub writable: bool,
+}
+
+/// The value of an entry of the working folder: text, or the value of a task input.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum Content {
+    Text(String),
+    Input { input: String },
 }
 
 /// One command argument: literal text, or the value of a task input.

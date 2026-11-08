@@ -3,10 +3,14 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
+
 use serde_json::{Map, Value as Json, json};
-use wir::{Argument, CaptureRule, FileName, Op, Port, Type, TypeDef, resolve};
+use wir::{Argument, CaptureRule, Content, FileName, Op, Port, Type, TypeDef, resolve};
 use workflow_graph::simulator::glob_matches;
-use workflow_graph::{Files, Input, Network, Outcome, OutputFile, Resources, Reuse, Task, TaskId};
+use workflow_graph::{
+    Files, Input, Network, Outcome, OutputFile, Resources, Reuse, Task, TaskId, Writable,
+};
 
 /// Where a task runs in its container: its fresh working folder.
 pub const WORKDIR: &str = "/work";
@@ -23,7 +27,16 @@ pub fn build(
     spec: &wir::Task,
     bound: &Map<String, Json>,
 ) -> Task {
-    let mut inputs = Vec::new();
+    let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
+    let mut staging = Staging::default();
+    for staged in &spec.files {
+        let value = match &staged.value {
+            Content::Text(text) => Json::String(text.clone()),
+            Content::Input { input } => bound.get(input).cloned().unwrap_or(Json::Null),
+        };
+        let path = name(&staged.path, bound);
+        staging.place(&value, path.as_deref(), staged.writable, workdir);
+    }
     let mut words = Vec::new();
     for argument in &spec.command {
         match argument {
@@ -35,7 +48,7 @@ pub fn build(
                 separator,
             } => {
                 let value = bound.get(input).unwrap_or(&Json::Null);
-                let texts = texts(value, &format!("inputs/{input}"), &mut inputs);
+                let texts = staging.texts(value, &format!("inputs/{input}"));
                 let binding = (prefix.as_deref(), *separate, separator.as_deref());
                 words.extend(bind(value, texts, binding));
             }
@@ -53,7 +66,6 @@ pub fn build(
     };
     let (stdout, stderr) = (stream(CaptureRule::Stdout), stream(CaptureRule::Stderr));
     let mut outputs: Vec<String> = stdout.iter().chain(&stderr).cloned().collect();
-    let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
     for capture in &spec.captures {
         // A pattern of a Directory output ends with `/`, so executors know what to make.
         let port = op.outputs.iter().find(|port| port.name == capture.output);
@@ -100,8 +112,8 @@ pub fn build(
         image: spec.image.clone(),
         command,
         script,
-        workdir: Some(spec.workdir.clone().unwrap_or_else(|| WORKDIR.into())),
-        inputs,
+        workdir: Some(workdir.to_owned()),
+        inputs: staging.inputs,
         outputs,
         resources: Resources {
             cpus: wanted.cpus.map(f64::from),
@@ -302,70 +314,189 @@ fn bind(
     }
 }
 
-/// The arguments of an input value, staging its files and folders below `folder`.
-fn texts(value: &Json, folder: &str, inputs: &mut Vec<Input>) -> Vec<String> {
-    match value {
-        Json::Null => Vec::new(),
-        Json::Bool(flag) => vec![flag.to_string()],
-        Json::Number(number) => vec![number.to_string()],
-        Json::String(text) => vec![text.clone()],
-        Json::Array(items) => (items.iter().enumerate())
-            .flat_map(|(index, item)| texts(item, &format!("{folder}/{index}"), inputs))
-            .collect(),
-        Json::Object(_) => match stage(value, folder, inputs) {
-            Some(path) => vec![path],
-            None => vec![value.to_string()],
-        },
+/// The inputs of a task, and the paths in the working folder of the values it places there.
+#[derive(Default)]
+struct Staging {
+    inputs: Vec<Input>,
+    placed: HashMap<String, String>,
+}
+
+impl Staging {
+    /// The arguments of an input value, staging its files and folders below `folder`, or
+    /// where the working folder holds them.
+    fn texts(&mut self, value: &Json, folder: &str) -> Vec<String> {
+        match value {
+            Json::Null => Vec::new(),
+            Json::Bool(flag) => vec![flag.to_string()],
+            Json::Number(number) => vec![number.to_string()],
+            Json::String(text) => vec![text.clone()],
+            Json::Array(items) => (items.iter().enumerate())
+                .flat_map(|(index, item)| self.texts(item, &format!("{folder}/{index}")))
+                .collect(),
+            Json::Object(_) => match self.stage(value, folder) {
+                Some(path) => vec![path],
+                None => vec![value.to_string()],
+            },
+        }
+    }
+
+    /// Stages a File or Directory value and its secondary files in `folder`; its path there,
+    /// or in the working folder when an entry placed it there.
+    fn stage(&mut self, value: &Json, folder: &str) -> Option<String> {
+        let class = value.get("class").and_then(Json::as_str)?;
+        if !matches!(class, "File" | "Directory") {
+            return None;
+        }
+        let location = value.get("location").and_then(Json::as_str);
+        if let Some(path) = location.and_then(|location| self.placed.get(location)) {
+            return Some(path.clone());
+        }
+        let path = format!(
+            "{folder}/{}",
+            basename(value).unwrap_or_else(|| "input".into())
+        );
+        self.put(value, &path, false);
+        for item in value
+            .get("secondary_files")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+        {
+            self.stage(item, folder);
+        }
+        Some(path)
+    }
+
+    /// Places the value of an entry of the working folder at `path`, else by basename.
+    fn place(&mut self, value: &Json, path: Option<&str>, writable: bool, workdir: &str) {
+        let at = |name: String| relative(&name, workdir);
+        match value {
+            Json::Null => {}
+            Json::Array(items) => {
+                (items.iter()).for_each(|item| self.place(item, None, writable, workdir));
+            }
+            Json::Object(object) if object.contains_key("entry") => {
+                let name = object.get("entryname").and_then(Json::as_str).or(path);
+                let writable = writable || object.get("writable") == Some(&Json::Bool(true));
+                self.place(&object["entry"], name, writable, workdir);
+            }
+            Json::Object(object) if matches!(class(object), Some("File" | "Directory")) => {
+                let name = path.map(str::to_owned).or_else(|| basename(value));
+                let Some(name) = name.and_then(at) else {
+                    return;
+                };
+                self.put(value, &name, writable);
+                let folder = name.rsplit_once('/').map_or("", |(folder, _)| folder);
+                for item in object
+                    .get("secondary_files")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    if let Some(beside) = basename(item).map(|base| join(folder, &base)) {
+                        self.put(item, &beside, writable);
+                    }
+                }
+            }
+            other => {
+                let text = match other {
+                    Json::String(text) => text.clone(),
+                    other => other.to_string(),
+                };
+                if let Some(name) = path.map(str::to_owned).and_then(at) {
+                    self.inputs.push(Input {
+                        path: name,
+                        content: Some(text),
+                        writable: copy(writable),
+                        ..Input::default()
+                    });
+                }
+            }
+        }
+    }
+
+    /// Stages a File or Directory at `path`; a Directory without a location is made, with its
+    /// listing in it.
+    fn put(&mut self, value: &Json, path: &str, writable: bool) {
+        let directory = value.get("class").and_then(Json::as_str) == Some("Directory");
+        let location = value.get("location").and_then(Json::as_str);
+        let source = match location {
+            Some(text) => cwl_parser::iri::file_path(text)
+                .map_or(text.to_owned(), |path| path.to_string_lossy().into_owned()),
+            None => String::new(),
+        };
+        let content = (value.get("contents").and_then(Json::as_str)).filter(|_| location.is_none());
+        self.inputs.push(Input {
+            path: path.to_owned(),
+            source,
+            directory,
+            content: content.map(str::to_owned),
+            writable: copy(writable),
+            ..Input::default()
+        });
+        if let Some(location) = location {
+            self.placed.insert(location.to_owned(), path.to_owned());
+        }
+        if directory && location.is_none() {
+            let listing = value.get("listing").and_then(Json::as_array);
+            for item in listing.into_iter().flatten() {
+                if let Some(name) = basename(item) {
+                    self.put(item, &join(path, &name), writable);
+                }
+            }
+        }
     }
 }
 
-/// Stages a File or Directory value and its secondary files in `folder`; its path there.
-fn stage(value: &Json, folder: &str, inputs: &mut Vec<Input>) -> Option<String> {
-    let class = value.get("class").and_then(Json::as_str)?;
-    let directory = match class {
-        "File" => false,
-        "Directory" => true,
-        _ => return None,
-    };
+fn class(object: &Map<String, Json>) -> Option<&str> {
+    object.get("class").and_then(Json::as_str)
+}
+
+/// The basename of a File or Directory, else the last part of its location.
+fn basename(value: &Json) -> Option<String> {
     let location = value.get("location").and_then(Json::as_str);
-    let basename = (value.get("basename").and_then(Json::as_str))
+    (value.get("basename").and_then(Json::as_str))
         .or_else(|| location.and_then(|text| text.trim_end_matches('/').rsplit('/').next()))
-        .unwrap_or("input");
-    let path = format!("{folder}/{basename}");
-    let source = match location {
-        Some(text) => cwl_parser::iri::file_path(text)
-            .map_or(text.to_owned(), |path| path.to_string_lossy().into_owned()),
-        None => String::new(),
-    };
-    let content = (value.get("contents").and_then(Json::as_str)).filter(|_| location.is_none());
-    inputs.push(Input {
-        path: path.clone(),
-        source,
-        directory,
-        content: content.map(str::to_owned),
-        ..Input::default()
-    });
-    for item in value
-        .get("secondary_files")
-        .and_then(Json::as_array)
-        .into_iter()
-        .flatten()
-    {
-        stage(item, folder, inputs);
-    }
-    Some(path)
+        .map(str::to_owned)
 }
 
-/// The names of the stdout and stderr files that a task names, from its input values.
-fn streams(spec: &wir::Task, bound: &Map<String, Json>) -> (Option<String>, Option<String>) {
-    let name = |named: &Option<FileName>| match named.as_ref()? {
+fn join(folder: &str, name: &str) -> String {
+    match folder.is_empty() {
+        true => name.to_owned(),
+        false => format!("{folder}/{name}"),
+    }
+}
+
+fn copy(writable: bool) -> Writable {
+    match writable {
+        true => Writable::Copy,
+        false => Writable::No,
+    }
+}
+
+/// A path of the working folder relative to it, also when it names the folder, or none when
+/// it leaves the folder.
+fn relative(path: &str, workdir: &str) -> Option<String> {
+    let inner = format!("{}/", workdir.trim_end_matches('/'));
+    let path = path.strip_prefix(&inner).unwrap_or(path);
+    let path = path.strip_prefix("./").unwrap_or(path);
+    inside(path).then(|| path.to_owned())
+}
+
+/// The name that a stream or an entry names: text, or the string value of a task input.
+fn name(named: &Option<FileName>, bound: &Map<String, Json>) -> Option<String> {
+    match named.as_ref()? {
         FileName::Text(text) => Some(text.clone()),
         FileName::Input { input } => match bound.get(input) {
             Some(Json::String(text)) if !text.is_empty() => Some(text.clone()),
             _ => None,
         },
-    };
-    (name(&spec.stdout), name(&spec.stderr))
+    }
+}
+
+/// The names of the stdout and stderr files that a task names, from its input values.
+fn streams(spec: &wir::Task, bound: &Map<String, Json>) -> (Option<String>, Option<String>) {
+    (name(&spec.stdout, bound), name(&spec.stderr, bound))
 }
 
 /// The patterns of a glob capture, also from the value of a task input, relative to the
@@ -486,7 +617,7 @@ mod tests {
     #[test]
     fn binds_prefixed_values() {
         let words = |value: Json, binding| {
-            let texts = texts(&value, "inputs/x", &mut Vec::new());
+            let texts = Staging::default().texts(&value, "inputs/x");
             bind(&value, texts, binding)
         };
         let flag = (Some("-v"), true, None);
@@ -504,6 +635,28 @@ mod tests {
             "an empty array gives nothing"
         );
         assert_eq!(words(json!(true), (None, true, None)), ["true"]);
+    }
+
+    #[test]
+    fn places_working_files() {
+        let mut staging = Staging::default();
+        let genome = json!({"class": "File", "location": "/data/g.fa", "basename": "g.fa"});
+        staging.place(&genome, None, true, "/var/spool/cwl");
+        staging.place(&json!("x=1"), Some("conf/x.conf"), false, "/var/spool/cwl");
+        let folder = json!({"class": "Directory", "basename": "d", "listing": [genome.clone()]});
+        staging.place(&folder, Some("/var/spool/cwl/out"), false, "/var/spool/cwl");
+        staging.place(&json!("no"), Some("../x"), false, "/var/spool/cwl");
+        let paths: Vec<&str> = staging
+            .inputs
+            .iter()
+            .map(|input| input.path.as_str())
+            .collect();
+        assert_eq!(paths, ["g.fa", "conf/x.conf", "out", "out/g.fa"]);
+        assert_eq!(staging.inputs[0].writable, Writable::Copy);
+        assert_eq!(staging.inputs[1].content.as_deref(), Some("x=1"));
+        assert!(staging.inputs[2].directory && staging.inputs[2].source.is_empty());
+        let words = staging.texts(&genome, "inputs/genome");
+        assert_eq!(words, ["out/g.fa"], "the last place of a file is its path");
     }
 
     #[test]

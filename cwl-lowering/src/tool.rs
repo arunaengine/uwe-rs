@@ -73,6 +73,7 @@ pub fn lower(
         stdout: None,
         stderr: None,
         workdir: Some(runtime::OUTDIR.into()),
+        files: Vec::new(),
     };
     let attributes = requirements::apply(scope, &mut task)?;
     let named = crate::types::named(scope);

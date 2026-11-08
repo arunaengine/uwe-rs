@@ -146,7 +146,7 @@ pub(crate) struct Context<'n, 'i, 'h> {
     sent: Option<Vec<Value>>,
 }
 
-impl Context<'_, '_, '_> {
+impl<'h> Context<'_, '_, 'h> {
     pub fn accept(&mut self, task: TaskId, accepted: bool) {
         self.acceptance.insert(task, accepted);
     }
@@ -202,10 +202,9 @@ impl Context<'_, '_, '_> {
         self.channels[input.channel.0 as usize].read(input.cursor)
     }
 
-    /// A new task number.
-    pub fn task_id(&mut self) -> TaskId {
-        *self.next_task += 1;
-        TaskId(*self.next_task)
+    /// The interpreter and the task counter, which binding a task needs together.
+    pub fn binder(&mut self) -> (&mut Interpreter<'h>, &mut u64) {
+        (&mut *self.interpreter, &mut *self.next_task)
     }
 
     /// Asks for a task to run.

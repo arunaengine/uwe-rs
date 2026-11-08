@@ -19,7 +19,7 @@ use crate::network::Network;
 use crate::operator::{
     Buffer, Closing, Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Opening, Single, Sort,
 };
-use crate::process::{ProcessNode, singleton};
+use crate::process::{Binding, ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
 use crate::split::{Split, SplitFiles, Subscribe};
 
@@ -402,7 +402,7 @@ impl Host for Builder<'_> {
             .iter()
             .map(|_| self.network.channel(singleton))
             .collect();
-        let node = ProcessNode {
+        let binding = Binding {
             // Wave builds the `conda` packages of tasks as Conda does.
             conda_enabled: ["conda", "wave"]
                 .iter()
@@ -414,16 +414,18 @@ impl Host for Builder<'_> {
             module: module.clone(),
             process: process.clone(),
             name: name.into(),
-            outputs: outputs.clone(),
             singleton,
-            one_round: !queue_inputs,
             stub: self.stub,
             exec_folder: self.exec_folder.clone(),
             settings: Rc::new(settings),
+        };
+        let node = ProcessNode {
+            binding,
+            outputs: outputs.clone(),
+            one_round: !queue_inputs,
             rounds: 0,
             tasks: 0,
-            max_forks: None,
-            fair: false,
+            limits: Default::default(),
             held: Default::default(),
             next_emission: 1,
             poisoned: false,

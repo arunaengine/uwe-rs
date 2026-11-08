@@ -3,8 +3,9 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use wdl_ast::v1::{NameRefExpr, TaskDefinition};
+use wdl_ast::v1::{Expr, NameRefExpr, TaskDefinition};
 use wdl_ast::{AstNode, AstToken};
+use wdl_runtime::Value;
 use wdl_runtime::document::{Callable, Unit};
 use wdl_runtime::expression::names;
 use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
@@ -12,7 +13,7 @@ use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 use crate::library::{Line, check, ordered, ports};
 use crate::outputs::{Output, Read, listing, outputs};
 use crate::types::{has_files, port};
-use crate::{DEFAULT_IMAGE, Lowerer, blank, edge, end, origin, reads, text};
+use crate::{DEFAULT_IMAGE, Lowerer, blank, constant, edge, end, origin, reads, text};
 
 /// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
 /// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
@@ -232,28 +233,82 @@ struct Built {
     resources: Option<wir::Resources>,
 }
 
-/// The task op without its inputs; a `runtime` or `requirements` section has no lowering yet.
+/// The task op of the `runtime` or `requirements` section, whose values must not depend on
+/// inputs, without its inputs and captures.
 fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
-    if definition.runtime().is_some() || definition.requirements().is_some() {
-        return Err("a runtime section".into());
+    let items: Vec<(String, Expr)> = match (definition.requirements(), definition.runtime()) {
+        (Some(section), _) => (section.items())
+            .map(|item| (item.name().text().to_owned(), item.expr()))
+            .collect(),
+        (None, Some(section)) => (section.items())
+            .map(|item| (item.name().text().to_owned(), item.expr()))
+            .collect(),
+        (None, None) => Vec::new(),
+    };
+    let mut image = DEFAULT_IMAGE.to_owned();
+    let mut resources = wir::Resources::default();
+    let mut codes = Vec::new();
+    for (key, expr) in items {
+        let used = [
+            "container",
+            "docker",
+            "cpu",
+            "memory",
+            "gpu",
+            "return_codes",
+            "returnCodes",
+        ];
+        if !used.contains(&key.as_str()) {
+            continue;
+        }
+        let value =
+            constant(&expr).ok_or_else(|| format!("the runtime value {key} depends on inputs"))?;
+        match (key.as_str(), value) {
+            ("container" | "docker", Value::String(name)) if name != "*" => image = name,
+            ("container" | "docker", Value::Array(names)) => {
+                if let Some(name) = names
+                    .first()
+                    .and_then(Value::text)
+                    .filter(|name| name != "*")
+                {
+                    image = name;
+                }
+            }
+            ("cpu", Value::Int(count)) => resources.cpus = u32::try_from(count).ok(),
+            ("cpu", Value::Float(count)) => resources.cpus = Some(count.ceil() as u32),
+            ("memory", value) => resources.memory = wdl_runtime::library::memory_bytes(&value),
+            ("gpu", Value::Boolean(true)) => resources.gpus = Some(1),
+            ("return_codes" | "returnCodes", Value::Int(code)) => codes = vec![code],
+            ("return_codes" | "returnCodes", Value::Array(items)) => {
+                for item in items {
+                    let Value::Int(code) = item else {
+                        return Err("return codes that are not integers".into());
+                    };
+                    codes.push(code);
+                }
+            }
+            ("return_codes" | "returnCodes", _) => return Err("return codes `*`".into()),
+            _ => {}
+        }
     }
+    let success_codes = (codes.into_iter())
+        .map(|code| i32::try_from(code).map_err(|_| format!("the return code {code}")))
+        .collect::<Result<_, _>>()?;
     let task = wir::Task {
-        image: Some(DEFAULT_IMAGE.to_owned()),
+        image: Some(image),
         command: vec!["bash".into(), "-c".into(), RUNNER.into(), "wdl".into()]
             .into_iter()
             .map(Argument::Text)
             .collect(),
         captures: Vec::new(),
-        success_codes: Vec::new(),
+        success_codes,
         // WDL tasks may use the network, as uwe's WDL driver lets them.
         network: true,
         stdout: None,
         stderr: None,
     };
-    Ok(Built {
-        task,
-        resources: None,
-    })
+    let resources = (resources != wir::Resources::default()).then_some(resources);
+    Ok(Built { task, resources })
 }
 
 #[cfg(test)]

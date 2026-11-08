@@ -53,17 +53,28 @@ pub struct Context {
 }
 
 /// Lowers the pipeline of a launch, as the native driver with these settings would build it.
+/// A build that needs what the lowering does not do, like reading data, gives one native op.
 /// It fails only when the pipeline does not build.
 pub fn lower(launch: &Launch, settings: Settings, base: &Path) -> Result<Lowering, String> {
-    let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
-    let network = driver.export().map_err(|error| error.message)?;
     let context = Context {
         profiles: launch.profiles.clone(),
         configs: launch.configs.clone(),
         entry: launch.targets.first().cloned(),
         base: base.to_owned(),
     };
-    Ok(lower_network(&network, &context))
+    let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
+    match driver.export() {
+        Ok(network) => Ok(lower_network(&network, &context)),
+        Err(error) if error.unsupported => {
+            let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
+            let kept = vec![Kept {
+                path: "pipeline".into(),
+                reason: error.message,
+            }];
+            Ok(native(&[], &context, &mut sources, kept))
+        }
+        Err(error) => Err(error.message),
+    }
 }
 
 /// Lowers a built network; a node without a lowering keeps the pipeline one native op.
@@ -78,20 +89,20 @@ pub fn lower_network(network: &Network, context: &Context) -> Lowering {
     });
     let kept: Vec<Kept> = opaque.collect();
     if !kept.is_empty() {
-        return native(network, context, &mut sources, kept);
+        return native(&network.emits, context, &mut sources, kept);
     }
     match graph::lower(network, context, &mut sources) {
         Ok(graphs) => Lowering {
             document: document(&sources, context, graphs),
             kept: Vec::new(),
         },
-        Err(kept) => native(network, context, &mut sources, vec![kept]),
+        Err(kept) => native(&network.emits, context, &mut sources, vec![kept]),
     }
 }
 
 /// The pipeline as one native op, which runs it with the native driver.
 fn native(
-    network: &Network,
+    emits: &[(String, usize)],
     context: &Context,
     sources: &mut Sources,
     kept: Vec<Kept>,
@@ -111,10 +122,10 @@ fn native(
     if !configs.is_empty() {
         native["configs"] = json!(configs);
     }
-    let outputs: Vec<Json> = (network.emits.iter())
+    let outputs: Vec<Json> = (emits.iter())
         .map(|(name, _)| json!({"name": name, "type": "dynamic"}))
         .collect();
-    let edges: Vec<Json> = (network.emits.iter())
+    let edges: Vec<Json> = (emits.iter())
         .map(|(name, _)| json!({"from": {"op": "pipeline", "port": name}, "to": {"port": name}}))
         .collect();
     let op = json!({

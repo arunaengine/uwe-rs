@@ -129,6 +129,17 @@ impl Publication {
             .extend_from_slice(&self.0);
     }
 
+    /// Why the files wait, when they have deliveries: for the host to acknowledge them.
+    pub fn awaited(&self) -> Option<String> {
+        let target = &self.0.first()?.target;
+        let folder = target
+            .rsplit_once('/')
+            .map_or(target.as_str(), |(folder, _)| folder);
+        Some(format!(
+            "the host never acknowledged the delivery of its files to {folder}"
+        ))
+    }
+
     /// Whether the files can be given: the host acknowledged their deliveries.
     pub fn delivered(&self, context: &Context<'_>) -> bool {
         self.0.is_empty() || context.provider.is_none() || context.deliveries.settled(&self.0)

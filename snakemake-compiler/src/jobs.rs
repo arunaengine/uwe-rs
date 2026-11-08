@@ -83,9 +83,13 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> 
             "kind": {"task": {"builder": {"snakemake_job": builder}}},
             "origin": {"source": SOURCE, "at": rule},
         });
+        let after: Vec<Json> = (job.after.iter())
+            .map(|before| json!({"op": paths[*before], "on": ["succeeded"]}))
+            .collect();
         for (field, value) in [
             ("inputs", inputs),
             ("outputs", outputs),
+            ("after", after),
             ("effects", effects),
         ] {
             if !value.is_empty() {

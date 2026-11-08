@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Map, Value as Json, json};
-use wir_runtime::adapter::{CallId, Changes, Ending, TaskAdapter, TaskCall};
+use wir_runtime::adapter::{CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{
     Attempt, DriverError, Executor, Launch, Marker, MarkerKind, Note, Outcome, OutputFile, Running,
@@ -345,15 +345,21 @@ fn daemon_readiness() {
     );
 }
 
-/// Ends each op at once with a value for its output `a` and its output `b` empty.
-struct Partial;
+/// Ends each op at once with a value for its output `a` and its output `b` empty, as a
+/// success, or as a skip when `skipped` is set.
+struct Partial {
+    skipped: bool,
+}
 
 impl TaskAdapter for Partial {
     fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
         let values = Map::from_iter([("a".to_owned(), json!("made"))]);
-        let ending = Ending::Succeeded {
-            values,
-            empty: vec!["b".into()],
+        let ending = match self.skipped {
+            true => Ending::Skipped(values),
+            false => Ending::Succeeded {
+                values,
+                empty: vec!["b".into()],
+            },
         };
         Ok(Changes {
             ended: vec![(call.call, ending)],
@@ -366,8 +372,8 @@ impl TaskAdapter for Partial {
     }
 }
 
-#[test]
-fn empty_outputs() {
+/// The results of a run of the op `p`, which [`Partial`] ends, skipped when `skipped` is set.
+fn partial(skipped: bool) -> Json {
     let folder = tempfile::tempdir().unwrap();
     let maps = json!([{"port": "a", "native": "output/0"}, {"port": "b", "native": "output/1"}]);
     let builder = json!({"nextflow_process": {"source": "nf", "entry": "main", "call": "P", "outputs": maps}});
@@ -392,7 +398,10 @@ fn empty_outputs() {
         print: false,
         ..Settings::default()
     };
-    (settings.adapters).register("nextflow_process", |_| Ok(Box::new(Partial)));
+    let adapter = move |_: &Opening| -> Result<Box<dyn TaskAdapter>, DriverError> {
+        Ok(Box::new(Partial { skipped }))
+    };
+    (settings.adapters).register("nextflow_process", adapter);
     let mut driver = WirDriver::new(&launch, settings).unwrap();
     assert!(
         workflow_graph::Driver::start(&mut driver)
@@ -400,11 +409,21 @@ fn empty_outputs() {
             .is_empty()
     );
     workflow_graph::Driver::finish(&mut driver).unwrap();
-    let results = workflow_graph::Driver::results(&driver).unwrap();
+    workflow_graph::Driver::results(&driver).unwrap()
+}
+
+#[test]
+fn empty_outputs() {
     assert_eq!(
-        results,
+        partial(false),
         json!({"a": "made"}),
         "the empty output b is no null"
+    );
+    let skipped = partial(true);
+    assert_eq!(
+        skipped,
+        json!({"a": "made"}),
+        "a skip gives its values; the rest are empty"
     );
 }
 

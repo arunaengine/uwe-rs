@@ -250,7 +250,7 @@ fn ended(ending: &argo_runtime::adapter::Ending, outputs: &[PortMap]) -> Ending 
         };
     }
     match (facts.skipped || facts.omitted, facts.errored) {
-        (true, _) => Ending::Skipped,
+        (true, _) => Ending::Skipped(serde_json::Map::new()),
         (false, true) => Ending::Errored(ending.message.clone()),
         (false, false) => Ending::Failed(ending.message.clone()),
     }

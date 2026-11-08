@@ -44,7 +44,7 @@ impl TaskAdapter for ExitCodes {
                 }
             }
             1 => Ending::Ignored("ignored".into()),
-            2 => Ending::Skipped,
+            2 => Ending::Skipped(Map::new()),
             _ => Ending::Failed("the task failed".into()),
         };
         Ok(Changes {

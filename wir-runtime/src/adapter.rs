@@ -59,8 +59,9 @@ pub enum Ending {
         values: Map<String, Json>,
         empty: Vec<String>,
     },
-    /// Its condition was false, like a Nextflow `when:`.
-    Skipped,
+    /// Its condition was false, like a Nextflow `when:`, with the values it gives some
+    /// outputs anyway, like the defaults of a skipped Argo step; the others close empty.
+    Skipped(Map<String, Json>),
     /// Its failure is ignored: its outputs close empty.
     Ignored(String),
     Failed(String),

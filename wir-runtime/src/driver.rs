@@ -928,10 +928,21 @@ impl WirDriver {
                         }
                     }
                 }
-                Ending::Skipped => {
-                    let empty = node.op.outputs.iter().map(|port| port.name.clone());
-                    let empty = empty.collect();
-                    (self.progress).end_with(at, Status::Skipped, Map::new(), empty);
+                Ending::Skipped(values) => {
+                    let (given, empty): (Vec<wir::Port>, Vec<wir::Port>) = (node.op.outputs)
+                        .iter()
+                        .cloned()
+                        .partition(|port| values.contains_key(&port.name));
+                    let empty = empty.into_iter().map(|port| port.name).collect();
+                    match typed(&values, &given, &self.document.types, false) {
+                        Ok(values) => {
+                            (self.progress).end_with(at, Status::Skipped, values, empty);
+                        }
+                        Err(port) => {
+                            let why = failed(format!("output {port} does not fit its type"));
+                            self.progress.end(at, Status::Failed, Map::new(), why);
+                        }
+                    }
                 }
                 Ending::Ignored(_) => {
                     let empty = node.op.outputs.iter().map(|port| port.name.clone());

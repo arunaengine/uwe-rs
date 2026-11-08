@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -108,6 +109,30 @@ impl Compiled {
         (interpreter.call_function(&self.module, ENTRY, arguments))
             .map_err(|error| error.to_string())
     }
+}
+
+/// The order of two values by Groovy's rules, as `sort()` without a closure gives it.
+pub fn compare(left: &Json, right: &Json, base: &Path) -> Ordering {
+    to_value(left, base).number_aware_compare(&to_value(right, base))
+}
+
+/// The CacheHelper hash that Nextflow sorts by, of the file contents when `deep`, as an order
+/// key: big-endian bytes whose order is that of the signed hash.
+pub fn hash_key(value: &Json, deep: bool, base: &Path) -> Result<Vec<u8>, String> {
+    let key = nextflow_runtime::hash_key(&to_value(value, base), &mut Quiet, deep);
+    let key = key.map_err(|error| error.to_string())?;
+    Ok(((key as u64) ^ (1 << 63)).to_be_bytes().to_vec())
+}
+
+/// The text of a value as Groovy's `toString` gives it, which `view` prints.
+pub fn text(value: &Json, base: &Path) -> String {
+    to_value(value, base).to_string()
+}
+
+/// The sum of two values by Groovy's `+`, as Nextflow's `sum` adds them.
+pub fn add(left: &Json, right: &Json, base: &Path) -> Result<Json, String> {
+    let plus = compile("{ a, b -> a + b }", &[], None, Vec::new())?;
+    plus.call(&Map::new(), &[left.clone(), right.clone()], base)
 }
 
 /// A wir value as Groovy sees it: Files and Directories are paths, and the bridge forms are
@@ -278,5 +303,26 @@ mod tests {
         let closure = compile("{ x -> { -> x } }", &[], None, Vec::new()).unwrap();
         let error = closure.call(&Map::new(), &[json!(1)], base).unwrap_err();
         assert!(error.contains("cannot cross a port"), "{error}");
+    }
+
+    #[test]
+    fn groovy_rules() {
+        let base = Path::new("/data");
+        let file = |name: &str| json!({"class": "File", "location": format!("/w/{name}")});
+        assert_eq!(
+            compare(&file("b.txt"), &file("a.txt"), base),
+            Ordering::Greater
+        );
+        assert_eq!(compare(&json!(2), &json!(10.5), base), Ordering::Less);
+        assert_eq!(
+            text(&json!(["a", 1, {"k": null}]), base),
+            "[a, 1, [k:null]]"
+        );
+        assert_eq!(add(&json!("a"), &json!("b"), base).unwrap(), json!("ab"));
+        let keys = [
+            hash_key(&json!("x"), false, base),
+            hash_key(&json!("x"), false, base),
+        ];
+        assert_eq!(keys[0], keys[1], "the hash of a value is stable");
     }
 }

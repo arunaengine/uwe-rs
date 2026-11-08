@@ -47,6 +47,7 @@ use nextflow_evaluator::value::{PathValue, Value};
 
 pub use adapter::{Adapter, Call, Completed, Prepared};
 pub use driver::driver;
+pub use hash::key as hash_key;
 pub use loader::{LoadError, Loader};
 pub use network::Network;
 pub use process::{TaskId, TaskOutcome, TaskRequest};

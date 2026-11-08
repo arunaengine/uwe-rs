@@ -52,6 +52,8 @@ pub enum Pull {
 /// One step of one op: its readers, its value inputs, and what it commits.
 pub struct Turn<'s> {
     pub path: String,
+    /// The rules the op compares, orders, adds and prints values by.
+    pub rules: wir::ValueRules,
     /// The values of its value inputs.
     pub values: Map<String, Json>,
     streams: &'s mut Streams,
@@ -75,6 +77,7 @@ impl<'s> Turn<'s> {
             .collect();
         Turn {
             path: node.path.clone(),
+            rules: node.op.values,
             values,
             streams,
             readers,

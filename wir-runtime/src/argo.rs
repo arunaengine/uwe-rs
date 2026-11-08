@@ -270,21 +270,26 @@ fn tag(map: &PortMap) -> &str {
     (map.native.split_once('/')).map_or(map.native.as_str(), |(_, name)| name)
 }
 
-/// How a call ended in wir: its outputs by port when it succeeded.
+/// How a call ended in wir: its outputs by port when it succeeded, and those that Argo gives a
+/// skipped step, like the defaults of its output parameters.
 fn ended(ending: &argo_runtime::adapter::Ending, outputs: &[PortMap]) -> Ending {
     let facts = &ending.facts;
+    let given = |map: &PortMap| {
+        ending
+            .outputs
+            .get(tag(map))
+            .map(|v| (map.port.clone(), v.clone()))
+    };
     if facts.succeeded {
-        let values = (outputs.iter()).map(|map| {
-            let value = ending.outputs.get(tag(map)).cloned().unwrap_or(Json::Null);
-            (map.port.clone(), value)
-        });
+        let values = (outputs.iter())
+            .map(|map| given(map).unwrap_or_else(|| (map.port.clone(), Json::Null)));
         return Ending::Succeeded {
             values: values.collect(),
             empty: Vec::new(),
         };
     }
     match (facts.skipped || facts.omitted, facts.errored) {
-        (true, _) => Ending::Skipped(serde_json::Map::new()),
+        (true, _) => Ending::Skipped(outputs.iter().filter_map(given).collect()),
         (false, true) => Ending::Errored(ending.message.clone()),
         (false, false) => Ending::Failed(ending.message.clone()),
     }

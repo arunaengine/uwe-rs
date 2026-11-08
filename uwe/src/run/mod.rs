@@ -139,7 +139,7 @@ fn remote_tasks(settings: Settings, stop: bool) -> Result<Vec<orphans::Orphan>, 
     let setup = match settings.setup {
         Some(setup) => setup,
         None => {
-            crate::setup::Defaults::load(&arguments)?.apply("run", &mut arguments);
+            crate::setup::Defaults::load(&arguments)?.apply("run", &mut arguments)?;
             crate::setup::Setup::load(&arguments)?
         }
     };

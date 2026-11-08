@@ -69,7 +69,11 @@ fn main() -> ExitCode {
     }
     if !matches!(command.as_str(), "help" | "-help" | "--help") {
         match cli::Defaults::load(&arguments) {
-            Ok(defaults) => defaults.apply(command, &mut arguments),
+            Ok(defaults) => {
+                if let Err(failure) = defaults.apply(command, &mut arguments) {
+                    return exit(Err(failure));
+                }
+            }
             Err(failure) => return exit(Err(failure)),
         }
     }

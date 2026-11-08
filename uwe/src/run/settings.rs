@@ -265,7 +265,7 @@ impl Settings {
             hosted.authorize_values(&values)?;
         }
         if (!cli || prepared.is_some()) && self.setup.is_none() {
-            Defaults::load(&arguments)?.apply("run", &mut arguments);
+            Defaults::load(&arguments)?.apply("run", &mut arguments)?;
         }
         if let Some(folder) = self.cache_folder {
             crate::use_cache_folder(folder);

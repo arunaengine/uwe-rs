@@ -8,6 +8,7 @@ use serde_json::{Value as Json, json};
 
 use crate::groovy::{closure, test, written};
 use crate::process::{Definition, process, source};
+use crate::shapes::{format, invoke, keys, route, sorting, transpose};
 use crate::{Context, Sources};
 
 /// The ops of one node, with the op ports that its input and output channels connect to.
@@ -113,7 +114,28 @@ pub(crate) fn piece(
         }
         Kind::Take(count) => streams("take", json!({"count": count})),
         Kind::Until(callback) => streams("until", json!({"predicate": body(callback)})),
+        Kind::Transpose { by, remainder } => {
+            let by = by.as_ref().map_or("null".into(), |by| format!("{by:?}"));
+            streams(
+                "flat_map",
+                json!({"body": written(transpose(&by, *remainder))}),
+            )
+        }
         Kind::Scan { .. } => return Err("nf-boost's `scan`, which no wir op does".into()),
+        Kind::Collect {
+            callback,
+            flat,
+            sort,
+        } => {
+            let mut payload = optional("body", callback.as_ref().map(body));
+            if !flat {
+                payload["flat"] = json!(false);
+            }
+            if let Some(sort) = sorting(sort, sources) {
+                payload["sort"] = sort;
+            }
+            gather("collect", payload)
+        }
         Kind::ToList => gather("to_list", json!({})),
         Kind::IfEmpty(criteria) => match criteria {
             nextflow_runtime::export::Criteria::Value(value) => {
@@ -212,15 +234,183 @@ pub(crate) fn piece(
             }
             streams("buffer", payload)
         }
+        Kind::Mix => several(path, "mix", json!({}), place, true),
+        Kind::Concat => several(path, "concat", json!({}), place, true),
+        Kind::Merge(callback) => {
+            let mut payload = optional("body", callback.as_ref().map(body));
+            payload["rounds"] = json!(true);
+            several(path, "merge", payload, place, false)
+        }
+        Kind::GroupTuple {
+            by,
+            size,
+            remainder,
+            sort,
+        } => {
+            let mut payload = keys(by);
+            if let Some(size) = size {
+                payload["size"] = json!(size);
+            }
+            if *remainder {
+                payload["remainder"] = json!(true);
+            }
+            if let Some(sort) = sorting(sort, sources) {
+                payload["sort"] = sort;
+            }
+            streams("group_tuple", payload)
+        }
+        Kind::Join {
+            by,
+            remainder,
+            duplicate_error,
+            mismatch_error,
+        } => {
+            let mut payload = keys(by);
+            for (name, set) in [
+                ("remainder", remainder),
+                ("duplicate_error", duplicate_error),
+                ("mismatch_error", mismatch_error),
+            ] {
+                if *set {
+                    payload[name] = json!(true);
+                }
+            }
+            pair(path, "join", payload)
+        }
+        Kind::Combine { by, right } => {
+            let payload = match by {
+                Some(by) => json!({"by": by}),
+                None => json!({}),
+            };
+            let mut piece = pair(path, "combine", payload);
+            if let Some(values) = right {
+                // A right side that is no channel is a list of values, which an emit gives.
+                let given = format!("{path}/right");
+                let source = json!({"name": "source", "type": "dynamic", "default": values});
+                piece.ops.push(json!({
+                    "path": given,
+                    "kind": {"emit": {"each": true}},
+                    "inputs": [source],
+                    "outputs": [port("out", true)],
+                }));
+                piece.edges.push(edge(&given, "out", path, "right"));
+                piece.inputs.truncate(1);
+            }
+            piece
+        }
+        Kind::Cross(callback) => pair(path, "cross", optional("key", callback.as_ref().map(body))),
+        Kind::Route {
+            labels,
+            callback,
+            all,
+        } => route(path, labels, &body(callback), *all, source_stream)?,
+        Kind::CollectFile {
+            callback,
+            name,
+            directory,
+            new_line,
+            sort,
+            skip,
+            keep_header,
+            seed,
+        } => {
+            let mut payload = optional("body", callback.as_ref().map(body));
+            let fields = [
+                ("name", name.as_ref().map(|name| json!(name))),
+                ("seed", seed.as_ref().map(|seed| json!(seed))),
+                ("new_line", new_line.then_some(json!(true))),
+                ("skip", (*skip > 0).then_some(json!(skip))),
+                ("keep_header", keep_header.then_some(json!(true))),
+            ];
+            for (field, value) in fields {
+                if let Some(value) = value {
+                    payload[field] = value;
+                }
+            }
+            payload["sort"] = sorting(sort, sources).unwrap_or(json!("none"));
+            let internal = directory.contains("/collect-file/");
+            let mut effects = vec![json!("write_files")];
+            if !internal {
+                payload["directory"] = json!(directory);
+                effects.push(json!({"publish": directory}));
+            }
+            let mut piece = streams("collect_file", payload);
+            piece.ops[0]["effects"] = Json::Array(effects);
+            piece
+        }
+        Kind::Split {
+            splitter,
+            elem,
+            each,
+            decompress,
+            count,
+            files,
+        } => {
+            let mut payload = json!({"format": format(&splitter.format)?});
+            let fields = [
+                ("size", splitter.by.map(|size| json!(size))),
+                ("limit", splitter.limit.map(|limit| json!(limit))),
+                ("elem", elem.map(|elem| json!(elem))),
+                ("decompress", (!decompress).then_some(json!("never"))),
+                ("files", files.then_some(json!({}))),
+                ("body", each.as_ref().map(&mut body)),
+            ];
+            for (field, value) in fields {
+                if let Some(value) = value {
+                    payload[field] = value;
+                }
+            }
+            let effects = match files {
+                true => json!(["read_files", "write_files"]),
+                false => json!(["read_files"]),
+            };
+            let mut piece = match count {
+                true => chain(
+                    path,
+                    ("split", payload, true, true),
+                    ("reduce", json!({"rule": "count"}), true, false),
+                ),
+                false => streams("split", payload),
+            };
+            piece.ops[0]["effects"] = effects;
+            piece
+        }
+        Kind::Subscribe {
+            next,
+            complete,
+            error,
+        } => {
+            let mut payload = json!({});
+            for (field, callback) in [("item", next), ("close", complete), ("error", error)] {
+                if let Some(callback) = callback {
+                    payload[field] = body(callback);
+                }
+            }
+            let op = json!({
+                "path": path,
+                "kind": {"observe": payload},
+                "inputs": [port("source", true)],
+                "outputs": [port("out", true)],
+                "effects": ["log"],
+                "values": "groovy",
+            });
+            Piece {
+                ops: vec![op],
+                inputs: vec![end(path, "source", true)],
+                ..Piece::default()
+            }
+        }
+        Kind::Invoke {
+            name,
+            arguments,
+            property,
+        } => invoke(path, name, arguments, *property)?,
         Kind::Spread => unary(path, "emit", json!({"each": true}), false, true),
         Kind::Publish { name } => return Err(format!("the workflow output `{name}`")),
-        Kind::Opaque(reason) => return Err(reason.clone()),
-        _ => {
-            return Err(format!(
-                "the `{}` node, which the lowering does not cover yet",
-                node.name
-            ));
+        Kind::Check { .. } | Kind::Print(_) | Kind::Write { .. } => {
+            return Err("a node of the start of the run".into());
         }
+        Kind::Opaque(reason) => return Err(reason.clone()),
     })
 }
 
@@ -258,6 +448,58 @@ fn chain(path: &str, first: (&str, Json, bool, bool), second: (&str, Json, bool,
     piece.edges.push(edge(path, "out", &then, "source"));
     piece.outputs = next.outputs;
     piece
+}
+
+/// An op of the streams `left` and `right`.
+fn pair(path: &str, kind: &str, payload: Json) -> Piece {
+    let op = json!({
+        "path": path,
+        "kind": {kind: payload},
+        "inputs": [port("left", true), port("right", true)],
+        "outputs": [port("out", true)],
+        "values": "groovy",
+    });
+    Piece {
+        ops: vec![op],
+        inputs: vec![end(path, "left", true), end(path, "right", true)],
+        outputs: vec![end(path, "out", true)],
+        ..Piece::default()
+    }
+}
+
+/// An op of several inputs `source.<index>`: all streams, or with `rounds` by channel kind.
+fn several(path: &str, kind: &str, payload: Json, place: &Place, streams: bool) -> Piece {
+    let names: Vec<String> = (0..place.values_in.len())
+        .map(|index| format!("source.{index}"))
+        .collect();
+    let flows: Vec<bool> = place
+        .values_in
+        .iter()
+        .map(|value| streams || !value)
+        .collect();
+    let output = streams || !place.values_out[0];
+    let inputs: Vec<Json> = names
+        .iter()
+        .zip(&flows)
+        .map(|(name, stream)| port(name, *stream))
+        .collect();
+    let op = json!({
+        "path": path,
+        "kind": {kind: payload},
+        "inputs": inputs,
+        "outputs": [port("out", output)],
+        "values": "groovy",
+    });
+    Piece {
+        ops: vec![op],
+        inputs: names
+            .iter()
+            .zip(&flows)
+            .map(|(name, stream)| end(path, name, *stream))
+            .collect(),
+        outputs: vec![end(path, "out", output)],
+        ..Piece::default()
+    }
 }
 
 pub(crate) fn port(name: &str, stream: bool) -> Json {

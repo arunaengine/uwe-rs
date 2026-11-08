@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use serde_json::{Map, Value as Json};
-use wir::{Call, Document, Endpoint, Graph, Kind, Op, Scatter, Status};
+use wir::{Call, Document, Effect, Endpoint, Graph, Kind, Op, Scatter, Status};
 use workflow_graph::DriverError;
 
 use crate::adapter::Adapters;
@@ -143,8 +143,16 @@ fn refusal(op: &Op, adapters: &Adapters) -> Option<&'static str> {
         op.kind,
         Kind::View(_) | Kind::Observe(_) | Kind::CollectFile(_) | Kind::Split(_)
     );
-    if !op.effects.is_empty() && !runs && !effectful {
-        return Some("only task, native and effect ops have effects");
+    // A check at the start of a run, like Nextflow `validateParameters`, may print and read.
+    let checks = matches!(op.kind, Kind::Expr(_))
+        && (op.effects.iter()).all(|effect| {
+            matches!(
+                effect,
+                Effect::Log | Effect::ReadFiles | Effect::Nondeterministic
+            )
+        });
+    if !op.effects.is_empty() && !runs && !effectful && !checks {
+        return Some("only task, native, effect and check ops have effects");
     }
     if let Kind::Map(map) = &op.kind
         && map.parallelism == Some(0)

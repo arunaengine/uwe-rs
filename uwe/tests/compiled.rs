@@ -58,31 +58,34 @@ fn names_native_parts() {
     assert_eq!(native["language"], "snakemake");
 }
 
-/// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
-/// the config values of the command line in the document.
-#[test]
-fn runs_compiled_snakefiles() {
+const WORD: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
+
+/// Runs `uwe graph <arguments> -lowered -format json` on `snakefile` in a folder of its own,
+/// with `files` beside it; the graph it printed.
+fn graph_lowered(snakefile: &str, files: &[(&str, &str)], arguments: &[&str]) -> Json {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path();
-    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
     std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    for (name, text) in files {
+        std::fs::write(root.join(name), text).expect("writes a file");
+    }
     let output = common::command()
-        .args([
-            "graph",
-            "Snakefile",
-            "-lowered",
-            "-format",
-            "json",
-            "--config",
-            "word=hello",
-        ])
+        .args(["graph", "Snakefile", "-lowered", "-format", "json"])
+        .args(arguments)
         .current_dir(root)
         .env("XDG_CACHE_HOME", root.join("cache"))
         .output()
         .expect("runs uwe");
     let errors = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{errors}");
-    let graph: Json = serde_json::from_slice(&output.stdout).expect("prints JSON");
+    serde_json::from_slice(&output.stdout).expect("prints JSON")
+}
+
+/// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
+/// the config values of the command line in the document.
+#[test]
+fn runs_compiled_snakefiles() {
+    let graph = graph_lowered(WORD, &[], &["--config", "word=hello"]);
     let nodes = graph["nodes"].as_array().expect("nodes");
     let names: Vec<&str> = (nodes.iter())
         .filter_map(|node| node["task"]["name"].as_str())
@@ -93,4 +96,17 @@ fn runs_compiled_snakefiles() {
             .as_str()
             .is_some_and(|script| script.contains("echo hello"))
     );
+}
+
+/// A config file of `-inputs` is a config source of the document, not an input of its graph.
+#[test]
+fn takes_config_inputs() {
+    let graph = graph_lowered(
+        WORD,
+        &[("config.yaml", "word: hello\n")],
+        &["-inputs", "config.yaml"],
+    );
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let script = nodes[0]["task"]["script"].as_str().unwrap_or_default();
+    assert!(script.contains("echo hello"), "{script}");
 }

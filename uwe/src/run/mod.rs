@@ -231,14 +231,15 @@ fn execute_with(
         true => {
             let (path, inputs) = crate::lower::document(&target, language, arguments)?;
             // A WDL input file and parameters become one file for the entry graph; Snakemake
-            // config values are in the document.
+            // config files and values are in the document.
+            let compiled = language == Language::Snakemake;
             let params = match inputs {
                 Some(_) => Vec::new(),
-                None if language == Language::Snakemake => Vec::new(),
+                None if compiled => Vec::new(),
                 None => arguments.params.clone(),
             };
             converted = Arguments {
-                inputs: inputs.or(arguments.inputs.clone()),
+                inputs: inputs.or(arguments.inputs.clone().filter(|_| !compiled)),
                 params,
                 ..arguments.clone()
             };

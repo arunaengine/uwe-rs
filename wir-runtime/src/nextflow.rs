@@ -217,7 +217,7 @@ impl TaskAdapter for Tasks {
                 self.calls.remove(&id);
                 Changes {
                     tasks: Vec::new(),
-                    ended: vec![(call.call, Ending::Skipped)],
+                    ended: vec![(call.call, Ending::Skipped(serde_json::Map::new()))],
                     ready: Vec::new(),
                 }
             }

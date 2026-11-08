@@ -557,12 +557,14 @@ impl Session {
         let Some(planner) = &self.planner else {
             return Vec::new();
         };
-        (planner.jobs[job].output_files().iter())
-            .map(|file| {
+        (job_files(&planner.jobs[job]).iter())
+            .map(|made| {
+                let file = &made.path;
                 let path = self.interpreter.host.resolve(file.trim_end_matches('/'));
                 let (location, directory) = self.files.location(&path).unwrap_or_else(|| {
-                    let directory = path.is_dir() || file.ends_with('/');
-                    (path.clone(), directory)
+                    // A `directory()` output that is not there yet is still a folder.
+                    let marked = made.flags.iter().any(|flag| flag == "directory");
+                    (path.clone(), marked || path.is_dir() || file.ends_with('/'))
                 });
                 let basename = Path::new(file.trim_end_matches('/')).file_name();
                 json!({

@@ -139,6 +139,8 @@ pub struct Session {
     /// of jobs whose run has not started, and what the runs need from the session.
     cwl: HashMap<usize, crate::cwl::Run>,
     cwl_tasks: HashMap<TaskId, usize>,
+    /// The outcome of the task of a job whose CWL run ended, for a job that runs alone.
+    cwl_ended: Option<Outcome>,
     cwl_jobs: HashMap<usize, crate::cwl::Job>,
     cwl_engine: Option<(String, Option<PathBuf>, executor::CancellationToken)>,
     storage: Storage,
@@ -299,6 +301,7 @@ impl Session {
             placed: HashMap::new(),
             cwl: HashMap::new(),
             cwl_tasks: HashMap::new(),
+            cwl_ended: None,
             cwl_jobs: HashMap::new(),
             cwl_engine: None,
             storage: storage.clone(),
@@ -1226,6 +1229,11 @@ impl Session {
                     }
                 }
             }
+        }
+        // A job that runs alone, by its key, is taken by the caller.
+        if !self.keys.is_empty() {
+            self.cwl_ended = Some(outcome);
+            return Ok(Vec::new());
         }
         self.complete(outcome)
     }

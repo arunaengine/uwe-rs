@@ -166,6 +166,11 @@ impl Jobs {
                 self.owners.insert(task.id, call);
                 self.ready.push((call, *task));
             }
+            Answer::Prepared(Prepared::Tasks(tasks)) | Answer::Taken(JobResult::Tasks(tasks)) => {
+                self.owners.extend(tasks.iter().map(|task| (task.id, call)));
+                self.ready
+                    .extend(tasks.into_iter().map(|task| (call, task)));
+            }
             Answer::Prepared(Prepared::Skipped(made))
             | Answer::Taken(JobResult::Accepted(made)) => {
                 let ports = self.ports.remove(&call).unwrap_or_default();

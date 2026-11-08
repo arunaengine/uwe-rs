@@ -27,6 +27,10 @@ pub struct Network {
     /// The resolved config in the flat form of `nextflow config -flat`, which the compiler
     /// pins by its digest. It may hold secret values, so it must not be written anywhere.
     pub config: String,
+    /// The `nextflow_schema.json` of the pipeline, with its sample sheet schemas, if it has one.
+    pub schema: Option<Json>,
+    /// The launch folder, from which relative paths of params start.
+    pub launch: String,
 }
 
 #[derive(Debug)]

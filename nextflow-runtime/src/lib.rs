@@ -379,7 +379,8 @@ pub fn export(
     host: &mut dyn Host,
 ) -> Result<export::Network, Error> {
     let mut network = Network::default();
-    let workflow = workflow::metadata(options, &host.launch_dir());
+    let launch = host.launch_dir();
+    let workflow = workflow::metadata(options, &launch);
     let mut operator_directory = None;
     let mut session = Session {
         base: host,
@@ -422,22 +423,28 @@ pub fn export(
             .collect(),
         _ => Vec::new(),
     };
-    let script = module
+    let mut exported = network
+        .export(emits, &params)
+        .map_err(|message| Error::Unsupported {
+            message,
+            span: Default::default(),
+        })?;
+    exported.script = module
         .path
         .borrow()
         .as_deref()
         .unwrap_or_default()
         .to_owned();
-    network
-        .export(
-            emits,
-            &params,
-            (script, options.config_files.clone(), options.config.flat()),
-        )
-        .map_err(|message| Error::Unsupported {
-            message,
-            span: Default::default(),
-        })
+    exported.configs = options.config_files.clone();
+    exported.config = options.config.flat();
+    let project = std::path::Path::new(&options.project_dir);
+    let schema = inputs::schema_file(&options.config, project);
+    exported.schema = schema
+        .is_file()
+        .then(|| inputs::from_file(&schema, project).ok())
+        .flatten();
+    exported.launch = launch;
+    Ok(exported)
 }
 
 /// Runs a script whose workflow runs no tasks.

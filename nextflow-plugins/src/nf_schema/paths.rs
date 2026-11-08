@@ -314,7 +314,8 @@ impl<'i> Keyword<'i> for Deprecated {
     }
 }
 
-/// `uniqueEntries`: no two entries of a list may have the same values in these fields.
+/// `uniqueEntries`: no two entries of a list may have the same values in these fields. As in
+/// nf-schema, only the fields an entry has count, and an entry with none of them is no duplicate.
 struct Unique(Vec<String>);
 
 impl Unique {
@@ -322,14 +323,17 @@ impl Unique {
         let Some(entries) = instance.as_array() else {
             return Vec::new();
         };
-        let mut seen: Vec<Vec<Json>> = Vec::new();
+        let mut seen: Vec<Vec<(&String, &Json)>> = Vec::new();
         let mut problems = Vec::new();
         for (index, entry) in entries.iter().enumerate() {
-            let values: Vec<Json> = (self.0.iter())
-                .map(|field| entry.get(field).cloned().unwrap_or(Json::Null))
+            let values: Vec<(&String, &Json)> = (self.0.iter())
+                .filter_map(|field| Some((field, entry.get(field)?)))
                 .collect();
+            if values.is_empty() {
+                continue;
+            }
             if seen.contains(&values) {
-                let fields: Vec<String> = (self.0.iter().zip(&values))
+                let fields: Vec<String> = (values.iter())
                     .map(|(field, value)| format!("{field}:{}", super::plain(value)))
                     .collect();
                 problems.push(format!(
@@ -524,6 +528,17 @@ mod tests {
             validator(&schema, &instance, &mut context, false)
                 .unwrap()
                 .is_valid(&instance)
+        );
+    }
+
+    #[test]
+    fn skips_missing_fields() {
+        let unique = Unique(vec!["fastq_2".into()]);
+        let entries = json!([{"fastq_2": "a"}, {}, {"other": 1}, {"fastq_2": "a"}]);
+        let problems = unique.problems(&entries);
+        assert_eq!(
+            problems,
+            ["Entry 4: Detected duplicate entries: [fastq_2:a]"]
         );
     }
 }

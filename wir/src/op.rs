@@ -64,6 +64,8 @@ pub enum Kind {
     GroupTuple(reserved::GroupTuple),
     Join(reserved::Join),
     Combine(reserved::Combine),
+    Route(reserved::Route),
+    MultiMap(reserved::MultiMap),
     Branch(Branch),
     Select(reserved::Select),
     Loop(reserved::Loop),

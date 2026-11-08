@@ -469,3 +469,58 @@ fn join_options() {
         "a body is enough, once it exists"
     );
 }
+
+/// A graph `main` with an op `op` of `kind` that fans its stream `source` to `outputs`, and
+/// the callback graph `positive`.
+fn fanning(kind: Json, outputs: &[&str]) -> Json {
+    let ports: Vec<Json> = outputs
+        .iter()
+        .map(|name| typed(name, json!("int"), "stream"))
+        .collect();
+    let op = json!({"path": "op", "kind": kind, "inputs": [typed("source", json!("int"), "stream")], "outputs": ports});
+    let mut edges = vec![edge((None, "in"), (Some("op"), "source"))];
+    edges.extend(
+        outputs
+            .iter()
+            .map(|name| edge((Some("op"), name), (None, name))),
+    );
+    let main = json!({"name": "main", "inputs": [typed("in", json!("int"), "stream")],
+        "outputs": ports, "ops": [op], "edges": edges});
+    let test = json!({"path": "test", "kind": {"expr": {"language": "js", "code": "$(inputs.item > 0)"}},
+        "inputs": [port("item", "int")], "outputs": [port("out", "bool")]});
+    let positive = json!({"name": "positive", "inputs": [port("item", "int")], "outputs": [port("out", "bool")],
+        "ops": [test], "edges": [edge((None, "item"), (Some("test"), "item")), edge((Some("test"), "out"), (None, "out"))]});
+    json!({"wir_version": wir::VERSION, "graphs": [main, positive], "entry": "main"})
+}
+
+#[test]
+fn routing_outputs() {
+    let route =
+        |output: &str| json!({"route": {"cases": [{"output": output, "condition": "positive"}]}});
+    assert_eq!(
+        problems(&fanning(route("up"), &["up", "rest"])),
+        Vec::<String>::new()
+    );
+    reports(
+        &fanning(route("down"), &["up"]),
+        "main/op: no output down of a route",
+    );
+    reports(
+        &fanning(json!({"route": {"cases": []}}), &["up"]),
+        "main/op: the cases of a route must not be empty",
+    );
+    let closure = json!({"language": "groovy", "code": "{ it }"});
+    let multi = |outputs: Json| json!({"multi_map": {"outputs": outputs}});
+    let both = multi(json!([{"output": "a", "body": closure}, {"output": "b", "body": closure}]));
+    assert_eq!(problems(&fanning(both, &["a", "b"])), Vec::<String>::new());
+    let twice = multi(json!([{"output": "a", "body": closure}, {"output": "a", "body": closure}]));
+    let found = problems(&fanning(twice, &["a", "b"]));
+    assert!(
+        found.contains(&"main/op: a multi_map needs one body for output a".into()),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&"main/op: a multi_map needs one body for output b".into()),
+        "{found:?}"
+    );
+}

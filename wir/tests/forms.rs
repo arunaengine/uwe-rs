@@ -198,3 +198,25 @@ fn join_field_names() {
     ];
     kinds_round_trip(&good, &old);
 }
+
+#[test]
+fn routing_forms() {
+    let good = [
+        json!({"route": {"cases": [{"output": "small", "condition": "is_small"},
+            {"output": "big", "condition": {"language": "groovy", "code": "{ it > 9 }"}, "body": "half"}]}}),
+        json!({"multi_map": {"outputs": [{"output": "a", "body": "f"}, {"output": "b", "body": "g", "nulls": "drop"}]}}),
+    ];
+    let bad = [
+        json!({"route": {"cases": [{"output": "a"}]}}),
+        json!({"multi_map": {}}),
+    ];
+    kinds_round_trip(&good, &bad);
+    let kept = json!({"multi_map": {"outputs": [{"output": "a", "body": "f", "nulls": "keep"}]}});
+    let document = document(json!([{"path": "a", "kind": kept}]), json!([]));
+    let stored = &written(&document)["graphs"][0]["ops"][0]["kind"]["multi_map"]["outputs"][0];
+    assert_eq!(
+        *stored,
+        json!({"output": "a", "body": "f"}),
+        "keep is the default here"
+    );
+}

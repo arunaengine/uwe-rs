@@ -376,6 +376,46 @@
             "body": { "$ref": "#/$defs/callback" }
           }
         },
+        "route": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cases"],
+          "properties": {
+            "cases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["output", "condition"],
+                "properties": {
+                  "output": { "$ref": "#/$defs/name" },
+                  "condition": { "$ref": "#/$defs/callback" },
+                  "body": { "$ref": "#/$defs/callback" }
+                }
+              }
+            }
+          }
+        },
+        "multi_map": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outputs"],
+          "properties": {
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["output", "body"],
+                "properties": {
+                  "output": { "$ref": "#/$defs/name" },
+                  "body": { "$ref": "#/$defs/callback" },
+                  "nulls": { "$ref": "#/$defs/null_rule" }
+                }
+              }
+            }
+          }
+        },
         "branch": {
           "type": "object",
           "additionalProperties": false,

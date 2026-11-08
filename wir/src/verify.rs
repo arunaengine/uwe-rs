@@ -458,6 +458,13 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Join(join) => join.body.iter().filter_map(Body::graph).collect(),
         Kind::Combine(combine) => combine.body.iter().filter_map(Body::graph).collect(),
         Kind::Cross(cross) => cross.key.iter().filter_map(Body::graph).collect(),
+        Kind::Route(route) => (route.cases.iter())
+            .flat_map(|case| std::iter::once(&case.condition).chain(&case.body))
+            .filter_map(Body::graph)
+            .collect(),
+        Kind::MultiMap(multi) => (multi.outputs.iter())
+            .filter_map(|output| output.body.graph())
+            .collect(),
         Kind::Branch(branch) => vec![&branch.body],
         Kind::Loop(body) => vec![&body.body],
         _ => Vec::new(),

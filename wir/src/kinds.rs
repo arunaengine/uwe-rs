@@ -44,6 +44,8 @@ impl<'d> Checker<'d> {
             Kind::Join(join) => self.join(at, op, join),
             Kind::Combine(combine) => self.combine(at, op, combine),
             Kind::Cross(cross) => self.cross(at, op, cross),
+            Kind::Route(route) => self.route(at, op, route),
+            Kind::MultiMap(multi) => self.multi_map(at, op, multi),
             Kind::Flatten(flatten) if streams(op) => self.flatten_stream(at, op, flatten.depth),
             Kind::Flatten(_) => self.flatten(at, op),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),

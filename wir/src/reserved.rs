@@ -225,6 +225,46 @@ impl LeftRule {
     }
 }
 
+/// Sends each item to the output of the first case whose condition holds, through the body
+/// of that case; an item that no case takes is dropped.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Route {
+    pub cases: Vec<RouteCase>,
+}
+
+/// One case of a route.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RouteCase {
+    pub output: String,
+    pub condition: Body,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+}
+
+/// Gives each item to every output through that output's body; the results of one item are
+/// committed together.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MultiMap {
+    pub outputs: Vec<OutputBody>,
+}
+
+/// The body of one output of a multi-map.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputBody {
+    pub output: String,
+    pub body: Body,
+    #[serde(default = "keep", skip_serializing_if = "NullRule::is_keep")]
+    pub nulls: NullRule,
+}
+
+fn keep() -> NullRule {
+    NullRule::Keep
+}
+
 /// Picks among the items of its one array input, like CWL `pickValue`; the README defines it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

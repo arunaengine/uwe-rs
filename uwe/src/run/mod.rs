@@ -226,9 +226,18 @@ fn execute_with(
     let source = arguments
         .lowered
         .then(|| (launch(arguments, target.clone()), language));
-    let (target, language) = match arguments.lowered {
-        true => (crate::lower::document(&target, language)?, Language::Wir),
-        false => (target, language),
+    let converted;
+    let (target, language, arguments) = match arguments.lowered {
+        true => {
+            let (path, inputs) = crate::lower::document(&target, language, arguments)?;
+            // A WDL input file becomes one for the entry graph of the lowered document.
+            converted = Arguments {
+                inputs: inputs.or(arguments.inputs.clone()),
+                ..arguments.clone()
+            };
+            (path, Language::Wir, &converted)
+        }
+        false => (target, language, arguments),
     };
     let target = &target;
     let launch = launch(arguments, target.clone());

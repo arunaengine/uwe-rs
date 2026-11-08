@@ -372,7 +372,6 @@ impl Compiler {
             if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op)
                 && !names.is_empty()
             {
-                op.handles = crate::depends::handled(&tree);
                 op.depends = Some(tree);
                 for hook in names.iter().filter_map(|name| hooks.get(name)) {
                     let on = ended();
@@ -396,35 +395,59 @@ impl Compiler {
                 .made
                 .insert(format!("tasks.{}", site.name), (built.op, built.outputs));
         }
+        let mut heirs: BTreeMap<&String, Vec<&String>> = BTreeMap::new();
         for target in &targets {
-            let handled = (ancestors[target].iter()).filter_map(|name| built_ops.get(name));
-            let handled: Vec<String> = handled.cloned().collect();
-            let found = built_ops.get(target);
-            if let Some(op) = (graph.ops.iter_mut()).find(|op| Some(&op.path) == found) {
-                handle_failures(op, &handled);
+            for ancestor in &ancestors[target] {
+                heirs.entry(ancestor).or_default().push(target);
+            }
+        }
+        for (ancestor, targets) in heirs {
+            let continues = |target: &String| {
+                let task = dag.tasks.iter().find(|task| task.name == *target);
+                task.and_then(|task| task.continue_on).unwrap_or_default()
+            };
+            let members: Option<Vec<(String, ContinueOn)>> = (targets.iter())
+                .map(|target| Some((built_ops.get(*target)?.clone(), continues(target))))
+                .collect();
+            if let (Some(failing), Some(members)) = (built_ops.get(ancestor), members) {
+                graph.ops.push(judged(failing, &members));
             }
         }
         Ok(())
     }
 }
 
-/// Lets a target of a DAG handle the failures of the tasks before it, once it succeeds: Argo
-/// judges a DAG by its targets, so a failure that a target ran past does not fail it.
-fn handle_failures(op: &mut wir::Op, handled: &[String]) {
-    for path in handled {
-        let on = [Status::Failed, Status::Errored];
-        match op.handles.iter_mut().find(|known| known.op == *path) {
-            Some(known) => {
-                let missing: Vec<Status> =
-                    on.into_iter().filter(|s| !known.on.contains(s)).collect();
-                known.on.extend(missing);
+/// A status group that handles the failures of the task `failing` once every target that
+/// inherits them succeeded, or failed in a way it continues on: Argo judges a DAG by the
+/// branches of its targets, so a failure only counts through a target that did not get past it.
+fn judged(failing: &str, targets: &[(String, ContinueOn)]) -> wir::Op {
+    let mut allow = Vec::new();
+    let mut after = Vec::new();
+    for (target, continues) in targets {
+        let mut on = vec![Status::Succeeded];
+        on.extend((continues.failed).then_some(Status::Failed));
+        on.extend((continues.error).then_some(Status::Errored));
+        for status in &on[1..] {
+            if !allow.contains(status) {
+                allow.push(*status);
             }
-            None => op.handles.push(Dependency {
-                op: path.clone(),
-                on: on.to_vec(),
-            }),
         }
+        after.push(Dependency {
+            op: target.clone(),
+            on,
+        });
     }
+    let members = targets.iter().map(|(target, _)| target.clone()).collect();
+    let mut group = op(
+        format!("{failing}.targets"),
+        Kind::StatusGroup(StatusGroup { members, allow }),
+    );
+    group.after = after;
+    group.handles.push(Dependency {
+        op: failing.to_owned(),
+        on: vec![Status::Failed, Status::Errored],
+    });
+    group
 }
 
 /// What a site compiled into: its op, which other ops wait for, and its outputs.

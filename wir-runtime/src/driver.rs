@@ -832,9 +832,13 @@ impl WirDriver {
         if !self.texts.0.contains_key(&source) {
             let folder = self.job_folder()?.join(format!("argo-texts-{source}"));
             let (target, output) = (self.locate(&source)?, self.output_root());
+            let configs = crate::argo::configs_of(&self.document, &source).into_iter();
+            let configs = configs
+                .map(|id| self.locate(&id))
+                .collect::<Result<Vec<_>, _>>()?;
             let place = crate::argo::Place {
                 source: &target,
-                configs: &[],
+                configs: &configs,
                 folder: &folder,
                 output: &output,
             };

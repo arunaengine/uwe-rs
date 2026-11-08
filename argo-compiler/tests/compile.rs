@@ -199,7 +199,13 @@ fn compiles_dag_control() {
     let expected =
         json!({"any": [{"result": {"op": "a", "on": bare}}, {"result": {"op": "b", "on": bare}}]});
     assert_eq!(op(main, "c")["depends"], expected);
-    assert!(op(main, "c").get("handles").is_none());
+    let failures = json!(["failed", "errored"]);
+    let ran_past = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
+    assert_eq!(
+        op(main, "c")["handles"],
+        ran_past,
+        "the target judges the DAG"
+    );
 }
 
 #[test]
@@ -567,4 +573,143 @@ fn runs_compiled_texts() {
     let mut wir = wir_runtime::WirDriver::new(&launch(&target), settings).unwrap();
     assert_eq!(ran_tasks(&mut wir, &root.join("wir")), expected);
     assert_eq!(expected.len(), 2, "{expected:?}");
+}
+
+#[test]
+fn compiles_dependency_order() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - name: b
+        template: say
+        depends: a
+        hooks: {exit: {template: say}}
+        arguments: {parameters: [{name: text, value: "{{tasks.a.outputs.result}}"}]}
+      - name: a
+        template: say
+        onExit: say
+      - {name: c, template: say, depends: b}
+  - name: say
+    inputs: {parameters: [{name: text, value: x}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+    let (document, kept) = compiled(folder.path(), spec);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let edges = main["edges"].as_array().unwrap();
+    let read = json!({"op": "b", "port": "tasks.a.outputs.result"});
+    let wired = edges.iter().find(|edge| edge["to"] == read);
+    assert_eq!(
+        wired.unwrap()["from"],
+        json!({"op": "a", "port": "outputs.result"})
+    );
+    let waits = |path: &str| -> Vec<Json> {
+        let after = op(main, path)["after"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        after.iter().map(|after| after["op"].clone()).collect()
+    };
+    assert_eq!(waits("b"), [json!("a.onExit")]);
+    assert_eq!(waits("c"), [json!("b.onExit")]);
+}
+
+#[test]
+fn targets_handle_failures() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: a, template: say}
+      - {name: b, template: say}
+      - {name: c, template: say, depends: "a.Succeeded || b.Succeeded"}
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+    let (document, kept) = compiled(folder.path(), spec);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let handles = &op(main, "c")["handles"];
+    let failures = json!(["failed", "errored"]);
+    let expected = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
+    assert_eq!(handles, &expected);
+}
+
+#[test]
+fn keeps_continuing_loops() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: each, template: say, withItems: [a, b], continueOn: {failed: true}}
+      - name: use
+        template: say
+        dependencies: [each]
+        arguments: {parameters: [{name: text, value: "{{tasks.each.outputs.result}}"}]}
+  - name: say
+    inputs: {parameters: [{name: text, value: x}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+    let (_, kept) = compiled(folder.path(), spec);
+    assert_eq!(kept.len(), 1);
+    assert!(kept[0].reason.contains("continue on failures"), "{kept:?}");
+}
+
+#[test]
+fn prints_output_expressions() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: say, template: say}
+    outputs:
+      parameters: [{name: listed, valueFrom: {expression: "[1, 2]"}}]
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+    let (document, kept) = compiled(folder.path(), spec);
+    assert!(kept.is_empty(), "{kept:?}");
+    let listed = op(
+        graph(&document, "template.main"),
+        "outputs.parameters.listed",
+    );
+    let code = listed["kind"]["expr"]["code"].as_str().unwrap();
+    let launch = workflow_graph::Launch {
+        target: folder.path().join("workflow.yaml"),
+        simulated: true,
+        ..Default::default()
+    };
+    let services = argo_runtime::Services::default();
+    let mut adapter = argo_runtime::adapter::Adapter::load(&launch, services).unwrap();
+    let form = argo_runtime::adapter::Form::Text;
+    let value = adapter
+        .evaluate(code, form, "", &Default::default())
+        .unwrap();
+    assert_eq!(value, json!("[1 2]"));
+}
+
+#[test]
+fn keeps_tagged_inputs() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    inputs: {parameters: [{name: list, value: "{{= toJSON(['a']) }}"}]}
+    steps:
+    - - {name: say, template: say, arguments: {parameters: [{name: text, value: "{{inputs.parameters.list}}"}]}}
+  - name: say
+    inputs: {parameters: [{name: text}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+    let (_, kept) = compiled(folder.path(), spec);
+    assert_eq!(kept.len(), 1);
+    assert!(kept[0].reason.contains("value with tags"), "{kept:?}");
 }

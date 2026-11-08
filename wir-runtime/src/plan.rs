@@ -133,6 +133,7 @@ fn supported(kind: &Kind) -> bool {
             | Kind::Group(_)
             | Kind::GroupTuple(_)
             | Kind::Cross(_)
+            | Kind::Reduce(_)
     )
 }
 

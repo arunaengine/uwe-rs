@@ -81,6 +81,35 @@ A lowered task is a wir task, so its cache key differs from that of the same tas
 
 What keeps tasks native, by the first reason of each: an output that reads files the task makes, like `read_string(stdout())` (59), a write function in a declaration (2), a file inside a struct or map input (3), a runtime value that depends on inputs (2), a workflow expression that reads a file (2), and one each of the `task` variable, `returnCodes: "*"`, a read in the command, an array of optional output files and an `env` declaration. The one example whose outputs differ globs files that the simulator makes up.
 
+## Compiling Snakemake
+
+`uwe lower` and `-lowered` take Snakefiles and Snakemake project folders too, with the targets, config files and profiles of the command line. The crate `snakemake-compiler` compiles the jobs that the planner of uwe plans for them, as a run plans them:
+
+- Each job becomes a `task` op with a `snakemake_job` builder: the rule is its `call` and the target of the plan its `entry`, its wildcard values are kept as they are, and its path is the rule, then the wildcard values joined by `.`, like `count/a`, with letters that names do not take as `_`. Its `origin` names the rule.
+- Each file that one job makes and another reads is an edge with a File, or a Directory for a `directory()` output, from the output `output_<n>` of the maker to the input `input_<n>` of the reader. The ports map to the native selectors `output/<n>`, the outputs, logs and benchmark of the job in this order, and `input/<n>`, its input files. Inputs that no job makes are read where they are.
+- An output that the native run delivers to the working directory is a `publish` effect. `temp()`, `pipe()` and `service()` outputs are not.
+- The command, script, wrapper, notebook, `run:` block, conda and container settings, resources, retries, `touch()` and `protected()` stay as the native job builds and checks them: the builder runs the job through the job adapter of `snakemake-runtime`, which prepares its task and takes its outcome with the code of the native driver, so the task, its cache key and its acceptance are those of the native run.
+- The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a rule is a checkpoint, when jobs run together in one task (group jobs of a run that is not local, pipes and services), when a job runs a CWL document, when workflow code runs commands while it is planned, and when the run sets config values on the command line, several targets, `until`, `omit-from`, `forcerun` or `forceall`.
+
+A compiled document runs only once the wir runtime runs dialect tasks, which it does not yet.
+
+### Snakemake coverage
+
+`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled on the simulator, and compares the tasks (their descriptions, cache keys, resume fingerprints and acceptance) and the target files of both runs. The compiled run goes through the job adapter as a wir run of dialect tasks would. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
+
+| Outcome | Workflows |
+| --- | --- |
+| test workflows | 890 |
+| the native run succeeds | 633 |
+| compiles fully | 565 |
+| stays one native op | 110 |
+| does not compile: planning fails, as the native run fails | 214 |
+| the compiled run ends as the native run does: both fail, or both give the same tasks | 564 |
+| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 545 |
+| both succeed with the same target files | 545 |
+
+What keeps a workflow native, by the first reason: a checkpoint (50), jobs that run together in one task, as groups, pipes or services (28), workflow code that runs commands while it is planned (15), several targets (10), config values on the command line (4), a CWL job (1), and features that uwe does not run yet (2). The one compiled run that ends otherwise, `test_conda_function`, runs a command in a `conda:` function while its job is prepared, which the job adapter cannot run alone. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+
 ## Detection
 
 uwe takes a file as a wir document when it is JSON and has a top-level `wir_version` key. The file name does not matter, but `<name>.wir.json` is the convention. `-lang wir` picks wir for any file. uwe parses the document, checks its version, runs the verifier and refuses the document with every problem the verifier found before any task starts.

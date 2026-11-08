@@ -4,7 +4,8 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 
 use serde_json::Value as Json;
@@ -14,6 +15,36 @@ use workflow_graph::{
     Delivery, Driver, DriverError, ExecutionGraph, Files, Language, Launch, Note, Order, Outcome,
     RunOptions, Simulator, Task, TaskId, execute_with,
 };
+
+/// The counts of `just snakemake-test-workflows`: native runs, how workflows compile, and
+/// compiled runs that succeed, end as the native run, and give its tasks and target files.
+const RECORDED: Counts = Counts {
+    workflows: 890,
+    native: 633,
+    full: 565,
+    partly: 110,
+    failed: 214,
+    compiled: 545,
+    ends: 564,
+    same: 545,
+    equal: 545,
+};
+
+#[derive(Debug, Default, PartialEq)]
+struct Counts {
+    workflows: usize,
+    native: usize,
+    full: usize,
+    partly: usize,
+    failed: usize,
+    compiled: usize,
+    ends: usize,
+    same: usize,
+    equal: usize,
+}
+
+const LAUNCHES: &str =
+    include_str!("../../snakemake-runtime/tests/fixtures/run_test_workflows_launches.txt");
 
 const SNAKEFILE: &str = r#"
 SAMPLES = ["a", "b"]
@@ -454,4 +485,158 @@ fn compiled_runs_match() {
     let compared = compare(&launch, &root, &folder.path().join("scratch"));
     assert_eq!(compared.shown, "same: 6 tasks");
     assert!(compared.equal);
+}
+
+/// How a test workflow is launched: its working folder and Snakefile, config files, targets
+/// and profiles, from the launches of the test-workflows test of snakemake-runtime.
+fn launch_of(name: &str, folder: &Path, scratch: &Path) -> (Launch, PathBuf) {
+    let mut launch = Launch {
+        target: folder.to_owned(),
+        scratch: scratch.to_owned(),
+        simulated: true,
+        ..Launch::default()
+    };
+    let mut workdir = folder.to_owned();
+    let line = (LAUNCHES.lines())
+        .filter(|line| !line.starts_with('#'))
+        .find(|line| line.split('\t').next() == Some(name));
+    for field in line.into_iter().flat_map(|line| line.split('\t').skip(2)) {
+        let (key, value) = field.split_once('=').unwrap_or((field, ""));
+        match key {
+            "directory" => workdir = folder.join(value),
+            "snakefile" => launch.target = folder.join(value),
+            "configfile" => launch.configs.push(folder.join(value)),
+            "config" => {
+                let (name, value) = value.split_once('=').expect("a config value");
+                launch.params.push((name.to_owned(), value.to_owned()));
+            }
+            "target" => launch.targets.push(value.to_owned()),
+            "profile" | "workflow-profile" => {
+                let path = folder.join(value);
+                let profile = match path.exists() {
+                    true => path.to_string_lossy().into_owned(),
+                    false => value.to_owned(),
+                };
+                launch.profiles.push(profile);
+            }
+            _ => {}
+        }
+    }
+    if launch.target == folder && workdir != folder {
+        launch.target = workdir.clone();
+    }
+    (launch, workdir)
+}
+
+/// The workflow folders of the test workflows that have a Snakefile where Snakemake looks.
+fn workflows(root: &Path) -> Vec<(String, PathBuf)> {
+    let mut found = Vec::new();
+    for (group, folder) in [
+        ("catalog", root.join("catalog")),
+        ("tests", root.join("snakemake-tests/tests")),
+    ] {
+        let Ok(entries) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && snakemake_runtime::find_snakefile(&path).is_some() {
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                found.push((format!("{group}/{}", name.replace(' ', "_")), path));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// Compares one workflow when the test binary runs as a child for it, and writes the result.
+#[test]
+#[ignore = "a child of the test-workflows test"]
+fn compare_one() {
+    let (Some(name), Some(folder), Some(result), Some(scratch)) = (
+        std::env::var_os("SNAKEMAKE_COMPARE_NAME"),
+        std::env::var_os("SNAKEMAKE_COMPARE_FOLDER"),
+        std::env::var_os("SNAKEMAKE_COMPARE_RESULT"),
+        std::env::var_os("SNAKEMAKE_COMPARE_SCRATCH"),
+    ) else {
+        return;
+    };
+    let (folder, scratch) = (PathBuf::from(folder), PathBuf::from(scratch));
+    let (launch, workdir) = launch_of(&name.to_string_lossy(), &folder, &scratch);
+    let compared = compare(&launch, &workdir, &scratch);
+    let flags = [
+        compared.native,
+        compared.full,
+        compared.partly,
+        compared.failed,
+        compared.compiled,
+        compared.ends,
+        compared.same,
+        compared.equal,
+    ];
+    let flags: Vec<&str> = flags
+        .iter()
+        .map(|flag| if *flag { "1" } else { "0" })
+        .collect();
+    let shown = compared.shown.replace('\n', " ");
+    std::fs::write(result, format!("{}\t{shown}", flags.join(""))).expect("writes the result");
+}
+
+/// Compiles and runs every test workflow in a child process with a time limit and compares the
+/// counts with the recorded ones; `SNAKEMAKE_COMPARE=1` prints the result of each.
+#[test]
+#[ignore = "needs the test workflows of just snakemake-test-workflows"]
+fn matches_recorded() {
+    let root = std::env::var_os("SNAKEMAKE_TEST_WORKFLOWS").map(PathBuf::from);
+    let root = root.expect("SNAKEMAKE_TEST_WORKFLOWS names the test workflows");
+    let results = tempfile::tempdir().expect("a temporary directory");
+    let print = std::env::var_os("SNAKEMAKE_COMPARE").is_some();
+    let mut counts = Counts::default();
+    for (index, (name, folder)) in workflows(&root).into_iter().enumerate() {
+        let result = results.path().join(index.to_string());
+        // The parent removes the scratch folder, also after the time limit ended the child.
+        let scratch = tempfile::tempdir().expect("a temporary directory");
+        let status = Command::new("timeout")
+            .arg("300")
+            .arg(std::env::current_exe().expect("the test binary"))
+            .args(["--exact", "compare_one", "--ignored", "--test-threads", "1"])
+            .env("SNAKEMAKE_COMPARE_NAME", &name)
+            .env("SNAKEMAKE_COMPARE_FOLDER", &folder)
+            .env("SNAKEMAKE_COMPARE_RESULT", &result)
+            .env("SNAKEMAKE_COMPARE_SCRATCH", scratch.path())
+            .env("UWE_QUIET", "1")
+            .env("LC_CTYPE", "C.UTF-8")
+            .output()
+            .expect("runs the test binary");
+        let text = std::fs::read_to_string(&result).unwrap_or_else(|_| {
+            let code = status
+                .status
+                .code()
+                .map_or("a signal".into(), |code| code.to_string());
+            format!("00000000\tthe child ended with {code}")
+        });
+        let (flags, shown) = text.split_once('\t').unwrap_or((&text, ""));
+        let flag = |position: usize| flags.as_bytes().get(position) == Some(&b'1');
+        counts.workflows += 1;
+        for (position, count) in [
+            &mut counts.native,
+            &mut counts.full,
+            &mut counts.partly,
+            &mut counts.failed,
+            &mut counts.compiled,
+            &mut counts.ends,
+            &mut counts.same,
+            &mut counts.equal,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            *count += usize::from(flag(position));
+        }
+        if print {
+            println!("{name}\t{shown}");
+        }
+    }
+    assert_eq!(counts, RECORDED);
 }

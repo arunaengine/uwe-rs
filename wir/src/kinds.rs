@@ -42,7 +42,7 @@ impl<'d> Checker<'d> {
             self.report(at, Problem::Outside(name.clone()));
         }
         let used = task.command.iter().filter_map(|argument| match argument {
-            Argument::Input { input } => Some(input),
+            Argument::Input { input, .. } => Some(input),
             Argument::Text(_) => None,
         });
         self.inputs(at, op, used);

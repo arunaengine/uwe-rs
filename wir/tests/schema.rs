@@ -19,7 +19,8 @@ fn validator() -> Validator {
 fn schema_matches_parser() {
     let kinds = [
         json!({"task": {"command": ["true"], "success_codes": [0, 1]}}),
-        json!({"task": {"command": ["true"], "captures": [
+        json!({"task": {"command": ["ls", {"input": "a", "prefix": "-a", "separate": false,
+            "separator": ","}], "captures": [
             {"output": "o", "from": {"glob": "*.txt"}, "load_contents": true}
         ]}}),
         json!({"call": {"graph": "g"}}),

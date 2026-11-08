@@ -391,7 +391,12 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["input"],
-                "properties": { "input": { "$ref": "#/$defs/name" } }
+                "properties": {
+                  "input": { "$ref": "#/$defs/name" },
+                  "prefix": { "type": "string" },
+                  "separate": { "type": "boolean" },
+                  "separator": { "type": "string" }
+                }
               }
             ]
           }

@@ -347,26 +347,33 @@
           "additionalProperties": false,
           "properties": { "remainder": { "type": "boolean" } }
         },
-        "cross": { "$ref": "#/$defs/empty" },
-        "group": {
+        "cross": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["by"],
           "properties": {
-            "by": { "type": "array", "items": { "$ref": "#/$defs/count" } },
-            "size": { "$ref": "#/$defs/count" },
-            "remainder": { "type": "boolean" }
+            "key": { "$ref": "#/$defs/callback" },
+            "left": { "enum": ["first", "last", "error"] }
           }
         },
+        "group": { "$ref": "#/$defs/group_tuple" },
+        "group_tuple": { "$ref": "#/$defs/group_tuple" },
         "join": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["by"],
           "properties": {
-            "by": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+            "by": { "$ref": "#/$defs/positions" },
             "remainder": { "type": "boolean" },
-            "fail_on_mismatch": { "type": "boolean" },
-            "fail_on_duplicate": { "type": "boolean" }
+            "mismatch_error": { "type": "boolean" },
+            "duplicate_error": { "type": "boolean" },
+            "body": { "$ref": "#/$defs/callback" }
+          }
+        },
+        "combine": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "by": { "$ref": "#/$defs/positions" },
+            "body": { "$ref": "#/$defs/callback" }
           }
         },
         "branch": {
@@ -416,6 +423,35 @@
     "empty": { "type": "object", "additionalProperties": false },
     "texts": { "type": "array", "items": { "type": "string" } },
     "null_rule": { "enum": ["drop", "keep"] },
+    "positions": { "type": "array", "items": { "$ref": "#/$defs/count" } },
+    "sort": {
+      "oneOf": [
+        { "enum": ["none", "natural", "index", "hash", "deep"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key"],
+          "properties": { "key": { "$ref": "#/$defs/callback" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["compare"],
+          "properties": { "compare": { "$ref": "#/$defs/callback" } }
+        }
+      ]
+    },
+    "group_tuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "by": { "$ref": "#/$defs/positions" },
+        "size": { "$ref": "#/$defs/count" },
+        "size_body": { "$ref": "#/$defs/callback" },
+        "remainder": { "type": "boolean" },
+        "sort": { "$ref": "#/$defs/sort" }
+      }
+    },
     "expr_language": { "enum": ["js", "javascript", "groovy", "python", "wdl"] },
     "value_rules": { "enum": ["wir", "groovy", "python", "wdl", "javascript"] },
     "scope": {

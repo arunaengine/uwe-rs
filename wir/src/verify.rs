@@ -8,6 +8,7 @@ use crate::closure::Body;
 use crate::document::{Document, Endpoint, Graph, KNOWN, Port, Source, VERSION};
 use crate::flow::Subscription;
 use crate::op::{Kind, Op};
+use crate::reserved::Sort;
 use crate::types::{Type, TypeDef};
 
 /// One problem and where it is: `document`, `sources/<id>`, `types/<name>`, `<graph>` or
@@ -445,9 +446,29 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Transform(transform) => transform.body.graph().into_iter().collect(),
         Kind::FlatMap(flat) => flat.body.iter().filter_map(Body::graph).collect(),
         Kind::Merge(merge) => merge.body.iter().filter_map(Body::graph).collect(),
+        Kind::Group(group) | Kind::GroupTuple(group) => {
+            let sort = sorted(&group.sort).into_iter();
+            group
+                .size_body
+                .iter()
+                .chain(sort)
+                .filter_map(Body::graph)
+                .collect()
+        }
+        Kind::Join(join) => join.body.iter().filter_map(Body::graph).collect(),
+        Kind::Combine(combine) => combine.body.iter().filter_map(Body::graph).collect(),
+        Kind::Cross(cross) => cross.key.iter().filter_map(Body::graph).collect(),
         Kind::Branch(branch) => vec![&branch.body],
         Kind::Loop(body) => vec![&body.body],
         _ => Vec::new(),
+    }
+}
+
+/// The body of a sort rule.
+pub(crate) fn sorted(sort: &Sort) -> Option<&Body> {
+    match sort {
+        Sort::Key(body) | Sort::Compare(body) => Some(body),
+        _ => None,
     }
 }
 
@@ -542,6 +563,8 @@ fn show(value: &impl serde::Serialize) -> String {
 
 #[path = "callbacks.rs"]
 mod callbacks;
+#[path = "keyed.rs"]
+mod keyed;
 #[path = "kinds.rs"]
 mod kinds;
 #[path = "operators.rs"]

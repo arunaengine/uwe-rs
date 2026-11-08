@@ -59,6 +59,7 @@ pub fn lower(path: &Path, entry: Option<&str>, base: &Path) -> Result<Lowering, 
         graphs: Vec::new(),
         prefix: String::new(),
         done: Vec::new(),
+        fallbacks: Vec::new(),
     };
     let name = unit.name();
     let main = match &unit.callable {
@@ -130,6 +131,9 @@ struct Lowerer {
     /// The graph of each task and workflow lowered so far, by document and name, or why it
     /// has none, so that every call of it shares one graph.
     done: Vec<((String, String), Result<String, String>)>,
+    /// The literal defaults of optional inputs, by graph and port. A call op holds them for
+    /// the inputs that it is not given, so that a given `None` stays `None`, as in WDL.
+    fallbacks: Vec<(String, String, serde_json::Value)>,
 }
 
 impl Lowerer {
@@ -226,6 +230,11 @@ impl Lowerer {
         );
         if let Some(called) = called {
             (op.inputs, op.outputs) = (called.inputs.clone(), called.outputs.clone());
+        }
+        for (_, input, value) in self.fallbacks.iter().filter(|item| item.0 == graph) {
+            if let Some(port) = op.inputs.iter_mut().find(|port| port.name == *input) {
+                port.default = Some(value.clone());
+            }
         }
         op
     }

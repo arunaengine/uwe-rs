@@ -5,6 +5,9 @@
 
 use std::collections::BTreeSet;
 
+use serde_json::Value as Json;
+use wdl_analysis::types::Optional;
+
 use wdl_ast::AstToken;
 use wdl_ast::v1::{Decl, Expr, TaskDefinition};
 use wdl_runtime::Value;
@@ -15,6 +18,14 @@ use wir::{Port, Type};
 use crate::types::{convert, has_files, optional, port};
 use crate::{constant, reads, text};
 
+/// The inputs of a task as graph ports, the declarations that compute their defaults, and
+/// the literal defaults of optional inputs, which the call ops hold.
+pub(crate) struct Inputs {
+    pub ports: Vec<Port>,
+    pub library: Vec<Line>,
+    pub fallbacks: Vec<(String, Json)>,
+}
+
 /// A declaration as WDL text, with its name and the names it uses.
 pub(crate) struct Line {
     pub name: String,
@@ -24,12 +35,10 @@ pub(crate) struct Line {
 
 /// The inputs of a task as graph ports, a literal default as the default of its port, and
 /// the declarations that compute the other defaults.
-pub(crate) fn ports(
-    unit: &Unit,
-    definition: &TaskDefinition,
-) -> Result<(Vec<Port>, Vec<Line>), String> {
+pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, String> {
     let mut inputs = Vec::new();
     let mut library = Vec::new();
+    let mut fallbacks = Vec::new();
     for decl in definition
         .input()
         .iter()
@@ -50,6 +59,9 @@ pub(crate) fn ports(
             check(&expr)?;
             match constant(&expr).map(|value| value.coerce(&ty)) {
                 Some(Ok(Value::None)) => item.r#type = optional(r#type),
+                Some(Ok(value)) if ty.is_optional() => {
+                    fallbacks.push((name.clone(), value.result_json()))
+                }
                 Some(Ok(value)) => item.default = Some(value.result_json()),
                 _ => {
                     item.r#type = optional(r#type);
@@ -70,7 +82,11 @@ pub(crate) fn ports(
         }
         inputs.push(item);
     }
-    Ok((inputs, library))
+    Ok(Inputs {
+        ports: inputs,
+        library,
+        fallbacks,
+    })
 }
 
 /// Whether a type holds files inside a record or a map, which a task op does not stage.

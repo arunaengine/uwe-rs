@@ -10,7 +10,7 @@ use wdl_runtime::document::{Callable, Unit};
 use wdl_runtime::expression::names;
 use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 
-use crate::library::{Line, check, ordered, ports};
+use crate::library::{Inputs, Line, check, ordered, ports};
 use crate::outputs::{Output, Read, listing, outputs};
 use crate::types::{has_files, port};
 use crate::{DEFAULT_IMAGE, Lowerer, blank, constant, edge, end, origin, reads, text};
@@ -66,7 +66,11 @@ impl Lowerer {
         };
         let source = self.source(&unit.document);
         let at = origin(&source, &unit.name());
-        let (inputs, mut library) = ports(unit, definition)?;
+        let Inputs {
+            ports: inputs,
+            mut library,
+            fallbacks,
+        } = ports(unit, definition)?;
         for decl in definition.declarations() {
             if decl.env().is_some() {
                 return Err("an env declaration".into());
@@ -97,6 +101,10 @@ impl Lowerer {
         let mut task = runtime(definition)?;
         let outputs = outputs(unit, definition)?;
         let name = self.graph_name(&format!("task.{}", unit.name()));
+        let held = fallbacks
+            .into_iter()
+            .map(|(port, value)| (name.clone(), port, value));
+        self.fallbacks.extend(held);
         let path = unit.name();
         let mut graph = Graph {
             name: name.clone(),

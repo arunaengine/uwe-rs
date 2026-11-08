@@ -397,3 +397,34 @@ workflow twice {{
         json!(["hi hi ada", "hi hi hi ada"])
     );
 }
+
+#[test]
+fn given_none_stays() {
+    let text = r#"version 1.1
+workflow greet {
+  input {
+    String name
+  }
+  call hello as plain { input: name = name, salutation = None }
+  call hello as polite { input: name = name }
+  output {
+    Array[String] greetings = [plain.greeting, polite.greeting]
+  }
+}
+
+task hello {
+  input {
+    String name
+    String? salutation = "hello"
+  }
+  command <<< >>>
+  output {
+    String greeting = if defined(salutation) then "~{salutation} ~{name}" else name
+  }
+}
+"#;
+    let runs = runs(text, json!({"name": "ada"}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1["greetings"], json!(["ada", "hello ada"]));
+}

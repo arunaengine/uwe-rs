@@ -143,7 +143,7 @@ pub struct Nextflow {
 }
 
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
-struct Loaded {
+pub(crate) struct Loaded {
     /// The project directory, where the main script and `nextflow.config` are.
     project: PathBuf,
     script: PathBuf,
@@ -351,7 +351,7 @@ impl Nextflow {
     }
 
     /// The container tasks of the requests of the network, which are kept until they finish.
-    fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
+    pub(crate) fn tasks(&mut self, requests: Vec<TaskRequest>) -> Result<Vec<Task>, DriverError> {
         let host = self.settings.host.as_mut();
         let mut asked = Vec::new();
         for request in requests {
@@ -442,53 +442,9 @@ impl Nextflow {
             .collect()
     }
 
-    /// Writes report artifacts for either successful or failed runs.
-    fn write_reports(&mut self) -> Result<(), DriverError> {
-        if let Some(reports) = &self.reports {
-            // The reports go to the folder of this run, from where the engine delivers them.
-            let folder = self.folder().join("reports");
-            self.report_deliveries = reports.write(&folder).map_err(|error| {
-                DriverError::new(format!("cannot write the reports of the run: {error}"))
-            })?;
-        }
-        Ok(())
-    }
-
-    fn folder(&self) -> PathBuf {
-        run_folder(&self.launch.scratch, &self.settings.run_name)
-    }
-
-    /// The error of a failed run, remembering the message of its first exception.
-    fn fault(&mut self, failure: Error) -> DriverError {
-        if let Some(exception) = failure.exception() {
-            self.cause.get_or_insert_with(|| exception.message.clone());
-        }
-        error(failure)
-    }
-
-    /// What the entry workflow emitted so far, by emit name: a value channel gives its value,
-    /// a queue channel the array of its values. `None` before the run started.
-    pub fn emitted(&self) -> Result<Option<serde_json::Value>, DriverError> {
-        let Some(run) = &self.run else {
-            return Ok(None);
-        };
-        run.emitted().map(Some).map_err(DriverError::new)
-    }
-}
-
-/// The engine has run and delivered everything once the driver goes.
-impl Drop for Nextflow {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(self.folder());
-    }
-}
-
-impl Driver for Nextflow {
-    fn language(&self) -> Language {
-        Language::Nextflow
-    }
-
-    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+    /// Loads the run and sets up what every task of it gets, like the `env` scope, the
+    /// registry and the `bin` folder, without starting its network.
+    pub(crate) fn setup(&mut self) -> Result<Loaded, DriverError> {
         self.load()?;
         let loaded = self.loaded.take().ok_or_else(not_started)?;
         let bin = loaded.project.join("bin");
@@ -553,6 +509,58 @@ impl Driver for Nextflow {
             reports.observe(std::mem::take(&mut self.observers));
             self.reports = Some(reports).filter(|reports| !reports.is_empty());
         }
+        Ok(loaded)
+    }
+
+    /// Writes report artifacts for either successful or failed runs.
+    fn write_reports(&mut self) -> Result<(), DriverError> {
+        if let Some(reports) = &self.reports {
+            // The reports go to the folder of this run, from where the engine delivers them.
+            let folder = self.folder().join("reports");
+            self.report_deliveries = reports.write(&folder).map_err(|error| {
+                DriverError::new(format!("cannot write the reports of the run: {error}"))
+            })?;
+        }
+        Ok(())
+    }
+
+    fn folder(&self) -> PathBuf {
+        run_folder(&self.launch.scratch, &self.settings.run_name)
+    }
+
+    /// The error of a failed run, remembering the message of its first exception.
+    fn fault(&mut self, failure: Error) -> DriverError {
+        if let Some(exception) = failure.exception() {
+            self.cause.get_or_insert_with(|| exception.message.clone());
+        }
+        error(failure)
+    }
+
+    /// What the entry workflow emitted so far, by emit name: a value channel gives its value,
+    /// a queue channel the array of its values. `None` before the run started.
+    pub fn emitted(&self) -> Result<Option<serde_json::Value>, DriverError> {
+        let Some(run) = &self.run else {
+            return Ok(None);
+        };
+        run.emitted().map(Some).map_err(DriverError::new)
+    }
+}
+
+/// The engine has run and delivered everything once the driver goes.
+impl Drop for Nextflow {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(self.folder());
+    }
+}
+
+impl Driver for Nextflow {
+    fn language(&self) -> Language {
+        Language::Nextflow
+    }
+
+    fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        let loaded = self.setup()?;
+        let launch_dir = launch_folder(self.settings.host.as_ref());
         let options = self.options(&loaded, loaded.config.clone());
         let mut host = Noting {
             host: self.settings.host.as_mut(),

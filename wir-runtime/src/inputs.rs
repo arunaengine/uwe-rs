@@ -93,6 +93,13 @@ fn discover(value: &mut Json, r#type: &Type, (defs, simulated): (&[TypeDef], boo
             (items.iter_mut()).for_each(|item| discover(item, &array.items, inner));
         }
         (value, Some(Type::Optional(inner_type))) => discover(value, inner_type, inner),
+        (Json::Object(object), Some(Type::Record(fields))) => {
+            for field in fields {
+                if let Some(item) = object.get_mut(&field.name) {
+                    discover(item, &field.r#type, inner);
+                }
+            }
+        }
         (Json::Object(file), Some(Type::File(wanted))) if !file.contains_key("secondary_files") => {
             let location = file
                 .get("location")

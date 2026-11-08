@@ -10,7 +10,7 @@ use std::time::Instant;
 use argo_runtime::adapter::{Adapter, CallId as ArgoCall, Form, Instance};
 use serde_json::{Map, Value as Json};
 use wir::{Binding, ExprForm, Port, PortMap, TaskBuilder, TaskRef, TypeDef};
-use workflow_graph::{DriverError, Launch, Outcome, Task, TaskId};
+use workflow_graph::{Delivery, DriverError, Launch, Outcome, Task, TaskId};
 
 use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use crate::child::Block;
@@ -44,9 +44,11 @@ pub fn register(mut adapters: Adapters, services: argo_runtime::Services) -> Ada
         if let Some(files) = &opening.files {
             adapter.use_files(files.clone());
         }
+        let results = (!opening.launch.simulated).then(|| opening.output.clone());
         let tasks = ArgoTasks {
             adapter,
             calls: BTreeMap::new(),
+            results,
         };
         Ok(Box::new(tasks) as Box<dyn TaskAdapter>)
     });
@@ -120,6 +122,8 @@ struct ArgoTasks {
     adapter: Adapter,
     /// The calls that have not ended, with the op instance and the outputs of their task.
     calls: BTreeMap<ArgoCall, (CallId, Vec<PortMap>)>,
+    /// The results folder that the output artifacts go to once the run ends, as natively.
+    results: Option<PathBuf>,
 }
 
 impl ArgoTasks {
@@ -190,6 +194,17 @@ impl TaskAdapter for ArgoTasks {
 
     fn cancellations(&mut self) -> Vec<TaskId> {
         self.adapter.cancellations()
+    }
+
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        self.adapter.take_deliveries()
+    }
+
+    fn end(&mut self, _failure: Option<&str>) -> Result<(), DriverError> {
+        if let Some(results) = &self.results {
+            self.adapter.finish(results);
+        }
+        Ok(())
     }
 
     /// Argo names its tasks by their node names, as the native run does.

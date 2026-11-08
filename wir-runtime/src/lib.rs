@@ -10,6 +10,7 @@ pub mod cwl;
 mod driver;
 mod expr;
 mod inputs;
+mod load;
 pub mod nextflow;
 mod plan;
 pub mod snakemake;

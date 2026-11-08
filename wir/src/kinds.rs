@@ -41,6 +41,9 @@ impl<'d> Checker<'d> {
         for name in named.into_iter().filter(|name| !inside(name)) {
             self.report(at, Problem::Outside(name.clone()));
         }
+        if let Some(folder) = task.workdir.as_ref().filter(|folder| !absolute(folder)) {
+            self.report(at, Problem::Absolute(folder.clone()));
+        }
         let used = task.command.iter().filter_map(|argument| match argument {
             Argument::Input { input, .. } => Some(input),
             Argument::Text(_) => None,
@@ -360,6 +363,11 @@ fn array_of(items: Type) -> Type {
         items: Box::new(items),
         nonempty: false,
     })
+}
+
+/// Whether a path is absolute and has no `..`.
+fn absolute(path: &str) -> bool {
+    path.starts_with('/') && !path.split('/').any(|part| part == "..")
 }
 
 /// Whether a path is relative and stays inside the working folder.

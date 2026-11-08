@@ -103,6 +103,10 @@ pub struct Task {
     /// The file that standard error goes to, like CWL `stderr`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stderr: Option<String>,
+    /// The absolute path of the working folder in the container, like the output folder of
+    /// CWL; without it the runner picks one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workdir: Option<String>,
 }
 
 /// One command argument: literal text, or the value of a task input.

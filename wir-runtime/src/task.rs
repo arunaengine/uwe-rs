@@ -83,7 +83,7 @@ pub fn build(
         image: spec.image.clone(),
         command,
         script,
-        workdir: Some(WORKDIR.into()),
+        workdir: Some(spec.workdir.clone().unwrap_or_else(|| WORKDIR.into())),
         inputs,
         outputs,
         resources: Resources {

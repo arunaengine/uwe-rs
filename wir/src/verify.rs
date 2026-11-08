@@ -82,6 +82,8 @@ pub enum Problem {
     Default(String),
     #[error("{0} needs exactly one input and one output")]
     Unary(String),
+    #[error("{0:?} is not an absolute path without '..'")]
+    Absolute(String),
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.

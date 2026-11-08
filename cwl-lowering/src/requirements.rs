@@ -139,6 +139,7 @@ mod tests {
             network: false,
             stdout: None,
             stderr: None,
+            workdir: None,
         };
         (apply(&scope, &mut task), task)
     }

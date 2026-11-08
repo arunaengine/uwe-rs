@@ -33,7 +33,8 @@ fn lowers_plain_tools() {
         "image": "debian:stable-slim",
         "command": ["echo", "-n", {"input": "message"}, {"input": "words"}],
         "captures": [{"output": "out", "from": "stdout"}],
-        "stdout": "out.txt"
+        "stdout": "out.txt",
+        "workdir": "/var/spool/cwl"
     });
     assert_eq!(op["path"], "echo");
     assert_eq!(op["kind"]["task"], task);
@@ -188,4 +189,30 @@ fn lowers_named_types() {
     };
     assert_eq!(typed("person"), person);
     assert_eq!(typed("mood"), mood);
+}
+
+#[test]
+fn lowers_argument_expressions() {
+    let lowering = lowered("compile.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let paths: Vec<&str> = ops.iter().map(|op| op.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        ["compile.argument.1", "compile.argument.2", "compile"]
+    );
+    let task = serde_json::to_value(&ops[2]).unwrap();
+    let command = json!(["javac", "-d", {"input": "argument.1"},
+        {"input": "argument.2", "prefix": "-J-Xss", "separate": false}, {"input": "src"}]);
+    assert_eq!(task["kind"]["task"]["command"], command);
+    let wir::Kind::Expr(expr) = &ops[0].kind else {
+        panic!("an expr: {:?}", ops[0].kind);
+    };
+    assert!(expr.code.starts_with("${ var runtime = {"), "{}", expr.code);
+    assert!(
+        expr.code.contains(r#""outdir":"/var/spool/cwl""#),
+        "{}",
+        expr.code
+    );
+    assert!(expr.code.contains(r#""cores":2"#), "{}", expr.code);
 }

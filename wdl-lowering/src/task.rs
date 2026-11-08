@@ -18,9 +18,8 @@ use crate::types::{convert, has_files, port};
 use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text, unclaimed};
 
 /// Runs the command as uwe's WDL driver does, then copies below `.wdl/out/<output>/` the files
-/// that match each `<output>\t<regex>` line of `$4`, then each `<output>\t<path>` line of `$2`.
-/// `$3` is a failure code, then the success codes; a missing path or a failed copy turns a
-/// success into the failure code, unless the output starts with `?` as optional ones do.
+/// of each `<output>\t<regex>` line of `$4`, then each `<output>\t<path>` line of `$2`. A missing
+/// required path turns a success code of `$3` (failure code, success codes) into its first.
 pub(crate) const RUNNER: &str = r#"mkdir -p .wdl
 printf '%s' "$1" > .wdl/command.sh
 bash .wdl/command.sh > .wdl/stdout 2> .wdl/stderr

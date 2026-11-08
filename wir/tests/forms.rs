@@ -156,3 +156,45 @@ fn combination_forms() {
     ];
     kinds_round_trip(&good, &bad);
 }
+
+#[test]
+fn group_spellings() {
+    let good = [
+        json!({"group": {"size": 2}}),
+        json!({"group_tuple": {"by": [1, 0], "remainder": true, "sort": "hash"}}),
+        json!({"group_tuple": {"size_body": "sizes", "sort": {"key": "name"}}}),
+        json!({"combine": {"by": [0]}}),
+        json!({"combine": {}}),
+        json!({"cross": {"key": "id", "left": "error"}}),
+    ];
+    kinds_round_trip(
+        &good,
+        &[
+            json!({"group_tuple": {"sort": "random"}}),
+            json!({"cross": {"left": "all"}}),
+        ],
+    );
+    let first = document(
+        json!([{"path": "a", "kind": {"group": {"by": [0]}}}]),
+        json!([]),
+    );
+    let stored = &written(&first)["graphs"][0]["ops"][0]["kind"];
+    assert_eq!(
+        *stored,
+        json!({"group": {}}),
+        "by [0] is the default and the spelling stays"
+    );
+}
+
+#[test]
+fn join_field_names() {
+    let good = [
+        json!({"join": {"remainder": true, "duplicate_error": true, "body": "pad"}}),
+        json!({"join": {"by": [0, 2], "mismatch_error": true}}),
+    ];
+    let old = [
+        json!({"join": {"by": [0], "fail_on_mismatch": true}}),
+        json!({"join": {"by": [0], "fail_on_duplicate": true}}),
+    ];
+    kinds_round_trip(&good, &old);
+}

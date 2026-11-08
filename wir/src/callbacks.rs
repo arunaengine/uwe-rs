@@ -16,6 +16,8 @@ use crate::types::Type;
 pub(super) enum Arity {
     /// `item`.
     Unary,
+    /// `left` and `right`.
+    Binary,
     /// The inputs of the op by name, an item of each stream input and each value input.
     Ports,
 }
@@ -24,6 +26,7 @@ impl Arity {
     fn names(self) -> &'static [&'static str] {
         match self {
             Arity::Unary => &["item"],
+            Arity::Binary => &["left", "right"],
             Arity::Ports => &[],
         }
     }
@@ -61,8 +64,8 @@ impl<'d> Checker<'d> {
         (arity, args): (Arity, &[&Type]),
         returns: Option<&Type>,
     ) {
+        // The op check reports a body graph that does not exist.
         let Some(graph) = self.graph(name) else {
-            self.report(at, Problem::NoGraph(name.to_owned()));
             return;
         };
         let mut why = Vec::new();

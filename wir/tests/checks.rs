@@ -377,3 +377,95 @@ fn combination_shapes() {
         "main/op: a merge needs a value output, as its first input",
     );
 }
+
+/// Two tuple streams `left` and `right` of `width` ints.
+fn tuples(width: usize) -> Json {
+    let tuple = json!({"tuple": vec![json!("int"); width]});
+    json!([
+        typed("left", tuple.clone(), "stream"),
+        typed("right", tuple, "stream")
+    ])
+}
+
+#[test]
+fn key_positions() {
+    let out = typed("out", json!("dynamic"), "stream");
+    let joined =
+        |by: Json, width: usize| many(json!({"join": {"by": by}}), tuples(width), out.clone());
+    assert_eq!(problems(&joined(json!([0, 1]), 2)), Vec::<String>::new());
+    reports(&joined(json!([]), 2), "main/op: by must not be empty");
+    let found = problems(&joined(json!([1, 1]), 2));
+    assert!(
+        found.contains(&"main/op: key position 1 is defined twice".into()),
+        "{found:?}"
+    );
+    let found = problems(&joined(json!([2]), 2));
+    assert!(
+        found.contains(&"main/op: a keyed op needs key position 2 inside a tuple of 2".into()),
+        "{found:?}"
+    );
+    let scalars = json!([
+        typed("left", json!("int"), "stream"),
+        typed("right", json!("int"), "stream")
+    ]);
+    assert_eq!(
+        problems(&many(
+            json!({"combine": {"by": [0]}}),
+            scalars.clone(),
+            out.clone()
+        )),
+        Vec::<String>::new()
+    );
+    let found = problems(&many(json!({"combine": {"by": [1]}}), scalars, out.clone()));
+    assert!(
+        found.iter().any(|problem| problem.contains("tuple items")),
+        "{found:?}"
+    );
+    let source = json!([typed(
+        "source",
+        json!({"tuple": ["string", "int"]}),
+        "stream"
+    )]);
+    let grouped = |kind: Json| many(kind, source.clone(), out.clone());
+    assert_eq!(
+        problems(&grouped(json!({"group_tuple": {"size": 2}}))),
+        Vec::<String>::new()
+    );
+    reports(
+        &grouped(json!({"group_tuple": {"size": 0}})),
+        "main/op: a group needs a positive size",
+    );
+    let found = problems(&grouped(json!({"group": {"size": 2, "size_body": "s"}})));
+    let both = "main/op: a group needs size or size_body, not both";
+    assert!(found.contains(&both.into()), "{found:?}");
+}
+
+#[test]
+fn join_options() {
+    let out = typed("out", json!("dynamic"), "stream");
+    let options = |kind: Json, inputs: Json| problems(&many(kind, inputs, out.clone()));
+    let both = json!({"join": {"remainder": true, "mismatch_error": true}});
+    assert_eq!(
+        options(both, tuples(2)),
+        ["main/op: a join needs remainder or mismatch_error, not both"]
+    );
+    assert_eq!(
+        options(json!({"join": {"remainder": true}}), tuples(2)),
+        Vec::<String>::new()
+    );
+    let open = json!([
+        typed("left", json!("dynamic"), "stream"),
+        typed("right", json!("dynamic"), "stream")
+    ]);
+    let padded = options(json!({"join": {"remainder": true}}), open.clone());
+    assert_eq!(
+        padded,
+        ["main/op: a join needs a body that pads the remainder of open tuples"]
+    );
+    let found = options(json!({"join": {"remainder": true, "body": "pad"}}), open);
+    assert_eq!(
+        found,
+        ["main/op: no graph named pad"],
+        "a body is enough, once it exists"
+    );
+}

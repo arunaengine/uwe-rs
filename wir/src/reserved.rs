@@ -127,35 +127,102 @@ pub struct Zip {
     pub remainder: bool,
 }
 
-/// Pairs every item of one input with every item of the other. Open: order and empty input.
+/// How an op orders the items it collects; equal items keep their arrival order.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Cross {}
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum Sort {
+    #[default]
+    None,
+    Natural,
+    /// Arrival order.
+    Index,
+    /// By the hash of the value.
+    Hash,
+    /// By the hash of the value, with File contents.
+    Deep,
+    /// By the key that the body computes for an item.
+    Key(Box<Body>),
+    /// By the comparison of `left` and `right` that the body computes.
+    Compare(Box<Body>),
+}
 
-/// Groups tuple items by the items at the `by` positions, like Nextflow `groupTuple`.
-/// Open: `size`, `remainder`, and the order of groups.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+impl Sort {
+    pub fn is_none(&self) -> bool {
+        *self == Sort::None
+    }
+}
+
+/// Groups tuple items by the items at the `by` positions, like Nextflow `groupTuple`: each
+/// other position becomes a list. A group emits when it has `size` items, or at the close.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Group {
+pub struct GroupTuple {
+    #[serde(default = "first_position", skip_serializing_if = "is_first")]
     pub by: Vec<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_body: Option<Body>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub remainder: bool,
+    #[serde(default, skip_serializing_if = "Sort::is_none")]
+    pub sort: Sort,
 }
 
-/// Joins tuple items of two inputs on the `by` positions, like Nextflow `join`. Open:
-/// duplicate keys, mismatch errors and order.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// The older spelling of [`GroupTuple`].
+pub type Group = GroupTuple;
+
+/// Joins tuple items of `left` and `right` on the `by` positions, one to one and first in
+/// first out per key, like Nextflow `join`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Join {
+    #[serde(default = "first_position", skip_serializing_if = "is_first")]
     pub by: Vec<u32>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub remainder: bool,
     #[serde(default, skip_serializing_if = "is_false")]
-    pub fail_on_mismatch: bool,
+    pub mismatch_error: bool,
     #[serde(default, skip_serializing_if = "is_false")]
-    pub fail_on_duplicate: bool,
+    pub duplicate_error: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+}
+
+/// Gives every pair of a `left` and a `right` item, with equal keys at `by` when it is set.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Combine {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<Vec<u32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+}
+
+/// Pairs each `right` item with the `left` item of its key, which the key body computes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Cross {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<Body>,
+    #[serde(default, skip_serializing_if = "LeftRule::is_last")]
+    pub left: LeftRule,
+}
+
+/// Which `left` item of a key a cross keeps.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeftRule {
+    First,
+    #[default]
+    Last,
+    Error,
+}
+
+impl LeftRule {
+    pub fn is_last(&self) -> bool {
+        *self == LeftRule::Last
+    }
 }
 
 /// Picks among the items of its one array input, like CWL `pickValue`; the README defines it.
@@ -203,4 +270,12 @@ pub struct Dynamic {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn first_position() -> Vec<u32> {
+    vec![0]
+}
+
+fn is_first(by: &[u32]) -> bool {
+    by == [0]
 }

@@ -419,6 +419,23 @@ fn control_boolean() {
 }
 
 #[test]
+fn control_waits() {
+    let test = |op: &str, on: &str| json!({"result": {"op": op, "on": [on]}});
+    let tree = json!({"not": {"all": [test("a", "failed"), test("b", "succeeded")]}});
+    let mut progress = controlled(json!({"c": {"depends": tree}}), json!([]));
+    run_as(&mut progress, "a", Status::Succeeded);
+    let (b, _) = progress.next(false).unwrap();
+    assert_eq!(
+        progress.next(false),
+        None,
+        "c waits for the result of b, though a decides the tree"
+    );
+    progress.end(b, Status::Succeeded, Map::new(), None);
+    let (c, _) = progress.next(false).unwrap();
+    assert_eq!(progress.node(c).path, "c");
+}
+
+#[test]
 fn control_groups() {
     let group = json!({"path": "g", "kind": {"status_group": {"members": ["a", "b"], "allow": ["errored"]}}});
     let tests = json!({"c": {"depends": {"result": {"op": "g", "on": ["any_succeeded"]}}}});

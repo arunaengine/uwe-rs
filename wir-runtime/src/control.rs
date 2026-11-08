@@ -17,11 +17,30 @@ pub enum Truth {
 }
 
 impl Progress {
-    /// The truth of a control tree; negation never makes a pending test true.
+    /// The truth of a control tree, pending while any op it tests has no control result.
     pub fn control(&self, tree: &ControlPlan) -> Truth {
+        match self.resolved(tree) {
+            true => self.truth(tree),
+            false => Truth::Pending,
+        }
+    }
+
+    /// Whether every op that a control tree tests has a control result.
+    fn resolved(&self, tree: &ControlPlan) -> bool {
+        match tree {
+            ControlPlan::All(items) | ControlPlan::Any(items) => {
+                items.iter().all(|item| self.resolved(item))
+            }
+            ControlPlan::Not(inner) => self.resolved(inner),
+            ControlPlan::Test(node, _) => self.result(*node).is_some(),
+        }
+    }
+
+    /// The truth of a control tree whose tests all have results.
+    fn truth(&self, tree: &ControlPlan) -> Truth {
         match tree {
             ControlPlan::All(items) => {
-                let truths: Vec<Truth> = items.iter().map(|item| self.control(item)).collect();
+                let truths: Vec<Truth> = items.iter().map(|item| self.truth(item)).collect();
                 match (
                     truths.contains(&Truth::False),
                     truths.contains(&Truth::Pending),
@@ -32,7 +51,7 @@ impl Progress {
                 }
             }
             ControlPlan::Any(items) => {
-                let truths: Vec<Truth> = items.iter().map(|item| self.control(item)).collect();
+                let truths: Vec<Truth> = items.iter().map(|item| self.truth(item)).collect();
                 match (
                     truths.contains(&Truth::True),
                     truths.contains(&Truth::Pending),
@@ -42,7 +61,7 @@ impl Progress {
                     (false, false) => Truth::False,
                 }
             }
-            ControlPlan::Not(inner) => match self.control(inner) {
+            ControlPlan::Not(inner) => match self.truth(inner) {
                 Truth::True => Truth::False,
                 Truth::False => Truth::True,
                 Truth::Pending => Truth::Pending,

@@ -293,12 +293,7 @@ impl Driver for ArgoDriver {
         task: workflow_graph::TaskId,
         error: &workflow_graph::ExecuteError,
     ) -> bool {
-        matches!(
-            error,
-            workflow_graph::ExecuteError::Machine { .. }
-                | workflow_graph::ExecuteError::Executor { .. }
-        ) || (matches!(error, workflow_graph::ExecuteError::Cancelled)
-            && self.run.as_ref().is_some_and(|run| run.expired_task(task)))
+        handled_error(self.run.as_ref(), task, error)
     }
 
     fn cancellations(&mut self) -> Vec<workflow_graph::TaskId> {
@@ -366,6 +361,21 @@ impl Driver for ArgoDriver {
     fn results(&self) -> Option<serde_json::Value> {
         self.exported().filter(|_| !self.options.assume_inputs)
     }
+}
+
+/// Whether an execution failure of a task comes back as an outcome, for the retry rules,
+/// `continueOn` and handlers of Argo: a lost machine or executor, or a stop past its deadline.
+pub(crate) fn handled_error(
+    run: Option<&run::Run>,
+    task: workflow_graph::TaskId,
+    error: &workflow_graph::ExecuteError,
+) -> bool {
+    matches!(
+        error,
+        workflow_graph::ExecuteError::Machine { .. }
+            | workflow_graph::ExecuteError::Executor { .. }
+    ) || (matches!(error, workflow_graph::ExecuteError::Cancelled)
+        && run.is_some_and(|run| run.expired_task(task)))
 }
 
 /// The driver for an Argo workflow file.

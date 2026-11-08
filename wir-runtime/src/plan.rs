@@ -217,7 +217,6 @@ fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
         {
             Some("uwe does not run dialect tasks yet")
         }
-        Kind::Task(task) if task.retry.is_some() => Some("uwe does not run task retry rules yet"),
         _ => None,
     }
 }

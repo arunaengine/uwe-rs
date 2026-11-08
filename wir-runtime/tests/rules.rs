@@ -246,10 +246,6 @@ fn refuses_unrun_fields() {
         rules,
         "op main/sort: uwe compares values only by the wir rules yet"
     );
-    let retry = refused(|document| {
-        op(document, 0)["kind"]["task"]["retry"] = json!({"limit": 1});
-    });
-    assert_eq!(retry, "op main/sort: uwe does not run task retry rules yet");
     let captured = refused(|document| {
         let mut same = expr(json!({}));
         same["kind"]["expr"]["captures"] = json!({"n": {"value": 1}});

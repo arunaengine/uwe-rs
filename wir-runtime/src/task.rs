@@ -290,6 +290,50 @@ pub fn capture(
     Ok((values, empty))
 }
 
+/// The object that the retry callbacks of a task take for an attempt: the inputs, the round
+/// index, the attempt from 1, and how the attempt before it was rejected, or null.
+pub fn attempt_context(
+    inputs: &Map<String, Json>,
+    index: u64,
+    attempt: u32,
+    previous: Json,
+) -> Json {
+    json!({"inputs": inputs, "index": index, "attempt": attempt, "previous": previous})
+}
+
+/// What a retry callback gives for the attempt object `argument`.
+pub fn callback(
+    callbacks: &mut Callbacks,
+    context: &Context<'_>,
+    closure: &wir::Closure,
+    argument: Json,
+    inputs: &Map<String, Json>,
+) -> Result<Json, String> {
+    let body = wir::Body::Closure(closure.clone());
+    callbacks.call(context, &body, (&["attempt"], &[argument]), inputs)
+}
+
+/// A task op as one attempt runs it: the base settings with the patch of that attempt.
+pub fn patched(spec: &wir::Task, op: &Op, patch: &wir::TaskPatch) -> (wir::Task, Op) {
+    let (mut spec, mut op) = (spec.clone(), op.clone());
+    let wir::TaskPatch {
+        image,
+        command,
+        resources,
+        time,
+        place,
+        success_codes,
+    } = patch.clone();
+    spec.image = image.or(spec.image);
+    spec.command = command.unwrap_or(spec.command);
+    spec.success_codes = success_codes.unwrap_or(spec.success_codes);
+    let attributes = &mut op.attributes;
+    attributes.resources = resources.or(attributes.resources.take());
+    attributes.time = time.or(attributes.time);
+    attributes.place = place.or(attributes.place.take());
+    (spec, op)
+}
+
 /// Whether the `accept` callback of a task holds for an attempt: it takes one object of the
 /// inputs, the outputs, the round index, the attempt and the exit code, and gives a bool.
 pub fn accepts(

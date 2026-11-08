@@ -214,6 +214,11 @@ pub trait Operator {
 
 /// The op of a node, when its kind runs as a stream op.
 pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
+    make_typed(node, &[])
+}
+
+/// The operator of a node, with the type definitions that its port types name.
+pub fn make_typed(node: &Node, defs: &[wir::TypeDef]) -> Option<Box<dyn Operator>> {
     let stream = node
         .op
         .inputs
@@ -238,7 +243,7 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         Kind::Join(spec) => {
             let width = |name: &str| {
                 let port = node.op.inputs.iter().find(|port| port.name == name)?;
-                let wir::Type::Tuple(items) = &port.r#type else {
+                let Some(wir::Type::Tuple(items)) = wir::resolve(&port.r#type, defs) else {
                     return None;
                 };
                 Some(items.len().saturating_sub(spec.by.len()))

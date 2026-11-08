@@ -149,6 +149,14 @@ fn filter_items() {
         json!([1, 2, 3]),
     );
     assert_eq!(truthy.unwrap(), Some(json!([1, 3])), "Groovy truth");
+    let sets = run(
+        json!({"filter": {"body": groovy("{ (it > 1 ? [it] : []) as Set }")}}),
+        "stream",
+        ints(),
+        json!([]),
+        json!([1, 2, 3]),
+    );
+    assert_eq!(sets.unwrap(), Some(json!([2, 3])), "an empty set is false");
     let rejected = run(
         json!({"filter": {"body": groovy("{ false }")}}),
         "value",

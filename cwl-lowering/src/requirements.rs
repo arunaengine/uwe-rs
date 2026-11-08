@@ -140,6 +140,7 @@ mod tests {
             stdout: None,
             stderr: None,
             workdir: None,
+            files: Vec::new(),
         };
         (apply(&scope, &mut task), task)
     }

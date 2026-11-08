@@ -316,6 +316,14 @@ fn stream_files_checked() {
     let missing = Problem::NoPort("input name".into());
     assert_eq!(only(document.clone()), ("main/head".into(), missing));
     document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"] = json!({"input": "input"});
+    let files = json!([{"value": "x=1"}, {"value": {"input": "input"}, "path": "/etc/x"}]);
+    document["graphs"][0]["ops"][1]["kind"]["task"]["files"] = files;
+    let found: Vec<Problem> = (problems(document.clone()).into_iter())
+        .map(|error| error.problem)
+        .collect();
+    let text = Problem::Empty("the path of staged text".into());
+    assert_eq!(found, [text, Problem::Outside("/etc/x".into())]);
+    document["graphs"][0]["ops"][1]["kind"]["task"]["files"] = json!([]);
     document["graphs"][0]["ops"][1]["kind"]["task"]["workdir"] = json!("work");
     let relative = Problem::Absolute("work".into());
     assert_eq!(only(document), ("main/head".into(), relative));

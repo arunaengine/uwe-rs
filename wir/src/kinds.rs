@@ -7,7 +7,9 @@ use std::collections::BTreeSet;
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
-use crate::op::{Argument, Branch, CaptureRule, FileName, Kind, Map, Native, Op, Scatter, Task};
+use crate::op::{
+    Argument, Branch, CaptureRule, Content, FileName, Kind, Map, Native, Op, Scatter, Task,
+};
 use crate::reserved::Pick;
 use crate::types::{ArrayType, Type, TypeDef, resolve};
 
@@ -49,6 +51,22 @@ impl<'d> Checker<'d> {
         for capture in &task.captures {
             if let CaptureRule::Patterns(input) = &capture.from {
                 used.push(input);
+            }
+        }
+        for staged in &task.files {
+            match (&staged.value, &staged.path) {
+                (Content::Input { input }, _) => used.push(input),
+                (Content::Text(_), None) => {
+                    self.report(at, Problem::Empty("the path of staged text".into()));
+                }
+                (Content::Text(_), Some(_)) => {}
+            }
+            match &staged.path {
+                Some(FileName::Text(text)) if !inside(text) => {
+                    self.report(at, Problem::Outside(text.clone()));
+                }
+                Some(FileName::Input { input }) => used.push(input),
+                _ => {}
             }
         }
         self.inputs(at, op, used);

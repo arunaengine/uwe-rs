@@ -445,7 +445,20 @@
         "network": { "type": "boolean" },
         "stdout": { "$ref": "#/$defs/file_name" },
         "stderr": { "$ref": "#/$defs/file_name" },
-        "workdir": { "type": "string" }
+        "workdir": { "type": "string" },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": {
+              "value": { "$ref": "#/$defs/file_name" },
+              "path": { "$ref": "#/$defs/file_name" },
+              "writable": { "type": "boolean" }
+            }
+          }
+        }
       }
     }
   }

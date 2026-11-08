@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use indexmap::IndexMap;
 use serde_json::{Map, Value as Json, json};
 use wdl_analysis::types::v1::AstTypeConverter;
-use wdl_analysis::types::{Type as Declared, TypeNameResolver};
+use wdl_analysis::types::{StructType, Type as Declared, TypeNameResolver};
 use wdl_ast::v1::{BoundDecl, CommandSection, WorkflowStatement};
 use wdl_ast::{AstToken, Diagnostic, Severity, Span};
 use wdl_runtime::Value;
@@ -47,10 +47,15 @@ pub fn evaluate(
         );
         scope.names.insert(port.name.clone(), value);
     }
+    let mut structs = BTreeMap::new();
     for line in &spec.library {
+        if let Some(record) = structure(line, version, &structs)? {
+            structs.insert(record.name().to_string(), Declared::from(record));
+            continue;
+        }
         let decl = declaration(line, version)?;
         let name = decl.name().text().to_owned();
-        let ty = declared(&decl.ty())?;
+        let ty = declared(&decl.ty(), &structs)?;
         let value = expression::evaluate(&decl.expr(), &mut scope)
             .map_err(|error| format!("`{name}`: {error}"))?;
         let value = value
@@ -173,18 +178,38 @@ fn section(text: &str, version: &str) -> Result<CommandSection, String> {
         .ok_or_else(|| "the code is not a WDL command section".to_owned())
 }
 
-/// The type of a declaration. Structs have no definitions here, so their values stay as
-/// they are.
-fn declared(ty: &wdl_ast::v1::Type) -> Result<Declared, String> {
-    struct Open;
-
-    impl TypeNameResolver for Open {
-        fn resolve(&mut self, _: &str, _: Span) -> Result<Declared, Diagnostic> {
-            Ok(Declared::Union)
-        }
+/// The struct that a library line like `struct Person { String name }` defines, with the
+/// structs before it; another line defines none.
+fn structure(
+    line: &str,
+    version: &str,
+    structs: &BTreeMap<String, Declared>,
+) -> Result<Option<StructType>, String> {
+    if !line.trim_start().starts_with("struct ") {
+        return Ok(None);
     }
+    let ast = parsed(line, version)?;
+    let definition = (ast.structs().next()).ok_or_else(|| format!("`{line}` is no struct"))?;
+    (AstTypeConverter::new(Known(structs)).convert_struct_type(&definition))
+        .map(Some)
+        .map_err(|diagnostic| diagnostic.message().to_owned())
+}
 
-    (AstTypeConverter::new(Open).convert_type(ty))
+/// The structs of a library by name; a struct it does not define is a value as it is.
+struct Known<'s>(&'s BTreeMap<String, Declared>);
+
+impl TypeNameResolver for Known<'_> {
+    fn resolve(&mut self, name: &str, _: Span) -> Result<Declared, Diagnostic> {
+        Ok(self.0.get(name).cloned().unwrap_or(Declared::Union))
+    }
+}
+
+/// The type of a declaration, with the structs of the library.
+fn declared(
+    ty: &wdl_ast::v1::Type,
+    structs: &BTreeMap<String, Declared>,
+) -> Result<Declared, String> {
+    (AstTypeConverter::new(Known(structs)).convert_type(ty))
         .map_err(|diagnostic| diagnostic.message().to_owned())
 }
 

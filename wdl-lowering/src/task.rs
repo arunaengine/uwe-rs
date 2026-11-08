@@ -12,7 +12,7 @@ use wdl_runtime::document::{Callable, Unit, declared};
 use wdl_runtime::expression::names;
 use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 
-use crate::library::{Inputs, Line, check, ordered, ports, staged};
+use crate::library::{Inputs, Line, check, ordered, ports, staged, structs};
 use crate::outputs::{Output, Read, listing, outputs, patterns};
 use crate::types::{convert, has_files, port};
 use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text, unclaimed};
@@ -121,7 +121,7 @@ impl Lowerer {
         for decl in computed.chain(definition.declarations()) {
             staged(&decl, &types)?;
         }
-        let library = ordered(library)?;
+        let library = [structs(unit, definition)?, ordered(library)?].concat();
         let command = match definition.command() {
             Some(section) => {
                 if let Some(function) = called(&section, &READS) {

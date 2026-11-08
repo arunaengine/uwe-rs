@@ -122,6 +122,8 @@ fn reconciles_instances() {
 #[test]
 fn final_plan() {
     let (document, mut progress, mut region) = region();
+    // The value plan input is read once; this test adopts its plans itself.
+    region.given(&mut progress, 0).unwrap();
     let checks = (&document, &Adapters::default());
     let mut regions = Regions::new();
     region
@@ -141,4 +143,49 @@ fn final_plan() {
         progress.states[0],
         State::Ended(Status::Succeeded, _)
     ));
+}
+
+#[test]
+fn plan_stream() {
+    let stream = json!({"name": "out", "type": "dynamic", "flow": "stream"});
+    let src = json!({"path": "src", "kind": {"emit": {}}, "inputs": [{"name": "source", "type": "dynamic"}],
+        "outputs": [stream]});
+    let region = json!({"path": "r", "kind": {"dynamic": {"plan": "plans"}},
+        "inputs": [{"name": "plans", "type": "dynamic", "flow": "stream"}]});
+    let edges = json!([{"from": {"op": "src", "port": "out"}, "to": {"op": "r", "port": "plans"}}]);
+    let document = json!({"wir_version": "0.1",
+        "sources": [{"id": "s", "language": "cwl", "location": "s.cwl"}],
+        "graphs": [{"name": "main", "ops": [src, region], "edges": edges}], "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    let mut progress = Progress::new(
+        plan::plan(&document, &Adapters::default()).unwrap(),
+        Vec::new(),
+    );
+    progress.activate(None).unwrap();
+    progress.next(false).unwrap();
+    let (at, bound) = progress.next(false).unwrap();
+    let Kind::Dynamic(spec) = &progress.node(at).op.kind else {
+        panic!("no region");
+    };
+    let mut regions = Regions::from([(at, Region::new(spec.clone(), bound))]);
+    let update = update(0, &["a"], json!({}), true);
+    crate::mixing::tests::commit(&mut progress.streams, &[("src#out", update)], &[]);
+    let checks = (&document, &Adapters::default());
+    let region = regions.get_mut(&at).unwrap();
+    for given in region.given(&mut progress, at).unwrap() {
+        region.adopt(&mut progress, checks, at, given).unwrap();
+    }
+    let (a, _) = progress.next(false).unwrap();
+    progress.end(a, Status::Succeeded, Map::new(), None);
+    assert!(
+        !settle(&mut progress, &mut regions),
+        "the plan input is open still"
+    );
+    crate::mixing::tests::commit(&mut progress.streams, &[], &["src#out"]);
+    let region = regions.get_mut(&at).unwrap();
+    assert!(region.given(&mut progress, at).unwrap().is_empty());
+    assert!(
+        settle(&mut progress, &mut regions),
+        "the region settles once its plans ended"
+    );
 }

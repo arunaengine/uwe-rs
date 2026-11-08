@@ -1033,7 +1033,8 @@ impl WirDriver {
         for update in updates {
             region.adopt(&mut self.progress, checks, at, update)?;
         }
-        Ok(moved)
+        let forwarded = region.forward(&mut self.progress, at)?;
+        Ok(moved || forwarded)
     }
 
     /// Runs the hooks of the document once, at the end of the run: the `complete` hooks, and

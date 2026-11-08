@@ -34,7 +34,24 @@ impl Progress {
     /// of a call, then installs their readers, all before any of them starts.
     pub fn activate(&mut self, parent: Option<usize>) -> Result<(), DriverError> {
         let members = self.children(parent).to_vec();
-        for at in &members {
+        self.install(&members)?;
+        if let Some(call) = parent {
+            let path = self.node(call).path.clone();
+            let mut readers = Vec::new();
+            for (port, source) in self.streamed_exports(call) {
+                readers.push((self.stream_of(&source)?, export_reader(&path, &port)));
+            }
+            for (stream, reader) in readers {
+                self.streams.subscribe(&stream, reader, Subscription::All)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Opens the stream outputs of nodes, then installs the readers of their stream inputs,
+    /// like the instances that a dynamic region adds.
+    pub fn install(&mut self, members: &[usize]) -> Result<(), DriverError> {
+        for at in members {
             let node = self.node(*at);
             let ports = node.op.outputs.iter().filter(|port| !port.flow.is_value());
             let opened: Vec<StreamId> = ports
@@ -45,7 +62,7 @@ impl Progress {
                 self.streams.open(stream, &path);
             }
         }
-        for at in &members {
+        for at in members {
             let node = self.node(*at);
             let mut readers = Vec::new();
             for (port, source) in &node.inputs {
@@ -69,16 +86,6 @@ impl Progress {
             }
             for (stream, reader, mode) in readers {
                 self.streams.subscribe(&stream, reader, mode)?;
-            }
-        }
-        if let Some(call) = parent {
-            let path = self.node(call).path.clone();
-            let mut readers = Vec::new();
-            for (port, source) in self.streamed_exports(call) {
-                readers.push((self.stream_of(&source)?, export_reader(&path, &port)));
-            }
-            for (stream, reader) in readers {
-                self.streams.subscribe(&stream, reader, Subscription::All)?;
             }
         }
         Ok(())

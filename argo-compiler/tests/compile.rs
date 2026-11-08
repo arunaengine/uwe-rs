@@ -203,7 +203,7 @@ fn compiles_dag_control() {
 }
 
 #[test]
-fn keeps_what_needs_more() {
+fn keeps_native_reasons() {
     let folder = tempfile::tempdir().unwrap();
     let param = DAG
         .replace(

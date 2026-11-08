@@ -48,9 +48,8 @@ impl Compiled {
     }
 }
 
-/// Compiles the Argo workflow of a file, with the template documents of `configs`. Source
-/// locations are relative to `base` when they lie below it. It fails only when not even a
-/// native op can hold the workflow.
+/// Compiles the Argo workflow of a file, with the templates of `configs`, its location relative
+/// to `base`. It fails only when not even a native op can hold the workflow.
 pub fn compile(
     path: &Path,
     configs: &[std::path::PathBuf],

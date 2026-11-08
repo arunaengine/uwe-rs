@@ -68,9 +68,8 @@ pub enum Form {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CallId(usize);
 
-/// How a call ended: its results, its message, and its outputs by the tag that reads them
-/// after the prefix of the step: `outputs.parameters.<name>`, `outputs.result` and
-/// `exitCode` as texts, `outputs.artifacts.<name>` as a File or Directory.
+/// How a call ended: its results, its message, and its outputs by tag after the step prefix,
+/// like `outputs.parameters.<name>`, `outputs.result` or `exitCode`; artifacts as Files.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ending {
     pub facts: Facts,
@@ -329,9 +328,8 @@ impl Adapter {
         &self.run.warnings
     }
 
-    /// Evaluates an Argo text of the step or task `site`, a node name below the workflow, as
-    /// the native run expands it: with the globals of the run and `values` by tag name. A list
-    /// is the outputs of a loop, a map an item, and null a value that is not there.
+    /// Evaluates an Argo text of the step `site` as the native run expands it, with the globals
+    /// and `values` by tag: a list is the outputs of a loop, a map an item, null no value.
     pub fn evaluate(
         &mut self,
         text: &str,

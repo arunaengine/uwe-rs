@@ -56,6 +56,32 @@ async fn forwards_cwl_image() {
 }
 
 #[tokio::test]
+async fn runs_lowered_documents() {
+    let root = tempfile::tempdir().unwrap();
+    let mut workdirs = Vec::new();
+    for lowered in [false, true] {
+        let mut request = request(root.path());
+        request.settings.lowered = lowered;
+        let run = request.run().await.unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        workdirs.push(run.execution.graph.nodes[0].task.workdir.clone());
+    }
+    assert_eq!(workdirs[0].as_deref(), Some("/var/spool/cwl"));
+    assert_eq!(workdirs[1].as_deref(), Some("/work"));
+    let mut request = request(root.path());
+    request.settings.lowered = true;
+    request.settings.inputs = Some(json!({"count": "three"}));
+    let Err(refused) = request.run().await else {
+        panic!("a lowered run refuses an input of the wrong type");
+    };
+    assert!(
+        refused.message.contains("cwl workflow"),
+        "{}",
+        refused.message
+    );
+}
+
+#[tokio::test]
 async fn defaults_to_local() {
     let root = tempfile::tempdir().unwrap();
     let mut request = request(root.path());

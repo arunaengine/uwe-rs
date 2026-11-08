@@ -12,6 +12,29 @@ use nextflow_evaluator::value::{PathValue, Value};
 
 use crate::{Network, Options};
 
+/// What a call of `log.info` and its siblings, or of `System.out.println`, prints; `None` for
+/// another call. `log.debug` prints nothing.
+pub(crate) fn printed(namespace: &str, name: &str, arguments: &[Value]) -> Option<String> {
+    match (namespace, name, arguments) {
+        ("log", "info" | "warn" | "error" | "debug", [message]) => {
+            let prefix = match name {
+                "warn" => "WARN: ",
+                "error" => "ERROR ~ ",
+                _ => "",
+            };
+            Some(match name {
+                "debug" => String::new(),
+                _ => format!("{prefix}{message}\n"),
+            })
+        }
+        ("System.out" | "System.err", "println" | "print", [message]) => {
+            let end = if name == "println" { "\n" } else { "" };
+            Some(format!("{message}{end}"))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) struct Session<'a> {
     pub base: &'a mut dyn Host,
     pub options: &'a Options,
@@ -124,24 +147,10 @@ impl Host for Session<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Option<Value>, Error> {
-        if let ("log", "info" | "warn" | "error" | "debug", [message]) =
-            (namespace, name, arguments.as_slice())
-        {
-            let prefix = match name {
-                "warn" => "WARN: ",
-                "error" => "ERROR ~ ",
-                _ => "",
-            };
-            if name != "debug" {
-                self.base.print(&format!("{prefix}{message}\n"));
+        if let Some(text) = printed(namespace, name, &arguments) {
+            if !text.is_empty() {
+                self.base.print(&text);
             }
-            return Ok(Some(Value::Null));
-        }
-        if let ("System.out" | "System.err", "println" | "print", [message]) =
-            (namespace, name, arguments.as_slice())
-        {
-            let end = if name == "println" { "\n" } else { "" };
-            self.base.print(&format!("{message}{end}"));
             return Ok(Some(Value::Null));
         }
         self.base.namespace_method(namespace, name, arguments)

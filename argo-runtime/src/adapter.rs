@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use argo_parser::model::{
-    AnyString, Arguments, DagTask, Sequence, TemplateRef, WorkflowSpec, WorkflowStep,
+    AnyString, Arguments, DagTask, LifecycleHook, Sequence, TemplateRef, WorkflowSpec, WorkflowStep,
 };
 use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use serde_json::{Map, Value as Json};
@@ -28,6 +28,8 @@ use crate::{Document, Library, Options, Services, artifact_value, driver_error, 
 pub struct Adapter {
     run: Run,
     calls: Vec<usize>,
+    /// The call of each task the calls asked for.
+    owners: std::collections::HashMap<TaskId, usize>,
 }
 
 /// A call of a template: a step or DAG task of a holding template, as the native run expands
@@ -38,8 +40,8 @@ pub struct Instance {
     pub template: String,
     /// The WorkflowTemplate that holds that template, and whether it is cluster scoped.
     pub reference: Option<(String, bool)>,
-    /// The step `[1].use` or the DAG task `.use`; anything else, like `entrypoint`, calls the
-    /// entrypoint.
+    /// The step `[1].use` or the DAG task `.use`, or its exit hook `[1].use.onExit`; `.onExit` is
+    /// the exit handler of the workflow, and anything else, like `entrypoint`, the entrypoint.
     pub call: String,
     /// The node name of the holding template after the workflow name, in parts.
     pub path: Vec<String>,
@@ -65,7 +67,7 @@ pub enum Form {
 }
 
 /// A started call.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CallId(usize);
 
 /// How a call ended: its results, its message, and its outputs by tag after the step prefix,
@@ -87,6 +89,7 @@ impl Adapter {
         Ok(Adapter {
             run,
             calls: Vec::new(),
+            owners: std::collections::HashMap::new(),
         })
     }
 
@@ -141,7 +144,10 @@ impl Adapter {
                 let args = self.run.arguments.clone();
                 (self.run).execute_template(&base, &holder, &context, &args, &Call::default())
             }
-            false => self.call_site(instance, &base),
+            false => match instance.call.strip_suffix(".onExit") {
+                Some(site) => self.exit_call(instance, site, &base),
+                None => self.call_site(instance, &base),
+            },
         }
         .map_err(driver_error)?;
         if self.calls.contains(&index) {
@@ -149,7 +155,7 @@ impl Adapter {
             return Err(DriverError::new(format!("node {name} has started already")));
         }
         self.calls.push(index);
-        Ok((CallId(index), self.settle()?))
+        Ok((CallId(index), self.settle(Some(index))?))
     }
 
     /// Makes the node of a step or DAG task as the native run expands it: its tags, its loop
@@ -165,20 +171,7 @@ impl Adapter {
                 instance.call, instance.template
             ))
         })?;
-        let mut scope = Scope::default();
-        for (name, value) in &instance.values {
-            if name.contains(".artifacts.") {
-                if let Some(artifact) =
-                    artifact_of(name, value).map_err(|error| Failure::error(error.message))?
-                {
-                    scope.artifacts.insert(name.clone(), artifact);
-                }
-                continue;
-            }
-            scope
-                .values
-                .extend(tag_values(name, value).map_err(Failure::error)?);
-        }
+        let scope = scope_of(&instance.values)?;
         let variables = self.run.variables(&scope);
         let mut node = step.clone();
         replace_node(&mut node, &variables, true).map_err(Failure::error)?;
@@ -210,27 +203,16 @@ impl Adapter {
         let entry = match loops(&step) {
             false => build(name.clone(), node, &template, artifacts),
             true => {
-                let mut warnings = Vec::new();
-                let assume = self.run.options.assume_inputs;
-                let list = items(&node, sequence.as_ref(), assume, &mut |warning| {
-                    warnings.push(warning)
-                });
-                for warning in warnings {
-                    self.run.warn(warning);
-                }
+                // A given item spares listing every item of the loop for each round.
                 let given = (instance.values.iter()).find(|(name, _)| name == "item");
                 let item = match given {
                     Some((_, item)) => Value::from_json(item),
-                    None => list
-                        .map_err(Failure::error)?
-                        .get(instance.index)
-                        .cloned()
-                        .unwrap_or(Value::Nil),
+                    None => self.loop_item(&node, sequence.as_ref(), instance.index)?,
                 };
                 let (values, item_name) =
                     item_variables(&name, instance.index, &item).map_err(Failure::error)?;
-                let strict =
-                    !matches!(should_execute(&when), Ok(false)) && !(assume && unknown_item(&item));
+                let strict = !matches!(should_execute(&when), Ok(false))
+                    && !(self.run.options.assume_inputs && unknown_item(&item));
                 match substitute_item(&node, &variables.with_values(values), strict) {
                     Ok(node) => build(item_name, node, &template, artifacts),
                     Err(message) => Expanded::error(item_name, message),
@@ -264,11 +246,95 @@ impl Adapter {
         }
     }
 
+    /// Makes the node of the exit hook of the step or DAG task `site`, or of the exit handler of
+    /// the workflow when `site` is empty, with its arguments as the native run gives them.
+    fn exit_call(
+        &mut self,
+        instance: &Instance,
+        site: &str,
+        base: &str,
+    ) -> crate::run::Result<usize> {
+        let root = Rc::clone(&self.run.root_context);
+        let (context, hook) = match site.is_empty() {
+            true => {
+                let spec = &self.run.spec;
+                let hook = (spec.hooks.get("exit").cloned()).or_else(|| {
+                    let template = spec.on_exit.clone();
+                    (!template.is_empty()).then(|| exit_hook(template))
+                });
+                (root, hook)
+            }
+            false => {
+                let holder = holder_of(&instance.template, instance.reference.as_ref());
+                let (context, holding) =
+                    self.run.resolve(&holder, &root).map_err(Failure::error)?;
+                let step = site_node(&holding, site);
+                let hooks = step
+                    .as_ref()
+                    .and_then(|step| step.get("hooks")?.get("exit").cloned());
+                let hook = match hooks {
+                    Some(node) => Some(decode(&node).map_err(|e| Failure::error(e.to_string()))?.0),
+                    None => (step.as_ref())
+                        .and_then(|step| step.get("onExit")?.as_str().map(str::to_owned))
+                        .map(exit_hook),
+                };
+                (context, hook)
+            }
+        };
+        let Some(hook) = hook else {
+            let message = format!("no exit hook {site} in template {}", instance.template);
+            return Err(Failure::error(message));
+        };
+        let scope = scope_of(&instance.values)?;
+        let args = self.run.hook_args(&hook, &scope)?;
+        let name = format!("{base}{site}.onExit");
+        let holder = Holder::of_hook(&hook);
+        (self.run).execute_template(&name, &holder, &context, &args, &Call::default())
+    }
+
+    /// The item of round `index` of the loop of a substituted step.
+    fn loop_item(
+        &mut self,
+        node: &Node,
+        sequence: Option<&Sequence>,
+        index: usize,
+    ) -> crate::run::Result<Value> {
+        let mut warnings = Vec::new();
+        let assume = self.run.options.assume_inputs;
+        let list = items(node, sequence, assume, &mut |warning| {
+            warnings.push(warning)
+        });
+        for warning in warnings {
+            self.run.warn(warning);
+        }
+        let list = list.map_err(Failure::error)?;
+        Ok(list.get(index).cloned().unwrap_or(Value::Nil))
+    }
+
     /// Takes the outcome of a task of a call, and gives the tasks that its calls ask for next,
     /// like a later attempt.
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
+        let call = self.call_of(outcome.id).map(|call| call.0);
         self.run.record(outcome).map_err(driver_error)?;
-        self.settle()
+        self.settle(call)
+    }
+
+    /// The started call that a task belongs to.
+    pub fn call_of(&self, task: TaskId) -> Option<CallId> {
+        self.owners.get(&task).map(|call| CallId(*call))
+    }
+
+    /// The started call whose node holds the node of a task.
+    fn holder(&self, task: TaskId) -> Option<CallId> {
+        let &(index, _) = self.run.tasks.get(&task)?;
+        let name = &self.run.nodes[index].name;
+        let holds = |call: &usize| {
+            let rest = name.strip_prefix(&self.run.nodes[*call].name);
+            rest.is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '[', '(']))
+        };
+        let calls = self.calls.iter().filter(|call| holds(call));
+        let call = calls.max_by_key(|&&call| self.run.nodes[call].name.len())?;
+        Some(CallId(*call))
     }
 
     /// Whether the call accepted that attempt of its task.
@@ -316,7 +382,7 @@ impl Adapter {
     /// Goes on after a wait, and gives the tasks that the calls ask for.
     pub fn wake(&mut self, now: std::time::Instant) -> Result<Vec<Task>, DriverError> {
         self.run.clock = self.run.clock.max(now);
-        self.settle()
+        self.settle(None)
     }
 
     /// The tasks that the calls stopped, like those past their deadline.
@@ -364,15 +430,17 @@ impl Adapter {
         Ok(Json::Array(found))
     }
 
-    /// Goes on with every call that runs until none changes, as a pass of the native run does.
-    fn settle(&mut self) -> Result<Vec<Task>, DriverError> {
+    /// Goes on with the call `only`, or every call that runs, until none changes, as a pass of
+    /// the native run does. Calls share no state that another call's change moves on.
+    fn settle(&mut self, only: Option<usize>) -> Result<Vec<Task>, DriverError> {
         if !self.run.options.assume_inputs {
             self.run.clock = std::time::Instant::now();
         }
         loop {
             self.run.changed = false;
             self.run.expire();
-            for &index in &self.calls {
+            let all = self.calls.iter().copied();
+            for index in only.map_or_else(|| all.collect(), |index| vec![index]) {
                 if !self.run.nodes[index].phase.fulfilled() {
                     self.run.reenter(index).map_err(driver_error)?;
                 }
@@ -381,7 +449,39 @@ impl Adapter {
                 break;
             }
         }
-        Ok(std::mem::take(&mut self.run.emitted))
+        let emitted = std::mem::take(&mut self.run.emitted);
+        for task in &emitted {
+            let owner = only.map(CallId).or_else(|| self.holder(task.id));
+            if let Some(owner) = owner {
+                self.owners.insert(task.id, owner.0);
+            }
+        }
+        Ok(emitted)
+    }
+}
+
+/// The tags of a call by name, as a scope: values, and artifacts as Files or Directories.
+fn scope_of(values: &[(String, Json)]) -> crate::run::Result<Scope> {
+    let mut scope = Scope::default();
+    for (name, value) in values {
+        if name.contains(".artifacts.") {
+            if let Some(artifact) =
+                artifact_of(name, value).map_err(|error| Failure::error(error.message))?
+            {
+                scope.artifacts.insert(name.clone(), artifact);
+            }
+            continue;
+        }
+        (scope.values).extend(tag_values(name, value).map_err(Failure::error)?);
+    }
+    Ok(scope)
+}
+
+/// The exit hook that an `onExit` template name gives.
+fn exit_hook(template: String) -> LifecycleHook {
+    LifecycleHook {
+        template,
+        ..LifecycleHook::default()
     }
 }
 

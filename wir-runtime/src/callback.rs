@@ -89,6 +89,7 @@ impl Callbacks {
                 crate::wdl_closure::call(&closure.code, &closure.parameters, &captures, arguments)
             }
             ExprLanguage::Js => Err("js is no closure language; use javascript".into()),
+            ExprLanguage::Argo => Err("argo is no closure language".into()),
         }
     }
 }

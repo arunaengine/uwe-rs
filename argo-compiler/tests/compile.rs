@@ -205,17 +205,6 @@ fn compiles_dag_control() {
 #[test]
 fn keeps_native_reasons() {
     let folder = tempfile::tempdir().unwrap();
-    let param = DAG
-        .replace(
-            "{name: lone, template: say}",
-            "{name: lone, template: say, withParam: \"{{tasks.a.outputs.result}}\"}",
-        )
-        .replace("target: c", "");
-    let (document, kept) = compiled(folder.path(), &param);
-    assert_eq!(kept.len(), 1);
-    assert!(kept[0].reason.contains("withParam"), "{kept:?}");
-    let entry = graph(&document, "workflow");
-    assert!(op(entry, "workflow")["kind"]["native"].is_object());
     let suspend = DAG.replace(
         "container: {image: alpine:3.20, command: [echo, hi]}",
         "suspend: {duration: 1s}",
@@ -316,6 +305,13 @@ fn compiles_static_loops() {
         each["kind"]["map"],
         json!({"body": "template.main.each", "over": ["item"]})
     );
+    let limited = LOOPS
+        .replace("    steps:\n", "    parallelism: 2\n    steps:\n")
+        .replace("\n      - {name: count", "\n    - - {name: count");
+    let (limited, kept) = compiled(folder.path(), &limited);
+    assert!(kept.is_empty(), "{kept:?}");
+    let each_map = &op(graph(&limited, "template.main"), "each")["kind"]["map"];
+    assert_eq!(each_map["parallelism"], 2);
     let item = |op: &Json| {
         op["inputs"]
             .as_array()
@@ -341,6 +337,234 @@ fn compiles_static_loops() {
         json!({"array": {"items": {"optional": "string"}}})
     );
     let param = LOOPS.replace("withItems: [a, {x: 1}]", "withParam: '[\"a\"]'");
-    let (_, kept) = compiled(folder.path(), &param);
-    assert!(kept[0].reason.contains("withParam"), "{kept:?}");
+    let (document, kept) = compiled(folder.path(), &param);
+    assert!(kept.is_empty(), "{kept:?}");
+    let items = op(graph(&document, "template.main"), "each.items");
+    let expr = json!({"language": "argo", "code": "[\"a\"]", "form": "items"});
+    assert_eq!(items["kind"]["expr"], expr);
+}
+
+const TEXTS: &str = r#"  entrypoint: main
+  arguments: {parameters: [{name: word, value: hi}]}
+  templates:
+  - name: main
+    steps:
+    - - {name: gen, template: say}
+    - - name: each
+        template: inner
+        withParam: "{{steps.gen.outputs.result}}"
+        when: "{{item.x}} == 1"
+        arguments: {parameters: [{name: text, value: "{{item.x}}-{{workflow.parameters.word}}"}]}
+    outputs:
+      parameters: [{name: joined, valueFrom: {expression: "steps.each.outputs.parameters.text"}}]
+  - name: inner
+    inputs: {parameters: [{name: text}]}
+    steps:
+    - - {name: say, template: say, arguments: {parameters: [{name: text, value: "{{inputs.parameters.text}}"}]}}
+    outputs:
+      parameters: [{name: text, valueFrom: {parameter: "{{steps.say.outputs.result}}"}}]
+  - name: say
+    inputs: {parameters: [{name: text, value: x}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn compiles_argo_texts() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), TEXTS);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let each = op(main, "each");
+    assert_eq!(each["kind"]["map"]["over"], json!(["item", "label"]));
+    let items = op(main, "each.items");
+    assert_eq!(items["inputs"][0]["name"], "steps.gen.outputs.result");
+    assert_eq!(op(main, "each.labels")["kind"]["expr"]["form"], "labels");
+    let body = graph(&document, "template.main.each");
+    let guarded = &op(body, "each")["kind"]["branch"];
+    assert_eq!(guarded["body"], "template.main.each.when");
+    assert_eq!(op(body, "each.when")["kind"]["expr"]["form"], "condition");
+    let inner = graph(&document, "template.main.each.when");
+    let text = op(inner, "each.arguments.text");
+    assert_eq!(text["inputs"][0]["name"], "item");
+    let joined = op(main, "outputs.parameters.joined");
+    assert_eq!(
+        joined["inputs"][0]["type"]["array"]["items"]["optional"],
+        "string"
+    );
+    let launch = workflow_graph::Launch {
+        target: folder.path().join("workflow.yaml"),
+        simulated: true,
+        ..Default::default()
+    };
+    let services = argo_runtime::Services::default();
+    let mut adapter = argo_runtime::adapter::Adapter::load(&launch, services).unwrap();
+    let mut evaluate = |op: &Json, values: Json| {
+        let code = op["kind"]["expr"]["code"].as_str().unwrap();
+        let form = match op["kind"]["expr"]["form"].as_str() {
+            Some("condition") => argo_runtime::adapter::Form::Condition,
+            Some("items") => argo_runtime::adapter::Form::Items,
+            Some("labels") => argo_runtime::adapter::Form::Labels,
+            _ => argo_runtime::adapter::Form::Text,
+        };
+        let values = values.as_object().unwrap().clone();
+        adapter.evaluate(code, form, "[1].each", &values).unwrap()
+    };
+    let list = json!({"steps.gen.outputs.result": "[{\"x\": 1}, {\"x\": 2}]"});
+    assert_eq!(evaluate(items, list.clone()), json!([{"x": 1}, {"x": 2}]));
+    let labels = evaluate(op(main, "each.labels"), list);
+    assert_eq!(labels, json!(["(0:x:1)", "(1:x:2)"]));
+    let when = op(body, "each.when");
+    assert_eq!(evaluate(when, json!({"item": {"x": 2}})), json!(false));
+    assert_eq!(evaluate(text, json!({"item": {"x": 1}})), json!("1-hi"));
+    let outputs = json!({"steps.each.outputs.parameters.text": ["a", null, "b"]});
+    assert_eq!(evaluate(joined, outputs), json!("[\"a\",\"b\"]"));
+}
+
+const RECURSION: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: start, template: loop, arguments: {parameters: [{name: count, value: "0"}]}}
+  - name: loop
+    inputs: {parameters: [{name: count}, {name: limit, value: "3"}]}
+    steps:
+    - - {name: add, template: add, arguments: {parameters: [{name: count, value: "{{inputs.parameters.count}}"}]}}
+    - - {name: say, template: add, arguments: {parameters: [{name: count, value: "1"}]}}
+      - name: again
+        template: loop
+        when: "{{steps.add.outputs.result}} < {{inputs.parameters.limit}}"
+        arguments: {parameters: [{name: count, value: "{{steps.add.outputs.result}}"}]}
+  - name: add
+    inputs: {parameters: [{name: count}]}
+    script: {image: alpine:3.20, command: [sh], source: "echo $(({{inputs.parameters.count}} + 1))"}
+"#;
+
+#[test]
+fn compiles_recursion_loops() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), RECURSION);
+    assert!(kept.is_empty(), "{kept:?}");
+    let start = &op(graph(&document, "template.main"), "start")["kind"]["loop"];
+    assert_eq!(start["body"], "template.loop");
+    assert_eq!(start["condition"], "recurse");
+    let carried: Vec<&Json> = (start["carry"].as_array().unwrap().iter())
+        .map(|carry| &carry["input"])
+        .collect();
+    let expected = [
+        "node.path",
+        "inputs.parameters.count",
+        "inputs.parameters.limit",
+    ];
+    assert_eq!(carried, expected.map(Json::from).iter().collect::<Vec<_>>());
+    let body = graph(&document, "template.loop");
+    let when = op(body, "again.when");
+    assert_eq!(when["kind"]["expr"]["form"], "condition");
+    assert_eq!(
+        op(body, "again.inputs.parameters.limit")["kind"]["expr"]["code"],
+        "3"
+    );
+    let names: Vec<&Json> = (body["outputs"].as_array().unwrap().iter())
+        .map(|port| &port["name"])
+        .collect();
+    assert!(
+        names.contains(&&json!("recurse.inputs.parameters.count")),
+        "{names:?}"
+    );
+    let again = "value: \"{{steps.add.outputs.result}}\"}]}\n";
+    let late = "    - - {name: late, template: add, arguments: {parameters: [{name: count, value: \"1\"}]}}\n";
+    let later = RECURSION.replace(again, &format!("{again}{late}"));
+    let (_, kept) = compiled(folder.path(), &later);
+    assert!(kept[0].reason.contains("after"), "{kept:?}");
+}
+
+const HOOKS: &str = r#"  entrypoint: main
+  onExit: bye
+  templates:
+  - name: main
+    steps:
+    - - name: hello
+        template: say
+        hooks:
+          exit:
+            template: say
+            arguments: {parameters: [{name: text, value: "{{steps.hello.outputs.result}}"}]}
+    - - {name: next, template: say}
+  - name: say
+    inputs: {parameters: [{name: text, value: hi}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+  - name: bye
+    container: {image: alpine:3.20, command: [echo, bye]}
+"#;
+
+#[test]
+fn compiles_exit_hooks() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), HOOKS);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let hook = op(main, "hello.onExit");
+    assert_eq!(
+        hook["kind"]["task"]["builder"]["argo_task"]["call"],
+        "[0].hello.onExit"
+    );
+    assert_eq!(hook["after"][0]["op"], "hello");
+    let handled = &op(main, "hello.onExit.continue")["kind"]["status_group"];
+    assert_eq!(handled["allow"], json!(["failed", "errored"]));
+    let waits: Vec<&Json> = (op(main, "next")["after"].as_array().unwrap().iter())
+        .map(|after| &after["op"])
+        .collect();
+    assert_eq!(waits, [&json!("hello"), &json!("hello.onExit")]);
+    let entry = graph(&document, "workflow");
+    let exit = op(entry, "onExit");
+    assert_eq!(
+        exit["kind"]["task"]["builder"]["argo_task"]["call"],
+        ".onExit"
+    );
+    assert_eq!(exit["after"][0]["op"], "main");
+    assert_eq!(exit["inputs"][0]["default"], json!([]));
+    let status = HOOKS.replace("echo, bye", "echo, \"{{workflow.status}}\"");
+    let (_, kept) = compiled(folder.path(), &status);
+    assert!(kept[0].reason.contains("workflow.status"), "{kept:?}");
+}
+
+/// The names of the tasks of a run on the simulator, sorted.
+fn ran_tasks(driver: &mut dyn workflow_graph::Driver, folder: &Path) -> Vec<String> {
+    let mut simulator = workflow_graph::Simulator::new(folder);
+    let execution = workflow_graph::execute("compiled", driver, &mut simulator);
+    let graph = execution.into_result().unwrap();
+    let mut names: Vec<String> = graph.nodes.into_iter().map(|node| node.task.name).collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn runs_compiled_texts() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let looped = TEXTS.replace(
+        "withParam: \"{{steps.gen.outputs.result}}\"",
+        "withItems: [{x: 1}, {x: 2}]",
+    );
+    let (document, kept) = compiled(root, &looped);
+    assert!(kept.is_empty(), "{kept:?}");
+    let target = root.join("compiled.wir.json");
+    std::fs::write(&target, document.to_string()).unwrap();
+    let launch = |target: &Path| workflow_graph::Launch {
+        target: target.to_owned(),
+        scratch: root.join("scratch"),
+        simulated: true,
+        ..Default::default()
+    };
+    let services = argo_runtime::Services::default();
+    let mut native =
+        argo_runtime::load_driver(&launch(&root.join("workflow.yaml")), services).unwrap();
+    let expected = ran_tasks(&mut native, &root.join("native"));
+    let settings = wir_runtime::Settings {
+        print: false,
+        adapters: wir_runtime::argo::register(Default::default(), Default::default()),
+        ..Default::default()
+    };
+    let mut wir = wir_runtime::WirDriver::new(&launch(&target), settings).unwrap();
+    assert_eq!(ran_tasks(&mut wir, &root.join("wir")), expected);
+    assert_eq!(expected.len(), 2, "{expected:?}");
 }

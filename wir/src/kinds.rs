@@ -6,11 +6,13 @@ use std::collections::BTreeSet;
 
 use super::callbacks::Arity;
 use super::{Checker, Problem, show, walk};
+use crate::closure::ExprLanguage;
 use crate::document::Language;
 use crate::document::Port;
 use crate::flow::Flow;
 use crate::op::{
-    Argument, Branch, CaptureRule, Content, FileName, Kind, Map, Native, Op, Process, Scatter, Task,
+    Argument, Branch, CaptureRule, Content, Expr, ExprForm, FileName, Kind, Map, Native, Op,
+    Process, Scatter, Task,
 };
 use crate::reserved::Pick;
 use crate::types::{ArrayType, Type, TypeDef, resolve};
@@ -31,6 +33,7 @@ impl<'d> Checker<'d> {
                 if let Some(scope) = &expr.scope {
                     self.scope(at, scope, expr.language);
                 }
+                self.expr_form(at, op, expr);
             }
             Kind::Emit(emit) => self.emit(at, op, emit),
             Kind::Transform(transform) => self.transform(at, op, transform),
@@ -417,6 +420,30 @@ impl<'d> Checker<'d> {
     }
 
     /// The output holds the items that are set, one for `first` and `only`, all for `all`.
+    /// Only an argo expr has a form, and its output takes what that form gives.
+    fn expr_form(&mut self, at: &str, op: &Op, expr: &Expr) {
+        if expr.language != ExprLanguage::Argo {
+            if expr.form.is_some() {
+                self.report(at, Problem::Shape("a form".into(), "an argo expr".into()));
+            }
+            return;
+        }
+        if !expr.library.is_empty() || !expr.captures.is_empty() {
+            let why = "no library and no captures".into();
+            self.report(at, Problem::Shape("an argo expr".into(), why));
+        }
+        let Some(output) = op.outputs.first() else {
+            return;
+        };
+        let made = match expr.form.unwrap_or(ExprForm::Text) {
+            ExprForm::Text => Type::String,
+            ExprForm::Condition => Type::Bool,
+            ExprForm::Items => array_of(Type::Dynamic),
+            ExprForm::Labels => array_of(Type::String),
+        };
+        self.gives(at, output, &made);
+    }
+
     fn select(&mut self, at: &str, op: &Op, rule: Pick) {
         let Some((items, output)) = self.unary(at, op, "a select") else {
             return;

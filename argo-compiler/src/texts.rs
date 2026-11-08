@@ -4,10 +4,10 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use argo_parser::{Node, Position, Value as Yaml};
-use wir::{Edge, Endpoint, Expr, ExprForm, ExprLanguage, Kind, Op, Type};
+use wir::{Edge, Endpoint, Expr, ExprForm, ExprLanguage, Kind, Op, Origin, Type};
 
 use crate::tags::{Tag, read_tags};
-use crate::{array, edge, end, op, port, text};
+use crate::{SOURCE, array, edge, end, op, port, text};
 
 /// The output of every argo expr op.
 pub(crate) const VALUE: &str = "value";
@@ -30,6 +30,10 @@ pub(crate) fn text_op(
         form: (form != ExprForm::Text).then_some(form),
     };
     let mut made = op(path, Kind::Expr(expr));
+    made.origin = Some(Origin {
+        source: SOURCE.into(),
+        at: None,
+    });
     let mut edges = Vec::new();
     for tag in tags {
         let Some((from, r#type)) = source(&tag) else {

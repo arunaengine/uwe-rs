@@ -130,6 +130,9 @@ fn supported(kind: &Kind) -> bool {
             | Kind::ToList(_)
             | Kind::Join(_)
             | Kind::Combine(_)
+            | Kind::Group(_)
+            | Kind::GroupTuple(_)
+            | Kind::Cross(_)
     )
 }
 

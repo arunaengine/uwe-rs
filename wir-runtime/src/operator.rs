@@ -12,6 +12,7 @@ use wir::{Kind, Status};
 use crate::collecting::Collecting;
 use crate::engine::Context;
 use crate::flows::output_stream;
+use crate::grouping::{Crossing, Grouping};
 use crate::mixing::{Mixing, RoundRule, Rounds};
 use crate::pairing::{Combining, Joining};
 use crate::plan::Node;
@@ -230,6 +231,8 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
                 [width("left"), width("right")],
             )))
         }
+        Kind::Group(spec) | Kind::GroupTuple(spec) => Some(Box::new(Grouping::new(spec.clone()))),
+        Kind::Cross(spec) => Some(Box::new(Crossing::new(spec.key.clone(), spec.left))),
         Kind::Combine(spec) => Some(Box::new(Combining {
             by: spec.by.clone(),
             body: spec.body.clone(),

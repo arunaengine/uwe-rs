@@ -14,6 +14,7 @@ mod engine;
 mod expr;
 mod flows;
 mod groovy;
+mod grouping;
 mod inputs;
 mod javascript;
 mod mixing;

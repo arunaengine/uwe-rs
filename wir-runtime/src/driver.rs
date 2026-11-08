@@ -450,6 +450,9 @@ impl WirDriver {
                 &mut scopes,
             );
         }
+        // Hook closures may name a scope that no op names.
+        let hooks = serde_json::to_value(&self.document.hooks).unwrap_or_default();
+        scopes_in(&hooks, &mut scopes);
         let mut texts = HashMap::new();
         for scope in scopes {
             let text = self.scope_text(&scope)?;

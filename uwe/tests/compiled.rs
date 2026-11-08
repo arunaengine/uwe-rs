@@ -40,10 +40,12 @@ fn prints_compiled_snakefiles() {
         .filter_map(|op| op["kind"]["task"]["builder"]["snakemake_job"]["task"]["call"].as_str())
         .collect();
     assert_eq!(calls, ["a", "b", "all"]);
+    // Two files between jobs, and the target files to the output of the graph.
     assert_eq!(
         document["graphs"][0]["edges"].as_array().map(Vec::len),
-        Some(2)
+        Some(3)
     );
+    assert_eq!(document["graphs"][0]["outputs"][0]["name"], "targets");
 }
 
 #[test]

@@ -91,8 +91,10 @@ pub struct Joining {
     pub mismatch_error: bool,
     pub duplicate_error: bool,
     pub body: Option<Body>,
-    /// The number of fields besides the key of each side, where its type fixes it.
+    /// The number of fields besides the key of each side, where its type fixes it, and the
+    /// most that its items had, which pads an untyped side.
     pub widths: [Option<usize>; 2],
+    seen_widths: [usize; 2],
     pub callbacks: Callbacks,
     waiting: HashMap<String, Waiting>,
     seen: [HashSet<String>; 2],
@@ -108,6 +110,7 @@ impl Joining {
             duplicate_error: spec.duplicate_error,
             body: spec.body.clone(),
             widths,
+            seen_widths: [0; 2],
             callbacks: Callbacks::default(),
             waiting: HashMap::new(),
             seen: Default::default(),
@@ -150,7 +153,8 @@ impl Joining {
             };
             for (side, queue) in sides.into_iter().enumerate() {
                 for rest in queue {
-                    let other = vec![Json::Null; self.widths[1 - side].unwrap_or(0)];
+                    let width = self.widths[1 - side].unwrap_or(self.seen_widths[1 - side]);
+                    let other = vec![Json::Null; width];
                     let (left, right) = if side == 0 {
                         (rest, other)
                     } else {
@@ -178,6 +182,7 @@ impl Operator for Joining {
             };
             moved = true;
             let (fields, rest) = split_key(&item, &self.by).map_err(|why| turn.failed(why))?;
+            self.seen_widths[side] = self.seen_widths[side].max(rest.len());
             let key = values::canonical(&Json::Array(fields.clone()));
             if !self.seen[side].insert(key.clone()) && self.duplicate_error {
                 return Err(turn.failed(format!("the key {key} comes twice")));
@@ -375,6 +380,17 @@ mod tests {
                 json!(["c", null, 3])
             ],
             "first-seen key order"
+        );
+    }
+
+    #[test]
+    fn seen_remainder() {
+        let items = [("left", json!(["a", 1, 2])), ("right", json!(["b", 9]))];
+        let (emitted, _) = paired(json!({"join": {"remainder": true}}), &items, true, None);
+        let padded = [json!(["a", 1, 2, null]), json!(["b", null, null, 9])];
+        assert_eq!(
+            emitted, padded,
+            "untyped sides pad by the widths their items had"
         );
     }
 

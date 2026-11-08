@@ -125,7 +125,7 @@ pub struct WirDriver {
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
     /// The tasks of task ops, by id, with the node of each.
-    tasks: HashMap<TaskId, (usize, Task)>,
+    tasks: HashMap<TaskId, (usize, Task, Map<String, Json>)>,
     /// The attempts of task ops that their captures accepted.
     accepted: HashSet<(TaskId, u32)>,
     last: u64,
@@ -227,7 +227,7 @@ impl WirDriver {
                 let names = (node.path.as_str(), node.step.as_str());
                 let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
                 task.site = node.op.attributes.place.clone();
-                self.tasks.insert(task.id, (at, task.clone()));
+                self.tasks.insert(task.id, (at, task.clone(), bound));
                 Ok(vec![task])
             }
             Kind::Call(_) => Ok(Vec::new()),
@@ -253,7 +253,7 @@ impl WirDriver {
                 let node = self.progress.node(at);
                 let path = node.path.clone();
                 let output = node.op.outputs[0].clone();
-                let settings = &self.settings.cwl.javascript;
+                let settings = (&self.settings.cwl.javascript, self.launch.simulated);
                 let defs = &self.document.types;
                 let value = match spec.language {
                     ExprLanguage::Js | ExprLanguage::Javascript => {
@@ -330,12 +330,18 @@ impl WirDriver {
     /// again while the op's `retry` allows it; then the op fails, or errors when the task
     /// could not run.
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
-        let (at, task) = &self.tasks[&outcome.id];
+        let (at, task, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
         let Kind::Task(spec) = &node.op.kind else {
             return Vec::new();
         };
-        match task::capture(spec, &node.op.outputs, outcome, &self.document.types) {
+        let files = self.files.as_deref();
+        let ended = task::Ended {
+            outcome,
+            files,
+            bound,
+        };
+        match task::capture(spec, &node.op.outputs, ended, &self.document.types) {
             Ok(values) => {
                 self.accepted.insert((outcome.id, outcome.attempt));
                 self.progress.end(at, Status::Succeeded, values, None);
@@ -502,6 +508,9 @@ impl WirDriver {
             }
             (finished, _) => finished,
         };
+        // A simulated CWL block reads made-up files, which can leave an output null.
+        let lenient = self.launch.simulated
+            && matches!(&node.op.kind, Kind::Native(native) if native.language == Dialect::Cwl);
         let result = match finished {
             Ok(Some(Json::Object(results))) => (node.op.outputs.iter())
                 .map(|port| {
@@ -509,6 +518,10 @@ impl WirDriver {
                     let value = widen(value, &port.r#type, defs);
                     match wir::fits(&value, &port.r#type, defs) {
                         true => Ok((port.name.clone(), value)),
+                        false if lenient && value.is_null() => {
+                            let made = crate::expr::placeholder(&port.r#type, &port.name, defs);
+                            Ok((port.name.clone(), made))
+                        }
                         false => Err(format!(
                             "op {path}: output {} does not fit its type",
                             port.name

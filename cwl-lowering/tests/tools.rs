@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use cwl_lowering::{Kept, Lowering, lower};
+use cwl_lowering::{Lowering, lower};
 use serde_json::{Value as Json, json};
 
 fn fixtures() -> PathBuf {
@@ -33,7 +33,10 @@ fn lowers_plain_tools() {
         "image": "debian:stable-slim",
         "command": ["echo", "-n", {"input": "message"}, {"input": "words"}],
         "captures": [{"output": "out", "from": "stdout"}],
-        "stdout": "out.txt"
+        "stdout": "out.txt",
+        "workdir": "/var/spool/cwl",
+        "staging": "/var/lib/cwl/inputs",
+        "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"}
     });
     assert_eq!(op["path"], "echo");
     assert_eq!(op["kind"]["task"], task);
@@ -68,29 +71,26 @@ fn captures_stream_files() {
 }
 
 #[test]
-fn keeps_expressions_native() {
+fn lowers_glob_expressions() {
     let lowering = lowered("split.cwl");
-    let reason = "output parts: an expression in a glob";
-    assert_eq!(
-        lowering.kept,
-        [Kept {
-            path: "split".into(),
-            reason: reason.into()
-        }]
-    );
-    let op = only_op(&lowering);
-    let native = json!({"source": "split", "language": "cwl"});
-    assert_eq!(op["kind"]["native"], native);
-    assert_eq!(
-        op["outputs"][0]["type"],
-        json!({"array": {"items": {"file": {}}}})
-    );
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let paths: Vec<&str> = ops.iter().map(|op| op.path.as_str()).collect();
+    assert_eq!(paths, ["split.glob.parts", "split"]);
+    let task = serde_json::to_value(&ops[1].kind).unwrap();
+    let capture = json!({"output": "parts", "from": {"patterns": "glob.parts"}});
+    assert_eq!(task["task"]["captures"], json!([capture]));
+    let wir::Kind::Expr(expr) = &ops[0].kind else {
+        panic!("an expr: {:?}", ops[0].kind);
+    };
+    let strict = r#"return [text((get(inputs, "prefix"))), "*"].join(""); }"#;
+    assert!(expr.code.ends_with(strict), "{}", expr.code);
 }
 
 #[test]
 fn keeps_requirements_native() {
-    let lowering = lowered("environment.cwl");
-    let reason = "the requirement EnvVarRequirement";
+    let lowering = lowered("update.cwl");
+    let reason = "the requirement InplaceUpdateRequirement";
     assert_eq!(lowering.kept[0].reason, reason);
     assert!(wir::verify(&lowering.document).is_ok());
 }
@@ -149,4 +149,150 @@ fn keeps_required_any() {
     let document = cwl_parser::load_file(&path, Default::default()).unwrap();
     let error = lower(&document, &fixtures()).unwrap_err();
     assert!(error.contains("the Any input value"), "{error}");
+}
+
+#[test]
+fn lowers_output_evaluation() {
+    let lowering = lowered("names.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    assert_eq!(only_op(&lowering)["kind"]["call"]["graph"], "names");
+    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
+    let ops = graph["ops"].as_array().unwrap();
+    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
+    assert_eq!(paths, ["names", "names.count.outputEval"]);
+    let files = json!({"array": {"items": {"file": {}}}});
+    assert_eq!(
+        ops[0]["outputs"][0],
+        json!({"name": "count", "type": files})
+    );
+    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    assert!(
+        code.ends_with(r#"return (get(self, "length")); }"#),
+        "strict: {code}"
+    );
+    assert_eq!(ops[1]["inputs"][1], json!({"name": "self", "type": files}));
+    assert_eq!(ops[1]["outputs"], json!([{"name": "count", "type": "int"}]));
+    let outputs: Vec<&str> = (graph["outputs"].as_array().unwrap().iter())
+        .map(|port| port["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(outputs, ["count", "made"]);
+}
+
+#[test]
+fn lowers_named_types() {
+    let lowering = lowered("greeting.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let op = only_op(&lowering);
+    let mood = json!({"enum": ["happy", "sad"]});
+    let person =
+        json!({"record": [{"name": "mood", "type": mood}, {"name": "name", "type": "string"}]});
+    let typed = |name: &str| {
+        let ports = op["inputs"].as_array().unwrap();
+        ports.iter().find(|port| port["name"] == name).unwrap()["type"].clone()
+    };
+    assert_eq!(typed("person"), person);
+    assert_eq!(typed("mood"), mood);
+}
+
+#[test]
+fn lowers_argument_expressions() {
+    let lowering = lowered("compile.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let paths: Vec<&str> = ops.iter().map(|op| op.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        ["compile.argument.1", "compile.argument.2", "compile"]
+    );
+    let task = serde_json::to_value(&ops[2]).unwrap();
+    let command = json!(["javac", "-d", {"input": "argument.1"},
+        {"input": "argument.2", "prefix": "-J-Xss", "separate": false}, {"input": "src"}]);
+    assert_eq!(task["kind"]["task"]["command"], command);
+    let wir::Kind::Expr(expr) = &ops[0].kind else {
+        panic!("an expr: {:?}", ops[0].kind);
+    };
+    assert!(expr.code.starts_with("${ var runtime = {"), "{}", expr.code);
+    assert!(
+        expr.code.contains(r#""outdir":"/var/spool/cwl""#),
+        "{}",
+        expr.code
+    );
+    assert!(expr.code.contains(r#""cores":2"#), "{}", expr.code);
+}
+
+#[test]
+fn lowers_input_formats() {
+    let lowering = lowered("formats.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let file = |format: &str| json!({"file": {"format": format}});
+    let formats = json!({"union": [
+        file("http://edamontology.org/format_1929"),
+        file("http://edamontology.org/format_1930")
+    ]});
+    assert_eq!(only_op(&lowering)["inputs"][0]["type"], formats);
+}
+
+#[test]
+fn lowers_secondary_files() {
+    let lowering = lowered("index.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let op = only_op(&lowering);
+    let input = json!({"file": {"secondary_files": [
+        {"pattern": ".bai"},
+        {"pattern": "^.txt", "required": false}
+    ]}});
+    assert_eq!(op["inputs"][0]["type"], input);
+    let output = json!({"file": {"secondary_files": [{"pattern": ".bai", "required": false}]}});
+    assert_eq!(op["outputs"][0]["type"], output, "outputs ask by default");
+}
+
+#[test]
+fn lowers_working_folder() {
+    let lowering = lowered("staged.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let task = serde_json::to_value(&ops.last().unwrap().kind).unwrap();
+    let files = json!([
+        {"value": {"input": "genome"}},
+        {"value": {"input": "entry.1"}, "path": "index.conf"}
+    ]);
+    assert_eq!(task["task"]["files"], files);
+    let entry = ops.iter().find(|op| op.path == "staged.entry.1").unwrap();
+    let wir::Kind::Expr(expr) = &entry.kind else {
+        panic!("an expr: {:?}", entry.kind);
+    };
+    assert!(
+        expr.code.contains(r#""\n""#),
+        "keeps the line end: {}",
+        expr.code
+    );
+}
+
+#[test]
+fn lowers_format_expressions() {
+    let lowering = lowered("sorted.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
+    let ops = graph["ops"].as_array().unwrap();
+    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
+    assert_eq!(paths, ["sorted", "sorted.sorted.outputEval"]);
+    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    assert!(code.contains("file.format = format(file)"), "{code}");
+    assert_eq!(
+        ops[1]["inputs"][1]["type"],
+        json!({"file": {}}),
+        "self is the File"
+    );
+}
+
+#[test]
+fn lowers_environment_variables() {
+    let lowering = lowered("environment.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let task = serde_json::to_value(&ops.last().unwrap().kind).unwrap();
+    let environment = json!({"GREETING": "hello", "HOME": "/var/spool/cwl",
+        "NAME": {"input": "environment.NAME"}, "TMPDIR": "/tmp"});
+    assert_eq!(task["task"]["environment"], environment);
+    assert_eq!(ops[0].path, "environment.environment.NAME");
 }

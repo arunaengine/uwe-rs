@@ -169,16 +169,12 @@ impl Lowerer {
         let placed: Vec<&Output> = (outputs.iter())
             .filter(|item| matches!(item.read, Read::Placed))
             .collect();
-        task.task.command.push(Argument::Input {
-            input: COMMAND.into(),
-        });
+        task.task.command.push(Argument::input(COMMAND));
         let mut ports = vec![port(COMMAND, Type::String)];
         if placed.is_empty() {
             task.task.command.push(Argument::Text(String::new()));
         } else {
-            task.task.command.push(Argument::Input {
-                input: PATHS.into(),
-            });
+            task.task.command.push(Argument::input(PATHS));
             let mut lines = library.clone();
             lines.extend(
                 outputs
@@ -201,9 +197,7 @@ impl Lowerer {
             .edges
             .push(edge(end(Some(COMMAND), "value"), end(Some(&path), COMMAND)));
         for input in inputs.iter().filter(|input| has_files(&input.r#type)) {
-            task.task.command.push(Argument::Input {
-                input: input.name.clone(),
-            });
+            task.task.command.push(Argument::input(&input.name));
             ports.push(port(&input.name, input.r#type.clone()));
         }
         let mut captured = Vec::new();
@@ -216,6 +210,7 @@ impl Lowerer {
             task.task.captures.push(Capture {
                 output: output.name.clone(),
                 from: CaptureRule::Glob(pattern),
+                load_contents: false,
                 optional: false,
                 arity: None,
             });
@@ -359,11 +354,7 @@ fn runtime(definition: &TaskDefinition, image: &str) -> Result<Built, String> {
         success_codes,
         // WDL tasks may use the network, as uwe's WDL driver lets them.
         network: true,
-        stdout: None,
-        stderr: None,
-        builder: None,
-        accept: None,
-        retry: None,
+        ..wir::Task::default()
     };
     let resources = (resources != wir::Resources::default()).then_some(resources);
     Ok(Built { task, resources })

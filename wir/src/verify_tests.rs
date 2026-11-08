@@ -311,7 +311,28 @@ fn stream_files_checked() {
     let outside = Problem::Outside("../err.txt".into());
     assert_eq!(only(document.clone()), ("main/head".into(), outside));
     document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("err.txt");
-    assert!(problems(document).is_empty());
+    assert!(problems(document.clone()).is_empty());
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"] = json!({"input": "name"});
+    let missing = Problem::NoPort("input name".into());
+    assert_eq!(only(document.clone()), ("main/head".into(), missing));
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"] = json!({"input": "input"});
+    let files = json!([{"value": "x=1"}, {"value": {"input": "input"}, "path": "/etc/x"}]);
+    document["graphs"][0]["ops"][1]["kind"]["task"]["files"] = files;
+    let found: Vec<Problem> = (problems(document.clone()).into_iter())
+        .map(|error| error.problem)
+        .collect();
+    let text = Problem::Empty("the path of staged text".into());
+    assert_eq!(found, [text, Problem::Outside("/etc/x".into())]);
+    document["graphs"][0]["ops"][1]["kind"]["task"]["files"] = json!([]);
+    document["graphs"][0]["ops"][1]["kind"]["task"]["environment"] = json!({"A": {"input": "b"}});
+    let unknown = Problem::NoPort("input b".into());
+    assert_eq!(only(document.clone()), ("main/head".into(), unknown));
+    document["graphs"][0]["ops"][1]["kind"]["task"]["environment"] = json!({});
+    document["graphs"][0]["ops"][1]["kind"]["task"]["staging"] = json!("/var/lib/cwl/inputs");
+    assert!(problems(document.clone()).is_empty());
+    document["graphs"][0]["ops"][1]["kind"]["task"]["workdir"] = json!("work");
+    let relative = Problem::Absolute("work".into());
+    assert_eq!(only(document), ("main/head".into(), relative));
 }
 
 /// A map `each` over the files `texts`, whose body `round` runs one task.
@@ -463,6 +484,26 @@ fn task_outputs_captured() {
     assert_eq!(
         only(document),
         ("main/head".into(), Problem::CaptureType("out".into()))
+    );
+    let mut document = base();
+    document["graphs"][0]["ops"][1]["kind"]["task"]["captures"][0]["load_contents"] = json!(true);
+    assert!(
+        problems(document.clone()).is_empty(),
+        "a File loads contents"
+    );
+    document["graphs"][0]["ops"][1]["kind"]["task"]["captures"][0]["from"] = json!({"glob": "d"});
+    document["graphs"][0]["ops"][1]["outputs"][0]["type"] = json!("directory");
+    document["graphs"][0]["outputs"][0]["type"] = json!("directory");
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::CaptureType("out".into()))
+    );
+    let mut document = base();
+    let patterns = json!({"patterns": "globs"});
+    document["graphs"][0]["ops"][1]["kind"]["task"]["captures"][0]["from"] = patterns;
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::NoPort("input globs".into()))
     );
     let mut document = base();
     document["graphs"][0]["ops"][1]["kind"]["task"]["command"] = json!([{"input": "other"}]);

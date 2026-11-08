@@ -53,6 +53,12 @@ impl<'d> Checker<'d> {
                 used.push(input);
             }
         }
+        let given = task.environment.values().chain(&task.stdin);
+        for content in given {
+            if let Content::Input { input } = content {
+                used.push(input);
+            }
+        }
         for staged in &task.files {
             match (&staged.value, &staged.path) {
                 (Content::Input { input }, _) => used.push(input),

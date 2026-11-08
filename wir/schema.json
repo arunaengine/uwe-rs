@@ -446,6 +446,11 @@
         "stdout": { "$ref": "#/$defs/file_name" },
         "stderr": { "$ref": "#/$defs/file_name" },
         "workdir": { "type": "string" },
+        "environment": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/file_name" }
+        },
+        "stdin": { "$ref": "#/$defs/file_name" },
         "files": {
           "type": "array",
           "items": {

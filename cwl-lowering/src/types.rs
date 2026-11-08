@@ -101,7 +101,7 @@ fn nested(cwl: &Cwl, named: &Named, depth: usize) -> Result<Type, String> {
         Cwl::Int | Cwl::Long => Type::Int,
         Cwl::Float | Cwl::Double => Type::Float,
         Cwl::String => Type::String,
-        Cwl::File | Cwl::Stdout | Cwl::Stderr => Type::File(FileType::default()),
+        Cwl::File | Cwl::Stdout | Cwl::Stderr | Cwl::Stdin => Type::File(FileType::default()),
         Cwl::Directory => Type::Directory,
         Cwl::Any => Type::Dynamic,
         Cwl::Array(array) => Type::Array(ArrayType {
@@ -125,7 +125,6 @@ fn nested(cwl: &Cwl, named: &Named, depth: usize) -> Result<Type, String> {
         ),
         Cwl::Union(members) => union(members, named, depth)?,
         Cwl::Null => return Err("a parameter of type null".into()),
-        Cwl::Stdin => return Err("a stdin input".into()),
         Cwl::Named(name) => match find(name, &named.types) {
             Some(found) if depth < DEPTH => nested(found, named, depth + 1)?,
             _ => return Err(format!("the named type {}", short_name(name))),

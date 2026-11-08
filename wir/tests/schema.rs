@@ -19,6 +19,8 @@ fn validator() -> Validator {
 fn schema_matches_parser() {
     let kinds = [
         json!({"task": {"command": ["true"], "success_codes": [0, 1]}}),
+        json!({"task": {"command": ["cat"], "environment": {"HOME": "/tmp", "A": {"input": "a"}},
+            "stdin": {"input": "text"}}}),
         json!({"task": {"command": ["ls"], "workdir": "/var/spool/cwl", "files": [
             {"value": {"input": "a"}, "writable": true},
             {"value": "x=1", "path": {"input": "name"}}

@@ -324,6 +324,10 @@ fn stream_files_checked() {
     let text = Problem::Empty("the path of staged text".into());
     assert_eq!(found, [text, Problem::Outside("/etc/x".into())]);
     document["graphs"][0]["ops"][1]["kind"]["task"]["files"] = json!([]);
+    document["graphs"][0]["ops"][1]["kind"]["task"]["environment"] = json!({"A": {"input": "b"}});
+    let unknown = Problem::NoPort("input b".into());
+    assert_eq!(only(document.clone()), ("main/head".into(), unknown));
+    document["graphs"][0]["ops"][1]["kind"]["task"]["environment"] = json!({});
     document["graphs"][0]["ops"][1]["kind"]["task"]["workdir"] = json!("work");
     let relative = Problem::Absolute("work".into());
     assert_eq!(only(document), ("main/head".into(), relative));

@@ -9,7 +9,9 @@ use cwl_parser::model::{
     Argument as CwlArgument, CommandLineBinding, CommandLineTool, Dynamic, Expression, LoadListing,
     Part, Process, RequirementClass, Type as Cwl, short_name,
 };
-use wir::{Argument, Attributes, Capture, CaptureRule, FileName, FileType, Port, Task, Type};
+use wir::{
+    Argument, Attributes, Capture, CaptureRule, Content, FileName, FileType, Port, Task, Type,
+};
 
 use crate::Scope;
 use crate::defaults;
@@ -76,6 +78,8 @@ pub fn lower(
         stderr: None,
         workdir: Some(runtime::OUTDIR.into()),
         files: Vec::new(),
+        environment: Default::default(),
+        stdin: None,
     };
     let attributes = requirements::apply(scope, &mut task)?;
     let named = crate::types::named(scope);
@@ -139,15 +143,75 @@ pub fn lower(
             *name = Some(FileName::Text(stream_name(&process.id, &kind)));
         }
     }
-    if tool.stdin.is_some() {
-        return Err("stdin".into());
+    task.stdin = match &tool.stdin {
+        None => None,
+        Some(text) if !code(text) => literal(Some(text), "stdin")?.map(Content::Text),
+        // The path of a File input is where the task stages it.
+        Some(text) => match text.parts.as_slice() {
+            [Part::Reference(code)] => (code.strip_prefix("inputs."))
+                .and_then(|rest| rest.strip_suffix(".path"))
+                .filter(|name| names.contains(name))
+                .map(|name| Content::Input {
+                    input: name.to_owned(),
+                }),
+            _ => None,
+        }
+        .map(Some)
+        .ok_or("stdin set by an expression")?,
+    };
+    if let Some(input) = (process.inputs.iter()).find(|input| input.value_type == Cwl::Stdin) {
+        let input = short_name(&input.id).to_owned();
+        task.stdin = Some(Content::Input { input });
     }
-    if !tool.temporary_fail_codes.is_empty() || !tool.permanent_fail_codes.is_empty() {
-        return Err("temporary or permanent fail codes".into());
+    for (name, value) in [("HOME", runtime::OUTDIR), ("TMPDIR", runtime::TMPDIR)] {
+        task.environment
+            .insert(name.into(), Content::Text(value.into()));
     }
-    task.success_codes = (tool.success_codes.iter())
-        .map(|code| i32::try_from(*code).map_err(|_| format!("the success code {code}")))
-        .collect::<Result<_, _>>()?;
+    if let Some(variables) = scope.find(|class| match class {
+        RequirementClass::EnvVar { variables } => Some(variables),
+        _ => None,
+    }) {
+        for variable in variables {
+            let name = &variable.env_name;
+            let value = match code(&variable.env_value) {
+                false => {
+                    Content::Text(literal(Some(&variable.env_value), name)?.unwrap_or_default())
+                }
+                true if paths(&variable.env_value) => {
+                    return Err(format!("the variable {name} that reads a path"));
+                }
+                true => {
+                    let port = format!("environment.{name}");
+                    values.push(Computed {
+                        port: port.clone(),
+                        code: runtime_of(&variable.env_value)?,
+                        this: None,
+                        r#type: None,
+                    });
+                    Content::Input { input: port }
+                }
+            };
+            task.environment.insert(name.clone(), value);
+        }
+    }
+    // CWL takes 0 as success unless a fail code names it, and every success code.
+    let fails = tool
+        .temporary_fail_codes
+        .iter()
+        .chain(&tool.permanent_fail_codes);
+    let mut codes = tool.success_codes.clone();
+    if !fails.clone().any(|code| *code == 0) && !codes.contains(&0) {
+        codes.push(0);
+    }
+    if codes.is_empty() {
+        return Err("fail codes that leave no success code".into());
+    }
+    task.success_codes = match codes.as_slice() {
+        [0] => Vec::new(),
+        _ => (codes.iter())
+            .map(|code| i32::try_from(*code).map_err(|_| format!("the success code {code}")))
+            .collect::<Result<_, _>>()?,
+    };
     let mut words: Vec<(Vec<Key>, Vec<Argument>)> = Vec::new();
     for (index, word) in tool.base_command.iter().enumerate() {
         let key = vec![Key::Number(-1_000_000), Key::Number(index as i64)];

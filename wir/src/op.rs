@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::document::{Language, Port};
@@ -111,6 +113,12 @@ pub struct Task {
     /// `InitialWorkDirRequirement`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<Staged>,
+    /// The environment variables of the command, by name; null sets none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub environment: BTreeMap<String, Content>,
+    /// What standard input reads: a path, or a task input whose File gives its path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stdin: Option<Content>,
 }
 
 /// One entry of the working folder: a value placed at a path.

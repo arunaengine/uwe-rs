@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use serde_json::{Map, Value as Json};
+use serde_json::{Map, Value as Json, json};
 use wir::{Document, Effect, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
@@ -18,16 +18,19 @@ use workflow_graph::{
 
 use crate::adapter::{self, Adapters, Changes, Ending, TaskCall};
 use crate::argo;
+use crate::callback::Callbacks;
 use crate::child::Child;
 use crate::cwl;
 use crate::engine;
 use crate::inputs;
+use crate::looping;
 use crate::nextflow;
 use crate::operator;
 use crate::plan::{Node, plan};
 use crate::processes;
+use crate::regions;
 use crate::snakemake;
-use crate::state::{Progress, widen};
+use crate::state::{Progress, State, widen};
 use crate::task;
 use crate::wdl;
 
@@ -160,6 +163,9 @@ pub struct WirDriver {
     owners: HashMap<TaskId, usize>,
     /// The adapters of dialect tasks that started, with their tasks.
     dialects: adapter::Dialects,
+    /// Counts the calls of the engine, so that a planner hears of an instance after the call
+    /// it ended in, once its files were delivered.
+    turn: u64,
     texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
@@ -167,6 +173,12 @@ pub struct WirDriver {
     tasks: HashMap<TaskId, (usize, Task, Map<String, Json>)>,
     /// The attempts of task ops that their captures accepted.
     accepted: HashSet<(TaskId, u32)>,
+    /// The tasks of cancelled ops whose attempts were asked to stop.
+    stopping: HashSet<TaskId>,
+    /// The callbacks of task ops, like their acceptance checks.
+    callbacks: Callbacks,
+    /// The patch of the attempt of each task op that runs.
+    patches: HashMap<TaskId, wir::TaskPatch>,
     last: u64,
     files: Option<Arc<dyn Files>>,
     cancel: Option<CancellationToken>,
@@ -184,6 +196,10 @@ pub struct WirDriver {
     stepping: bool,
     /// The processes that run, by node.
     processes: processes::Processes,
+    /// The loops that run, by node.
+    loops: looping::Loops,
+    /// The dynamic regions that run, by node.
+    regions: regions::Regions,
     /// The text of each source that a scope names, by source id.
     scopes: HashMap<String, String>,
     /// The file area of the run, made when an op of the document writes files.
@@ -226,10 +242,14 @@ impl WirDriver {
             children: Vec::new(),
             owners: HashMap::new(),
             dialects: adapter::Dialects::default(),
+            turn: 0,
             texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
             accepted: HashSet::new(),
+            stopping: HashSet::new(),
+            callbacks: Callbacks::default(),
+            patches: HashMap::new(),
             last: 0,
             files: None,
             cancel: None,
@@ -240,6 +260,8 @@ impl WirDriver {
             operators: operator::Running::new(),
             stepping: false,
             processes: processes::Processes::new(),
+            loops: looping::Loops::new(),
+            regions: regions::Regions::new(),
             scopes: HashMap::new(),
             file_area: PathBuf::new(),
             published: Default::default(),
@@ -273,6 +295,7 @@ impl WirDriver {
     /// Steps of stream ops run in passes; after this many, the driver wakes again later.
     fn advance(&mut self) -> Result<Vec<Task>, DriverError> {
         const PASSES: usize = 64;
+        self.turn += 1;
         let mut tasks = Vec::new();
         let mut passes = 0;
         self.stepping = false;
@@ -283,7 +306,10 @@ impl WirDriver {
                 continue;
             }
             if passes == PASSES {
-                self.stepping = !self.operators.is_empty() || !self.processes.is_empty();
+                self.stepping = !self.operators.is_empty()
+                    || !self.processes.is_empty()
+                    || !self.loops.is_empty()
+                    || !self.regions.is_empty();
                 break;
             }
             passes += 1;
@@ -301,21 +327,39 @@ impl WirDriver {
             let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
             let rounds =
                 processes::step_all(&mut self.progress, &self.document, &mut self.processes);
-            if !stepped && !rounds {
+            let runs = looping::step_all(&mut self.progress, &self.document, &mut self.loops);
+            let plans = self.step_regions();
+            if !stepped && !rounds && !runs && !plans {
                 break;
             }
         }
+        // A planner hears of ended instances on a later wake.
+        let progress = &self.progress;
+        let unheard =
+            |region: &regions::Region| region.spec.planner.is_some() && region.unheard(progress);
+        self.stepping |= self.regions.values().any(unheard);
         Ok(tasks)
     }
 
     /// Starts a node with its input values; the tasks it asks for.
     fn begin(&mut self, at: usize, bound: Map<String, Json>) -> Result<Vec<Task>, DriverError> {
+        if let Kind::Dynamic(spec) = &self.progress.node(at).op.kind {
+            self.regions
+                .insert(at, regions::Region::new(spec.clone(), bound));
+            return Ok(Vec::new());
+        }
+        if let Kind::Loop(spec) = &self.progress.node(at).op.kind {
+            self.loops
+                .insert(at, looping::Looping::new(spec.clone(), bound));
+            return Ok(Vec::new());
+        }
         if let Kind::Process(spec) = &self.progress.node(at).op.kind {
             let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at));
             self.processes.insert(at, rounding);
             return Ok(Vec::new());
         }
-        if let Some(stepped) = operator::make(self.progress.node(at)) {
+        let defs = &self.document.types;
+        if let Some(stepped) = operator::make_typed(self.progress.node(at), defs) {
             self.operators.insert(at, stepped);
             return Ok(Vec::new());
         }
@@ -349,14 +393,19 @@ impl WirDriver {
                 ..
             }) => self.start_dialect(at, &builder, &bound),
             Kind::Expr(spec) => self.argo_text(at, &spec, &bound),
-            Kind::Task(spec) => {
+            Kind::Task(_) => {
                 self.last += 1;
-                let node = self.progress.node(at);
-                let names = (node.path.as_str(), node.step.as_str());
-                let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
-                task.site = node.op.attributes.place.clone();
-                self.tasks.insert(task.id, (at, task.clone(), bound));
-                Ok(vec![task])
+                match self.attempt_task(at, TaskId(self.last), &bound, (1, Json::Null)) {
+                    Ok(task) => {
+                        self.tasks.insert(task.id, (at, task.clone(), bound));
+                        Ok(vec![task])
+                    }
+                    Err(why) => {
+                        let message = format!("op {}: {why}", self.progress.node(at).path);
+                        (self.progress).end(at, Status::Errored, Map::new(), Some(message));
+                        Ok(Vec::new())
+                    }
+                }
             }
             _ => {
                 let path = &self.progress.node(at).path;
@@ -402,12 +451,112 @@ impl WirDriver {
         Ok(texts)
     }
 
+    /// The task of an attempt of a task op, from 1, built from the base settings and the patch
+    /// that its `directives` give for the attempt, with how the attempt before was rejected.
+    fn attempt_task(
+        &mut self,
+        at: usize,
+        id: TaskId,
+        bound: &Map<String, Json>,
+        (attempt, previous): (u32, Json),
+    ) -> Result<Task, String> {
+        let node = self.progress.node(at);
+        let Kind::Task(spec) = &node.op.kind else {
+            return Err("the op is no task".into());
+        };
+        let directives = spec
+            .retry
+            .as_ref()
+            .and_then(|retry| retry.directives.as_ref());
+        let patch = match directives {
+            None => wir::TaskPatch::default(),
+            Some(directives) => {
+                let index = adapter::frame(&self.progress, at).rounds.last().copied();
+                let argument = task::attempt_context(bound, index.unwrap_or(0), attempt, previous);
+                let context = engine::Context {
+                    document: &self.document,
+                    base: &self.base,
+                    javascript: &self.settings.cwl.javascript,
+                    scopes: &self.scopes,
+                    files: &self.file_area,
+                    printer: &self.settings.print_sink,
+                    simulated: self.launch.simulated,
+                    provider: self.files.as_deref(),
+                    deliveries: &self.published,
+                };
+                let callbacks = &mut self.callbacks;
+                let given = task::callback(callbacks, &context, directives, argument, bound)
+                    .map_err(|why| format!("the retry directives: {why}"))?;
+                serde_json::from_value(given)
+                    .map_err(|error| format!("the retry directives give no task patch: {error}"))?
+            }
+        };
+        let (spec, op) = task::patched(spec, &node.op, &patch);
+        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound);
+        task.site = op.attributes.place.clone();
+        self.patches.insert(id, patch);
+        Ok(task)
+    }
+
+    /// The next attempt of a rejected task, when the retry limit and `retry_if` allow it, or
+    /// why its retry rules failed.
+    fn retry_task(
+        &mut self,
+        at: usize,
+        outcome: &Outcome,
+        previous: Json,
+    ) -> Result<Option<Task>, String> {
+        let node = self.progress.node(at);
+        let Kind::Task(spec) = &node.op.kind else {
+            return Ok(None);
+        };
+        let retry = spec.retry.as_ref();
+        let limit = (node.op.attributes.retry).unwrap_or(retry.map_or(0, |retry| retry.limit));
+        let cancelled = outcome.error == Some(workflow_graph::TaskError::Cancelled);
+        if cancelled || outcome.attempt > limit {
+            return Ok(None);
+        }
+        let bound = self.tasks[&outcome.id].2.clone();
+        let attempt = outcome.attempt + 1;
+        if let Some(test) = retry.and_then(|retry| retry.retry_if.as_ref()) {
+            let index = adapter::frame(&self.progress, at).rounds.last().copied();
+            let argument =
+                task::attempt_context(&bound, index.unwrap_or(0), attempt, previous.clone());
+            let context = engine::Context {
+                document: &self.document,
+                base: &self.base,
+                javascript: &self.settings.cwl.javascript,
+                scopes: &self.scopes,
+                files: &self.file_area,
+                printer: &self.settings.print_sink,
+                simulated: self.launch.simulated,
+                provider: self.files.as_deref(),
+                deliveries: &self.published,
+            };
+            match task::callback(&mut self.callbacks, &context, test, argument, &bound) {
+                Ok(Json::Bool(true)) => {}
+                Ok(Json::Bool(false)) => return Ok(None),
+                Ok(other) => return Err(format!("retry_if gave {other}, not a bool")),
+                Err(why) => return Err(format!("retry_if: {why}")),
+            }
+        }
+        let task = self.attempt_task(at, outcome.id, &bound, (attempt, previous))?;
+        if let Some(entry) = self.tasks.get_mut(&outcome.id) {
+            entry.1 = task.clone();
+        }
+        Ok(Some(task))
+    }
+
     /// Reads the outputs of a task op from its outcome. An attempt that is not accepted runs
     /// again while the op's `retry` allows it; then the op fails, or errors when the task
     /// could not run.
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
-        let (at, task, bound) = &self.tasks[&outcome.id];
+        let (at, _, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
+        // The op of a stopped attempt was cancelled already.
+        if matches!(self.progress.states[at], State::Ended(..)) {
+            return Vec::new();
+        }
         let Kind::Task(spec) = &node.op.kind else {
             return Vec::new();
         };
@@ -417,23 +566,66 @@ impl WirDriver {
             files,
             bound,
         };
-        match task::capture(spec, &node.op.outputs, ended, &self.document.types) {
-            Ok(values) => {
-                self.accepted.insert((outcome.id, outcome.attempt));
-                self.progress.end(at, Status::Succeeded, values, None);
-                Vec::new()
+        // An attempt is judged by its own patch, like its success codes.
+        let patch = self.patches.get(&outcome.id).cloned().unwrap_or_default();
+        let (spec, _) = task::patched(spec, &node.op, &patch);
+        let spec = &spec;
+        let captured = task::capture(spec, &node.op.outputs, ended, &self.document.types);
+        let context = engine::Context {
+            document: &self.document,
+            base: &self.base,
+            javascript: &self.settings.cwl.javascript,
+            scopes: &self.scopes,
+            files: &self.file_area,
+            printer: &self.settings.print_sink,
+            simulated: self.launch.simulated,
+            provider: self.files.as_deref(),
+            deliveries: &self.published,
+        };
+        let index = adapter::frame(&self.progress, at).rounds.last().copied();
+        let accepted = captured.and_then(|(values, empty)| match &spec.accept {
+            None => Ok((values, empty)),
+            Some(accept) => {
+                let attempt = (bound, &values, index.unwrap_or(0));
+                let callbacks = &mut self.callbacks;
+                match task::accepts(callbacks, &context, accept, attempt, outcome) {
+                    Ok(true) => Ok((values, empty)),
+                    Ok(false) => Err("the acceptance check does not hold".to_owned()),
+                    Err(why) => Err(format!("the acceptance check: {why}")),
+                }
             }
-            Err(_) if outcome.attempt <= node.op.attributes.retry.unwrap_or(0) => {
-                vec![task.clone()]
+        });
+        match accepted {
+            Ok((values, empty)) => {
+                self.accepted.insert((outcome.id, outcome.attempt));
+                (self.progress).end_with(at, Status::Succeeded, values, empty);
+                Vec::new()
             }
             Err(why) => {
                 // A task that could not run says why in the last line of its error output.
                 let said = outcome.stderr.trim().lines().last();
-                let (status, why) = match (&outcome.error, said) {
+                let (status, mut why) = match (&outcome.error, said) {
                     (Some(_), Some(said)) => (Status::Errored, said.to_owned()),
                     (Some(_), None) => (Status::Errored, why),
                     (None, _) => (Status::Failed, why),
                 };
+                let ignore = (spec.retry.as_ref())
+                    .is_some_and(|retry| retry.failure == wir::FailureRule::Ignore);
+                let previous = json!({"status": status, "exit_code": outcome.exit_code,
+                    "capture_error": why});
+                match self.retry_task(at, outcome, previous) {
+                    Ok(Some(task)) => return vec![task],
+                    Ok(None) if ignore => {
+                        let node = self.progress.node(at);
+                        let empty = node.op.outputs.iter().map(|port| port.name.clone());
+                        let empty = empty.collect();
+                        (self.progress).end_with(at, Status::Succeeded, Map::new(), empty);
+                        return Vec::new();
+                    }
+                    Ok(None) => {}
+                    Err(problem) => why = problem,
+                }
+                let node = self.progress.node(at);
                 let message = format!("op {}: {why}", node.path);
                 self.progress.end(at, status, Map::new(), Some(message));
                 Vec::new()
@@ -680,6 +872,7 @@ impl WirDriver {
         let configs = task.configs.iter().map(|id| self.locate(id));
         let opening = adapter::Opening {
             builder,
+            sources: &self.document.sources,
             source: self.locate(&task.source)?,
             configs: configs.collect::<Result<_, _>>()?,
             inputs: &self.progress.inputs,
@@ -696,6 +889,22 @@ impl WirDriver {
     /// Ends the op instances that an adapter ended; the tasks it asks for, under their op.
     fn take_changes(&mut self, changes: Changes) -> Vec<Task> {
         let mut tasks = Vec::with_capacity(changes.tasks.len());
+        let ended = |progress: &Progress, call: adapter::CallId| {
+            matches!(progress.states[call.0], State::Ended(..))
+        };
+        let changes = Changes {
+            tasks: (changes.tasks.into_iter())
+                .filter(|(call, _)| !ended(&self.progress, *call))
+                .collect(),
+            ended: (changes.ended.into_iter())
+                .filter(|(call, _)| !ended(&self.progress, *call))
+                .collect(),
+            ready: changes.ready,
+        };
+        // A ready daemon has its control result before it ends.
+        for call in &changes.ready {
+            self.progress.ready_daemon(call.0);
+        }
         for (call, mut task) in changes.tasks {
             let prefixed = self.dialects.prefixed(task.id);
             mark(&mut task, self.progress.node(call.0), prefixed);
@@ -706,16 +915,37 @@ impl WirDriver {
             let (path, at) = (node.path.clone(), call.0);
             let failed = |why| Some(format!("op {path}: {why}"));
             match ending {
-                Ending::Succeeded(results) => {
-                    match typed(&results, &node.op.outputs, &self.document.types, false) {
-                        Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
+                Ending::Succeeded { values, empty } => {
+                    let ports: Vec<wir::Port> = (node.op.outputs.iter())
+                        .filter(|port| !empty.contains(&port.name))
+                        .cloned()
+                        .collect();
+                    match typed(&values, &ports, &self.document.types, false) {
+                        Ok(values) => {
+                            (self.progress).end_with(at, Status::Succeeded, values, empty);
+                        }
                         Err(port) => {
                             let why = failed(format!("output {port} does not fit its type"));
                             self.progress.end(at, Status::Failed, Map::new(), why);
                         }
                     }
                 }
-                Ending::Skipped => self.progress.end(at, Status::Skipped, Map::new(), None),
+                Ending::Skipped(values) => {
+                    let (given, empty): (Vec<wir::Port>, Vec<wir::Port>) = (node.op.outputs)
+                        .iter()
+                        .cloned()
+                        .partition(|port| values.contains_key(&port.name));
+                    let empty = empty.into_iter().map(|port| port.name).collect();
+                    match typed(&values, &given, &self.document.types, false) {
+                        Ok(values) => {
+                            (self.progress).end_with(at, Status::Skipped, values, empty);
+                        }
+                        Err(port) => {
+                            let why = failed(format!("output {port} does not fit its type"));
+                            self.progress.end(at, Status::Failed, Map::new(), why);
+                        }
+                    }
+                }
                 Ending::Ignored(_) => {
                     let empty = node.op.outputs.iter().map(|port| port.name.clone());
                     let empty = empty.collect();
@@ -731,6 +961,68 @@ impl WirDriver {
             }
         }
         tasks
+    }
+
+    /// Takes in the plan updates of every region, and ends the regions that settled; whether
+    /// any moved. A region whose update cannot be adopted fails.
+    fn step_regions(&mut self) -> bool {
+        let mut moved = false;
+        for at in self.regions.keys().copied().collect::<Vec<usize>>() {
+            match self.step_region(at) {
+                Ok(step) => moved |= step,
+                Err(why) => {
+                    regions::fail(&mut self.progress, &mut self.regions, at, why);
+                    moved = true;
+                }
+            }
+        }
+        moved | regions::settle(&mut self.progress, &mut self.regions)
+    }
+
+    fn step_region(&mut self, at: usize) -> Result<bool, String> {
+        let Some(mut region) = self.regions.remove(&at) else {
+            return Ok(false);
+        };
+        let stepped = self.plan_region(&mut region, at);
+        self.regions.insert(at, region);
+        stepped
+    }
+
+    /// Adopts the plans of a region: those of its plan input, or those its planner gives
+    /// first and after each instance ended, once no delivery of the run waits.
+    fn plan_region(&mut self, region: &mut regions::Region, at: usize) -> Result<bool, String> {
+        let mut updates = region.given(&mut self.progress, at)?;
+        if let Some(planner) = region.spec.planner.clone() {
+            let builder = adapter::planner_builder(&planner);
+            let index = self.open_dialect(&builder).map_err(|error| error.message)?;
+            let to_json = |update| serde_json::to_value(update).unwrap_or_default();
+            if !std::mem::replace(&mut region.planned, true) {
+                let call = adapter::RegionCall {
+                    call: adapter::CallId(at),
+                    frame: adapter::frame(&self.progress, at),
+                    planner: &planner,
+                    inputs: &region.bound,
+                };
+                let update = self.dialects.plan(index, &call);
+                updates.push(to_json(update.map_err(|error| error.message)?));
+            }
+            let delivering = !self.delivering.is_empty() || self.dialects.delivering();
+            for ended in region.ended(&self.progress, self.turn) {
+                if delivering {
+                    break;
+                }
+                let replanned =
+                    self.dialects
+                        .replan(index, adapter::CallId(at), (&ended.0, ended.1));
+                updates.extend(replanned.map_err(|error| error.message)?.map(to_json));
+            }
+        }
+        let moved = !updates.is_empty();
+        let checks = (&self.document, &self.settings.adapters);
+        for update in updates {
+            region.adopt(&mut self.progress, checks, at, update)?;
+        }
+        Ok(moved)
     }
 
     /// Where the document source `id` is: the checkout of a repository at the commit of a
@@ -888,6 +1180,15 @@ impl Driver for WirDriver {
             .flat_map(|(_, child)| child.cancellations())
             .collect();
         tasks.extend(self.dialects.cancellations());
+        // The tasks of ops that a failed process cancelled stop too.
+        let cancelled =
+            |at: usize| matches!(self.progress.states[at], State::Ended(Status::Cancelled, _));
+        let ops = (self.tasks.iter()).map(|(id, (at, ..))| (*id, *at));
+        for (id, at) in ops.chain(self.dialects.tasks()) {
+            if cancelled(at) && self.stopping.insert(id) {
+                tasks.push(id);
+            }
+        }
         tasks
     }
 
@@ -932,7 +1233,20 @@ impl Driver for WirDriver {
                 .failures
                 .push(format!("op {path}: its rounds never ended"));
         }
+        for at in self.regions.keys().copied().collect::<Vec<usize>>() {
+            let why = "its plan never settled".to_owned();
+            regions::fail(&mut self.progress, &mut self.regions, at, why);
+        }
+        for at in std::mem::take(&mut self.loops).into_keys() {
+            let path = self.progress.node(at).path.clone();
+            self.progress.end(at, Status::Cancelled, Map::new(), None);
+            let failures = &mut self.progress.failures;
+            failures.push(format!("op {path}: its runs never ended"));
+        }
         for at in self.dialects.open_calls() {
+            if matches!(self.progress.states[at], State::Ended(..)) {
+                continue;
+            }
             let path = self.progress.node(at).path.clone();
             self.progress.end(at, Status::Cancelled, Map::new(), None);
             let failures = &mut self.progress.failures;
@@ -1034,9 +1348,11 @@ impl Driver for WirDriver {
     }
 
     fn notes(&mut self) -> Vec<Note> {
-        (self.children.iter_mut())
+        let mut notes: Vec<Note> = (self.children.iter_mut())
             .flat_map(|(_, child)| child.notes())
-            .collect()
+            .collect();
+        notes.extend(self.dialects.notes());
+        notes
     }
 
     fn use_files(&mut self, files: Arc<dyn Files>) {

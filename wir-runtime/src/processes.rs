@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value as Json};
-use wir::{Document, Status};
+use wir::{Document, Emission, Status};
 
 use crate::flows::output_stream;
 use crate::plan;
@@ -38,6 +38,9 @@ pub struct Rounding {
     ordinal: u64,
     /// The node of each round that runs, with its ordinal.
     active: BTreeMap<usize, u64>,
+    /// With fair order: the outputs of settled rounds by ordinal, and the next to give.
+    held: BTreeMap<u64, Map<String, Json>>,
+    given: u64,
     /// The values of the one round of a process with value outputs.
     result: Option<(Map<String, Json>, Vec<String>)>,
 }
@@ -58,6 +61,8 @@ impl Rounding {
             choices: None,
             ordinal: 0,
             active: BTreeMap::new(),
+            held: BTreeMap::new(),
+            given: 0,
             result: None,
         }
     }
@@ -170,7 +175,7 @@ impl Rounding {
             .map(|(node, ordinal)| (*node, *ordinal))
             .collect();
         let mut batch = StreamBatch::default();
-        for (node, _) in ended {
+        for (node, ordinal) in ended {
             self.active.remove(&node);
             moved = true;
             let State::Ended(status, values) = &progress.states[node] else {
@@ -200,12 +205,19 @@ impl Rounding {
                 self.result = Some((values.clone(), empty));
                 continue;
             }
-            // An empty output gives no item; a null is an item.
-            for port in ports {
-                if let Some(value) = values.get(&port) {
-                    batch
-                        .items
-                        .push((output_stream(&path, &port), value.clone()));
+            // A settled round without outputs is a hole that fair order passes.
+            self.held.insert(ordinal, values.clone());
+            while let Some(values) = match self.spec.order {
+                Emission::Fair => self.held.remove(&self.given),
+                Emission::Completion => self.held.pop_first().map(|(_, values)| values),
+            } {
+                self.given += 1;
+                // An empty output gives no item; a null is an item.
+                for port in &ports {
+                    if let Some(value) = values.get(port) {
+                        let stream = output_stream(&path, port);
+                        batch.items.push((stream, value.clone()));
+                    }
                 }
             }
         }
@@ -268,9 +280,18 @@ pub fn step_all(progress: &mut Progress, document: &Document, processes: &mut Pr
         let Some(rounding) = processes.get_mut(&at) else {
             continue;
         };
+        // A process that was cancelled from outside starts no more rounds.
+        if matches!(progress.states[at], State::Ended(..)) {
+            processes.remove(&at);
+            continue;
+        }
         match rounding.step(progress, document, at) {
             Ok(step) => moved |= step,
             Err(why) => {
+                // A failed round cancels the rounds that still run.
+                for round in std::mem::take(&mut rounding.active).into_keys() {
+                    progress.cancel(round);
+                }
                 processes.remove(&at);
                 let path = progress.node(at).path.clone();
                 let why = match why.starts_with("op ") {

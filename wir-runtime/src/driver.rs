@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use serde_json::{Map, Value as Json};
+use serde_json::{Map, Value as Json, json};
 use wir::{Document, Effect, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
@@ -171,6 +171,8 @@ pub struct WirDriver {
     stopping: HashSet<TaskId>,
     /// The callbacks of task ops, like their acceptance checks.
     callbacks: Callbacks,
+    /// The patch of the attempt of each task op that runs.
+    patches: HashMap<TaskId, wir::TaskPatch>,
     last: u64,
     files: Option<Arc<dyn Files>>,
     cancel: Option<CancellationToken>,
@@ -233,6 +235,7 @@ impl WirDriver {
             accepted: HashSet::new(),
             stopping: HashSet::new(),
             callbacks: Callbacks::default(),
+            patches: HashMap::new(),
             last: 0,
             files: None,
             cancel: None,
@@ -346,14 +349,19 @@ impl WirDriver {
                 builder: Some(builder),
                 ..
             }) => self.start_dialect(at, &builder, &bound),
-            Kind::Task(spec) => {
+            Kind::Task(_) => {
                 self.last += 1;
-                let node = self.progress.node(at);
-                let names = (node.path.as_str(), node.step.as_str());
-                let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
-                task.site = node.op.attributes.place.clone();
-                self.tasks.insert(task.id, (at, task.clone(), bound));
-                Ok(vec![task])
+                match self.attempt_task(at, TaskId(self.last), &bound, (1, Json::Null)) {
+                    Ok(task) => {
+                        self.tasks.insert(task.id, (at, task.clone(), bound));
+                        Ok(vec![task])
+                    }
+                    Err(why) => {
+                        let message = format!("op {}: {why}", self.progress.node(at).path);
+                        (self.progress).end(at, Status::Errored, Map::new(), Some(message));
+                        Ok(Vec::new())
+                    }
+                }
             }
             _ => {
                 let path = &self.progress.node(at).path;
@@ -399,11 +407,103 @@ impl WirDriver {
         Ok(texts)
     }
 
+    /// The task of an attempt of a task op, from 1, built from the base settings and the patch
+    /// that its `directives` give for the attempt, with how the attempt before was rejected.
+    fn attempt_task(
+        &mut self,
+        at: usize,
+        id: TaskId,
+        bound: &Map<String, Json>,
+        (attempt, previous): (u32, Json),
+    ) -> Result<Task, String> {
+        let node = self.progress.node(at);
+        let Kind::Task(spec) = &node.op.kind else {
+            return Err("the op is no task".into());
+        };
+        let directives = spec
+            .retry
+            .as_ref()
+            .and_then(|retry| retry.directives.as_ref());
+        let patch = match directives {
+            None => wir::TaskPatch::default(),
+            Some(directives) => {
+                let index = adapter::frame(&self.progress, at).rounds.last().copied();
+                let argument = task::attempt_context(bound, index.unwrap_or(0), attempt, previous);
+                let context = engine::Context {
+                    document: &self.document,
+                    base: &self.base,
+                    javascript: &self.settings.cwl.javascript,
+                    scopes: &self.scopes,
+                    files: &self.file_area,
+                    printer: &self.settings.print_sink,
+                    simulated: self.launch.simulated,
+                };
+                let callbacks = &mut self.callbacks;
+                let given = task::callback(callbacks, &context, directives, argument, bound)
+                    .map_err(|why| format!("the retry directives: {why}"))?;
+                serde_json::from_value(given)
+                    .map_err(|error| format!("the retry directives give no task patch: {error}"))?
+            }
+        };
+        let (spec, op) = task::patched(spec, &node.op, &patch);
+        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound);
+        task.site = op.attributes.place.clone();
+        self.patches.insert(id, patch);
+        Ok(task)
+    }
+
+    /// The next attempt of a rejected task, when the retry limit and `retry_if` allow it, or
+    /// why its retry rules failed.
+    fn retry_task(
+        &mut self,
+        at: usize,
+        outcome: &Outcome,
+        previous: Json,
+    ) -> Result<Option<Task>, String> {
+        let node = self.progress.node(at);
+        let Kind::Task(spec) = &node.op.kind else {
+            return Ok(None);
+        };
+        let retry = spec.retry.as_ref();
+        let limit = (node.op.attributes.retry).unwrap_or(retry.map_or(0, |retry| retry.limit));
+        let cancelled = outcome.error == Some(workflow_graph::TaskError::Cancelled);
+        if cancelled || outcome.attempt > limit {
+            return Ok(None);
+        }
+        let bound = self.tasks[&outcome.id].2.clone();
+        let attempt = outcome.attempt + 1;
+        if let Some(test) = retry.and_then(|retry| retry.retry_if.as_ref()) {
+            let index = adapter::frame(&self.progress, at).rounds.last().copied();
+            let argument =
+                task::attempt_context(&bound, index.unwrap_or(0), attempt, previous.clone());
+            let context = engine::Context {
+                document: &self.document,
+                base: &self.base,
+                javascript: &self.settings.cwl.javascript,
+                scopes: &self.scopes,
+                files: &self.file_area,
+                printer: &self.settings.print_sink,
+                simulated: self.launch.simulated,
+            };
+            match task::callback(&mut self.callbacks, &context, test, argument, &bound) {
+                Ok(Json::Bool(true)) => {}
+                Ok(Json::Bool(false)) => return Ok(None),
+                Ok(other) => return Err(format!("retry_if gave {other}, not a bool")),
+                Err(why) => return Err(format!("retry_if: {why}")),
+            }
+        }
+        let task = self.attempt_task(at, outcome.id, &bound, (attempt, previous))?;
+        if let Some(entry) = self.tasks.get_mut(&outcome.id) {
+            entry.1 = task.clone();
+        }
+        Ok(Some(task))
+    }
+
     /// Reads the outputs of a task op from its outcome. An attempt that is not accepted runs
     /// again while the op's `retry` allows it; then the op fails, or errors when the task
     /// could not run.
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
-        let (at, task, bound) = &self.tasks[&outcome.id];
+        let (at, _, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
         // The op of a stopped attempt was cancelled already.
         if matches!(self.progress.states[at], State::Ended(..)) {
@@ -418,6 +518,10 @@ impl WirDriver {
             files,
             bound,
         };
+        // An attempt is judged by its own patch, like its success codes.
+        let patch = self.patches.get(&outcome.id).cloned().unwrap_or_default();
+        let (spec, _) = task::patched(spec, &node.op, &patch);
+        let spec = &spec;
         let captured = task::capture(spec, &node.op.outputs, ended, &self.document.types);
         let context = engine::Context {
             document: &self.document,
@@ -447,17 +551,31 @@ impl WirDriver {
                 (self.progress).end_with(at, Status::Succeeded, values, empty);
                 Vec::new()
             }
-            Err(_) if outcome.attempt <= node.op.attributes.retry.unwrap_or(0) => {
-                vec![task.clone()]
-            }
             Err(why) => {
                 // A task that could not run says why in the last line of its error output.
                 let said = outcome.stderr.trim().lines().last();
-                let (status, why) = match (&outcome.error, said) {
+                let (status, mut why) = match (&outcome.error, said) {
                     (Some(_), Some(said)) => (Status::Errored, said.to_owned()),
                     (Some(_), None) => (Status::Errored, why),
                     (None, _) => (Status::Failed, why),
                 };
+                let ignore = (spec.retry.as_ref())
+                    .is_some_and(|retry| retry.failure == wir::FailureRule::Ignore);
+                let previous = json!({"status": status, "exit_code": outcome.exit_code,
+                    "capture_error": why});
+                match self.retry_task(at, outcome, previous) {
+                    Ok(Some(task)) => return vec![task],
+                    Ok(None) if ignore => {
+                        let node = self.progress.node(at);
+                        let empty = node.op.outputs.iter().map(|port| port.name.clone());
+                        let empty = empty.collect();
+                        (self.progress).end_with(at, Status::Succeeded, Map::new(), empty);
+                        return Vec::new();
+                    }
+                    Ok(None) => {}
+                    Err(problem) => why = problem,
+                }
+                let node = self.progress.node(at);
                 let message = format!("op {}: {why}", node.path);
                 self.progress.end(at, status, Map::new(), Some(message));
                 Vec::new()

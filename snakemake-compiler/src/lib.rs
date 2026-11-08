@@ -63,6 +63,8 @@ pub fn compile(
         configs,
         values,
     };
+    let folder = run.workdir.clone();
+    let place = |sources: Vec<Json>| started(sources, launch, folder.as_deref(), base);
     let mut driver =
         snakemake_runtime::spawn_driver(launch, settings, run).map_err(|error| error.message)?;
     let jobs = match driver.plan_jobs() {
@@ -70,13 +72,13 @@ pub fn compile(
         // A native op holds what uwe cannot plan job by job; its run says the same.
         Err(error) if error.unsupported => {
             let reason = error.message.lines().next().unwrap_or_default().to_owned();
-            return native(sources, &setting, launch, reason);
+            return native(place(sources)?, &setting, launch, reason);
         }
         Err(error) => return Err(error.message),
     };
     drop(driver);
     if let Some(reason) = jobs.iter().find_map(kept_job) {
-        return native(sources, &setting, launch, reason);
+        return native(place(sources)?, &setting, launch, reason);
     }
     let setting = Setting {
         entry: (setting.entry.clone()).or_else(|| jobs.iter().find_map(|job| job.target.clone())),
@@ -174,6 +176,36 @@ fn native(
             reason,
         }],
     })
+}
+
+/// The sources of a native op, which starts in the folder of its Snakefile source: for a
+/// Snakefile, the working folder of the launch, which must find that Snakefile itself.
+fn started(
+    mut sources: Vec<Json>,
+    launch: &Launch,
+    folder: Option<&Path>,
+    base: &Path,
+) -> Result<Vec<Json>, String> {
+    if launch.target.is_dir() {
+        return Ok(sources);
+    }
+    let current = std::env::current_dir().map_err(|error| error.to_string())?;
+    let folder = folder.map_or(current, Path::to_owned);
+    let same = |path: &Path| std::fs::canonicalize(path).ok();
+    let found = snakemake_runtime::find_snakefile(&folder);
+    if found
+        .as_deref()
+        .and_then(same)
+        .is_none_or(|found| Some(found) != same(&launch.target))
+    {
+        return Err(format!(
+            "the workflow stays one native Snakemake op, which starts in {} but finds no {} there",
+            folder.display(),
+            launch.target.display()
+        ));
+    }
+    sources[0] = source(SOURCE, &folder, found.as_deref(), base);
+    Ok(sources)
 }
 
 /// The source of the Snakefile, then the config files of the launch, each with the digest of

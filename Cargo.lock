@@ -122,8 +122,10 @@ dependencies = [
  "regex",
  "serde_json",
  "task-model",
+ "task-runner",
  "tempfile",
  "wir",
+ "wir-runtime",
  "workflow-graph",
 ]
 

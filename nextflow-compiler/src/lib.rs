@@ -72,7 +72,7 @@ pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compi
                 path: "pipeline".into(),
                 reason: error.message,
             }];
-            native(&[], &context, &mut sources, kept)
+            native(&Network::default(), &context, &mut sources, kept)
         }
         Err(error) => Err(error.message),
     }
@@ -98,24 +98,38 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
     });
     let kept: Vec<Kept> = opaque.collect();
     if !kept.is_empty() {
-        return native(&network.emits, context, &mut sources, kept);
+        return native(network, context, &mut sources, kept);
     }
     match graph::compile(network, context, &mut sources) {
         Ok(graphs) => Ok(Compilation {
             document: document(&sources, context, graphs)?,
             kept: Vec::new(),
         }),
-        Err(kept) => native(&network.emits, context, &mut sources, vec![kept]),
+        Err(kept) => native(network, context, &mut sources, vec![kept]),
     }
 }
 
-/// The pipeline as one native op, which runs it with the native driver.
+/// The pipeline as one native op, which runs it with the native driver; the params of the
+/// run are inputs of the graph and of the op.
 fn native(
-    emits: &[(String, usize)],
+    network: &Network,
     context: &Context,
     sources: &mut Sources,
     kept: Vec<Kept>,
 ) -> Result<Compilation, String> {
+    let emits = &network.emits;
+    let schema = network.schema.as_ref();
+    // A native op takes typed params only: a dynamic one gets the type of its value, and one
+    // whose value has no plain type stays out, so that the pipeline's default holds.
+    let ports = params::ports(&network.params, schema, &network.launch);
+    let inputs: Vec<Json> = (ports.into_iter())
+        .filter_map(|mut port| {
+            if port["type"] == "dynamic" {
+                port["type"] = json!({"optional": plain(&port["default"])?});
+            }
+            Some(port)
+        })
+        .collect();
     let configs: Vec<String> = context
         .configs
         .iter()
@@ -134,19 +148,49 @@ fn native(
     let outputs: Vec<Json> = (emits.iter())
         .map(|(name, _)| json!({"name": name, "type": "dynamic"}))
         .collect();
-    let edges: Vec<Json> = (emits.iter())
+    let mut edges: Vec<Json> = (emits.iter())
         .map(|(name, _)| json!({"from": {"op": "pipeline", "port": name}, "to": {"port": name}}))
+        .collect();
+    edges.extend((inputs.iter()).map(|port| {
+        let name = &port["name"];
+        json!({"from": {"port": name}, "to": {"op": "pipeline", "port": name}})
+    }));
+    let op_inputs: Vec<Json> = (inputs.iter())
+        .map(|port| json!({"name": port["name"], "type": port["type"]}))
         .collect();
     let op = json!({
         "path": "pipeline",
         "kind": {"native": native},
+        "inputs": op_inputs,
         "outputs": outputs,
         "origin": {"source": sources.main()},
     });
-    let graph = json!({"name": "main", "outputs": outputs, "ops": [op], "edges": edges});
+    let graph =
+        json!({"name": "main", "inputs": inputs, "outputs": outputs, "ops": [op], "edges": edges});
     Ok(Compilation {
         document: document(sources, context, vec![graph])?,
         kept,
+    })
+}
+
+/// The wir type of a plain value of a param: a scalar or an array of one scalar type.
+fn plain(value: &Json) -> Option<Json> {
+    Some(match value {
+        Json::Bool(_) => json!("bool"),
+        Json::Number(number) if number.is_i64() => json!("int"),
+        Json::Number(_) => json!("float"),
+        Json::String(_) | Json::Null => json!("string"),
+        Json::Array(items) => {
+            let first = plain(items.first()?)?;
+            if !items
+                .iter()
+                .all(|item| plain(item).as_ref() == Some(&first))
+            {
+                return None;
+            }
+            json!({"array": {"items": first}})
+        }
+        Json::Object(_) => return None,
     })
 }
 

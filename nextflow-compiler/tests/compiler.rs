@@ -117,6 +117,24 @@ fn keeps_typed_operators() {
         op(main, "pipeline")["kind"]["native"]["profiles"],
         json!(["test"])
     );
+    let param = json!({"name": "greeting", "type": {"optional": "string"}, "default": "hi"});
+    assert_eq!(
+        main["inputs"],
+        json!([param]),
+        "the native op keeps the params"
+    );
+    let edge = json!({"from": {"port": "greeting"}, "to": {"op": "pipeline", "port": "greeting"}});
+    assert!(main["edges"].as_array().unwrap().contains(&edge));
+    if let Err(problems) = wir::verify(&compiled.document) {
+        panic!(
+            "{}",
+            problems
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
     let document = full("workflow {\n}\n");
     let main = graph(&document, "main");
     let param = json!({"name": "greeting", "type": "dynamic", "default": "hi"});

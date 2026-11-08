@@ -69,7 +69,7 @@ Set `run::Settings.cache_folder` to keep what a run caches in that folder: downl
 
 ## Launch folder of Nextflow runs
 
-An embedded Nextflow run launches in a folder of its own, `scratch/launch/<run>` in the cache folder. Relative paths of the workflow start there, like `launchDir`, a `publishDir` of `results` and `file('data.csv')`. So runs at the same time never write the same relative path. A `launch` folder in the `hosted::Isolation` of the run wins over it. uwe keeps the folder after the run, since it can hold published files, and the host removes it once it took them. A workflow publishes elsewhere with absolute paths, like an `outdir` parameter that the host sets. On the command line a run launches in the working directory, as in Nextflow, and the Nextflow blocks of a wir run launch in the folder of their block.
+An embedded Nextflow run launches in a folder of its own, `scratch/launch/<run>` in the cache folder. Relative paths of the workflow start there, like `launchDir`, a `publishDir` of `results` and `file('data.csv')`. So runs at the same time never write the same relative path. A `launch` folder in the `hosted::Isolation` of the run wins over it. uwe keeps the folder after the run, since it can hold published files, and the host removes it once it took them. A workflow publishes elsewhere with absolute paths, like an `outdir` parameter that the host sets. On the command line a run launches in the working directory, as in Nextflow, and the Nextflow blocks of a wir run launch in the folder of their block. An [isolated](#isolated-runs) Snakemake run whose Snakefile is a file starts in the same folder, `scratch/launch/<run>`, or in `Isolation.launch`; a Snakefile of a project folder starts in that folder, as in Snakemake.
 
 ## Standard output
 
@@ -201,8 +201,8 @@ A host that runs the workflows of many users in one process sets `run::Settings.
 While uwe interprets the code of an isolated workflow, that code reaches only the folders of its run. This covers what Nextflow code reads, writes, lists and deletes with `file()` and `Path` methods, like `.text`, `.delete()`, `.copyTo()`, `.mkdirs()` and `Channel.fromPath`, and what Snakemake code at the top level of a Snakefile does with `open()`, `os.listdir`, `os.remove` and the like. A path outside the folders fails with "workflow code may not reach PATH: it is outside the folders of the run". A Snakemake check whether such a path exists says that it does not. Links count where they lead, so a link in the run folder to `/etc` does not help. The folders are:
 
 - the folder of the workflow, or the folder of its main file,
-- the launch folder, `Isolation.launch`, which relative paths start from and which the host makes; without it the run starts in the working directory of the process, which its code may not reach,
-- the folders of the run in the scratch folder: the launch folder of a Nextflow run, `scratch/launch/<run>`, when the host gives none, and the folder of Nextflow operators like `collectFile` and `splitFastq(file: true)`,
+- the launch folder, `Isolation.launch`, which relative paths start from and which the host makes; without it a Nextflow or Snakemake run starts in a folder of its own, `scratch/launch/<run>` in the cache folder, and never in the working directory of the process,
+- the folders of the run in the scratch folder: its own launch folder, and the folder of Nextflow operators like `collectFile` and `splitFastq(file: true)`,
 - `run::Settings.output_dir`,
 - the files of the launch: the inputs file and the config files,
 - the folders of the host, `Isolation.roots`, like the input folders of the user and the output folder of the run.

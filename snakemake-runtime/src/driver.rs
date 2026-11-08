@@ -3128,6 +3128,11 @@ pub fn spawn_driver(
             let channel = Rc::new(Channel::new(incoming, outgoing));
             let open = || -> Result<Session, DriverError> {
                 let folder = options.workdir.as_deref();
+                if settings.roots.is_some() && folder.is_none() && !launch.target.is_dir() {
+                    return Err(DriverError::new(
+                        "an isolated Snakemake run needs a working folder of its own",
+                    ));
+                }
                 let environment = settings.environment.clone();
                 let mut session = Session::within(&launch, &settings.storage, folder, environment)?;
                 if let Some(roots) = &settings.roots {

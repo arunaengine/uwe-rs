@@ -116,6 +116,7 @@ pub fn verify(document: &Document) -> Result<(), Vec<VerifyError>> {
     if check.definitions() {
         check.graphs();
     }
+    check.hooks();
     if check.errors.is_empty() {
         Ok(())
     } else {
@@ -616,6 +617,8 @@ mod callbacks;
 mod controls;
 #[path = "effects.rs"]
 mod effects;
+#[path = "hooks.rs"]
+mod hooks;
 #[path = "keyed.rs"]
 mod keyed;
 #[path = "kinds.rs"]

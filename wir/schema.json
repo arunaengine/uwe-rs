@@ -10,7 +10,8 @@
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
     "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
-    "entry": { "$ref": "#/$defs/name" }
+    "entry": { "$ref": "#/$defs/name" },
+    "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } }
   },
   "$defs": {
     "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
@@ -388,7 +389,8 @@
             "compare": { "$ref": "#/$defs/callback" },
             "seed": { "$ref": "#/$defs/literal" },
             "empty": { "$ref": "#/$defs/empty_rule" },
-            "nulls": { "enum": ["keep", "keep_state"] }
+            "nulls": { "enum": ["keep", "keep_state"] },
+            "steps": { "type": "boolean" }
           }
         },
         "first": { "$ref": "#/$defs/pick" },
@@ -910,6 +912,39 @@
       }
     },
     "callback": { "oneOf": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/closure" }] },
+    "hook": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "complete": { "$ref": "#/$defs/closure" },
+        "error": { "$ref": "#/$defs/closure" },
+        "observe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": { "$ref": "#/$defs/name" },
+            "processes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "name"],
+                "properties": {
+                  "id": { "$ref": "#/$defs/count" },
+                  "name": { "type": "string" },
+                  "definition": { "type": "string" },
+                  "script": { "type": "string" },
+                  "feeds": { "type": "array", "items": { "$ref": "#/$defs/count" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "task": {
       "type": "object",
       "additionalProperties": false,

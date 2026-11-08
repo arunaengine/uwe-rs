@@ -202,6 +202,11 @@ impl<'s> Turn<'s> {
 /// A stream op that runs in the engine.
 pub trait Operator {
     fn step(&mut self, turn: &mut Turn<'_>, context: &Context<'_>) -> Result<Step, Failure>;
+
+    /// Why the op waits besides its inputs, like for the delivery of its files.
+    fn waits_for(&self) -> Option<String> {
+        None
+    }
 }
 
 /// The op of a node, when its kind runs as a stream op.
@@ -479,7 +484,7 @@ fn fitted(
 /// Cancels the stream ops that still run once nothing else can happen: their inputs never
 /// ended, which fails the run.
 pub fn cancel_all(progress: &mut crate::state::Progress, running: &mut Running) {
-    for at in std::mem::take(running).into_keys() {
+    for (at, operator) in std::mem::take(running) {
         let path = progress.plan.nodes[at].path.clone();
         if let Err(error) = progress.streams.cancel(&path) {
             progress
@@ -487,8 +492,8 @@ pub fn cancel_all(progress: &mut crate::state::Progress, running: &mut Running) 
                 .push(format!("op {path}: {}", error.message));
         }
         progress.end(at, Status::Cancelled, Map::new(), None);
-        progress
-            .failures
-            .push(format!("op {path}: its inputs never ended"));
+        let why = operator.waits_for();
+        let why = why.unwrap_or_else(|| "its inputs never ended".into());
+        progress.failures.push(format!("op {path}: {why}"));
     }
 }

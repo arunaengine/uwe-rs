@@ -249,6 +249,10 @@ Pass `Setup.cluster` with `kubernetes_executor::Cluster::new(client, namespace, 
 
 Map installed references through named `[executor.kubernetes.references.NAME]` tables. Each has a `path` and either a `claim`, or an `nfs_server` and `nfs_path`. Only declared reference paths are mounted, and always read-only. Local and mapped Kubernetes references avoid copying the whole installation. Remote SLURM and TES staging still checks the bytes of the source.
 
+## SLURM
+
+A service that starts many SLURM runs with Apptainer can give them one shared folder of SIF files with `image_folder` in `[executor.slurm]`. Runs in one process and in several processes use it safely at the same time: a run waits while another run pulls the same image. See [SLURM images](remote-executors.md#slurm-images).
+
 ## Sharing between requests
 
 Share one `argo_runtime::SharedLocks` coordinator between related hosted policies, so that Argo mutexes and semaphores hold across requests. Requests that overlap must use the same registry settings: the same credentials, by their values, and the same use of the credential files of the service user. uwe refuses an overlapping request whose credentials differ, also when two requests give different secret values for the same variable. Use separate worker processes for different registry identities.

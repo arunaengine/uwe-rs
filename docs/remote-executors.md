@@ -822,6 +822,17 @@ uwe sets `uwe-attempt`, `uwe-submission` and the `idempotency_tag` itself. A tag
 
 Some TES servers stage input files as read-only and owned by another user, and run the task as a user without rights to change them. uwe makes executable inputs and the helper executable with `chmod +x`. When `chmod` fails, uwe copies the file next to itself, makes the copy executable and moves it over the original. This needs a folder the task user may write to. If the copy fails too, the task stops with an error, as before. When `chmod` works, nothing changes.
 
+## SLURM images
+
+With Apptainer or Singularity, uwe turns each image of a registry or an address into a SIF file once, before the first task of the image runs, and the jobs run that file. By default a job of its own pulls the image, with the resources of `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` (default 2, 4096 and 60). The files go to the `images` folder in the scratch folder of the cache, which the nodes must see at the same path.
+
+`image_folder` in `[executor.slurm]` names another folder, as an absolute path that the nodes see at the same path. Runs and users that share the folder reuse its files: an image named by a digest or an address is pulled once for all of them. An image named by a tag is pulled again in each run, as the tag may have moved. A pull writes to a temporary name and renames the file once it is whole. While a run pulls an image, it locks a file next to it, `<file>.lock`, and other runs wait until it is done. When runs on several machines share the folder, its file system must support such locks across machines. Where uwe cannot lock the file, it logs a warning and pulls without the lock. Each user of a shared folder needs the right to write in it.
+
+```toml
+[executor.slurm]
+image_folder = "/shared/sif"
+```
+
 ## SLURM job environment
 
 uwe runs `sbatch` with a cleared environment. It passes only `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `TZ`, `TMPDIR`, the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`, also in lower case) and the variables that start with `SLURM_`, `SBATCH_`, `APPTAINER_` or `SINGULARITY_`, like `SLURM_CONF`. With `proxy` in `[network]` it adds the proxy variables, and with `staging_access = "credentials"` the credentials of the staging root. Each job gets `--export` with the names of exactly these variables, so other variables of the uwe process, like the credentials of a service, reach neither `sbatch` nor the jobs. The list holds names only, since `--export` splits at commas. It comes after `options` of `[executor.slurm]`, so it wins over an `--export` there. The tasks get their own variables inside the container.

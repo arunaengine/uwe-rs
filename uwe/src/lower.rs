@@ -1,4 +1,5 @@
-//! `uwe lower` prints the wir of a CWL or WDL document, and `-lowered` runs one through it.
+//! `uwe lower` prints the wir of a CWL or WDL document or a Nextflow pipeline, and `-lowered`
+//! runs one through it.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,6 +8,7 @@ use std::path::{Path, PathBuf};
 use workflow_graph::Language;
 
 use crate::arguments::Arguments;
+use crate::setup::Setup;
 use crate::{Failure, cache_directory, failure};
 
 /// `uwe lower`: prints the wir document of a CWL or WDL file, with source locations from the
@@ -16,6 +18,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
     let document = match language {
         Language::Wdl => wdl(&target, arguments, &base)?.document,
+        Language::Nextflow => {
+            let setup = Setup::load(arguments)?;
+            let _registry = setup.registry.enter().map_err(Failure::setup)?;
+            nextflow(arguments, &setup, &target, &base)?
+        }
         _ => lowered(&target, language, &base)?.document,
     };
     let text = serde_json::to_string_pretty(&document)
@@ -31,6 +38,7 @@ pub fn document(
     target: &Path,
     language: Language,
     arguments: &Arguments,
+    setup: &Setup,
 ) -> Result<(PathBuf, Option<PathBuf>), Failure> {
     let folder = cache_directory().join("scratch").join("lowered");
     let (document, inputs) = match language {
@@ -39,6 +47,7 @@ pub fn document(
             let inputs = converted(&lowering, arguments, &folder)?;
             (lowering.document, inputs)
         }
+        Language::Nextflow => (nextflow(arguments, setup, target, &folder)?, None),
         _ => (lowered(target, language, &folder)?.document, None),
     };
     let text = serde_json::to_string_pretty(&document)
@@ -58,7 +67,7 @@ fn lowered(
 ) -> Result<cwl_lowering::Lowering, Failure> {
     if language != Language::Cwl {
         return Err(Failure::usage(
-            "uwe: only CWL and WDL documents lower into wir yet",
+            "uwe: only CWL and WDL documents and Nextflow pipelines lower into wir yet",
         ));
     }
     let shown = target.display();
@@ -73,6 +82,31 @@ fn lowered(
         );
     }
     Ok(lowering)
+}
+
+/// The wir document of a Nextflow pipeline as the command line launches it, for its params and
+/// config; it names on standard error what keeps it one native op.
+fn nextflow(
+    arguments: &Arguments,
+    setup: &Setup,
+    target: &Path,
+    base: &Path,
+) -> Result<wir::Document, Failure> {
+    let launch = crate::launch(arguments, target.to_owned());
+    let lowering = crate::nextflow::lower(&launch, arguments, setup, base)
+        .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
+    for kept in &lowering.kept {
+        eprintln!(
+            "uwe: {} keeps the pipeline a native Nextflow op: {}",
+            kept.path, kept.reason
+        );
+    }
+    serde_json::from_value(lowering.document).map_err(|error| {
+        failure(format!(
+            "uwe: {}: not a wir document: {error}",
+            target.display()
+        ))
+    })
 }
 
 /// The lowering of the WDL workflow or task that `-entry` names, else the one a run picks.

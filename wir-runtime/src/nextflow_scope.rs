@@ -333,9 +333,14 @@ fn publish(
     let overwrite = output["overwrite"].as_bool().unwrap_or(true);
     let mut places = HashMap::new();
     let mut deliveries = Vec::new();
+    // As in Nextflow, only the files of tasks go out, by their names in the task folders.
+    let options = &context.nextflow.0.options;
     each_file(item, &mut |file| {
         let location = file["location"].as_str().unwrap_or_default().to_owned();
-        let name = location.rsplit('/').next().unwrap_or_default();
+        let Some(name) = options.task_file(&location) else {
+            return;
+        };
+        let name = name.as_str();
         let place = match &target {
             Target::Folder(folder) => folder.join(name),
             Target::Files(places) => match places.get(name) {
@@ -398,7 +403,9 @@ fn targets(
             _ => Vec::new(),
         };
         for path in paths {
-            let name = path.name().to_owned();
+            let Some(name) = context.nextflow.0.options.task_file(&path.path) else {
+                continue;
+            };
             let place = match target.ends_with('/') {
                 true => format!("{target}{name}"),
                 false => target.clone(),

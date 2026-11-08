@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 
 use nextflow_evaluator::interpreter::Host;
 use nextflow_runtime::driver::{Nextflow, Settings};
@@ -25,13 +25,23 @@ type Making = dyn Fn(&Launch, &Path) -> Settings + Send + Sync;
 #[derive(Clone)]
 pub struct Options {
     pub(crate) settings: Arc<Making>,
+    /// The files that tasks made, by location, with their names in the work folder of their
+    /// task, which workflow outputs publish by.
+    pub(crate) names: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 impl Options {
     pub fn new(settings: impl Fn(&Launch, &Path) -> Settings + Send + Sync + 'static) -> Options {
         Options {
             settings: Arc::new(settings),
+            names: Arc::default(),
         }
+    }
+
+    /// The name of a file that a task made in its work folder, by its location.
+    pub(crate) fn task_file(&self, location: &str) -> Option<String> {
+        let names = self.names.lock().unwrap_or_else(PoisonError::into_inner);
+        names.get(location).cloned()
     }
 }
 
@@ -118,6 +128,7 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
         next: 0,
         accepted: HashSet::new(),
         deliveries: Vec::new(),
+        names: options.names.clone(),
     }))
 }
 
@@ -131,6 +142,8 @@ struct Tasks {
     next: u64,
     accepted: HashSet<(TaskId, u32)>,
     deliveries: Vec<Delivery>,
+    /// The names of the files of tasks in their work folders, shared with workflow outputs.
+    names: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 impl Tasks {
@@ -150,9 +163,13 @@ impl Tasks {
             Completed::Accepted {
                 outputs,
                 deliveries,
+                names,
             } => {
                 self.accepted.insert((id, attempt));
                 self.deliveries.extend(deliveries);
+                let mut known = self.names.lock().unwrap_or_else(PoisonError::into_inner);
+                known.extend(names);
+                drop(known);
                 let given = ports.into_iter().filter_map(|(index, port)| {
                     let value = outputs.get(index).cloned().flatten()?;
                     Some((port, value))

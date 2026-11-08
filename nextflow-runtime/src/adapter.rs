@@ -43,11 +43,13 @@ pub enum Prepared {
 /// How an attempt ended for its process.
 #[derive(Debug)]
 pub enum Completed {
-    /// The value of each output in declaration order, `None` for a missing optional one, and
-    /// the files that `publishDir` publishes.
+    /// The value of each output in declaration order, `None` for a missing optional one, the
+    /// files that `publishDir` publishes, and the files of the task by location with their
+    /// names in its work folder, which workflow outputs publish by.
     Accepted {
         outputs: Vec<Option<Json>>,
         deliveries: Vec<Delivery>,
+        names: Vec<(String, String)>,
     },
     /// The next attempt, which keeps the task id.
     Retry(Box<Task>),
@@ -266,9 +268,13 @@ impl Adapter {
                         message: format!("an output value: {message}"),
                         span: Default::default(),
                     })?;
+                    let names = (outcome.files.iter())
+                        .map(|(name, path)| (path.path.clone(), name.clone()))
+                        .collect();
                     let accepted = Completed::Accepted {
                         outputs,
                         deliveries,
+                        names,
                     };
                     return Ok(Next::Done(accepted));
                 }

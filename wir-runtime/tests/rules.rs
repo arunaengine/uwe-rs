@@ -222,7 +222,7 @@ fn refuses_engine_effects() {
     });
     assert_eq!(
         message,
-        "op main/same: only task and native ops have effects"
+        "op main/same: only task, native and effect ops have effects"
     );
 }
 

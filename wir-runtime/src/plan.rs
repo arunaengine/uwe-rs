@@ -96,8 +96,9 @@ fn refusal(op: &Op) -> Option<&'static str> {
     if op.attributes.place.is_some() && !runs {
         return Some("only task and native ops run at a place");
     }
-    if !op.effects.is_empty() && !runs {
-        return Some("only task and native ops have effects");
+    let effectful = matches!(op.kind, Kind::View(_) | Kind::Split(_));
+    if !op.effects.is_empty() && !runs && !effectful {
+        return Some("only task, native and effect ops have effects");
     }
     if let Kind::Map(map) = &op.kind
         && map.parallelism == Some(0)
@@ -144,6 +145,7 @@ fn supported(kind: &Kind) -> bool {
             | Kind::Until(_)
             | Kind::IfEmpty(_)
             | Kind::Split(_)
+            | Kind::View(_)
     )
 }
 

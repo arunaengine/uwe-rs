@@ -78,6 +78,23 @@ pub fn steps(
     streams: &mut Streams,
     values: &Map<String, Json>,
 ) -> (Vec<Json>, Option<Json>, Result<Step, Failure>) {
+    steps_with(
+        operator,
+        node,
+        streams,
+        values,
+        &crate::driver::Printer::default(),
+    )
+}
+
+/// The steps of [`steps`] with a printer for `view`.
+pub fn steps_with(
+    operator: &mut dyn Operator,
+    node: &Node,
+    streams: &mut Streams,
+    values: &Map<String, Json>,
+    printer: &crate::driver::Printer,
+) -> (Vec<Json>, Option<Json>, Result<Step, Failure>) {
     let document = wir::parse(
         &json!({"wir_version": "0.1", "graphs": [{"name": "g"}], "entry": "g"}).to_string(),
     )
@@ -90,6 +107,7 @@ pub fn steps(
         javascript: &javascript,
         scopes: &scopes,
         files: Path::new("/nonexistent"),
+        printer,
     };
     let (mut emitted, mut bound) = (Vec::new(), None);
     loop {

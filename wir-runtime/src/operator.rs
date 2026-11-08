@@ -11,6 +11,7 @@ use wir::{Kind, Status};
 
 use crate::buffering::Cutting;
 use crate::collecting::Collecting;
+use crate::effects::Viewing;
 use crate::engine::Context;
 use crate::flows::output_stream;
 use crate::grouping::{Crossing, Grouping};
@@ -243,6 +244,12 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         Kind::Buffer(spec) => Some(Box::new(Cutting::buffer(spec.rule.clone(), spec.remainder))),
         Kind::Window(spec) => Some(Box::new(Cutting::window(spec))),
         Kind::Split(spec) => Some(Box::new(Splitting::new(spec.clone()))),
+        Kind::View(spec) => Some(Box::new(Viewing {
+            body: spec.body.clone(),
+            new_line: spec.new_line,
+            stream,
+            callbacks: Default::default(),
+        })),
         Kind::Take(spec) => selecting(Choice::Take(spec.count)),
         Kind::First(spec) => selecting(Choice::First(spec.predicate.clone(), spec.empty.clone())),
         Kind::Last(spec) => selecting(Choice::Last(

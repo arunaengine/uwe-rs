@@ -25,6 +25,8 @@ pub struct Context<'a> {
     pub scopes: &'a HashMap<String, String>,
     /// The file area of the run, where ops that write files keep a folder each.
     pub files: &'a Path,
+    /// Where `view` prints.
+    pub printer: &'a crate::driver::Printer,
 }
 
 /// Runs a node of an op that the engine runs at once; whether it was such an op.

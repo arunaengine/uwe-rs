@@ -69,13 +69,14 @@ fn port(name: &str, r#type: &str) -> Json {
     json!({"name": name, "type": r#type})
 }
 
-/// A graph `main` whose op `keep` filters the input `n` with `body`, capturing `limit`.
+/// A graph `main` whose op `keep` filters its input `n` with `body`, capturing `limit`.
 fn filtering(body: Json, callback: Json) -> Json {
     let keep = json!({"path": "keep", "kind": {"filter": {"body": body}},
-        "inputs": [port("n", "int"), port("limit", "int")], "outputs": [port("out", "int")]});
+        "inputs": [port("source", "int"), port("limit", "int")],
+        "outputs": [port("out", "int")]});
     let main = json!({"name": "main", "inputs": [port("n", "int"), port("limit", "int")],
         "outputs": [port("kept", "int")], "ops": [keep],
-        "edges": [edge((None, "n"), (Some("keep"), "n")),
+        "edges": [edge((None, "n"), (Some("keep"), "source")),
             edge((None, "limit"), (Some("keep"), "limit")),
             edge((Some("keep"), "out"), (None, "kept"))]});
     let sources = json!([{"id": "nf", "language": "nextflow", "location": "main.nf"},
@@ -189,4 +190,106 @@ fn scope_bounds() {
     );
     let unknown = scoped(json!({"source": "nope", "start": 0, "end": 1}));
     reports(&unknown, "main/keep: no source named nope");
+}
+
+/// A graph `main` with one op `op` of `kind` between a graph input and a graph output, and
+/// the callback graph `double`, which gives `item` times two.
+fn operator(kind: Json, source: Json, out: Json) -> Json {
+    let op =
+        json!({"path": "op", "kind": kind, "inputs": [source.clone()], "outputs": [out.clone()]});
+    let mut input = source.clone();
+    input["name"] = json!("in");
+    let mut output = out.clone();
+    output["name"] = json!("result");
+    let main = json!({"name": "main", "inputs": [input], "outputs": [output], "ops": [op],
+        "edges": [edge((None, "in"), (Some("op"), source["name"].as_str().unwrap())),
+            edge((Some("op"), out["name"].as_str().unwrap()), (None, "result"))]});
+    let twice = json!({"path": "twice", "kind": {"expr": {"language": "js", "code": "$(inputs.item * 2)"}},
+        "inputs": [port("item", "int")], "outputs": [port("out", "int")]});
+    let double = json!({"name": "double", "inputs": [port("item", "int")],
+        "outputs": [port("out", "int")], "ops": [twice],
+        "edges": [edge((None, "item"), (Some("twice"), "item")), edge((Some("twice"), "out"), (None, "out"))]});
+    json!({"wir_version": wir::VERSION, "graphs": [main, double], "entry": "main"})
+}
+
+fn typed(name: &str, r#type: Json, flow: &str) -> Json {
+    json!({"name": name, "type": r#type, "flow": flow})
+}
+
+#[test]
+fn transform_shapes() {
+    let ints = json!({"array": {"items": "int"}});
+    let each = operator(
+        json!({"emit": {"each": true}}),
+        typed("source", ints.clone(), "value"),
+        typed("out", json!("int"), "stream"),
+    );
+    assert_eq!(problems(&each), Vec::<String>::new());
+    let flows = operator(
+        json!({"emit": {}}),
+        typed("source", json!("int"), "stream"),
+        typed("out", json!("int"), "stream"),
+    );
+    reports(&flows, "main/op: an emit needs a value input source");
+    let named = operator(
+        json!({"emit": {}}),
+        typed("value", json!("int"), "value"),
+        typed("out", json!("int"), "stream"),
+    );
+    reports(&named, "main/op: an emit needs an input named source");
+    let mapped = operator(
+        json!({"transform": {"body": "double"}}),
+        typed("source", json!("int"), "stream"),
+        typed("out", json!("int"), "stream"),
+    );
+    assert_eq!(problems(&mapped), Vec::<String>::new());
+    let crossed = operator(
+        json!({"transform": {"body": "double"}}),
+        typed("source", json!("int"), "stream"),
+        typed("out", json!("int"), "value"),
+    );
+    reports(&crossed, "main/op: a transform needs a stream output");
+    let texts = operator(
+        json!({"transform": {"body": "double"}}),
+        typed("source", json!("string"), "stream"),
+        typed("out", json!("int"), "stream"),
+    );
+    reports(
+        &texts,
+        "main/op: callback double: input item does not take \"string\"",
+    );
+    let narrow = operator(
+        json!({"transform": {"body": "double"}}),
+        typed("source", json!("int"), "stream"),
+        typed("out", json!("string"), "stream"),
+    );
+    reports(
+        &narrow,
+        "main/op: output out gets \"int\" but accepts \"string\"",
+    );
+    let predicate = operator(
+        json!({"filter": {"body": "double"}}),
+        typed("source", json!("int"), "value"),
+        typed("out", json!("int"), "value"),
+    );
+    reports(
+        &predicate,
+        "main/op: callback double: output out gives \"int\" but \"bool\" is wanted",
+    );
+    let flat = operator(
+        json!({"flatten": {}}),
+        typed("source", ints.clone(), "stream"),
+        typed("out", json!("int"), "stream"),
+    );
+    assert_eq!(problems(&flat), Vec::<String>::new());
+    let flat_value = operator(
+        json!({"flat_map": {}}),
+        typed("source", ints, "value"),
+        typed("out", json!("int"), "value"),
+    );
+    let found = problems(&flat_value);
+    assert!(
+        found.contains(&"main/op: a flat_map needs a stream input source".into()),
+        "{found:?}"
+    );
 }

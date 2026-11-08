@@ -301,6 +301,25 @@
             "min_success": { "$ref": "#/$defs/count" }
           }
         },
+        "emit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "each": { "type": "boolean" } }
+        },
+        "transform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body"],
+          "properties": {
+            "body": { "$ref": "#/$defs/callback" },
+            "nulls": { "$ref": "#/$defs/null_rule" }
+          }
+        },
+        "flat_map": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "body": { "$ref": "#/$defs/callback" } }
+        },
         "collect": { "$ref": "#/$defs/empty" },
         "filter": {
           "type": "object",
@@ -308,7 +327,14 @@
           "required": ["body"],
           "properties": { "body": { "$ref": "#/$defs/callback" } }
         },
-        "flatten": { "$ref": "#/$defs/empty" },
+        "flatten": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "depth": { "enum": ["one", "all"] },
+            "drop_null": { "type": "boolean" }
+          }
+        },
         "merge": { "$ref": "#/$defs/empty" },
         "zip": {
           "type": "object",
@@ -383,6 +409,7 @@
     },
     "empty": { "type": "object", "additionalProperties": false },
     "texts": { "type": "array", "items": { "type": "string" } },
+    "null_rule": { "enum": ["drop", "keep"] },
     "expr_language": { "enum": ["js", "javascript", "groovy", "python", "wdl"] },
     "value_rules": { "enum": ["wir", "groovy", "python", "wdl", "javascript"] },
     "scope": {

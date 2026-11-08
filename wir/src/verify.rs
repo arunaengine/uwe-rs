@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::closure::Body;
 use crate::document::{Document, Endpoint, Graph, KNOWN, Port, Source, VERSION};
 use crate::flow::Subscription;
 use crate::op::{Kind, Op};
@@ -93,6 +94,8 @@ pub enum Problem {
     Callback(String, String),
     #[error("closure: {0}")]
     Closure(String),
+    #[error("{0} needs {1}")]
+    Shape(String, String),
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.
@@ -439,6 +442,8 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Call(call) => vec![&call.graph],
         Kind::Map(map) => vec![&map.body],
         Kind::Filter(filter) => filter.body.graph().into_iter().collect(),
+        Kind::Transform(transform) => transform.body.graph().into_iter().collect(),
+        Kind::FlatMap(flat) => flat.body.iter().filter_map(Body::graph).collect(),
         Kind::Branch(branch) => vec![&branch.body],
         Kind::Loop(body) => vec![&body.body],
         _ => Vec::new(),
@@ -538,6 +543,8 @@ fn show(value: &impl serde::Serialize) -> String {
 mod callbacks;
 #[path = "kinds.rs"]
 mod kinds;
+#[path = "operators.rs"]
+mod operators;
 
 #[cfg(test)]
 #[path = "verify_tests.rs"]

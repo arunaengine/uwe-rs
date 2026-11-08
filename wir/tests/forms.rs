@@ -101,3 +101,42 @@ fn expr_closure_fields() {
         "wir is the default: {stored}"
     );
 }
+
+/// Each kind parses, fits the schema, and is written back as it was; each wrong form fails.
+fn kinds_round_trip(good: &[Json], bad: &[Json]) {
+    for kind in good {
+        let document = document(json!([{"path": "a", "kind": kind}]), json!([]));
+        assert!(accepted(&document), "{kind}");
+        assert_eq!(written(&document), document, "{kind}");
+    }
+    for kind in bad {
+        let document = document(json!([{"path": "a", "kind": kind}]), json!([]));
+        assert!(!accepted(&document), "{kind}");
+    }
+}
+
+#[test]
+fn transform_forms() {
+    let good = [
+        json!({"emit": {}}),
+        json!({"emit": {"each": true}}),
+        json!({"transform": {"body": "double"}}),
+        json!({"transform": {"body": {"language": "groovy", "code": "{ it }"}, "nulls": "keep"}}),
+        json!({"filter": {"body": "small"}}),
+        json!({"flat_map": {}}),
+        json!({"flat_map": {"body": "split"}}),
+        json!({"flatten": {}}),
+        json!({"flatten": {"depth": "all", "drop_null": true}}),
+    ];
+    let bad = [
+        json!({"emit": {"each": "yes"}}),
+        json!({"transform": {}}),
+        json!({"transform": {"body": "double", "nulls": "skip"}}),
+        json!({"flatten": {"depth": 2}}),
+    ];
+    kinds_round_trip(&good, &bad);
+    let defaults = json!({"transform": {"body": "double", "nulls": "drop"}});
+    let document = document(json!([{"path": "a", "kind": defaults}]), json!([]));
+    let stored = &written(&document)["graphs"][0]["ops"][0]["kind"]["transform"];
+    assert_eq!(*stored, json!({"body": "double"}));
+}

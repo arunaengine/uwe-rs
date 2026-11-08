@@ -6,6 +6,7 @@ mod data;
 mod entities;
 mod files;
 mod formal;
+mod hidden;
 mod ids;
 mod image;
 mod metadata;
@@ -63,6 +64,12 @@ pub struct Options {
     /// digests; directories use `tree:<digest>` (plain digest keys remain accepted). The crate
     /// takes them over the files as they are now, which may have changed since the run.
     pub sources: HashMap<String, PathBuf>,
+    /// Values that the crate must not show, like the secret values of the run: each becomes
+    /// `[secret]`, and a file of the workflow or command line that holds one is not copied.
+    pub secrets: Vec<String>,
+    /// Folders of the server, like those of the run and its data: the crate names a path in
+    /// one relative to it.
+    pub folders: Vec<PathBuf>,
 }
 
 /// Writes the crate of a run into a directory, creating it when needed.
@@ -151,7 +158,9 @@ pub fn export(
     let pinned = pinned::gather(database, &record, directory, options, &mut data)?;
     let inputs = database.run_inputs(run)?;
     if let Some(inputs) = &inputs {
-        let text = serde_json::to_string_pretty(&run_database::public_json(&inputs.schema)?)?;
+        let mut schema = inputs.schema.clone();
+        hidden::json(&mut schema, options);
+        let text = serde_json::to_string_pretty(&run_database::public_json(&schema)?)?;
         std::fs::write(directory.join(formal::INPUT_SCHEMA), text + "\n")?;
     }
     let published = ids::time(run_database::now());
@@ -173,23 +182,21 @@ pub fn export(
         pinned: &pinned,
     }
     .graph();
-    let metadata = json!({
+    let mut metadata = json!({
         "@context": [
             "https://w3id.org/ro/crate/1.1/context",
             "https://w3id.org/ro/terms/workflow-run/context"
         ],
         "@graph": graph
     });
+    hidden::json(&mut metadata, options);
     let text = serde_json::to_string_pretty(&run_database::public_json(&metadata)?)?;
     std::fs::write(directory.join(METADATA), text + "\n")?;
     std::fs::write(
         directory.join(metadata::README),
-        run_database::redact_public_text(&readme(
-            &record,
-            &workflow,
-            tasks.len(),
-            inputs.is_some(),
-            &pinned,
+        run_database::redact_public_text(&hidden::text(
+            &readme(&record, &workflow, tasks.len(), inputs.is_some(), &pinned),
+            options,
         )),
     )?;
     let (files, bytes) = data.totals();

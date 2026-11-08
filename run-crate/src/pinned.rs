@@ -55,7 +55,9 @@ pub(crate) fn gather(
         ..Pinned::default()
     };
     if let Some(schema) = &pinned.output_schema {
-        let text = serde_json::to_string_pretty(&run_database::public_json(schema)?)?;
+        let mut schema = schema.clone();
+        crate::hidden::json(&mut schema, options);
+        let text = serde_json::to_string_pretty(&run_database::public_json(&schema)?)?;
         std::fs::write(directory.join(OUTPUT_SCHEMA), text + "\n")?;
     }
     let folder = run.workflow_folder.as_deref().map(PathBuf::from);
@@ -66,6 +68,10 @@ pub(crate) fn gather(
                 let Some(folder) = &folder else { continue };
                 let from = kept.unwrap_or_else(|| folder.join(&source.path));
                 let id = format!("{WORKFLOW_FOLDER}{}", source.path);
+                if crate::hidden::holds_secret(&from, options).unwrap_or(false) {
+                    pinned.changed.push(source);
+                    continue;
+                }
                 match copy_checked(&from, &directory.join(&id), &source.digest)? {
                     true => {
                         use std::os::unix::fs::PermissionsExt;
@@ -84,6 +90,9 @@ pub(crate) fn gather(
             }
             SourceKind::Named => {
                 let from = kept.unwrap_or_else(|| PathBuf::from(&source.path));
+                if crate::hidden::holds_secret(&from, options).unwrap_or(false) {
+                    continue;
+                }
                 match data.place_checked(&from.to_string_lossy(), Some(&source.digest))? {
                     Placed::Copied { digest, .. } if digest.to_string() != source.digest => {}
                     placed @ Placed::Copied { .. } => pinned.named.push((placed, source)),

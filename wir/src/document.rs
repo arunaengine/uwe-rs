@@ -171,21 +171,25 @@ mod tests {
         let document =
             json!({"wir_version": VERSION, "graphs": [{"name": "g", "ops": [op]}], "entry": "g"});
         assert!(matches!(parse(&text(document)), Err(ParseError::Json(_))));
-        let argument = json!({"input": "a", "prefix": "-i"});
+        let argument = json!({"input": "a", "flag": "-i"});
         assert!(serde_json::from_value::<Argument>(argument).is_err());
     }
 
     #[test]
     fn arguments_keep_form() {
-        let command = json!(["sort", {"input": "text"}]);
+        let command =
+            json!(["sort", {"input": "text"}, {"input": "k", "prefix": "-k", "separate": false}]);
         let parsed: Vec<Argument> =
             serde_json::from_value(command.clone()).expect("valid arguments");
-        assert_eq!(
-            parsed[1],
-            Argument::Input {
-                input: "text".into()
-            }
-        );
+        assert_eq!(parsed[1], Argument::input("text"));
+        let joined = Argument::Input {
+            input: "k".into(),
+            prefix: Some("-k".into()),
+            separate: false,
+            separator: None,
+            quote: true,
+        };
+        assert_eq!(parsed[2], joined);
         assert_eq!(serde_json::to_value(&parsed).expect("serializes"), command);
     }
 

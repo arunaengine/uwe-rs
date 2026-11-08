@@ -3,6 +3,9 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub(crate) mod closure;
+pub(crate) mod expr;
+
 use serde_json::{Map, Value as Json, json};
 use wdl_runtime::{Options, WdlDriver};
 use wir::{Port, Type, TypeDef, resolve};

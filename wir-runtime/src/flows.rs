@@ -1,6 +1,5 @@
-//! The streams of a plan: the activation that opens the streams and installs the readers of
-//! a graph, the stream inputs of nodes, and the calls that forward stream outputs and hold
-//! their close until the call succeeds.
+//! The streams of a plan: activations open the streams and readers of a graph, and calls
+//! forward stream outputs and hold their close until the call succeeds.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

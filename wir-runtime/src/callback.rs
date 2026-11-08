@@ -86,7 +86,7 @@ impl Callbacks {
                 crate::javascript::call(code, &captures, arguments, context.javascript)
             }
             ExprLanguage::Wdl => {
-                crate::wdl_closure::call(&closure.code, &closure.parameters, &captures, arguments)
+                crate::wdl::closure::call(&closure.code, &closure.parameters, &captures, arguments)
             }
             ExprLanguage::Js => Err("js is no closure language; use javascript".into()),
         }

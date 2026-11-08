@@ -146,6 +146,17 @@ fn compiles_groups() {
     assert_eq!(document["graphs"][0]["edges"], json!([edge]));
 }
 
+/// A job outside a group that makes an input of the group feeds it, whatever its position.
+#[test]
+fn feeds_groups_from_outside() {
+    let snakefile = "rule z:\n    input: \"y.txt\", \"w.txt\"\n    output: \"z.txt\"\n    group: \"g\"\n    shell: \"cat {input} > {output}\"\n\nrule y:\n    input: \"x.txt\"\n    output: \"y.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n\nrule x:\n    output: \"x.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule w:\n    output: \"w.txt\"\n    shell: \"touch {output}\"\n";
+    let (_folder, compiled, document) = compiled(snakefile);
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let edges = document["graphs"][0]["edges"].as_array().expect("edges");
+    let fed = (edges.iter()).any(|edge| edge["from"]["op"] == "w" && edge["to"]["op"] == "x");
+    assert!(fed, "{edges:?}");
+}
+
 #[test]
 fn compiles_planning_commands() {
     let snakefile = "shell(\"echo planned\")\n\nrule all:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n";

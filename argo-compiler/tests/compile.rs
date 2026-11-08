@@ -141,3 +141,46 @@ fn compiles_step_groups() {
         json!({"op": "use", "port": "outputs.parameters.text"})
     );
 }
+
+const DAG: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: a, template: say}
+      - {name: b, template: say, depends: "a.Failed"}
+      - {name: c, template: say, depends: "a || b"}
+      - {name: lone, template: say}
+      target: c
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+
+#[test]
+fn compiles_dag_control() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), DAG);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let paths: Vec<&Json> = main["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|op| &op["path"])
+        .collect();
+    assert!(
+        !paths.contains(&&json!("lone")),
+        "a task that the target does not need"
+    );
+    let b = op(main, "b");
+    assert_eq!(
+        b["depends"],
+        json!({"result": {"op": "a", "on": ["failed"]}})
+    );
+    assert_eq!(b["handles"], json!([{"op": "a", "on": ["failed"]}]));
+    let bare = json!(["succeeded", "skipped", "daemoned"]);
+    let expected =
+        json!({"any": [{"result": {"op": "a", "on": bare}}, {"result": {"op": "b", "on": bare}}]});
+    assert_eq!(op(main, "c")["depends"], expected);
+    assert!(op(main, "c").get("handles").is_none());
+}

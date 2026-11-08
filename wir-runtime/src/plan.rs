@@ -129,9 +129,14 @@ fn unrun(op: &Op) -> Option<&'static str> {
         return Some("uwe compares values only by the wir rules yet");
     }
     match &op.kind {
+        Kind::Expr(expr) if expr.language == wir::ExprLanguage::Python && expr.scope.is_some() => {
+            Some("uwe does not load Snakefile scopes for Python code yet")
+        }
         Kind::Expr(expr)
-            if expr.language != wir::ExprLanguage::Groovy
-                && (expr.scope.is_some() || !expr.captures.is_empty()) =>
+            if !matches!(
+                expr.language,
+                wir::ExprLanguage::Groovy | wir::ExprLanguage::Python
+            ) && (expr.scope.is_some() || !expr.captures.is_empty()) =>
         {
             Some("uwe does not run expressions with a scope or captures yet")
         }

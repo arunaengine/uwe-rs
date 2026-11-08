@@ -548,7 +548,8 @@ fn output_text(parameter: &argo_parser::model::Parameter) -> Result<String, Stri
         ));
     }
     match (from.expression.is_empty(), from.parameter.is_empty()) {
-        (false, _) => Ok(format!("{{{{={}}}}}", from.expression)),
+        // The native run gives the value of the expression as Go prints it, like `[1 2]`.
+        (false, _) => Ok(format!("{{{{=string({})}}}}", from.expression)),
         (true, false) => Ok(from.parameter.clone()),
         (true, true) => Err(format!("output parameter {name} has no source")),
     }

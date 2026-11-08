@@ -661,3 +661,37 @@ fn keeps_loops_that_continue_native() {
     assert_eq!(kept.len(), 1);
     assert!(kept[0].reason.contains("continue on failures"), "{kept:?}");
 }
+
+#[test]
+fn prints_output_expressions() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: say, template: say}
+    outputs:
+      parameters: [{name: listed, valueFrom: {expression: "[1, 2]"}}]
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+    let (document, kept) = compiled(folder.path(), spec);
+    assert!(kept.is_empty(), "{kept:?}");
+    let listed = op(
+        graph(&document, "template.main"),
+        "outputs.parameters.listed",
+    );
+    let code = listed["kind"]["expr"]["code"].as_str().unwrap();
+    let launch = workflow_graph::Launch {
+        target: folder.path().join("workflow.yaml"),
+        simulated: true,
+        ..Default::default()
+    };
+    let services = argo_runtime::Services::default();
+    let mut adapter = argo_runtime::adapter::Adapter::load(&launch, services).unwrap();
+    let form = argo_runtime::adapter::Form::Text;
+    let value = adapter
+        .evaluate(code, form, "", &Default::default())
+        .unwrap();
+    assert_eq!(value, json!("[1 2]"));
+}

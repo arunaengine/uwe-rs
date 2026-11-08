@@ -224,3 +224,17 @@ fn lowers_input_formats() {
     ]});
     assert_eq!(only_op(&lowering)["inputs"][0]["type"], formats);
 }
+
+#[test]
+fn lowers_secondary_files() {
+    let lowering = lowered("index.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let op = only_op(&lowering);
+    let input = json!({"file": {"secondary_files": [
+        {"pattern": ".bai"},
+        {"pattern": "^.txt", "required": false}
+    ]}});
+    assert_eq!(op["inputs"][0]["type"], input);
+    let output = json!({"file": {"secondary_files": [{"pattern": ".bai", "required": false}]}});
+    assert_eq!(op["outputs"][0]["type"], output, "outputs ask by default");
+}

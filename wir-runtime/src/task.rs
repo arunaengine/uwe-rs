@@ -58,13 +58,21 @@ pub fn build(
         // A pattern of a Directory output ends with `/`, so executors know what to make.
         let port = op.outputs.iter().find(|port| port.name == capture.output);
         let folders = port.is_some_and(|port| directories(&port.r#type));
+        let extra = port
+            .map(|port| secondaries(&port.r#type))
+            .unwrap_or_default();
         for pattern in patterns(&capture.from, bound, workdir) {
+            let names: Vec<String> = (extra.iter())
+                .map(|item| wir::secondary_name(&pattern, &item.pattern))
+                .collect();
             let pattern = match folders {
                 true => format!("{pattern}/"),
                 false => pattern,
             };
-            if !outputs.contains(&pattern) {
-                outputs.push(pattern);
+            for name in [pattern].into_iter().chain(names) {
+                if !outputs.contains(&name) {
+                    outputs.push(name);
+                }
             }
         }
     }
@@ -179,6 +187,10 @@ pub fn capture(
             }
         };
         let mut value = fill(&port.r#type, &found, defs)
+            .and_then(|mut value| {
+                attach(&mut value, &port.r#type, outcome, defs)?;
+                Ok(value)
+            })
             .map_err(|problem| format!("output {}: {problem}", port.name))?;
         if capture.load_contents {
             load(&mut value, files)
@@ -380,6 +392,56 @@ fn patterns(rule: &CaptureRule, bound: &Map<String, Json>, workdir: &str) -> Vec
         .collect()
 }
 
+/// The secondary files that the File type of an output asks for, also inside an optional, an
+/// array or a union.
+fn secondaries(r#type: &Type) -> Vec<wir::SecondaryFile> {
+    match r#type {
+        Type::File(file) => file.secondary_files.clone(),
+        Type::Optional(inner) => secondaries(inner),
+        Type::Array(array) => secondaries(&array.items),
+        Type::Union(members) => members.iter().flat_map(secondaries).take(1).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Adds to each File of an output the secondary files that its type asks for, from the files
+/// beside it that the task made; a required one that is missing fails the output.
+fn attach(
+    value: &mut Json,
+    r#type: &Type,
+    outcome: &Outcome,
+    defs: &[TypeDef],
+) -> Result<(), String> {
+    match (value, resolve(r#type, defs)) {
+        (Json::Array(items), Some(Type::Array(array))) => {
+            (items.iter_mut()).try_for_each(|item| attach(item, &array.items, outcome, defs))
+        }
+        (value, Some(Type::Optional(inner))) => attach(value, inner, outcome, defs),
+        (Json::Object(file), Some(r#type @ (Type::File(_) | Type::Union(_)))) => {
+            let wanted = secondaries(r#type);
+            let location = file.get("location").and_then(Json::as_str);
+            let made = (outcome.files.iter()).find(|item| Some(item.location.as_str()) == location);
+            let Some(primary) = made.filter(|_| !wanted.is_empty()) else {
+                return Ok(());
+            };
+            let mut found = Vec::new();
+            for item in &wanted {
+                let name = wir::secondary_name(&primary.path, &item.pattern);
+                match outcome.files.iter().find(|file| file.path == name) {
+                    Some(file) => found.push(entry(file, None)),
+                    None if item.required => {
+                        return Err(format!("the secondary file {name} is missing"));
+                    }
+                    None => {}
+                }
+            }
+            file.insert("secondary_files".into(), Json::Array(found));
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Whether a type is a Directory, also inside an optional or an array.
 fn directories(r#type: &Type) -> bool {
     match r#type {
@@ -442,5 +504,33 @@ mod tests {
             "an empty array gives nothing"
         );
         assert_eq!(words(json!(true), (None, true, None)), ["true"]);
+    }
+
+    #[test]
+    fn attaches_secondary_files() {
+        let made = |path: &str| OutputFile {
+            path: path.into(),
+            location: format!("/out/{path}"),
+            directory: false,
+            size: None,
+            digest: None,
+        };
+        let outcome = Outcome {
+            files: vec![made("a.bam"), made("a.bam.bai")],
+            ..Outcome::default()
+        };
+        let wanted: Type = serde_json::from_value(json!({"file": {"secondary_files": [
+            {"pattern": ".bai"}, {"pattern": "^.txt", "required": false}
+        ]}}))
+        .unwrap();
+        let mut value = json!({"class": "File", "location": "/out/a.bam", "basename": "a.bam"});
+        attach(&mut value, &wanted, &outcome, &[]).unwrap();
+        assert_eq!(value["secondary_files"][0]["basename"], "a.bam.bai");
+        assert_eq!(value["secondary_files"].as_array().unwrap().len(), 1);
+        let required: Type =
+            serde_json::from_value(json!({"file": {"secondary_files": [{"pattern": ".csi"}]}}))
+                .unwrap();
+        let missing = attach(&mut value, &required, &outcome, &[]).unwrap_err();
+        assert!(missing.contains("a.bam.csi"), "{missing}");
     }
 }

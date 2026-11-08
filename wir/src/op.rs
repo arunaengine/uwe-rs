@@ -169,6 +169,9 @@ pub struct Task {
     /// What standard input reads: a path, or a task input whose File gives its path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stdin: Option<Content>,
+    /// The JavaScript library that `code` arguments see, like the library of an expr.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub library: Vec<String>,
     /// The language runtime that builds the task, instead of the command form.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub builder: Option<TaskBuilder>,
@@ -275,6 +278,22 @@ pub enum Argument {
     /// Text that a shell command holds as it is, unquoted; otherwise like text.
     Raw {
         raw: String,
+    },
+    /// Code like that of a `js` expr, which the runner evaluates as it builds the task, over
+    /// the inputs with their Files staged; its value binds like the value of an input.
+    Code {
+        code: String,
+        /// The task input that the code sees as `self`.
+        #[serde(default, rename = "self", skip_serializing_if = "Option::is_none")]
+        this: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prefix: Option<String>,
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        separate: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        separator: Option<String>,
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        quote: bool,
     },
 }
 

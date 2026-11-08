@@ -955,6 +955,19 @@
                 "additionalProperties": false,
                 "required": ["raw"],
                 "properties": { "raw": { "type": "string" } }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code"],
+                "properties": {
+                  "code": { "type": "string" },
+                  "self": { "$ref": "#/$defs/name" },
+                  "prefix": { "type": "string" },
+                  "separate": { "type": "boolean" },
+                  "separator": { "type": "string" },
+                  "quote": { "type": "boolean" }
+                }
               }
             ]
           }
@@ -1007,6 +1020,7 @@
           "additionalProperties": { "$ref": "#/$defs/file_name" }
         },
         "stdin": { "$ref": "#/$defs/file_name" },
+        "library": { "type": "array", "items": { "type": "string" } },
         "files": {
           "type": "array",
           "items": {

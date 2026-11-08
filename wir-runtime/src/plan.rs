@@ -217,14 +217,7 @@ fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
         {
             Some("uwe does not run dialect tasks yet")
         }
-        Kind::Task(task) if task.accept.is_some() || task.retry.is_some() => {
-            Some("uwe does not run task acceptance and retry rules yet")
-        }
-        Kind::Task(task)
-            if (task.captures.iter()).any(|item| item.optional || item.arity.is_some()) =>
-        {
-            Some("uwe does not run optional captures and arity yet")
-        }
+        Kind::Task(task) if task.retry.is_some() => Some("uwe does not run task retry rules yet"),
         _ => None,
     }
 }

@@ -18,6 +18,7 @@ use workflow_graph::{
 
 use crate::adapter::{self, Adapters, Changes, Ending, TaskCall};
 use crate::argo;
+use crate::callback::Callbacks;
 use crate::child::Child;
 use crate::cwl;
 use crate::engine;
@@ -168,6 +169,8 @@ pub struct WirDriver {
     accepted: HashSet<(TaskId, u32)>,
     /// The tasks of cancelled ops whose attempts were asked to stop.
     stopping: HashSet<TaskId>,
+    /// The callbacks of task ops, like their acceptance checks.
+    callbacks: Callbacks,
     last: u64,
     files: Option<Arc<dyn Files>>,
     cancel: Option<CancellationToken>,
@@ -229,6 +232,7 @@ impl WirDriver {
             tasks: HashMap::new(),
             accepted: HashSet::new(),
             stopping: HashSet::new(),
+            callbacks: Callbacks::default(),
             last: 0,
             files: None,
             cancel: None,
@@ -414,10 +418,33 @@ impl WirDriver {
             files,
             bound,
         };
-        match task::capture(spec, &node.op.outputs, ended, &self.document.types) {
-            Ok(values) => {
+        let captured = task::capture(spec, &node.op.outputs, ended, &self.document.types);
+        let context = engine::Context {
+            document: &self.document,
+            base: &self.base,
+            javascript: &self.settings.cwl.javascript,
+            scopes: &self.scopes,
+            files: &self.file_area,
+            printer: &self.settings.print_sink,
+            simulated: self.launch.simulated,
+        };
+        let index = adapter::frame(&self.progress, at).rounds.last().copied();
+        let accepted = captured.and_then(|(values, empty)| match &spec.accept {
+            None => Ok((values, empty)),
+            Some(accept) => {
+                let attempt = (bound, &values, index.unwrap_or(0));
+                let callbacks = &mut self.callbacks;
+                match task::accepts(callbacks, &context, accept, attempt, outcome) {
+                    Ok(true) => Ok((values, empty)),
+                    Ok(false) => Err("the acceptance check does not hold".to_owned()),
+                    Err(why) => Err(format!("the acceptance check: {why}")),
+                }
+            }
+        });
+        match accepted {
+            Ok((values, empty)) => {
                 self.accepted.insert((outcome.id, outcome.attempt));
-                self.progress.end(at, Status::Succeeded, values, None);
+                (self.progress).end_with(at, Status::Succeeded, values, empty);
                 Vec::new()
             }
             Err(_) if outcome.attempt <= node.op.attributes.retry.unwrap_or(0) => {

@@ -167,6 +167,19 @@ fn updates_after_readers() {
     assert_eq!(*after, json!([{"op": "b", "on": ["succeeded"]}]));
 }
 
+/// A group whose jobs run in other images splits into separate tasks in a run, which a group
+/// op cannot, so the workflow stays native.
+#[test]
+fn keeps_groups_of_images() {
+    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
+    let (_folder, compiled, _) = compiled(snakefile);
+    let reason = compiled.kept.first().map(|kept| kept.reason.as_str());
+    assert_eq!(
+        reason,
+        Some("a job of rule a: its group runs jobs of several images, which a run splits")
+    );
+}
+
 #[test]
 fn compiles_planning_commands() {
     let snakefile = "shell(\"echo planned\")\n\nrule all:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n";

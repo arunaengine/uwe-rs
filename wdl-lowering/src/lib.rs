@@ -3,6 +3,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod library;
+mod outputs;
 mod task;
 mod types;
 mod workflow;
@@ -10,7 +12,10 @@ mod workflow;
 use std::path::{Path, PathBuf};
 
 use wdl_analysis::Document as Analyzed;
+use wdl_ast::v1::Expr;
+use wdl_ast::{AstNode, AstToken};
 use wdl_runtime::document::{Callable, Unit};
+use wdl_runtime::expression::{self, Environment};
 use wir::{Document, Edge, Endpoint, Graph, Kind, Language, Native, Op, Origin, Port, Source};
 
 pub use wdl_runtime::task::DEFAULT_IMAGE;
@@ -51,6 +56,7 @@ pub fn lower(path: &Path, entry: Option<&str>, base: &Path) -> Result<Lowering, 
         kept: Vec::new(),
         graphs: Vec::new(),
         prefix: String::new(),
+        done: Vec::new(),
     };
     let name = unit.name();
     let main = match &unit.callable {
@@ -119,6 +125,9 @@ struct Lowerer {
     graphs: Vec<Graph>,
     /// The path of the call whose graph is being lowered, like `inner/`, for the kept ops.
     prefix: String,
+    /// The graph of each task and workflow lowered so far, by document and name, or why it
+    /// has none, so that every call of it shares one graph.
+    done: Vec<((String, String), Result<String, String>)>,
 }
 
 impl Lowerer {
@@ -182,6 +191,42 @@ impl Lowerer {
         });
         id
     }
+
+    /// A graph name from `stem` that no graph has yet.
+    fn graph_name(&self, stem: &str) -> String {
+        let mut name = stem.to_owned();
+        while name == "main" || self.graphs.iter().any(|graph| graph.name == name) {
+            name = format!("{stem}-{}", self.graphs.len() + 1);
+        }
+        name
+    }
+
+    /// The graph of a task or workflow from an earlier call, or why it has none.
+    fn known(&self, unit: &Unit) -> Option<Result<String, String>> {
+        let key = (unit.document.uri().to_string(), unit.name());
+        (self.done.iter().find(|(known, _)| *known == key)).map(|(_, graph)| graph.clone())
+    }
+
+    fn remember(&mut self, unit: &Unit, graph: Result<String, String>) {
+        let key = (unit.document.uri().to_string(), unit.name());
+        self.done.push((key, graph));
+    }
+
+    /// A call op at `path` of a lowered graph, with the ports of that graph.
+    fn call(&self, graph: &str, path: &str, origin: Option<Origin>) -> Op {
+        let called = self.graphs.iter().find(|item| item.name == graph);
+        let mut op = blank(
+            path,
+            Kind::Call(wir::Call {
+                graph: graph.into(),
+            }),
+            origin,
+        );
+        if let Some(called) = called {
+            (op.inputs, op.outputs) = (called.inputs.clone(), called.outputs.clone());
+        }
+        op
+    }
 }
 
 /// The ports of a task or workflow as a whole: an input that need not be given is optional.
@@ -220,6 +265,55 @@ fn boundary(unit: &Unit) -> Result<(Vec<Port>, Vec<Port>), String> {
         results.push(types::port(output, r#type));
     }
     Ok((ports, results))
+}
+
+/// The value of an expression that uses no names, like the literal default of an input.
+fn constant(expr: &Expr) -> Option<wdl_runtime::Value> {
+    struct Empty;
+
+    impl Environment for Empty {
+        fn lookup(&self, _: &str) -> Option<wdl_runtime::Value> {
+            None
+        }
+    }
+
+    expression::evaluate(expr, &mut Empty).ok()
+}
+
+/// The standard functions that read or write files, which an `expr` op must not call.
+const FILES: [&str; 20] = [
+    "read_string",
+    "read_int",
+    "read_float",
+    "read_boolean",
+    "read_lines",
+    "read_tsv",
+    "read_map",
+    "read_json",
+    "read_object",
+    "read_objects",
+    "write_lines",
+    "write_tsv",
+    "write_map",
+    "write_json",
+    "write_object",
+    "write_objects",
+    "size",
+    "glob",
+    "stdout",
+    "stderr",
+];
+
+/// The first function in a node that reads or writes files.
+fn reads<N: AstNode<wdl_ast::SyntaxNode>>(node: &N) -> Option<String> {
+    (node.descendants::<wdl_ast::v1::CallExpr>())
+        .map(|call| call.target().text().to_owned())
+        .find(|name| FILES.contains(&name.as_str()))
+}
+
+/// The source text of a node.
+fn text<N: AstNode<wdl_ast::SyntaxNode>>(node: &N) -> String {
+    node.inner().text().to_string()
 }
 
 fn origin(source: &str, at: &str) -> Option<Origin> {

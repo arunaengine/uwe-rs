@@ -15,10 +15,11 @@ use nextflow_runtime::driver::Settings;
 use nextflow_runtime::{Adapter, Loader};
 use serde_json::{Map, Value as Json};
 use wir::{Document, Language, TaskBuilder};
-use workflow_graph::Launch;
+use workflow_graph::{Delivery, DeliveryMode, Launch};
 
 use crate::engine::Context;
 use crate::groovy::ENTRY;
+use crate::operator::Turn;
 
 /// The run of a Nextflow scope: its main script, the script of the scope, the profiles,
 /// config files and params of the run, and the scripts of the document by source id.
@@ -277,4 +278,207 @@ fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
     let adapter = Rc::new(RefCell::new(made.map_err(|error| error.message)?));
     ADAPTERS.with_borrow_mut(|adapters| adapters.insert(key, adapter.clone()));
     Ok(adapter)
+}
+
+/// The callbacks of the `output { }` block as the compiler writes them, with the options of
+/// the output as the capture `output`.
+const PUBLISH: &str = "{ value -> publishOutput(output, value) }";
+const INDEX: &str = "{ -> indexOutput(output) }";
+
+thread_local! {
+    /// The published values of each output op, with their files at their new places.
+    static INDEXES: RefCell<HashMap<String, Vec<Json>>> = RefCell::default();
+}
+
+/// Publishes the files of an item of a workflow output, or writes its index at the close, as
+/// the native driver does, when `closure` is a callback of the `output { }` block.
+pub fn output(
+    turn: &Turn<'_>,
+    context: &Context<'_>,
+    closure: &wir::Closure,
+    arguments: &[Json],
+) -> Option<Result<(), String>> {
+    let Some(wir::Binding::Value(output)) = closure.captures.get("output") else {
+        return None;
+    };
+    match (closure.code.as_str(), arguments) {
+        (PUBLISH, [item]) => Some(publish(turn, context, output, item)),
+        (INDEX, []) => Some(index(turn, context, output)),
+        _ => None,
+    }
+}
+
+/// Where the files of one item go: a folder they keep their names in, or a place by name.
+enum Target {
+    Folder(PathBuf),
+    Files(HashMap<String, PathBuf>),
+    Nothing,
+}
+
+fn publish(
+    turn: &Turn<'_>,
+    context: &Context<'_>,
+    output: &Json,
+    item: &Json,
+) -> Result<(), String> {
+    let directory = PathBuf::from(output["directory"].as_str().unwrap_or("results"));
+    let target = match &output["options"]["path"] {
+        Json::Null => Target::Folder(directory.clone()),
+        Json::String(path) => Target::Folder(directory.join(path)),
+        form => targets(context, form, item, &directory)?,
+    };
+    let mode = serde_json::from_value(output["mode"].clone()).unwrap_or_default();
+    let overwrite = output["overwrite"].as_bool().unwrap_or(true);
+    let mut places = HashMap::new();
+    let mut deliveries = Vec::new();
+    each_file(item, &mut |file| {
+        let location = file["location"].as_str().unwrap_or_default().to_owned();
+        let name = location.rsplit('/').next().unwrap_or_default();
+        let place = match &target {
+            Target::Folder(folder) => folder.join(name),
+            Target::Files(places) => match places.get(name) {
+                Some(place) => place.clone(),
+                None => return,
+            },
+            Target::Nothing => return,
+        };
+        let place = place.to_string_lossy().into_owned();
+        places.insert(location.clone(), place.clone());
+        deliveries.push(Delivery {
+            location,
+            target: place,
+            mode,
+            overwrite,
+        });
+    });
+    context.deliveries.ask(&deliveries);
+    if output["index"]["path"].is_string() {
+        let record = placed(item, &places);
+        INDEXES
+            .with_borrow_mut(|indexes| indexes.entry(turn.path.clone()).or_default().push(record));
+    }
+    Ok(())
+}
+
+/// The targets of an item from the `path` closure of an output, with its publish statements.
+fn targets(
+    context: &Context<'_>,
+    form: &Json,
+    item: &Json,
+    directory: &Path,
+) -> Result<Target, String> {
+    let source = form["source"].as_str().unwrap_or("main");
+    let launching = launching(context, source).ok_or("no Nextflow script for the output path")?;
+    let adapter = adapter(&launching)?;
+    let base = context.base;
+    let called = adapter.borrow_mut().evaluate(|interpreter| {
+        let closure = rebuilt(form, base, &launching, interpreter)?;
+        let value = rebuilt(item, base, &launching, interpreter)?;
+        interpreter.call_output_path(&closure, value)
+    });
+    let (folder, statements) = called.map_err(|error| error.message)?;
+    let Some(statements) = statements else {
+        return Ok(match folder {
+            Value::Null => Target::Nothing,
+            folder => Target::Folder(directory.join(folder.to_string())),
+        });
+    };
+    let mut places = HashMap::new();
+    for (source, target) in statements {
+        let paths = match source {
+            Value::Path(path) => vec![path],
+            Value::List(list) => (list.borrow().items.iter())
+                .filter_map(|item| match item {
+                    Value::Path(path) => Some(path.clone()),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        for path in paths {
+            let name = path.name().to_owned();
+            let place = match target.ends_with('/') {
+                true => format!("{target}{name}"),
+                false => target.clone(),
+            };
+            places.insert(name, directory.join(place));
+        }
+    }
+    Ok(Target::Files(places))
+}
+
+/// Writes the index file of an output at its close, which a simulated run does not, as the
+/// native driver does not.
+fn index(turn: &Turn<'_>, context: &Context<'_>, output: &Json) -> Result<(), String> {
+    let records = INDEXES
+        .with_borrow_mut(|indexes| indexes.remove(&turn.path))
+        .unwrap_or_default();
+    let Some(path) = output["index"]["path"].as_str() else {
+        return Ok(());
+    };
+    if context.simulated {
+        return Ok(());
+    }
+    let directory = PathBuf::from(output["directory"].as_str().unwrap_or("results"));
+    let file = directory.join(path);
+    let base = context.base;
+    let values: Vec<Value> = records
+        .iter()
+        .map(|record| crate::groovy::to_value(record, base))
+        .collect();
+    let header =
+        (output["index"].get("header")).map(|header| crate::groovy::to_value(header, base));
+    let separator = output["index"]["sep"].as_str();
+    let text = nextflow_runtime::index_text(&file, &values, header.as_ref(), separator);
+    let text = text.map_err(|error| error.to_string())?;
+    let name = file
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let written = context.files.join(&turn.path).join(&name);
+    let made = written.parent().map(std::fs::create_dir_all).transpose();
+    made.and_then(|_| std::fs::write(&written, text))
+        .map_err(|error| error.to_string())?;
+    context.deliveries.ask(&[Delivery {
+        location: written.to_string_lossy().into_owned(),
+        target: file.to_string_lossy().into_owned(),
+        mode: DeliveryMode::Copy,
+        overwrite: true,
+    }]);
+    Ok(())
+}
+
+fn each_file(value: &Json, found: &mut dyn FnMut(&Json)) {
+    match value {
+        Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("File") => {
+            found(value)
+        }
+        Json::Array(items) => items.iter().for_each(|item| each_file(item, found)),
+        Json::Object(object) => object.values().for_each(|item| each_file(item, found)),
+        _ => {}
+    }
+}
+
+/// A value with its published files at their new places.
+fn placed(value: &Json, places: &HashMap<String, String>) -> Json {
+    match value {
+        Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("File") => {
+            let mut file = object.clone();
+            let location = file
+                .get("location")
+                .and_then(Json::as_str)
+                .unwrap_or_default();
+            if let Some(place) = places.get(location) {
+                file.insert("location".into(), Json::from(place.as_str()));
+            }
+            Json::Object(file)
+        }
+        Json::Array(items) => Json::Array(items.iter().map(|item| placed(item, places)).collect()),
+        Json::Object(object) => Json::Object(
+            (object.iter())
+                .map(|(key, item)| (key.clone(), placed(item, places)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
 }

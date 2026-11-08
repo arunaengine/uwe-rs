@@ -30,6 +30,9 @@ impl Observing {
         closure: &Closure,
         arguments: &[Json],
     ) -> Result<(), Failure> {
+        if let Some(done) = crate::nextflow_scope::output(turn, context, closure, arguments) {
+            return done.map_err(|why| turn.failed(why));
+        }
         let body = Body::Closure(closure.clone());
         let names: &[&str] = if arguments.is_empty() { &[] } else { &["item"] };
         let called = self

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod adapter;
 mod agent;
 pub mod bridge;
 mod build;
@@ -42,6 +43,7 @@ use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::{PathValue, Value};
 
+pub use adapter::{Adapter, Call, Completed, Prepared};
 pub use driver::driver;
 pub use loader::{LoadError, Loader};
 pub use network::Network;
@@ -471,7 +473,7 @@ pub fn output_targets(
 
 /// Runs the `params.x = value` statements of a script and the scripts it includes: each one
 /// only sets a param that the config and the command line leave unset.
-fn script_params(
+pub(crate) fn script_params(
     interpreter: &mut Interpreter,
     module: &Rc<Module>,
     params: &Value,
@@ -520,7 +522,7 @@ fn included(module: &Module) -> Vec<Rc<Module>> {
 /// Applies the typed `params { }` block of the main script: each param takes its value from
 /// the command line or the config, converted to its type, else its default. A `Boolean`
 /// without a default is `false`, a nullable type may stay `null`, other params are required.
-fn typed_params(
+pub(crate) fn typed_params(
     interpreter: &mut Interpreter,
     module: &Rc<Module>,
     params: &Value,
@@ -587,7 +589,7 @@ fn typed_value(text: &str, class: &str, launch: &str) -> Option<Value> {
     })
 }
 
-fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Value) {
+pub(crate) fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Value) {
     interpreter.set_global("params", options.config.params());
     // The command-line arguments after the script; uwe takes none.
     interpreter.set_global("args", Value::list(Vec::new()));

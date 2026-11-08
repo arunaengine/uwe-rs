@@ -154,10 +154,10 @@ pub(crate) struct Loaded {
     /// The project directory, where the main script and `nextflow.config` are.
     project: PathBuf,
     script: PathBuf,
-    config: Config,
+    pub config: Config,
     /// The config files that were read, in order.
     files: Vec<PathBuf>,
-    module: Rc<Module>,
+    pub module: Rc<Module>,
     /// Whether the run reads command-line params as numbers and booleans, as Nextflow 26.04.6
     /// does with `NXF_SYNTAX_PARSER=v1`, which scripts with legacy syntax need.
     legacy: bool,
@@ -249,7 +249,7 @@ impl Nextflow {
     }
 
     /// The options of a run of the loaded script with a config.
-    fn options(&self, loaded: &Loaded, config: Config) -> Options {
+    pub(crate) fn options(&self, loaded: &Loaded, config: Config) -> Options {
         let text = |path: &Path| {
             std::path::absolute(path)
                 .unwrap_or_else(|_| path.to_owned())
@@ -565,6 +565,11 @@ impl Nextflow {
             outcome,
             heard,
         })
+    }
+
+    /// The host of the run, which prints and reads files.
+    pub(crate) fn host(&mut self) -> &mut dyn Host {
+        self.settings.host.as_mut()
     }
 
     /// Writes report artifacts for either successful or failed runs.
@@ -887,7 +892,7 @@ fn not_started() -> DriverError {
     DriverError::new("the Nextflow run has not started")
 }
 
-fn error(error: Error) -> DriverError {
+pub(crate) fn error(error: Error) -> DriverError {
     DriverError {
         unsupported: error.unsupported(),
         message: error.to_string(),

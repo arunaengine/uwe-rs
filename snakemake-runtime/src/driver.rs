@@ -1465,12 +1465,10 @@ impl Session {
         match self.take_job(job, outcome)? {
             Taken::Retry(task) => Ok(vec![*task]),
             Taken::Failed(message) => self.failed(message),
+            // Accepted before the next jobs, whose workflow code may run commands first.
             Taken::Accepted => {
-                let next = self.next_tasks(&[job]);
-                if next.is_ok() {
-                    self.accept(identity);
-                }
-                next
+                self.accept(identity);
+                self.next_tasks(&[job])
             }
         }
     }

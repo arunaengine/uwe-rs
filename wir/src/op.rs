@@ -57,6 +57,7 @@ pub enum Kind {
     Call(Call),
     Native(Native),
     Expr(Expr),
+    Load(Load),
     Map(Map),
     Emit(reserved::Emit),
     Transform(reserved::Transform),
@@ -109,6 +110,7 @@ impl Kind {
                 | Kind::Native(_)
                 | Kind::Map(_)
                 | Kind::Expr(_)
+                | Kind::Load(_)
                 | Kind::Branch(_)
                 | Kind::Select(_)
                 | Kind::Merge(_)
@@ -393,6 +395,25 @@ pub struct Expr {
 pub struct Branch {
     pub body: String,
     pub condition: String,
+}
+
+/// Gives the value of its one input with files read into it: the text of each File, alone or
+/// in arrays, as `contents`, like CWL `loadContents`, and the listing of each Directory.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Load {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub contents: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listing: Option<Listing>,
+}
+
+/// How deep a load reads the listing of a Directory: its entries, or all below it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Listing {
+    Shallow,
+    Deep,
 }
 
 /// Runs the `body` graph once per round: each round takes items of the array inputs in `over`

@@ -72,6 +72,7 @@ impl Sources {
             }
         }
         match normal.strip_prefix(&self.base) {
+            Ok(relative) if relative.as_os_str().is_empty() => ".".into(),
             Ok(relative) => relative.to_string_lossy().into_owned(),
             Err(_) => path.to_string_lossy().into_owned(),
         }

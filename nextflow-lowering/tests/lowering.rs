@@ -190,3 +190,30 @@ fn starts_with_prints() {
         "one task gives values"
     );
 }
+
+#[test]
+fn keeps_data_reads() {
+    let script = "include { samplesheetToList } from 'plugin/nf-schema'\n\nworkflow {\n    \
+                  def first = samplesheetToList('sheet.csv', 'schema.json').first()\n}\n";
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    let config = "plugins {\n    id 'nf-schema@2.5.1'\n}\n";
+    std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Quiet(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let lowering = nextflow_lowering::lower(&launch, settings, directory.path()).unwrap();
+    assert!(
+        lowering.kept[0].reason.contains("reads the data"),
+        "{:?}",
+        lowering.kept
+    );
+    let source = &lowering.document["sources"][0];
+    assert_eq!(source["location"], ".", "the project folder");
+}

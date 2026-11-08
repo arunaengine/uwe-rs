@@ -1,5 +1,5 @@
 //! Compiles Snakemake workflows into wir, runs each natively and compiled through the wir
-//! runtime on the simulator, and compares their tasks, cache keys, fingerprints and acceptance.
+//! runtime on the simulator, and compares their tasks, acceptance and target files.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,14 +7,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde_json::{Value as Json, json};
 use snakemake_runtime::{RunSettings, Settings};
-use wir::Document;
+use wir::{Document, Kind};
 use workflow_graph::{
     Driver, ExecutionGraph, Launch, Order, RunOptions, Simulator, Task, TaskId, execute_with,
 };
 
 /// The counts of `just snakemake-test-workflows`: native runs, how workflows compile, and
-/// compiled runs that succeed, end as the native run, and give its tasks.
+/// compiled runs that succeed, end as the native run, and give its tasks and target files.
 const RECORDED: Counts = Counts {
     workflows: 890,
     native: 633,
@@ -24,6 +25,7 @@ const RECORDED: Counts = Counts {
     compiled: 593,
     ends: 616,
     same: 593,
+    equal: 593,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -36,6 +38,7 @@ struct Counts {
     compiled: usize,
     ends: usize,
     same: usize,
+    equal: usize,
 }
 
 const LAUNCHES: &str =
@@ -147,6 +150,7 @@ struct Compared {
     compiled: bool,
     ends: bool,
     same: bool,
+    equal: bool,
     shown: String,
 }
 
@@ -167,7 +171,10 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
     let native = snakemake_runtime::spawn_driver(&native_launch, Settings::default(), run.clone());
     let native = native
         .map_err(|error| error.message)
-        .and_then(|mut driver| simulate(&mut driver, &folders, &scratch.join("simulator-native")));
+        .and_then(|mut driver| {
+            let ran = simulate(&mut driver, &folders, &scratch.join("simulator-native"))?;
+            Ok((ran, driver.exported().unwrap_or_default()))
+        });
     compared.native = native.is_ok();
     let compile_launch = Launch {
         scratch: scratch.join("compile"),
@@ -205,8 +212,9 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
         }
         (Err(error), Ok(_)) => format!("only the native run fails: {}", first_line(error)),
         (Ok(_), Err(error)) => format!("the compiled run fails: {}", first_line(error)),
-        (Ok(native), Ok(ran)) => {
+        (Ok((native, targets)), Ok(ran)) => {
             compared.same = native == ran;
+            compared.equal = *targets == named_targets(&compiled.document);
             // `SNAKEMAKE_COMPARE=2` prints the first pair of tasks that differ.
             let pairs = native.iter().zip(ran);
             if let Some(pair) = pairs.into_iter().find(|(one, other)| one != other)
@@ -215,9 +223,10 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
                 eprintln!("native:   {:?}\ncompiled: {:?}", pair.0, pair.1);
             }
             compared.ends = compared.same;
-            match compared.same {
-                true => format!("same: {} tasks", native.len()),
-                false => format!(
+            match (compared.same, compared.equal) {
+                (true, true) => format!("same: {} tasks", native.len()),
+                (true, false) => "other target files".to_owned(),
+                _ => format!(
                     "other tasks: {} native, {} compiled",
                     native.len(),
                     ran.len()
@@ -226,6 +235,41 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
         }
     };
     compared
+}
+
+/// The target files that the outputs of the entry graph of `document` name, as values.
+fn named_targets(document: &Document) -> Json {
+    let Some(graph) = document
+        .graphs
+        .iter()
+        .find(|graph| graph.name == document.entry)
+    else {
+        return Json::Null;
+    };
+    let file = |location: &str, class: &str| {
+        let trimmed = location.trim_end_matches('/');
+        let basename = trimmed.rsplit('/').next().unwrap_or(trimmed);
+        json!({"class": class, "location": location, "basename": basename})
+    };
+    let mut targets = serde_json::Map::new();
+    for op in &graph.ops {
+        let (Kind::Expr(expr), Some(name)) = (&op.kind, op.path.strip_prefix("result.")) else {
+            continue;
+        };
+        let class = match serde_json::to_string(&op.outputs[0].r#type) {
+            Ok(text) if text.contains("directory") => "Directory",
+            _ => "File",
+        };
+        let value = match serde_json::from_str(&expr.code) {
+            Ok(Json::String(location)) => file(&location, class),
+            Ok(Json::Array(items)) => (items.iter())
+                .map(|item| file(item.as_str().unwrap_or_default(), class))
+                .collect(),
+            _ => Json::Null,
+        };
+        targets.insert(name.to_owned(), value);
+    }
+    Json::Object(targets)
 }
 
 /// The wir runtime for `document`, written below `scratch`, with the Snakemake adapter and
@@ -461,6 +505,7 @@ fn compare_one() {
         compared.compiled,
         compared.ends,
         compared.same,
+        compared.equal,
     ];
     let flags: Vec<&str> = flags
         .iter()
@@ -501,7 +546,7 @@ fn matches_recorded() {
                 .status
                 .code()
                 .map_or("a signal".into(), |code| code.to_string());
-            format!("0000000\tthe child ended with {code}")
+            format!("00000000\tthe child ended with {code}")
         });
         let (flags, shown) = text.split_once('\t').unwrap_or((&text, ""));
         let flag = |position: usize| flags.as_bytes().get(position) == Some(&b'1');
@@ -514,6 +559,7 @@ fn matches_recorded() {
             &mut counts.compiled,
             &mut counts.ends,
             &mut counts.same,
+            &mut counts.equal,
         ]
         .into_iter()
         .enumerate()

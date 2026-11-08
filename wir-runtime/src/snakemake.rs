@@ -161,6 +161,7 @@ impl Jobs {
                     .extend(commands.into_iter().map(|task| (call, task)));
             }
             Answer::Jobs(jobs) => self.planned = Some(jobs),
+            Answer::Targets(_) => {}
             Answer::Prepared(Prepared::Run(task)) | Answer::Taken(JobResult::Retry(task)) => {
                 self.owners.insert(task.id, call);
                 self.ready.push((call, *task));

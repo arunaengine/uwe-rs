@@ -105,6 +105,9 @@ pub enum Answer {
     Prepared(Prepared),
     Taken(JobResult),
     Commands(Vec<Task>),
+    /// The files of the targets by output name, as a finished native run names them, in
+    /// the working folder.
+    Targets(Json),
 }
 
 pub(crate) type Answers = Arc<Mutex<Option<Answer>>>;
@@ -116,6 +119,15 @@ impl SnakemakeDriver {
         match self.ask_job(Request::Jobs(false))? {
             Answer::Jobs(jobs) => Ok(jobs),
             _ => Err(DriverError::new("the Snakemake session gave no jobs")),
+        }
+    }
+
+    /// The files of the targets of the jobs that [`SnakemakeDriver::plan_jobs`] planned, by
+    /// the names of the outputs of a run.
+    pub fn plan_targets(&mut self) -> Result<Json, DriverError> {
+        match self.ask_job(Request::Targets)? {
+            Answer::Targets(targets) => Ok(targets),
+            _ => Err(DriverError::new("the Snakemake session gave no targets")),
         }
     }
 
@@ -172,6 +184,7 @@ impl Session {
                 Answer::Prepared(self.prepare_key(&key, &group, &staged)?)
             }
             Request::Take(outcome) => Answer::Taken(self.take_key(*outcome)?),
+            Request::Targets => Answer::Targets(self.target_files()),
             _ => return Err(DriverError::new("not a request of a job")),
         };
         *answers.lock().unwrap_or_else(PoisonError::into_inner) = Some(answer);

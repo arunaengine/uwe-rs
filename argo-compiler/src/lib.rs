@@ -6,6 +6,7 @@
 pub mod depends;
 mod entry;
 mod graphs;
+mod recursion;
 mod sites;
 pub mod tags;
 mod texts;

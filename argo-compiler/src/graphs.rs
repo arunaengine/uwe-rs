@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use argo_parser::model::{ContinueOn, Template};
 use argo_parser::{Node, Value as Yaml};
 use argo_runtime::adapter::Adapter;
+use wir::reserved::Carry;
 use wir::{Dependency, ExprForm, Graph, Kind, Port, Status, StatusGroup, Type};
 
 use crate::sites::Site;
@@ -27,6 +28,8 @@ pub(crate) struct Place {
 pub(crate) enum Target {
     Leaf(Box<Template>),
     Graph(String, Vec<Port>, Vec<Port>),
+    /// A call of the template being compiled, the next round of its loop.
+    Recursion,
 }
 
 /// The values that the ops of a graph can read: the graph inputs, and what the steps or
@@ -44,6 +47,9 @@ pub(crate) struct Compiler {
     done: BTreeMap<String, (Vec<Port>, Vec<Port>)>,
     /// The templates being compiled, of which a call is a recursion.
     active: Vec<String>,
+    /// The graphs that run as loop bodies: the site that calls the template again, and the
+    /// body outputs that it gives the next round.
+    pub loops: BTreeMap<String, (String, Vec<Carry>)>,
 }
 
 impl Compiler {
@@ -53,6 +59,7 @@ impl Compiler {
             graphs: Vec::new(),
             done: BTreeMap::new(),
             active: Vec::new(),
+            loops: BTreeMap::new(),
         }
     }
 
@@ -72,8 +79,11 @@ impl Compiler {
             return Ok(Target::Leaf(Box::new(template)));
         }
         let name = graph_name(place);
+        if self.active.last() == Some(&name) {
+            return Ok(Target::Recursion);
+        }
         if self.active.contains(&name) {
-            let reason = format!("template {} calls itself", template.name);
+            let reason = format!("template {} calls itself through others", template.name);
             return Err(kept(at, &reason));
         }
         if let Some((takes, gives)) = self.done.get(&name) {
@@ -189,7 +199,21 @@ impl Compiler {
             let name = format!("outputs.artifacts.{}", artifact.name);
             push_output(&mut graph, &name, &producer, found)?;
         }
-        let ports = (graph.inputs.clone(), graph.outputs.clone());
+        let gives = (graph.outputs.iter())
+            .filter(|output| !output.name.starts_with(crate::recursion::AGAIN))
+            .cloned()
+            .collect();
+        if self.loops.contains_key(name) && !template.outputs.parameters.is_empty() {
+            return Err(at(
+                "a recursive template gives outputs of its first round only",
+            ));
+        }
+        if self.loops.contains_key(name) && !template.outputs.artifacts.is_empty() {
+            return Err(at(
+                "a recursive template gives outputs of its first round only",
+            ));
+        }
+        let ports = (graph.inputs.clone(), gives);
         self.graphs.push(graph);
         Ok(ports)
     }
@@ -226,6 +250,14 @@ impl Compiler {
                 scope.made.insert(prefix, (built.op, built.outputs));
             }
             before = current;
+            let recurses = (self.loops.get(&graph.name)).is_some_and(|(site, _)| {
+                (sequence(Some(group)).iter())
+                    .any(|step| step.get("name").and_then(Node::as_str) == Some(site))
+            });
+            if recurses && position + 1 < sequence(node.get("steps")).len() {
+                let reason = "steps after a recursive call run after all its rounds";
+                return Err(kept(&graph.name, reason));
+            }
         }
         Ok(())
     }
@@ -312,6 +344,11 @@ impl Compiler {
                 op.depends = Some(tree);
             }
             handle_continue(graph, &built.op, site.continue_on);
+            let recursive = self.loops.get(&graph.name).map(|(site, _)| site);
+            if recursive.is_some_and(|site| trees.values().any(|(_, names)| names.contains(site))) {
+                let reason = "tasks that depend on a recursive call run after all its rounds";
+                return Err(kept(&graph.name, reason));
+            }
             scope
                 .made
                 .insert(format!("tasks.{}", site.name), (built.op, built.outputs));

@@ -145,9 +145,10 @@ pub trait TaskAdapter {
         Ok(None)
     }
 
-    /// Ends the source context once the run ends, with why the run failed, if it did.
-    fn end(&mut self, _failure: Option<&str>) -> Result<(), DriverError> {
-        Ok(())
+    /// Ends the source context once the run ends, with why the run failed, if it did; the
+    /// files to deliver then, like the reports of a Nextflow run.
+    fn end(&mut self, _failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        Ok(Vec::new())
     }
 
     /// Whether task names get the op path in front, as `<path>: <name>`.
@@ -279,6 +280,8 @@ struct Opened {
     accepted: HashSet<(TaskId, u32)>,
     /// Deliveries handed to the run and not acknowledged yet.
     delivering: Vec<Delivery>,
+    /// Deliveries that its end gave, which the run has not asked for yet.
+    held: Vec<Delivery>,
 }
 
 /// The adapters a run opened, and the op instances and tasks of each.
@@ -307,6 +310,7 @@ impl Dialects {
             inner: HashMap::new(),
             accepted: HashSet::new(),
             delivering: Vec::new(),
+            held: Vec::new(),
         });
         self.keys.insert(key, self.opened.len() - 1);
         self.opened.len() - 1
@@ -423,7 +427,8 @@ impl Dialects {
     pub fn deliveries(&mut self) -> Vec<Delivery> {
         let mut deliveries = Vec::new();
         for opened in &mut self.opened {
-            let given = opened.adapter.deliveries();
+            let mut given = std::mem::take(&mut opened.held);
+            given.extend(opened.adapter.deliveries());
             opened.delivering.extend(given.iter().cloned());
             deliveries.extend(given);
         }
@@ -490,10 +495,13 @@ impl Dialects {
         if std::mem::replace(&mut self.ended, true) {
             return Ok(());
         }
-        let problems: Vec<String> = (self.opened.iter_mut())
-            .filter_map(|opened| opened.adapter.end(failure).err())
-            .map(|error| error.message)
-            .collect();
+        let mut problems = Vec::new();
+        for opened in &mut self.opened {
+            match opened.adapter.end(failure) {
+                Ok(given) => opened.held.extend(given),
+                Err(error) => problems.push(error.message),
+            }
+        }
         match problems.is_empty() {
             true => Ok(()),
             false => Err(DriverError::new(problems.join("; "))),

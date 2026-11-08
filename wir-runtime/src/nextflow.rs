@@ -247,8 +247,8 @@ impl TaskAdapter for Tasks {
         self.adapter.delivered(delivery)
     }
 
-    fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
-        self.adapter.end(failure).map(drop)
+    fn end(&mut self, failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        self.adapter.end(failure)
     }
 
     /// Tasks keep the names of the native run, like `NFCORE_DEMO:DEMO:FASTQC (sample1)`.

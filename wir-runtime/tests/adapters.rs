@@ -11,8 +11,8 @@ use serde_json::{Map, Value as Json, json};
 use wir_runtime::adapter::{CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{
-    Attempt, DriverError, Executor, Launch, Marker, MarkerKind, Note, Outcome, OutputFile, Running,
-    Task, TaskId, execute,
+    Attempt, Delivery, DeliveryMode, DriverError, Executor, Launch, Marker, MarkerKind, Note,
+    Outcome, OutputFile, Running, Task, TaskId, execute,
 };
 
 /// What the adapters of a run saw.
@@ -91,13 +91,13 @@ impl TaskAdapter for Sorting {
         self.accepted.remove(&(task, attempt))
     }
 
-    fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
+    fn end(&mut self, failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
         self.log
             .lock()
             .unwrap()
             .ended
             .push(failure.map(str::to_owned));
-        Ok(())
+        Ok(Vec::new())
     }
 }
 
@@ -459,6 +459,16 @@ impl TaskAdapter for Marking {
         };
         vec![Note::Mark(TaskId(100), marker)]
     }
+
+    fn end(&mut self, _: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        let report = Delivery {
+            location: "report.html".into(),
+            target: "out/report.html".into(),
+            mode: DeliveryMode::Copy,
+            overwrite: true,
+        };
+        Ok(vec![report])
+    }
 }
 
 #[test]
@@ -493,4 +503,9 @@ fn adapter_notes() {
         (tasks[0].id, MarkerKind::Checkpoint),
         "under the run id"
     );
+    // The run fails, as the task never ended; the report of the end is delivered anyway.
+    assert!(workflow_graph::Driver::finish(&mut driver).is_err());
+    let delivered = workflow_graph::Driver::deliveries(&mut driver);
+    let targets: Vec<&str> = delivered.iter().map(|item| item.target.as_str()).collect();
+    assert_eq!(targets, ["out/report.html"]);
 }

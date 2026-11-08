@@ -897,8 +897,11 @@ impl Builder<'_> {
     /// compiled run starts.
     pub(crate) fn write_kept(&mut self) {
         for (path, bytes) in std::mem::take(&mut self.written) {
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            let write = crate::export::Kind::Write { path, text };
+            // A file that is no text, like a copied gzip, keeps the pipeline native.
+            let write = match String::from_utf8(bytes) {
+                Ok(text) => crate::export::Kind::Write { path, text },
+                Err(_) => crate::export::Kind::Opaque(format!("the build writes {path}, no text")),
+            };
             self.network.add("write", &[], Box::new(Deferred(write)));
         }
     }

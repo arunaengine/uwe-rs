@@ -387,7 +387,7 @@ impl WirDriver {
             Dialect::Wdl => {
                 let ports = &self.progress.node(at).op.inputs;
                 let values = wdl::pairs(bound.clone(), ports, &self.document.types);
-                (folder.join("inputs.json"), nextflow::params(&values))
+                (folder.join("inputs.json"), wdl::job(values))
             }
             _ => (
                 folder.join("job.json"),

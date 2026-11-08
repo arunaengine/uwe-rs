@@ -95,6 +95,8 @@ pub(crate) struct Builder<'a> {
     /// Whether the build is for the lowering to wir: factories and plugin functions that read
     /// data stay calls, and nothing reads files that a run reads.
     pub defer: bool,
+    /// The files that the build of the lowering wrote, by location, which it keeps instead.
+    pub written: Vec<(String, Vec<u8>)>,
     pub base: &'a mut dyn Host,
     /// Whether tasks run their `stub:` section.
     pub stub: bool,
@@ -133,7 +135,10 @@ impl Host for Builder<'_> {
     }
 
     fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
-        self.base.read(path)
+        match self.kept_file(path) {
+            Some(index) => Ok(self.written[index].1.clone()),
+            None => self.base.read(path),
+        }
     }
 
     fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
@@ -141,27 +146,42 @@ impl Host for Builder<'_> {
     }
 
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        if let Some(index) = self.kept_file(path) {
+            return Ok(Some(FileMetadata {
+                directory: false,
+                size: self.written[index].1.len() as u64,
+                modified: 0,
+                mode: 0o644,
+            }));
+        }
         self.base.metadata(path)
     }
 
     /// Writes, or for the lowering keeps the file, which the lowered run writes when it starts.
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
         if self.defer {
-            let path = path.uri();
-            let text = String::from_utf8_lossy(bytes).into_owned();
-            let write = crate::export::Kind::Write { path, text };
-            self.network.add("write", &[], Box::new(Deferred(write)));
+            self.keep_file(path, bytes.to_vec());
             return Ok(());
         }
         self.base.write(path, bytes)
     }
 
+    /// Copies, or for the lowering copies a file that the build wrote.
     fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        if let Some(index) = self.kept_file(source) {
+            let bytes = self.written[index].1.clone();
+            self.keep_file(target, bytes);
+            return Ok(());
+        }
         self.refuse_change("copying files")?;
         self.base.copy_file(source, target)
     }
 
     fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        if let Some(index) = self.kept_file(path) {
+            self.written.remove(index);
+            return Ok(true);
+        }
         self.refuse_change("deleting files")?;
         self.base.delete(path)
     }
@@ -233,7 +253,8 @@ impl Host for Builder<'_> {
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
         if self.defer && DATA_SOURCES.contains(&name) {
-            return Ok(self.deferred_factory(name, arguments, true));
+            let name = format!("{plugin}:{name}");
+            return Ok(self.deferred_factory(&name, arguments, true));
         }
         if self.defer && RUN_CHECKS.contains(&name) {
             let arguments: Result<_, _> = arguments.iter().map(crate::bridge::to_json).collect();
@@ -341,9 +362,12 @@ impl Host for Builder<'_> {
             let message = format!("Argument of `channel.{name}` cannot be a channel object");
             return Err(thrown(message));
         }
-        let reads = nextflow_plugins::factory_plugin(name).is_some()
-            || matches!(name, "fromPath" | "fromFilePairs");
-        if self.defer && namespace == "channel" && reads {
+        let plugin = nextflow_plugins::factory_plugin(name);
+        if self.defer && namespace == "channel" && plugin.is_some() {
+            let name = format!("{}:{name}", plugin.unwrap_or_default());
+            return Ok(Some(self.deferred_factory(&name, arguments, false)));
+        }
+        if self.defer && namespace == "channel" && matches!(name, "fromPath" | "fromFilePairs") {
             return Ok(Some(self.deferred_factory(name, arguments, false)));
         }
         // The items of a list that a data source of the lowering gives when the run starts.
@@ -815,6 +839,33 @@ impl Builder<'_> {
         };
         self.network.add(name, &[], Box::new(factory));
         Value::Channel(output)
+    }
+
+    /// The index of a file that the build of the lowering wrote.
+    fn kept_file(&self, path: &PathValue) -> Option<usize> {
+        let location = path.uri();
+        (self.defer).then(|| {
+            self.written
+                .iter()
+                .position(|(known, _)| *known == location)
+        })?
+    }
+
+    fn keep_file(&mut self, path: &PathValue, bytes: Vec<u8>) {
+        match self.kept_file(path) {
+            Some(index) => self.written[index].1 = bytes,
+            None => self.written.push((path.uri(), bytes)),
+        }
+    }
+
+    /// The files that the build of the lowering wrote, as nodes that write them when the
+    /// lowered run starts.
+    pub(crate) fn write_kept(&mut self) {
+        for (path, bytes) in std::mem::take(&mut self.written) {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let write = crate::export::Kind::Write { path, text };
+            self.network.add("write", &[], Box::new(Deferred(write)));
+        }
     }
 
     /// Fails for the lowering, which changes no files while the workflow is built.

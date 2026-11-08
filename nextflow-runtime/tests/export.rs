@@ -32,6 +32,10 @@ workflow SUB {
 workflow {
     log.info "starting"
     file("${launchDir}/built.txt").text = 'built'
+    def temp = new File(launchDir.toString(), '.temp.txt')
+    temp.text = 'copied'
+    nextflow.extension.FilesEx.copyTo(temp.toPath(), "${launchDir}/copy.txt")
+    temp.delete()
     files = channel.fromPath("${projectDir}/missing/*.csv", checkIfExists: true)
     SUB(channel.of('a', 'b'))
     channel.topic('names').mix(files).view()
@@ -147,6 +151,17 @@ fn defers_data_sources() {
     let path = built.to_string_lossy();
     let written = |kind: &&&Kind| matches!(kind, Kind::Write { path: to, text } if *to == path && text == "built");
     assert!(kinds.iter().any(|kind| written(&kind)));
+    let writes: Vec<(&str, &str)> = (kinds.iter())
+        .filter_map(|kind| match kind {
+            Kind::Write { path, text } => Some((path.rsplit('/').next().unwrap(), text.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        writes,
+        [("built.txt", "built"), ("copy.txt", "copied")],
+        "the deleted file is gone"
+    );
     let topic = network.nodes.iter().find(|node| node.name == "topic names");
     assert!(matches!(topic.map(|node| &node.kind), Some(Kind::Mix)));
     assert!(kinds.iter().any(|kind| matches!(kind, Kind::View { .. })));

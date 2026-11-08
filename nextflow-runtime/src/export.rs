@@ -20,6 +20,8 @@ pub struct Network {
     pub emits: Vec<(String, usize)>,
     /// The params of the run, with those that the scripts set.
     pub params: Json,
+    /// The main script.
+    pub script: String,
 }
 
 #[derive(Debug)]
@@ -106,7 +108,8 @@ pub enum Kind {
         values: Vec<Json>,
         close: bool,
     },
-    /// A factory that reads its values when the run starts, like `channel.fromPath`.
+    /// A factory that reads its values when the run starts, like `channel.fromPath`; a
+    /// factory or function of a plugin is named `<plugin>:<name>`.
     Source {
         factory: String,
         arguments: Vec<Json>,

@@ -14,9 +14,11 @@ mod common;
 /// The pipelines of the comparison.
 const PIPELINES: &[&str] = &["demo", "fetchngs"];
 
-/// How many pipelines run natively, run compiled, give equal tasks (descriptions and resume
-/// fingerprints) in both orders, and publish the same files.
+/// How many pipelines compile into documents that the wir verifier accepts, run natively, run
+/// compiled, give equal tasks (descriptions and resume fingerprints) in both orders, and
+/// publish the same files.
 const RECORDED: Counts = Counts {
+    verified: 2,
     native: 2,
     compiled: 0,
     tasks: 0,
@@ -25,6 +27,7 @@ const RECORDED: Counts = Counts {
 
 #[derive(Debug, Default, PartialEq)]
 struct Counts {
+    verified: usize,
     native: usize,
     compiled: usize,
     tasks: usize,
@@ -104,8 +107,34 @@ fn published(folder: &Path) -> Vec<String> {
     files
 }
 
+/// The problems of the document that `uwe lower` prints for a pipeline with `-profile test`.
+fn problems(project: &Path, folder: &Path) -> Vec<String> {
+    let mut command = common::isolated(Command::new("timeout"));
+    command.args(["600", common::BINARY, "lower"]).arg(project);
+    command
+        .args(["-profile", "test", "--outdir"])
+        .arg(folder.join("out"));
+    let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
+        .current_dir(project)
+        .output()
+        .expect("runs uwe");
+    let text = String::from_utf8_lossy(&ran.stdout);
+    match wir::parse(&text) {
+        Ok(document) => match wir::verify(&document) {
+            Ok(()) => Vec::new(),
+            Err(problems) => problems.iter().map(ToString::to_string).collect(),
+        },
+        Err(error) => vec![format!("{error}: {}", String::from_utf8_lossy(&ran.stderr))],
+    }
+}
+
 fn compare(project: &Path, counts: &mut Counts) -> String {
     let directory = tempfile::tempdir().expect("a temporary directory");
+    let problems = problems(project, directory.path());
+    counts.verified += usize::from(problems.is_empty());
+    if let Some(problem) = problems.first() {
+        return format!("{} problems, like {problem}", problems.len());
+    }
     let mut runs = Vec::new();
     for order in ["asked", "reversed"] {
         let native = run(project, directory.path(), order, false);

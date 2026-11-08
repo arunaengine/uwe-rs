@@ -6,6 +6,7 @@
 mod graph;
 mod groovy;
 mod operators;
+mod params;
 mod process;
 mod shapes;
 mod sources;

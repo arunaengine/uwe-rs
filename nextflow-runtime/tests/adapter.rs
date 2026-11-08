@@ -122,6 +122,7 @@ fn accepted(completed: Completed) -> (Vec<Option<Json>>, Vec<Delivery>) {
         Completed::Accepted {
             outputs,
             deliveries,
+            ..
         } => (outputs, deliveries),
         other => panic!("an accepted attempt, not {other:?}"),
     }

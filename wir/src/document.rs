@@ -8,12 +8,12 @@ use crate::flow::Flow;
 use crate::op::Op;
 use crate::types::{Type, TypeDef};
 
-/// The wir version this crate writes. The README states the versioning rule.
-pub const VERSION: &str = "0.5";
+/// The wir version this crate writes and reads. It stays 0.1 until wir covers most of the
+/// languages; the README states the rule.
+pub const VERSION: &str = "0.1";
 
-/// The versions this crate reads. Each version only adds to the one before, so an older
-/// document reads as it is.
-pub(crate) const KNOWN: [&str; 5] = ["0.1", "0.2", "0.3", "0.4", VERSION];
+/// The versions this crate reads.
+pub(crate) const KNOWN: [&str; 1] = [VERSION];
 
 /// The JSON Schema (draft 2020-12) of the JSON form of this version.
 pub const SCHEMA: &str = include_str!("../schema.json");
@@ -84,7 +84,7 @@ pub struct Port {
     pub r#type: Type,
     #[serde(default, skip_serializing_if = "Flow::is_value")]
     pub flow: Flow,
-    /// The value an input takes when it is bound to null or has no producer. Since wir 0.5.
+    /// The value an input takes when it is bound to null or has no producer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<serde_json::Value>,
 }
@@ -126,7 +126,7 @@ pub enum ParseError {
     Json(#[from] serde_json::Error),
     #[error("the document has no wir_version string")]
     NoVersion,
-    #[error("wir version {found} is not known; this reader knows 0.1 to {VERSION}")]
+    #[error("wir version {found} is not known; this reader knows {VERSION}")]
     Version { found: String },
 }
 

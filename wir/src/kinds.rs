@@ -35,6 +35,10 @@ impl<'d> Checker<'d> {
                 }
                 self.expr_form(at, op, expr);
             }
+            Kind::Load(_) => match (op.inputs.as_slice(), op.outputs.as_slice()) {
+                ([input], [output]) => self.gives(at, output, &input.r#type),
+                _ => self.report(at, Problem::Unary("a load".into())),
+            },
             Kind::Emit(emit) => self.emit(at, op, emit),
             Kind::Transform(transform) => self.transform(at, op, transform),
             Kind::Filter(filter) => self.filter(at, op, &filter.body),
@@ -98,10 +102,20 @@ impl<'d> Checker<'d> {
             }
         }
         for capture in &task.captures {
-            if let CaptureRule::Patterns(input) = &capture.from {
-                used.push(input);
+            match &capture.from {
+                CaptureRule::Patterns(input) => used.push(input),
+                CaptureRule::Results if task.results.is_none() => {
+                    let why = "the results file of the task".into();
+                    self.report(at, Problem::Shape("a results capture".into(), why));
+                }
+                _ => {}
             }
         }
+        if let Some(name) = task.results.as_ref().filter(|name| !inside(name)) {
+            self.report(at, Problem::Outside(name.clone()));
+        }
+        used.extend(&task.limits);
+        used.extend(task.staged.iter().flatten());
         let given = task.environment.values().chain(&task.stdin);
         for content in given {
             if let Content::Input { input } = content {
@@ -131,6 +145,7 @@ impl<'d> Checker<'d> {
         }
         let used = task.command.iter().filter_map(|argument| match argument {
             Argument::Input { input, .. } => Some(input),
+            Argument::Code { this, .. } => this.as_ref(),
             Argument::Text(_) | Argument::Raw { .. } => None,
         });
         self.inputs(at, op, used);
@@ -149,7 +164,8 @@ impl<'d> Checker<'d> {
                 continue;
             };
             let loads = !capture.load_contents || holds_file(&output.r#type, self.defs);
-            if !loads || !capture_fits(&capture.from, &output.r#type, self.defs) {
+            let fits = capture_fits(&capture.from, &output.r#type, self.defs);
+            if capture.code.is_none() && (!loads || !fits || capture.from == CaptureRule::Empty) {
                 self.report(at, Problem::CaptureType(output.name.clone()));
             }
             if let Some(arity) = &capture.arity {
@@ -598,6 +614,7 @@ fn capture_fits(rule: &CaptureRule, r#type: &Type, defs: &[TypeDef]) -> bool {
         return false;
     };
     match (rule, r#type) {
+        (CaptureRule::Results, _) => true,
         (_, Type::Optional(inner)) => capture_fits(rule, inner, defs),
         (_, Type::File(_) | Type::Dynamic) => true,
         (CaptureRule::Glob(_) | CaptureRule::Patterns(_), Type::Directory) => true,

@@ -215,6 +215,8 @@ impl Lowerer {
                 load_contents: false,
                 optional: false,
                 arity: None,
+                listing: None,
+                code: None,
             });
             captured.push(port(&output.name, output.r#type.clone()));
         }

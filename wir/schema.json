@@ -338,6 +338,14 @@
             "form": { "enum": ["text", "condition", "items", "labels"] }
           }
         },
+        "load": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "contents": { "type": "boolean" },
+            "listing": { "enum": ["shallow", "deep"] }
+          }
+        },
         "map": {
           "type": "object",
           "additionalProperties": false,
@@ -1011,6 +1019,19 @@
                 "additionalProperties": false,
                 "required": ["raw"],
                 "properties": { "raw": { "type": "string" } }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code"],
+                "properties": {
+                  "code": { "type": "string" },
+                  "self": { "$ref": "#/$defs/name" },
+                  "prefix": { "type": "string" },
+                  "separate": { "type": "boolean" },
+                  "separator": { "type": "string" },
+                  "quote": { "type": "boolean" }
+                }
               }
             ]
           }
@@ -1032,7 +1053,7 @@
               },
               "from": {
                 "oneOf": [
-                  { "enum": ["stdout", "stderr"] },
+                  { "enum": ["stdout", "stderr", "results", "empty"] },
                   {
                     "type": "object",
                     "additionalProperties": false,
@@ -1047,7 +1068,9 @@
                   }
                 ]
               },
-              "load_contents": { "type": "boolean" }
+              "load_contents": { "type": "boolean" },
+              "listing": { "enum": ["shallow", "deep"] },
+              "code": { "type": "string" }
             }
           }
         },
@@ -1058,11 +1081,15 @@
         "stderr": { "$ref": "#/$defs/file_name" },
         "workdir": { "type": "string" },
         "staging": { "type": "string" },
+        "staged": { "$ref": "#/$defs/names" },
         "environment": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/file_name" }
         },
         "stdin": { "$ref": "#/$defs/file_name" },
+        "library": { "type": "array", "items": { "type": "string" } },
+        "results": { "type": "string" },
+        "limits": { "$ref": "#/$defs/name" },
         "files": {
           "type": "array",
           "items": {

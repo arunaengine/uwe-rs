@@ -5,6 +5,7 @@
 
 use cwl_parser::model::{Dynamic, Expression, Part, RequirementClass, Version};
 use serde_json::json;
+use wir::Resources;
 
 use crate::Scope;
 
@@ -20,6 +21,35 @@ pub const TMPDIR: &str = "/tmp";
 /// The `runtime` object of a tool as JSON, as uwe's CWL driver makes it, or why it is not
 /// known before the tool runs.
 pub fn object(scope: &Scope, version: Version) -> Result<String, String> {
+    let (cores, ram, tmpdir, outdir) = amounts(scope, version)?;
+    let whole = |amount: f64| amount.ceil() as i64;
+    let object = json!({
+        "outdir": OUTDIR,
+        "tmpdir": TMPDIR,
+        "cores": whole(cores),
+        "ram": whole(ram),
+        "outdirSize": whole(outdir),
+        "tmpdirSize": whole(tmpdir),
+    });
+    Ok(object.to_string())
+}
+
+/// The resources of a tool as uwe's CWL driver gives them to its task, when no expression
+/// sets them and the cores are whole.
+pub fn resources(scope: &Scope, version: Version) -> Option<Resources> {
+    let (cores, ram, tmpdir, outdir) = amounts(scope, version).ok()?;
+    let mebibytes = |amount: f64| (amount.ceil() as u64).saturating_mul(1_048_576);
+    (cores.fract() == 0.0).then(|| Resources {
+        cpus: Some(cores as u32),
+        memory: Some(mebibytes(ram)),
+        disk: Some(mebibytes(tmpdir).saturating_add(mebibytes(outdir))),
+        gpus: None,
+    })
+}
+
+/// The cores, RAM, temporary and output folder sizes of a tool, in MiB, or why expressions
+/// set them.
+fn amounts(scope: &Scope, version: Version) -> Result<(f64, f64, f64, f64), String> {
     let resource = scope.find(|class| match class {
         RequirementClass::Resource(resource) => Some(resource),
         _ => None,
@@ -43,85 +73,168 @@ pub fn object(scope: &Scope, version: Version) -> Result<String, String> {
         tmpdir = pick(&resource.tmpdir_min, &resource.tmpdir_max, tmpdir)?;
         outdir = pick(&resource.outdir_min, &resource.outdir_max, outdir)?;
     }
-    let whole = |amount: f64| amount.ceil() as i64;
-    let object = json!({
-        "outdir": OUTDIR,
-        "tmpdir": TMPDIR,
-        "cores": whole(cores),
-        "ram": whole(ram),
-        "outdirSize": whole(outdir),
-        "tmpdirSize": whole(tmpdir),
-    });
-    Ok(object.to_string())
+    Ok((cores, ram, tmpdir, outdir))
 }
 
+/// The task input that holds the `runtime` object when expressions set the resources.
+pub const VALUES: &str = "runtime.values";
+
+/// The task input that holds the limits of the task when expressions set them.
+pub const LIMITS: &str = "runtime.limits";
+
+/// The code of the `runtime` object and of the task limits, by the inputs, when expressions
+/// set the resources or the time limit, as uwe's CWL driver computes them.
+pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
+    let resource = scope.find(|class| match class {
+        RequirementClass::Resource(resource) => Some(resource),
+        _ => None,
+    });
+    let time = scope.find(|class| match class {
+        RequirementClass::ToolTimeLimit { timelimit } => Some(timelimit),
+        _ => None,
+    });
+    let amount = |setting: &Option<Dynamic<f64>>| match setting {
+        Some(Dynamic::Value(value)) => value.to_string(),
+        Some(Dynamic::Expression(code)) => value(code),
+        None => "null".into(),
+    };
+    let pairs = resource.map(|resource| {
+        [
+            (&resource.cores_min, &resource.cores_max),
+            (&resource.ram_min, &resource.ram_max),
+            (&resource.tmpdir_min, &resource.tmpdir_max),
+            (&resource.outdir_min, &resource.outdir_max),
+        ]
+    });
+    let dynamic = |setting: &Option<Dynamic<f64>>| matches!(setting, Some(Dynamic::Expression(_)));
+    let set = pairs
+        .iter()
+        .flatten()
+        .any(|(min, max)| dynamic(min) || dynamic(max));
+    // Cores that are not whole fit no task attribute.
+    let whole = resources(scope, version).is_some();
+    if whole && !set && !matches!(time, Some(Dynamic::Expression(_))) {
+        return None;
+    }
+    let ram = match version {
+        Version::V1_0 => 1024,
+        _ => 256,
+    };
+    let picks: Vec<String> = match pairs {
+        Some(pairs) => (pairs.iter().zip([1, ram, 1024, 1024]))
+            .map(|((min, max), fallback)| {
+                format!("pick({}, {}, {fallback})", amount(min), amount(max))
+            })
+            .collect(),
+        None => vec!["1".into(), ram.to_string(), "1024".into(), "1024".into()],
+    };
+    let time = match time {
+        Some(Dynamic::Value(seconds)) => seconds.to_string(),
+        Some(Dynamic::Expression(code)) => value(code),
+        None => "null".into(),
+    };
+    let base = format!(
+        "var runtime = {{\"outdir\": \"{OUTDIR}\", \"tmpdir\": \"{TMPDIR}\"}}; {TEXT} {PICK} \
+         var cores = {}, ram = {}, tmpdir = {}, outdir = {}; var time = {time}; \
+         if (time !== null && time !== undefined && (time % 1 !== 0 || time < 0)) \
+         {{ throw new Error(\"the timelimit is no whole number of 0 or more\"); }} \
+         var mib = function(v) {{ return Math.ceil(v) * 1048576; }};",
+        picks[0], picks[1], picks[2], picks[3]
+    );
+    let values = format!(
+        "${{ {base} return {{\"outdir\": runtime.outdir, \"tmpdir\": runtime.tmpdir, \
+         \"cores\": Math.ceil(cores), \"ram\": Math.ceil(ram), \
+         \"outdirSize\": Math.ceil(outdir), \"tmpdirSize\": Math.ceil(tmpdir)}}; }}"
+    );
+    let limits = format!(
+        "${{ {base} return {{\"cpus\": cores, \"memory\": mib(ram), \
+         \"disk\": mib(tmpdir) + mib(outdir), \"time\": time > 0 ? time : null}}; }}"
+    );
+    Some((values, limits))
+}
+
+/// A function `pick` that takes the least amount, else the most, else the fallback, and
+/// fails on an amount that is not finite, negative or over the most.
+const PICK: &str = "var pick = function(min, max, fallback) { \
+    var bad = function(v) { return typeof v !== \"number\" || !isFinite(v) || v < 0; }; \
+    var given = function(v) { return v !== null && v !== undefined; }; \
+    if ((given(min) && bad(min)) || (given(max) && bad(max)) || (given(min) && given(max) && min > max)) \
+    { throw new Error(\"resource amounts must be finite, nonnegative and min <= max\"); } \
+    return given(min) ? min : given(max) ? max : fallback; };";
+
 /// The code of an expression that reads `runtime`, as a function that sees `runtime`, the
-/// JSON object of the tool, since an expr sees an empty one.
+/// JSON object of the tool with the fields that the runner gives, like `exitCode`.
 pub fn with(code: &Expression, runtime: &str) -> String {
     if !code.text.contains("runtime") {
         return code.text.clone();
     }
     format!(
-        "${{ var runtime = {runtime}; {TEXT} return {}; }}",
+        "${{ return (function(runtime) {{ {TEXT} return {}; }})((function(given) \
+         {{ var made = {runtime}; for (var key in given) {{ made[key] = given[key]; }} \
+         return made; }})(runtime)); }}",
         value(code)
     )
 }
 
-/// The code of an expression whose parameter references fail on a missing field, as CWL
-/// evaluates them without JavaScript, where JavaScript gives `undefined`.
-pub fn strict(code: &Expression) -> String {
-    if !(code.parts.iter()).any(|part| matches!(part, Part::Reference(_))) {
-        return code.text.clone();
+/// The text of an expression whose references that name no parameter, like `$(true)`, are
+/// code; none when it has no such reference.
+pub fn marked(code: &Expression) -> Option<String> {
+    let mut text = code.text.clone();
+    let mut changed = false;
+    for part in &code.parts {
+        let Part::Reference(path) = part else {
+            continue;
+        };
+        let head: String = path
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if !["inputs", "self", "runtime", "null"].contains(&head.as_str()) {
+            text = text.replacen(&format!("$({path})"), &format!("$(({path}))"), 1);
+            changed = true;
+        }
     }
-    let parts: Vec<Part> = (code.parts.iter())
-        .map(|part| match part {
-            Part::Reference(path) => Part::Javascript(lookup(path)),
-            other => other.clone(),
-        })
-        .collect();
-    format!("${{ {GET} {TEXT} return {}; }}", value_of(&parts))
+    changed.then_some(text)
 }
 
-/// A function `get` that takes a field of an object or the length or an item of an array, and
-/// fails on anything else.
-const GET: &str = "var get = function(v, k) { \
-    if (Array.isArray(v)) { if (k === \"length\") { return v.length; } \
-    if (typeof k === \"number\" && k < v.length) { return v[k]; } } \
-    else if (v !== null && typeof v === \"object\" && Object.prototype.hasOwnProperty.call(v, k)) \
-    { return v[k]; } throw new Error(\"the parameter reference has no \" + k); };";
-
-/// A parameter reference like `inputs.a['b'][0]` as calls of `get`.
-fn lookup(path: &str) -> String {
-    let word = |c: char| c.is_alphanumeric() || c == '_';
-    let end = path.find(|c: char| !word(c)).unwrap_or(path.len());
-    let mut code = path[..end].to_owned();
-    let mut rest = &path[end..];
-    while !rest.is_empty() {
-        let (key, after) = if let Some(tail) = rest.strip_prefix('.') {
-            let end = tail.find(|c: char| !word(c)).unwrap_or(tail.len());
-            (
-                serde_json::to_string(&tail[..end]).unwrap_or_default(),
-                &tail[end..],
-            )
-        } else if let Some(tail) = rest.strip_prefix("['").or(rest.strip_prefix("[\"")) {
-            let quote = rest.as_bytes()[1] as char;
-            let end = tail.find(quote).unwrap_or(tail.len());
-            let key = tail[..end].replace("\\'", "'").replace("\\\"", "\"");
-            let after = tail.get(end + 2..).unwrap_or_default();
-            (serde_json::to_string(&key).unwrap_or_default(), after)
-        } else if let Some(tail) = rest.strip_prefix('[') {
-            let end = tail.find(']').unwrap_or(tail.len());
-            (
-                tail[..end].to_owned(),
-                tail.get(end + 1..).unwrap_or_default(),
-            )
-        } else {
-            break;
-        };
-        code = format!("get({code}, {key})");
-        rest = after;
+/// The text of an expression without code whose references to fields of `runtime` read the
+/// object, given as JSON, or the task input of it when `given`; none when that needs code, as
+/// for a reference that keeps a number type when `typed`.
+pub fn inlined(
+    code: &Expression,
+    object: Option<&str>,
+    given: bool,
+    typed: bool,
+) -> Option<String> {
+    let object: Option<serde_json::Value> = object.and_then(|text| serde_json::from_str(text).ok());
+    let single = code.parts.len() == 1;
+    let mut text = String::new();
+    for part in &code.parts {
+        match part {
+            Part::Text(piece) if piece.contains("$(") || piece.contains("${") => return None,
+            Part::Text(piece) => text.push_str(piece),
+            Part::Reference(path) if path == "runtime" || path.starts_with("runtime[") => {
+                return None;
+            }
+            Part::Reference(path) => match path.strip_prefix("runtime.") {
+                None | Some("exitCode") => text.push_str(&format!("$({path})")),
+                Some(field) if !field.chars().all(|c| c.is_alphanumeric() || c == '_') => {
+                    return None;
+                }
+                Some(field) => match (&object, given) {
+                    (Some(object), _) => match object.get(field)? {
+                        serde_json::Value::String(value) => text.push_str(value),
+                        _ if single && typed => return None,
+                        value => text.push_str(&value.to_string()),
+                    },
+                    (None, true) => text.push_str(&format!("$(inputs[{VALUES:?}].{field})")),
+                    (None, false) => return None,
+                },
+            },
+            _ => return None,
+        }
     }
-    code
+    Some(text)
 }
 
 /// The code of a list of expressions, like the globs of an output, as one array of their

@@ -36,7 +36,9 @@ fn lowers_plain_tools() {
         "stdout": "out.txt",
         "workdir": "/var/spool/cwl",
         "staging": "/var/lib/cwl/inputs",
-        "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"}
+        "staged": ["message", "unused", "words"],
+        "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"},
+        "results": "cwl.output.json"
     });
     assert_eq!(op["path"], "echo");
     assert_eq!(op["kind"]["task"], task);
@@ -66,7 +68,8 @@ fn captures_stream_files() {
         task["captures"], captures,
         "the glob of the stdout file reads the stream"
     );
-    let resources = json!({"cpus": 2, "memory": 67_108_864});
+    let disk = 2048 * 1_048_576_u64;
+    let resources = json!({"cpus": 2, "memory": 67_108_864, "disk": disk});
     assert_eq!(op["attributes"], json!({"resources": resources}));
 }
 
@@ -83,8 +86,10 @@ fn lowers_glob_expressions() {
     let wir::Kind::Expr(expr) = &ops[0].kind else {
         panic!("an expr: {:?}", ops[0].kind);
     };
-    let strict = r#"return [text((get(inputs, "prefix"))), "*"].join(""); }"#;
-    assert!(expr.code.ends_with(strict), "{}", expr.code);
+    assert_eq!(
+        expr.code, "$(inputs.prefix)*",
+        "a reference needs no JavaScript"
+    );
 }
 
 #[test]
@@ -155,27 +160,18 @@ fn keeps_required_any() {
 fn lowers_output_evaluation() {
     let lowering = lowered("names.cwl");
     assert!(lowering.full(), "{:?}", lowering.kept);
-    assert_eq!(only_op(&lowering)["kind"]["call"]["graph"], "names");
-    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
-    let ops = graph["ops"].as_array().unwrap();
-    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
-    assert_eq!(paths, ["names", "names.count.outputEval"]);
-    let files = json!({"array": {"items": {"file": {}}}});
+    let op = only_op(&lowering);
+    let captures = &op["kind"]["task"]["captures"];
+    assert_eq!(captures[0]["from"], json!({"glob": "*"}));
+    let code = captures[0]["code"].as_str().unwrap();
+    assert_eq!(code, "$(self.length)", "a reference needs no JavaScript");
     assert_eq!(
-        ops[0]["outputs"][0],
-        json!({"name": "count", "type": files})
+        captures[1],
+        json!({"output": "made", "from": {"glob": "*"}})
     );
-    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
-    assert!(
-        code.ends_with(r#"return (get(self, "length")); }"#),
-        "strict: {code}"
-    );
-    assert_eq!(ops[1]["inputs"][1], json!({"name": "self", "type": files}));
-    assert_eq!(ops[1]["outputs"], json!([{"name": "count", "type": "int"}]));
-    let outputs: Vec<&str> = (graph["outputs"].as_array().unwrap().iter())
-        .map(|port| port["name"].as_str().unwrap())
-        .collect();
-    assert_eq!(outputs, ["count", "made"]);
+    let files = json!({"array": {"items": {"file": {}}}});
+    let outputs = json!([{"name": "count", "type": "int"}, {"name": "made", "type": files}]);
+    assert_eq!(op["outputs"], outputs);
 }
 
 #[test]
@@ -198,26 +194,23 @@ fn lowers_named_types() {
 fn lowers_argument_expressions() {
     let lowering = lowered("compile.cwl");
     assert!(lowering.full(), "{:?}", lowering.kept);
-    let ops = &lowering.document.graphs[0].ops;
-    let paths: Vec<&str> = ops.iter().map(|op| op.path.as_str()).collect();
+    let task = &only_op(&lowering)["kind"]["task"];
+    let command = task["command"].as_array().unwrap();
     assert_eq!(
-        paths,
-        ["compile.argument.1", "compile.argument.2", "compile"]
+        (command[0].clone(), command[1].clone()),
+        (json!("javac"), json!("-d"))
     );
-    let task = serde_json::to_value(&ops[2]).unwrap();
-    let command = json!(["javac", "-d", {"input": "argument.1"},
-        {"input": "argument.2", "prefix": "-J-Xss", "separate": false}, {"input": "src"}]);
-    assert_eq!(task["kind"]["task"]["command"], command);
-    let wir::Kind::Expr(expr) = &ops[0].kind else {
-        panic!("an expr: {:?}", ops[0].kind);
-    };
-    assert!(expr.code.starts_with("${ var runtime = {"), "{}", expr.code);
-    assert!(
-        expr.code.contains(r#""outdir":"/var/spool/cwl""#),
-        "{}",
-        expr.code
+    assert_eq!(command[4], json!({"input": "src"}));
+    assert_eq!(
+        command[2]["code"], "/var/spool/cwl",
+        "a known runtime field is text"
     );
-    assert!(expr.code.contains(r#""cores":2"#), "{}", expr.code);
+    let joined = &command[3];
+    assert_eq!(
+        (&joined["prefix"], &joined["separate"]),
+        (&json!("-J-Xss"), &json!(false))
+    );
+    assert_eq!(joined["code"], "2", "the cores as text");
 }
 
 #[test]
@@ -272,17 +265,11 @@ fn lowers_working_folder() {
 fn lowers_format_expressions() {
     let lowering = lowered("sorted.cwl");
     assert!(lowering.full(), "{:?}", lowering.kept);
-    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
-    let ops = graph["ops"].as_array().unwrap();
-    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
-    assert_eq!(paths, ["sorted", "sorted.sorted.outputEval"]);
-    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    let op = only_op(&lowering);
+    let capture = &op["kind"]["task"]["captures"][0];
+    assert_eq!(capture["from"], "stdout");
+    let code = capture["code"].as_str().unwrap();
     assert!(code.contains("file.format = format(file)"), "{code}");
-    assert_eq!(
-        ops[1]["inputs"][1]["type"],
-        json!({"file": {}}),
-        "self is the File"
-    );
 }
 
 #[test]

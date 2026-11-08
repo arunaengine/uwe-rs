@@ -5,6 +5,9 @@
 
 use std::collections::HashMap;
 
+use cwl_runtime::JavaScriptSettings;
+use cwl_runtime::files::Access;
+
 use serde_json::{Map, Value as Json, json};
 use wir::{Argument, CaptureRule, Content, FileName, Op, Port, Type, TypeDef, resolve};
 use workflow_graph::simulator::glob_matches;
@@ -21,20 +24,25 @@ pub const WORKDIR: &str = "/work";
 /// The most bytes of a file that a capture loads as its contents, as in CWL.
 const CONTENTS_LIMIT: usize = 64 * 1024;
 
-/// The task of a task op with its input values. Inputs are staged below `inputs/<port>`,
-/// and the attributes only set what no cache key covers.
+/// The task of a task op with its input values, or why its code arguments fail. Inputs are
+/// staged below `inputs/<port>`, and the attributes only set what no cache key covers.
 pub fn build(
     id: TaskId,
     (path, step): (&str, &str),
     op: &Op,
     spec: &wir::Task,
     bound: &Map<String, Json>,
-) -> Task {
+    (settings, simulated): (&JavaScriptSettings, bool),
+) -> Result<Task, String> {
     let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
     let mut staging = Staging::default();
     if let Some(folder) = &spec.staging {
-        for port in &op.inputs {
-            staging.job(bound.get(&port.name).unwrap_or(&Json::Null), folder);
+        let names: Vec<&String> = match &spec.staged {
+            None => op.inputs.iter().map(|port| &port.name).collect(),
+            Some(names) => names.iter().collect(),
+        };
+        for name in names {
+            staging.job(bound.get(name).unwrap_or(&Json::Null), folder);
         }
     }
     for staged in &spec.files {
@@ -47,7 +55,7 @@ pub fn build(
     }
     // Each word, and whether a shell command takes it as it is.
     let mut words: Vec<(String, bool)> = Vec::new();
-    for argument in &spec.command {
+    for (index, argument) in spec.command.iter().enumerate() {
         match argument {
             Argument::Text(text) => words.push((text.clone(), false)),
             Argument::Raw { raw } => words.push((raw.clone(), spec.shell)),
@@ -67,6 +75,38 @@ pub fn build(
                         .into_iter()
                         .map(|word| (word, raw)),
                 );
+            }
+            Argument::Code {
+                code,
+                this,
+                prefix,
+                separate,
+                separator,
+                quote,
+            } => {
+                // As CWL binds no input that is null, its code gives no argument then.
+                if this
+                    .as_ref()
+                    .is_some_and(|name| bound.get(name).is_none_or(Json::is_null))
+                {
+                    continue;
+                }
+                let staged = staging.adjusted(&Json::Object(bound.clone()), workdir);
+                let given = this.as_ref().and_then(|name| staged.get(name)).cloned();
+                let values = (staged, given.unwrap_or(Json::Null), json!({}));
+                let value = match crate::expr::code(code, values, (&spec.library, settings)) {
+                    Ok(value) => crate::cwl::to_wir(value),
+                    // As uwe's CWL driver, a simulated run marks code over made-up contents.
+                    Err(_) if simulated && code.contains("contents") => {
+                        json!(cwl_runtime::tool::FAKE_ARGUMENT)
+                    }
+                    Err(why) => return Err(format!("argument {index}: {why}")),
+                };
+                let texts = staging.texts(&value, &format!("arguments/{index}"));
+                let binding = (prefix.as_deref(), *separate, separator.as_deref());
+                let raw = spec.shell && !quote;
+                let bound = bind(&value, texts, binding).into_iter();
+                words.extend(bound.map(|word| (word, raw)));
             }
         }
     }
@@ -89,7 +129,13 @@ pub fn build(
         let extra = port
             .map(|port| secondaries(&port.r#type))
             .unwrap_or_default();
-        for pattern in patterns(&capture.from, bound, workdir) {
+        // A stream file has its secondary files beside it too.
+        let read = match &capture.from {
+            CaptureRule::Stdout => stdout.iter().cloned().collect(),
+            CaptureRule::Stderr => stderr.iter().cloned().collect(),
+            rule => patterns(rule, bound, workdir),
+        };
+        for pattern in read {
             let names: Vec<String> = (extra.iter())
                 .map(|item| wir::secondary_name(&pattern, &item.pattern))
                 .collect();
@@ -103,6 +149,23 @@ pub fn build(
                 }
             }
         }
+    }
+    // Code may name any file it made, so a real run takes them all, as uwe's CWL driver.
+    let named = (spec.captures.iter()).any(|capture| {
+        let port = op.outputs.iter().find(|port| port.name == capture.output);
+        capture.code.is_some() && port.is_some_and(|port| holds_files(&port.r#type))
+    });
+    if named && !simulated && !outputs.iter().any(|output| output == "*") {
+        outputs.push("*".into());
+    }
+    // A simulated run lists the results file only where an output needs it, as uwe's CWL driver.
+    let listed = !simulated || (spec.captures.iter()).any(|item| item.from == CaptureRule::Results);
+    if let Some(name) = spec
+        .results
+        .as_ref()
+        .filter(|name| listed && !outputs.contains(name))
+    {
+        outputs.push(name.clone());
     }
     let stdin = match &spec.stdin {
         Some(Content::Text(path)) => Some(path.clone()),
@@ -160,7 +223,13 @@ pub fn build(
     };
     let attributes = &op.attributes;
     let wanted = attributes.resources.clone().unwrap_or_default();
-    Task {
+    let limits = spec.limits.as_ref().and_then(|name| bound.get(name));
+    let limit = |key: &str| {
+        limits
+            .and_then(|limits| limits.get(key))
+            .and_then(Json::as_f64)
+    };
+    Ok(Task {
         id,
         name: path.to_owned(),
         step: step.to_owned(),
@@ -171,14 +240,17 @@ pub fn build(
         inputs: staging.inputs,
         outputs,
         resources: Resources {
-            cpus: wanted.cpus.map(f64::from),
-            memory_bytes: wanted.memory,
-            disk_bytes: wanted.disk,
-            time_seconds: attributes.time,
-            gpus: wanted.gpus,
+            cpus: limit("cpus").or(wanted.cpus.map(f64::from)),
+            memory_bytes: limit("memory").map(|bytes| bytes as u64).or(wanted.memory),
+            disk_bytes: limit("disk").map(|bytes| bytes as u64).or(wanted.disk),
+            time_seconds: limit("time")
+                .map(|seconds| seconds as u64)
+                .or(attributes.time),
+            gpus: limit("gpus").map(|gpus| gpus as u32).or(wanted.gpus),
             ..Resources::default()
         },
         environment,
+        output_manifest: spec.results.clone().filter(|_| !simulated),
         reuse: match attributes.cache {
             Some(wir::Cache::Never) => Reuse::Disabled,
             Some(wir::Cache::Resume) => Reuse::Lineage,
@@ -192,14 +264,20 @@ pub fn build(
             false => Network::Denied,
         },
         ..Task::default()
-    }
+    })
 }
 
-/// What a task gave back: its outcome, how to read its files, and its input values.
+/// What a task gave back: its outcome, how to read its files, its input values and staged
+/// inputs, whether the run is simulated, and how code reads files.
+#[derive(Clone, Copy)]
 pub struct Ended<'a> {
     pub outcome: &'a Outcome,
     pub files: Option<&'a dyn Files>,
     pub bound: &'a Map<String, Json>,
+    pub inputs: &'a [Input],
+    pub simulated: bool,
+    pub settings: &'a JavaScriptSettings,
+    pub access: &'a Access,
 }
 
 /// The output values that the captures of a task read from an outcome, with the optional
@@ -214,6 +292,9 @@ pub fn capture(
         outcome,
         files,
         bound,
+        inputs,
+        simulated,
+        ..
     } = ended;
     let names = streams(spec, bound);
     let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
@@ -227,11 +308,30 @@ pub fn capture(
             outcome.exit_code
         ));
     }
+    let results = match &spec.results {
+        Some(name) => self::results(name, outcome, files, simulated)?,
+        None => None,
+    };
     let (mut values, mut empty) = (Map::new(), Vec::new());
     for port in ports {
         let Some(capture) = spec.captures.iter().find(|item| item.output == port.name) else {
             return Err(format!("output {} has no capture", port.name));
         };
+        let given = match (&results, &capture.from) {
+            (Some(object), _) => object.get(&port.name).cloned(),
+            (None, CaptureRule::Results) => Some(Json::Null),
+            _ => None,
+        };
+        if results.is_some() || given.is_some() {
+            let value = located(
+                given.unwrap_or(Json::Null),
+                (outcome, inputs, workdir, simulated),
+            )
+            .map_err(|problem| format!("output {}: {problem}", port.name))?;
+            let value = crate::cwl::to_wir(value);
+            values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
+            continue;
+        }
         let found: Vec<&OutputFile> = match &capture.from {
             rule @ (CaptureRule::Glob(_) | CaptureRule::Patterns(_)) => {
                 let mut found: Vec<&OutputFile> = Vec::new();
@@ -248,6 +348,7 @@ pub fn capture(
                 }
                 found
             }
+            CaptureRule::Results | CaptureRule::Empty => Vec::new(),
             rule => {
                 let name = stream_name(&names, &port.name, rule);
                 outcome
@@ -272,6 +373,30 @@ pub fn capture(
             empty.push(port.name.clone());
             continue;
         }
+        if let Some(code) = &capture.code {
+            let value = match evaluated((code, capture), &found, spec, ended) {
+                // A simulated run makes files up, so code over them may fail.
+                Err(_)
+                    if simulated && ["self", "contents"].iter().any(|word| code.contains(word)) =>
+                {
+                    crate::expr::placeholder(&port.r#type, &port.name, defs)
+                }
+                other => other.map_err(|problem| format!("output {}: {problem}", port.name))?,
+            };
+            let mut value = single(crate::cwl::to_wir(value), &port.r#type, defs, simulated)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+            attach(&mut value, &port.r#type, outcome, defs)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+            values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
+            continue;
+        }
+        // A simulated run makes up a file for each pattern; as uwe's CWL driver, one value
+        // takes the first.
+        let one = !matches!(unwrapped(&port.r#type, defs), Some(Type::Array(_)));
+        let found = match simulated && one && found.len() > 1 {
+            true => found[..1].to_vec(),
+            false => found,
+        };
         let mut value = fill(&port.r#type, &found, defs)
             .and_then(|mut value| {
                 attach(&mut value, &port.r#type, outcome, defs)?;
@@ -280,6 +405,10 @@ pub fn capture(
             .map_err(|problem| format!("output {}: {problem}", port.name))?;
         if capture.load_contents {
             load(&mut value, files)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+        }
+        if let Some(listing) = capture.listing {
+            value = crate::load::listings(value, listing, ended.access)
                 .map_err(|problem| format!("output {}: {problem}", port.name))?;
         }
         if !wir::fits(&value, &port.r#type, defs) {
@@ -353,6 +482,165 @@ pub fn accepts(
     }
 }
 
+/// The value of code for an output of one File or Directory: a list of no or one item is
+/// that item or null, as uwe's CWL driver takes it; a simulated run takes the first of more.
+fn single(value: Json, r#type: &Type, defs: &[TypeDef], simulated: bool) -> Result<Json, String> {
+    let file =
+        |r#type: &Type| matches!(resolve(r#type, defs), Some(Type::File(_) | Type::Directory));
+    let one = match resolve(r#type, defs) {
+        Some(Type::Optional(inner)) => file(inner),
+        Some(Type::Union(members)) => members.iter().any(file),
+        _ => file(r#type),
+    };
+    match value {
+        Json::Array(mut items) if one && items.len() < 2 => Ok(items.pop().unwrap_or(Json::Null)),
+        Json::Array(mut items) if one && simulated => Ok(items.swap_remove(0)),
+        Json::Array(items) if one => Err(format!(
+            "{} files match, where one is expected",
+            items.len()
+        )),
+        value => Ok(value),
+    }
+}
+
+/// An output value from the results or code, as wir holds it; a simulated run makes up one
+/// that does not fit.
+fn settled(value: Json, port: &Port, defs: &[TypeDef], simulated: bool) -> Result<Json, String> {
+    let value = crate::state::widen(value, &port.r#type, defs);
+    match wir::fits(&value, &port.r#type, defs) {
+        true => Ok(value),
+        false if simulated => Ok(crate::expr::placeholder(&port.r#type, &port.name, defs)),
+        false => Err(format!("output {} does not fit its type", port.name)),
+    }
+}
+
+/// The value of the code of a capture over the paths it matched, as uwe's CWL driver
+/// evaluates `outputEval`.
+fn evaluated(
+    (code, capture): (&str, &wir::Capture),
+    found: &[&OutputFile],
+    spec: &wir::Task,
+    ended: Ended<'_>,
+) -> Result<Json, String> {
+    let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
+    let mut this = Json::Array(found.iter().map(|file| entry(file, None)).collect());
+    if capture.load_contents {
+        load(&mut this, ended.files)?;
+    }
+    if let Some(listing) = capture.listing {
+        this = crate::load::listings(this, listing, ended.access)?;
+    }
+    let location = |item: &Json| {
+        item.get("location")
+            .and_then(Json::as_str)
+            .map(str::to_owned)
+    };
+    let made = |item: &Json| {
+        let location = location(item)?;
+        let file = (ended.outcome.files.iter()).find(|file| file.location == location)?;
+        Some(absolute(file.path.trim_end_matches('/'), workdir))
+    };
+    let given = |item: &Json| {
+        let location = location(item)?;
+        let source = cwl_parser::iri::file_path(&location)
+            .map_or(location, |path| path.to_string_lossy().into_owned());
+        let input = ended.inputs.iter().find(|input| input.source == source)?;
+        Some(absolute(&input.path, workdir))
+    };
+    let inputs = with_paths(&Json::Object(ended.bound.clone()), &given);
+    let runtime = json!({"exitCode": ended.outcome.exit_code});
+    let values = (inputs, with_paths(&this, &made), runtime);
+    let value = crate::expr::code(code, values, (&spec.library, ended.settings))?;
+    located(
+        value,
+        (ended.outcome, ended.inputs, workdir, ended.simulated),
+    )
+}
+
+/// The object of the results file that the task wrote, if any; the made-up file of a
+/// simulated run may hold none.
+fn results(
+    name: &str,
+    outcome: &Outcome,
+    files: Option<&dyn Files>,
+    simulated: bool,
+) -> Result<Option<Map<String, Json>>, String> {
+    let Some(file) = outcome.files.iter().find(|file| file.path == name) else {
+        return Ok(None);
+    };
+    let bytes = workflow_graph::files::read(files, &file.location)
+        .map_err(|error| format!("cannot read {name}: {error}"))?;
+    match serde_json::from_slice(&bytes) {
+        Ok(Json::Object(object)) => Ok(Some(object)),
+        _ if simulated => Ok(None),
+        Ok(_) => Err(format!("{name} holds no JSON object")),
+        Err(error) => Err(format!("{name}: {error}")),
+    }
+}
+
+/// A value of the results where each File and Directory that names a place in the container
+/// becomes the file that the task made there, or the input staged there.
+fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, String> {
+    let (outcome, inputs, workdir, simulated) = task;
+    let mut object = match value {
+        Json::Array(items) => {
+            let items = items.into_iter().map(|item| located(item, task));
+            return items.collect::<Result<_, _>>().map(Json::Array);
+        }
+        Json::Object(object) => object,
+        other => return Ok(other),
+    };
+    for (_, item) in object.iter_mut() {
+        *item = located(item.take(), task)?;
+    }
+    if !matches!(class(&object), Some("File" | "Directory")) {
+        return Ok(Json::Object(object));
+    }
+    let place = (object.get("path").or(object.get("location"))).and_then(Json::as_str);
+    let Some(place) = place.filter(|place| !place.starts_with("_:")) else {
+        return Ok(Json::Object(object));
+    };
+    let path = cwl_parser::iri::file_path(place)
+        .map_or(place.to_owned(), |path| path.to_string_lossy().into_owned());
+    let path = absolute(path.trim_start_matches("./"), workdir);
+    let made = (outcome.files.iter())
+        .find(|file| absolute(file.path.trim_end_matches('/'), workdir) == path);
+    let mut found = match made {
+        Some(file) => entry(file, None),
+        None => {
+            let staged = (inputs.iter()).find(|input| absolute(&input.path, workdir) == path);
+            // A place in the working folder is in the folder of the outputs, as uwe's CWL driver.
+            let folder = (outcome.files.iter()).find_map(|file| {
+                let made = file.path.trim_end_matches('/');
+                (file.location.trim_end_matches('/').strip_suffix(made))
+                    .map(|folder| folder.trim_end_matches('/').to_owned())
+            });
+            let location = match (staged, relative(&path, workdir), folder) {
+                (Some(input), _, _) => input.source.clone(),
+                (None, Some(inner), Some(folder)) => join(&folder, &inner),
+                // A simulated run that made no files takes them as present.
+                (None, Some(inner), None) if simulated => format!("_:{inner}"),
+                _ => {
+                    return Err(format!(
+                        "the results name {place}, which the task did not make"
+                    ));
+                }
+            };
+            let name = path.rsplit('/').next().unwrap_or_default();
+            json!({"class": class(&object), "location": location, "basename": name})
+        }
+    };
+    for (key, item) in object {
+        if !matches!(
+            key.as_str(),
+            "location" | "path" | "dirname" | "nameroot" | "nameext"
+        ) {
+            found[key] = item;
+        }
+    }
+    Ok(found)
+}
+
 /// Reads the text of each File of a value into its `contents`, up to the 64 KiB of CWL.
 fn load(value: &mut Json, files: Option<&dyn Files>) -> Result<(), String> {
     match value {
@@ -391,6 +679,14 @@ fn fill(r#type: &Type, found: &[&OutputFile], defs: &[TypeDef]) -> Result<Json, 
             [] => Err("no file matched".into()),
             _ => Err(format!("{} files matched one value", found.len())),
         },
+    }
+}
+
+/// A type without the optional around it.
+fn unwrapped<'a>(r#type: &'a Type, defs: &'a [TypeDef]) -> Option<&'a Type> {
+    match resolve(r#type, defs)? {
+        Type::Optional(inner) => unwrapped(inner, defs),
+        other => Some(other),
     }
 }
 
@@ -456,6 +752,8 @@ fn bind(
 struct Staging {
     inputs: Vec<Input>,
     placed: HashMap<String, String>,
+    /// The paths of Files and Directories without a location, by their JSON text.
+    literals: HashMap<String, String>,
     /// How many numbered folders the staging folder has.
     folders: usize,
 }
@@ -467,7 +765,11 @@ impl Staging {
         match value {
             Json::Null => Vec::new(),
             Json::Bool(flag) => vec![flag.to_string()],
-            Json::Number(number) => vec![number.to_string()],
+            // Floats in positional form, as uwe's CWL driver writes them.
+            Json::Number(number) => match number.as_f64().filter(|_| number.is_f64()) {
+                Some(float) => vec![cwl_runtime::value::plain_float(float)],
+                None => vec![number.to_string()],
+            },
             Json::String(text) => vec![text.clone()],
             Json::Array(items) => (items.iter().enumerate())
                 .flat_map(|(index, item)| self.texts(item, &format!("{folder}/{index}")))
@@ -487,7 +789,7 @@ impl Staging {
             return None;
         }
         let location = value.get("location").and_then(Json::as_str);
-        if let Some(path) = location.and_then(|location| self.placed.get(location)) {
+        if let Some(path) = self.path(value) {
             return Some(path.clone());
         }
         let path = format!(
@@ -495,6 +797,9 @@ impl Staging {
             basename(value).unwrap_or_else(|| "input".into())
         );
         self.put(value, &path, false);
+        if location.is_none() {
+            self.literals.insert(value.to_string(), path.clone());
+        }
         for item in value
             .get("secondary_files")
             .and_then(Json::as_array)
@@ -512,8 +817,7 @@ impl Staging {
         match value {
             Json::Array(items) => items.iter().for_each(|item| self.job(item, folder)),
             Json::Object(object) if matches!(class(object), Some("File" | "Directory")) => {
-                let location = object.get("location").and_then(Json::as_str);
-                if location.is_some_and(|location| !self.placed.contains_key(location)) {
+                if self.path(value).is_none() {
                     self.stage(value, &format!("{folder}/{}", self.folders));
                     self.folders += 1;
                 }
@@ -523,12 +827,27 @@ impl Staging {
         }
     }
 
+    /// Where a File or Directory value is staged.
+    fn path(&self, value: &Json) -> Option<&String> {
+        match value.get("location").and_then(Json::as_str) {
+            Some(location) => self.placed.get(location),
+            None => self.literals.get(&value.to_string()),
+        }
+    }
+
+    /// A value whose staged Files and Directories have their paths in the container.
+    fn adjusted(&self, value: &Json, workdir: &str) -> Json {
+        with_paths(value, &|item| {
+            self.path(item).map(|path| absolute(path, workdir))
+        })
+    }
+
     /// Places the value of an entry of the working folder at `path`, else by basename.
     fn place(&mut self, value: &Json, path: Option<&str>, writable: bool, workdir: &str) {
         let at = |name: String| relative(&name, workdir);
         match value {
             Json::Null => {}
-            Json::Array(items) => {
+            Json::Array(items) if path.is_none() => {
                 (items.iter()).for_each(|item| self.place(item, None, writable, workdir));
             }
             Json::Object(object) if object.contains_key("entry") => {
@@ -555,9 +874,15 @@ impl Staging {
                 }
             }
             other => {
+                // Other values are JSON text as Python writes it, as in uwe's CWL driver.
+                let python = |value: &Json| {
+                    let value =
+                        cwl_runtime::Value::parse(&crate::cwl::to_cwl(value.clone()).to_string());
+                    value.map_or_else(|_| other.to_string(), |value| value.to_python_json(true))
+                };
                 let text = match other {
                     Json::String(text) => text.clone(),
-                    other => other.to_string(),
+                    other => python(other),
                 };
                 if let Some(name) = path.map(str::to_owned).and_then(at) {
                     self.inputs.push(Input {
@@ -599,6 +924,12 @@ impl Staging {
                 if let Some(name) = basename(item) {
                     self.put(item, &join(path, &name), writable);
                 }
+                let beside = item.get("secondary_files").and_then(Json::as_array);
+                for secondary in beside.into_iter().flatten() {
+                    if let Some(name) = basename(secondary) {
+                        self.put(secondary, &join(path, &name), writable);
+                    }
+                }
             }
         }
     }
@@ -608,11 +939,17 @@ fn class(object: &Map<String, Json>) -> Option<&str> {
     object.get("class").and_then(Json::as_str)
 }
 
-/// The basename of a File or Directory, else the last part of its location.
+/// The basename of a File or Directory, else the last part of its location, decoded.
 fn basename(value: &Json) -> Option<String> {
-    let location = value.get("location").and_then(Json::as_str);
-    (value.get("basename").and_then(Json::as_str))
-        .or_else(|| location.and_then(|text| text.trim_end_matches('/').rsplit('/').next()))
+    if let Some(name) = value.get("basename").and_then(Json::as_str) {
+        return Some(name.to_owned());
+    }
+    let location = value.get("location").and_then(Json::as_str)?;
+    let path = cwl_parser::iri::file_path(location).map(|path| path.to_string_lossy().into_owned());
+    let path = path.unwrap_or_else(|| location.to_owned());
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
         .map(str::to_owned)
 }
 
@@ -620,6 +957,38 @@ fn join(folder: &str, name: &str) -> String {
     match folder.is_empty() {
         true => name.to_owned(),
         false => format!("{folder}/{name}"),
+    }
+}
+
+/// A value whose Files and Directories have the `path`, `dirname` and `basename` that
+/// `path_of` gives them, as uwe's CWL driver adjusts them.
+fn with_paths(value: &Json, path_of: &dyn Fn(&Json) -> Option<String>) -> Json {
+    match value {
+        Json::Array(items) => {
+            Json::Array(items.iter().map(|item| with_paths(item, path_of)).collect())
+        }
+        Json::Object(object) => {
+            let path = path_of(value);
+            let mut object: Map<String, Json> = (object.iter())
+                .map(|(key, item)| (key.clone(), with_paths(item, path_of)))
+                .collect();
+            if let Some(path) = path {
+                let (folder, name) = path.rsplit_once('/').unwrap_or(("", &path));
+                object.insert("dirname".into(), json!(folder));
+                object.insert("basename".into(), json!(name));
+                object.insert("path".into(), json!(path));
+            }
+            Json::Object(object)
+        }
+        other => other.clone(),
+    }
+}
+
+/// A path in the container, from the working folder when it is relative.
+fn absolute(path: &str, workdir: &str) -> String {
+    match path.starts_with('/') {
+        true => path.to_owned(),
+        false => join(workdir, path),
     }
 }
 
@@ -739,6 +1108,18 @@ fn directories(r#type: &Type) -> bool {
     }
 }
 
+/// Whether a type may hold Files or Directories; a named type counts.
+fn holds_files(r#type: &Type) -> bool {
+    match r#type {
+        Type::File(_) | Type::Directory | Type::Dynamic | Type::Named(_) => true,
+        Type::Optional(inner) => holds_files(inner),
+        Type::Array(array) => holds_files(&array.items),
+        Type::Union(members) | Type::Tuple(members) => members.iter().any(holds_files),
+        Type::Record(fields) => fields.iter().any(|field| holds_files(&field.r#type)),
+        _ => false,
+    }
+}
+
 /// Whether a pattern is relative and stays inside the working folder.
 fn inside(pattern: &str) -> bool {
     !pattern.is_empty() && !pattern.starts_with('/') && !pattern.split('/').any(|part| part == "..")
@@ -813,6 +1194,137 @@ mod tests {
         assert!(staging.inputs[2].directory && staging.inputs[2].source.is_empty());
         let words = staging.texts(&genome, "inputs/genome");
         assert_eq!(words, ["out/g.fa"], "the last place of a file is its path");
+    }
+
+    #[test]
+    fn reads_results_file() {
+        let folder = tempfile::tempdir().unwrap();
+        let written = folder.path().join("cwl.output.json");
+        let object = json!({"made": {"class": "File", "path": "/w/a.txt"},
+            "given": {"class": "File", "location": "in/b.txt"}, "count": 3});
+        std::fs::write(&written, object.to_string()).unwrap();
+        let file = |path: &str, location: &str| OutputFile {
+            path: path.into(),
+            location: location.into(),
+            directory: false,
+            size: None,
+            digest: None,
+        };
+        let outcome = Outcome {
+            files: vec![
+                file("a.txt", "/out/a.txt"),
+                file("cwl.output.json", &written.to_string_lossy()),
+            ],
+            ..Outcome::default()
+        };
+        let rule = |output: &str, from| wir::Capture {
+            output: output.into(),
+            from,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/w".into()),
+            results: Some("cwl.output.json".into()),
+            captures: vec![
+                rule("made", CaptureRule::Glob("none".into())),
+                rule("given", CaptureRule::Results),
+                rule("count", CaptureRule::Results),
+            ],
+            ..wir::Task::default()
+        };
+        let port = |name: &str, r#type: Type| Port {
+            name: name.into(),
+            r#type,
+            flow: wir::Flow::Value,
+            default: None,
+        };
+        let text = Type::File(wir::FileType::default());
+        let ports = [
+            port("made", text.clone()),
+            port("given", text),
+            port("count", Type::Int),
+        ];
+        let inputs = [Input {
+            path: "in/b.txt".into(),
+            source: "/data/b.txt".into(),
+            ..Input::default()
+        }];
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &Map::new(),
+            inputs: &inputs,
+            simulated: false,
+            settings: &JavaScriptSettings::default(),
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        assert_eq!(
+            values["made"]["location"], "/out/a.txt",
+            "the file the task made"
+        );
+        assert_eq!(
+            values["given"]["location"], "/data/b.txt",
+            "the staged input"
+        );
+        assert_eq!(values["given"]["basename"], "b.txt");
+        assert_eq!(values["count"], 3);
+    }
+
+    #[test]
+    fn simulations_take_first() {
+        let file = |path: &str| OutputFile {
+            path: path.into(),
+            location: format!("/out/{path}"),
+            directory: false,
+            size: None,
+            digest: None,
+        };
+        let outcome = Outcome {
+            files: vec![file("r.fastq"), file("r_1.fastq")],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "reads".into(),
+            from: CaptureRule::Glob("r*.fastq".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+        };
+        let spec = wir::Task {
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "reads".into(),
+            r#type: Type::File(wir::FileType::default()),
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (settings, access, bound) =
+            (JavaScriptSettings::default(), Access::default(), Map::new());
+        let ended = |simulated| Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated,
+            settings: &settings,
+            access: &access,
+        };
+        let (values, _) = capture(&spec, &ports, ended(true), &[]).unwrap();
+        assert_eq!(
+            values["reads"]["basename"], "r.fastq",
+            "the first made-up file"
+        );
+        let error = capture(&spec, &ports, ended(false), &[]).unwrap_err();
+        assert!(error.contains("2 files matched one value"), "{error}");
     }
 
     #[test]

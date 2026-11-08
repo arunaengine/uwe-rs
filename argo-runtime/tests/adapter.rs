@@ -558,3 +558,15 @@ fn quoted_items() {
     );
     assert_eq!(items.unwrap(), json!(["a\"b", "c"]));
 }
+
+#[test]
+fn tagged_item_keys() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = launch(folder.path(), STEPS);
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let values = serde_json::Map::from_iter([("inputs.parameters.key".to_owned(), json!("x"))]);
+    let form = argo_runtime::adapter::Form::Items;
+    let code = r#"[{"{{inputs.parameters.key}}": "v"}]"#;
+    let items = adapter.evaluate(code, form, "[0].make", &values);
+    assert_eq!(items.unwrap(), json!([{"x": "v"}]));
+}

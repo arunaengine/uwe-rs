@@ -217,8 +217,8 @@ fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
     if streams && !matches!(op.kind, Kind::Call(_)) && !supported(&op.kind) {
         return Some("uwe does not run stream ports yet");
     }
-    if !op.values.is_wir() {
-        return Some("uwe compares values only by the wir rules yet");
+    if !matches!(op.values, wir::ValueRules::Wir | wir::ValueRules::Groovy) {
+        return Some("uwe compares values only by the wir and Groovy rules yet");
     }
     match &op.kind {
         Kind::Expr(expr) if expr.language == wir::ExprLanguage::Python && expr.scope.is_some() => {

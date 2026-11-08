@@ -310,6 +310,20 @@ impl Adapter {
     }
 
     /// Runs code in an interpreter with the globals of the run, as the network runs closures.
+    /// Runs code in an interpreter of the run: its params, `workflow` and other globals, and
+    /// its host, which calls plugins.
+    pub fn evaluate<T>(
+        &mut self,
+        code: impl FnOnce(&mut Interpreter) -> Result<T, Error>,
+    ) -> Result<T, DriverError> {
+        self.interpret(code)
+    }
+
+    /// The main script of the run.
+    pub fn script(&self) -> Option<String> {
+        self.module.path.borrow().as_deref().map(str::to_owned)
+    }
+
     fn interpret<T>(
         &mut self,
         code: impl FnOnce(&mut Interpreter) -> Result<T, Error>,

@@ -8,7 +8,7 @@ use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::Value;
 
-pub(crate) fn key(value: &Value, host: &mut dyn Host, deep: bool) -> Result<i64, Error> {
+pub fn key(value: &Value, host: &mut dyn Host, deep: bool) -> Result<i64, Error> {
     let mut bytes = Vec::new();
     encode(value, host, deep, &mut bytes, 0)?;
     Ok(i64::from_le_bytes(murmur(&bytes)[..8].try_into().unwrap()))

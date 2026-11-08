@@ -422,9 +422,13 @@ impl WirDriver {
     /// The text of the source of a scope, once its byte range is checked against it.
     fn scope_text(&self, scope: &wir::Scope) -> Result<String, DriverError> {
         let path = self.locate(&scope.source)?;
-        let text = std::fs::read_to_string(&path).map_err(|error| {
-            DriverError::new(format!("cannot read {}: {error}", path.display()))
-        })?;
+        let plugin = crate::nextflow_scope::plugin_text(&self.document, &scope.source);
+        let text = match plugin {
+            Some(text) => text.to_owned(),
+            None => std::fs::read_to_string(&path).map_err(|error| {
+                DriverError::new(format!("cannot read {}: {error}", path.display()))
+            })?,
+        };
         let (start, end) = (scope.start as usize, scope.end as usize);
         if end > text.len() || !text.is_char_boundary(start) || !text.is_char_boundary(end) {
             let message = format!(
@@ -835,9 +839,13 @@ impl WirDriver {
         if !self.texts.0.contains_key(&source) {
             let folder = self.job_folder()?.join(format!("argo-texts-{source}"));
             let (target, output) = (self.locate(&source)?, self.output_root());
+            let configs = crate::argo::configs_of(&self.document, &source).into_iter();
+            let configs = configs
+                .map(|id| self.locate(&id))
+                .collect::<Result<Vec<_>, _>>()?;
             let place = crate::argo::Place {
                 source: &target,
-                configs: &[],
+                configs: &configs,
                 folder: &folder,
                 output: &output,
             };

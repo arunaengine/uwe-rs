@@ -16,17 +16,13 @@ use workflow_graph::{Driver, Launch, Simulator, Task, execute};
 /// Workflows that compile fully, stay native or do not; runs that end as natively, of them
 /// those with equal tasks and cache keys, and those with equal outputs.
 const RECORDED: Counts = Counts {
-    full: 663,
-    native: 158,
+    full: 662,
+    native: 160,
     failed: 138,
-    same: 791,
-    keys: 750,
-    equal: 740,
+    same: 816,
+    keys: 775,
+    equal: 765,
 };
-
-/// Workflows left out: wir-runtime picks ready ops in a time that grows with the cube of the
-/// rounds of a map, so these 10000 rounds do not end.
-const SLOW: &[&str] = &["loop-sequence-many-long-pods.yaml"];
 
 #[derive(Debug, Default, PartialEq)]
 struct Counts {
@@ -247,8 +243,7 @@ fn compare_workflows() {
         let documents = load_file(&file).unwrap_or_default();
         let runnable = (documents.iter())
             .any(|document| document.kind == Kind::Workflow && document.runnable());
-        let slow = SLOW.iter().any(|name| relative.ends_with(name));
-        if !runnable || slow || !relative.contains(&filter) {
+        if !runnable || !relative.contains(&filter) {
             continue;
         }
         let line = outcome(&file, &mut counts);

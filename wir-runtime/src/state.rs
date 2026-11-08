@@ -3,13 +3,13 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use serde_json::{Map, Value as Json};
 use wir::{Kind, Status, Type, TypeDef, resolve};
 
 use crate::control::Truth;
-use crate::plan::{Node, Plan, Source};
+use crate::plan::{ControlPlan, Node, Plan, Source};
 use crate::streams::Streams;
 
 /// Where a node is in its run.
@@ -66,6 +66,22 @@ pub struct Progress {
     pub daemons: HashSet<usize>,
     /// The streams of the run.
     pub streams: Streams,
+    /// The nodes of each node's graph, and the nodes of the entry graph.
+    children: Vec<Vec<usize>>,
+    roots: Vec<usize>,
+    /// How many nodes of each node's graph ended.
+    ended: Vec<usize>,
+    /// The nodes whose readiness, or end, a change of each node may change.
+    dependents: Vec<Vec<usize>>,
+    /// The nodes to look at again, ready nodes held back while the run drains, the running
+    /// calls that forward stream items, and the running and held rounds of limited maps.
+    dirty: BTreeSet<usize>,
+    deferred: BTreeSet<usize>,
+    forwarding: BTreeSet<usize>,
+    running: HashMap<usize, u32>,
+    throttled: HashMap<usize, BTreeSet<usize>>,
+    /// How many nodes the scheduler looked at, which bounds its work.
+    pub visits: u64,
 }
 
 impl Progress {
@@ -82,6 +98,16 @@ impl Progress {
             empty: HashSet::new(),
             daemons: HashSet::new(),
             streams: Streams::default(),
+            children: Vec::new(),
+            roots: Vec::new(),
+            ended: Vec::new(),
+            dependents: Vec::new(),
+            dirty: BTreeSet::new(),
+            deferred: BTreeSet::new(),
+            forwarding: BTreeSet::new(),
+            running: HashMap::new(),
+            throttled: HashMap::new(),
+            visits: 0,
         };
         progress.adopt(0);
         progress
@@ -93,8 +119,42 @@ impl Progress {
 
     /// Takes in the nodes added to the plan from `from` on, like the rounds of a map.
     pub fn adopt(&mut self, from: usize) {
-        self.states.resize(self.plan.nodes.len(), State::Waiting);
-        for at in from..self.plan.nodes.len() {
+        let count = self.plan.nodes.len();
+        self.states.resize(count, State::Waiting);
+        self.children.resize(count, Vec::new());
+        self.ended.resize(count, 0);
+        self.dependents.resize(count, Vec::new());
+        for at in from..count {
+            let node = &self.plan.nodes[at];
+            let mut sources: Vec<usize> = (node.inputs.iter())
+                .filter_map(|(_, source)| match source {
+                    Source::Output(source, _) | Source::Call(source, _) => Some(*source),
+                    _ => None,
+                })
+                .collect();
+            sources.extend(
+                node.after
+                    .iter()
+                    .chain(&node.handles)
+                    .map(|(source, _)| *source),
+            );
+            sources.extend(&node.members);
+            if let Some(tree) = &node.depends {
+                tested(tree, &mut sources);
+            }
+            match node.parent {
+                Some(parent) => {
+                    sources.push(parent);
+                    self.children[parent].push(at);
+                    self.dependents[at].push(parent);
+                    self.dirty.insert(parent);
+                }
+                None => self.roots.push(at),
+            }
+            for source in sources.into_iter().filter(|source| *source != at) {
+                self.dependents[source].push(at);
+            }
+            self.dirty.insert(at);
             let node = &self.plan.nodes[at];
             let handled = node.after.iter().chain(&node.handles);
             let failures =
@@ -125,59 +185,119 @@ impl Progress {
     /// that can no longer run and the calls whose graph ended. While `draining`, nothing
     /// starts.
     pub fn next(&mut self, draining: bool) -> Option<(usize, Map<String, Json>)> {
+        if !draining {
+            let deferred = std::mem::take(&mut self.deferred);
+            self.dirty.extend(deferred);
+        }
         loop {
-            let mut changed = false;
-            let busy = self.busy();
-            for at in 0..self.plan.nodes.len() {
-                match &self.states[at] {
-                    State::Waiting => {}
-                    State::Running(_)
-                        if matches!(self.node(at).op.kind, Kind::Call(_) | Kind::Branch(_)) =>
-                    {
-                        changed |= self.forward(at);
-                        changed |= self.end_call(at);
-                        continue;
-                    }
-                    State::Running(_) if matches!(self.node(at).op.kind, Kind::Map(_)) => {
-                        changed |= self.end_map(at);
-                        continue;
-                    }
-                    _ => continue,
-                }
-                if let Some((map, most)) = self.limit(at)
-                    && busy.get(&map).is_some_and(|running| running >= &most)
-                {
-                    continue;
-                }
-                match self.readiness(at) {
-                    Readiness::Ready(_)
-                        if matches!(self.node(at).op.kind, Kind::StatusGroup(_)) =>
-                    {
-                        if let Some(status) = self.group_status(at) {
-                            self.end(at, status, Map::new(), None);
-                            changed = true;
-                        }
-                    }
-                    Readiness::Wait => {}
-                    Readiness::Omit => {
-                        self.end(at, Status::Omitted, Map::new(), None);
-                        changed = true;
-                    }
-                    Readiness::Ready(bound) if !draining => {
-                        self.states[at] = State::Running(bound.clone());
-                        return Some((at, bound));
-                    }
-                    Readiness::Ready(_) => {}
-                    Readiness::Refuse(why) => {
-                        self.end(at, Status::Failed, Map::new(), Some(why));
-                        changed = true;
-                    }
+            // Running calls forward the items of their streams until none moves.
+            for at in self.forwarding.clone() {
+                if self.forward(at) {
+                    self.dirty.insert(at);
                 }
             }
-            if !changed {
+            if self.dirty.is_empty() {
                 return None;
             }
+            if let Some(started) = self.next_dirty(draining) {
+                return Some(started);
+            }
         }
+    }
+
+    /// Looks at the nodes to look at again until one can start, which it starts.
+    fn next_dirty(&mut self, draining: bool) -> Option<(usize, Map<String, Json>)> {
+        while let Some(at) = self.dirty.pop_first() {
+            self.visits += 1;
+            match &self.states[at] {
+                State::Waiting => {}
+                State::Running(_)
+                    if matches!(self.node(at).op.kind, Kind::Call(_) | Kind::Branch(_)) =>
+                {
+                    self.end_call(at);
+                    continue;
+                }
+                State::Running(_) if matches!(self.node(at).op.kind, Kind::Map(_)) => {
+                    self.end_map(at);
+                    continue;
+                }
+                _ => continue,
+            }
+            if let Some((map, most)) = self.limit(at)
+                && self
+                    .running
+                    .get(&map)
+                    .is_some_and(|running| *running >= most)
+            {
+                self.throttled.entry(map).or_default().insert(at);
+                continue;
+            }
+            match self.readiness(at) {
+                Readiness::Ready(_) if matches!(self.node(at).op.kind, Kind::StatusGroup(_)) => {
+                    if let Some(status) = self.group_status(at) {
+                        self.end(at, status, Map::new(), None);
+                    }
+                }
+                Readiness::Wait => {}
+                Readiness::Omit => self.end(at, Status::Omitted, Map::new(), None),
+                Readiness::Ready(bound) if !draining => {
+                    self.start(at, bound.clone());
+                    return Some((at, bound));
+                }
+                Readiness::Ready(_) => _ = self.deferred.insert(at),
+                Readiness::Refuse(why) => self.end(at, Status::Failed, Map::new(), Some(why)),
+            }
+        }
+        None
+    }
+
+    /// Starts a node with its input values.
+    fn start(&mut self, at: usize, bound: Map<String, Json>) {
+        self.states[at] = State::Running(bound);
+        if let Some((map, _)) = self.limit(at) {
+            *self.running.entry(map).or_insert(0) += 1;
+        }
+        let node = self.node(at);
+        if matches!(node.op.kind, Kind::Call(_) | Kind::Branch(_))
+            && (node.op.outputs.iter()).any(|port| !port.flow.is_value())
+        {
+            self.forwarding.insert(at);
+        }
+        self.touch(at);
+    }
+
+    /// Marks the nodes that depend on a node to be looked at again.
+    fn touch(&mut self, at: usize) {
+        self.dirty.insert(at);
+        self.dirty.extend(self.dependents[at].iter().copied());
+    }
+
+    /// Counts a node that ended, once, and frees its place in a limited map.
+    fn count_end(&mut self, at: usize, before: &State) {
+        if matches!(before, State::Ended(..)) {
+            return;
+        }
+        self.forwarding.remove(&at);
+        if let Some(parent) = self.node(at).parent {
+            self.ended[parent] += 1;
+        }
+        if let (State::Running(_), Some((map, most))) = (before, self.limit(at)) {
+            if let Some(running) = self.running.get_mut(&map) {
+                *running = running.saturating_sub(1);
+            }
+            let held = self.throttled.entry(map).or_default();
+            for _ in 0..most {
+                let Some(next) = held.pop_first() else { break };
+                self.dirty.insert(next);
+            }
+        }
+        self.touch(at);
+    }
+
+    /// A daemon is ready: its control result holds before it ends.
+    pub fn ready_daemon(&mut self, at: usize) {
+        self.daemons.insert(at);
+        self.touch(at);
     }
 
     /// The map whose `parallelism` limits a node, when it is a round of one, with the limit.
@@ -187,17 +307,6 @@ impl Progress {
             Kind::Map(map) => Some((parent, map.parallelism?)),
             _ => None,
         }
-    }
-
-    /// The number of running rounds of each map that limits them.
-    fn busy(&self) -> HashMap<usize, u32> {
-        let mut counts = HashMap::new();
-        for (at, state) in self.states.iter().enumerate() {
-            if let (State::Running(_), Some((map, _))) = (state, self.limit(at)) {
-                *counts.entry(map).or_insert(0) += 1;
-            }
-        }
-        counts
     }
 
     /// Why the ops inside a call or a round failed, joined.
@@ -211,15 +320,24 @@ impl Progress {
 
     /// Cancels a node and every node below it that has not ended, without failing the run.
     pub fn cancel(&mut self, at: usize) {
-        for node in 0..self.plan.nodes.len() {
-            let mut above = Some(node);
-            while above.is_some_and(|above| above != at) {
-                above = above.and_then(|above| self.node(above).parent);
-            }
-            if above.is_some() && !matches!(self.states[node], State::Ended(..)) {
-                self.states[node] = State::Ended(Status::Cancelled, Map::new());
-                self.close_streams(node, Status::Cancelled, None);
-            }
+        for child in self.children[at].clone() {
+            self.cancel(child);
+        }
+        if !matches!(self.states[at], State::Ended(..)) {
+            let before = std::mem::replace(
+                &mut self.states[at],
+                State::Ended(Status::Cancelled, Map::new()),
+            );
+            self.close_streams(at, Status::Cancelled, None);
+            self.count_end(at, &before);
+        }
+    }
+
+    /// The nodes of the graph of a node, or of the entry graph.
+    pub fn children(&self, at: Option<usize>) -> &[usize] {
+        match at {
+            Some(at) => &self.children[at],
+            None => &self.roots,
         }
     }
 
@@ -249,8 +367,9 @@ impl Progress {
         values: Map<String, Json>,
         why: Option<String>,
     ) {
-        self.states[at] = State::Ended(status, values);
+        let before = std::mem::replace(&mut self.states[at], State::Ended(status, values));
         self.close_streams(at, status, why.as_deref());
+        self.count_end(at, &before);
         if matches!(status, Status::Failed | Status::Errored) {
             let why = why.unwrap_or_else(|| format!("op {} failed", self.node(at).path));
             self.held.push((at, status, why));
@@ -426,13 +545,10 @@ impl Progress {
         if !self.exports_ended(at) {
             return false;
         }
-        self.forward(at);
-        for member in (0..self.plan.nodes.len()).filter(|node| self.node(*node).parent == Some(at))
-        {
-            if !matches!(self.states[member], State::Ended(..)) {
-                return false;
-            }
+        if self.ended[at] < self.children[at].len() {
+            return false;
         }
+        self.forward(at);
         // Only a failure that no successful handler handled fails the call.
         let mut failed = self.inner.iter().any(|(call, _)| *call == at);
         let mut values = Map::new();
@@ -492,9 +608,10 @@ impl Progress {
     /// as `min_success`, with each output the array of the rounds' values in round order,
     /// nested by the map's shape. A round that did not succeed gives null.
     fn end_map(&mut self, at: usize) -> bool {
-        let rounds: Vec<usize> = (0..self.plan.nodes.len())
-            .filter(|node| self.node(*node).parent == Some(at))
-            .collect();
+        if self.ended[at] < self.children[at].len() {
+            return false;
+        }
+        let rounds = self.children[at].clone();
         let mut values: Vec<Option<&Map<String, Json>>> = Vec::new();
         for round in &rounds {
             match &self.states[*round] {
@@ -633,3 +750,14 @@ pub fn widen(value: Json, r#type: &Type, defs: &[TypeDef]) -> Json {
 #[cfg(test)]
 #[path = "state_tests.rs"]
 mod tests;
+
+/// The nodes that a control tree tests.
+fn tested(tree: &ControlPlan, found: &mut Vec<usize>) {
+    match tree {
+        ControlPlan::All(items) | ControlPlan::Any(items) => {
+            items.iter().for_each(|item| tested(item, found));
+        }
+        ControlPlan::Not(inner) => tested(inner, found),
+        ControlPlan::Test(node, _) => found.push(*node),
+    }
+}

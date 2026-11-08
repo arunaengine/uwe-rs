@@ -33,9 +33,7 @@ impl Progress {
     /// Opens the stream outputs of the nodes of one activation, the entry graph or the graph
     /// of a call, then installs their readers, all before any of them starts.
     pub fn activate(&mut self, parent: Option<usize>) -> Result<(), DriverError> {
-        let members: Vec<usize> = (0..self.plan.nodes.len())
-            .filter(|at| self.node(*at).parent == parent)
-            .collect();
+        let members = self.children(parent).to_vec();
         for at in &members {
             let node = self.node(*at);
             let ports = node.op.outputs.iter().filter(|port| !port.flow.is_value());

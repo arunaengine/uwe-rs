@@ -533,3 +533,64 @@ fn failure_handler() {
         "a failed handler handles nothing"
     );
 }
+
+#[test]
+fn scheduler_work() {
+    let rounds = 500;
+    let int = |name: &str| json!({"name": name, "type": "int"});
+    let ints = |name: &str| json!({"name": name, "type": {"array": {"items": "int"}}});
+    let edge = |from: (Option<&str>, &str), to: (Option<&str>, &str)| json!({"from": {"op": from.0, "port": from.1}, "to": {"op": to.0, "port": to.1}});
+    let work = json!({"path": "work", "kind": {"native": {"source": "s", "language": "cwl"}},
+        "inputs": [int("x")], "outputs": [int("y")]});
+    let body = json!({"name": "body", "inputs": [int("x")], "outputs": [int("y")], "ops": [work],
+        "edges": [edge((None, "x"), (Some("work"), "x")), edge((Some("work"), "y"), (None, "y"))]});
+    let each = json!({"path": "each", "kind": {"map": {"body": "body", "over": ["x"]}},
+        "inputs": [ints("x")], "outputs": [ints("y")]});
+    let main = json!({"name": "main", "inputs": [ints("xs")], "outputs": [ints("ys")], "ops": [each],
+        "edges": [edge((None, "xs"), (Some("each"), "x")), edge((Some("each"), "y"), (None, "ys"))]});
+    let document = json!({"wir_version": "0.1",
+        "sources": [{"id": "s", "language": "cwl", "location": "s.cwl"}],
+        "graphs": [main, body], "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    wir::verify(&document).unwrap();
+    let mut progress = Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new());
+    progress.inputs.insert("xs".into(), json!(vec![1; rounds]));
+    progress.activate(None).unwrap();
+    let (map, bound) = progress.next(false).unwrap();
+    let Kind::Map(spec) = progress.node(map).op.kind.clone() else {
+        panic!("no map");
+    };
+    let items = crate::plan::items(&spec, &bound).unwrap();
+    let start = progress.plan.nodes.len();
+    crate::plan::rounds(
+        &document,
+        &mut progress.plan.nodes,
+        map,
+        "body",
+        items.items,
+    )
+    .unwrap();
+    progress.plan.nodes[map].shape = items.shape;
+    progress.adopt(start);
+    while let Some((at, _)) = progress.next(false) {
+        match progress.node(at).op.kind {
+            Kind::Call(_) => progress.activate(Some(at)).unwrap(),
+            _ => progress.end(
+                at,
+                Status::Succeeded,
+                Map::from_iter([("y".into(), json!(2))]),
+                None,
+            ),
+        }
+    }
+    let State::Ended(Status::Succeeded, values) = &progress.states[map] else {
+        panic!("the map did not end: {:?}", progress.states[map]);
+    };
+    assert_eq!(values["y"].as_array().map(Vec::len), Some(rounds));
+    let nodes = progress.plan.nodes.len() as u64;
+    assert!(
+        progress.visits <= 8 * nodes,
+        "{} visits for {nodes} nodes: the scheduler looks at each node a few times",
+        progress.visits
+    );
+}

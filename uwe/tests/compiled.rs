@@ -61,8 +61,12 @@ fn names_native_parts() {
 const WORD: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
 
 /// Runs `uwe graph <arguments> -lowered -format json` on `snakefile` in a folder of its own,
-/// with `files` beside it; the graph it printed.
-fn graph_lowered(snakefile: &str, files: &[(&str, &str)], arguments: &[&str]) -> Json {
+/// with `files` beside it; the folder and the graph it printed.
+fn graph_lowered(
+    snakefile: &str,
+    files: &[(&str, &str)],
+    arguments: &[&str],
+) -> (tempfile::TempDir, Json) {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path();
     std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
@@ -78,14 +82,15 @@ fn graph_lowered(snakefile: &str, files: &[(&str, &str)], arguments: &[&str]) ->
         .expect("runs uwe");
     let errors = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{errors}");
-    serde_json::from_slice(&output.stdout).expect("prints JSON")
+    let graph = serde_json::from_slice(&output.stdout).expect("prints JSON");
+    (folder, graph)
 }
 
 /// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
 /// the config values of the command line in the document.
 #[test]
 fn runs_compiled_snakefiles() {
-    let graph = graph_lowered(WORD, &[], &["--config", "word=hello"]);
+    let (_folder, graph) = graph_lowered(WORD, &[], &["--config", "word=hello"]);
     let nodes = graph["nodes"].as_array().expect("nodes");
     let names: Vec<&str> = (nodes.iter())
         .filter_map(|node| node["task"]["name"].as_str())
@@ -101,7 +106,7 @@ fn runs_compiled_snakefiles() {
 /// A config file of `-inputs` is a config source of the document, not an input of its graph.
 #[test]
 fn takes_config_inputs() {
-    let graph = graph_lowered(
+    let (_folder, graph) = graph_lowered(
         WORD,
         &[("config.yaml", "word: hello\n")],
         &["-inputs", "config.yaml"],
@@ -109,4 +114,19 @@ fn takes_config_inputs() {
     let nodes = graph["nodes"].as_array().expect("nodes");
     let script = nodes[0]["task"]["script"].as_str().unwrap_or_default();
     assert!(script.contains("echo hello"), "{script}");
+}
+
+/// A Snakefile that stays one native op runs in the launch folder, where its inputs are.
+#[test]
+fn runs_native_parts_in_place() {
+    let snakefile = "rule all:\n    input: \"c.txt\"\n\ncheckpoint c:\n    input: \"in.txt\"\n    output: \"c.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let (folder, graph) = graph_lowered(snakefile, &[("in.txt", "raw\n")], &[]);
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let copy = (nodes.iter())
+        .find(|node| node["task"]["step"] == "c")
+        .expect("the checkpoint task");
+    let source = copy["task"]["inputs"][0]["source"]
+        .as_str()
+        .unwrap_or_default();
+    assert_eq!(std::path::Path::new(source), folder.path().join("in.txt"));
 }

@@ -9,6 +9,7 @@ mod buffering;
 mod callback;
 mod child;
 mod collecting;
+mod control;
 pub mod cwl;
 mod driver;
 mod effects;

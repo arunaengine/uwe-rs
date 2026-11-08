@@ -241,10 +241,10 @@ fn refuses_block_sizes() {
 
 #[test]
 fn refuses_unrun_fields() {
-    let rules = refused(|document| op(document, 0)["values"] = json!("groovy"));
+    let rules = refused(|document| op(document, 0)["values"] = json!("python"));
     assert_eq!(
         rules,
-        "op main/sort: uwe compares values only by the wir rules yet"
+        "op main/sort: uwe compares values only by the wir and Groovy rules yet"
     );
     let accept = refused(|document| {
         op(document, 0)["kind"]["task"]["accept"] =

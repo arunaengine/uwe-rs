@@ -513,6 +513,35 @@ task kept {
 }
 
 #[test]
+fn entry_none_stays() {
+    let task = r#"version 1.2
+task kept {
+  input {
+    String name
+    String? greeting = name + "?"
+    LABEL
+  }
+  command <<< >>>
+  output {
+    String text = select_first([greeting, name])
+  }
+}
+"#;
+    for (label, kept) in [("", 0), ("env String label = \"x\"", 1)] {
+        let text = task.replace("LABEL", label);
+        for (inputs, expected) in [
+            (json!({"name": "ada"}), "ada?"),
+            (json!({"name": "ada", "greeting": null}), "ada"),
+        ] {
+            let runs = runs(&text, inputs);
+            assert_eq!(runs.lowering.kept.len(), kept);
+            assert_eq!(runs.native, runs.lowered);
+            assert_eq!(runs.lowered.1["text"], expected);
+        }
+    }
+}
+
+#[test]
 fn nested_inputs_given() {
     let workflow = r#"version 1.2
 workflow nested {

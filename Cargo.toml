@@ -44,6 +44,7 @@ members = [
     "task-runner",
     "tes-executor",
     "tool-record",
+    "wdl-lowering",
     "wdl-runtime",
     "wir",
     "wir-runtime",

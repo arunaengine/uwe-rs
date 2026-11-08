@@ -231,13 +231,15 @@ impl TaskAdapter for Jobs {
         self.driver.delivered(delivery)
     }
 
-    fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
-        match failure {
+    fn end(&mut self, failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        let ended = match failure {
             None => self.driver.finish(),
             Some(why) => self
                 .driver
                 .failed(&ExecuteError::Driver(DriverError::new(why))),
-        }
+        };
+        // The deliveries of its end come through `deliveries`, as those of its tasks do.
+        ended.map(|()| Vec::new())
     }
 
     /// Job tasks keep the names of the native run, which name the rule and wildcards.

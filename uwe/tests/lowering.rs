@@ -83,6 +83,32 @@ fn prints_lowered_documents() {
     assert_eq!(errors, kept);
 }
 
+#[test]
+fn lowers_nextflow_pipelines() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    let script = "process SAY {\n  input:\n  val word\n  output:\n  stdout\n  script:\n  \"echo ${word} ${params.mark}\"\n}\n\nworkflow {\n  log.info 'saying'\n  SAY(channel.of('a', 'b')).view()\n}\n";
+    std::fs::write(root.join("main.nf"), script).expect("writes the script");
+    let (code, printed, errors) = uwe(root, &cache, &["lower", "main.nf", "--mark", "!"]);
+    assert_eq!((code, errors.as_str()), (0, ""), "{printed}");
+    let document: Json = serde_json::from_str(&printed).expect("prints JSON");
+    let main = &document["graphs"][0];
+    assert_eq!(
+        main["inputs"][0]["default"]["mark"], "!",
+        "the params of the command line"
+    );
+    let ops = main["ops"].as_array().expect("ops");
+    let process = ops
+        .iter()
+        .find(|op| op["path"] == "SAY")
+        .expect("the process op");
+    assert_eq!(process["kind"]["process"]["body"], "task.SAY");
+    assert!(
+        ops.iter().any(|op| op["path"] == "start.0"),
+        "the print of the build"
+    );
+}
+
 /// The jobs of the fixtures whose tools all lower.
 const RUNS: [(&str, &str); 3] = [
     ("echo.cwl", "message.yml"),

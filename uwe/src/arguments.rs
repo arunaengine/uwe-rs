@@ -27,7 +27,8 @@ pub struct Arguments {
     pub stub: bool,
     /// `-keep-going`: after a task failed, run every task that does not depend on it.
     pub keep_going: bool,
-    /// `-lowered`: run a CWL or WDL document through its lowered wir document.
+    /// `-lowered`: run a CWL or WDL document or a Nextflow pipeline through its lowered wir
+    /// document.
     pub lowered: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,
@@ -618,6 +619,7 @@ pub const COMMANDS: &[&str] = &[
 const WORKFLOW: &[&str] = &[
     "run",
     "graph",
+    "lower",
     "check",
     "config",
     "inputs",
@@ -851,7 +853,7 @@ pub fn help(command: &str) -> Result<String, String> {
         "origin" => " <file>",
         "digest" => " <path>",
         "record" => " -- <command ...>",
-        "lower" => " <workflow.cwl|workflow.wdl>",
+        "lower" => " <workflow.cwl|workflow.wdl|pipeline> [--param value]",
         _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
         "lock-environment" => " <environment.yml>",
         _ => " <run>",

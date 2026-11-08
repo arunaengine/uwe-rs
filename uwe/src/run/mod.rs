@@ -229,7 +229,7 @@ fn execute_with(
     let converted;
     let (target, language, arguments) = match arguments.lowered {
         true => {
-            let (path, inputs) = crate::lower::document(&target, language, arguments)?;
+            let (path, inputs) = crate::lower::document(&target, language, arguments, &setup)?;
             // A WDL input file becomes one for the entry graph of the lowered document.
             converted = Arguments {
                 inputs: inputs.or(arguments.inputs.clone()),

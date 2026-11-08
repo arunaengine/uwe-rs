@@ -510,6 +510,22 @@ pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::n
     })
 }
 
+/// The wir lowering of a pipeline as the Nextflow driver of a launch would build it; what the
+/// build reads goes through the host of a run, and what it prints to standard error.
+pub fn lower(
+    launch: &Launch,
+    arguments: &Arguments,
+    setup: &Setup,
+    base: &std::path::Path,
+) -> Result<nextflow_lowering::Lowering, String> {
+    let settings = Settings {
+        host: Box::new(console(true, setup, &arguments.secrets)),
+        container_engine: Some(setup.engine_kind(arguments)),
+        ..Settings::default()
+    };
+    nextflow_lowering::lower(launch, settings, base)
+}
+
 /// The Nextflow driver of a launch. `quiet` sends what the workflow prints to standard error.
 pub fn driver(
     launch: &Launch,

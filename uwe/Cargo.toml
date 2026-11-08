@@ -32,6 +32,7 @@ nextflow-config.workspace = true
 nextflow-evaluator.workspace = true
 nextflow-parser.workspace = true
 nextflow-plugins.workspace = true
+nextflow-lowering.workspace = true
 nextflow-runtime.workspace = true
 nomad-executor.workspace = true
 run-crate.workspace = true
@@ -63,6 +64,7 @@ tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }
 wdl-lowering.workspace = true
 wdl-runtime.workspace = true
+wir.workspace = true
 wir-runtime.workspace = true
 workflow-graph.workspace = true
 tracing.workspace = true

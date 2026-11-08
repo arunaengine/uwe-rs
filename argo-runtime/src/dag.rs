@@ -14,7 +14,7 @@ use workflow_graph::TaskId;
 
 use crate::cursor::{Cursor, Entries, deferred};
 use crate::items::{items, items_unless_skipped, loops};
-use crate::node::{ArtifactValue, NodeKind, Phase};
+use crate::node::{ArtifactValue, Facts, NodeKind, Phase};
 use crate::run::{Args, Call, Expanded, Processed, Result, Run};
 use crate::scope::Scope;
 use crate::steps::{base_name, exit_hook, holder};
@@ -655,32 +655,16 @@ impl Run {
             let Some(&node) = self.names.get(&format!("{dag_name}.{name}")) else {
                 return Err(format!("dependency {name} has not run"));
             };
-            let status = &self.nodes[node];
-            let (any_succeeded, all_failed) = if status.kind == NodeKind::TaskGroup {
-                let phases: Vec<Phase> = status
-                    .children
-                    .iter()
-                    .map(|&child| self.nodes[child].phase)
-                    .collect();
-                (
-                    phases.contains(&Phase::Succeeded),
-                    !phases.is_empty() && phases.iter().all(|phase| *phase == Phase::Failed),
-                )
-            } else {
-                (false, false)
-            };
+            let facts = self.facts(node);
             let results: BTreeMap<String, Value> = [
-                ("Succeeded", status.phase == Phase::Succeeded),
-                ("Failed", status.phase == Phase::Failed),
-                ("Errored", status.phase == Phase::Error),
-                ("Skipped", status.phase == Phase::Skipped),
-                ("Omitted", status.phase == Phase::Omitted),
-                (
-                    "Daemoned",
-                    status.daemoned && status.phase != Phase::Pending,
-                ),
-                ("AnySucceeded", any_succeeded),
-                ("AllFailed", all_failed),
+                ("Succeeded", facts.succeeded),
+                ("Failed", facts.failed),
+                ("Errored", facts.errored),
+                ("Skipped", facts.skipped),
+                ("Omitted", facts.omitted),
+                ("Daemoned", facts.daemoned),
+                ("AnySucceeded", facts.any_succeeded),
+                ("AllFailed", facts.all_failed),
             ]
             .into_iter()
             .map(|(key, flag)| (key.to_owned(), Value::Bool(flag)))
@@ -690,6 +674,35 @@ impl Run {
         let logic = deps.logic.replace('-', "_");
         crate::expr::evaluate_bool(&logic, &env)
             .map_err(|error| format!("unable to evaluate expression '{logic}': {error}"))
+    }
+
+    /// The results of a node that a `depends` expression tests; a task group also has the
+    /// results of its members, where all failed only when it has members.
+    pub(crate) fn facts(&self, index: usize) -> Facts {
+        let status = &self.nodes[index];
+        let (any_succeeded, all_failed) = if status.kind == NodeKind::TaskGroup {
+            let phases: Vec<Phase> = status
+                .children
+                .iter()
+                .map(|&child| self.nodes[child].phase)
+                .collect();
+            (
+                phases.contains(&Phase::Succeeded),
+                !phases.is_empty() && phases.iter().all(|phase| *phase == Phase::Failed),
+            )
+        } else {
+            (false, false)
+        };
+        Facts {
+            succeeded: status.phase == Phase::Succeeded,
+            failed: status.phase == Phase::Failed,
+            errored: status.phase == Phase::Error,
+            skipped: status.phase == Phase::Skipped,
+            omitted: status.phase == Phase::Omitted,
+            daemoned: status.daemoned && status.phase != Phase::Pending,
+            any_succeeded,
+            all_failed,
+        }
     }
 
     /// Substitutes a task with its scope, resolves its artifacts and expands its loop.

@@ -21,8 +21,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::images::{
-    Images, archive_config, archive_file, archive_path, file_name, image_id, pull_script,
-    tag_file_name,
+    Images, archive_config, archive_file, archive_path, file_name, image_id, is_sif, pull_script,
+    source, tag_file_name,
 };
 use crate::queue::{Look, Queue};
 use crate::remote::{NodeStaging, records};
@@ -123,6 +123,9 @@ pub struct SlurmBackend {
     pub images: PathBuf,
     /// What the job that pulls an image asks for.
     pub pull: PullResources,
+    /// Whether this machine pulls the images into `images` itself, for nodes that cannot reach
+    /// the registries, instead of a job. Its pull may take the time of `pull`.
+    pub host_pull: bool,
     /// How long to wait after a failed pull before the next try; the wait grows with each
     /// try.
     pub pull_pause: Duration,
@@ -202,6 +205,7 @@ impl SlurmBackend {
         SlurmBackend {
             images: scratch.join("images"),
             pull: PullResources::default(),
+            host_pull: false,
             pull_pause: PULL_PAUSE,
             proxy: None,
             configs: ImageConfigs::default(),
@@ -877,7 +881,11 @@ impl SlurmBackend {
             let mut tries = 0;
             loop {
                 tries += 1;
-                let reason = match self.pull(program, reference, &path, cancel).await {
+                let pulled = match self.host_pull {
+                    true => self.pull_here(program, reference, &path, cancel).await,
+                    false => self.pull(program, reference, &path, cancel).await,
+                };
+                let reason = match pulled {
                     Ok(path) => return Ok(Ok(path)),
                     // A cancelled task leaves the pull to the next task of the image.
                     Err(ExecutorError::Cancelled) => return Err(ExecutorError::Cancelled),
@@ -946,6 +954,77 @@ impl SlurmBackend {
         }
     }
 
+    /// Pulls an image into its SIF file at `path` on this machine, and publishes the file once
+    /// it is whole and a SIF file.
+    async fn pull_here(
+        &self,
+        program: &str,
+        reference: &str,
+        path: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<PathBuf, ExecutorError> {
+        tokio::fs::create_dir_all(&self.images).await?;
+        let mut part = path.as_os_str().to_owned();
+        part.push(format!(".part-{}-{}", std::process::id(), nanos()));
+        let part = PathBuf::from(part);
+        let mut pull = Command::new(program);
+        pull.env_clear()
+            .envs(self.passed())
+            .args(["pull", "--disable-cache"])
+            .arg(&part)
+            .arg(source(reference))
+            .stdin(std::process::Stdio::null())
+            .kill_on_drop(true);
+        let limit = Duration::from_secs(self.pull.time_seconds);
+        let ended = tokio::select! {
+            output = tokio::time::timeout(limit, pull.output()) => Some(output),
+            () = cancel.cancelled() => None,
+        };
+        let pulled = match ended {
+            None => Err(None),
+            Some(Err(_)) => Err(Some(format!(
+                "{program} took more than {} seconds to pull the image {reference}",
+                limit.as_secs()
+            ))),
+            Some(Ok(Err(error))) => Err(Some(format!(
+                "cannot run {program} to pull the image {reference}: {error}"
+            ))),
+            Some(Ok(Ok(output))) => {
+                let error = String::from_utf8_lossy(&output.stderr);
+                let lines: Vec<&str> = (error.lines())
+                    .filter(|line| !line.trim().is_empty())
+                    .collect();
+                let tail = match lines.len() {
+                    0 => String::new(),
+                    count => format!(": {}", lines[count.saturating_sub(5)..].join("; ")),
+                };
+                if !output.status.success() {
+                    Err(Some(format!(
+                        "{program} could not pull the image {reference} ({}){tail}",
+                        output.status
+                    )))
+                } else if !is_sif(&part) {
+                    Err(Some(format!(
+                        "{program} made no SIF file of the image {reference}{tail}"
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+        };
+        if let Err(reason) = pulled {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err(match reason {
+                None => ExecutorError::Cancelled,
+                Some(message) => machine(redact(message, &self.proxies())),
+            });
+        }
+        // The nodes may read the file at once, so it is on the disk before it gets its name.
+        tokio::fs::File::open(&part).await?.sync_all().await?;
+        tokio::fs::rename(&part, path).await?;
+        Ok(path.to_owned())
+    }
+
     /// Submits the job that pulls an image into its SIF file at `path`, and waits for it.
     async fn pull(
         &self,
@@ -959,9 +1038,7 @@ impl SlurmBackend {
             "image-{}-{}-{}",
             &stem[..stem.len().min(19)],
             std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_or(0, |time| time.as_nanos())
+            nanos()
         );
         let root = self.scratch.join(&name);
         let control = root.join(CONTROL);
@@ -1081,19 +1158,9 @@ impl SlurmBackend {
         let mut sbatch = Command::new(self.command("sbatch"));
         sbatch.env_clear();
         let mut exported = Vec::new();
-        for (name, value) in std::env::vars_os() {
-            let Some(text) = name.to_str() else { continue };
-            if PASSED.contains(&text) || PASSED_PREFIXES.iter().any(|start| text.starts_with(start))
-            {
-                sbatch.env(text, value);
-                exported.push(text.to_owned());
-            }
-        }
-        if let Some(proxy) = &self.proxy {
-            for name in ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"] {
-                sbatch.env(name, proxy);
-                exported.push(name.to_owned());
-            }
+        for (name, value) in self.passed() {
+            sbatch.env(&name, value);
+            exported.push(name);
         }
         if let Some(secret) = secret {
             sbatch.env(executor::helper::STORAGE, secret);
@@ -1163,6 +1230,25 @@ impl SlurmBackend {
             id: id.to_owned(),
             cluster: journal["cluster"].as_str().map(str::to_owned),
         }))
+    }
+
+    /// The variables that `sbatch`, the jobs and the pulls on this machine get: those of this
+    /// process that [`PASSED`] names, then the proxy of the config.
+    fn passed(&self) -> Vec<(String, std::ffi::OsString)> {
+        let mut passed = Vec::new();
+        for (name, value) in std::env::vars_os() {
+            let Some(text) = name.to_str() else { continue };
+            if PASSED.contains(&text) || PASSED_PREFIXES.iter().any(|start| text.starts_with(start))
+            {
+                passed.push((text.to_owned(), value));
+            }
+        }
+        if let Some(proxy) = &self.proxy {
+            for name in ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"] {
+                passed.push((name.to_owned(), proxy.into()));
+            }
+        }
+        passed
     }
 
     /// The web proxies of the pulls: that of the config and those of this process.
@@ -1925,6 +2011,13 @@ fn redact(mut text: String, proxies: &[String]) -> String {
         }
     }
     text
+}
+
+/// The nanoseconds since the Unix epoch, which make the names of pulls unique.
+fn nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |time| time.as_nanos())
 }
 
 pub(crate) async fn read_number(path: &Path) -> Option<i32> {

@@ -590,6 +590,7 @@ async fn clears_submission_environment() {
         Container::Apptainer(text(&bin.join("apptainer"))),
     );
     backend.proxy = Some("http://user:pass,word@proxy.example.org:3128".into());
+    backend.options = vec!["--export=NONE".into()];
     let spec = spec("echo cleared > out.txt");
     let (staging, placement) = (Staging::default(), placement());
     let job = Job {
@@ -618,18 +619,11 @@ async fn clears_submission_environment() {
         );
         let options = std::fs::read_to_string(bin.join(format!("state/{id}.options")));
         let options = options.expect("the options");
-        let export = (options.lines())
-            .find_map(|line| line.strip_prefix("--export="))
-            .expect("an export list");
-        let exported: Vec<&str> = export.split(',').collect();
-        assert!(
-            exported.contains(&"PATH") && exported.contains(&"https_proxy"),
-            "{export}"
-        );
-        assert!(
-            !export.contains('=') && !export.contains("CARGO"),
-            "{export}"
-        );
+        // A list of names without `ALL` would make SLURM fetch the login environment.
+        let export: Vec<&str> = (options.lines())
+            .filter_map(|line| line.strip_prefix("--export="))
+            .collect();
+        assert_eq!(export, ["NONE", "ALL"], "{options}");
     }
 }
 

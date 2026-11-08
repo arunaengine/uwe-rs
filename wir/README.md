@@ -20,6 +20,8 @@ let ok = wir::fits(&value, &port.r#type, &document.types); // run-time check of 
 
 A document has a `wir_version`, the `sources` (documents in a workflow language that ops come from or run), named `types`, named `graphs` and the `entry` graph that a run starts. A graph has typed input and output ports, ops and edges. An op has a `path` that is unique in its graph and stays stable across edits, a `kind` with the fields of that kind, typed input and output ports, `after` dependencies, `effects`, `attributes` and an `origin` in a source.
 
+`hooks` lists what runs once a run ends: `{"complete": closure}` runs after every run and `{"error": closure}` after a failed one, each with one object `{success, error}` and captures of the entry graph's inputs; `{"observe": {"source": id, "processes": [...]}}` gives the observers of a source, like Nextflow plugins, the processes of the run with their `id`, `name`, `definition`, `script` and the ids they `feeds`.
+
 Names (sources, types, graphs, ports) use letters, digits, `_`, `-` and `.`. An op path is one or more names joined by `/`. Run settings and provenance name an op as `<graph>/<path>`.
 
 The JSON form uses snake_case keys and leaves out fields that hold their default (an empty list, no value, flow `value`, scatter mode `dot`). Parsing rejects unknown fields, so nothing is dropped silently. Writing a parsed document gives the same JSON value back, apart from defaults written out in the input.
@@ -199,6 +201,7 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 | `cross` | none | order; empty input |
 | `group` | `by`, `size`, `remainder` | Nextflow `groupTuple` rules; order of groups |
 | `join` | `by`, `remainder`, `fail_on_mismatch`, `fail_on_duplicate` | duplicate keys; mismatch errors; order |
+| `reduce` | `rule`, `body`, `compare`, `seed`, `empty`, `nulls`, `steps` | with `steps`, a stream of the value after every item, like nf-boost `scan` |
 | `loop` | `body`, `condition`, `carry` | the first check; outputs of every round; limits |
 | `dynamic` | `plan` | typed boundaries; stable instance ids; reconciling with finished work |
 

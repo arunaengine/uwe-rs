@@ -289,7 +289,10 @@ pub(crate) fn piece(
                     payload[name] = json!(true);
                 }
             }
-            pair(path, "join", payload)
+            match remainder {
+                true => padded(path, by, payload),
+                false => pair(path, "join", payload),
+            }
         }
         Kind::Combine { by, right } => {
             let payload = match by {
@@ -517,6 +520,58 @@ fn pair(path: &str, kind: &str, payload: Json) -> Piece {
         inputs: vec![end(path, "left", true), end(path, "right", true)],
         outputs: vec![end(path, "out", true)],
         ..Piece::default()
+    }
+}
+
+/// A `join` with `remainder` that pads as Nextflow does: each side becomes its key fields and
+/// one list of its other fields, and the body rebuilds the native tuple from those lists.
+fn padded(path: &str, by: &[usize], mut payload: Json) -> Piece {
+    let mut sorted = by.to_vec();
+    sorted.sort_unstable();
+    let count = sorted.len();
+    let keys = format!("{sorted:?}");
+    let split = format!(
+        "{{ it -> def items = it instanceof List ? it : [it]; \
+         {keys}.collect {{ i -> items[i] }} + [(0..<items.size()).findAll {{ i -> !(i in {keys}) }}\
+         .collect {{ i -> items[i] }}] }}"
+    );
+    let body = format!(
+        "{{ item -> def keys = item.take({count}); def l = item[{count}]; \
+         def r = item[{}]; if (l != null && r != null) {{ def all = keys + l + r; \
+         return all.size() == 1 ? all[0] : all }}; \
+         if ((l != null ? l : r).isEmpty()) return keys[0]; \
+         keys + (l == null ? [null] : l) + (r == null ? [null] : r) }}",
+        count + 1
+    );
+    payload["by"] = json!((0..count).collect::<Vec<_>>());
+    payload["body"] = written(body);
+    let shape = json!({"tuple": vec![json!("dynamic"); count + 1]});
+    let mut ops = Vec::new();
+    let mut edges = Vec::new();
+    let mut inputs = Vec::new();
+    for side in ["left", "right"] {
+        let at = format!("{path}/{side}");
+        let mut op = unary(
+            &at,
+            "transform",
+            json!({"body": written(split.clone())}),
+            true,
+            true,
+        );
+        ops.append(&mut op.ops);
+        inputs.push(end(&at, "source", true));
+        edges.push(edge(&at, "out", path, side));
+    }
+    let mut join = pair(path, "join", payload).ops.remove(0);
+    for index in 0..2 {
+        join["inputs"][index]["type"] = shape.clone();
+    }
+    ops.insert(0, join);
+    Piece {
+        ops,
+        edges,
+        inputs,
+        outputs: vec![end(path, "out", true)],
     }
 }
 

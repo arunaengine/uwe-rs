@@ -105,7 +105,9 @@ fn keeps_typed_operators() {
     let compiled = compile("workflow {\n    channel.of(['a', 1]).groupBy().view()\n}\n");
     assert_eq!(compiled.kept.len(), 1, "{:?}", compiled.kept);
     assert!(
-        compiled.kept[0].reason.contains("`groupBy` of typed workflows"),
+        compiled.kept[0]
+            .reason
+            .contains("`groupBy` of typed workflows"),
         "{:?}",
         compiled.kept
     );
@@ -336,4 +338,18 @@ fn publishes_workflow_outputs() {
         (&json!("Closure"), &json!("main"))
     );
     assert!(logs["kind"]["observe"].get("close").is_none(), "no index");
+}
+
+#[test]
+fn pads_join_remainders() {
+    let script = "workflow {\n    channel.of([1, 'a'], [2, 'b'])\n        \
+                  .join(channel.of([1, 'x']), remainder: true).view()\n}\n";
+    let document = full(script);
+    let main = graph(&document, "main");
+    let join = op(main, "join.2");
+    let shape = json!({"tuple": ["dynamic", "dynamic"]});
+    assert_eq!(join["inputs"][0]["type"], shape, "the key and one list");
+    assert!(join["kind"]["join"]["body"]["code"].is_string());
+    let split = &op(main, "join.2/left")["kind"]["transform"]["body"]["code"];
+    assert!(split.as_str().unwrap().contains("[0].collect"), "{split}");
 }

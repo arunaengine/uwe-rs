@@ -74,6 +74,11 @@ fn op(document: &mut Json, index: usize) -> &mut Json {
 /// The tasks of a simulated run of a native op with `attributes` that runs a CWL scatter
 /// demo, or why the run cannot be planned.
 fn native(attributes: Json) -> Result<Vec<Task>, String> {
+    native_with(attributes, json!([]))
+}
+
+/// The tasks of [`native`] for an op that also has `effects`.
+fn native_with(attributes: Json, effects: Json) -> Result<Vec<Task>, String> {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let workflow = Path::new(env!("CARGO_MANIFEST_DIR")).join("../demo/cwl/scatter-workflow.cwl");
@@ -82,7 +87,7 @@ fn native(attributes: Json) -> Result<Vec<Task>, String> {
         "sources": [{"id": "block", "language": "cwl", "location": workflow}],
         "graphs": [{"name": "main", "inputs": port, "outputs": [],
             "ops": [{"path": "block", "kind": {"native": {"source": "block", "language": "cwl"}},
-                "inputs": port, "attributes": attributes}],
+                "inputs": port, "attributes": attributes, "effects": effects}],
             "edges": [{"from": {"port": "message_array"},
                 "to": {"op": "block", "port": "message_array"}}]}],
         "entry": "main"});
@@ -182,4 +187,41 @@ fn reuses_resumed_results() {
     assert_eq!(reuses, [Reuse::Lineage, Reuse::Allowed]);
     let tasks = native(json!({"cache": "resume"})).unwrap();
     assert!(tasks.iter().all(|task| task.reuse == Reuse::Lineage));
+}
+
+#[test]
+fn shares_no_effects() {
+    let graph = simulate(|document| {
+        op(document, 0)["effects"] = json!(["nondeterministic"]);
+        op(document, 1)["effects"] = json!([{"publish": "results"}]);
+    });
+    let reuses: Vec<Reuse> = graph.nodes.iter().map(|node| node.task.reuse).collect();
+    assert_eq!(reuses, [Reuse::Lineage, Reuse::Lineage]);
+    let reuses = |effects: Json| -> Vec<Reuse> {
+        let tasks = native_with(json!({}), effects).unwrap();
+        tasks.iter().map(|task| task.reuse).collect()
+    };
+    assert_eq!(reuses(json!(["nondeterministic"])), [Reuse::Lineage; 2]);
+    let publishing = reuses(json!([{"publish": "outdir"}]));
+    assert_eq!(
+        publishing,
+        [Reuse::Allowed; 2],
+        "the block publishes itself"
+    );
+}
+
+#[test]
+fn refuses_engine_effects() {
+    let message = refused(|document| {
+        let mut same = expr(json!({}));
+        same["effects"] = json!([{"external": "db"}]);
+        document["graphs"][0]["ops"]
+            .as_array_mut()
+            .unwrap()
+            .push(same);
+    });
+    assert_eq!(
+        message,
+        "op main/same: only task and native ops have effects"
+    );
 }

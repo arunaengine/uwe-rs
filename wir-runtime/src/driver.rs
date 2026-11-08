@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Document, Kind, Language as Dialect, Native, Status};
+use wir::{Document, Effect, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
     Launch, Note, Outcome, Reuse, Task, TaskId,
@@ -450,15 +450,19 @@ impl WirDriver {
     fn adopt(&mut self, index: usize, mut tasks: Vec<Task>) -> Vec<Task> {
         let (at, child) = &mut self.children[index];
         let node = self.progress.node(*at);
+        // A block publishes as its language does, also for the tasks it reuses.
+        let effects = &node.op.effects;
+        let lineage = node.op.attributes.cache == Some(wir::Cache::Resume)
+            || effects
+                .iter()
+                .any(|effect| !matches!(effect, Effect::Publish(_)));
         for task in &mut tasks {
             self.owners.insert(task.id, index);
             task.name = format!("{}: {}", node.path, task.name);
             // A cache rule only makes reuse stricter, never overriding the block's own veto.
             match node.op.attributes.cache {
                 Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
-                Some(wir::Cache::Resume) if task.reuse == Reuse::Allowed => {
-                    task.reuse = Reuse::Lineage;
-                }
+                _ if lineage && task.reuse == Reuse::Allowed => task.reuse = Reuse::Lineage,
                 _ => {}
             }
             if let Some(place) = &node.op.attributes.place {

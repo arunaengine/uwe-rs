@@ -215,7 +215,7 @@ const BREAKS: &str = r#"  entrypoint: main
 "#;
 
 #[test]
-fn hands_errors_to_argo() {
+fn retries_execution_errors() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let file = workflow(root, BREAKS);
@@ -243,7 +243,7 @@ spec:
 "#;
 
 #[test]
-fn reads_templates_of_configs() {
+fn reads_config_templates() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     // The config sits outside the folder of the workflow, whose templates Argo reads anyway.
@@ -272,7 +272,7 @@ const EMPTY: &str = r#"  entrypoint: main
 "#;
 
 #[test]
-fn loops_over_no_items() {
+fn loops_without_items() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let file = workflow(root, EMPTY);
@@ -299,7 +299,7 @@ const SKIPPED: &str = r#"  entrypoint: main
 "#;
 
 #[test]
-fn reads_defaults_of_skipped_steps() {
+fn reads_skipped_defaults() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let file = workflow(root, SKIPPED);
@@ -379,7 +379,7 @@ const CONSUMER: &str = r#"  entrypoint: main
 "#;
 
 #[test]
-fn falls_back_after_skipped_steps() {
+fn uses_consumer_defaults() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     let file = workflow(root, CONSUMER);

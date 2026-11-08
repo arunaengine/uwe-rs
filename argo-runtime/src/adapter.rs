@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use argo_parser::model::{
-    AnyString, Arguments, DagTask, Sequence, TemplateRef, WorkflowSpec, WorkflowStep,
+    AnyString, Arguments, DagTask, LifecycleHook, Sequence, TemplateRef, WorkflowSpec, WorkflowStep,
 };
 use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use serde_json::{Map, Value as Json};
@@ -38,8 +38,8 @@ pub struct Instance {
     pub template: String,
     /// The WorkflowTemplate that holds that template, and whether it is cluster scoped.
     pub reference: Option<(String, bool)>,
-    /// The step `[1].use` or the DAG task `.use`; anything else, like `entrypoint`, calls the
-    /// entrypoint.
+    /// The step `[1].use` or the DAG task `.use`, or its exit hook `[1].use.onExit`; `.onExit` is
+    /// the exit handler of the workflow, and anything else, like `entrypoint`, the entrypoint.
     pub call: String,
     /// The node name of the holding template after the workflow name, in parts.
     pub path: Vec<String>,
@@ -141,7 +141,10 @@ impl Adapter {
                 let args = self.run.arguments.clone();
                 (self.run).execute_template(&base, &holder, &context, &args, &Call::default())
             }
-            false => self.call_site(instance, &base),
+            false => match instance.call.strip_suffix(".onExit") {
+                Some(site) => self.exit_call(instance, site, &base),
+                None => self.call_site(instance, &base),
+            },
         }
         .map_err(driver_error)?;
         if self.calls.contains(&index) {
@@ -165,20 +168,7 @@ impl Adapter {
                 instance.call, instance.template
             ))
         })?;
-        let mut scope = Scope::default();
-        for (name, value) in &instance.values {
-            if name.contains(".artifacts.") {
-                if let Some(artifact) =
-                    artifact_of(name, value).map_err(|error| Failure::error(error.message))?
-                {
-                    scope.artifacts.insert(name.clone(), artifact);
-                }
-                continue;
-            }
-            scope
-                .values
-                .extend(tag_values(name, value).map_err(Failure::error)?);
-        }
+        let scope = scope_of(&instance.values)?;
         let variables = self.run.variables(&scope);
         let mut node = step.clone();
         replace_node(&mut node, &variables, true).map_err(Failure::error)?;
@@ -262,6 +252,52 @@ impl Adapter {
                 &call,
             ),
         }
+    }
+
+    /// Makes the node of the exit hook of the step or DAG task `site`, or of the exit handler of
+    /// the workflow when `site` is empty, with its arguments as the native run gives them.
+    fn exit_call(
+        &mut self,
+        instance: &Instance,
+        site: &str,
+        base: &str,
+    ) -> crate::run::Result<usize> {
+        let root = Rc::clone(&self.run.root_context);
+        let (context, hook) = match site.is_empty() {
+            true => {
+                let spec = &self.run.spec;
+                let hook = (spec.hooks.get("exit").cloned()).or_else(|| {
+                    let template = spec.on_exit.clone();
+                    (!template.is_empty()).then(|| exit_hook(template))
+                });
+                (root, hook)
+            }
+            false => {
+                let holder = holder_of(&instance.template, instance.reference.as_ref());
+                let (context, holding) =
+                    self.run.resolve(&holder, &root).map_err(Failure::error)?;
+                let step = site_node(&holding, site);
+                let hooks = step
+                    .as_ref()
+                    .and_then(|step| step.get("hooks")?.get("exit").cloned());
+                let hook = match hooks {
+                    Some(node) => Some(decode(&node).map_err(|e| Failure::error(e.to_string()))?.0),
+                    None => (step.as_ref())
+                        .and_then(|step| step.get("onExit")?.as_str().map(str::to_owned))
+                        .map(exit_hook),
+                };
+                (context, hook)
+            }
+        };
+        let Some(hook) = hook else {
+            let message = format!("no exit hook {site} in template {}", instance.template);
+            return Err(Failure::error(message));
+        };
+        let scope = scope_of(&instance.values)?;
+        let args = self.run.hook_args(&hook, &scope)?;
+        let name = format!("{base}{site}.onExit");
+        let holder = Holder::of_hook(&hook);
+        (self.run).execute_template(&name, &holder, &context, &args, &Call::default())
     }
 
     /// Takes the outcome of a task of a call, and gives the tasks that its calls ask for next,
@@ -382,6 +418,31 @@ impl Adapter {
             }
         }
         Ok(std::mem::take(&mut self.run.emitted))
+    }
+}
+
+/// The tags of a call by name, as a scope: values, and artifacts as Files or Directories.
+fn scope_of(values: &[(String, Json)]) -> crate::run::Result<Scope> {
+    let mut scope = Scope::default();
+    for (name, value) in values {
+        if name.contains(".artifacts.") {
+            if let Some(artifact) =
+                artifact_of(name, value).map_err(|error| Failure::error(error.message))?
+            {
+                scope.artifacts.insert(name.clone(), artifact);
+            }
+            continue;
+        }
+        (scope.values).extend(tag_values(name, value).map_err(Failure::error)?);
+    }
+    Ok(scope)
+}
+
+/// The exit hook that an `onExit` template name gives.
+fn exit_hook(template: String) -> LifecycleHook {
+    LifecycleHook {
+        template,
+        ..LifecycleHook::default()
     }
 }
 

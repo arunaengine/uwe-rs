@@ -62,6 +62,7 @@ publish = false
 
 [workspace.dependencies]
 # Workspace crates
+argo-compiler = { path = "argo-compiler" }
 argo-parser = { path = "argo-parser" }
 argo-runtime = { path = "argo-runtime" }
 aws-batch-executor = { path = "aws-batch-executor" }

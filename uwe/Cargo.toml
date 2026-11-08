@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+argo-compiler.workspace = true
 argo-runtime.workspace = true
 conda-environment.workspace = true
 config-file.workspace = true

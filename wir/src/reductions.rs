@@ -39,9 +39,19 @@ impl<'d> Checker<'d> {
     }
 
     pub(super) fn reduce(&mut self, at: &str, op: &Op, reduce: &Reduce) {
-        let Some((source, out)) = self.reduced(at, op, "a reduce") else {
+        // With `steps`, the value after every item is an item of a stream output.
+        let flows = match reduce.steps {
+            true => (Some(Flow::Stream), Some(Flow::Stream)),
+            false => (Some(Flow::Stream), Some(Flow::Value)),
+        };
+        let Some((source, out)) = self.ends(at, op, "a reduce", flows) else {
             return;
         };
+        self.value_captures(at, op, "a reduce", &["source"]);
+        if reduce.steps && reduce.empty != EmptyRule::Default {
+            let why = "no empty rule beside steps".into();
+            self.report(at, Problem::Shape("a reduce".into(), why));
+        }
         let rule = reduce.rule;
         let item = [&source.r#type];
         let mut wrong = Vec::new();

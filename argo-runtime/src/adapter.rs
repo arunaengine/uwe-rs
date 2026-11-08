@@ -10,7 +10,7 @@ use argo_parser::model::{
 };
 use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use serde_json::{Map, Value as Json};
-use workflow_graph::{DriverError, Files, Launch, Outcome, Task, TaskId};
+use workflow_graph::{Delivery, DriverError, Files, Launch, Outcome, Task, TaskId};
 
 use crate::dag::task_entry;
 use crate::items::{item_variables, items, loops, substitute_item, unknown_item};
@@ -319,6 +319,11 @@ impl Adapter {
         self.settle(call)
     }
 
+    /// Whether an execution failure of a task comes back as an outcome, as in the native run.
+    pub fn handles_error(&self, task: TaskId, error: &workflow_graph::ExecuteError) -> bool {
+        crate::handled_error(Some(&self.run), task, error)
+    }
+
     /// The started call that a task belongs to.
     pub fn call_of(&self, task: TaskId) -> Option<CallId> {
         self.owners.get(&task).map(|call| CallId(*call))
@@ -390,6 +395,27 @@ impl Adapter {
         self.run.cancellations()
     }
 
+    /// The files the calls deliver: their uploads, like artifacts to S3, and the output artifacts
+    /// that [`Adapter::finish`] gave the results folder.
+    pub fn take_deliveries(&mut self) -> Vec<Delivery> {
+        self.run.take_deliveries()
+    }
+
+    /// Delivers the output artifacts of every step to `results`, at `<node>/<artifact>`, as the
+    /// native run does once it ends.
+    pub fn finish(&mut self, results: &std::path::Path) {
+        let artifacts: Vec<(String, String)> = (self.run.output_artifacts().into_iter())
+            .map(|(step, artifact, location)| {
+                let target = results.join(step).join(artifact);
+                let target = target.to_string_lossy().into_owned();
+                (target, location.to_string_lossy().into_owned())
+            })
+            .collect();
+        for (target, location) in artifacts {
+            self.run.artifact_delivery(target, location);
+        }
+    }
+
     pub fn warnings(&self) -> &[String] {
         &self.run.warnings
     }
@@ -407,7 +433,16 @@ impl Adapter {
         for (name, value) in values {
             tags.extend(tag_values(name, value)?);
         }
-        let text = crate::tags::replace(text, &Variables::new(tags), true)?;
+        let variables = Variables::new(tags);
+        let listed = matches!(form, Form::Items | Form::Labels);
+        let text = match serde_json::from_str::<Json>(text) {
+            // The list of `withItems` or the object of `withSequence` takes its values as they
+            // are, as the native run substitutes the step before it reads its loop.
+            Ok(value @ (Json::Array(_) | Json::Object(_))) if listed => {
+                substituted(value, &variables)?.to_string()
+            }
+            _ => crate::tags::replace(text, &variables, true)?,
+        };
         let site = format!("{}{site}", self.run.workflow_name);
         if form == Form::Condition {
             return self.run.decide_when(&text, &site).map(Json::Bool);
@@ -519,6 +554,11 @@ fn tag_values(name: &str, value: &Json) -> Result<Vec<(String, String)>, String>
     };
     Ok(match value {
         Json::Null => Vec::new(),
+        // An item is one item of the loop, also a list, as the native run gives it.
+        _ if name == "item" => {
+            let (values, _) = item_variables("", 0, &Value::from_json(value))?;
+            values.into_iter().collect()
+        }
         Json::Array(list) => {
             let results = name.ends_with(".outputs.result");
             let items = (list.iter().filter(|item| !item.is_null()))
@@ -529,11 +569,26 @@ fn tag_values(name: &str, value: &Json) -> Result<Vec<(String, String)>, String>
                 .collect();
             vec![(name.to_owned(), Value::Array(items).to_json())]
         }
-        Json::Object(_) if name == "item" => {
-            let (values, _) = item_variables("", 0, &Value::from_json(value))?;
-            values.into_iter().collect()
-        }
         other => vec![(name.to_owned(), text(other))],
+    })
+}
+
+/// A JSON value with the tags of each of its texts substituted, object keys included.
+fn substituted(value: Json, variables: &Variables) -> Result<Json, String> {
+    Ok(match value {
+        Json::String(text) => Json::String(crate::tags::replace(&text, variables, true)?),
+        Json::Array(items) => {
+            let items = items.into_iter().map(|item| substituted(item, variables));
+            Json::Array(items.collect::<Result<_, _>>()?)
+        }
+        Json::Object(entries) => {
+            let entries = (entries.into_iter()).map(|(key, item)| {
+                let key = crate::tags::replace(&key, variables, true)?;
+                Ok((key, substituted(item, variables)?))
+            });
+            Json::Object(entries.collect::<Result<_, String>>()?)
+        }
+        other => other,
     })
 }
 

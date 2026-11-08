@@ -70,6 +70,7 @@ impl Looping {
         let nodes = &mut progress.plan.nodes;
         let run = plan::round(document, nodes, (at, &name), &self.spec.body, inputs)
             .map_err(|error| error.message)?;
+        progress.plan.nodes[run].ordinal = Some(self.runs);
         progress.adopt(start);
         self.active = Some(run);
         self.runs += 1;

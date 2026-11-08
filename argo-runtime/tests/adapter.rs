@@ -525,3 +525,48 @@ fn exit_hooks() {
     assert_same(&handler, &adapted);
     assert!(adapted[0].name.ends_with(".onExit"), "{}", adapted[0].name);
 }
+
+#[test]
+fn list_items() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = launch(folder.path(), STEPS);
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let values = serde_json::Map::from_iter([("item".to_owned(), json!([1, 2]))]);
+    let form = argo_runtime::adapter::Form::Text;
+    let text = adapter
+        .evaluate("{{item}}", form, "[0].make", &values)
+        .unwrap();
+    assert_eq!(text, json!("[1,2]"));
+    let outputs =
+        serde_json::Map::from_iter([("steps.make.outputs.result".to_owned(), json!(["1", "2"]))]);
+    let listed = adapter.evaluate("{{steps.make.outputs.result}}", form, "[1].use", &outputs);
+    assert_eq!(listed.unwrap(), json!("[1,2]"));
+}
+
+#[test]
+fn quoted_items() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = launch(folder.path(), STEPS);
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let values = serde_json::Map::from_iter([("inputs.parameters.p".to_owned(), json!("a\"b"))]);
+    let form = argo_runtime::adapter::Form::Items;
+    let items = adapter.evaluate(
+        r#"["{{inputs.parameters.p}}", "c"]"#,
+        form,
+        "[0].make",
+        &values,
+    );
+    assert_eq!(items.unwrap(), json!(["a\"b", "c"]));
+}
+
+#[test]
+fn tagged_item_keys() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = launch(folder.path(), STEPS);
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let values = serde_json::Map::from_iter([("inputs.parameters.key".to_owned(), json!("x"))]);
+    let form = argo_runtime::adapter::Form::Items;
+    let code = r#"[{"{{inputs.parameters.key}}": "v"}]"#;
+    let items = adapter.evaluate(code, form, "[0].make", &values);
+    assert_eq!(items.unwrap(), json!([{"x": "v"}]));
+}

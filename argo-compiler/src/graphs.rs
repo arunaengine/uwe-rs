@@ -145,6 +145,10 @@ impl Compiler {
                     "an input parameter of a steps or DAG template reads valueFrom",
                 ));
             }
+            if value.is_some_and(|value| crate::tags::has_tag(&value.0)) {
+                let reason = format!("input parameter {} has a value with tags", parameter.name);
+                return Err(at(&reason));
+            }
             inputs.push(input);
         }
         for artifact in &template.inputs.artifacts {
@@ -338,8 +342,12 @@ impl Compiler {
             ancestors.insert(name.clone(), all);
         }
         let mut hooks: BTreeMap<String, String> = BTreeMap::new();
-        let declared = (dag.tasks.iter()).filter(|task| order.contains(&task.name));
-        for task in declared.collect::<Vec<_>>() {
+        let mut built_ops: BTreeMap<String, String> = BTreeMap::new();
+        // Dependencies first, so that a task sees the outputs and hooks of those it waits for.
+        let ordered = order
+            .iter()
+            .filter_map(|name| dag.tasks.iter().find(|t| t.name == *name));
+        for task in ordered.collect::<Vec<_>>() {
             let raw = (raw.iter())
                 .find(|node| node.get("name").and_then(Node::as_str) == Some(&task.name));
             let Some(raw) = raw else { continue };
@@ -364,7 +372,6 @@ impl Compiler {
             if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op)
                 && !names.is_empty()
             {
-                op.handles = crate::depends::handled(&tree);
                 op.depends = Some(tree);
                 for hook in names.iter().filter_map(|name| hooks.get(name)) {
                     let on = ended();
@@ -383,12 +390,64 @@ impl Compiler {
                 let reason = "tasks that depend on a recursive call run after all its rounds";
                 return Err(kept(&graph.name, reason));
             }
+            built_ops.insert(task.name.clone(), built.op.clone());
             scope
                 .made
                 .insert(format!("tasks.{}", site.name), (built.op, built.outputs));
         }
+        let mut heirs: BTreeMap<&String, Vec<&String>> = BTreeMap::new();
+        for target in &targets {
+            for ancestor in &ancestors[target] {
+                heirs.entry(ancestor).or_default().push(target);
+            }
+        }
+        for (ancestor, targets) in heirs {
+            let continues = |target: &String| {
+                let task = dag.tasks.iter().find(|task| task.name == *target);
+                task.and_then(|task| task.continue_on).unwrap_or_default()
+            };
+            let members: Option<Vec<(String, ContinueOn)>> = (targets.iter())
+                .map(|target| Some((built_ops.get(*target)?.clone(), continues(target))))
+                .collect();
+            if let (Some(failing), Some(members)) = (built_ops.get(ancestor), members) {
+                graph.ops.push(judged(failing, &members));
+            }
+        }
         Ok(())
     }
+}
+
+/// A status group that handles the failures of the task `failing` once every target that
+/// inherits them succeeded, or failed in a way it continues on: Argo judges a DAG by the
+/// branches of its targets, so a failure only counts through a target that did not get past it.
+fn judged(failing: &str, targets: &[(String, ContinueOn)]) -> wir::Op {
+    let mut allow = Vec::new();
+    let mut after = Vec::new();
+    for (target, continues) in targets {
+        let mut on = vec![Status::Succeeded];
+        on.extend((continues.failed).then_some(Status::Failed));
+        on.extend((continues.error).then_some(Status::Errored));
+        for status in &on[1..] {
+            if !allow.contains(status) {
+                allow.push(*status);
+            }
+        }
+        after.push(Dependency {
+            op: target.clone(),
+            on,
+        });
+    }
+    let members = targets.iter().map(|(target, _)| target.clone()).collect();
+    let mut group = op(
+        format!("{failing}.targets"),
+        Kind::StatusGroup(StatusGroup { members, allow }),
+    );
+    group.after = after;
+    group.handles.push(Dependency {
+        op: failing.to_owned(),
+        on: vec![Status::Failed, Status::Errored],
+    });
+    group
 }
 
 /// What a site compiled into: its op, which other ops wait for, and its outputs.
@@ -516,7 +575,8 @@ fn output_text(parameter: &argo_parser::model::Parameter) -> Result<String, Stri
         ));
     }
     match (from.expression.is_empty(), from.parameter.is_empty()) {
-        (false, _) => Ok(format!("{{{{={}}}}}", from.expression)),
+        // The native run gives the value of the expression as Go prints it, like `[1 2]`.
+        (false, _) => Ok(format!("{{{{=string({})}}}}", from.expression)),
         (true, false) => Ok(from.parameter.clone()),
         (true, true) => Err(format!("output parameter {name} has no source")),
     }

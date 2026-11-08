@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -14,24 +15,58 @@ use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::{Object, PathValue, State, Value};
 use serde_json::{Map, Value as Json, json};
 
+use crate::engine::Context;
+use crate::nextflow_scope::{Launching, Scoped};
+
 /// The name of the function that gives the callback.
-const ENTRY: &str = "wir_callback";
+pub(crate) const ENTRY: &str = "wir_callback";
 
 /// Code of a source that a callback runs in, lowered once.
 pub struct Compiled {
     module: Rc<Module>,
     /// The names of the parameters of the entry function, in order.
     names: Vec<String>,
+    /// The callback of a Nextflow scope, which runs in an interpreter of the run instead.
+    nextflow: Option<Scoped>,
+}
+
+/// Where callback code runs: after the text of its scope, if it has one, or in the run of the
+/// Nextflow script of its scope.
+pub enum Scope<'a> {
+    Text(Option<&'a str>),
+    Nextflow(Box<Launching>),
+}
+
+/// The scope of a callback or expression of an op.
+pub fn scope<'a>(context: &Context<'a>, scope: Option<&wir::Scope>) -> Scope<'a> {
+    let Some(scope) = scope else {
+        return Scope::Text(None);
+    };
+    match crate::nextflow_scope::launching(context, &scope.source) {
+        Some(launching) => Scope::Nextflow(Box::new(launching)),
+        None => Scope::Text(context.scopes.get(&scope.source).map(String::as_str)),
+    }
 }
 
 /// Lowers `code` as the body of a function of `names`, after the `library` definitions and
-/// the text of the source of its scope, if it has one.
+/// the text of the source of its scope; a Nextflow scope loads its script with its includes.
 pub fn compile(
     code: &str,
     library: &[String],
-    scope: Option<&str>,
+    scope: Scope<'_>,
     names: Vec<String>,
 ) -> Result<Compiled, String> {
+    let scope = match scope {
+        Scope::Nextflow(launching) => {
+            let scoped = Scoped::load(*launching, code, library, names.clone())?;
+            return Ok(Compiled {
+                module: Rc::new(Module::default()),
+                names,
+                nextflow: Some(scoped),
+            });
+        }
+        Scope::Text(text) => text,
+    };
     let mut source = String::new();
     if let Some(text) = scope {
         source.push_str(text);
@@ -59,6 +94,7 @@ pub fn compile(
     Ok(Compiled {
         module: Rc::new(module),
         names,
+        nextflow: None,
     })
 }
 
@@ -69,11 +105,42 @@ impl Host for Quiet {
     fn print(&mut self, _text: &str) {}
 }
 
+/// Prints through the print sink of the run, for an expression with the `log` effect.
+struct Printing<'a>(&'a crate::driver::Printer);
+
+impl Host for Printing<'_> {
+    fn print(&mut self, text: &str) {
+        self.0.print(text);
+    }
+}
+
 impl Compiled {
-    /// The value of the code for the values of its names.
+    /// The value of the code for the values of its names, which prints nothing.
     pub fn value(&self, values: &Map<String, Json>, base: &Path) -> Result<Json, String> {
-        let mut host = Quiet;
-        let mut interpreter = Interpreter::new(&mut host);
+        self.value_in(&mut Quiet, values, base)
+    }
+
+    /// The value of the code, which prints through `printer`, like a check at the start of a
+    /// run; code of a Nextflow scope prints through the host of the Nextflow run.
+    pub fn printed(
+        &self,
+        values: &Map<String, Json>,
+        base: &Path,
+        printer: &crate::driver::Printer,
+    ) -> Result<Json, String> {
+        self.value_in(&mut Printing(printer), values, base)
+    }
+
+    fn value_in(
+        &self,
+        host: &mut dyn Host,
+        values: &Map<String, Json>,
+        base: &Path,
+    ) -> Result<Json, String> {
+        if let Some(scoped) = &self.nextflow {
+            return scoped.run(values, None, base);
+        }
+        let mut interpreter = Interpreter::new(host);
         let result = self.run(&mut interpreter, values, base)?;
         to_json(&result)
     }
@@ -85,6 +152,9 @@ impl Compiled {
         arguments: &[Json],
         base: &Path,
     ) -> Result<Json, String> {
+        if let Some(scoped) = &self.nextflow {
+            return scoped.run(values, Some(arguments), base);
+        }
         let mut host = Quiet;
         let mut interpreter = Interpreter::new(&mut host);
         let Value::Closure(closure) = self.run(&mut interpreter, values, base)? else {
@@ -108,6 +178,30 @@ impl Compiled {
         (interpreter.call_function(&self.module, ENTRY, arguments))
             .map_err(|error| error.to_string())
     }
+}
+
+/// The order of two values by Groovy's rules, as `sort()` without a closure gives it.
+pub fn compare(left: &Json, right: &Json, base: &Path) -> Ordering {
+    to_value(left, base).number_aware_compare(&to_value(right, base))
+}
+
+/// The CacheHelper hash that Nextflow sorts by, of the file contents when `deep`, as an order
+/// key: big-endian bytes whose order is that of the signed hash.
+pub fn hash_key(value: &Json, deep: bool, base: &Path) -> Result<Vec<u8>, String> {
+    let key = nextflow_runtime::hash_key(&to_value(value, base), &mut Quiet, deep);
+    let key = key.map_err(|error| error.to_string())?;
+    Ok(((key as u64) ^ (1 << 63)).to_be_bytes().to_vec())
+}
+
+/// The text of a value as Groovy's `toString` gives it, which `view` prints.
+pub fn text(value: &Json, base: &Path) -> String {
+    to_value(value, base).to_string()
+}
+
+/// The sum of two values by Groovy's `+`, as Nextflow's `sum` adds them.
+pub fn add(left: &Json, right: &Json, base: &Path) -> Result<Json, String> {
+    let plus = compile("{ a, b -> a + b }", &[], Scope::Text(None), Vec::new())?;
+    plus.call(&Map::new(), &[left.clone(), right.clone()], base)
 }
 
 /// A wir value as Groovy sees it: Files and Directories are paths, and the bridge forms are
@@ -242,10 +336,22 @@ mod tests {
     #[test]
     fn groovy_callbacks() {
         let base = Path::new("/data");
-        let twice = compile("{ x -> x * factor }", &[], None, vec!["factor".into()]).unwrap();
+        let twice = compile(
+            "{ x -> x * factor }",
+            &[],
+            Scope::Text(None),
+            vec!["factor".into()],
+        )
+        .unwrap();
         let values = Map::from_iter([("factor".into(), json!(3))]);
         assert_eq!(twice.call(&values, &[json!(7)], base).unwrap(), json!(21));
-        let pairs = compile("{ id, reads -> [id, reads.size()] }", &[], None, Vec::new()).unwrap();
+        let pairs = compile(
+            "{ id, reads -> [id, reads.size()] }",
+            &[],
+            Scope::Text(None),
+            Vec::new(),
+        )
+        .unwrap();
         let item = json!(["a", [1, 2]]);
         assert_eq!(
             pairs.call(&Map::new(), &[item], base).unwrap(),
@@ -253,10 +359,16 @@ mod tests {
             "a tuple fills the parameters"
         );
         let library = vec!["def shout(text) { text.toUpperCase() }".to_owned()];
-        let loud = compile("shout(inputs.word)", &library, None, vec!["inputs".into()]).unwrap();
+        let loud = compile(
+            "shout(inputs.word)",
+            &library,
+            Scope::Text(None),
+            vec!["inputs".into()],
+        )
+        .unwrap();
         let values = Map::from_iter([("inputs".into(), json!({"word": "hi"}))]);
         assert_eq!(loud.value(&values, base).unwrap(), json!("HI"));
-        assert!(compile("{ x -> ", &[], None, Vec::new()).is_err());
+        assert!(compile("{ x -> ", &[], Scope::Text(None), Vec::new()).is_err());
     }
 
     #[test]
@@ -272,11 +384,38 @@ mod tests {
         for form in forms {
             assert_eq!(to_json(&to_value(&form, base)).unwrap(), form, "{form}");
         }
-        let target = compile("{ key -> key.getGroupTarget() }", &[], None, Vec::new()).unwrap();
+        let target = compile(
+            "{ key -> key.getGroupTarget() }",
+            &[],
+            Scope::Text(None),
+            Vec::new(),
+        )
+        .unwrap();
         let key = json!({"class": "GroupKey", "target": "s1", "size": 2});
         assert_eq!(target.call(&Map::new(), &[key], base).unwrap(), json!("s1"));
-        let closure = compile("{ x -> { -> x } }", &[], None, Vec::new()).unwrap();
+        let closure = compile("{ x -> { -> x } }", &[], Scope::Text(None), Vec::new()).unwrap();
         let error = closure.call(&Map::new(), &[json!(1)], base).unwrap_err();
         assert!(error.contains("cannot cross a port"), "{error}");
+    }
+
+    #[test]
+    fn groovy_rules() {
+        let base = Path::new("/data");
+        let file = |name: &str| json!({"class": "File", "location": format!("/w/{name}")});
+        assert_eq!(
+            compare(&file("b.txt"), &file("a.txt"), base),
+            Ordering::Greater
+        );
+        assert_eq!(compare(&json!(2), &json!(10.5), base), Ordering::Less);
+        assert_eq!(
+            text(&json!(["a", 1, {"k": null}]), base),
+            "[a, 1, [k:null]]"
+        );
+        assert_eq!(add(&json!("a"), &json!("b"), base).unwrap(), json!("ab"));
+        let keys = [
+            hash_key(&json!("x"), false, base),
+            hash_key(&json!("x"), false, base),
+        ];
+        assert_eq!(keys[0], keys[1], "the hash of a value is stable");
     }
 }

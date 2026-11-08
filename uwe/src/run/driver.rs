@@ -101,11 +101,15 @@ pub(crate) fn driver(
 ) -> Result<Box<dyn Driver>, DriverError> {
     match language {
         Language::Nextflow => nextflow::driver(launch, run, quiet, arguments, setup),
-        Language::Snakemake => snakemake_runtime::driver_with_options(
-            launch,
-            snakemake(arguments, setup, cancel),
-            snakemake_options(arguments, setup),
-        ),
+        Language::Snakemake => {
+            let options = snakemake_options(arguments, setup, run);
+            if let Some(folder) = &options.workdir {
+                std::fs::create_dir_all(folder)
+                    .map_err(|error| DriverError::new(format!("{}: {error}", folder.display())))?;
+            }
+            let settings = snakemake(arguments, setup, cancel);
+            snakemake_runtime::driver_with_options(launch, settings, options)
+        }
         Language::Cwl => {
             let downloads = cache_directory().join("downloads");
             let options = cwl_options(arguments, setup, cancel);
@@ -124,7 +128,7 @@ pub(crate) fn driver(
                 nextflow: nextflow::blocks(run, arguments, setup),
                 snakemake: wir_runtime::snakemake::Options {
                     settings: snakemake(arguments, setup, cancel),
-                    run: snakemake_options(arguments, setup),
+                    run: snakemake_options(arguments, setup, run),
                 },
                 wdl: wdl_options(arguments),
                 print: !arguments.no_print,
@@ -237,7 +241,11 @@ fn cwl_options(
 }
 
 /// The options of Snakemake runs, and of the Snakemake blocks of wir runs.
-fn snakemake_options(arguments: &Arguments, setup: &Setup) -> snakemake_runtime::RunSettings {
+fn snakemake_options(
+    arguments: &Arguments,
+    setup: &Setup,
+    run: &str,
+) -> snakemake_runtime::RunSettings {
     snakemake_runtime::RunSettings {
         image: arguments.default_image.clone(),
         offline: super::backend::network_rule(arguments, setup).offline(&workflow_graph::Task {
@@ -248,7 +256,12 @@ fn snakemake_options(arguments: &Arguments, setup: &Setup) -> snakemake_runtime:
         conda: setup.conda.is_some(),
         shared_workdir: shared_workdir(arguments, setup),
         local: arguments.executor.as_deref().unwrap_or("local") == "local",
-        workdir: (setup.isolation.as_ref()).and_then(|isolation| isolation.launch.clone()),
+        // An isolated run without a launch folder of the host starts in one of its own, as a
+        // Nextflow run does, so that its code never reaches the working directory of uwe.
+        workdir: (setup.isolation.as_ref()).map(|isolation| {
+            (isolation.launch.clone())
+                .unwrap_or_else(|| cache_directory().join("scratch").join("launch").join(run))
+        }),
     }
 }
 

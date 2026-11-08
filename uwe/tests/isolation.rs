@@ -41,7 +41,7 @@ const SNAKEMAKE_SEEN: &str = "refused read\nrefused delete\nno variable\ninside"
 #[test]
 fn confines_workflow_code() {
     if std::env::var_os(CHILD).is_none() {
-        return in_child("confines_workflow_code");
+        return in_child("confines_workflow_code", None);
     }
     let root = tempfile::tempdir().unwrap();
     let outside = root.path().join("outside/secret.txt");
@@ -113,7 +113,7 @@ const SNAKEFILE_SHARED: &str = "import os\nseen = []\ntry:\n    os.remove(config
 #[test]
 fn protects_shared_files() {
     if std::env::var_os(CHILD).is_none() {
-        return in_child("protects_shared_files");
+        return in_child("protects_shared_files", None);
     }
     let root = tempfile::tempdir().unwrap();
     for (name, script, seen) in [
@@ -181,7 +181,7 @@ fn protects_shared_files() {
 #[test]
 fn launches_isolated_run() {
     if std::env::var_os(CHILD).is_none() {
-        return in_child("launches_isolated_run");
+        return in_child("launches_isolated_run", None);
     }
     let folder = tempfile::tempdir().unwrap();
     let workflow = folder.path().join("main.nf");
@@ -205,6 +205,51 @@ fn launches_isolated_run() {
     );
 }
 
+/// Reads and overwrites `service.txt` by a relative path, in the folder that the run starts in.
+const SNAKEFILE_RELATIVE: &str = "seen = []\ntry:\n    seen.append(open('service.txt').read())\n\
+    except OSError:\n    seen.append('no service file')\nwith open('service.txt', 'w') as written:\n    \
+    written.write('changed')\nwith open(config['report'], 'w') as written:\n    \
+    written.write('\\n'.join(seen))\n\nrule all:\n    input: []\n";
+
+/// An isolated Snakemake run without a launch folder of the host starts in a folder of its
+/// own, not in the working directory of the process, whose files its code must not reach.
+#[test]
+fn launches_isolated_snakefile() {
+    if std::env::var_os(CHILD).is_none() {
+        let process = tempfile::tempdir().unwrap();
+        let service = process.path().join("service.txt");
+        std::fs::write(&service, "service file").unwrap();
+        in_child("launches_isolated_snakefile", Some(process.path()));
+        assert_eq!(std::fs::read_to_string(&service).unwrap(), "service file");
+        return;
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = folder.path().join("workflow/Snakefile");
+    let data = folder.path().join("data");
+    std::fs::create_dir_all(workflow.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(&workflow, SNAKEFILE_RELATIVE).unwrap();
+    let mut settings = settings(folder.path(), &workflow);
+    let report = data.join("report.txt");
+    (settings.params).insert("report".into(), json!(report.to_string_lossy()));
+    settings.isolation = Some(Isolation {
+        roots: vec![data.clone()],
+        ..Isolation::default()
+    });
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let ran = runtime.block_on(request.run());
+    let ran = ran.unwrap_or_else(|failure| panic!("{}", failure.message));
+    assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+    assert_eq!(std::fs::read_to_string(&report).unwrap(), "no service file");
+    let launch = folder.path().join("cache/scratch/launch").join(&ran.id);
+    assert_eq!(
+        std::fs::read_to_string(launch.join("service.txt")).unwrap(),
+        "changed"
+    );
+}
+
 /// A run of `workflow` with its database, store, cache and outputs in `folder`.
 fn settings(folder: &Path, workflow: &Path) -> Settings {
     let mut settings = Settings::new(workflow);
@@ -217,10 +262,12 @@ fn settings(folder: &Path, workflow: &Path) -> Settings {
 }
 
 /// Runs one test of this file again in a child process with `SERVICE` set and without config
-/// files.
-fn in_child(test: &str) {
+/// files, in the working directory `folder` when one is given.
+fn in_child(test: &str, folder: Option<&Path>) {
     let config = tempfile::tempdir().unwrap();
-    let output = std::process::Command::new(std::env::current_exe().unwrap())
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command.current_dir(folder.unwrap_or(config.path()));
+    let output = command
         .args(["--exact", test, "--nocapture", "--test-threads=1"])
         .env(CHILD, "1")
         .env("UWE_SITE_CONFIG", "")

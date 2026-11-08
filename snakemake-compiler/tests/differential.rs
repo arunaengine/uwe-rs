@@ -260,6 +260,18 @@ fn named_targets(document: &Document) -> Json {
             Ok(text) if text.contains("directory") => "Directory",
             _ => "File",
         };
+        // A list of files and folders names each in a typed declaration.
+        let declared: Vec<Json> = (expr.library.iter())
+            .filter_map(|line| {
+                let (declaration, text) = line.split_once(" = ")?;
+                let class = declaration.split(' ').next()?;
+                Some(file(&serde_json::from_str::<String>(text).ok()?, class))
+            })
+            .collect();
+        if !declared.is_empty() {
+            targets.insert(name.to_owned(), Json::Array(declared));
+            continue;
+        }
         let value = match serde_json::from_str(&expr.code) {
             Ok(Json::String(location)) => file(&location, class),
             Ok(Json::Array(items)) => (items.iter())
@@ -360,6 +372,13 @@ fn compiled_groups_match() {
         let compared = compared(snakefile, &[]);
         assert_eq!(compared.shown, shown);
     }
+}
+
+/// Target files and folders in one list keep their classes.
+#[test]
+fn compiled_targets_match() {
+    let snakefile = "rule all:\n    input: \"a\", \"b.txt\"\n\nrule a:\n    output: directory(\"a\")\n    shell: \"mkdir {output}\"\n\nrule b:\n    output: \"b.txt\"\n    shell: \"touch {output}\"\n";
+    assert_eq!(compared(snakefile, &[]).shown, "same: 3 tasks");
 }
 
 /// A `cwl:` job runs the tasks of its CWL run, as natively.

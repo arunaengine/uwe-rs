@@ -119,7 +119,7 @@ impl Splitting {
         item: &Json,
     ) -> Result<Vec<Json>, Failure> {
         let Json::Array(fields) = item else {
-            return self.pieces(turn, context, item);
+            return self.pieces(turn, context, item, None);
         };
         let files: Vec<usize> = (fields.iter().enumerate())
             .filter(|(_, field)| field.get("class").and_then(Json::as_str) == Some("File"))
@@ -138,11 +138,12 @@ impl Splitting {
             ],
         };
         let mut columns = Vec::new();
-        for place in &places {
+        for (mate, place) in places.iter().enumerate() {
             let source = fields
                 .get(*place)
                 .ok_or_else(|| turn.failed(format!("the item has no element {place}")))?;
-            columns.push(self.pieces(turn, context, source)?);
+            let mate = (places.len() > 1).then_some(mate + 1);
+            columns.push(self.pieces(turn, context, source, mate)?);
         }
         if columns
             .iter()
@@ -161,12 +162,13 @@ impl Splitting {
             .collect())
     }
 
-    /// The chunks of one text or File.
+    /// The chunks of one text or File, of the mate `mate` of a pair.
     fn pieces(
         &self,
         turn: &Turn<'_>,
         context: &Context<'_>,
         source: &Json,
+        mate: Option<usize>,
     ) -> Result<Vec<Json>, Failure> {
         let mut text = self.text(turn, source)?;
         if let SplitFormat::Json(json) = &self.spec.format {
@@ -203,18 +205,19 @@ impl Splitting {
             });
         }
         match &self.spec.files {
-            Some(files) => self.written(turn, context, files, source, pieces),
+            Some(files) => self.written(turn, context, (files, mate), source, pieces),
             None => Ok(pieces),
         }
     }
 
     /// The text chunks of a source written as files of the op in the file area of the run,
-    /// all before any is given: `<name or stem>.<source>.<chunk>` with the format extension.
+    /// all before any is given: `<name or stem>.<source>.<chunk>`, with `_<mate>` for a pair,
+    /// and the format extension.
     fn written(
         &self,
         turn: &Turn<'_>,
         context: &Context<'_>,
-        files: &ChunkFiles,
+        (files, mate): (&ChunkFiles, Option<usize>),
         source: &Json,
         pieces: Vec<Json>,
     ) -> Result<Vec<Json>, Failure> {
@@ -259,7 +262,8 @@ impl Splitting {
                 return Err(turn.failed("only text chunks are written as files"));
             };
             let gzip = if files.compress { ".gz" } else { "" };
-            let name = format!("{stem}.{}.{chunk}.{extension}{gzip}", self.sources);
+            let mate = mate.map_or(String::new(), |mate| format!("_{mate}"));
+            let name = format!("{stem}.{}.{chunk}{mate}.{extension}{gzip}", self.sources);
             let path = folder.join(&name);
             if path.parent() != Some(folder.as_path()) {
                 return Err(turn.failed(format!("the chunk {name:?} leaves its folder")));
@@ -574,6 +578,26 @@ mod sequences {
             json!(["s", "@r1\nACGT\n+\nIIII\n", "@r1\nACGT\n+\nIIII\n"]),
             "aligned chunks of both files"
         );
+        let out = folder.path().join("chunks");
+        let unnamed = |name: &str, text: &str| {
+            let mut file = file(name, text);
+            file.as_object_mut().unwrap().remove("basename");
+            file
+        };
+        let (one, two) = (
+            unnamed("m1.fq", "@a\nA\n+\nI\n"),
+            unnamed("m2.fq", "@b\nC\n+\nI\n"),
+        );
+        let files = json!({"format": {"fastq": {}}, "pair": "auto", "files": {"directory": out.to_string_lossy()}});
+        let written = split(files, &[json!(["s", one, two])]).unwrap().remove(0);
+        let read =
+            |at: usize| std::fs::read_to_string(written[at]["location"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            (read(1), read(2)),
+            ("@a\nA\n+\nI\n".to_owned(), "@b\nC\n+\nI\n".to_owned()),
+            "each mate keeps its own chunk file"
+        );
+        assert_eq!(written[2]["basename"], "chunk.0.0_2.fq");
         let short = file("r3.fq", "@r1\nA\n+\nI\n");
         let unequal = split(
             json!({"format": {"fastq": {}}, "pair": {"at": [1, 2]}}),

@@ -1069,6 +1069,8 @@ impl WirDriver {
             deliveries: &self.published,
         };
         let argument = json!({"success": failure.is_none(), "error": failure});
+        // Hooks print, like a Nextflow `onComplete` that tells how the run ended.
+        let mut hooks = Callbacks::printing();
         let mut problems = Vec::new();
         for (index, hook) in self.document.hooks.iter().enumerate() {
             let closure = match hook {
@@ -1078,9 +1080,7 @@ impl WirDriver {
             };
             let body = wir::Body::Closure(closure.clone());
             let arguments = (&["run"][..], std::slice::from_ref(&argument));
-            let called = self
-                .callbacks
-                .call(&context, &body, arguments, &self.progress.inputs);
+            let called = hooks.call(&context, &body, arguments, &self.progress.inputs);
             if let Err(why) = called {
                 problems.push(format!("hook {index}: {why}"));
             }

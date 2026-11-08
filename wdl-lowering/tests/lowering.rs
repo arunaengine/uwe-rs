@@ -20,10 +20,17 @@ struct Runs {
 }
 
 fn runs(text: &str, inputs: Json) -> Runs {
+    documents(&[("main.wdl", text)], inputs)
+}
+
+/// The runs of the first of several documents, which may import the others.
+fn documents(files: &[(&str, &str)], inputs: Json) -> Runs {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path();
-    let target = root.join("main.wdl");
-    std::fs::write(&target, text).expect("writes the document");
+    for (name, text) in files {
+        std::fs::write(root.join(name), text).expect("writes a document");
+    }
+    let target = root.join(files[0].0);
     let lowering = wdl_lowering::lower(&target, None, root).expect("the document lowers");
     let wir = root.join("main.wir.json");
     let document = serde_json::to_string(&lowering.document).expect("serializes");
@@ -197,4 +204,187 @@ task count {
         [("count", "the runtime value docker depends on inputs")]
     );
     assert_eq!(runs.native, runs.lowered);
+}
+
+const SAY: &str = r#"
+task say {
+  input {
+    String name
+  }
+  command <<<
+    echo hi ~{name}
+  >>>
+  output {
+    String text = "hi ~{name}"
+    File out = stdout()
+  }
+}
+"#;
+
+#[test]
+fn scatter_becomes_map() {
+    let workflow = r#"version 1.1
+workflow scattered {
+  input {
+    Array[String] names
+  }
+  scatter (name in names) {
+    call say { input: name = name }
+    String loud = name + "!"
+  }
+  output {
+    Array[String] texts = say.text
+    Array[String] louds = loud
+    Array[File] outs = say.out
+  }
+}
+"#;
+    let runs = runs(
+        &format!("{workflow}{SAY}"),
+        json!({"names": ["a", "b", "c"]}),
+    );
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(
+        kinds(&runs.lowering, "main"),
+        named(&[("scatter.say", "map")])
+    );
+    let body = [("say", "call"), ("loud", "expr")];
+    assert_eq!(kinds(&runs.lowering, "scatter.say"), named(&body));
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.0, 3);
+    assert_eq!(runs.lowered.1["louds"], json!(["a!", "b!", "c!"]));
+}
+
+#[test]
+fn conditional_becomes_branch() {
+    let workflow = r#"version 1.1
+workflow choose {
+  input {
+    Boolean loud
+    String name
+  }
+  if (loud) {
+    call say as shout { input: name = name + "!" }
+  }
+  if (!loud) {
+    call say as whisper { input: name }
+  }
+  String chosen = select_first([shout.text, whisper.text])
+  output {
+    String said = chosen
+    File? shouted = shout.out
+  }
+}
+"#;
+    let text = format!("{workflow}{SAY}");
+    let runs = self::runs(&text, json!({"loud": true, "name": "ada"}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    let ops = [
+        ("if.shout", "branch"),
+        ("if.whisper.condition", "expr"),
+        ("if.whisper", "branch"),
+        ("chosen.items", "merge"),
+        ("chosen", "select"),
+    ];
+    assert_eq!(kinds(&runs.lowering, "main"), named(&ops));
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1["said"], json!("hi ada!"));
+    let quiet = self::runs(&text, json!({"loud": false, "name": "ada"}));
+    assert_eq!(quiet.native, quiet.lowered);
+    assert_eq!(quiet.lowered.1, json!({"said": "hi ada", "shouted": null}));
+}
+
+#[test]
+fn nested_scatter_maps() {
+    let text = r#"version 1.1
+workflow grid {
+  input {
+    Array[Int] rows
+    Array[Int] columns
+  }
+  scatter (row in rows) {
+    scatter (column in columns) {
+      call times { input: a = row, b = column }
+    }
+  }
+  output {
+    Array[Array[Int]] products = times.product
+  }
+}
+
+task times {
+  input {
+    Int a
+    Int b
+  }
+  command <<<
+    echo ~{a} ~{b}
+  >>>
+  output {
+    Int product = a * b
+  }
+}
+"#;
+    let runs = runs(text, json!({"rows": [1, 2], "columns": [3, 4, 5]}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(
+        kinds(&runs.lowering, "main"),
+        named(&[("scatter.times", "map")])
+    );
+    let graph = &runs.lowering.document.graphs[0];
+    let Kind::Map(outer) = &graph.ops[0].kind else {
+        panic!("the scatter is a map op");
+    };
+    let inner = [("scatter.times", "map")];
+    assert_eq!(kinds(&runs.lowering, &outer.body), named(&inner));
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1["products"], json!([[3, 4, 5], [6, 8, 10]]));
+}
+
+#[test]
+fn subworkflow_becomes_call() {
+    let main = r#"version 1.1
+import "inner.wdl" as inner
+
+workflow outer {
+  input {
+    String name
+  }
+  call inner.twice { input: name = name }
+  call inner.twice as again { input: name = twice.first }
+  output {
+    Array[String] texts = again.texts
+  }
+}
+"#;
+    let inner = format!(
+        r#"version 1.1
+workflow twice {{
+  input {{
+    String name
+  }}
+  call say as one {{ input: name = name }}
+  call say as two {{ input: name = one.text }}
+  output {{
+    String first = one.text
+    Array[String] texts = [one.text, two.text]
+  }}
+}}
+{SAY}"#
+    );
+    let runs = documents(
+        &[("main.wdl", main), ("inner.wdl", &inner)],
+        json!({"name": "ada"}),
+    );
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    let ops = [("twice", "call"), ("again", "call")];
+    assert_eq!(kinds(&runs.lowering, "main"), named(&ops));
+    let inner = [("one", "call"), ("two", "call"), ("output.texts", "expr")];
+    assert_eq!(kinds(&runs.lowering, "twice"), named(&inner));
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.0, 4);
+    assert_eq!(
+        runs.lowered.1["texts"],
+        json!(["hi hi ada", "hi hi hi ada"])
+    );
 }

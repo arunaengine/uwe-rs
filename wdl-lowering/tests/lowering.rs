@@ -544,6 +544,33 @@ task maybe {
 }
 
 #[test]
+fn text_files_stay() {
+    let text = r#"version 1.1
+task show {
+  input {
+    String source
+  }
+  File reference = source
+  command <<<
+    cat ~{reference}
+  >>>
+  output {
+    File out = stdout()
+  }
+}
+"#;
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let source = folder.path().join("reference.txt");
+    std::fs::write(&source, "text\n").expect("writes the reference");
+    let runs = runs(text, json!({"source": source}));
+    let kept: Vec<&str> = (runs.lowering.kept.iter())
+        .map(|kept| kept.reason.as_str())
+        .collect();
+    assert_eq!(kept, ["the declaration reference makes files from text"]);
+    assert_eq!(runs.native, runs.lowered);
+}
+
+#[test]
 fn commands_write_files() {
     let text = r#"version 1.1
 task lines {

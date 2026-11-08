@@ -997,7 +997,7 @@
               },
               "from": {
                 "oneOf": [
-                  { "enum": ["stdout", "stderr", "results"] },
+                  { "enum": ["stdout", "stderr", "results", "empty"] },
                   {
                     "type": "object",
                     "additionalProperties": false,
@@ -1012,7 +1012,9 @@
                   }
                 ]
               },
-              "load_contents": { "type": "boolean" }
+              "load_contents": { "type": "boolean" },
+              "listing": { "enum": ["shallow", "deep"] },
+              "code": { "type": "string" }
             }
           }
         },

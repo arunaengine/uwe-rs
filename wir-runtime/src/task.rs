@@ -372,6 +372,13 @@ pub fn capture(
             values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
             continue;
         }
+        // A simulated run makes up a file for each pattern; as uwe's CWL driver, one value
+        // takes the first.
+        let one = !matches!(unwrapped(&port.r#type, defs), Some(Type::Array(_)));
+        let found = match simulated && one && found.len() > 1 {
+            true => found[..1].to_vec(),
+            false => found,
+        };
         let mut value = fill(&port.r#type, &found, defs)
             .and_then(|mut value| {
                 attach(&mut value, &port.r#type, outcome, defs)?;
@@ -591,6 +598,14 @@ fn fill(r#type: &Type, found: &[&OutputFile], defs: &[TypeDef]) -> Result<Json, 
             [] => Err("no file matched".into()),
             _ => Err(format!("{} files matched one value", found.len())),
         },
+    }
+}
+
+/// A type without the optional around it.
+fn unwrapped<'a>(r#type: &'a Type, defs: &'a [TypeDef]) -> Option<&'a Type> {
+    match resolve(r#type, defs)? {
+        Type::Optional(inner) => unwrapped(inner, defs),
+        other => Some(other),
     }
 }
 
@@ -1177,6 +1192,58 @@ mod tests {
         );
         assert_eq!(values["given"]["basename"], "b.txt");
         assert_eq!(values["count"], 3);
+    }
+
+    #[test]
+    fn simulated_runs_take_first() {
+        let file = |path: &str| OutputFile {
+            path: path.into(),
+            location: format!("/out/{path}"),
+            directory: false,
+            size: None,
+            digest: None,
+        };
+        let outcome = Outcome {
+            files: vec![file("r.fastq"), file("r_1.fastq")],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "reads".into(),
+            from: CaptureRule::Glob("r*.fastq".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+        };
+        let spec = wir::Task {
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "reads".into(),
+            r#type: Type::File(wir::FileType::default()),
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (settings, access, bound) =
+            (JavaScriptSettings::default(), Access::default(), Map::new());
+        let ended = |simulated| Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated,
+            settings: &settings,
+            access: &access,
+        };
+        let values = capture(&spec, &ports, ended(true), &[]).unwrap();
+        assert_eq!(
+            values["reads"]["basename"], "r.fastq",
+            "the first made-up file"
+        );
+        let error = capture(&spec, &ports, ended(false), &[]).unwrap_err();
+        assert!(error.contains("2 files matched one value"), "{error}");
     }
 
     #[test]

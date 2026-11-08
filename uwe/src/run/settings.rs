@@ -224,6 +224,7 @@ impl Settings {
         arguments.database = self.database;
         arguments.store = self.store;
         arguments.secrets = self.secrets;
+        arguments.embedded = !cli;
         let mut file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
             let mut values = self.inputs.unwrap_or_else(|| Value::Object(Map::new()));
             let object = values

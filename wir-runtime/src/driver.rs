@@ -28,6 +28,7 @@ use crate::nextflow;
 use crate::operator;
 use crate::plan::{Node, plan};
 use crate::processes;
+use crate::regions;
 use crate::snakemake;
 use crate::state::{Progress, State, widen};
 use crate::task;
@@ -193,6 +194,8 @@ pub struct WirDriver {
     processes: processes::Processes,
     /// The loops that run, by node.
     loops: looping::Loops,
+    /// The dynamic regions that run, by node.
+    regions: regions::Regions,
     /// The text of each source that a scope names, by source id.
     scopes: HashMap<String, String>,
     /// The file area of the run, made when an op of the document writes files.
@@ -250,6 +253,7 @@ impl WirDriver {
             stepping: false,
             processes: processes::Processes::new(),
             loops: looping::Loops::new(),
+            regions: regions::Regions::new(),
             scopes: HashMap::new(),
             file_area: PathBuf::new(),
         }
@@ -294,7 +298,8 @@ impl WirDriver {
             if passes == PASSES {
                 self.stepping = !self.operators.is_empty()
                     || !self.processes.is_empty()
-                    || !self.loops.is_empty();
+                    || !self.loops.is_empty()
+                    || !self.regions.is_empty();
                 break;
             }
             passes += 1;
@@ -311,7 +316,8 @@ impl WirDriver {
             let rounds =
                 processes::step_all(&mut self.progress, &self.document, &mut self.processes);
             let runs = looping::step_all(&mut self.progress, &self.document, &mut self.loops);
-            if !stepped && !rounds && !runs {
+            let plans = self.step_regions();
+            if !stepped && !rounds && !runs && !plans {
                 break;
             }
         }
@@ -320,6 +326,11 @@ impl WirDriver {
 
     /// Starts a node with its input values; the tasks it asks for.
     fn begin(&mut self, at: usize, bound: Map<String, Json>) -> Result<Vec<Task>, DriverError> {
+        if let Kind::Dynamic(spec) = &self.progress.node(at).op.kind {
+            self.regions
+                .insert(at, regions::Region::new(spec.clone(), bound));
+            return Ok(Vec::new());
+        }
         if let Kind::Loop(spec) = &self.progress.node(at).op.kind {
             self.loops
                 .insert(at, looping::Looping::new(spec.clone(), bound));
@@ -872,6 +883,35 @@ impl WirDriver {
         tasks
     }
 
+    /// Takes in the plan updates of every region, and ends the regions that settled; whether
+    /// any moved. A region whose update cannot be adopted fails.
+    fn step_regions(&mut self) -> bool {
+        let mut moved = false;
+        for at in self.regions.keys().copied().collect::<Vec<usize>>() {
+            match self.step_region(at) {
+                Ok(step) => moved |= step,
+                Err(why) => {
+                    regions::fail(&mut self.progress, &mut self.regions, at, why);
+                    moved = true;
+                }
+            }
+        }
+        moved | regions::settle(&mut self.progress, &mut self.regions)
+    }
+
+    fn step_region(&mut self, at: usize) -> Result<bool, String> {
+        let Some(region) = self.regions.get_mut(&at) else {
+            return Ok(false);
+        };
+        let updates = region.given(&mut self.progress, at)?;
+        let moved = !updates.is_empty();
+        let checks = (&self.document, &self.settings.adapters);
+        for update in updates {
+            region.adopt(&mut self.progress, checks, at, update)?;
+        }
+        Ok(moved)
+    }
+
     /// Where the document source `id` is: the checkout of a repository at the commit of a
     /// `git:` digest, a URL, or a path from the folder of the document.
     fn locate(&self, id: &str) -> Result<PathBuf, DriverError> {
@@ -1079,6 +1119,10 @@ impl Driver for WirDriver {
             self.progress
                 .failures
                 .push(format!("op {path}: its rounds never ended"));
+        }
+        for at in self.regions.keys().copied().collect::<Vec<usize>>() {
+            let why = "its plan never settled".to_owned();
+            regions::fail(&mut self.progress, &mut self.regions, at, why);
         }
         for at in std::mem::take(&mut self.loops).into_keys() {
             let path = self.progress.node(at).path.clone();

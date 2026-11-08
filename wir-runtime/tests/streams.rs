@@ -160,7 +160,8 @@ fn capability_fence() {
     let call = json!({"path": "later", "kind": {"call": {"graph": "inner"}}});
     graphs[0]["ops"].as_array_mut().unwrap().push(call);
     let region = json!({"path": "region", "kind": {"dynamic": {"plan": "plans"}},
-        "inputs": [{"name": "plans", "type": "dynamic", "flow": "stream"}]});
+        "inputs": [{"name": "plans", "type": "dynamic", "flow": "stream"}],
+        "outputs": [{"name": "found", "type": "int", "flow": "stream"}]});
     let inner = json!({"name": "inner", "inputs": [], "ops": [emitting(true, json!({"array": {"items": "int"}}))[0]["ops"][0], region],
         "edges": [edge((Some("emit"), "out"), (Some("region"), "plans"))]});
     graphs.as_array_mut().unwrap().push(inner);
@@ -168,7 +169,7 @@ fn capability_fence() {
     graphs[1]["ops"][0]["inputs"][0]["default"] = json!([1]);
     let error = run(graphs, json!({"xs": [1]})).unwrap_err();
     assert_eq!(
-        error, "op inner/region: uwe does not run stream ports yet",
+        error, "op inner/region: uwe does not run stream outputs of dynamic regions yet",
         "nothing of the run starts"
     );
 }

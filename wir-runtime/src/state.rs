@@ -409,7 +409,7 @@ impl Progress {
 
     /// Ends a call once every op of its graph ended: it succeeds when none of them failed
     /// and every output of the graph is bound.
-    fn end_call(&mut self, at: usize) -> bool {
+    pub fn end_call(&mut self, at: usize) -> bool {
         if !self.exports_ended(at) {
             return false;
         }

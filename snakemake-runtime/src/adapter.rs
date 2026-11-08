@@ -138,8 +138,9 @@ impl SnakemakeDriver {
 
     fn ask_job(&mut self, request: Request) -> Result<Answer, DriverError> {
         let tasks = self.ask(request)?;
+        // Commands of workflow code need a run that takes their tasks, which jobs alone lack.
         if !tasks.is_empty() {
-            return Err(DriverError::new(
+            return Err(DriverError::unsupported(
                 "workflow code ran a command while a job was planned or prepared",
             ));
         }

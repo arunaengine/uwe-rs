@@ -60,7 +60,15 @@ pub fn compile(
     }
     let mut driver =
         snakemake_runtime::spawn_driver(launch, settings, run).map_err(|error| error.message)?;
-    let jobs = driver.plan_jobs().map_err(|error| error.message)?;
+    let jobs = match driver.plan_jobs() {
+        Ok(jobs) => jobs,
+        // A native op holds what uwe cannot plan job by job; its run says the same.
+        Err(error) if error.unsupported => {
+            let reason = error.message.lines().next().unwrap_or_default().to_owned();
+            return Ok(native(sources, &setting, reason));
+        }
+        Err(error) => return Err(error.message),
+    };
     drop(driver);
     if let Some(reason) = jobs.iter().find_map(kept_job) {
         return Ok(native(sources, &setting, reason));

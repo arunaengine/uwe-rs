@@ -116,7 +116,8 @@ impl Lowerer {
     }
 
     /// The body graph of a scatter or an `if`: the names it takes are its inputs, after the
-    /// variable of a scatter, and the names its statements define are its outputs.
+    /// variable of a scatter, and the names its statements define are its outputs, with the
+    /// types they have in the body.
     fn body(
         &mut self,
         document: &Analyzed,
@@ -125,6 +126,9 @@ impl Lowerer {
         path: &str,
         variable: Option<Port>,
     ) -> Result<(Graph, Vec<Port>), String> {
+        // wir has no `T??` that is `T?`, so an optional output of an `if` body is dynamic.
+        let open = variable.is_none();
+        let mut outputs = Vec::new();
         let mut graph = Graph {
             name: self.graph_name(path),
             inputs: variable.into_iter().collect(),
@@ -143,13 +147,17 @@ impl Lowerer {
                     continue;
                 };
                 for (item, held) in ports(&name, bound) {
-                    graph.outputs.push(port(&item, held.r#type.clone()));
+                    let r#type = match (open, &held.r#type) {
+                        (true, Type::Optional(_)) => Type::Dynamic,
+                        (_, r#type) => r#type.clone(),
+                    };
+                    graph.outputs.push(port(&item, r#type));
+                    outputs.push(port(&item, held.r#type.clone()));
                     graph.edges.push(edge(held.end, end(None, &item)));
                 }
             }
         }
         self.check(&graph)?;
-        let outputs = graph.outputs.clone();
         Ok((graph, outputs))
     }
 }

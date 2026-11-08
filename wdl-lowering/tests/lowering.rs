@@ -452,3 +452,31 @@ workflow nested {
     assert_eq!(runs.native, runs.lowered);
     assert_eq!(runs.lowered.1["texts"], json!(["hi ada", "hi bob"]));
 }
+
+#[test]
+fn nested_conditional_lowers() {
+    let workflow = r#"version 1.1
+workflow nested {
+  input {
+    Boolean morning
+    Boolean friendly
+  }
+  if (morning) {
+    if (friendly) {
+      call say { input: name = "ada" }
+    }
+  }
+  output {
+    String? text = say.text
+    String chosen = select_first([say.text, "hi"])
+  }
+}
+"#;
+    let text = format!("{workflow}{SAY}");
+    for (morning, friendly, chosen) in [(true, true, "hi ada"), (true, false, "hi")] {
+        let runs = self::runs(&text, json!({"morning": morning, "friendly": friendly}));
+        assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+        assert_eq!(runs.native, runs.lowered);
+        assert_eq!(runs.lowered.1["chosen"], json!(chosen));
+    }
+}

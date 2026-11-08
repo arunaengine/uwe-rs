@@ -192,6 +192,8 @@
         "inputs": { "$ref": "#/$defs/ports" },
         "outputs": { "$ref": "#/$defs/ports" },
         "after": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+        "depends": { "$ref": "#/$defs/control" },
+        "handles": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
         "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
         "attributes": { "$ref": "#/$defs/attributes" },
         "values": { "$ref": "#/$defs/value_rules" },
@@ -211,9 +213,54 @@
         "op": { "$ref": "#/$defs/path" },
         "on": {
           "type": "array",
-          "items": { "enum": ["succeeded", "failed", "errored", "skipped", "omitted"] }
+          "items": { "$ref": "#/$defs/status" }
         }
       }
+    },
+    "status": { "enum": ["succeeded", "failed", "errored", "skipped", "omitted", "cancelled"] },
+    "control": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all"],
+          "properties": { "all": { "type": "array", "items": { "$ref": "#/$defs/control" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any"],
+          "properties": { "any": { "type": "array", "items": { "$ref": "#/$defs/control" } } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["not"],
+          "properties": { "not": { "$ref": "#/$defs/control" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["result"],
+          "properties": {
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["op", "on"],
+              "properties": {
+                "op": { "$ref": "#/$defs/path" },
+                "on": {
+                  "type": "array",
+                  "items": {
+                    "enum": ["succeeded", "failed", "errored", "skipped", "omitted", "cancelled",
+                      "daemoned", "any_succeeded", "all_failed"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "effect": {
       "oneOf": [
@@ -552,6 +599,15 @@
             "each": { "$ref": "#/$defs/names" },
             "order": { "enum": ["completion", "fair"] },
             "parallelism": { "$ref": "#/$defs/count" }
+          }
+        },
+        "status_group": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["members"],
+          "properties": {
+            "members": { "type": "array", "items": { "$ref": "#/$defs/path" } },
+            "allow": { "type": "array", "items": { "$ref": "#/$defs/status" } }
           }
         },
         "branch": {

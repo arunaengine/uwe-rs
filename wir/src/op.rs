@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::closure::{Binding, ExprLanguage, Scope, ValueRules};
+use crate::control::{Control, StatusGroup};
 use crate::document::{Language, Port};
 use crate::reserved;
 
@@ -26,6 +27,12 @@ pub struct Op {
     /// Control and status dependencies on other ops of the same graph; all must hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub after: Vec<Dependency>,
+    /// A boolean tree of status tests that must hold too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depends: Option<Control>,
+    /// The failures of other ops that this op handles once it succeeds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub handles: Vec<Dependency>,
     /// What the op does besides binding its outputs. An op with effects is a root for pruning.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<Effect>,
@@ -84,6 +91,7 @@ pub enum Kind {
     MultiMap(reserved::MultiMap),
     Branch(Branch),
     Process(Process),
+    StatusGroup(StatusGroup),
     Select(reserved::Select),
     Loop(reserved::Loop),
     Dynamic(reserved::Dynamic),
@@ -310,6 +318,8 @@ pub enum Status {
     Skipped,
     /// It did not run because a dependency did not hold.
     Omitted,
+    /// It was stopped.
+    Cancelled,
 }
 
 /// Something an op does that its outputs do not show. Effectful work stays in `task` or

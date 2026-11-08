@@ -129,7 +129,7 @@ fn transform_nulls() {
 #[test]
 fn filter_items() {
     let port = |name: &str, r#type: &str| json!({"name": name, "type": r#type});
-    let test = json!({"path": "test", "kind": {"expr": {"language": "js", "code": "$(inputs.item > 1)"}},
+    let test = json!({"path": "test", "kind": {"expr": {"language": "groovy", "code": "inputs.item > 1"}},
         "inputs": [port("item", "int")], "outputs": [port("out", "bool")]});
     let big = json!({"name": "big", "inputs": [port("item", "int")], "outputs": [port("out", "bool")], "ops": [test],
         "edges": [edge((None, "item"), (Some("test"), "item")), edge((Some("test"), "out"), (None, "out"))]});

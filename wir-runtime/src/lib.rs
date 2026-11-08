@@ -21,6 +21,7 @@ pub mod nextflow;
 mod operator;
 mod plan;
 mod python;
+mod routing;
 pub mod snakemake;
 #[allow(dead_code, reason = "the stream ops of the next commits use it")]
 mod spill;

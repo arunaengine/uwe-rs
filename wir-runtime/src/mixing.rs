@@ -175,4 +175,4 @@ impl Operator for Rounds {
 
 #[cfg(test)]
 #[path = "mixing_tests.rs"]
-mod tests;
+pub(crate) mod tests;

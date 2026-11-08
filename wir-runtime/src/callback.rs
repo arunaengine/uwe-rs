@@ -140,7 +140,7 @@ mod tests {
     fn graph_callbacks() {
         let edge = |from: (Option<&str>, &str), to: (Option<&str>, &str)| json!({"from": {"op": from.0, "port": from.1}, "to": {"op": to.0, "port": to.1}});
         let port = |name: &str| json!({"name": name, "type": "int"});
-        let add = json!({"path": "add", "kind": {"expr": {"language": "js", "code": "$(inputs.item + inputs.step)"}},
+        let add = json!({"path": "add", "kind": {"expr": {"language": "groovy", "code": "inputs.item + inputs.step"}},
             "inputs": [port("item"), port("step")], "outputs": [port("out")]});
         let graph = json!({"name": "next", "inputs": [port("item"), {"name": "step", "type": "int", "default": 1}],
             "outputs": [port("out")], "ops": [add],

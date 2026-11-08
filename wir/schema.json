@@ -632,6 +632,7 @@
           "properties": {
             "body": { "$ref": "#/$defs/name" },
             "condition": { "$ref": "#/$defs/name" },
+            "limit": { "$ref": "#/$defs/count" },
             "carry": {
               "type": "array",
               "items": {
@@ -649,8 +650,28 @@
         "dynamic": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["plan"],
-          "properties": { "plan": { "$ref": "#/$defs/name" } }
+          "properties": {
+            "plan": { "$ref": "#/$defs/name" },
+            "planner": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["snakemake"],
+              "properties": {
+                "snakemake": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["source"],
+                  "properties": {
+                    "source": { "$ref": "#/$defs/name" },
+                    "targets": { "$ref": "#/$defs/texts" },
+                    "profiles": { "$ref": "#/$defs/texts" },
+                    "configs": { "$ref": "#/$defs/names" }
+                  }
+                }
+              }
+            },
+            "order": { "enum": ["completion", "fair"] }
+          }
         }
       }
     },

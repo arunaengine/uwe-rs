@@ -443,3 +443,30 @@ fn builder_forms() {
     ];
     kinds_round_trip(&good, &bad);
 }
+
+#[test]
+fn dynamic_forms() {
+    let good = [
+        json!({"loop": {"body": "step", "condition": "again", "carry": [{"output": "n", "input": "n"}], "limit": 10}}),
+        json!({"dynamic": {"plan": "plans", "order": "fair"}}),
+        json!({"dynamic": {"planner": {"snakemake": {"source": "smk", "targets": ["all"], "configs": ["c"]}}}}),
+    ];
+    let bad = [
+        json!({"dynamic": {"plan": "p", "planner": {"nextflow": {"source": "s"}}}}),
+        json!({"loop": {"body": "step", "condition": "again", "limit": -1}}),
+    ];
+    kinds_round_trip(&good, &bad);
+    let update = json!({"revision": 0, "graph": {"name": "region"},
+        "keys": [{"op": "a", "identity": {"rule": {"source": "smk", "rule": "bwa_map", "wildcards": {"sample": "A"}}}},
+            {"op": "b", "identity": {"named": "b"}}], "final_plan": true});
+    let parsed: wir::reserved::PlanUpdate =
+        serde_json::from_value(update.clone()).expect("an update");
+    assert_eq!(serde_json::to_value(&parsed).expect("serializes"), update);
+    let unrevised = json!({"graph": {"name": "region"}});
+    assert!(
+        serde_json::from_value::<wir::reserved::PlanUpdate>(unrevised).is_err(),
+        "revision is required"
+    );
+    let unknown = json!({"revision": 1, "graph": {"name": "region"}, "keys": [{"op": "a", "identity": {"named": "a"}, "x": 1}]});
+    assert!(serde_json::from_value::<wir::reserved::PlanUpdate>(unknown).is_err());
+}

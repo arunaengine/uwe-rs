@@ -3,9 +3,13 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::closure::{Body, Closure};
+use crate::document::Graph;
+use crate::op::Emission;
 pub use crate::splits::{
     ChunkFiles, CsvSplit, Decompress, Header, JsonSplit, Pair, RecordField, SequenceField,
     SequenceSplit, Split, SplitFormat, TextSplit,
@@ -551,8 +555,8 @@ pub enum Pick {
     All,
 }
 
-/// Repeats `body` while its bool output `condition` is true, passing `carry` outputs to
-/// inputs. Open: the first check, outputs of all rounds, and limits.
+/// Runs `body` once, then again while its bool output `condition` is true, passing each
+/// `carry` output to its input; at most `limit` runs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Loop {
@@ -560,6 +564,8 @@ pub struct Loop {
     pub condition: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub carry: Vec<Carry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u64>,
 }
 
 /// One value passed from a body output to a body input of the next round.
@@ -570,12 +576,76 @@ pub struct Carry {
     pub input: String,
 }
 
-/// Runs a graph that the input `plan` holds as a wir graph value, made at run time. Open:
-/// stable instance ids, and reconciling with finished work.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// Runs a region whose graph comes from plan updates on the input `plan`, or from a
+/// language planner; exactly one of the two is set.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Dynamic {
-    pub plan: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planner: Option<Planner>,
+    #[serde(default, skip_serializing_if = "Emission::is_completion")]
+    pub order: Emission,
+}
+
+/// A planner of a language that makes the graph of a region.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum Planner {
+    Snakemake(PlanRef),
+}
+
+/// The source, targets, profiles and configs a planner plans from.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanRef {
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub configs: Vec<String>,
+}
+
+/// One revision of the graph of a region, with the identities of its top-level ops.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanUpdate {
+    pub revision: u64,
+    pub graph: Graph,
+    /// Empty: each op's path is its identity; else one key per top-level op.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys: Vec<InstanceKey>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub final_plan: bool,
+}
+
+/// The identity of a top-level op of a plan.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InstanceKey {
+    pub op: String,
+    pub identity: Identity,
+}
+
+/// A stable identity: a name, or a Snakemake rule with its wildcard values.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum Identity {
+    Named(String),
+    Rule(RuleKey),
+}
+
+/// A Snakemake job: its source, rule and sorted wildcard values.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuleKey {
+    pub source: String,
+    pub rule: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub wildcards: BTreeMap<String, String>,
 }
 
 fn is_false(value: &bool) -> bool {

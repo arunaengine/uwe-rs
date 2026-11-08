@@ -68,7 +68,7 @@ impl<'d> Checker<'d> {
             Kind::MultiMap(multi) => self.multi_map(at, op, multi),
             Kind::Flatten(flatten) if streams(op) => self.flatten_stream(at, op, flatten.depth),
             Kind::Flatten(_) => self.flatten(at, op),
-            Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
+            Kind::Dynamic(dynamic) => self.inputs(at, op, dynamic.plan.iter()),
             _ => {}
         }
     }

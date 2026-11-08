@@ -251,14 +251,18 @@ impl WirDriver {
             Kind::Expr(spec) => {
                 let node = self.progress.node(at);
                 let path = node.path.clone();
-                if spec.language != "js" {
-                    let message = format!("op {path}: the language {} is reserved", spec.language);
-                    return Err(DriverError::unsupported(message));
-                }
                 let output = node.op.outputs[0].clone();
                 let settings = &self.settings.cwl.javascript;
                 let defs = &self.document.types;
-                match crate::expr::evaluate(&spec, &bound, &output, defs, settings) {
+                let value = match spec.language.as_str() {
+                    "js" => crate::expr::evaluate(&spec, &bound, &output, defs, settings),
+                    "wdl" => crate::wdl_expr::evaluate(&self.document, &node.op, &spec, &bound),
+                    other => {
+                        let message = format!("op {path}: the language {other} is reserved");
+                        return Err(DriverError::unsupported(message));
+                    }
+                };
+                match value {
                     Ok(value) => {
                         let values = Map::from_iter([(output.name, value)]);
                         self.progress.end(at, Status::Succeeded, values, None);

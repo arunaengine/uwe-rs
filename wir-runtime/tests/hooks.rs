@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
-use workflow_graph::{Attempt, Driver, Executor, Launch, Running, execute};
+use workflow_graph::{Attempt, Driver, ExecuteError, Executor, Launch, Running, execute};
 
 /// Runs no task: the runs here hold one expr.
 struct Idle;
@@ -116,4 +116,23 @@ fn hook_results() {
         json!(2),
         "a failing hook keeps the results"
     );
+}
+
+#[test]
+fn delivery_failures() {
+    let folder = tempfile::tempdir().unwrap();
+    let hooks = json!([{"complete": hook("{ 1 }")}, {"error": hook("{ it.nothing() }")}]);
+    let mut driver = started(folder.path(), hooks);
+    driver.finish().unwrap();
+    let lost = ExecuteError::Delivery {
+        location: "a".into(),
+        target: "b".into(),
+        message: "the disk is full".into(),
+    };
+    let error = driver.failed(&lost).unwrap_err().message;
+    assert!(
+        error.contains("hook 1:"),
+        "the error hooks run after finish: {error}"
+    );
+    assert!(driver.failed(&lost).is_ok(), "they run once");
 }

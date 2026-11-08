@@ -34,6 +34,9 @@ pub struct Network {
     pub launch: String,
     /// The processes of the run as observers see them, with the processes that each feeds.
     pub processes: Vec<Process>,
+    /// The files that the build read, as Nextflow reads them while it builds the workflow, by
+    /// location with their `sha256:` digests; the compiler pins them as sources.
+    pub reads: Vec<(String, String)>,
 }
 
 #[derive(Debug)]

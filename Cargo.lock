@@ -4855,6 +4855,7 @@ dependencies = [
  "regex",
  "run-database",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "tracing",
  "workflow-graph",

@@ -445,6 +445,7 @@ impl Network {
             schema: None,
             launch: String::new(),
             processes: self.processes(),
+            reads: Vec::new(),
         })
     }
 

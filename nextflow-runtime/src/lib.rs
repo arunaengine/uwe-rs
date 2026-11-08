@@ -158,7 +158,8 @@ impl Run {
                     network: &mut network,
                     defer: false,
                     written: Vec::new(),
-                    sources: Vec::new(),
+                    reads: Vec::new(),
+                    options,
                     base: &mut session,
                     stub: options.stub,
                     config: &options.config,
@@ -372,7 +373,7 @@ impl Run {
 }
 
 /// Builds the network of the entry workflow without starting it, for the compiler into wir:
-/// factories that read files and plugin functions that read data stay calls.
+/// factories stay calls, and the files that the build reads are kept with their digests.
 pub fn export(
     module: &Rc<Module>,
     options: &Options,
@@ -392,7 +393,8 @@ pub fn export(
         network: &mut network,
         defer: true,
         written: Vec::new(),
-        sources: Vec::new(),
+        reads: Vec::new(),
+        options,
         base: &mut session,
         stub: options.stub,
         config: &options.config,
@@ -412,6 +414,7 @@ pub fn export(
         .map_err(|error| interpreter.locate(error))?;
     drop(interpreter);
     builder.write_kept();
+    let reads = std::mem::take(&mut builder.reads);
     let emits = match &emitted {
         Value::ChannelOut(out) => (out.values.iter().zip(&out.names))
             .filter_map(|(value, name)| match (value, name) {
@@ -444,6 +447,7 @@ pub fn export(
         .then(|| inputs::from_file(&schema, project).ok())
         .flatten();
     exported.launch = launch;
+    exported.reads = reads;
     Ok(exported)
 }
 

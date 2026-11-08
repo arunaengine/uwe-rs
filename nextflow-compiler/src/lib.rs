@@ -54,7 +54,7 @@ pub struct Context {
 }
 
 /// Compiles the pipeline of a launch, as the native driver with these settings would build it.
-/// A build that needs what the compiler does not do, like reading data, gives one native op.
+/// A build that needs what the compiler does not do gives one native op.
 /// It fails only when the pipeline does not build.
 pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, String> {
     let context = Context {
@@ -86,6 +86,9 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
         sources.script(config);
     }
     sources.run(&network.params, &network.config);
+    for (location, digest) in &network.reads {
+        sources.data(location, digest);
+    }
     let opaque = network.nodes.iter().filter_map(|node| match &node.kind {
         Kind::Opaque(reason) => Some(Kept {
             path: node.name.clone(),

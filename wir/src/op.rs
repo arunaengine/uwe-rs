@@ -534,8 +534,21 @@ impl Effect {
             directory.trim_end_matches('/'),
         );
         let inside = |rest: &str| rest.is_empty() || rest.starts_with('/');
-        !target.is_empty() && directory.strip_prefix(target).is_some_and(inside)
+        (plain_folder(target) && plain_folder(directory))
+            && directory.strip_prefix(target).is_some_and(inside)
     }
+}
+
+/// Whether a folder outside the run names its place plainly: a path or an address whose
+/// parts are not empty, `.` or `..`.
+pub fn plain_folder(folder: &str) -> bool {
+    let folder = folder.trim_end_matches('/');
+    let rest = match folder.split_once("://") {
+        Some((_, rest)) => rest,
+        None => folder.strip_prefix('/').unwrap_or(folder),
+    };
+    let plain = |part: &str| !part.is_empty() && part != "." && part != "..";
+    !rest.is_empty() && rest.split('/').all(plain)
 }
 
 /// Run settings that never enter a task cache key. A binding file per run may set them by

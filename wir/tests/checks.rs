@@ -704,6 +704,7 @@ fn split_options() {
         ("chunks", false),
         ("/data/chunk", false),
         ("/data/chunks/inner", false),
+        ("/data/../data", false),
         ("", false),
     ];
     for (target, names) in targets {
@@ -716,6 +717,28 @@ fn split_options() {
             problems(&published),
             wanted,
             "the publish target {target:?}"
+        );
+    }
+    let traversing = [
+        ("/data/chunks/../other", "/data/chunks"),
+        ("/data/./chunks", "/data"),
+        ("/data//chunks", "/data"),
+        ("s3://bucket/../other", "s3://bucket"),
+    ];
+    for (directory, target) in traversing {
+        let split = json!({"format": {"text": {}}, "files": {"directory": directory}});
+        let mut document = many(
+            json!({"split": split}),
+            source.clone(),
+            typed("out", json!("dynamic"), "stream"),
+        );
+        document["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": target}]);
+        assert_eq!(
+            problems(&document),
+            needs(&format!(
+                "a folder without empty, . or .. parts, not {directory}"
+            )),
+            "the folder {directory}"
         );
     }
     let escaping = json!({"format": {"text": {}}, "files": {"directory": "../up", "name": "a/b"}});

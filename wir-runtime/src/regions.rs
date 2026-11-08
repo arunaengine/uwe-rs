@@ -46,6 +46,8 @@ pub struct Region {
     instances: BTreeMap<String, Instance>,
     /// Whether the planner gave its first plan, or the value plan input was read.
     pub planned: bool,
+    /// Whether no plan can come any more: the plan input closed, or a planner plans.
+    plan_closed: bool,
     /// The producers that its stream outputs forward, in the order they were attached, and
     /// how many readers it installed for them.
     attached: Vec<Attachment>,
@@ -55,6 +57,7 @@ pub struct Region {
 impl Region {
     pub fn new(spec: Dynamic, bound: Map<String, Json>) -> Region {
         Region {
+            plan_closed: spec.plan.is_none(),
             spec,
             bound,
             revision: None,
@@ -76,6 +79,7 @@ impl Region {
         let streamed = (progress.node(at).op.inputs.iter())
             .any(|port| port.name == input && !port.flow.is_value());
         if !streamed {
+            self.plan_closed = true;
             if std::mem::replace(&mut self.planned, true) {
                 return Ok(Vec::new());
             }
@@ -100,6 +104,7 @@ impl Region {
                 Read::Pending => return Ok(updates),
                 Read::End(terminal) => match terminal.end {
                     StreamEnd::Close if self.final_plan || !updates.is_empty() => {
+                        self.plan_closed = true;
                         return Ok(updates);
                     }
                     StreamEnd::Close => {
@@ -434,7 +439,10 @@ pub fn settle(progress: &mut Progress, regions: &mut Regions) -> bool {
             regions.remove(&at);
             continue;
         }
-        let settled = region.final_plan && region.running(progress).is_empty() && region.exported();
+        let settled = region.final_plan
+            && region.plan_closed
+            && region.running(progress).is_empty()
+            && region.exported();
         let heard = region.spec.planner.is_none() || !region.unheard(progress);
         if settled && heard && progress.end_call(at) {
             regions.remove(&at);

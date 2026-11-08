@@ -374,7 +374,11 @@ impl WirDriver {
             // A Snakemake config file and an Argo parameter file take the values of params.
             Dialect::Snakemake => (folder.join("config.json"), nextflow::params(&bound)),
             Dialect::Argo => (folder.join("parameters.json"), nextflow::params(&bound)),
-            Dialect::Wdl => (folder.join("inputs.json"), nextflow::params(&bound)),
+            Dialect::Wdl => {
+                let ports = &self.progress.node(at).op.inputs;
+                let values = wdl::pairs(bound.clone(), ports, &self.document.types);
+                (folder.join("inputs.json"), nextflow::params(&values))
+            }
             _ => (
                 folder.join("job.json"),
                 cwl::to_cwl(Json::Object(bound.clone())),
@@ -709,7 +713,19 @@ impl Driver for WirDriver {
                 let place = cwl_parser::iri::file_path(target).unwrap_or(PathBuf::from(target));
                 places.insert(place.clone(), place);
             }
-            deliver(&mut results, &root, &mut planned, &mut places).map_err(DriverError::new)?;
+            let sources = &self.document.sources;
+            let wdl = !sources.is_empty() && sources.iter().all(|s| s.language == Dialect::Wdl);
+            match (wdl, &mut results) {
+                (true, Json::Object(outputs)) => {
+                    for (name, value) in outputs.iter_mut() {
+                        let folder = root.join(name);
+                        wdl_layout(value, (&root, &folder), &mut planned, &mut places)
+                            .map_err(DriverError::new)?;
+                    }
+                }
+                _ => deliver(&mut results, &root, &mut planned, &mut places)
+                    .map_err(DriverError::new)?,
+            }
             nested(&planned, &places).map_err(DriverError::new)?;
             self.delivering.extend(planned);
             if self.settings.print {
@@ -788,6 +804,49 @@ fn scopes_in(value: &Json, found: &mut Vec<wir::Scope>) {
             object.values().for_each(|item| scopes_in(item, found));
         }
         Json::Array(items) => items.iter().for_each(|item| scopes_in(item, found)),
+        _ => {}
+    }
+}
+
+/// Delivers the files of one output of a lowered WDL document as the WDL driver does: to
+/// `folder/`, or to `folder/<index>/` for many files. Files in `root` already stay there.
+fn wdl_layout(
+    value: &mut Json,
+    (root, folder): (&Path, &Path),
+    deliveries: &mut Vec<Delivery>,
+    places: &mut BTreeMap<PathBuf, PathBuf>,
+) -> Result<(), String> {
+    let mut count = 0;
+    each_file(value, &mut |_| count += 1);
+    let mut index = 0;
+    let mut result = Ok(());
+    each_file(value, &mut |file| {
+        let location = file
+            .get("location")
+            .and_then(Json::as_str)
+            .unwrap_or_default();
+        let local = cwl_parser::iri::file_path(location).unwrap_or(PathBuf::from(location));
+        let place = match count {
+            _ if local.starts_with(root) => root.to_owned(),
+            1 => folder.to_owned(),
+            _ => folder.join(index.to_string()),
+        };
+        index += 1;
+        if result.is_ok() {
+            result = deliver(file, &place, deliveries, places);
+        }
+    });
+    result
+}
+
+/// Calls `visit` with each File and Directory object of a value, in order.
+fn each_file(value: &mut Json, visit: &mut impl FnMut(&mut Json)) {
+    match value {
+        Json::Array(items) => items.iter_mut().for_each(|item| each_file(item, visit)),
+        Json::Object(object) => match object.get("class").and_then(Json::as_str) {
+            Some("File" | "Directory") => visit(value),
+            _ => (object.values_mut()).for_each(|item| each_file(item, visit)),
+        },
         _ => {}
     }
 }

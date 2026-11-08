@@ -39,6 +39,7 @@ mod transforms;
 mod values;
 mod wdl;
 mod wdl_closure;
+mod wdl_expr;
 
 pub use child::{Block, Child};
 pub use driver::{Repositories, Settings, WirDriver, driver};

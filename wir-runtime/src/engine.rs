@@ -87,8 +87,7 @@ pub fn begin(
                 }
                 ExprLanguage::Groovy | ExprLanguage::Python => language_expr(&spec, bound, context),
                 ExprLanguage::Wdl => {
-                    let message = format!("op {path}: uwe does not run this language here yet");
-                    return Err(DriverError::unsupported(message));
+                    crate::wdl_expr::evaluate(context.document, &node.op, &spec, bound)
                 }
             };
             value.and_then(|value| {

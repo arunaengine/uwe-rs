@@ -480,3 +480,26 @@ workflow nested {
         assert_eq!(runs.lowered.1["chosen"], json!(chosen));
     }
 }
+
+#[test]
+fn optional_files_stay() {
+    let text = r#"version 1.1
+task maybe {
+  command <<<
+    touch one.txt
+  >>>
+  output {
+    Array[File?] files = ["one.txt", "two.txt"]
+  }
+}
+"#;
+    let runs = runs(text, json!({}));
+    let kept: Vec<&str> = runs
+        .lowering
+        .kept
+        .iter()
+        .map(|kept| kept.reason.as_str())
+        .collect();
+    assert_eq!(kept, ["output files: files inside this type"]);
+    assert_eq!(runs.native, runs.lowered);
+}

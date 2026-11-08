@@ -38,6 +38,9 @@ impl Sources {
 
     /// The id of a script or config file, named by its location.
     pub fn script(&mut self, path: &str) -> String {
+        if let Some(text) = nextflow_runtime::plugin_script(path) {
+            return self.named(path.to_owned(), Some(sha256(text.as_bytes())));
+        }
         let location = self.location(Path::new(path));
         self.named(location, digest(Path::new(path)))
     }

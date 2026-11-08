@@ -256,10 +256,10 @@ fn refuses_block_sizes() {
 
 #[test]
 fn refuses_unrun_fields() {
-    let rules = refused(|document| op(document, 0)["values"] = json!("groovy"));
+    let rules = refused(|document| op(document, 0)["values"] = json!("python"));
     assert_eq!(
         rules,
-        "op main/sort: uwe compares values only by the wir rules yet"
+        "op main/sort: uwe compares values only by the wir and Groovy rules yet"
     );
     let captured = refused(|document| {
         let mut same = expr(json!({}));
@@ -287,4 +287,40 @@ fn refuses_unrun_fields() {
         op(document, 0)["attributes"] = json!({});
     });
     assert_eq!(built, "op main/sort: uwe does not run dialect tasks yet");
+}
+
+#[test]
+fn prints_check_exprs() {
+    let printed = |effects: Json| {
+        let folder = tempfile::tempdir().unwrap();
+        let launch = Launch {
+            simulated: true,
+            ..example(folder.path(), |document| {
+                let code = "[println('checked'), inputs.lines][1]";
+                let mut check = expr(json!({}));
+                check["kind"] = json!({"expr": {"language": "groovy", "code": code}});
+                check["effects"] = effects;
+                let ops = document["graphs"][0]["ops"].as_array_mut().unwrap();
+                ops.push(check);
+            })
+        };
+        let text = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = text.clone();
+        let settings = Settings {
+            print_sink: wir_runtime::Printer::new(move |line| sink.lock().unwrap().push_str(line)),
+            ..settings()
+        };
+        let mut driver = WirDriver::new(&launch, settings).unwrap();
+        let mut simulator = Simulator::new(folder.path().join("simulator"));
+        execute("rules", &mut driver, &mut simulator)
+            .into_result()
+            .unwrap();
+        text.lock().unwrap().clone()
+    };
+    assert_eq!(
+        printed(json!(["log"])),
+        "checked\n",
+        "a check prints to the sink"
+    );
+    assert_eq!(printed(json!([])), "", "a pure expr prints nothing");
 }

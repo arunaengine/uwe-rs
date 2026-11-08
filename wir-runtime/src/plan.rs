@@ -126,6 +126,8 @@ fn supported(kind: &Kind) -> bool {
             | Kind::Zip(_)
             | Kind::Route(_)
             | Kind::MultiMap(_)
+            | Kind::Collect(_)
+            | Kind::ToList(_)
     )
 }
 

@@ -22,6 +22,7 @@ nextflow-parser.workspace = true
 nextflow-runtime.workspace = true
 python-evaluator.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 snakemake-runtime.workspace = true
 storage.workspace = true
 tempfile.workspace = true

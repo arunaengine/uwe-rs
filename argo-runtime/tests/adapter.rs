@@ -169,6 +169,15 @@ fn native_task_keys() {
     let files: PathBuf = root.join("files");
     std::fs::create_dir_all(&files).unwrap();
     let made = [("/tmp/text", "hello\n"), ("/tmp/data/", "")];
+    assert_eq!(adapter.entrypoint(), "main");
+    assert!(
+        adapter
+            .template("make", None)
+            .unwrap()
+            .get("script")
+            .is_some()
+    );
+    assert!(adapter.template("none", None).is_err());
 
     let first = native.start().unwrap();
     let (make, adapted) = adapter

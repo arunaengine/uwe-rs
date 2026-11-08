@@ -881,7 +881,7 @@ impl Run {
     }
 
     /// Finds the template a holder names, and where its own references resolve.
-    fn resolve(
+    pub(crate) fn resolve(
         &mut self,
         holder: &Holder,
         context: &Rc<Context>,

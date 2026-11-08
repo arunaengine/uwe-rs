@@ -13,6 +13,7 @@ use crate::collecting::Collecting;
 use crate::engine::Context;
 use crate::flows::output_stream;
 use crate::mixing::{Mixing, RoundRule, Rounds};
+use crate::pairing::{Combining, Joining};
 use crate::plan::Node;
 use crate::routing::Routing;
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
@@ -216,6 +217,25 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
     };
     match &node.op.kind {
         Kind::Collect(spec) => collecting(spec.body.clone(), spec.flat, spec.sort.clone(), false),
+        Kind::Join(spec) => {
+            let width = |name: &str| {
+                let port = node.op.inputs.iter().find(|port| port.name == name)?;
+                let wir::Type::Tuple(items) = &port.r#type else {
+                    return None;
+                };
+                Some(items.len().saturating_sub(spec.by.len()))
+            };
+            Some(Box::new(Joining::new(
+                spec,
+                [width("left"), width("right")],
+            )))
+        }
+        Kind::Combine(spec) => Some(Box::new(Combining {
+            by: spec.by.clone(),
+            body: spec.body.clone(),
+            callbacks: Default::default(),
+            retained: Default::default(),
+        })),
         Kind::ToList(_) => collecting(None, false, Sort::None, true),
         Kind::Transform(spec) => mapping(Rule::Transform(spec.body.clone(), spec.nulls)),
         Kind::Filter(spec) => mapping(Rule::Filter(spec.body.clone())),

@@ -128,6 +128,8 @@ fn supported(kind: &Kind) -> bool {
             | Kind::MultiMap(_)
             | Kind::Collect(_)
             | Kind::ToList(_)
+            | Kind::Join(_)
+            | Kind::Combine(_)
     )
 }
 

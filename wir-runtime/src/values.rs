@@ -10,7 +10,6 @@ use sha2::{Digest, Sha256};
 
 /// Whether two values are equal: records whatever the order of their keys, numbers by value
 /// across ints and floats, and Files and Directories by their location.
-#[allow(dead_code, reason = "the keyed ops of the next commits use it")]
 pub fn equal(left: &Json, right: &Json) -> bool {
     match (left, right) {
         (Json::Number(a), Json::Number(b)) => match (a.as_i64(), b.as_i64()) {

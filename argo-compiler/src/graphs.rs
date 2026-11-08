@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use argo_parser::model::{ContinueOn, Template};
 use argo_parser::{Node, Value as Yaml};
@@ -151,7 +151,7 @@ impl Compiler {
         };
         match &template.dag {
             None => self.steps(place, &mut graph, &mut scope, node)?,
-            Some(_) => return Err(at("DAG templates do not compile into graphs yet")),
+            Some(_) => self.dag(place, &mut graph, &mut scope, node)?,
         }
         for parameter in &template.outputs.parameters {
             let from = parameter.value_from.as_ref();
@@ -224,6 +224,95 @@ impl Compiler {
         }
         Ok(())
     }
+
+    /// The tasks of a DAG that its targets need, each with its `depends` as control.
+    fn dag(
+        &mut self,
+        place: &Place,
+        graph: &mut Graph,
+        scope: &mut Scope,
+        node: &Node,
+    ) -> Result<(), Kept> {
+        let template = typed(node).map_err(|reason| kept(&graph.name, &reason))?;
+        let Some(dag) = template.dag else {
+            return Ok(());
+        };
+        let raw = sequence(node.get("dag").and_then(|dag| dag.get("tasks")));
+        let mut ancestors: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut trees = BTreeMap::new();
+        for task in &dag.tasks {
+            if !task.depends.is_empty() && !task.dependencies.is_empty() {
+                return Err(kept(
+                    &graph.name,
+                    "a task with both depends and dependencies",
+                ));
+            }
+            let (tree, names) = crate::depends::control(task, &dag.tasks)
+                .map_err(|reason| kept(&graph.name, &reason))?;
+            trees.insert(task.name.clone(), (tree, names));
+        }
+        let mut order = Vec::new();
+        let targets: Vec<String> = match dag.target.trim().is_empty() {
+            true => {
+                let depended: BTreeSet<&String> =
+                    trees.values().flat_map(|(_, names)| names).collect();
+                let names = dag.tasks.iter().map(|task| task.name.clone());
+                names.filter(|name| !depended.contains(name)).collect()
+            }
+            false => dag.target.split_whitespace().map(str::to_owned).collect(),
+        };
+        for target in &targets {
+            visit(target, &trees, &mut order, &mut Vec::new())
+                .map_err(|reason| kept(&graph.name, &reason))?;
+        }
+        for name in &order {
+            let names = trees
+                .get(name)
+                .map(|(_, names)| names.clone())
+                .unwrap_or_default();
+            let mut all = BTreeSet::new();
+            for dependency in &names {
+                all.insert(dependency.clone());
+                all.extend(ancestors.get(dependency).cloned().unwrap_or_default());
+            }
+            ancestors.insert(name.clone(), all);
+        }
+        let declared = (dag.tasks.iter()).filter(|task| order.contains(&task.name));
+        for task in declared.collect::<Vec<_>>() {
+            let raw = (raw.iter())
+                .find(|node| node.get("name").and_then(Node::as_str) == Some(&task.name));
+            let Some(raw) = raw else { continue };
+            let site = Site::of_task(raw).map_err(|reason| kept(&graph.name, &reason))?;
+            let mut visible = Scope {
+                inputs: scope.inputs.clone(),
+                made: BTreeMap::new(),
+            };
+            for ancestor in &ancestors[&task.name] {
+                let prefix = format!("tasks.{ancestor}");
+                if let Some(made) = scope.made.get(&prefix) {
+                    visible.made.insert(prefix, made.clone());
+                }
+            }
+            let built = self.site(place, graph, &visible, &site)?;
+            let (tree, names) = &trees[&task.name];
+            let tasks: BTreeSet<String> = (graph.ops.iter())
+                .filter(|op| matches!(op.kind, Kind::Task(_)))
+                .map(|op| op.path.clone())
+                .collect();
+            let tree = crate::depends::daemons(tree, &tasks);
+            if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op)
+                && !names.is_empty()
+            {
+                op.handles = crate::depends::handled(&tree);
+                op.depends = Some(tree);
+            }
+            handle_continue(graph, &built.op, site.continue_on);
+            scope
+                .made
+                .insert(format!("tasks.{}", site.name), (built.op, built.outputs));
+        }
+        Ok(())
+    }
 }
 
 /// What a site compiled into: its op, which other ops wait for, and its outputs.
@@ -269,6 +358,33 @@ fn handle_continue(graph: &mut Graph, path: &str, continues: ContinueOn) {
         on: allow,
     });
     graph.ops.push(group);
+}
+
+/// The tasks a target needs, dependencies first, in a DAG without cycles.
+fn visit(
+    name: &str,
+    trees: &BTreeMap<String, (wir::Control, Vec<String>)>,
+    order: &mut Vec<String>,
+    visiting: &mut Vec<String>,
+) -> Result<(), String> {
+    if order.iter().any(|known| known == name) {
+        return Ok(());
+    }
+    if visiting.iter().any(|known| known == name) {
+        return Err(format!(
+            "the tasks of the DAG depend on each other in a cycle at {name}"
+        ));
+    }
+    let Some((_, names)) = trees.get(name) else {
+        return Err(format!("target {name} is no task of the DAG"));
+    };
+    visiting.push(name.to_owned());
+    for dependency in names {
+        visit(dependency, trees, order, visiting)?;
+    }
+    visiting.pop();
+    order.push(name.to_owned());
+    Ok(())
 }
 
 /// The op output that a tag like `steps.make.outputs.parameters.text` reads.

@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use argo_parser::model::{ContinueOn, Sequence, Template, TemplateRef, WorkflowStep};
+use argo_parser::model::{ContinueOn, DagTask, Sequence, Template, TemplateRef, WorkflowStep};
 use argo_parser::{Node, decode};
 use serde_json::json;
 use wir::{Binding, Edge, Endpoint, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type};
@@ -48,6 +48,24 @@ impl Site {
             with_sequence: step.with_sequence,
             continue_on: step.continue_on.unwrap_or_default(),
             hooks: !step.hooks.is_empty() || !step.on_exit.is_empty(),
+        })
+    }
+
+    pub fn of_task(raw: &Node) -> Result<Site, String> {
+        let (task, _) = decode::<DagTask>(raw).map_err(|error| error.to_string())?;
+        Ok(Site {
+            call: format!(".{}", task.name),
+            name: task.name,
+            raw: raw.clone(),
+            template: task.template,
+            template_ref: task.template_ref,
+            inline: task.inline.is_some(),
+            when: task.when,
+            with_items: task.with_items,
+            with_param: task.with_param,
+            with_sequence: task.with_sequence,
+            continue_on: task.continue_on.unwrap_or_default(),
+            hooks: !task.hooks.is_empty() || !task.on_exit.is_empty(),
         })
     }
 }

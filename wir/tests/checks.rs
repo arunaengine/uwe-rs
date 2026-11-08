@@ -922,3 +922,41 @@ fn control_results() {
         "{found:?}"
     );
 }
+
+#[test]
+fn task_forms() {
+    let task = |capture: Json, out: Json, extra: Json| {
+        let mut kind = json!({"command": ["run"], "captures": [capture]});
+        kind.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().cloned().unwrap());
+        let op =
+            json!({"path": "t", "kind": {"task": kind}, "outputs": [{"name": "out", "type": out}]});
+        problems(
+            &json!({"wir_version": wir::VERSION, "graphs": [{"name": "main", "ops": [op]}], "entry": "main"}),
+        )
+    };
+    let files = json!({"array": {"items": {"file": {}}}});
+    let glob = |arity: Json| json!({"output": "out", "from": {"glob": "*"}, "arity": arity});
+    assert_eq!(
+        task(glob(json!({"min": 1, "max": 3})), files.clone(), json!({})),
+        Vec::<String>::new()
+    );
+    let reversed = task(glob(json!({"min": 3, "max": 1})), files, json!({}));
+    assert_eq!(
+        reversed,
+        ["main/t: a capture needs output out: a least count no more than the most"]
+    );
+    let scalar = task(
+        glob(json!({"min": 0, "max": 2})),
+        json!({"optional": {"file": {}}}),
+        json!({}),
+    );
+    assert_eq!(
+        scalar,
+        ["main/t: a capture needs output out: an array to hold more than one path"]
+    );
+    let accept = json!({"accept": {"language": "wdl", "code": "true"}});
+    let found = task(glob(json!({"min": 1})), json!({"file": {}}), accept);
+    assert_eq!(found, ["main/t: closure: a wdl closure names 1 parameters"]);
+}

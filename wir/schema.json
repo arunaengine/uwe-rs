@@ -879,6 +879,13 @@
             "required": ["output", "from"],
             "properties": {
               "output": { "$ref": "#/$defs/name" },
+              "optional": { "type": "boolean" },
+              "arity": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["min"],
+                "properties": { "min": { "$ref": "#/$defs/count" }, "max": { "$ref": "#/$defs/count" } }
+              },
               "from": {
                 "oneOf": [
                   { "enum": ["stdout", "stderr"] },
@@ -896,7 +903,18 @@
         "success_codes": { "type": "array", "items": { "type": "integer" } },
         "network": { "type": "boolean" },
         "stdout": { "type": "string" },
-        "stderr": { "type": "string" }
+        "stderr": { "type": "string" },
+        "accept": { "$ref": "#/$defs/closure" },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "limit": { "$ref": "#/$defs/count" },
+            "retry_if": { "$ref": "#/$defs/closure" },
+            "directives": { "$ref": "#/$defs/closure" },
+            "failure": { "enum": ["fail", "ignore"] }
+          }
+        }
       }
     }
   }

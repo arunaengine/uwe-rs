@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::closure::{Binding, ExprLanguage, Scope, ValueRules};
+use crate::closure::{Binding, Closure, ExprLanguage, Scope, ValueRules};
 use crate::control::{Control, StatusGroup};
 use crate::document::{Language, Port};
 use crate::reserved;
@@ -116,9 +116,9 @@ impl Kind {
     }
 }
 
-/// One container command. It succeeds when its exit code is in `success_codes` and every
-/// non-optional output was captured; otherwise it fails and binds no output.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// One container command. It succeeds when its exit code is in `success_codes`, every
+/// capture worked and `accept` holds; otherwise it fails and binds no output.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Task {
     /// The container image; none runs the command on the host.
@@ -143,6 +143,61 @@ pub struct Task {
     /// The file that standard error goes to, like CWL `stderr`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stderr: Option<String>,
+    /// A check of the outputs of an attempt that must hold for the task to succeed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accept: Option<Closure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<Retry>,
+}
+
+/// When an attempt that is not accepted runs again, and how each attempt changes the task.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Retry {
+    /// More attempts after the first; the `retry` attribute wins when it is set.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub limit: u32,
+    /// Whether to try again after a rejected attempt; true when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_if: Option<Closure>,
+    /// The [`TaskPatch`] of each attempt, the first included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directives: Option<Closure>,
+    #[serde(default, skip_serializing_if = "FailureRule::is_fail")]
+    pub failure: FailureRule,
+}
+
+/// What a task does after its last rejected attempt: fail, or end with empty outputs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureRule {
+    #[default]
+    Fail,
+    Ignore,
+}
+
+impl FailureRule {
+    pub fn is_fail(&self) -> bool {
+        *self == FailureRule::Fail
+    }
+}
+
+/// The changes of one attempt to the base settings of a task; a field left out keeps them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<Vec<Argument>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<Resources>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub success_codes: Option<Vec<i32>>,
 }
 
 /// One command argument: literal text, or the value of a task input.
@@ -157,12 +212,26 @@ pub enum Argument {
     },
 }
 
-/// How one task output is read.
+/// How one task output is read. An `optional` capture that matches nothing leaves the
+/// output empty, which is not null; `arity` bounds the number of matched paths.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Capture {
     pub output: String,
     pub from: CaptureRule,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arity: Option<Arity>,
+}
+
+/// The least and the most paths a capture may match.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Arity {
+    pub min: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u64>,
 }
 
 /// Where a captured output comes from.
@@ -400,4 +469,8 @@ impl Attributes {
     pub fn is_empty(&self) -> bool {
         *self == Attributes::default()
     }
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }

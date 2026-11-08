@@ -366,6 +366,15 @@ fn refuses_other_layouts() {
     assert!(rerun(snakefile, "order: [x, y]\n", &[]).is_ok());
 }
 
+/// A compiled group whose files are current skips its jobs, which a run plans one by one.
+#[test]
+fn skips_current_groups() {
+    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n";
+    let made = [("a.txt", "a\n"), ("b.txt", "a\n")];
+    let ran = rerun(snakefile, "{}\n", &made).expect("skips the group");
+    assert_eq!(ran, Ran::new(), "nothing needs to run, as natively");
+}
+
 /// How a test workflow is launched: its working folder and Snakefile, config files, targets
 /// and profiles, from the launches of the test-workflows test of snakemake-runtime.
 fn launch_of(name: &str, folder: &Path, scratch: &Path) -> (Launch, PathBuf) {

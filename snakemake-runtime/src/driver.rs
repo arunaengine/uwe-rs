@@ -31,6 +31,7 @@ use crate::workflow::{Hook, State};
 #[path = "adapter.rs"]
 mod adapter;
 
+pub(crate) use adapter::JobCall;
 pub use adapter::{Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
 
 /// The Snakefile of a workflow folder, as Snakemake looks for it.

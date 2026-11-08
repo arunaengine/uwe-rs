@@ -30,8 +30,9 @@ pub enum Request {
     Failed(String),
     /// The planned jobs of the workflow; with `true` a run of single jobs starts too.
     Jobs(bool),
-    /// The first task of a planned job, with input files as wir values by their selectors.
-    Prepare(Box<(crate::driver::JobKey, Vec<(String, serde_json::Value)>)>),
+    /// The first task of a planned job, with the other jobs of its group and the input files
+    /// as wir values by their selectors.
+    Prepare(Box<crate::driver::JobCall>),
     /// The outcome of the task of a single job.
     Take(Box<Outcome>),
 }

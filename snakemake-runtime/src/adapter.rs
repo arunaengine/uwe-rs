@@ -25,6 +25,10 @@ pub struct JobKey {
     pub outputs: Vec<String>,
 }
 
+/// A call to prepare a job: its identity, the other jobs of its group as compiled, and its
+/// input files as wir values by their selectors.
+pub(crate) type JobCall = (JobKey, Vec<JobKey>, Vec<(String, Json)>);
+
 /// A planned job, in the order a native run asks for the tasks of jobs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlannedJob {
@@ -122,14 +126,17 @@ impl SnakemakeDriver {
         self.ask_job(Request::Jobs(true))
     }
 
-    /// The first task of the job of `key`, with input files given as wir values by their
-    /// selectors, like `input/0`; the task the native run builds for that job, or commands.
+    /// The first task of the job of `key`, with the other jobs of its group as compiled and
+    /// input files given as wir values by their selectors, like `input/0`; the task the native
+    /// run builds for that job, or commands.
     pub fn prepare_job(
         &mut self,
         key: &JobKey,
+        group: &[JobKey],
         staged: Vec<(String, Json)>,
     ) -> Result<Answer, DriverError> {
-        self.ask_job(Request::Prepare(Box::new((key.clone(), staged))))
+        let call = (key.clone(), group.to_vec(), staged);
+        self.ask_job(Request::Prepare(Box::new(call)))
     }
 
     /// Takes the outcome of a task that a call gave: of a job, which gives the result or a
@@ -161,8 +168,8 @@ impl Session {
         let answer = match request {
             Request::Jobs(start) => Answer::Jobs(self.planned_jobs(start)?),
             Request::Prepare(request) => {
-                let (key, staged) = *request;
-                Answer::Prepared(self.prepare_key(&key, &staged)?)
+                let (key, group, staged) = *request;
+                Answer::Prepared(self.prepare_key(&key, &group, &staged)?)
             }
             Request::Take(outcome) => Answer::Taken(self.take_key(*outcome)?),
             _ => return Err(DriverError::new("not a request of a job")),
@@ -361,11 +368,22 @@ impl Session {
     fn prepare_key(
         &mut self,
         key: &JobKey,
+        group: &[JobKey],
         staged: &[(String, Json)],
     ) -> Result<Prepared, DriverError> {
         let job = self.job_of(key)?;
         let members = self.members(job);
         let needed = |member: &usize| self.needrun.get(member).copied().unwrap_or(false);
+        // A run groups only jobs that need work; a compiled group of current jobs is skipped.
+        if members.len() < group.len() + 1 {
+            let recorded = std::iter::once(Ok(job)).chain(group.iter().map(|key| self.job_of(key)));
+            let recorded: Vec<usize> = recorded.collect::<Result<_, _>>()?;
+            if recorded.iter().any(needed) {
+                let message = format!("the run groups the job of rule {} otherwise", key.rule);
+                return Err(DriverError::new(message));
+            }
+            return Ok(Prepared::Skipped(self.group_files(&recorded)));
+        }
         if !members.iter().any(needed) {
             return Ok(Prepared::Skipped(self.group_files(&members)));
         }

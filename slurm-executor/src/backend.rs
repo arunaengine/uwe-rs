@@ -1027,7 +1027,10 @@ impl SlurmBackend {
         };
         let pulled = match pulled {
             Ok(path) => Ok(path),
-            Err(message) => Err(machine(explain(message, &root, LOG, true).await)),
+            Err(message) => {
+                let message = explain(message, &root, LOG, true).await;
+                Err(machine(redact(message, &self.proxies())))
+            }
         };
         if root.join("remote.json").try_exists()? {
             let journal = serde_json::from_slice(&std::fs::read(root.join("remote.json"))?)
@@ -1160,6 +1163,16 @@ impl SlurmBackend {
             id: id.to_owned(),
             cluster: journal["cluster"].as_str().map(str::to_owned),
         }))
+    }
+
+    /// The web proxies of the pulls: that of the config and those of this process.
+    fn proxies(&self) -> Vec<String> {
+        let names = PASSED
+            .iter()
+            .filter(|name| name.to_lowercase().ends_with("_proxy"));
+        (names.filter_map(|name| std::env::var(name).ok()))
+            .chain(self.proxy.clone())
+            .collect()
     }
 
     /// How long the end of a job may take to confirm: a few queries, which a slow controller
@@ -1891,6 +1904,27 @@ pub(crate) async fn explain(message: String, root: &Path, log_file: &str, shared
         0 => format!("{message}, and its log is empty"),
         count => format!("{message}: {}", lines[count.saturating_sub(5)..].join("; ")),
     }
+}
+
+/// The text with `***` in place of the password of each proxy address, which a failed pull
+/// may print.
+fn redact(mut text: String, proxies: &[String]) -> String {
+    for proxy in proxies {
+        let rest = proxy
+            .split_once("://")
+            .map_or(proxy.as_str(), |(_, rest)| rest);
+        let authority = rest.split('/').next().unwrap_or_default();
+        let Some((info, _)) = authority.rsplit_once('@') else {
+            continue;
+        };
+        match info.split_once(':') {
+            Some((user, password)) if !password.is_empty() => {
+                text = text.replace(info, &format!("{user}:***"));
+            }
+            _ => {}
+        }
+    }
+    text
 }
 
 pub(crate) async fn read_number(path: &Path) -> Option<i32> {

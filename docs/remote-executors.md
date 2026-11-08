@@ -833,6 +833,8 @@ With Apptainer or Singularity, uwe turns each image of a registry or an address 
 image_folder = "/shared/sif"
 ```
 
+The pulls reach the web through `proxy` in `[network]`, or through the proxy variables of the uwe process. A pull job gets them by name in `--export`, as in [SLURM job environment](#slurm-job-environment). The address of a proxy may hold a user and a password, like `http://user:password@proxy.example.org:3128`. When a failed pull prints it, the error shows `***` in place of the password.
+
 ## SLURM job environment
 
 uwe runs `sbatch` with a cleared environment. It passes only `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `TZ`, `TMPDIR`, the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`, also in lower case) and the variables that start with `SLURM_`, `SBATCH_`, `APPTAINER_` or `SINGULARITY_`, like `SLURM_CONF`. With `proxy` in `[network]` it adds the proxy variables, and with `staging_access = "credentials"` the credentials of the staging root. Each job gets `--export` with the names of exactly these variables, so other variables of the uwe process, like the credentials of a service, reach neither `sbatch` nor the jobs. The list holds names only, since `--export` splits at commas. It comes after `options` of `[executor.slurm]`, so it wins over an `--export` there. The tasks get their own variables inside the container.

@@ -251,7 +251,7 @@ Map installed references through named `[executor.kubernetes.references.NAME]` t
 
 ## SLURM
 
-A service that starts many SLURM runs with Apptainer can give them one shared folder of SIF files with `image_folder` in `[executor.slurm]`. Runs in one process and in several processes use it safely at the same time: a run waits while another run pulls the same image. See [SLURM images](remote-executors.md#slurm-images).
+A service that starts many SLURM runs with Apptainer can give them one shared folder of SIF files with `image_folder` in `[executor.slurm]`. Runs in one process and in several processes use it safely at the same time: a run waits while another run pulls the same image. Where the nodes reach the web only through a proxy, pass it as `proxy` in `[network]`. The pull jobs get it, and errors never show its password. See [SLURM images](remote-executors.md#slurm-images).
 
 ## Sharing between requests
 

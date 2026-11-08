@@ -10,13 +10,15 @@ use serde_json::Value as Json;
 use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute_with};
 
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
-/// the native tasks in both orders: equal task descriptions and resume fingerprints.
+/// the native tasks in both orders: equal task descriptions and resume fingerprints; and how
+/// many give them when the ops compare values by the wir rules instead of Groovy's.
 const RECORDED: Counts = Counts {
     pipelines: 8,
     full: 8,
     native: 8,
     compiled: 0,
     same: 0,
+    wir_rules: 7,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -26,6 +28,7 @@ struct Counts {
     native: usize,
     compiled: usize,
     same: usize,
+    wir_rules: usize,
 }
 
 const PROCESSES: &str = r#"
@@ -135,6 +138,25 @@ fn tasks(
     Ok(tasks)
 }
 
+/// The tasks of a compiled document run through the Nextflow task adapter.
+fn run_compiled(
+    launch: &Launch,
+    folder: &Path,
+    order: Order,
+) -> Result<Vec<(Json, String)>, String> {
+    let mut adapters = wir_runtime::adapter::Adapters::default();
+    let launched = folder.to_owned();
+    let options = wir_runtime::nextflow::Options::new(move |_, _| settings(&launched));
+    wir_runtime::nextflow::register(&mut adapters, options);
+    let wir = wir_runtime::Settings {
+        print: false,
+        adapters,
+        ..wir_runtime::Settings::default()
+    };
+    let mut driver = wir_runtime::WirDriver::new(launch, wir).map_err(|error| error.message)?;
+    tasks(&mut driver, folder, order)
+}
+
 /// Compiles and runs one pipeline in a folder of its own.
 fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
     let directory = tempfile::tempdir().expect("a temporary directory");
@@ -159,26 +181,22 @@ fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
     counts.full += 1;
     let document = folder.join("compiled.wir.json");
     let text = serde_json::to_string(&compiled.document).expect("serializes");
+    let plain = folder.join("plain.wir.json");
+    let wir_rules = text.replace(",\"values\":\"groovy\"", "");
     std::fs::write(&document, text).expect("writes the document");
+    std::fs::write(&plain, wir_rules).expect("writes the document");
     let mut outcomes = Vec::new();
+    let mut plain_same = true;
     for order in [Order::AsAsked, Order::Reversed] {
         let native = Nextflow::new(&launch(folder.to_owned()), settings(folder));
         let native = native.map_err(|error| error.message);
         let native = native.and_then(|mut driver| tasks(&mut driver, folder, order));
-        let mut adapters = wir_runtime::adapter::Adapters::default();
-        let launched = folder.to_owned();
-        let options = wir_runtime::nextflow::Options::new(move |_, _| settings(&launched));
-        wir_runtime::nextflow::register(&mut adapters, options);
-        let wir = wir_runtime::Settings {
-            print: false,
-            adapters,
-            ..wir_runtime::Settings::default()
-        };
-        let compiled = wir_runtime::WirDriver::new(&launch(document.clone()), wir);
-        let compiled = compiled.map_err(|error| error.message);
-        let compiled = compiled.and_then(|mut driver| tasks(&mut driver, folder, order));
+        let compiled = run_compiled(&launch(document.clone()), folder, order);
+        let plain = run_compiled(&launch(plain.clone()), folder, order);
+        plain_same &= native.is_ok() && plain.is_ok() && native == plain;
         outcomes.push((native, compiled));
     }
+    counts.wir_rules += usize::from(plain_same);
     if outcomes.iter().all(|(native, _)| native.is_ok()) {
         counts.native += 1;
     }

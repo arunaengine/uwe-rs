@@ -3,6 +3,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+#[allow(
+    dead_code,
+    reason = "the dialect dispatch of the next commit uses the rest"
+)]
+pub mod adapter;
 mod argo;
 mod arrays;
 mod buffering;

@@ -38,7 +38,7 @@ fn pattern() -> &'static Regex {
     PATTERN.get_or_init(|| {
         let name = "[A-Za-z0-9_-]+";
         let text = format!(
-            r"\b(?:(?P<made>(?:steps|tasks)\.{name})\.(?P<rest>outputs\.(?:parameters|artifacts)\.{name}|outputs\.{name}|{name})|(?P<input>inputs\.(?:parameters|artifacts)\.{name})|(?P<status>workflow\.(?:status|failures))|(?P<item>item)\b)|(?P<bracket>(?:steps|tasks|inputs)\[)"
+            r"\b(?:(?P<made>(?:steps|tasks)\.{name})\.(?P<rest>outputs\.(?:parameters|artifacts)\.{name}|outputs\.{name}|{name})|(?P<input>inputs\.(?:parameters|artifacts)\.{name})|(?P<quoted>inputs\.(?:parameters|artifacts))\[[\x22'](?P<key>{name})[\x22']\]|(?P<status>workflow\.(?:status|failures))|(?P<item>item)\b)|(?P<bracket>(?:steps|tasks|inputs)\[)"
         );
         Regex::new(&text).unwrap_or_else(|_| unreachable!("the pattern is valid"))
     })
@@ -82,6 +82,9 @@ fn scan(tag: &str, tags: &mut BTreeSet<Tag>) -> Result<(), String> {
             tags.insert(Tag::Made(made.as_str().to_owned(), rest.to_owned()));
         } else if let Some(input) = found.name("input") {
             tags.insert(Tag::Input(input.as_str().to_owned()));
+        } else if let (Some(quoted), Some(key)) = (found.name("quoted"), found.name("key")) {
+            let name = format!("{}.{}", quoted.as_str(), key.as_str());
+            tags.insert(Tag::Input(name));
         } else if let Some(status) = found.name("status") {
             tags.insert(Tag::Status(status.as_str().to_owned()));
         } else if found.name("item").is_some() {
@@ -140,6 +143,11 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(read_tags(&status).unwrap_err().contains("status"));
+        let quoted = argo_parser::parse_yaml("when: '{{= inputs.parameters[\"a-b\"] == 1}}'\n")
+            .unwrap()
+            .unwrap();
+        let names: Vec<String> = read_tags(&quoted).unwrap().iter().map(Tag::name).collect();
+        assert_eq!(names, ["inputs.parameters.a-b"]);
         assert_eq!(
             single_tag(" {{ steps.a.outputs.result }} "),
             Some("steps.a.outputs.result")

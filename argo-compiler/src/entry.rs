@@ -156,7 +156,7 @@ impl Compiler {
             Kind::Native(Native {
                 source: SOURCE.into(),
                 language: Language::Argo,
-                entry: None,
+                entry: Some(entrypoint.clone()).filter(|name| *name != spec.entrypoint),
                 profiles: Vec::new(),
                 configs: Vec::new(),
             }),

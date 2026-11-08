@@ -89,6 +89,9 @@ pub struct Settings {
     /// Writes to standard output what `uwe run` writes there, like the CWL output object and
     /// what a Nextflow workflow prints. Off by default, so the host keeps its standard output.
     pub print: bool,
+    /// Takes what a Nextflow workflow prints, its banner and `log.info` too, instead of
+    /// standard error or standard output, with the values of `secrets` as `[secret]`.
+    pub print_sink: Option<super::PrintSink>,
     /// Secret values of this run, by the environment variable each stands for, like a
     /// `{ environment = "NAME" }` secret or `UWE_TES_TOKEN`. They win over the environment.
     pub secrets: SecretValues,
@@ -139,6 +142,7 @@ impl Default for Settings {
             run_id: None,
             listener: None,
             print: false,
+            print_sink: None,
             secrets: SecretValues::default(),
             cli: None,
         }
@@ -237,6 +241,7 @@ impl Settings {
                 .limit_environment(isolation.variables.iter().cloned());
         }
         arguments.secrets = self.secrets;
+        arguments.print_sink = self.print_sink;
         arguments.embedded = !cli;
         let mut file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
             let mut values = self.inputs.unwrap_or_else(|| Value::Object(Map::new()));

@@ -129,6 +129,7 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
         accepted: HashSet::new(),
         deliveries: Vec::new(),
         names: options.names.clone(),
+        folder: (opening.source.parent()).map_or_else(PathBuf::new, Path::to_owned),
     }))
 }
 
@@ -144,6 +145,8 @@ struct Tasks {
     deliveries: Vec<Delivery>,
     /// The names of the files of tasks in their work folders, shared with workflow outputs.
     names: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    /// The folder of the main script, which the scripts of processes are named from.
+    folder: PathBuf,
 }
 
 impl Tasks {
@@ -200,8 +203,20 @@ impl TaskAdapter for Tasks {
             Some(Binding::Value(value)) => value.as_bool().unwrap_or(false),
             _ => false,
         };
-        let script = (task.scope.as_ref())
-            .and_then(|scope| self.adapter.script_at(&task.entry, scope.start, scope.end));
+        // The script of the process, from the folder of the main script, else by its place.
+        let script = match task.captures.get("script") {
+            Some(Binding::Value(Json::String(script))) if script.starts_with("plugin/") => {
+                Some(PathBuf::from(script))
+            }
+            Some(Binding::Value(Json::String(script))) => Some(self.folder.join(script)),
+            _ => None,
+        };
+        let script = script
+            .map(|script| script.to_string_lossy().into_owned())
+            .or_else(|| {
+                let scope = task.scope.as_ref()?;
+                self.adapter.script_at(&task.entry, scope.start, scope.end)
+            });
         let native = nextflow_runtime::Call {
             script: script.unwrap_or_default(),
             process: task.entry.clone(),

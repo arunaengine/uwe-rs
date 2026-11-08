@@ -78,7 +78,8 @@ pub fn lower(
         results: Some(RESULTS.into()),
         ..Task::default()
     };
-    let attributes = requirements::apply(scope, &mut task)?;
+    let mut attributes = requirements::apply(scope, &mut task)?;
+    attributes.resources = runtime::resources(scope, process.version);
     let named = crate::types::named(scope);
     let runtime = runtime::object(scope, process.version);
     let javascript = (scope.requirements.iter().chain(&scope.hints))
@@ -86,7 +87,11 @@ pub fn lower(
     let names: Vec<&str> = (process.inputs.iter())
         .map(|input| short_name(&input.id))
         .collect();
-    let runtime_of = |code: &Expression| {
+    let computed = runtime::computed(scope, process.version);
+    let given = format!("inputs[{:?}]", runtime::VALUES);
+    // Code that the runner evaluates sees the `runtime` object of a task input when the
+    // resources are computed.
+    let compile = |code: &Expression, runner: bool| {
         // Without JavaScript, CWL refuses a reference to an input that the tool lacks.
         if !javascript && undeclared(code, &names) {
             return Err("a reference to an input that the tool does not declare".to_owned());
@@ -101,11 +106,24 @@ pub fn lower(
         };
         match &runtime {
             Ok(object) => Ok(runtime::with(code, object)),
+            Err(_) if runner && computed.is_some() => Ok(runtime::with(code, &given)),
             Err(why) if code.text.contains("runtime") => Err(why.clone()),
             Err(_) => Ok(code.text.clone()),
         }
     };
+    let runtime_of = |code: &Expression| compile(code, false);
+    let runner_of = |code: &Expression| compile(code, true);
     let mut values = Vec::new();
+    if let Some((given, limits)) = computed.clone() {
+        let made = [(runtime::VALUES, given), (runtime::LIMITS, limits)];
+        values.extend(made.into_iter().map(|(port, code)| Computed {
+            port: port.to_owned(),
+            code,
+            this: None,
+            r#type: Some(Type::Dynamic),
+        }));
+        task.limits = Some(runtime::LIMITS.to_owned());
+    }
     let mut stream = |field: Option<&Expression>, port: &str| match field {
         None => Ok(None),
         Some(text) if !code(text) => Ok(literal(Some(text), port)?.map(FileName::Text)),
@@ -243,7 +261,7 @@ pub fn lower(
         // The runner evaluates code as it builds the task, as the tool sees its files staged.
         if code(&text) {
             let word = Argument::Code {
-                code: runtime_of(&text)?,
+                code: runner_of(&text)?,
                 this: None,
                 prefix: binding.and_then(|binding| binding.prefix.clone()),
                 separate: binding.is_none_or(|binding| binding.separate),
@@ -265,6 +283,10 @@ pub fn lower(
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
         let load = crate::loads::of(input, scope, &named)?;
+        // uwe's CWL driver binds the fields of a record input that has no binding of its own.
+        if input.binding.is_none() && bindings(&input.value_type, &named, 0) {
+            return Err(format!("the command line bindings inside input {name}"));
+        }
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
             let resolved = crate::types::resolve(&input.value_type, &named);
@@ -273,7 +295,7 @@ pub fn lower(
                 .filter(|code| paths(code) || matches!(resolved, Cwl::Union(_)));
             if let Some(code) = evaluated {
                 let word = Argument::Code {
-                    code: runtime_of(code)?,
+                    code: runner_of(code)?,
                     this: Some(name.clone()),
                     prefix: binding.prefix.clone(),
                     separate: binding.separate,
@@ -358,7 +380,7 @@ pub fn lower(
         let (rule, r#type, code) = match capture(output, &task, &named, &mut glob) {
             Ok(Read::Direct(rule, r#type)) => (rule, r#type, None),
             Ok(Read::Evaluated(rule, code, r#type)) => {
-                let code = Expression::parse(&runtime_of(&code)?, false)?;
+                let code = Expression::parse(&runner_of(&code)?, false)?;
                 let code = unwrapped(&code, &r#type);
                 (rule.unwrap_or(CaptureRule::Empty), r#type, Some(code))
             }
@@ -439,6 +461,19 @@ fn bound(
         }
         [single] if plain(single) => Ok(vec![input(name.to_owned(), None)]),
         _ => Err(format!("the command line binding of input {name}")),
+    }
+}
+
+/// Whether a type holds a field or items with a command line binding.
+fn bindings(r#type: &Cwl, named: &crate::types::Named, depth: usize) -> bool {
+    match crate::types::resolve(r#type, named) {
+        _ if depth > 32 => false,
+        Cwl::Array(array) => array.binding.is_some() || bindings(&array.items, named, depth + 1),
+        Cwl::Union(members) => (members.iter()).any(|member| bindings(member, named, depth + 1)),
+        Cwl::Record(record) => record.fields.iter().any(|field| {
+            field.input_binding.is_some() || bindings(&field.value_type, named, depth + 1)
+        }),
+        _ => false,
     }
 }
 

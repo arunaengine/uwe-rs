@@ -67,7 +67,8 @@ fn captures_stream_files() {
         task["captures"], captures,
         "the glob of the stdout file reads the stream"
     );
-    let resources = json!({"cpus": 2, "memory": 67_108_864});
+    let disk = 2048 * 1_048_576_u64;
+    let resources = json!({"cpus": 2, "memory": 67_108_864, "disk": disk});
     assert_eq!(op["attributes"], json!({"resources": resources}));
 }
 

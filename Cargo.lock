@@ -9386,6 +9386,7 @@ dependencies = [
  "nextflow-runtime",
  "python-evaluator",
  "serde_json",
+ "sha2 0.11.0",
  "snakemake-runtime",
  "storage",
  "tempfile",

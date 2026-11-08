@@ -7,6 +7,7 @@ mod argo;
 mod arrays;
 mod callback;
 mod child;
+mod collecting;
 pub mod cwl;
 mod driver;
 mod engine;
@@ -29,6 +30,7 @@ mod state;
 mod streams;
 mod task;
 mod transforms;
+mod values;
 mod wdl;
 mod wdl_closure;
 

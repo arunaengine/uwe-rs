@@ -6,8 +6,10 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value as Json};
+use wir::reserved::Sort;
 use wir::{Kind, Status};
 
+use crate::collecting::Collecting;
 use crate::engine::Context;
 use crate::flows::output_stream;
 use crate::mixing::{Mixing, RoundRule, Rounds};
@@ -202,7 +204,19 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         .any(|port| port.name == "source" && !port.flow.is_value());
     let mapping =
         |rule| -> Option<Box<dyn Operator>> { Some(Box::new(Mapping::new(rule, stream))) };
+    let collecting = |body, flat, sort, list| -> Option<Box<dyn Operator>> {
+        Some(Box::new(Collecting {
+            body,
+            flat,
+            sort,
+            list,
+            items: Vec::new(),
+            callbacks: Default::default(),
+        }))
+    };
     match &node.op.kind {
+        Kind::Collect(spec) => collecting(spec.body.clone(), spec.flat, spec.sort.clone(), false),
+        Kind::ToList(_) => collecting(None, false, Sort::None, true),
         Kind::Transform(spec) => mapping(Rule::Transform(spec.body.clone(), spec.nulls)),
         Kind::Filter(spec) => mapping(Rule::Filter(spec.body.clone())),
         Kind::FlatMap(spec) => mapping(Rule::FlatMap(spec.body.clone())),

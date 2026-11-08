@@ -8,6 +8,7 @@ mod entry;
 mod graphs;
 mod sites;
 pub mod tags;
+mod texts;
 
 use std::path::Path;
 

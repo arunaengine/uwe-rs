@@ -205,17 +205,6 @@ fn compiles_dag_control() {
 #[test]
 fn keeps_native_reasons() {
     let folder = tempfile::tempdir().unwrap();
-    let param = DAG
-        .replace(
-            "{name: lone, template: say}",
-            "{name: lone, template: say, withParam: \"{{tasks.a.outputs.result}}\"}",
-        )
-        .replace("target: c", "");
-    let (document, kept) = compiled(folder.path(), &param);
-    assert_eq!(kept.len(), 1);
-    assert!(kept[0].reason.contains("withParam"), "{kept:?}");
-    let entry = graph(&document, "workflow");
-    assert!(op(entry, "workflow")["kind"]["native"].is_object());
     let suspend = DAG.replace(
         "container: {image: alpine:3.20, command: [echo, hi]}",
         "suspend: {duration: 1s}",
@@ -341,6 +330,85 @@ fn compiles_static_loops() {
         json!({"array": {"items": {"optional": "string"}}})
     );
     let param = LOOPS.replace("withItems: [a, {x: 1}]", "withParam: '[\"a\"]'");
-    let (_, kept) = compiled(folder.path(), &param);
-    assert!(kept[0].reason.contains("withParam"), "{kept:?}");
+    let (document, kept) = compiled(folder.path(), &param);
+    assert!(kept.is_empty(), "{kept:?}");
+    let items = op(graph(&document, "template.main"), "each.items");
+    let expr = json!({"language": "argo", "code": "[\"a\"]", "form": "items"});
+    assert_eq!(items["kind"]["expr"], expr);
+}
+
+const TEXTS: &str = r#"  entrypoint: main
+  arguments: {parameters: [{name: word, value: hi}]}
+  templates:
+  - name: main
+    steps:
+    - - {name: gen, template: say}
+    - - name: each
+        template: inner
+        withParam: "{{steps.gen.outputs.result}}"
+        when: "{{item.x}} == 1"
+        arguments: {parameters: [{name: text, value: "{{item.x}}-{{workflow.parameters.word}}"}]}
+    outputs:
+      parameters: [{name: joined, valueFrom: {expression: "steps.each.outputs.parameters.text"}}]
+  - name: inner
+    inputs: {parameters: [{name: text}]}
+    steps:
+    - - {name: say, template: say, arguments: {parameters: [{name: text, value: "{{inputs.parameters.text}}"}]}}
+    outputs:
+      parameters: [{name: text, valueFrom: {parameter: "{{steps.say.outputs.result}}"}}]
+  - name: say
+    inputs: {parameters: [{name: text, value: x}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn compiles_argo_texts() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), TEXTS);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let each = op(main, "each");
+    assert_eq!(each["kind"]["map"]["over"], json!(["item", "label"]));
+    let items = op(main, "each.items");
+    assert_eq!(items["inputs"][0]["name"], "steps.gen.outputs.result");
+    assert_eq!(op(main, "each.labels")["kind"]["expr"]["form"], "labels");
+    let body = graph(&document, "template.main.each");
+    let guarded = &op(body, "each")["kind"]["branch"];
+    assert_eq!(guarded["body"], "template.main.each.when");
+    assert_eq!(op(body, "each.when")["kind"]["expr"]["form"], "condition");
+    let inner = graph(&document, "template.main.each.when");
+    let text = op(inner, "each.arguments.text");
+    assert_eq!(text["inputs"][0]["name"], "item");
+    let joined = op(main, "outputs.parameters.joined");
+    assert_eq!(
+        joined["inputs"][0]["type"]["array"]["items"]["optional"],
+        "string"
+    );
+    let launch = workflow_graph::Launch {
+        target: folder.path().join("workflow.yaml"),
+        simulated: true,
+        ..Default::default()
+    };
+    let services = argo_runtime::Services::default();
+    let mut adapter = argo_runtime::adapter::Adapter::load(&launch, services).unwrap();
+    let mut evaluate = |op: &Json, values: Json| {
+        let code = op["kind"]["expr"]["code"].as_str().unwrap();
+        let form = match op["kind"]["expr"]["form"].as_str() {
+            Some("condition") => argo_runtime::adapter::Form::Condition,
+            Some("items") => argo_runtime::adapter::Form::Items,
+            Some("labels") => argo_runtime::adapter::Form::Labels,
+            _ => argo_runtime::adapter::Form::Text,
+        };
+        let values = values.as_object().unwrap().clone();
+        adapter.evaluate(code, form, "[1].each", &values).unwrap()
+    };
+    let list = json!({"steps.gen.outputs.result": "[{\"x\": 1}, {\"x\": 2}]"});
+    assert_eq!(evaluate(items, list.clone()), json!([{"x": 1}, {"x": 2}]));
+    let labels = evaluate(op(main, "each.labels"), list);
+    assert_eq!(labels, json!(["(0:x:1)", "(1:x:2)"]));
+    let when = op(body, "each.when");
+    assert_eq!(evaluate(when, json!({"item": {"x": 2}})), json!(false));
+    assert_eq!(evaluate(text, json!({"item": {"x": 1}})), json!("1-hi"));
+    let outputs = json!({"steps.each.outputs.parameters.text": ["a", null, "b"]});
+    assert_eq!(evaluate(joined, outputs), json!("[\"a\",\"b\"]"));
 }

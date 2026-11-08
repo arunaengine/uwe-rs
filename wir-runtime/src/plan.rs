@@ -68,7 +68,12 @@ fn refuse(document: &Document) -> Result<(), DriverError> {
     let mut next = 0;
     while let Some(name) = reached.get(next).copied() {
         next += 1;
-        for op in &graph(document, name)?.ops {
+        let graph = graph(document, name)?;
+        if (graph.inputs.iter().chain(&graph.outputs)).any(|port| !port.flow.is_value()) {
+            let message = format!("graph {name}: uwe does not run stream ports yet");
+            return Err(DriverError::unsupported(message));
+        }
+        for op in &graph.ops {
             if let Some(why) = refusal(op) {
                 let message = format!("op {name}/{}: {why}", op.path);
                 return Err(DriverError::unsupported(message));
@@ -105,7 +110,34 @@ fn refusal(op: &Op) -> Option<&'static str> {
     if matches!(op.kind, Kind::Native(_)) && (sized || op.attributes.retry.is_some()) {
         return Some("a native block sets the resources, time and retry of its tasks itself");
     }
-    None
+    unrun(op)
+}
+
+/// Why this runner cannot run a field of the format that it does not run yet, if it cannot.
+fn unrun(op: &Op) -> Option<&'static str> {
+    if (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value()) {
+        return Some("uwe does not run stream ports yet");
+    }
+    if op.depends.is_some() || !op.handles.is_empty() {
+        return Some("uwe does not run depends and handles yet");
+    }
+    if !op.values.is_wir() {
+        return Some("uwe compares values only by the wir rules yet");
+    }
+    match &op.kind {
+        Kind::Expr(expr) if expr.scope.is_some() || !expr.captures.is_empty() => {
+            Some("uwe does not run expressions with a scope or captures yet")
+        }
+        Kind::Task(task) if task.accept.is_some() || task.retry.is_some() => {
+            Some("uwe does not run task acceptance and retry rules yet")
+        }
+        Kind::Task(task)
+            if (task.captures.iter()).any(|item| item.optional || item.arity.is_some()) =>
+        {
+            Some("uwe does not run optional captures and arity yet")
+        }
+        _ => None,
+    }
 }
 
 fn graph<'d>(document: &'d Document, name: &str) -> Result<&'d Graph, DriverError> {

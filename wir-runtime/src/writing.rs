@@ -139,17 +139,17 @@ impl Collecting {
         Ok(())
     }
 
-    /// The text of an entry: a string, or the content of a File.
-    fn text(turn: &Turn<'_>, entry: &Json) -> Result<String, Failure> {
+    /// The bytes of an entry: a string, or the content of a File.
+    fn bytes(turn: &Turn<'_>, entry: &Json) -> Result<Vec<u8>, Failure> {
         match entry {
-            Json::String(text) => Ok(text.clone()),
+            Json::String(text) => Ok(text.clone().into_bytes()),
             Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("File") => {
                 let location = object
                     .get("location")
                     .and_then(Json::as_str)
                     .unwrap_or_default();
                 let path = location.strip_prefix("file://").unwrap_or(location);
-                std::fs::read_to_string(path)
+                std::fs::read(path)
                     .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))
             }
             other => Err(turn.failed(format!("the entry {other} is no text or File"))),
@@ -176,24 +176,28 @@ impl Collecting {
                 (&mut self.callbacks, context),
                 turn,
             )?;
-            let mut text = String::new();
+            let mut text = Vec::new();
             if let Some(seed) = self.spec.seed.as_ref().filter(|seed| !seed.is_empty()) {
-                text.push_str(seed);
+                text.extend_from_slice(seed.as_bytes());
                 if self.spec.new_line {
-                    text.push('\n');
+                    text.push(b'\n');
                 }
             }
             for (at, entry) in entries.iter().enumerate() {
-                let entry = Self::text(turn, entry)?;
+                let entry = Self::bytes(turn, entry)?;
                 // The first entry keeps its header lines with `keep_header`.
-                let kept: String = match self.spec.skip as usize {
+                let kept: Vec<u8> = match self.spec.skip as usize {
                     0 => entry,
                     _ if at == 0 && self.spec.keep_header => entry,
-                    skip => entry.split_inclusive('\n').skip(skip).collect(),
+                    skip => (entry.split_inclusive(|byte| *byte == b'\n'))
+                        .skip(skip)
+                        .flatten()
+                        .copied()
+                        .collect(),
                 };
-                text.push_str(&kept);
+                text.extend_from_slice(&kept);
                 if self.spec.new_line {
-                    text.push('\n');
+                    text.push(b'\n');
                 }
             }
             texts.push((name, text));
@@ -271,6 +275,13 @@ mod tests {
 
     /// The files a collect_file with `fields` writes for the items of a closed stream.
     fn collected(fields: Json, items: &[Json]) -> Vec<(String, String)> {
+        (written(fields, items).into_iter())
+            .map(|(name, bytes)| (name, String::from_utf8(bytes).unwrap()))
+            .collect()
+    }
+
+    /// The names and bytes of the files a collect_file with `fields` writes.
+    fn written(fields: Json, items: &[Json]) -> Vec<(String, Vec<u8>)> {
         let folder = tempfile::tempdir().unwrap();
         let mut fields = fields;
         fields["directory"] = json!(folder.path().to_string_lossy());
@@ -287,7 +298,7 @@ mod tests {
         assert_eq!(step, Ok(Step::Done));
         (emitted.iter())
             .map(|file| {
-                let text = std::fs::read_to_string(file["location"].as_str().unwrap()).unwrap();
+                let text = std::fs::read(file["location"].as_str().unwrap()).unwrap();
                 (file["basename"].as_str().unwrap().to_owned(), text)
             })
             .collect()
@@ -327,6 +338,17 @@ mod tests {
         assert!(
             collected(json!({}), &[]).is_empty(),
             "an empty stream writes no file"
+        );
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("in.gz");
+        std::fs::write(&path, b"h\n\x1f\x8b\xff\n").unwrap();
+        let file =
+            json!({"class": "File", "location": path.to_string_lossy(), "basename": "in.gz"});
+        let fields = json!({"name": "all.gz", "skip": 1});
+        assert_eq!(
+            written(fields, &[file]),
+            [("all.gz".to_owned(), b"\x1f\x8b\xff\n".to_vec())],
+            "File entries are bytes"
         );
     }
 }

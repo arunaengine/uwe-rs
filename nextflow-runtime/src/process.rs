@@ -230,14 +230,14 @@ pub(crate) struct Bound<'a> {
 pub(crate) struct InFlight {
     name: String,
     /// The input values, the index and the attempt of the task, to run it again.
-    values: Vec<Value>,
-    index: u32,
-    attempt: u32,
+    pub values: Vec<Value>,
+    pub index: u32,
+    pub attempt: u32,
     outputs: Vec<RenderedOutput>,
     /// The frame and the `task` object of the task, for the closures of `publishDir`.
-    frame: TaskFrame,
-    task: Value,
-    publish: Vec<publish::Rule>,
+    pub frame: TaskFrame,
+    pub task: Value,
+    pub publish: Vec<publish::Rule>,
     store: Option<PathValue>,
 }
 

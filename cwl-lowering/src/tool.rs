@@ -33,8 +33,6 @@ pub struct Lowered {
     pub attributes: Attributes,
     /// The task inputs that exprs fill: arguments and the `valueFrom` of input bindings.
     pub values: Vec<Computed>,
-    /// The outputs that `outputEval` computes, from the files of the task output of that name.
-    pub evaluated: Vec<Evaluated>,
     /// The inputs whose files CWL reads before the tool runs.
     pub loads: Vec<(Port, wir::Load)>,
 }
@@ -48,21 +46,14 @@ pub struct Computed {
     pub r#type: Option<Type>,
 }
 
-/// An output of a tool that an expr computes from the files that its glob found, if any.
-pub struct Evaluated {
-    pub output: Port,
-    pub code: Expression,
-    /// Whether the task has an output of this name with the files.
-    pub captured: bool,
-}
-
 /// Makes the capture rule of the globs of an output, by its name.
 type Globs<'a> = dyn FnMut(&str, &[Expression]) -> Result<CaptureRule, String> + 'a;
 
-/// How the task gives an output: captured as it is, or as files for an `outputEval`.
+/// How the task gives an output of a type: captured as it is, or by code over the files
+/// that a rule matched, if any, like `outputEval`.
 enum Read {
     Direct(CaptureRule, Type),
-    Evaluated(Option<(CaptureRule, Type)>, Expression),
+    Evaluated(Option<CaptureRule>, Expression, Type),
 }
 
 /// The task of a tool, or the first thing it uses that a task cannot say the same way. File
@@ -95,18 +86,6 @@ pub fn lower(
     let names: Vec<&str> = (process.inputs.iter())
         .map(|input| short_name(&input.id))
         .collect();
-    // Expressions see no listings, which CWL loads into Directory inputs.
-    let listed = scope.find(|class| match class {
-        RequirementClass::LoadListing { load_listing } => Some(*load_listing),
-        _ => None,
-    });
-    let listed = listed
-        .flatten()
-        .is_some_and(|listing| listing != LoadListing::NoListing)
-        || process
-            .inputs
-            .iter()
-            .any(|input| input.load_listing.is_some());
     let runtime_of = |code: &Expression| {
         // Without JavaScript, CWL refuses a reference to an input that the tool lacks.
         if !javascript && undeclared(code, &names) {
@@ -339,7 +318,10 @@ pub fn lower(
         task.library = scope.library();
     }
     let mut outputs = Vec::new();
-    let mut evaluated = Vec::new();
+    let required = scope.find(|class| match class {
+        RequirementClass::LoadListing { load_listing } => *load_listing,
+        _ => None,
+    });
     let mut glob = |name: &str, globs: &[Expression]| match globs {
         [one] if !code(one) => Ok(CaptureRule::Glob(pattern(one)?)),
         _ if globs.iter().any(paths) => Err("an expression in a glob that reads a path".into()),
@@ -373,29 +355,35 @@ pub fn lower(
             flow: wir::Flow::Value,
             default: None,
         };
-        let (files, code) = match capture(output, &task, (listed, &named), &mut glob) {
-            Ok(Read::Direct(rule, r#type)) => (Some((rule, r#type)), None),
-            Ok(Read::Evaluated(files, code)) => (files, Some(code)),
+        let (rule, r#type, code) = match capture(output, &task, &named, &mut glob) {
+            Ok(Read::Direct(rule, r#type)) => (rule, r#type, None),
+            Ok(Read::Evaluated(rule, code, r#type)) => {
+                let code = Expression::parse(&runtime_of(&code)?, false)?;
+                let code = unwrapped(&code, &r#type);
+                (rule.unwrap_or(CaptureRule::Empty), r#type, Some(code))
+            }
             Err(why) => return Err(format!("output {name}: {why}")),
         };
-        if let Some(code) = code {
-            let r#type = convert(&output.value_type, &named)?;
-            evaluated.push(Evaluated {
-                output: port(r#type),
-                code: Expression::parse(&runtime_of(&code)?, false)?,
-                captured: files.is_some(),
-            });
-        }
-        if let Some((rule, r#type)) = files {
-            task.captures.push(Capture {
-                output: name.clone(),
-                from: rule,
-                load_contents: loads(output),
-                optional: false,
-                arity: None,
-            });
-            outputs.push(port(r#type));
-        }
+        let binding = output.binding.as_ref();
+        let listing = match binding
+            .and_then(|binding| binding.load_listing)
+            .or(required)
+        {
+            Some(LoadListing::ShallowListing) => Some(wir::Listing::Shallow),
+            Some(LoadListing::DeepListing) => Some(wir::Listing::Deep),
+            _ => None,
+        };
+        task.captures.push(Capture {
+            output: name.clone(),
+            from: rule,
+            load_contents: loads(output),
+            optional: false,
+            arity: None,
+            listing: listing
+                .filter(|_| holds(&output.value_type, &Cwl::Directory) || code.is_some()),
+            code,
+        });
+        outputs.push(port(r#type));
     }
     Ok(Lowered {
         task,
@@ -403,7 +391,6 @@ pub fn lower(
         outputs,
         attributes,
         values,
-        evaluated,
         loads: loaded,
     })
 }
@@ -504,7 +491,7 @@ fn literal(expression: Option<&Expression>, what: &str) -> Result<Option<String>
 fn capture(
     output: &cwl_parser::model::OutputParameter,
     task: &Task,
-    (listed, named): (bool, &crate::types::Named),
+    named: &crate::types::Named,
     glob: &mut Globs<'_>,
 ) -> Result<Read, String> {
     let name = short_name(&output.id);
@@ -521,8 +508,9 @@ fn capture(
     }
     let read = |rule: CaptureRule, r#type: Type| match computed {
         Some(format) => Ok(Read::Evaluated(
-            Some((rule, r#type)),
+            Some(rule),
             Expression::parse(&runtime::formats(format), false)?,
+            r#type,
         )),
         None => Ok(Read::Direct(rule, r#type)),
     };
@@ -546,35 +534,16 @@ fn capture(
         let r#type = with_format(convert(&output.value_type, named)?, format);
         return read(CaptureRule::Results, r#type);
     };
-    if binding.load_listing.is_some() {
-        return Err("loadListing".into());
-    }
     if let Some(code) = &binding.output_eval {
         if output.format.is_some() || secondary {
             return Err("the format or secondary files of an evaluated output".into());
         }
-        let reads = paths(code) || code.text.contains("exitCode");
-        if reads || (listed && code.text.contains("listing")) {
-            return Err("an outputEval that reads the exit code, a path or a listing".into());
-        }
-        let files = match binding.glob.as_slice() {
+        let rule = match binding.glob.as_slice() {
             [] => None,
-            globs => {
-                let rule = glob(name, globs)?;
-                let items = match holds(&output.value_type, &Cwl::Directory)
-                    && !holds(&output.value_type, &Cwl::File)
-                {
-                    true => Type::Directory,
-                    false => file(None),
-                };
-                let found = Type::Array(wir::ArrayType {
-                    items: Box::new(items),
-                    nonempty: false,
-                });
-                Some((rule, found))
-            }
+            globs => Some(glob(name, globs)?),
         };
-        return Ok(Read::Evaluated(files, code.clone()));
+        let r#type = convert(&output.value_type, named)?;
+        return Ok(Read::Evaluated(rule, code.clone(), r#type));
     }
     if binding.glob.is_empty() {
         return Err("no glob".into());
@@ -759,4 +728,25 @@ fn compare(a: &[Key], b: &[Key]) -> Ordering {
         }
     }
     Ordering::Equal
+}
+
+/// The code of an `outputEval` whose list of no or one item becomes that item or null for an
+/// output of one File or Directory, as CWL takes it.
+fn unwrapped(code: &Expression, r#type: &Type) -> String {
+    let single = match r#type {
+        Type::Optional(inner) => matches!(**inner, Type::File(_) | Type::Directory),
+        other => matches!(other, Type::File(_) | Type::Directory),
+    };
+    let value = match code.parts.as_slice() {
+        [Part::Function(body)] => format!("(function() {{{body}}})()"),
+        [Part::Javascript(code) | Part::Reference(code)] => format!("({code})"),
+        _ => return code.text.clone(),
+    };
+    match single {
+        true => format!(
+            "${{ var value = {value}; if (Array.isArray(value) && value.length < 2) \
+             {{ return value.length ? value[0] : null; }} return value; }}"
+        ),
+        false => code.text.clone(),
+    }
 }

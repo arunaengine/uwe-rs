@@ -56,13 +56,15 @@ pub fn object(scope: &Scope, version: Version) -> Result<String, String> {
 }
 
 /// The code of an expression that reads `runtime`, as a function that sees `runtime`, the
-/// JSON object of the tool, since an expr sees an empty one.
+/// JSON object of the tool with the fields that the runner gives, like `exitCode`.
 pub fn with(code: &Expression, runtime: &str) -> String {
     if !code.text.contains("runtime") {
         return code.text.clone();
     }
     format!(
-        "${{ var runtime = {runtime}; {TEXT} return {}; }}",
+        "${{ return (function(runtime) {{ {TEXT} return {}; }})((function(given) \
+         {{ var made = {runtime}; for (var key in given) {{ made[key] = given[key]; }} \
+         return made; }})(runtime)); }}",
         value(code)
     )
 }

@@ -400,6 +400,80 @@
             "body": { "$ref": "#/$defs/callback" }
           }
         },
+        "buffer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule"],
+          "properties": {
+            "rule": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["size"],
+                  "properties": {
+                    "size": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["size"],
+                      "properties": { "size": { "$ref": "#/$defs/count" }, "skip": { "$ref": "#/$defs/count" } }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["match"],
+                  "properties": {
+                    "match": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["close"],
+                      "properties": {
+                        "open": { "$ref": "#/$defs/callback" },
+                        "close": { "$ref": "#/$defs/callback" }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "remainder": { "type": "boolean" }
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["size"],
+          "properties": {
+            "size": { "$ref": "#/$defs/count" },
+            "step": { "$ref": "#/$defs/count" },
+            "remainder": { "type": "boolean" }
+          }
+        },
+        "take": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count"],
+          "properties": { "count": { "type": "integer" } }
+        },
+        "unique": { "$ref": "#/$defs/keyed" },
+        "distinct": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "key": { "$ref": "#/$defs/callback" }, "initial": { "$ref": "#/$defs/literal" } }
+        },
+        "until": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["predicate"],
+          "properties": { "predicate": { "$ref": "#/$defs/callback" }, "inclusive": { "type": "boolean" } }
+        },
+        "if_empty": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "value": { "$ref": "#/$defs/literal" }, "body": { "$ref": "#/$defs/callback" } }
+        },
         "route": {
           "type": "object",
           "additionalProperties": false,
@@ -495,6 +569,11 @@
     },
     "empty_rule": {
       "oneOf": [{ "enum": ["default", "close", "null", "error"] }, { "$ref": "#/$defs/literal" }]
+    },
+    "keyed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "key": { "$ref": "#/$defs/callback" } }
     },
     "pick": {
       "type": "object",

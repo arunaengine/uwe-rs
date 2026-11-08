@@ -255,3 +255,34 @@ fn null_seed() {
     let stored = &written(&flat)["graphs"][0]["ops"][0]["kind"];
     assert_eq!(*stored, json!({"collect": {}}), "flat is true by default");
 }
+
+#[test]
+fn selection_forms() {
+    let good = [
+        json!({"buffer": {"rule": {"size": {"size": 3, "skip": 1}}, "remainder": true}}),
+        json!({"buffer": {"rule": {"match": {"open": "start", "close": "stop"}}}}),
+        json!({"window": {"size": 3, "step": 1}}),
+        json!({"window": {"size": 2, "remainder": false}}),
+        json!({"take": {"count": -1}}),
+        json!({"unique": {"key": "id"}}),
+        json!({"distinct": {"initial": {"value": null}}}),
+        json!({"until": {"predicate": "done", "inclusive": true}}),
+        json!({"if_empty": {"value": {"value": []}}}),
+    ];
+    let bad = [
+        json!({"take": {}}),
+        json!({"buffer": {"rule": {"every": 2}}}),
+        json!({"distinct": {"initial": null}}),
+    ];
+    kinds_round_trip(&good, &bad);
+    let window = document(
+        json!([{"path": "a", "kind": {"window": {"size": 2, "remainder": true}}}]),
+        json!([]),
+    );
+    let stored = &written(&window)["graphs"][0]["ops"][0]["kind"];
+    assert_eq!(
+        *stored,
+        json!({"window": {"size": 2}}),
+        "remainder is true by default"
+    );
+}

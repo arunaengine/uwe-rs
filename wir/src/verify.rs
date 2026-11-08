@@ -8,7 +8,7 @@ use crate::closure::Body;
 use crate::document::{Document, Endpoint, Graph, KNOWN, Port, Source, VERSION};
 use crate::flow::Subscription;
 use crate::op::{Kind, Op};
-use crate::reserved::Sort;
+use crate::reserved::{BufferRule, Sort};
 use crate::types::{Type, TypeDef};
 
 /// One problem and where it is: `document`, `sources/<id>`, `types/<name>`, `<graph>` or
@@ -472,6 +472,16 @@ fn called_by(kind: &Kind) -> Vec<&str> {
             .collect(),
         Kind::First(first) => first.predicate.iter().filter_map(Body::graph).collect(),
         Kind::Last(last) => last.predicate.iter().filter_map(Body::graph).collect(),
+        Kind::Buffer(buffer) => match &buffer.rule {
+            BufferRule::Match(rule) => (rule.open.iter().chain([&rule.close]))
+                .filter_map(Body::graph)
+                .collect(),
+            BufferRule::Size(_) => Vec::new(),
+        },
+        Kind::Unique(unique) => unique.key.iter().filter_map(Body::graph).collect(),
+        Kind::Distinct(distinct) => distinct.key.iter().filter_map(Body::graph).collect(),
+        Kind::Until(until) => until.predicate.graph().into_iter().collect(),
+        Kind::IfEmpty(fallback) => fallback.body.iter().filter_map(Body::graph).collect(),
         Kind::Route(route) => (route.cases.iter())
             .flat_map(|case| std::iter::once(&case.condition).chain(&case.body))
             .filter_map(Body::graph)
@@ -592,6 +602,8 @@ mod kinds;
 mod operators;
 #[path = "reductions.rs"]
 mod reductions;
+#[path = "selection.rs"]
+mod selection;
 
 #[cfg(test)]
 #[path = "verify_tests.rs"]

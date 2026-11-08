@@ -20,6 +20,8 @@ pub(super) enum Arity {
     Binary,
     /// `state` and `item`.
     Fold,
+    /// No positional argument.
+    Zero,
     /// The inputs of the op by name, an item of each stream input and each value input.
     Ports,
 }
@@ -30,6 +32,7 @@ impl Arity {
             Arity::Unary => &["item"],
             Arity::Binary => &["left", "right"],
             Arity::Fold => &["state", "item"],
+            Arity::Zero => &[],
             Arity::Ports => &[],
         }
     }

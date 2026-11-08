@@ -7,6 +7,7 @@ mod defaults;
 mod expression;
 mod group;
 mod links;
+mod loads;
 mod outputs;
 mod requirements;
 mod runtime;
@@ -202,6 +203,7 @@ impl Lowerer {
                     op.attributes = lowered.attributes;
                     let library = scope.library();
                     let group = group::computed(op, &lowered.values, &library);
+                    let group = loads::loaded(group, &lowered.loads);
                     match lowered.evaluated.is_empty() {
                         true => Ok(group),
                         false => self.evaluated(process, group, &lowered.evaluated, &library, path),

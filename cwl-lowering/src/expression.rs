@@ -34,14 +34,23 @@ impl Lowerer {
         let library = scope.library();
         let (mut inputs, outputs) = boundary(process, scope)?;
         let named = types::named(scope);
+        let mut ops = Vec::new();
+        let mut loaded = Vec::new();
         for (port, input) in inputs.iter_mut().zip(&process.inputs) {
             let name = &port.name;
-            // An expr reads no files, so it cannot load contents or listings.
-            let loads = input.load_contents == Some(true)
-                || (input.binding.as_ref())
-                    .is_some_and(|binding| binding.load_contents == Some(true));
-            if loads || input.load_listing.is_some() {
-                return Err(format!("loadContents or loadListing of input {name}"));
+            if let Some(load) = crate::loads::of(input, scope, &named)? {
+                let mut op = blank(&format!("load.{name}"), Kind::Load(load), None);
+                let given = Port {
+                    default: None,
+                    ..port.clone()
+                };
+                let out = Port {
+                    name: "out".into(),
+                    ..given.clone()
+                };
+                (op.inputs, op.outputs) = (vec![given], vec![out]);
+                loaded.push(name.clone());
+                ops.push(op);
             }
             // wir takes `dynamic` as optional, where CWL needs a value for a required `Any`.
             if input.value_type == Cwl::Any && input.default.is_none() {
@@ -57,8 +66,13 @@ impl Lowerer {
             }
         }
         let name = self.graph_name(&process_name(&process.id));
-        let mut ops = Vec::new();
-        let mut edges = Vec::new();
+        let mut edges: Vec<Edge> = (loaded.iter())
+            .map(|input| Edge {
+                from: end(None, input),
+                to: end(Some(&format!("load.{input}")), input),
+                read: Default::default(),
+            })
+            .collect();
         for output in &outputs {
             let field = serde_json::to_string(&output.name).unwrap_or_default();
             let code = format!(
@@ -83,8 +97,13 @@ impl Lowerer {
             out.name = "out".into();
             op.outputs = vec![out];
             for port in &inputs {
+                let load = format!("load.{}", port.name);
+                let from = match loaded.contains(&port.name) {
+                    true => end(Some(&load), "out"),
+                    false => end(None, &port.name),
+                };
                 edges.push(Edge {
-                    from: end(None, &port.name),
+                    from,
                     to: end(Some(&output.name), &port.name),
                     read: Default::default(),
                 });

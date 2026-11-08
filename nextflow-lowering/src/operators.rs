@@ -6,7 +6,8 @@
 use nextflow_runtime::export::{Kind, Node};
 use serde_json::{Value as Json, json};
 
-use crate::Sources;
+use crate::process::{Definition, process, source};
+use crate::{Context, Sources};
 
 /// The ops of one node, with the op ports that its input and output channels connect to.
 #[derive(Debug, Default)]
@@ -30,19 +31,36 @@ pub(crate) struct End {
 /// What a piece needs to know of the channels of its node and its place in the document.
 pub(crate) struct Place<'a> {
     pub path: &'a str,
-    /// Whether each output of the node is a value channel.
+    /// Whether each input and each output of the node is a value channel.
+    pub values_in: Vec<bool>,
     pub values_out: Vec<bool>,
+    pub context: &'a Context,
 }
 
 /// The ops of a node; an error says why the node has no lowering.
 pub(crate) fn piece(
     node: &Node,
     place: &Place,
-    _sources: &mut Sources,
-    _bodies: &mut Vec<Json>,
+    sources: &mut Sources,
+    bodies: &mut Vec<Json>,
 ) -> Result<Piece, String> {
     let path = place.path;
     Ok(match &node.kind {
+        Kind::Process {
+            call,
+            each,
+            start,
+            end,
+            outputs,
+        } => {
+            let definition = Definition {
+                call,
+                each,
+                span: (*start, *end),
+                outputs,
+            };
+            process(&definition, place, sources, bodies)
+        }
         Kind::Values {
             values,
             close: true,
@@ -61,6 +79,7 @@ pub(crate) fn piece(
             }
         }
         Kind::Values { .. } => return Err("a value channel that the graph binds".into()),
+        Kind::Source { factory, arguments } => source(path, factory, arguments, place)?,
         Kind::Opaque(reason) => return Err(reason.clone()),
         _ => {
             return Err(format!(
@@ -84,4 +103,8 @@ pub(crate) fn end(op: &str, port: &str, stream: bool) -> End {
         port: port.into(),
         stream,
     }
+}
+
+pub(crate) fn edge(from: &str, port: &str, to: &str, input: &str) -> Json {
+    json!({"from": {"op": from, "port": port}, "to": {"op": to, "port": input}})
 }

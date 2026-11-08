@@ -8,6 +8,17 @@ use nextflow_runtime::driver::Settings;
 use serde_json::{Value as Json, json};
 use workflow_graph::Launch;
 
+const GREET: &str = r#"
+process GREET {
+    input:
+    val name
+    output:
+    path "${name}.txt", emit: text
+    script:
+    "echo ${name} > ${name}.txt"
+}
+"#;
+
 /// A host in the folder of the test that prints nothing.
 struct Quiet(String);
 
@@ -56,6 +67,12 @@ fn op<'a>(graph: &'a Json, path: &str) -> &'a Json {
     found.unwrap_or_else(|| panic!("op {path} in {graph}"))
 }
 
+/// The source text of the bytes that a scope names.
+fn scoped<'a>(script: &'a str, scope: &Json) -> &'a str {
+    let start = scope["start"].as_u64().unwrap() as usize;
+    &script[start..scope["end"].as_u64().unwrap() as usize]
+}
+
 #[test]
 fn keeps_unbound_values() {
     let lowering = lower("workflow {\n    channel.value().view()\n}\n");
@@ -74,4 +91,32 @@ fn keeps_unbound_values() {
     let main = graph(&document, "main");
     let params = json!({"name": "params", "type": "dynamic", "default": {"greeting": "hi"}});
     assert_eq!(main["inputs"], json!([params]));
+}
+
+#[test]
+fn lowers_process_calls() {
+    let script = format!("{GREET}\nworkflow {{\n    GREET(channel.of('a', 'b'))\n}}\n");
+    let document = full(&script);
+    let source = json!({"id": "main", "language": "nextflow", "location": "main.nf"});
+    assert_eq!(document["sources"], json!([source]));
+    let main = graph(&document, "main");
+    let values = op(main, "of.0");
+    assert_eq!(values["inputs"][0]["default"], json!(["a", "b"]));
+    let process = op(main, "GREET");
+    assert_eq!(process["kind"], json!({"process": {"body": "task.GREET"}}));
+    assert_eq!(process["inputs"][0]["flow"], "stream", "a queue channel");
+    assert_eq!(process["outputs"][0]["flow"], "stream");
+    let task = &op(graph(&document, "task.GREET"), "task")["kind"]["task"]["builder"];
+    let task = &task["nextflow_process"];
+    assert_eq!(
+        (&task["entry"], &task["call"]),
+        (&json!("GREET"), &json!("GREET"))
+    );
+    assert_eq!(task["profiles"], json!(["test"]));
+    assert_eq!(
+        task["inputs"],
+        json!([{"port": "input.0", "native": "input/0"}])
+    );
+    assert_eq!(task["captures"]["singleton"], json!({"value": false}));
+    assert!(scoped(&script, &task["scope"]).starts_with("process GREET {"));
 }

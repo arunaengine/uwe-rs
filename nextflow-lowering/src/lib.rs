@@ -4,7 +4,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod graph;
+mod groovy;
 mod operators;
+mod process;
 mod sources;
 
 use std::path::{Path, PathBuf};

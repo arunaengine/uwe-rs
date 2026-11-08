@@ -311,10 +311,18 @@ fn first_line(text: &str) -> String {
 
 /// Compares the runs of `snakefile` with the targets of the command line.
 fn compared(snakefile: &str, targets: &[&str]) -> Compared {
+    compared_with(snakefile, targets, &[])
+}
+
+/// Compares the runs of `snakefile` with `files` beside it.
+fn compared_with(snakefile: &str, targets: &[&str], files: &[(&str, &str)]) -> Compared {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path().join("work");
     std::fs::create_dir(&root).expect("makes the working folder");
     std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    for (name, text) in files {
+        std::fs::write(root.join(name), text).expect("writes a file");
+    }
     let launch = Launch {
         target: root.join("Snakefile"),
         targets: targets.iter().map(|target| (*target).to_owned()).collect(),
@@ -352,6 +360,16 @@ fn compiled_groups_match() {
         let compared = compared(snakefile, &[]);
         assert_eq!(compared.shown, shown);
     }
+}
+
+/// A `cwl:` job runs the tasks of its CWL run, as natively.
+#[test]
+fn compiled_cwl_jobs_match() {
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: sort\ninputs:\n  input:\n    type: File\n    inputBinding: {position: 1}\nstdout: sorted.txt\noutputs:\n  output:\n    type: stdout\n";
+    let snakefile = "rule all:\n    input: \"sorted.txt\"\n\nrule make:\n    output: \"test.txt\"\n    shell: \"echo b > {output}\"\n\nrule a:\n    input: input=\"test.txt\"\n    output: output=\"sorted.txt\"\n    cwl: \"tool.cwl\"\n";
+    let compared = compared_with(snakefile, &[], &[("tool.cwl", tool)]);
+    assert!(compared.full, "{}", compared.shown);
+    assert_eq!(compared.shown, "same: 3 tasks");
 }
 
 /// Commands of workflow code run while the run plans and while a job is prepared, for two

@@ -14,7 +14,6 @@ use workflow_graph::{DriverError, Outcome, Task, TaskId};
 use super::{Session, SnakemakeDriver, Taken};
 use crate::commands::{Reply, Request};
 use crate::files::Produced;
-use crate::rule::Action;
 
 /// The identity of a planned job: its rule, its wildcard values and the files it makes.
 /// Positions in the plan are no identity, since a new plan may order jobs differently.
@@ -84,6 +83,8 @@ pub struct Producer {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Prepared {
     Run(Box<Task>),
+    /// The tasks of the CWL run of a `cwl:` job, whose outcomes end the job.
+    Tasks(Vec<Task>),
     Skipped(Vec<Json>),
     Failed(String),
 }
@@ -94,6 +95,8 @@ pub enum Prepared {
 pub enum JobResult {
     Accepted(Vec<Json>),
     Retry(Box<Task>),
+    /// More tasks of the CWL run of a `cwl:` job, maybe none while others run.
+    Tasks(Vec<Task>),
     Failed(String),
 }
 
@@ -293,8 +296,6 @@ impl Session {
                         && !crate::services::service_files(entry).is_empty()
                     {
                         Some("it has service outputs".to_owned())
-                    } else if matches!(planner.rules[entry.rule].action, Action::Cwl(_)) {
-                        Some("it runs a CWL document".to_owned())
                     } else {
                         None
                     }
@@ -439,9 +440,21 @@ impl Session {
             });
         }
         let task = self.prepare_job(job)?;
-        if self.cwl_jobs.remove(&job).is_some() {
-            let message = format!("the job of rule {} runs a CWL document", key.rule);
-            return Err(DriverError::new(message));
+        if let Some(cwl) = self.cwl_jobs.remove(&job) {
+            let Some(task) = self.start_job(job, task)? else {
+                let failure = self.failures.last().cloned().unwrap_or_default();
+                return Ok(Prepared::Failed(failure));
+            };
+            let tasks = self.start_cwl(job, task.id, cwl)?;
+            return Ok(match self.cwl_ended.take() {
+                None => Prepared::Tasks(tasks),
+                Some(ended) => match self.take_key(ended)? {
+                    JobResult::Accepted(made) => Prepared::Skipped(made),
+                    JobResult::Failed(message) => Prepared::Failed(message),
+                    JobResult::Retry(task) => Prepared::Run(task),
+                    JobResult::Tasks(tasks) => Prepared::Tasks(tasks),
+                },
+            });
         }
         match self.start_job(job, task)? {
             Some(task) => Ok(Prepared::Run(Box::new(task))),
@@ -453,6 +466,13 @@ impl Session {
     }
 
     fn take_key(&mut self, mut outcome: Outcome) -> Result<JobResult, DriverError> {
+        if let Some(job) = self.cwl_tasks.remove(&outcome.id) {
+            let more = self.complete_cwl(job, outcome)?;
+            return match self.cwl_ended.take() {
+                Some(ended) => self.take_key(ended),
+                None => Ok(JobResult::Tasks(more)),
+            };
+        }
         self.unplace(&mut outcome)?;
         let identity = (outcome.id, outcome.attempt);
         let Some(job) = self.jobs_of_tasks.get(&outcome.id).copied() else {

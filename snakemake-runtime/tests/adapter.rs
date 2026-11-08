@@ -109,6 +109,10 @@ impl Single {
                         self.owners.insert(task.id, index);
                         tasks.push(*task);
                     }
+                    Prepared::Tasks(more) => {
+                        self.owners.extend(more.iter().map(|task| (task.id, index)));
+                        tasks.extend(more);
+                    }
                     Prepared::Skipped(made) => self.files[index] = Some(made),
                     Prepared::Failed(message) => return Err(DriverError::new(message)),
                 }
@@ -141,6 +145,10 @@ impl Driver for Single {
                 self.ready()
             }
             JobResult::Retry(task) => Ok(vec![*task]),
+            JobResult::Tasks(more) => {
+                self.owners.extend(more.iter().map(|task| (task.id, index)));
+                Ok(more)
+            }
             JobResult::Failed(_) => Ok(Vec::new()),
         }
     }
@@ -308,7 +316,7 @@ fn retries_match() {
                         seen.push(format!("accepted {}", made.len()));
                         None
                     }
-                    JobResult::Failed(message) => panic!("fails: {message}"),
+                    other => panic!("fails: {other:?}"),
                 },
                 None => {
                     let mut tasks = driver.complete(outcome).expect("completes");

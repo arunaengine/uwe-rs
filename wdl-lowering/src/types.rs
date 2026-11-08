@@ -64,6 +64,19 @@ pub(crate) fn optional(inner: Type) -> Type {
     }
 }
 
+/// Whether a value of the type can hold a File or a Directory.
+pub(crate) fn has_files(r#type: &Type) -> bool {
+    match r#type {
+        Type::File(_) | Type::Directory | Type::Dynamic => true,
+        Type::Optional(inner) => has_files(inner),
+        Type::Array(array) => has_files(&array.items),
+        Type::Map(map) => has_files(&map.value),
+        Type::Record(fields) => fields.iter().any(|field| has_files(&field.r#type)),
+        Type::Union(items) | Type::Tuple(items) => items.iter().any(has_files),
+        _ => false,
+    }
+}
+
 pub(crate) fn port(name: &str, r#type: Type) -> Port {
     Port {
         name: name.to_owned(),

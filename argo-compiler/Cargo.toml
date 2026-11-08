@@ -1,0 +1,17 @@
+# Manifest of argo-compiler, which compiles Argo workflows into wir.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "argo-compiler"
+description = "Compiles Argo workflows into wir: steps and DAG templates into graphs, their steps and tasks into Argo dialect tasks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+argo-parser.workspace = true
+regex.workspace = true
+wir.workspace = true

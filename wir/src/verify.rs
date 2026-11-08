@@ -276,8 +276,9 @@ impl<'d> Checker<'d> {
             }
         }
         for (to, op) in graph.ops.iter().enumerate() {
-            for dependency in &op.after {
-                if let Some(&from) = index.get(dependency.op.as_str()) {
+            let control = controls::waits_for(op).into_iter();
+            for name in op.after.iter().map(|item| item.op.as_str()).chain(control) {
+                if let Some(&from) = index.get(name) {
                     next[from].push(to);
                 }
             }
@@ -309,6 +310,7 @@ impl<'d> Checker<'d> {
         if let Some(origin) = &op.origin {
             self.source(&at, &origin.source);
         }
+        self.control(&at, graph, op);
         for name in called_by(&op.kind) {
             if self.graph(name).is_none() {
                 self.report(&at, Problem::NoGraph(name.to_owned()));
@@ -606,6 +608,8 @@ fn show(value: &impl serde::Serialize) -> String {
 
 #[path = "callbacks.rs"]
 mod callbacks;
+#[path = "controls.rs"]
+mod controls;
 #[path = "effects.rs"]
 mod effects;
 #[path = "keyed.rs"]

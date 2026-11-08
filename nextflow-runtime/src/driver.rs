@@ -582,6 +582,38 @@ impl Nextflow {
         self.settings.host.as_mut()
     }
 
+    /// Starts the reports of a run whose tasks the adapter asks for, with its processes.
+    pub(crate) fn reports_started(
+        &mut self,
+        options: &Options,
+        processes: Vec<nextflow_plugins::observer::Process>,
+    ) {
+        let launch_dir = launch_folder(self.settings.host.as_ref());
+        if let Some(reports) = &mut self.reports {
+            let repository = self.settings.repository.as_ref();
+            reports.run_started(options, &launch_dir, processes, repository);
+        }
+    }
+
+    /// Tells the reports how an attempt ended, once its outputs were checked.
+    pub(crate) fn reports_ended(&mut self, heard: Option<Outcome>, accepted: bool) {
+        if let (Some(reports), Some(heard)) = (&mut self.reports, heard) {
+            reports.ended(&heard, accepted);
+        }
+    }
+
+    /// Ends the reports of a run without a network, with the error that failed it, and writes
+    /// them; a run that succeeds checks them first, as [`Driver::finish`] does.
+    pub(crate) fn reports_finished(&mut self, error: Option<&str>) -> Result<(), DriverError> {
+        if let Some(reports) = &mut self.reports {
+            if error.is_none() {
+                reports.check().map_err(DriverError::new)?;
+            }
+            reports.run_ended(error, None, Vec::new());
+        }
+        self.write_reports()
+    }
+
     /// Writes report artifacts for either successful or failed runs.
     fn write_reports(&mut self) -> Result<(), DriverError> {
         if let Some(reports) = &self.reports {

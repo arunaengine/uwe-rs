@@ -221,3 +221,77 @@ fn finds_normal_scripts() {
     let word = [json!([{"id": "a"}, "hello"])];
     run(adapter.prepare(&greet, &word, 1, TaskId(1)).unwrap());
 }
+
+/// The trace of a run that `finish` delivered.
+fn trace(deliveries: &[Delivery]) -> String {
+    let trace = deliveries
+        .iter()
+        .find(|delivery| delivery.target.ends_with("trace.txt"));
+    std::fs::read_to_string(&trace.expect("the trace").location).unwrap()
+}
+
+#[test]
+fn matches_native_traces() {
+    let directory = tempfile::tempdir().unwrap();
+    let (launch, greet, shout) = setup(directory.path());
+    let fields = "trace.enabled = true\ntrace.file = 'trace.txt'\ntrace.fields = 'task_id,name,status,exit,attempt'\n";
+    std::fs::write(
+        directory.path().join("nextflow.config"),
+        format!("{CONFIG}{fields}"),
+    )
+    .unwrap();
+    let mut native = Nextflow::new(&launch, settings(directory.path())).unwrap();
+    let started = native.start().unwrap();
+    let mut shouts = Vec::new();
+    for (task, file) in started.iter().zip(["hello.txt", "world.txt"]) {
+        native.started(task.id, 1);
+        shouts.extend(native.complete(outcome(task, 1, 0, &[file])).unwrap());
+    }
+    for task in &shouts {
+        native.started(task.id, 1);
+        native
+            .complete(outcome(task, 1, 0, &["shout.txt"]))
+            .unwrap();
+    }
+    native.finish().unwrap();
+    let expected = trace(&native.deliveries());
+    drop(native);
+    let mut adapter = Adapter::new(&launch, settings(directory.path()), json!({})).unwrap();
+    adapter.start(Vec::new());
+    let words = [json!([{"id": "a"}, "hello"]), json!([{"id": "b"}, "world"])];
+    for (index, (task, word)) in started.iter().zip(&words).enumerate() {
+        let prepared = adapter.prepare(
+            &greet,
+            std::slice::from_ref(word),
+            index as u32 + 1,
+            task.id,
+        );
+        run(prepared.unwrap());
+    }
+    let mut texts = Vec::new();
+    for (task, file) in started.iter().zip(["hello.txt", "world.txt"]) {
+        adapter.started(task.id, 1);
+        let (outputs, _) = accepted(adapter.complete(outcome(task, 1, 0, &[file])).unwrap());
+        texts.push(outputs[0].clone().unwrap());
+    }
+    for (index, (task, text)) in shouts.iter().zip(texts).enumerate() {
+        run(adapter
+            .prepare(&shout, &[text, json!("!")], index as u32 + 1, task.id)
+            .unwrap());
+    }
+    for task in &shouts {
+        adapter.started(task.id, 1);
+        accepted(
+            adapter
+                .complete(outcome(task, 1, 0, &["shout.txt"]))
+                .unwrap(),
+        );
+    }
+    let written = trace(&adapter.end(None).unwrap());
+    assert_eq!(written, expected, "the adapter writes the native trace");
+    assert_eq!(
+        expected.lines().count(),
+        5,
+        "a header and four tasks: {expected}"
+    );
+}

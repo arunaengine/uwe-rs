@@ -5,6 +5,7 @@
 
 mod argo;
 mod arrays;
+mod buffering;
 mod callback;
 mod child;
 mod collecting;

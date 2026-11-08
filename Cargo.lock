@@ -1540,6 +1540,7 @@ dependencies = [
  "cwl-parser",
  "cwl-runtime",
  "serde_json",
+ "sha1",
  "tempfile",
  "wir",
  "wir-runtime",

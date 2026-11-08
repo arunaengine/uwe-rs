@@ -109,6 +109,10 @@ pub fn known(class: &RequirementClass) -> bool {
             | RequirementClass::ScatterFeature
             | RequirementClass::MultipleInputFeature
             | RequirementClass::StepInputExpression
+            | RequirementClass::SchemaDef { .. }
+            | RequirementClass::InitialWorkDir { .. }
+            | RequirementClass::EnvVar { .. }
+            | RequirementClass::ShellCommand
     )
 }
 
@@ -133,6 +137,7 @@ mod tests {
         let mut task = Task {
             image: None,
             command: Vec::new(),
+            shell: false,
             captures: Vec::new(),
             success_codes: Vec::new(),
             network: false,
@@ -160,8 +165,11 @@ mod tests {
     }
 
     #[test]
-    fn refuses_environment_variables() {
-        let (attributes, _) = applied("environment.cwl");
-        assert_eq!(attributes.unwrap_err(), "the requirement EnvVarRequirement");
+    fn refuses_unknown_requirements() {
+        let (attributes, _) = applied("update.cwl");
+        assert_eq!(
+            attributes.unwrap_err(),
+            "the requirement InplaceUpdateRequirement"
+        );
     }
 }

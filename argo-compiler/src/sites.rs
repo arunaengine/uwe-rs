@@ -242,6 +242,11 @@ impl Compiler {
             });
         }
         let looping = rounds.is_some();
+        if looping && site.continue_on != ContinueOn::default() {
+            return fail(
+                "a loop whose rounds continue on failures gives the outputs of the others",
+            );
+        }
         let calls_graph = matches!(target, Target::Graph(..));
         let mut available: Vec<(String, Type)> = (needs.iter())
             .map(|need| (need.port.name.clone(), need.port.r#type.clone()))

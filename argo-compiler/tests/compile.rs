@@ -201,7 +201,11 @@ fn compiles_dag_control() {
     assert_eq!(op(main, "c")["depends"], expected);
     let failures = json!(["failed", "errored"]);
     let ran_past = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
-    assert_eq!(op(main, "c")["handles"], ran_past, "the target judges the DAG");
+    assert_eq!(
+        op(main, "c")["handles"],
+        ran_past,
+        "the target judges the DAG"
+    );
 }
 
 #[test]
@@ -634,4 +638,26 @@ fn handles_failures_targets_ran_past() {
     let failures = json!(["failed", "errored"]);
     let expected = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
     assert_eq!(handles, &expected);
+}
+
+#[test]
+fn keeps_loops_that_continue_native() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: each, template: say, withItems: [a, b], continueOn: {failed: true}}
+      - name: use
+        template: say
+        dependencies: [each]
+        arguments: {parameters: [{name: text, value: "{{tasks.each.outputs.result}}"}]}
+  - name: say
+    inputs: {parameters: [{name: text, value: x}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+    let (_, kept) = compiled(folder.path(), spec);
+    assert_eq!(kept.len(), 1);
+    assert!(kept[0].reason.contains("continue on failures"), "{kept:?}");
 }

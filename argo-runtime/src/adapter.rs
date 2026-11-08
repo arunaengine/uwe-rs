@@ -573,7 +573,7 @@ fn tag_values(name: &str, value: &Json) -> Result<Vec<(String, String)>, String>
     })
 }
 
-/// A JSON value with the tags of each of its texts substituted.
+/// A JSON value with the tags of each of its texts substituted, object keys included.
 fn substituted(value: Json, variables: &Variables) -> Result<Json, String> {
     Ok(match value {
         Json::String(text) => Json::String(crate::tags::replace(&text, variables, true)?),
@@ -582,8 +582,10 @@ fn substituted(value: Json, variables: &Variables) -> Result<Json, String> {
             Json::Array(items.collect::<Result<_, _>>()?)
         }
         Json::Object(entries) => {
-            let entries =
-                (entries.into_iter()).map(|(key, item)| Ok((key, substituted(item, variables)?)));
+            let entries = (entries.into_iter()).map(|(key, item)| {
+                let key = crate::tags::replace(&key, variables, true)?;
+                Ok((key, substituted(item, variables)?))
+            });
             Json::Object(entries.collect::<Result<_, String>>()?)
         }
         other => other,

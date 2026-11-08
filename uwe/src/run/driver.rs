@@ -150,6 +150,7 @@ pub(crate) fn driver(
                 },
             };
             wir_runtime::snakemake::register(&mut settings.adapters, settings.snakemake.clone());
+            wir_runtime::nextflow::register(&mut settings.adapters, settings.nextflow.clone());
             let downloads = cache_directory().join("downloads");
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
         }

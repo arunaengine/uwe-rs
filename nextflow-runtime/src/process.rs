@@ -136,28 +136,14 @@ pub struct TaskOutcome {
 }
 
 pub(crate) struct ProcessNode {
-    pub module: Rc<Module>,
-    pub process: Rc<Process>,
-    pub name: Rc<str>,
+    pub binding: Binding,
     pub outputs: Vec<ChannelId>,
-    /// A process whose inputs are all values, without `each` inputs, runs one task.
-    pub singleton: bool,
     /// Whether every input is a value channel, so that one round of values starts tasks.
     pub one_round: bool,
-    pub stub: bool,
-    /// Where `exec:` sections run, if they may.
-    pub exec_folder: Option<Rc<Path>>,
-    /// The config settings of this call of the process.
-    pub settings: Rc<ProcessSettings>,
-    pub conda_enabled: bool,
-    pub spack_enabled: bool,
     pub rounds: u32,
     /// The number of tasks started, which gives each task its index.
     pub tasks: u32,
-    pub max_forks: Option<usize>,
-    /// The `fair` directive: the outputs of each task wait for those of the tasks before it,
-    /// by task index. A task that binds nothing holds back the later ones, as in Nextflow.
-    pub fair: bool,
+    pub limits: Limits,
     /// The outputs of the tasks that wait for earlier ones, by task index.
     pub held: std::collections::BTreeMap<u32, Vec<Option<Value>>>,
     /// The index of the task whose outputs come next.
@@ -167,6 +153,62 @@ pub(crate) struct ProcessNode {
     /// The tasks in flight.
     pub pending: HashMap<TaskId, InFlight>,
     pub each_round: Option<EachRound>,
+}
+
+/// What every task of one call of a process shares: the definition, its config settings and
+/// how its tasks run. Each task of the call is bound through it.
+pub(crate) struct Binding {
+    pub module: Rc<Module>,
+    pub process: Rc<Process>,
+    pub name: Rc<str>,
+    /// A process whose inputs are all values, without `each` inputs, runs one task.
+    pub singleton: bool,
+    pub stub: bool,
+    /// Where `exec:` sections run, if they may.
+    pub exec_folder: Option<Rc<Path>>,
+    /// The config settings of this call of the process.
+    pub settings: Rc<ProcessSettings>,
+    pub conda_enabled: bool,
+    pub spack_enabled: bool,
+}
+
+/// The directives of a process call that its first task fixes for all its tasks.
+#[derive(Default)]
+pub(crate) struct Limits {
+    pub max_forks: Option<usize>,
+    /// The `fair` directive: the outputs of each task wait for those of the tasks before it,
+    /// by task index. A task that binds nothing holds back the later ones, as in Nextflow.
+    pub fair: bool,
+}
+
+/// A bound task: its request, what its completion needs, and its outputs from a `storeDir`
+/// when they are there already, so that it need not run.
+pub(crate) struct Asked {
+    pub request: TaskRequest,
+    pub flight: InFlight,
+    pub stored: Option<Vec<(String, PathValue)>>,
+}
+
+/// How a finished attempt ended, by its outputs.
+pub(crate) enum Collected {
+    /// The task failed, with the error of its outcome when it ran well but did not finish.
+    Failed(Option<Error>),
+    /// An output did not find its files or values.
+    Missing(Error),
+    /// The value of each output in declaration order, `None` for a missing optional one, and
+    /// the files that the outputs took.
+    Values {
+        values: Vec<Option<Value>>,
+        files: Vec<(String, PathValue)>,
+    },
+}
+
+/// What the error strategy of a failed attempt decides, with the failure.
+pub(crate) struct Decision {
+    pub strategy: Strategy,
+    pub retries: u32,
+    pub message: String,
+    pub error: Error,
 }
 
 /// One round's `each` choices, with the first input varying fastest.
@@ -188,15 +230,39 @@ pub(crate) struct Bound<'a> {
 pub(crate) struct InFlight {
     name: String,
     /// The input values, the index and the attempt of the task, to run it again.
-    values: Vec<Value>,
-    index: u32,
-    attempt: u32,
+    pub values: Vec<Value>,
+    pub index: u32,
+    pub attempt: u32,
     outputs: Vec<RenderedOutput>,
     /// The frame and the `task` object of the task, for the closures of `publishDir`.
-    frame: TaskFrame,
-    task: Value,
-    publish: Vec<publish::Rule>,
+    pub frame: TaskFrame,
+    pub task: Value,
+    pub publish: Vec<publish::Rule>,
     store: Option<PathValue>,
+}
+
+impl InFlight {
+    /// Typed outputs compute their values from their parts in the frame of the task.
+    pub(crate) fn typed_values(
+        &mut self,
+        interpreter: &mut Interpreter,
+        values: &mut [Option<Value>],
+    ) -> Result<(), Error> {
+        for (output, value) in self.outputs.iter().zip(values.iter_mut()) {
+            if let (Some(typed), Some(Value::List(parts))) = (&output.typed, value.as_ref()) {
+                let parts = parts.borrow().items.clone();
+                let computed = interpreter.typed_output(&mut self.frame, typed, parts)?;
+                // Nextflow gives a tuple that a typed output makes as a plain list.
+                *value = Some(match &computed {
+                    Value::List(list) if list.borrow().kind == ListKind::Tuple => {
+                        Value::list(list.borrow().items.clone())
+                    }
+                    _ => computed,
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Behaviour for ProcessNode {
@@ -204,18 +270,50 @@ impl Behaviour for ProcessNode {
         Ok(State::Running)
     }
 
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        let binding = &self.binding;
+        let process = &binding.process;
+        let each = (process.inputs.iter().enumerate())
+            .filter(|(_, input)| matches!(input, Input::Each(_)))
+            .map(|(index, _)| index)
+            .collect();
+        let outputs = (process.outputs.iter())
+            .map(|output| crate::export::Output {
+                emit: output.emit.as_deref().map(str::to_owned),
+                topic: output.topic.as_deref().map(str::to_owned),
+                hidden: output.hidden,
+            })
+            .collect();
+        let call = crate::adapter::Call {
+            script: binding
+                .module
+                .path
+                .borrow()
+                .as_deref()
+                .unwrap_or_default()
+                .to_owned(),
+            process: process.name.to_string(),
+            name: binding.name.to_string(),
+            singleton: binding.singleton,
+        };
+        Ok(crate::export::Kind::Process {
+            call,
+            each,
+            start: process.span.start,
+            end: process.span.end,
+            outputs,
+        })
+    }
+
     fn definition(&self) -> Option<Definition> {
         Some(Definition {
-            name: self.process.name.clone(),
-            script: self.module.path.borrow().clone(),
+            name: self.binding.process.name.clone(),
+            script: self.binding.module.path.borrow().clone(),
         })
     }
 
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
-        if self
-            .max_forks
-            .is_some_and(|limit| self.pending.len() >= limit)
-        {
+        if (self.limits.max_forks).is_some_and(|limit| self.pending.len() >= limit) {
             return Ok(State::Running);
         }
         if self.each_round.is_some() {
@@ -266,78 +364,30 @@ impl Behaviour for ProcessNode {
             return Ok(State::Running);
         };
         context.accept(outcome.id, false);
-        if outcome.failure.is_none()
-            && let Some(structured) =
-                (self.process.agent.as_ref()).and_then(|a| a.structured.as_ref())
-        {
-            let simulated = context.interpreter.host().simulated();
-            let staged = &flight.frame.staged;
-            match crate::agent::bind(structured, &outcome.stdout, staged, &self.name, simulated) {
-                Ok(value) => flight.outputs[0].parts = vec![RenderedPart::Value(value)],
-                Err(error) => outcome.failure = Some(error),
-            }
-        }
-        if outcome.exit_status != 0 || outcome.failure.is_some() {
-            let failure = if outcome.exit_status == 0 {
-                outcome.failure.take()
-            } else {
-                None
-            };
-            return self.failed(context, flight, &outcome, failure);
-        }
-        if !context.interpreter.host().simulated()
-            && let Some(directory) = &flight.store
-        {
-            crate::store::save(&mut outcome.files, directory, context.interpreter.host())?;
-        }
-        context.remember_task_files(&outcome.files);
-        let (task, outputs) = (&flight.name, &flight.outputs);
-        // All outputs of a task bind together, in declaration order.
-        // `eval` results come in the order of the `eval` parts over all outputs.
-        let mut values = Vec::new();
-        let mut eval_index = 0;
-        let staged: Vec<&str> = (flight.frame.staged.iter())
-            .map(|(_, name)| name.as_str())
-            .collect();
-        let mut bound = Bound {
-            staged,
-            files: Vec::new(),
-            simulated: context.interpreter.host().simulated(),
-        };
-        for output in outputs {
-            match self.output_value(output, &outcome, task, &mut eval_index, &mut bound) {
-                Ok(value) => values.push(value),
-                Err(error) => return self.failed(context, flight, &outcome, Some(error)),
-            }
-        }
         let interpreter = &mut *context.interpreter;
-        let deliveries = publish::deliveries(
-            interpreter,
-            &flight.frame,
-            &flight.task,
-            &flight.publish,
-            &bound.files,
-        )?;
-        context.deliver(deliveries);
-        // Typed outputs compute their values from their parts in the frame of the task.
-        for (output, value) in flight.outputs.iter().zip(values.iter_mut()) {
-            if let (Some(typed), Some(Value::List(parts))) = (&output.typed, value.as_ref()) {
-                let parts = parts.borrow().items.clone();
-                let computed = context
-                    .interpreter
-                    .typed_output(&mut flight.frame, typed, parts)?;
-                // Nextflow gives a tuple that a typed output makes as a plain list.
-                *value = Some(match &computed {
-                    Value::List(list) if list.borrow().kind == ListKind::Tuple => {
-                        Value::list(list.borrow().items.clone())
-                    }
-                    _ => computed,
-                });
+        let mut values = match self
+            .binding
+            .collect(interpreter, &mut flight, &mut outcome)?
+        {
+            Collected::Failed(failure) => return self.failed(context, flight, &outcome, failure),
+            Collected::Missing(error) => {
+                context.remember_task_files(&outcome.files);
+                return self.failed(context, flight, &outcome, Some(error));
             }
-        }
+            Collected::Values { values, files } => {
+                context.remember_task_files(&outcome.files);
+                let (frame, task) = (&flight.frame, &flight.task);
+                let interpreter = &mut *context.interpreter;
+                let deliveries =
+                    publish::deliveries(interpreter, frame, task, &flight.publish, &files)?;
+                context.deliver(deliveries);
+                values
+            }
+        };
+        flight.typed_values(context.interpreter, &mut values)?;
         context.accept(outcome.id, true);
         *context.succeeded += 1;
-        if !self.fair {
+        if !self.limits.fair {
             self.emit(context, values);
             return self.finish_if_done(context);
         }
@@ -355,7 +405,7 @@ impl ProcessNode {
     /// task for each combination of their values, the first varying fastest, as Nextflow's
     /// `ForwardClosure` does.
     fn start_tasks(&mut self, context: &mut Context, values: Vec<Value>) -> Result<(), Error> {
-        let each: Vec<usize> = (self.process.inputs.iter().enumerate())
+        let each: Vec<usize> = (self.binding.process.inputs.iter().enumerate())
             .filter(|(_, input)| matches!(input, Input::Each(_)))
             .map(|(index, _)| index)
             .collect();
@@ -413,6 +463,47 @@ impl ProcessNode {
         self.launch(context, values, self.tasks, None, 1)
     }
 
+    /// Asks for an attempt of a task: the first gets a new id, a retry keeps the id of the
+    /// task and counts its attempt up.
+    fn launch(
+        &mut self,
+        context: &mut Context,
+        values: Vec<Value>,
+        index: u32,
+        id: Option<TaskId>,
+        attempt: u32,
+    ) -> Result<(), Error> {
+        let (interpreter, counter) = context.binder();
+        let limits = &mut self.limits;
+        let asked =
+            (self.binding).prepare(interpreter, counter, limits, values, index, id, attempt)?;
+        let Some(Asked {
+            request,
+            flight,
+            stored,
+        }) = asked
+        else {
+            return Ok(());
+        };
+        let id = request.id;
+        self.pending.insert(id, flight);
+        if let Some(files) = stored {
+            self.complete(
+                context,
+                TaskOutcome {
+                    id,
+                    files,
+                    ..TaskOutcome::default()
+                },
+            )?;
+        } else {
+            context.request(request);
+        }
+        Ok(())
+    }
+}
+
+impl Binding {
     /// The directives of a task: its process's own, then those of the config, where selectors
     /// replace the process's own and plain settings fill in the rest.
     fn directives(
@@ -496,22 +587,25 @@ impl ProcessNode {
         Ok(directives)
     }
 
-    /// Asks for an attempt of a task: the first gets a new id, a retry keeps the id of the
-    /// task and counts its attempt up.
-    fn launch(
-        &mut self,
-        context: &mut Context,
+    /// Binds an attempt of a task, evaluates its directives and `task` object and renders it;
+    /// `None` when `when:` skips it. A task without an id takes the next one of `counter`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn prepare(
+        &self,
+        interpreter: &mut Interpreter,
+        counter: &mut u64,
+        limits: &mut Limits,
         values: Vec<Value>,
         index: u32,
         id: Option<TaskId>,
         attempt: u32,
-    ) -> Result<(), Error> {
+    ) -> Result<Option<Asked>, Error> {
         // An `exec:` section runs here, in a folder of its own, which it knows as
         // `task.workDir`; so it needs its id first.
         let exec = self.runs_exec();
         let (id, work_dir) = match exec {
             true => {
-                let id = id.unwrap_or_else(|| context.task_id());
+                let id = id.unwrap_or_else(|| next_id(counter));
                 let folder = self
                     .exec_folder
                     .as_ref()
@@ -520,7 +614,6 @@ impl ProcessNode {
             }
             false => (id, None),
         };
-        let interpreter = &mut *context.interpreter;
         let mut frame =
             interpreter.bind_task_as(&self.module, &self.process, &self.name, &values)?;
         let ext = ext_map(&self.settings)?;
@@ -541,14 +634,14 @@ impl ProcessNode {
                     ));
                 }
             }
-            self.max_forks = directives
+            limits.max_forks = directives
                 .iter()
                 .find(|directive| &*directive.name == "maxForks")
                 .and_then(|directive| directive.arguments.last())
                 .and_then(|value| value.to_string().parse().ok())
                 .filter(|limit| *limit > 0)
                 .or(self.process.agent.as_ref().map(|_| crate::agent::FORKS));
-            self.fair = (directives.iter())
+            limits.fair = (directives.iter())
                 .find(|directive| &*directive.name == "fair")
                 .and_then(|directive| directive.arguments.last())
                 .is_some_and(Value::truth);
@@ -560,7 +653,7 @@ impl ProcessNode {
                 .insert(Key(Value::string("workDir")), Value::Path(Rc::new(path)));
         }
         if !interpreter.task_guard(&mut frame, &self.process, &task)? {
-            return Ok(());
+            return Ok(None);
         }
         let publish = publish::rules(interpreter, &frame, &task, &directives)?;
         let store = crate::store::directory(&directives, interpreter.host());
@@ -590,7 +683,7 @@ impl ProcessNode {
                 (rendered, stored)
             }
         };
-        let id = id.unwrap_or_else(|| context.task_id());
+        let id = id.unwrap_or_else(|| next_id(counter));
         let agent = match &self.process.agent {
             Some(agent) => Some(Box::new(crate::agent::call(
                 &self.process,
@@ -661,20 +754,11 @@ impl ProcessNode {
         };
         let stored =
             stored.filter(|files| self.stored_outputs(&flight.outputs, files, &flight.name));
-        self.pending.insert(id, flight);
-        if let Some(files) = stored {
-            self.complete(
-                context,
-                TaskOutcome {
-                    id,
-                    files,
-                    ..TaskOutcome::default()
-                },
-            )?;
-        } else {
-            context.request(request);
-        }
-        Ok(())
+        Ok(Some(Asked {
+            request,
+            flight,
+            stored,
+        }))
     }
 
     /// Whether the tasks of the process run its `exec:` section, which needs a folder to run
@@ -701,8 +785,7 @@ impl ProcessNode {
         };
         let mut eval_index = 0;
         outputs.iter().all(|output| {
-            self.output_value(output, &outcome, name, &mut eval_index, &mut bound)
-                .is_ok()
+            Self::output_value(output, &outcome, name, &mut eval_index, &mut bound).is_ok()
         })
     }
 
@@ -725,29 +808,73 @@ impl ProcessNode {
         Ok(work_dir)
     }
 
-    /// What happens after a task failed, by its error strategy, which is evaluated now, with
-    /// the task's exit status: a retry of the task, going on without its outputs, or the end
-    /// of the run, at once or once the running tasks have ended.
-    fn failed(
-        &mut self,
-        context: &mut Context,
-        flight: InFlight,
+    /// Checks a finished attempt: its exit status, the answer of an agent, and the values of
+    /// its outputs, after it saved them to its `storeDir`.
+    pub(crate) fn collect(
+        &self,
+        interpreter: &mut Interpreter,
+        flight: &mut InFlight,
+        outcome: &mut TaskOutcome,
+    ) -> Result<Collected, Error> {
+        let simulated = interpreter.host().simulated();
+        if outcome.failure.is_none()
+            && let Some(structured) =
+                (self.process.agent.as_ref()).and_then(|a| a.structured.as_ref())
+        {
+            let staged = &flight.frame.staged;
+            match crate::agent::bind(structured, &outcome.stdout, staged, &self.name, simulated) {
+                Ok(value) => flight.outputs[0].parts = vec![RenderedPart::Value(value)],
+                Err(error) => outcome.failure = Some(error),
+            }
+        }
+        if outcome.exit_status != 0 || outcome.failure.is_some() {
+            let failure = if outcome.exit_status == 0 {
+                outcome.failure.take()
+            } else {
+                None
+            };
+            return Ok(Collected::Failed(failure));
+        }
+        if !simulated && let Some(directory) = &flight.store {
+            crate::store::save(&mut outcome.files, directory, interpreter.host())?;
+        }
+        let (task, outputs) = (&flight.name, &flight.outputs);
+        // All outputs of a task bind together, in declaration order.
+        // `eval` results come in the order of the `eval` parts over all outputs.
+        let mut values = Vec::new();
+        let mut eval_index = 0;
+        let staged: Vec<&str> = (flight.frame.staged.iter())
+            .map(|(_, name)| name.as_str())
+            .collect();
+        let mut bound = Bound {
+            staged,
+            files: Vec::new(),
+            simulated,
+        };
+        for output in outputs {
+            match Self::output_value(output, outcome, task, &mut eval_index, &mut bound) {
+                Ok(value) => values.push(value),
+                Err(error) => return Ok(Collected::Missing(error)),
+            }
+        }
+        let files = bound.files;
+        Ok(Collected::Values { values, files })
+    }
+
+    /// The error strategy of a failed attempt, which is evaluated now, with the exit status of
+    /// the task, and the message and error of the failure.
+    pub(crate) fn decide(
+        &self,
+        interpreter: &mut Interpreter,
+        flight: &mut InFlight,
         outcome: &TaskOutcome,
         failure: Option<Error>,
-    ) -> Result<State, Error> {
-        let InFlight {
-            name,
-            values,
-            index,
-            attempt,
-            mut frame,
-            ..
-        } = flight;
-        let interpreter = &mut *context.interpreter;
+    ) -> Result<Decision, Error> {
+        let (name, index, attempt) = (&flight.name, flight.index, flight.attempt);
         let ext = ext_map(&self.settings)?;
         let status = Some(outcome.exit_status);
         let base = task_object(&self.name, index, attempt, status, &[], &ext);
-        let directives = self.directives(interpreter, &mut frame, &base)?;
+        let directives = self.directives(interpreter, &mut flight.frame, &base)?;
         let (strategy, retries) = strategy::of(&directives);
         let message = format!(
             "Process `{name}` terminated with an error exit status ({})",
@@ -756,7 +883,41 @@ impl ProcessNode {
         let message = failure.as_ref().map_or(message, Error::to_string);
         let error = failure
             .unwrap_or_else(|| thrown(Exception::new("ProcessFailedException", message.clone())));
-        let failure = message;
+        Ok(Decision {
+            strategy,
+            retries,
+            message,
+            error,
+        })
+    }
+}
+
+impl ProcessNode {
+    /// What happens after a task failed, by its error strategy, which is evaluated now, with
+    /// the task's exit status: a retry of the task, going on without its outputs, or the end
+    /// of the run, at once or once the running tasks have ended.
+    fn failed(
+        &mut self,
+        context: &mut Context,
+        mut flight: InFlight,
+        outcome: &TaskOutcome,
+        failure: Option<Error>,
+    ) -> Result<State, Error> {
+        let interpreter = &mut *context.interpreter;
+        let decision = (self.binding).decide(interpreter, &mut flight, outcome, failure)?;
+        let Decision {
+            strategy,
+            retries,
+            message: failure,
+            error,
+        } = decision;
+        let InFlight {
+            name,
+            values,
+            index,
+            attempt,
+            ..
+        } = flight;
         if strategy != Strategy::Ignore && !(strategy == Strategy::Retry && attempt <= retries) {
             context.failed_task.get_or_insert_with(|| {
                 Value::map([
@@ -765,7 +926,7 @@ impl ProcessNode {
                         Value::string(outcome.id.0.to_string()),
                     ),
                     (Value::string("name"), Value::string(name.as_str())),
-                    (Value::string("process"), Value::string(&*self.name)),
+                    (Value::string("process"), Value::string(&*self.binding.name)),
                     (Value::string("exit"), Value::integer(outcome.exit_status)),
                     (
                         Value::string("attempt"),
@@ -799,10 +960,11 @@ impl ProcessNode {
             Strategy::Terminate | Strategy::Retry => Err(error),
         }
     }
+}
 
+impl Binding {
     /// The value one output binds for a task; `None` when an optional output is missing.
     fn output_value(
-        &self,
         output: &RenderedOutput,
         outcome: &TaskOutcome,
         task: &str,
@@ -916,7 +1078,9 @@ impl ProcessNode {
         };
         Ok(if missing { None } else { Some(value) })
     }
+}
 
+impl ProcessNode {
     /// Closes the outputs once no round can start and no task is in flight.
     /// Binds the values of the outputs of one task.
     fn emit(&self, context: &mut Context, values: Vec<Option<Value>>) {
@@ -1290,6 +1454,12 @@ pub(crate) fn singleton(process: &Process, queue_inputs: bool) -> bool {
             .inputs
             .iter()
             .any(|input| matches!(input, Input::Each(_)))
+}
+
+/// The next task number of a run.
+pub(crate) fn next_id(counter: &mut u64) -> TaskId {
+    *counter += 1;
+    TaskId(*counter)
 }
 
 fn thrown(exception: Exception) -> Error {

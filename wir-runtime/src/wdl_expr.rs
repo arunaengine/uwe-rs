@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use indexmap::IndexMap;
 use serde_json::{Map, Value as Json, json};
 use wdl_analysis::types::v1::AstTypeConverter;
-use wdl_analysis::types::{Type as Declared, TypeNameResolver};
+use wdl_analysis::types::{StructType, Type as Declared, TypeNameResolver};
 use wdl_ast::v1::{BoundDecl, CommandSection, WorkflowStatement};
 use wdl_ast::{AstToken, Diagnostic, Severity, Span};
 use wdl_runtime::Value;
@@ -27,7 +27,9 @@ pub fn evaluate(
 ) -> Result<Json, String> {
     let version = version(document, op);
     let defs = &document.types;
-    let command = spec.code.trim_start().starts_with("command");
+    let rest = spec.code.trim_start().strip_prefix("command");
+    // A name like `command_prefix` starts an expression, not a command section.
+    let command = rest.is_some_and(|rest| rest.trim_start().starts_with(['<', '{']));
     let mut scope = Scope {
         written: command.then(Vec::new),
         ..Scope::default()
@@ -45,10 +47,15 @@ pub fn evaluate(
         );
         scope.names.insert(port.name.clone(), value);
     }
+    let mut structs = BTreeMap::new();
     for line in &spec.library {
+        if let Some(record) = structure(line, version, &structs)? {
+            structs.insert(record.name().to_string(), Declared::from(record));
+            continue;
+        }
         let decl = declaration(line, version)?;
         let name = decl.name().text().to_owned();
-        let ty = declared(&decl.ty())?;
+        let ty = declared(&decl.ty(), &structs)?;
         let value = expression::evaluate(&decl.expr(), &mut scope)
             .map_err(|error| format!("`{name}`: {error}"))?;
         let value = value
@@ -68,6 +75,10 @@ pub fn evaluate(
         }
     };
     let output = &op.outputs[0];
+    let plain = op.inputs.iter().any(|port| port.name == spec.code);
+    if plain && value == Value::None && !output.r#type.is_optional(defs) {
+        return Err(format!("the input `{}` has no value", spec.code));
+    }
     let json = to_wir(value, &output.r#type, defs, &scope.files)?;
     match wir::fits(&json, &output.r#type, defs) {
         true => Ok(json),
@@ -167,18 +178,38 @@ fn section(text: &str, version: &str) -> Result<CommandSection, String> {
         .ok_or_else(|| "the code is not a WDL command section".to_owned())
 }
 
-/// The type of a declaration. Structs have no definitions here, so their values stay as
-/// they are.
-fn declared(ty: &wdl_ast::v1::Type) -> Result<Declared, String> {
-    struct Open;
-
-    impl TypeNameResolver for Open {
-        fn resolve(&mut self, _: &str, _: Span) -> Result<Declared, Diagnostic> {
-            Ok(Declared::Union)
-        }
+/// The struct that a library line like `struct Person { String name }` defines, with the
+/// structs before it; another line defines none.
+fn structure(
+    line: &str,
+    version: &str,
+    structs: &BTreeMap<String, Declared>,
+) -> Result<Option<StructType>, String> {
+    if !line.trim_start().starts_with("struct ") {
+        return Ok(None);
     }
+    let ast = parsed(line, version)?;
+    let definition = (ast.structs().next()).ok_or_else(|| format!("`{line}` is no struct"))?;
+    (AstTypeConverter::new(Known(structs)).convert_struct_type(&definition))
+        .map(Some)
+        .map_err(|diagnostic| diagnostic.message().to_owned())
+}
 
-    (AstTypeConverter::new(Open).convert_type(ty))
+/// The structs of a library by name; a struct it does not define is a value as it is.
+struct Known<'s>(&'s BTreeMap<String, Declared>);
+
+impl TypeNameResolver for Known<'_> {
+    fn resolve(&mut self, name: &str, _: Span) -> Result<Declared, Diagnostic> {
+        Ok(self.0.get(name).cloned().unwrap_or(Declared::Union))
+    }
+}
+
+/// The type of a declaration, with the structs of the library.
+fn declared(
+    ty: &wdl_ast::v1::Type,
+    structs: &BTreeMap<String, Declared>,
+) -> Result<Declared, String> {
+    (AstTypeConverter::new(Known(structs)).convert_type(ty))
         .map_err(|diagnostic| diagnostic.message().to_owned())
 }
 
@@ -240,11 +271,16 @@ fn to_wdl(
                     .map_or(Type::Dynamic, |field| field.r#type.clone()),
                 _ => Type::Dynamic,
             };
-            Value::Object(
-                (object.iter())
-                    .map(|(key, json)| (key.clone(), to_wdl(json, &field(key), defs, None, files)))
-                    .collect(),
-            )
+            let mut members: IndexMap<String, Value> = (object.iter())
+                .map(|(key, json)| (key.clone(), to_wdl(json, &field(key), defs, None, files)))
+                .collect();
+            // A struct has every member that it declares, as WDL coerces one.
+            if let Type::Record(fields) = resolved {
+                for field in fields {
+                    members.entry(field.name.clone()).or_insert(Value::None);
+                }
+            }
+            Value::Object(members)
         }
         (_, Json::Bool(flag)) => Value::Boolean(*flag),
         (Type::Float, Json::Number(number)) => Value::Float(number.as_f64().unwrap_or_default()),
@@ -458,6 +494,13 @@ mod tests {
     }
 
     #[test]
+    fn names_start_expressions() {
+        let inputs = json!({"command_prefix": {"type": "string", "value": "out"}});
+        let text = run("command_prefix + \".txt\"", &[], inputs, json!("string"));
+        assert_eq!(text, Ok(json!("out.txt")));
+    }
+
+    #[test]
     fn commands_see_staging() {
         let files = json!({"array": {"items": {"file": {}}}});
         let inputs = json!({
@@ -514,6 +557,18 @@ mod tests {
         let output = json!({"record": fields});
         let made = run("object { a: 1 }", &[], json!({}), output);
         assert_eq!(made, Ok(json!({"a": 1, "b": null})));
+    }
+
+    #[test]
+    fn records_fill_members() {
+        let fields = json!([
+            {"name": "name", "type": "string"},
+            {"name": "greeting", "type": {"optional": "string"}},
+        ]);
+        let inputs = json!({"person": {"type": {"record": fields}, "value": {"name": "Ada"}}});
+        let code = "select_first([person.greeting, \"hello\"]) + \" \" + person.name";
+        let text = run(code, &[], inputs, json!("string"));
+        assert_eq!(text, Ok(json!("hello Ada")));
     }
 
     #[test]

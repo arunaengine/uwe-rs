@@ -222,7 +222,7 @@ fn refuses_engine_effects() {
     });
     assert_eq!(
         message,
-        "op main/same: only task and native ops have effects"
+        "op main/same: only task, native and effect ops have effects"
     );
 }
 
@@ -241,13 +241,6 @@ fn refuses_block_sizes() {
 
 #[test]
 fn refuses_unrun_fields() {
-    let control = refused(|document| {
-        op(document, 1)["depends"] = json!({"result": {"op": "sort", "on": ["succeeded"]}});
-    });
-    assert_eq!(
-        control,
-        "op main/head: uwe does not run depends and handles yet"
-    );
     let rules = refused(|document| op(document, 0)["values"] = json!("groovy"));
     assert_eq!(
         rules,
@@ -281,13 +274,10 @@ fn refuses_unrun_fields() {
         "op main/same: uwe does not run expressions with a scope or captures yet"
     );
     let streams = refused(|document| {
-        let main = &mut document["graphs"][0];
-        main["inputs"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({"name": "items", "type": "int", "flow": "stream"}));
+        document["graphs"][0]["inputs"][0]["flow"] = json!("stream");
+        op(document, 0)["inputs"][0]["flow"] = json!("stream");
     });
-    assert_eq!(streams, "graph main: uwe does not run stream ports yet");
+    assert_eq!(streams, "op main/sort: uwe does not run stream ports yet");
     let built = refused(|document| {
         let source = json!({"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"});
         document["sources"].as_array_mut().unwrap().push(source);

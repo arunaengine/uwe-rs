@@ -132,6 +132,11 @@ pub(crate) fn driver(
                 },
                 wdl: wdl_options(arguments),
                 print: !arguments.no_print,
+                print_sink: match arguments.print_sink.clone() {
+                    Some(sink) => wir_runtime::Printer::new(move |text| sink.print(text)),
+                    None => wir_runtime::Printer::default(),
+                },
+                adapters: wir_runtime::adapter::Adapters::default(),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();
@@ -241,7 +246,7 @@ fn cwl_options(
 }
 
 /// The options of Snakemake runs, and of the Snakemake blocks of wir runs.
-fn snakemake_options(
+pub(crate) fn snakemake_options(
     arguments: &Arguments,
     setup: &Setup,
     run: &str,
@@ -278,7 +283,7 @@ fn shared_workdir(arguments: &Arguments, setup: &Setup) -> bool {
 /// The settings of Snakemake runs: the Python container of decision 19, with the engine of
 /// the local executor, which keeps what uv downloads and installs in the cache, and the
 /// storage providers.
-fn snakemake(
+pub(crate) fn snakemake(
     arguments: &Arguments,
     setup: &Setup,
     cancel: &CancellationToken,

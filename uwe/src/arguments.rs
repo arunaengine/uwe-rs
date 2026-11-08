@@ -853,7 +853,7 @@ pub fn help(command: &str) -> Result<String, String> {
         "origin" => " <file>",
         "digest" => " <path>",
         "record" => " -- <command ...>",
-        "lower" => " <workflow.cwl|workflow.wdl|pipeline> [--param value]",
+        "lower" => " <workflow.cwl|workflow.wdl|Snakefile|pipeline> [--param value]",
         _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
         "lock-environment" => " <environment.yml>",
         _ => " <run>",

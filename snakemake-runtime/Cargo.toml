@@ -35,5 +35,7 @@ workflow-graph.workspace = true
 
 [dev-dependencies]
 config-file.workspace = true
+run-database.workspace = true
+task-runner.workspace = true
 tempfile.workspace = true
 zip.workspace = true

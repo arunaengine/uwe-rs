@@ -13,6 +13,7 @@ use crate::types::{ArrayType, Type, TypeDef, resolve};
 
 impl<'d> Checker<'d> {
     pub(super) fn kind(&mut self, at: &str, op: &Op) {
+        self.declared_effects(at, op);
         match &op.kind {
             Kind::Task(task) => self.task(at, op, task),
             Kind::Call(call) => self.call(at, op, &call.graph),
@@ -57,6 +58,9 @@ impl<'d> Checker<'d> {
             Kind::Until(until) => self.until(at, op, &until.predicate),
             Kind::IfEmpty(fallback) => self.if_empty(at, op, fallback),
             Kind::Split(split) => self.split(at, op, split),
+            Kind::CollectFile(collect) => self.collect_file(at, op, collect),
+            Kind::View(view) => self.view(at, op, view),
+            Kind::Observe(observe) => self.observe(at, op, observe),
             Kind::Route(route) => self.route(at, op, route),
             Kind::MultiMap(multi) => self.multi_map(at, op, multi),
             Kind::Flatten(flatten) if streams(op) => self.flatten_stream(at, op, flatten.depth),

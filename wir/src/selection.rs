@@ -13,7 +13,7 @@ use crate::document::Port;
 use crate::flow::Flow;
 use crate::op::{Effect, Op};
 use crate::reserved::{
-    Buffer, BufferRule, ChunkFiles, IfEmpty, Pair, SequenceField, Split, SplitFormat, Window,
+    Buffer, BufferRule, IfEmpty, Pair, SequenceField, Split, SplitFormat, Window,
 };
 use crate::types::Type;
 
@@ -93,7 +93,12 @@ impl<'d> Checker<'d> {
     }
 
     /// The stream input `source` and the stream output `out` of an op.
-    fn streamed<'o>(&mut self, at: &str, op: &'o Op, what: &str) -> Option<(&'o Port, &'o Port)> {
+    pub(super) fn streamed<'o>(
+        &mut self,
+        at: &str,
+        op: &'o Op,
+        what: &str,
+    ) -> Option<(&'o Port, &'o Port)> {
         let stream = Some(Flow::Stream);
         let ends = self.ends(at, op, what, (stream, stream));
         self.value_captures(at, op, what, &["source"]);
@@ -148,7 +153,11 @@ impl<'d> Checker<'d> {
             wrong.push(format!("a known charset, not {}", split.charset));
         }
         if let Some(files) = &split.files {
-            wrong.extend(self.chunk_places(op, files));
+            wrong.extend(places(
+                op,
+                files.name.as_deref(),
+                files.directory.as_deref(),
+            ));
         }
         for why in wrong {
             self.report(at, Problem::Shape("a split".into(), why));
@@ -157,31 +166,28 @@ impl<'d> Checker<'d> {
             self.body(at, op, body, (Arity::Unary, &[&source.r#type]), None);
         }
     }
+}
 
-    /// A chunk name is a file name, and a folder outside the run needs a publish effect.
-    fn chunk_places(&self, op: &Op, files: &ChunkFiles) -> Vec<String> {
-        let mut wrong = Vec::new();
-        if let Some(name) = &files.name
-            && (name.is_empty() || name.contains('/') || name == "..")
-        {
-            wrong.push(format!("a file name, not {name:?}"));
-        }
-        let Some(directory) = &files.directory else {
-            return wrong;
-        };
-        let outside = directory.starts_with('/') || directory.contains("://");
-        let published = op
-            .effects
-            .iter()
-            .any(|effect| matches!(effect, Effect::Publish(_)));
-        if outside && !published {
-            wrong.push(format!("a publish effect to write to {directory}"));
-        }
-        if !outside && directory.split('/').any(|part| part == "..") {
-            wrong.push(format!("a folder inside the run, not {directory}"));
-        }
-        wrong
+/// A file name is a name, and a folder outside the run needs a publish effect.
+pub(super) fn places(op: &Op, name: Option<&str>, directory: Option<&str>) -> Vec<String> {
+    let mut wrong = Vec::new();
+    if let Some(name) = name
+        && (name.is_empty() || name.contains('/') || name == "..")
+    {
+        wrong.push(format!("a file name, not {name:?}"));
     }
+    let Some(directory) = directory else {
+        return wrong;
+    };
+    let outside = directory.starts_with('/') || directory.contains("://");
+    let published = (op.effects.iter()).any(|effect| matches!(effect, Effect::Publish(_)));
+    if outside && !published {
+        wrong.push(format!("a publish effect to write to {directory}"));
+    }
+    if !outside && directory.split('/').any(|part| part == "..") {
+        wrong.push(format!("a folder inside the run, not {directory}"));
+    }
+    wrong
 }
 
 /// The charsets a split reads.

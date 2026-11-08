@@ -326,3 +326,35 @@ fn splitter_forms() {
         "every default is left out"
     );
 }
+
+#[test]
+fn effect_forms() {
+    let good = [
+        json!({"collect_file": {"name": "all.txt", "sort": "index", "new_line": true, "skip": 1,
+            "keep_header": true, "seed": "id\n"}}),
+        json!({"view": {"body": "show", "new_line": false}}),
+        json!({"observe": {"item": {"language": "groovy", "code": "{ println it }"},
+            "close": {"language": "groovy", "code": "{ -> println 'done' }"}}}),
+    ];
+    let bad = [
+        json!({"observe": {"item": "graph"}}),
+        json!({"view": {"newline": true}}),
+    ];
+    kinds_round_trip(&good, &bad);
+    let sorted = document(
+        json!([{"path": "a", "kind": {"collect_file": {"sort": "hash"}},
+        "effects": ["write_files", "log", "read_files"]}]),
+        json!([]),
+    );
+    assert!(accepted(&sorted));
+    let stored = &written(&sorted)["graphs"][0]["ops"][0];
+    assert_eq!(
+        stored["kind"],
+        json!({"collect_file": {}}),
+        "hash is the default sort here"
+    );
+    assert_eq!(
+        stored["effects"],
+        json!(["write_files", "log", "read_files"])
+    );
+}

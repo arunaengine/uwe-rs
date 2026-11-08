@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::closure::{Binding, Closure, ExprLanguage, Scope, ValueRules};
 use crate::control::{Control, StatusGroup};
+use crate::dialect::TaskBuilder;
 use crate::document::{Language, Port};
 use crate::reserved;
 
@@ -124,7 +125,9 @@ pub struct Task {
     /// The container image; none runs the command on the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// The argument vector, run without a shell, in a fresh working folder.
+    /// The argument vector, run without a shell, in a fresh working folder; a task with a
+    /// builder has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub command: Vec<Argument>,
     /// How each output is read once the command has ended. Every output has one capture.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -143,6 +146,9 @@ pub struct Task {
     /// The file that standard error goes to, like CWL `stderr`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stderr: Option<String>,
+    /// The language runtime that builds the task, instead of the command form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub builder: Option<TaskBuilder>,
     /// A check of the outputs of an attempt that must hold for the task to succeed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accept: Option<Closure>,

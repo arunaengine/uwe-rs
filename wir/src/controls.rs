@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 
 use super::{Checker, Problem};
 use crate::control::ResultKind;
+use crate::dialect::TaskBuilder;
 use crate::document::Graph;
 use crate::op::{Kind, Op, Status};
 
@@ -79,9 +80,12 @@ fn grouped(kind: &Kind) -> bool {
     matches!(kind, Kind::StatusGroup(_) | Kind::Map(_) | Kind::Process(_))
 }
 
-/// Whether an op can report that its daemon is ready.
-fn daemons(_op: &Op) -> bool {
-    false
+/// Whether an op can report that its daemon is ready: an Argo task.
+fn daemons(op: &Op) -> bool {
+    match &op.kind {
+        Kind::Task(task) => matches!(task.builder, Some(TaskBuilder::ArgoTask(_))),
+        _ => false,
+    }
 }
 
 /// The ops an op's control waits for: the ops its tree tests, its group members and the ops

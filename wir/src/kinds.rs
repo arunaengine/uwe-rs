@@ -74,6 +74,10 @@ impl<'d> Checker<'d> {
     }
 
     fn task(&mut self, at: &str, op: &Op, task: &Task) {
+        if let Some(builder) = &task.builder {
+            self.builder(at, op, task, builder);
+            return;
+        }
         if task.command.is_empty() {
             self.report(at, Problem::Empty("command".into()));
         }

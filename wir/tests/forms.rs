@@ -419,3 +419,27 @@ fn task_acceptance() {
         &written(&document_of(json!({"path": "a", "kind": plain})))["graphs"][0]["ops"][0]["kind"];
     assert_eq!(*stored, json!({"task": {"command": ["run"], "retry": {}}}));
 }
+
+#[test]
+fn builder_forms() {
+    let reference = json!({"source": "s", "entry": "main", "call": "MAIN:ALIGN",
+        "scope": {"source": "s", "start": 0, "end": 10},
+        "inputs": [{"port": "reads", "native": "input/0"}], "outputs": [{"port": "bam", "native": "output/0"}],
+        "profiles": ["docker"], "configs": ["c"], "captures": {"genome": {"input": "genome"}}});
+    let builder = |builder: Json| json!({"task": {"builder": builder}});
+    let good = [
+        builder(json!({"nextflow_process": reference})),
+        builder(
+            json!({"snakemake_job": {"task": {"source": "s", "entry": "Snakefile", "call": "bwa_map"},
+            "wildcards": {"sample": "A"}}}),
+        ),
+        builder(json!({"argo_task": {"source": "s", "entry": "main", "call": "steps.align"}})),
+        builder(json!({"wdl_task": {"source": "s", "entry": "main", "call": "align"}})),
+    ];
+    let bad = [
+        builder(json!({"cwl_tool": reference})),
+        builder(json!({"wdl_task": {"source": "s", "entry": "main"}})),
+        builder(json!({"nextflow_process": reference, "argo_task": reference})),
+    ];
+    kinds_round_trip(&good, &bad);
+}

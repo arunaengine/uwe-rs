@@ -4,6 +4,7 @@
 
 mod closure;
 mod control;
+mod dialect;
 mod document;
 mod flow;
 mod op;
@@ -15,6 +16,7 @@ mod verify;
 
 pub use closure::{Binding, Body, Closure, ExprLanguage, Scope, ValueRules};
 pub use control::{Control, ResultKind, StatusGroup, StatusTest};
+pub use dialect::{PortMap, RuleTask, TaskBuilder, TaskRef};
 pub use document::{
     Document, Edge, Endpoint, Graph, Language, ParseError, Port, SCHEMA, Source, VERSION, parse,
 };

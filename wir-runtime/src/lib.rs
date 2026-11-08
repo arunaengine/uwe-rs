@@ -41,6 +41,7 @@ mod values;
 mod wdl;
 mod wdl_closure;
 mod wdl_expr;
+mod writing;
 
 pub use child::{Block, Child};
 pub use driver::{Printer, Repositories, Settings, WirDriver, driver};

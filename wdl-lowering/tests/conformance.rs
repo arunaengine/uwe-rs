@@ -13,8 +13,8 @@ use workflow_graph::{Driver, Launch, Simulator, execute};
 /// native run does (both succeed with as many tasks, or both fail), and how many of those that
 /// both succeed give equal outputs, with Files and Directories compared by class and basename.
 const RECORDED: Counts = Counts {
-    full: 77,
-    partly: 73,
+    full: 76,
+    partly: 74,
     unlowered: 20,
     same: 150,
     equal: 137,

@@ -176,61 +176,65 @@ pub fn with(code: &Expression, runtime: &str) -> String {
     )
 }
 
-/// The code of an expression whose parameter references fail on a missing field, as CWL
-/// evaluates them without JavaScript, where JavaScript gives `undefined`.
-pub fn strict(code: &Expression) -> String {
-    if !(code.parts.iter()).any(|part| matches!(part, Part::Reference(_))) {
-        return code.text.clone();
+/// The text of an expression whose references that name no parameter, like `$(true)`, are
+/// code; none when it has no such reference.
+pub fn marked(code: &Expression) -> Option<String> {
+    let mut text = code.text.clone();
+    let mut changed = false;
+    for part in &code.parts {
+        let Part::Reference(path) = part else {
+            continue;
+        };
+        let head: String = path
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if !["inputs", "self", "runtime", "null"].contains(&head.as_str()) {
+            text = text.replacen(&format!("$({path})"), &format!("$(({path}))"), 1);
+            changed = true;
+        }
     }
-    let parts: Vec<Part> = (code.parts.iter())
-        .map(|part| match part {
-            Part::Reference(path) => Part::Javascript(lookup(path)),
-            other => other.clone(),
-        })
-        .collect();
-    format!("${{ {GET} {TEXT} return {}; }}", value_of(&parts))
+    changed.then_some(text)
 }
 
-/// A function `get` that takes a field of an object or the length or an item of an array, and
-/// fails on anything else.
-const GET: &str = "var get = function(v, k) { \
-    if (Array.isArray(v)) { if (k === \"length\") { return v.length; } \
-    if (typeof k === \"number\" && k < v.length) { return v[k]; } } \
-    else if (v !== null && typeof v === \"object\" && Object.prototype.hasOwnProperty.call(v, k)) \
-    { return v[k]; } throw new Error(\"the parameter reference has no \" + k); };";
-
-/// A parameter reference like `inputs.a['b'][0]` as calls of `get`.
-fn lookup(path: &str) -> String {
-    let word = |c: char| c.is_alphanumeric() || c == '_';
-    let end = path.find(|c: char| !word(c)).unwrap_or(path.len());
-    let mut code = path[..end].to_owned();
-    let mut rest = &path[end..];
-    while !rest.is_empty() {
-        let (key, after) = if let Some(tail) = rest.strip_prefix('.') {
-            let end = tail.find(|c: char| !word(c)).unwrap_or(tail.len());
-            (
-                serde_json::to_string(&tail[..end]).unwrap_or_default(),
-                &tail[end..],
-            )
-        } else if let Some(tail) = rest.strip_prefix("['").or(rest.strip_prefix("[\"")) {
-            let quote = rest.as_bytes()[1] as char;
-            let end = tail.find(quote).unwrap_or(tail.len());
-            let key = tail[..end].replace("\\'", "'").replace("\\\"", "\"");
-            let after = tail.get(end + 2..).unwrap_or_default();
-            (serde_json::to_string(&key).unwrap_or_default(), after)
-        } else if let Some(tail) = rest.strip_prefix('[') {
-            let end = tail.find(']').unwrap_or(tail.len());
-            (
-                tail[..end].to_owned(),
-                tail.get(end + 1..).unwrap_or_default(),
-            )
-        } else {
-            break;
-        };
-        code = format!("get({code}, {key})");
-        rest = after;
+/// The text of an expression without code whose references to fields of `runtime` read the
+/// object, given as JSON, or the task input of it when `given`; none when that needs code, as
+/// for a reference that keeps a number type when `typed`.
+pub fn inlined(
+    code: &Expression,
+    object: Option<&str>,
+    given: bool,
+    typed: bool,
+) -> Option<String> {
+    let object: Option<serde_json::Value> = object.and_then(|text| serde_json::from_str(text).ok());
+    let single = code.parts.len() == 1;
+    let mut text = String::new();
+    for part in &code.parts {
+        match part {
+            Part::Text(piece) if piece.contains("$(") || piece.contains("${") => return None,
+            Part::Text(piece) => text.push_str(piece),
+            Part::Reference(path) if path == "runtime" || path.starts_with("runtime[") => {
+                return None;
+            }
+            Part::Reference(path) => match path.strip_prefix("runtime.") {
+                None | Some("exitCode") => text.push_str(&format!("$({path})")),
+                Some(field) if !field.chars().all(|c| c.is_alphanumeric() || c == '_') => {
+                    return None;
+                }
+                Some(field) => match (&object, given) {
+                    (Some(object), _) => match object.get(field)? {
+                        serde_json::Value::String(value) => text.push_str(value),
+                        _ if single && typed => return None,
+                        value => text.push_str(&value.to_string()),
+                    },
+                    (None, true) => text.push_str(&format!("$(inputs[{VALUES:?}].{field})")),
+                    (None, false) => return None,
+                },
+            },
+            _ => return None,
+        }
     }
-    code
+    Some(text)
 }
 
 /// The code of a list of expressions, like the globs of an output, as one array of their

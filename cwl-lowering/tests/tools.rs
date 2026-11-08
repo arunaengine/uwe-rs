@@ -86,8 +86,10 @@ fn lowers_glob_expressions() {
     let wir::Kind::Expr(expr) = &ops[0].kind else {
         panic!("an expr: {:?}", ops[0].kind);
     };
-    let strict = r#"return [text((get(inputs, "prefix"))), "*"].join(""); }"#;
-    assert!(expr.code.ends_with(strict), "{}", expr.code);
+    assert_eq!(
+        expr.code, "$(inputs.prefix)*",
+        "a reference needs no JavaScript"
+    );
 }
 
 #[test]
@@ -162,10 +164,7 @@ fn lowers_output_evaluation() {
     let captures = &op["kind"]["task"]["captures"];
     assert_eq!(captures[0]["from"], json!({"glob": "*"}));
     let code = captures[0]["code"].as_str().unwrap();
-    assert!(
-        code.ends_with(r#"return (get(self, "length")); }"#),
-        "strict: {code}"
-    );
+    assert_eq!(code, "$(self.length)", "a reference needs no JavaScript");
     assert_eq!(
         captures[1],
         json!({"output": "made", "from": {"glob": "*"}})
@@ -202,15 +201,16 @@ fn lowers_argument_expressions() {
         (json!("javac"), json!("-d"))
     );
     assert_eq!(command[4], json!({"input": "src"}));
-    let code = command[2]["code"].as_str().unwrap();
-    assert!(code.contains(r#""outdir":"/var/spool/cwl""#), "{code}");
+    assert_eq!(
+        command[2]["code"], "/var/spool/cwl",
+        "a known runtime field is text"
+    );
     let joined = &command[3];
     assert_eq!(
         (&joined["prefix"], &joined["separate"]),
         (&json!("-J-Xss"), &json!(false))
     );
-    let code = joined["code"].as_str().unwrap();
-    assert!(code.contains(r#""cores":2"#), "{code}");
+    assert_eq!(joined["code"], "2", "the cores as text");
 }
 
 #[test]
@@ -270,10 +270,6 @@ fn lowers_format_expressions() {
     assert_eq!(capture["from"], "stdout");
     let code = capture["code"].as_str().unwrap();
     assert!(code.contains("file.format = format(file)"), "{code}");
-    assert!(
-        code.contains("value.length < 2"),
-        "one File, not a list: {code}"
-    );
 }
 
 #[test]

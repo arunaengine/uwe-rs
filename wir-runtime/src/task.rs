@@ -365,7 +365,8 @@ pub fn capture(
                 }
                 other => other.map_err(|problem| format!("output {}: {problem}", port.name))?,
             };
-            let mut value = crate::cwl::to_wir(value);
+            let mut value = single(crate::cwl::to_wir(value), &port.r#type, defs, simulated)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
             attach(&mut value, &port.r#type, outcome, defs)
                 .map_err(|problem| format!("output {}: {problem}", port.name))?;
             values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
@@ -391,6 +392,27 @@ pub fn capture(
         values.insert(port.name.clone(), value);
     }
     Ok(values)
+}
+
+/// The value of code for an output of one File or Directory: a list of no or one item is
+/// that item or null, as uwe's CWL driver takes it; a simulated run takes the first of more.
+fn single(value: Json, r#type: &Type, defs: &[TypeDef], simulated: bool) -> Result<Json, String> {
+    let file =
+        |r#type: &Type| matches!(resolve(r#type, defs), Some(Type::File(_) | Type::Directory));
+    let one = match resolve(r#type, defs) {
+        Some(Type::Optional(inner)) => file(inner),
+        Some(Type::Union(members)) => members.iter().any(file),
+        _ => file(r#type),
+    };
+    match value {
+        Json::Array(mut items) if one && items.len() < 2 => Ok(items.pop().unwrap_or(Json::Null)),
+        Json::Array(mut items) if one && simulated => Ok(items.swap_remove(0)),
+        Json::Array(items) if one => Err(format!(
+            "{} files match, where one is expected",
+            items.len()
+        )),
+        value => Ok(value),
+    }
 }
 
 /// An output value from the results or code, as wir holds it; a simulated run makes up one

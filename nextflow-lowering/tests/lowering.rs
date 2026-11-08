@@ -120,3 +120,73 @@ fn lowers_process_calls() {
     assert_eq!(task["captures"]["singleton"], json!({"value": false}));
     assert!(scoped(&script, &task["scope"]).starts_with("process GREET {"));
 }
+
+#[test]
+fn lowers_closure_callbacks() {
+    let script = format!(
+        "{GREET}\nworkflow SUB {{\n    take:\n    words\n    main:\n    def suffix = '!'\n    \
+         GREET(words.map {{ word -> word + suffix }})\n    emit:\n    text = GREET.out.text\n}}\n\n\
+         workflow {{\n    SUB(channel.of('a'))\n    SUB.out.text.collect().view()\n}}\n"
+    );
+    let document = full(&script);
+    let main = graph(&document, "main");
+    assert_eq!(
+        op(main, "SUB")["kind"],
+        json!({"call": {"graph": "workflow.SUB"}})
+    );
+    let sub = graph(&document, "workflow.SUB");
+    assert_eq!(
+        sub["inputs"].as_array().unwrap().len(),
+        2,
+        "the take and the params"
+    );
+    let body = &op(sub, "map.1")["kind"]["transform"]["body"];
+    assert_eq!(body["code"], "{ word -> word + suffix }");
+    assert_eq!(body["captures"], json!({"0": {"value": "!"}}));
+    assert_eq!(scoped(&script, &body["scope"]), body["code"]);
+    let collect = op(main, "collect.3");
+    assert_eq!(
+        collect["outputs"][0].get("flow"),
+        None,
+        "collect gives a value"
+    );
+    let view = op(main, "view.4");
+    assert_eq!(view["inputs"][0].get("flow"), None, "a view of the value");
+    assert_eq!(view["effects"], json!(["log"]));
+}
+
+#[test]
+fn lowers_branch_routes() {
+    let script = "workflow {\n    numbers = channel.of(1, 2, 3).branch { n ->\n        \
+                  small: n < 2\n        large: true\n    }\n    \
+                  numbers.small.join(numbers.large).view()\n}\n";
+    let document = full(script);
+    let main = graph(&document, "main");
+    let choose = &op(main, "branch.1")["kind"]["transform"]["body"];
+    assert!(scoped(script, &choose["scope"]).starts_with("{ n ->"));
+    let route = &op(main, "branch.1/choose")["kind"]["route"]["cases"];
+    assert_eq!(route[0]["output"], "small");
+    assert_eq!(route[1]["condition"]["code"], "{ it -> it[0] == 'large' }");
+    let join = op(main, "join.2");
+    assert_eq!(join["inputs"][0]["name"], "left");
+    assert_eq!(join["values"], "groovy", "Groovy keys");
+}
+
+#[test]
+fn starts_with_prints() {
+    let script = format!("{GREET}\nworkflow {{\n    log.info 'starting'\n    GREET('a')\n}}\n");
+    let document = full(&script);
+    let main = graph(&document, "main");
+    let print = op(main, "start.0");
+    assert_eq!(print["inputs"][0]["default"], json!(["starting\n"]));
+    assert_eq!(op(main, "start.0/view")["effects"], json!(["log"]));
+    let process = op(main, "GREET");
+    let after = json!([{"op": "start.0/view", "on": ["succeeded"]}]);
+    assert_eq!(process["after"], after, "the run prints first");
+    assert_eq!(process["inputs"][0]["default"], "a", "a plain value");
+    assert_eq!(
+        process["outputs"][0].get("flow"),
+        None,
+        "one task gives values"
+    );
+}

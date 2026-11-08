@@ -20,6 +20,7 @@ mod mixing;
 pub mod nextflow;
 #[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
 mod operator;
+mod pairing;
 mod plan;
 mod python;
 mod routing;

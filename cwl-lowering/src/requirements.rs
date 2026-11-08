@@ -112,6 +112,7 @@ pub fn known(class: &RequirementClass) -> bool {
             | RequirementClass::SchemaDef { .. }
             | RequirementClass::InitialWorkDir { .. }
             | RequirementClass::EnvVar { .. }
+            | RequirementClass::ShellCommand
     )
 }
 
@@ -136,6 +137,7 @@ mod tests {
         let mut task = Task {
             image: None,
             command: Vec::new(),
+            shell: false,
             captures: Vec::new(),
             success_codes: Vec::new(),
             network: false,

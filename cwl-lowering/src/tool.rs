@@ -71,6 +71,7 @@ pub fn lower(
     let mut task = Task {
         image: Some(DEFAULT_IMAGE.to_owned()),
         command: Vec::new(),
+        shell: false,
         captures: Vec::new(),
         success_codes: Vec::new(),
         network: false,
@@ -212,6 +213,15 @@ pub fn lower(
             .map(|code| i32::try_from(*code).map_err(|_| format!("the success code {code}")))
             .collect::<Result<_, _>>()?,
     };
+    task.shell = (scope.requirements.iter().chain(&scope.hints))
+        .any(|entry| matches!(entry.class, RequirementClass::ShellCommand));
+    // In a shell command, a binding with `shellQuote: false` gives its words as they are.
+    let quoted = |binding: Option<&CommandLineBinding>, words: Vec<Argument>| match task.shell
+        && binding.is_some_and(|binding| !binding.shell_quote)
+    {
+        true => words.into_iter().map(unquoted).collect(),
+        false => words,
+    };
     let mut words: Vec<(Vec<Key>, Vec<Argument>)> = Vec::new();
     for (index, word) in tool.base_command.iter().enumerate() {
         let key = vec![Key::Number(-1_000_000), Key::Number(index as i64)];
@@ -237,6 +247,7 @@ pub fn lower(
                 prefix: binding.and_then(|binding| binding.prefix.clone()),
                 separate: binding.is_none_or(|binding| binding.separate),
                 separator: binding.and_then(|binding| binding.item_separator.clone()),
+                quote: true,
             };
             values.push(Computed {
                 port,
@@ -244,7 +255,7 @@ pub fn lower(
                 this: None,
                 r#type: None,
             });
-            words.push((key, vec![word]));
+            words.push((key, quoted(binding, vec![word])));
             continue;
         }
         let text = literal(Some(&text), "an argument")?.unwrap_or_default();
@@ -252,7 +263,7 @@ pub fn lower(
             Some(binding) => prefixed(binding, Argument::Text(text))?,
             None => vec![Argument::Text(text)],
         };
-        words.push((key, words_of));
+        words.push((key, quoted(binding, words_of)));
     }
     let mut inputs = Vec::new();
     for input in &process.inputs {
@@ -264,7 +275,7 @@ pub fn lower(
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
             let resolved = crate::types::resolve(&input.value_type, &named);
-            words.push((key, bound(binding, resolved, &name)?));
+            words.push((key, quoted(Some(binding), bound(binding, resolved, &name)?)));
             if let Some(code) = &binding.value_from {
                 values.push(Computed {
                     port: format!("{name}.{}", crate::group::VALUE),
@@ -382,6 +393,7 @@ fn bound(
         prefix: binding.prefix.clone(),
         separate: binding.separate,
         separator: separator.cloned(),
+        quote: true,
     };
     if binding.value_from.is_some() {
         // CWL binds no input that is null, where an expr of its valueFrom still runs.
@@ -434,7 +446,7 @@ fn prefixed(binding: &CommandLineBinding, word: Argument) -> Result<Vec<Argument
         (Some(prefix), true) => Ok(vec![Argument::Text(prefix.clone()), word]),
         (Some(prefix), false) => match word {
             Argument::Text(text) => Ok(vec![Argument::Text(format!("{prefix}{text}"))]),
-            Argument::Input { .. } => Err("a prefix joined to an input value".into()),
+            _ => Err("a prefix joined to an input value".into()),
         },
     }
 }
@@ -586,6 +598,27 @@ fn stream_name(id: &str, kind: &Cwl) -> String {
     let digest = sha1::Sha1::digest(format!("{id}#{label}").as_bytes());
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
     format!("{}.{label}", &hex[..16])
+}
+
+/// A word that a shell command takes as it is.
+fn unquoted(word: Argument) -> Argument {
+    match word {
+        Argument::Text(raw) => Argument::Raw { raw },
+        Argument::Input {
+            input,
+            prefix,
+            separate,
+            separator,
+            ..
+        } => Argument::Input {
+            input,
+            prefix,
+            separate,
+            separator,
+            quote: false,
+        },
+        other => other,
+    }
 }
 
 /// Whether code reads or makes where files are, which an expr sees otherwise than a tool.

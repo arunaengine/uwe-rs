@@ -86,8 +86,12 @@ pub struct Task {
     /// The container image; none runs the command on the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// The argument vector, run without a shell, in a fresh working folder.
+    /// The argument vector, run without a shell, in a fresh working folder, unless `shell`.
     pub command: Vec<Argument>,
+    /// Whether the arguments form one `/bin/sh` command line, each quoted apart from raw text
+    /// and input values that are not quoted, like CWL `ShellCommandRequirement`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shell: bool,
     /// How each output is read once the command has ended. Every output has one capture.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub captures: Vec<Capture>,
@@ -160,6 +164,13 @@ pub enum Argument {
         separate: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         separator: Option<String>,
+        /// In a shell command, whether the words of the value and prefix are quoted.
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        quote: bool,
+    },
+    /// Text that a shell command holds as it is, unquoted; otherwise like text.
+    Raw {
+        raw: String,
     },
 }
 
@@ -184,6 +195,7 @@ impl Argument {
             prefix: None,
             separate: true,
             separator: None,
+            quote: true,
         }
     }
 }

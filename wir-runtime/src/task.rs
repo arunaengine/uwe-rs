@@ -37,20 +37,28 @@ pub fn build(
         let path = name(&staged.path, bound);
         staging.place(&value, path.as_deref(), staged.writable, workdir);
     }
-    let mut words = Vec::new();
+    // Each word, and whether a shell command takes it as it is.
+    let mut words: Vec<(String, bool)> = Vec::new();
     for argument in &spec.command {
         match argument {
-            Argument::Text(text) => words.push(text.clone()),
+            Argument::Text(text) => words.push((text.clone(), false)),
+            Argument::Raw { raw } => words.push((raw.clone(), spec.shell)),
             Argument::Input {
                 input,
                 prefix,
                 separate,
                 separator,
+                quote,
             } => {
                 let value = bound.get(input).unwrap_or(&Json::Null);
                 let texts = staging.texts(value, &format!("inputs/{input}"));
                 let binding = (prefix.as_deref(), *separate, separator.as_deref());
-                words.extend(bind(value, texts, binding));
+                let raw = spec.shell && !quote;
+                words.extend(
+                    bind(value, texts, binding)
+                        .into_iter()
+                        .map(|word| (word, raw)),
+                );
             }
         }
     }
@@ -113,15 +121,33 @@ pub fn build(
         .into_iter()
         .filter_map(|(sign, name)| name.as_ref().map(|name| format!("{sign} {}", quote(name))))
         .collect();
-    let (command, script) = match redirections.is_empty() {
-        true => (words, None),
-        false => {
-            let quoted: Vec<String> = words.iter().map(|word| quote(word)).collect();
-            let script = format!("exec {}\n{}", redirections.join(" "), quoted.join(" "));
+    // As uwe's CWL driver builds them: a shell command or redirections make a script.
+    let (command, script) = match spec.shell || !redirections.is_empty() {
+        true => {
+            let mut script = String::new();
+            if !redirections.is_empty() {
+                script.push_str(&format!("exec {}\n", redirections.join(" ")));
+            }
+            let quoted: Vec<String> = (words.iter())
+                .map(|(word, raw)| if *raw { word.clone() } else { quote(word) })
+                .collect();
+            script.push_str(&quoted.join(" "));
             (
                 vec!["/bin/sh".into(), "-c".into(), script.clone()],
                 Some(script),
             )
+        }
+        false => {
+            let words: Vec<String> = words.into_iter().map(|(word, _)| word).collect();
+            let script = match words.as_slice() {
+                [shell, flag, script, ..]
+                    if flag == "-c" && matches!(shell.rsplit('/').next(), Some("sh" | "bash")) =>
+                {
+                    Some(script.clone())
+                }
+                _ => None,
+            };
+            (words, script)
         }
     };
     let attributes = &op.attributes;
@@ -625,9 +651,9 @@ fn stream_name(
     }
 }
 
-/// A word quoted for `/bin/sh`.
+/// A word quoted for `/bin/sh` where it needs it, as uwe's CWL driver quotes.
 fn quote(word: &str) -> String {
-    format!("'{}'", word.replace('\'', r"'\''"))
+    cwl_runtime::binding::shell_quote(word)
 }
 
 #[cfg(test)]

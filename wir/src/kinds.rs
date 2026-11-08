@@ -81,7 +81,7 @@ impl<'d> Checker<'d> {
         }
         let used = task.command.iter().filter_map(|argument| match argument {
             Argument::Input { input, .. } => Some(input),
-            Argument::Text(_) => None,
+            Argument::Text(_) | Argument::Raw { .. } => None,
         });
         self.inputs(at, op, used);
         for capture in &task.captures {

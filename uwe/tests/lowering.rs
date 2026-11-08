@@ -77,9 +77,9 @@ fn prints_lowered_documents() {
         document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"],
         "out.txt"
     );
-    let (code, _, errors) = uwe(root, &cache, &["lower", "environment.cwl"]);
+    let (code, _, errors) = uwe(root, &cache, &["lower", "update.cwl"]);
     assert_eq!(code, 0, "{errors}");
-    let kept = "uwe: op environment stays a native CWL op: the requirement EnvVarRequirement\n";
+    let kept = "uwe: op update stays a native CWL op: the requirement InplaceUpdateRequirement\n";
     assert_eq!(errors, kept);
 }
 
@@ -110,13 +110,20 @@ fn matches_native_steps() {
         for ((one, _, _), (other, _, _)) in alone.iter().zip(&through) {
             assert_eq!(one.step, other.step, "{document}: the same steps");
             assert_eq!(one.image, other.image, "{document}: the same image");
-            // The keys differ by the folders and variables of the CWL wrapper, see docs/wir.md.
-            assert_ne!(key(one), key(other), "{document}: {}", one.step);
+            // Tasks with files differ by where they stage them, see docs/wir.md.
+            match one.inputs.is_empty() {
+                true => assert_eq!(key(one), key(other), "{document}: {}", one.step),
+                false => assert_ne!(key(one), key(other), "{document}: {}", one.step),
+            }
             assert_eq!(one.workdir.as_deref(), Some("/var/spool/cwl"));
-            assert_eq!(other.workdir.as_deref(), Some("/work"));
+            assert_eq!(one.workdir, other.workdir, "{document}: {}", other.step);
             let variables: Vec<&String> = one.environment.keys().collect();
             assert_eq!(variables, ["HOME", "TMPDIR"]);
-            assert!(other.environment.is_empty(), "{document}: {}", other.step);
+            assert_eq!(
+                one.environment, other.environment,
+                "{document}: {}",
+                other.step
+            );
         }
         let resumed: Vec<&str> = lowered.iter().copied().chain(["-resume"]).collect();
         let (code, _, errors) = uwe(root, &cache, &resumed);

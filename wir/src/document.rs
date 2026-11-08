@@ -184,6 +184,7 @@ mod tests {
             prefix: Some("-k".into()),
             separate: false,
             separator: None,
+            quote: true,
         };
         assert_eq!(parsed[2], joined);
         assert_eq!(serde_json::to_value(&parsed).expect("serializes"), command);

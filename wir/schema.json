@@ -406,8 +406,15 @@
                   "input": { "$ref": "#/$defs/name" },
                   "prefix": { "type": "string" },
                   "separate": { "type": "boolean" },
-                  "separator": { "type": "string" }
+                  "separator": { "type": "string" },
+                  "quote": { "type": "boolean" }
                 }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["raw"],
+                "properties": { "raw": { "type": "string" } }
               }
             ]
           }
@@ -443,6 +450,7 @@
         },
         "success_codes": { "type": "array", "items": { "type": "integer" } },
         "network": { "type": "boolean" },
+        "shell": { "type": "boolean" },
         "stdout": { "$ref": "#/$defs/file_name" },
         "stderr": { "$ref": "#/$defs/file_name" },
         "workdir": { "type": "string" },

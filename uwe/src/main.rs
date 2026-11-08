@@ -185,7 +185,7 @@ options:
   -python-image <image>               the image of the Python packages without a stand-in
   -stub                               runs the stubs of tasks
   -lowered                            runs a CWL or WDL document or a Nextflow pipeline
-                                      through its lowered wir document
+                                      through the wir document compiled from it
   -keep-going                         after a task failed, runs every task that does not
                                       depend on it, then fails; without it no more tasks
                                       start, as each language's engine does

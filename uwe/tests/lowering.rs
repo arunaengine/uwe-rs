@@ -84,7 +84,7 @@ fn prints_lowered_documents() {
 }
 
 #[test]
-fn lowers_nextflow_pipelines() {
+fn compiles_nextflow_pipelines() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let (root, cache) = (folder.path(), folder.path().join("cache"));
     let script = "process SAY {\n  input:\n  val word\n  output:\n  stdout\n  script:\n  \"echo ${word} ${params.mark}\"\n}\n\nworkflow {\n  log.info 'saying'\n  SAY(channel.of('a', 'b')).view()\n}\n";

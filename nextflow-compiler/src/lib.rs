@@ -1,4 +1,4 @@
-//! Lowers Nextflow pipelines into wir: what the build phase of the native driver wires up
+//! Compiles Nextflow pipelines into wir: what the build phase of the native driver wires up
 //! becomes process ops with dialect tasks, stream ops with Groovy callbacks and call graphs.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -20,28 +20,28 @@ use workflow_graph::Launch;
 
 pub use sources::Sources;
 
-/// A lowered pipeline, and the reasons why it stays one native op when it does.
+/// A compiled pipeline, and the reasons why it stays one native op when it does.
 #[derive(Clone, Debug)]
-pub struct Lowering {
+pub struct Compilation {
     pub document: Json,
     pub kept: Vec<Kept>,
 }
 
-/// A part of the pipeline without a lowering, which keeps the whole pipeline a native op.
+/// A part of the pipeline that does not compile, which keeps the whole pipeline a native op.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Kept {
     pub path: String,
     pub reason: String,
 }
 
-impl Lowering {
+impl Compilation {
     /// Whether no part of the pipeline stays native.
     pub fn full(&self) -> bool {
         self.kept.is_empty()
     }
 }
 
-/// What the dialect tasks of a lowered pipeline load: the profiles and config files of the
+/// What the dialect tasks of a compiled pipeline load: the profiles and config files of the
 /// launch, and the folder that the document is meant for.
 #[derive(Clone, Debug, Default)]
 pub struct Context {
@@ -52,10 +52,10 @@ pub struct Context {
     pub base: PathBuf,
 }
 
-/// Lowers the pipeline of a launch, as the native driver with these settings would build it.
-/// A build that needs what the lowering does not do, like reading data, gives one native op.
+/// Compiles the pipeline of a launch, as the native driver with these settings would build it.
+/// A build that needs what the compiler does not do, like reading data, gives one native op.
 /// It fails only when the pipeline does not build.
-pub fn lower(launch: &Launch, settings: Settings, base: &Path) -> Result<Lowering, String> {
+pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, String> {
     let context = Context {
         profiles: launch.profiles.clone(),
         configs: launch.configs.clone(),
@@ -64,7 +64,7 @@ pub fn lower(launch: &Launch, settings: Settings, base: &Path) -> Result<Lowerin
     };
     let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
     match driver.export() {
-        Ok(network) => Ok(lower_network(&network, &context)),
+        Ok(network) => Ok(compile_network(&network, &context)),
         Err(error) if error.unsupported => {
             let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
             let kept = vec![Kept {
@@ -77,8 +77,8 @@ pub fn lower(launch: &Launch, settings: Settings, base: &Path) -> Result<Lowerin
     }
 }
 
-/// Lowers a built network; a node without a lowering keeps the pipeline one native op.
-pub fn lower_network(network: &Network, context: &Context) -> Lowering {
+/// Compiles a built network; a node that does not compile keeps the pipeline one native op.
+pub fn compile_network(network: &Network, context: &Context) -> Compilation {
     let mut sources = Sources::new(&network.script, &context.base);
     let opaque = network.nodes.iter().filter_map(|node| match &node.kind {
         Kind::Opaque(reason) => Some(Kept {
@@ -91,8 +91,8 @@ pub fn lower_network(network: &Network, context: &Context) -> Lowering {
     if !kept.is_empty() {
         return native(&network.emits, context, &mut sources, kept);
     }
-    match graph::lower(network, context, &mut sources) {
-        Ok(graphs) => Lowering {
+    match graph::compile(network, context, &mut sources) {
+        Ok(graphs) => Compilation {
             document: document(&sources, context, graphs),
             kept: Vec::new(),
         },
@@ -106,7 +106,7 @@ fn native(
     context: &Context,
     sources: &mut Sources,
     kept: Vec<Kept>,
-) -> Lowering {
+) -> Compilation {
     let configs: Vec<String> = context
         .configs
         .iter()
@@ -135,7 +135,7 @@ fn native(
         "origin": {"source": sources.main()},
     });
     let graph = json!({"name": "main", "outputs": outputs, "ops": [op], "edges": edges});
-    Lowering {
+    Compilation {
         document: document(sources, context, vec![graph]),
         kept,
     }

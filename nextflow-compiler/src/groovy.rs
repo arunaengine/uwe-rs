@@ -1,5 +1,5 @@
-//! Groovy callbacks of lowered ops: the closures of the script by their source location, and
-//! small closures that the lowering writes, like the case tests of a `branch`.
+//! Groovy callbacks of compiled ops: the closures of the script by their source location, and
+//! small closures that the compiler writes, like the case tests of a `branch`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -26,7 +26,7 @@ pub(crate) fn closure(callback: &Callback, sources: &mut Sources) -> Json {
     closure
 }
 
-/// A closure that the lowering writes, which has no place in the script.
+/// A closure that the compiler writes, which has no place in the script.
 pub(crate) fn written(code: String) -> Json {
     json!({"language": "groovy", "code": code})
 }
@@ -48,7 +48,7 @@ pub(crate) fn test(criteria: &Criteria, sources: &mut Sources) -> Result<Json, S
     })
 }
 
-/// A JSON value as a Groovy literal, for the closures that the lowering writes.
+/// A JSON value as a Groovy literal, for the closures that the compiler writes.
 pub(crate) fn literal(value: &Json) -> Result<String, String> {
     Ok(match value {
         Json::Null => "null".into(),
@@ -61,7 +61,7 @@ pub(crate) fn literal(value: &Json) -> Result<String, String> {
         }
         Json::Object(object) if object.contains_key("class") => {
             return Err(format!(
-                "a {} in code that the lowering writes",
+                "a {} in code that the compiler writes",
                 object["class"]
             ));
         }

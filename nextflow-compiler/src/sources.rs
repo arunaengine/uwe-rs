@@ -1,4 +1,4 @@
-//! The sources of a lowered pipeline: its main script, the scripts that define its processes
+//! The sources of a compiled pipeline: its main script, the scripts that define its processes
 //! and closures, and its config files, each with a stable id and the digest of its bytes.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0

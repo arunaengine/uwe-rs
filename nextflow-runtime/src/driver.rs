@@ -567,7 +567,7 @@ impl Nextflow {
         })
     }
 
-    /// The network that the workflow builds, without starting it, for the lowering to wir.
+    /// The network that the workflow builds, without starting it, for the compiler into wir.
     pub fn export(&mut self) -> Result<crate::export::Network, DriverError> {
         let loaded = self.setup()?;
         let options = self.options(&loaded, loaded.config.clone());

@@ -1,5 +1,5 @@
 //! The dataflow network that a workflow builds, as plain data: nodes with their semantics,
-//! channels and the workflow calls they belong to, for lowering the workflow to wir.
+//! channels and the workflow calls they belong to, for compiling the workflow into wir.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -239,7 +239,7 @@ pub enum Kind {
         path: String,
         text: String,
     },
-    /// A node that has no lowering, with the reason.
+    /// A node that does not compile into wir, with the reason.
     Opaque(String),
 }
 

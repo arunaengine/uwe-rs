@@ -1,4 +1,4 @@
-//! Runs small Nextflow pipelines natively and lowered on the simulator, in both completion
+//! Runs small Nextflow pipelines natively and compiled on the simulator, in both completion
 //! orders, and compares their tasks and resume fingerprints with the recorded counts.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -9,13 +9,13 @@ use nextflow_runtime::driver::{Nextflow, Settings};
 use serde_json::Value as Json;
 use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute_with};
 
-/// How many pipelines lower fully, run natively, run lowered, and how many lowered runs give
+/// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
     pipelines: 8,
     full: 8,
     native: 8,
-    lowered: 0,
+    compiled: 0,
     same: 0,
 };
 
@@ -24,7 +24,7 @@ struct Counts {
     pipelines: usize,
     full: usize,
     native: usize,
-    lowered: usize,
+    compiled: usize,
     same: usize,
 }
 
@@ -135,7 +135,7 @@ fn tasks(
     Ok(tasks)
 }
 
-/// Lowers and runs one pipeline in a folder of its own.
+/// Compiles and runs one pipeline in a folder of its own.
 fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let folder = directory.path();
@@ -148,17 +148,17 @@ fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
         ..Launch::default()
     };
     counts.pipelines += 1;
-    let lowering =
-        match nextflow_lowering::lower(&launch(folder.to_owned()), settings(folder), folder) {
-            Ok(lowering) => lowering,
-            Err(error) => return format!("{name}: does not lower: {error}"),
+    let compiled =
+        match nextflow_compiler::compile(&launch(folder.to_owned()), settings(folder), folder) {
+            Ok(compiled) => compiled,
+            Err(error) => return format!("{name}: does not compile: {error}"),
         };
-    if let Some(kept) = lowering.kept.first() {
+    if let Some(kept) = compiled.kept.first() {
         return format!("{name}: partly ({}: {})", kept.path, kept.reason);
     }
     counts.full += 1;
-    let document = folder.join("lowered.wir.json");
-    let text = serde_json::to_string(&lowering.document).expect("serializes");
+    let document = folder.join("compiled.wir.json");
+    let text = serde_json::to_string(&compiled.document).expect("serializes");
     std::fs::write(&document, text).expect("writes the document");
     let mut outcomes = Vec::new();
     for order in [Order::AsAsked, Order::Reversed] {
@@ -169,34 +169,34 @@ fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
             print: false,
             ..wir_runtime::Settings::default()
         };
-        let lowered = wir_runtime::WirDriver::new(&launch(document.clone()), wir);
-        let lowered = lowered.map_err(|error| error.message);
-        let lowered = lowered.and_then(|mut driver| tasks(&mut driver, folder, order));
-        outcomes.push((native, lowered));
+        let compiled = wir_runtime::WirDriver::new(&launch(document.clone()), wir);
+        let compiled = compiled.map_err(|error| error.message);
+        let compiled = compiled.and_then(|mut driver| tasks(&mut driver, folder, order));
+        outcomes.push((native, compiled));
     }
     if outcomes.iter().all(|(native, _)| native.is_ok()) {
         counts.native += 1;
     }
-    if outcomes.iter().all(|(_, lowered)| lowered.is_ok()) {
-        counts.lowered += 1;
+    if outcomes.iter().all(|(_, compiled)| compiled.is_ok()) {
+        counts.compiled += 1;
     }
     let same = outcomes
         .iter()
-        .all(|(native, lowered)| match (native, lowered) {
-            (Ok(native), Ok(lowered)) => native == lowered,
+        .all(|(native, compiled)| match (native, compiled) {
+            (Ok(native), Ok(compiled)) => native == compiled,
             _ => false,
         });
     if same {
         counts.same += 1;
     }
-    let (native, lowered) = &outcomes[0];
-    match (native, lowered) {
+    let (native, compiled) = &outcomes[0];
+    match (native, compiled) {
         (Err(error), _) => format!("{name}: the native run fails: {error}"),
-        (Ok(_), Err(error)) => format!("{name}: the lowered run fails: {}", first(error)),
-        (Ok(native), Ok(lowered)) if !same => format!(
-            "{name}: {} native tasks, {} lowered tasks, or other tasks",
+        (Ok(_), Err(error)) => format!("{name}: the compiled run fails: {}", first(error)),
+        (Ok(native), Ok(compiled)) if !same => format!(
+            "{name}: {} native tasks, {} compiled tasks, or other tasks",
             native.len(),
-            lowered.len()
+            compiled.len()
         ),
         (Ok(native), Ok(_)) => format!("{name}: same {} tasks", native.len()),
     }

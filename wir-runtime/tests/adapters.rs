@@ -479,7 +479,20 @@ fn adapter_notes() {
         print: false,
         ..Settings::default()
     };
+    let target = &launch.target;
+    let mut written: Json =
+        serde_json::from_str(&std::fs::read_to_string(target).unwrap()).unwrap();
+    written["hooks"] =
+        json!([{"observe": {"source": "nf", "processes": [{"id": 1, "name": "SORT"}]}}]);
+    std::fs::write(target, written.to_string()).unwrap();
     settings.adapters.register("nextflow_process", |opening| {
+        let observed = &opening.observers;
+        assert_eq!(
+            observed.len(),
+            1,
+            "the opening has the observers of its source"
+        );
+        assert_eq!(observed[0].processes[0].name, "SORT");
         let sources: Vec<&str> = opening
             .sources
             .iter()

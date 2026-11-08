@@ -162,6 +162,8 @@ pub struct Opening<'a> {
     pub builder: &'a TaskBuilder,
     /// The sources of the document, like the config values a compiler pinned.
     pub sources: &'a [wir::Source],
+    /// The observers of its source and the processes they hear of, from the run hooks.
+    pub observers: Vec<&'a wir::Observers>,
     pub source: PathBuf,
     pub configs: Vec<PathBuf>,
     /// The input values of the run.

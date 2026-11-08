@@ -1,0 +1,25 @@
+# Manifest of wdl-lowering, which lowers WDL documents into wir ops.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "wdl-lowering"
+description = "Lowers WDL documents into wir: workflows into graphs, tasks into expr and task ops, the rest into native WDL ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+# The syntax tree and types of WDL, as wdl-runtime loads and checks documents with them.
+wdl-analysis = "0.28.0"
+wdl-ast = "0.27.2"
+wdl-runtime.workspace = true
+wir.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wir-runtime.workspace = true
+workflow-graph.workspace = true

@@ -9088,6 +9088,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "wdl-lowering"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "wdl-analysis",
+ "wdl-ast",
+ "wdl-runtime",
+ "wir",
+ "wir-runtime",
+ "workflow-graph",
+]
+
+[[package]]
 name = "wdl-modules"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -227,9 +227,12 @@ fn execute_with(
         .lowered
         .then(|| (launch(arguments, target.clone()), language));
     let converted;
+    // The files of the values of a lowered run, removed when the run ends.
+    let private;
     let (target, language, arguments) = match arguments.lowered {
         true => {
-            let (path, inputs) = crate::lower::document(&target, language, arguments)?;
+            let (path, inputs, values) = crate::lower::document(&target, language, arguments)?;
+            private = values;
             // A WDL input file and parameters become one file for the entry graph; Snakemake
             // config files and values are in the document.
             let compiled = language == Language::Snakemake;
@@ -245,8 +248,12 @@ fn execute_with(
             };
             (path, Language::Wir, &converted)
         }
-        false => (target, language, arguments),
+        false => {
+            private = Vec::new();
+            (target, language, arguments)
+        }
     };
+    let _private = private;
     let target = &target;
     let launch = launch(arguments, target.clone());
     let picked;

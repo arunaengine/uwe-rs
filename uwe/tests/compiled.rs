@@ -132,3 +132,33 @@ fn runs_native_parts_in_place() {
         .unwrap_or_default();
     assert_eq!(std::path::Path::new(source), folder.path().join("in.txt"));
 }
+
+/// The config values of a compiled run stay in no file beside its compiled document.
+#[test]
+fn keeps_values_private() {
+    let (folder, graph) = graph_lowered(WORD, &[], &["--config", "word=hush4711"]);
+    let script = graph["nodes"][0]["task"]["script"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(script.contains("hush4711"), "{script}");
+    let lowered = folder.path().join("cache/uwe/scratch/lowered");
+    assert!(lowered.is_dir());
+    let mut pending = vec![lowered];
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            pending.extend(
+                std::fs::read_dir(&path)
+                    .unwrap()
+                    .flatten()
+                    .map(|entry| entry.path()),
+            );
+        } else if let Ok(text) = std::fs::read(&path) {
+            let text = String::from_utf8_lossy(&text);
+            assert!(
+                !text.contains("hush4711"),
+                "{} keeps the value",
+                path.display()
+            );
+        }
+    }
+}

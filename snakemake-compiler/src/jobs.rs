@@ -7,6 +7,7 @@ use std::collections::HashSet;
 
 use serde_json::{Value as Json, json};
 use snakemake_runtime::{JobFile, PlannedJob};
+use workflow_graph::Launch;
 
 use crate::{SOURCE, Setting};
 
@@ -14,8 +15,9 @@ use crate::{SOURCE, Setting};
 const UNDELIVERED: [&str; 3] = ["temp", "pipe", "service"];
 
 /// The entry graph `main` of the jobs, in the order of the plan.
-pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting) -> Json {
+pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> Json {
     let paths = paths(jobs);
+    let plan = plan(setting, launch);
     let mut ops = Vec::new();
     let mut edges = Vec::new();
     for (index, job) in jobs.iter().enumerate() {
@@ -67,6 +69,9 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting) -> Json {
         if !job.key.wildcards.is_empty() {
             builder["wildcards"] = json!(job.key.wildcards);
         }
+        for (field, value) in &plan {
+            builder[*field] = value.clone();
+        }
         let mut op = json!({
             "path": paths[index],
             "kind": {"task": {"builder": {"snakemake_job": builder}}},
@@ -84,6 +89,27 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting) -> Json {
         ops.push(op);
     }
     json!({"name": "main", "ops": ops, "edges": edges})
+}
+
+/// The fields of the plan settings of a launch that are set, as every job carries them.
+fn plan(setting: &Setting, launch: &Launch) -> Vec<(&'static str, Json)> {
+    let lists = [
+        ("targets", &launch.targets),
+        ("until", &launch.until),
+        ("omit_from", &launch.omit_from),
+        ("forcerun", &launch.forcerun),
+    ];
+    let mut plan: Vec<(&str, Json)> = (lists.into_iter())
+        .filter(|(field, list)| list.len() > usize::from(*field == "targets"))
+        .map(|(field, list)| (field, json!(list)))
+        .collect();
+    if let Some(values) = &setting.values {
+        plan.push(("config_values", json!(values)));
+    }
+    if launch.forceall {
+        plan.push(("forceall", json!(true)));
+    }
+    plan
 }
 
 fn file_type(file: &JobFile) -> Json {

@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod jobs;
+mod launch;
 
 use std::path::Path;
 
@@ -12,6 +13,8 @@ use sha2::{Digest, Sha256};
 use snakemake_runtime::{PlannedJob, RunSettings, Settings};
 use wir::Document;
 use workflow_graph::Launch;
+
+pub use launch::{job_key, job_launch};
 
 /// The id of the source of the Snakefile in a compiled document.
 pub const SOURCE: &str = "snakefile";
@@ -49,14 +52,17 @@ pub fn compile(
     let configs: Vec<String> = (sources.iter().skip(1))
         .filter_map(|source| source["id"].as_str().map(str::to_owned))
         .collect();
+    let mut sources = sources;
+    let values = (!launch.params.is_empty()).then(|| {
+        sources.push(launch::values(&launch.params));
+        launch::VALUES.to_owned()
+    });
     let setting = Setting {
         entry: launch.targets.first().cloned(),
         profiles: launch.profiles.clone(),
         configs,
+        values,
     };
-    if let Some(reason) = unheld(launch) {
-        return Ok(native(sources, &setting, reason));
-    }
     let mut driver =
         snakemake_runtime::spawn_driver(launch, settings, run).map_err(|error| error.message)?;
     let jobs = match driver.plan_jobs() {
@@ -64,20 +70,20 @@ pub fn compile(
         // A native op holds what uwe cannot plan job by job; its run says the same.
         Err(error) if error.unsupported => {
             let reason = error.message.lines().next().unwrap_or_default().to_owned();
-            return Ok(native(sources, &setting, reason));
+            return Ok(native(sources, &setting, launch, reason));
         }
         Err(error) => return Err(error.message),
     };
     drop(driver);
     if let Some(reason) = jobs.iter().find_map(kept_job) {
-        return Ok(native(sources, &setting, reason));
+        return Ok(native(sources, &setting, launch, reason));
     }
     let setting = Setting {
         entry: (setting.entry.clone())
             .or_else(|| (jobs.iter().find(|job| job.target)).map(|job| job.key.rule.clone())),
         ..setting
     };
-    let graph = jobs::graph(&jobs, &setting);
+    let graph = jobs::graph(&jobs, &setting, launch);
     let document = json!({
         "wir_version": wir::VERSION,
         "sources": sources,
@@ -91,17 +97,18 @@ pub fn compile(
     })
 }
 
-/// What every op of a compiled workflow runs with: the target of the plan, the profiles and
-/// the ids of the config sources.
+/// What every op of a compiled workflow runs with: the target of the plan, the profiles, the
+/// ids of the config sources and of the source of the config values.
 pub(crate) struct Setting {
     pub entry: Option<String>,
     pub profiles: Vec<String>,
     pub configs: Vec<String>,
+    pub values: Option<String>,
 }
 
-/// Why the settings of a launch keep the workflow native: a document holds neither config
-/// values of the command line nor the options that pick the jobs of a plan.
-fn unheld(launch: &Launch) -> Option<String> {
+/// The settings of a launch that a native op does not hold: config values of the command
+/// line and the options that pick the jobs of a plan.
+fn unheld(launch: &Launch) -> Vec<&'static str> {
     let held = [
         (
             !launch.params.is_empty(),
@@ -113,8 +120,9 @@ fn unheld(launch: &Launch) -> Option<String> {
         (!launch.forcerun.is_empty(), "the option forcerun"),
         (launch.forceall, "the option forceall"),
     ];
-    let (_, reason) = held.into_iter().find(|(set, _)| *set)?;
-    Some(format!("the run sets {reason}"))
+    (held.into_iter())
+        .filter_map(|(set, reason)| set.then_some(reason))
+        .collect()
 }
 
 /// Why a job keeps the workflow native: checkpoints need a dynamic region, and jobs that run
@@ -128,8 +136,9 @@ fn kept_job(job: &PlannedJob) -> Option<String> {
     Some(format!("a job of rule {rule}: {why}"))
 }
 
-/// The whole workflow as one native Snakemake op.
-fn native(sources: Vec<Json>, setting: &Setting, reason: String) -> Compiled {
+/// The whole workflow as one native Snakemake op, with a reason for each setting of the launch
+/// that it drops.
+fn native(sources: Vec<Json>, setting: &Setting, launch: &Launch, reason: String) -> Compiled {
     let path = "snakemake";
     let mut native = json!({"source": SOURCE, "language": "snakemake"});
     if let Some(entry) = &setting.entry {
@@ -141,18 +150,24 @@ fn native(sources: Vec<Json>, setting: &Setting, reason: String) -> Compiled {
     if !setting.configs.is_empty() {
         native["configs"] = json!(setting.configs);
     }
+    let sources: Vec<Json> = (sources.into_iter())
+        .filter(|source| source["id"] != launch::VALUES)
+        .collect();
     let document = json!({
         "wir_version": wir::VERSION,
         "sources": sources,
         "graphs": [{"name": "main", "ops": [{"path": path, "kind": {"native": native}}]}],
         "entry": "main",
     });
+    let dropped = unheld(launch).into_iter();
+    let reasons = std::iter::once(reason).chain(dropped.map(|unheld| format!("it drops {unheld}")));
     Compiled {
         document: serde_json::from_value(document).expect("a native document"),
-        kept: vec![Kept {
+        kept: (reasons.map(|reason| Kept {
             path: path.to_owned(),
             reason,
-        }],
+        }))
+        .collect(),
     }
 }
 

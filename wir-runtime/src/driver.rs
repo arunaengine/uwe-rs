@@ -164,6 +164,7 @@ impl WirDriver {
         });
         for default in ports.filter_map(|port| port.default.as_mut()) {
             inputs::absolute(default, &base);
+            inputs::filled(default, launch.simulated);
         }
         let progress = Progress::new(plan(&document)?, document.types.clone());
         Ok(WirDriver {

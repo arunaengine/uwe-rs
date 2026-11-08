@@ -140,7 +140,7 @@ impl Lowerer {
     /// A native op at `path` that runs a task or workflow as a whole, kept for `reason`.
     fn native(&mut self, unit: &Unit, path: &str, reason: String) -> Result<Op, String> {
         let (inputs, outputs) = boundary(unit)?;
-        if (inputs.iter().chain(&outputs)).any(|port| port.r#type == wir::Type::Dynamic) {
+        if (inputs.iter().chain(&outputs)).any(|port| types::open(&port.r#type)) {
             return Err(format!(
                 "{path}: {reason}, and a native block cannot take an Object"
             ));

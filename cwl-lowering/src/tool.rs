@@ -90,11 +90,34 @@ pub fn lower(
     let names: Vec<&str> = (process.inputs.iter())
         .map(|input| short_name(&input.id))
         .collect();
+    // Expressions see no listings, which CWL loads into Directory inputs.
+    let listed = scope.find(|class| match class {
+        RequirementClass::LoadListing { load_listing } => Some(*load_listing),
+        _ => None,
+    });
+    let listed = listed
+        .flatten()
+        .is_some_and(|listing| listing != LoadListing::NoListing)
+        || process
+            .inputs
+            .iter()
+            .any(|input| input.load_listing.is_some());
     let runtime_of = |code: &Expression| {
+        if listed && code.text.contains("listing") {
+            return Err("an expression that reads a listing that CWL loads".to_owned());
+        }
         // Without JavaScript, CWL refuses a reference to an input that the tool lacks.
         if !javascript && undeclared(code, &names) {
             return Err("a reference to an input that the tool does not declare".to_owned());
         }
+        let strict;
+        let code = match javascript {
+            true => code,
+            false => {
+                strict = Expression::parse(&runtime::strict(code), false)?;
+                &strict
+            }
+        };
         match &runtime {
             Ok(object) => Ok(runtime::with(code, object)),
             Err(why) if code.text.contains("runtime") => Err(why.clone()),
@@ -303,18 +326,6 @@ pub fn lower(
     }
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();
-    // Expressions see no listings, which CWL loads into Directory inputs.
-    let listed = scope.find(|class| match class {
-        RequirementClass::LoadListing { load_listing } => Some(*load_listing),
-        _ => None,
-    });
-    let listed = listed
-        .flatten()
-        .is_some_and(|listing| listing != LoadListing::NoListing)
-        || process
-            .inputs
-            .iter()
-            .any(|input| input.load_listing.is_some());
     let mut outputs = Vec::new();
     let mut evaluated = Vec::new();
     let mut glob = |name: &str, globs: &[Expression]| match globs {

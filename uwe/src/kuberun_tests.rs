@@ -219,12 +219,12 @@ fn launches_driver_pod() {
         format!("POST {core}/serviceaccounts"),
         format!("POST {rbac}/roles"),
         format!("POST {rbac}/rolebindings"),
-        format!("POST {core}/configmaps"),
+        format!("POST {core}/secrets"),
         format!("POST {core}/pods"),
         format!("PATCH {core}/serviceaccounts/uwe-1"),
         format!("PATCH {rbac}/roles/uwe-1"),
         format!("PATCH {rbac}/rolebindings/uwe-1"),
-        format!("PATCH {core}/configmaps/uwe-1"),
+        format!("PATCH {core}/secrets/uwe-1"),
         format!("GET {core}/pods/uwe-1"),
         format!("GET {core}/pods/uwe-1/log"),
         format!("GET {core}/pods/uwe-1"),
@@ -234,6 +234,16 @@ fn launches_driver_pod() {
         requests,
         made.iter().map(String::as_str).collect::<Vec<_>>()
     );
+    // The config files can hold credentials, so they travel in a Secret.
+    let files: Json = serde_json::from_str(&heard[3].1).expect("a Secret");
+    assert_eq!(files["kind"], "Secret");
+    assert!(
+        files["stringData"]
+            .as_object()
+            .is_some_and(|data| !data.is_empty())
+    );
+    let pod: Json = serde_json::from_str(&heard[4].1).expect("a pod");
+    assert_eq!(pod["spec"]["volumes"][0]["secret"]["secretName"], "uwe-1");
     let owner: Json = serde_json::from_str(&heard[5].1).expect("a patch");
     assert_eq!(owner["metadata"]["ownerReferences"][0]["uid"], "uid-1");
     // A failed driver keeps its pod.

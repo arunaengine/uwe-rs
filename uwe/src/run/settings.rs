@@ -20,6 +20,9 @@ use crate::setup::{Defaults, Setup};
 pub struct Settings {
     pub preset: Option<String>,
     pub hosted: Option<crate::hosted::Hosted>,
+    /// Limits what workflow code reaches of the process; a hosted run without it gets
+    /// `Isolation::default()`.
+    pub isolation: Option<crate::hosted::Isolation>,
     pub strict_provenance: bool,
     pub target: PathBuf,
     /// The tag, branch or commit of a repository `target`, like `-r` of `uwe run`. A local
@@ -98,6 +101,7 @@ impl Default for Settings {
         Self {
             preset: None,
             hosted: None,
+            isolation: None,
             strict_provenance: false,
             target: PathBuf::new(),
             revision: None,
@@ -157,6 +161,11 @@ impl Settings {
             .preset
             .take()
             .or_else(|| self.cli.as_ref()?.preset.clone());
+        let isolation = (self.isolation.take()).or_else(|| {
+            self.hosted
+                .as_ref()
+                .map(|_| crate::hosted::Isolation::default())
+        });
         if let Some(hosted) = &self.hosted {
             let root = hosted.check(preset.as_deref())?;
             for (given, expected) in [
@@ -223,6 +232,10 @@ impl Settings {
         arguments.output_dir = self.output_dir;
         arguments.database = self.database;
         arguments.store = self.store;
+        if let Some(isolation) = &isolation {
+            self.secrets
+                .limit_environment(isolation.variables.iter().cloned());
+        }
         arguments.secrets = self.secrets;
         arguments.embedded = !cli;
         let mut file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
@@ -257,7 +270,7 @@ impl Settings {
             hosted.authorize_values(&values)?;
         }
         if (!cli || prepared.is_some()) && self.setup.is_none() {
-            Defaults::load(&arguments)?.apply("run", &mut arguments);
+            Defaults::load(&arguments)?.apply("run", &mut arguments)?;
         }
         if let Some(folder) = self.cache_folder {
             crate::use_cache_folder(folder);
@@ -315,6 +328,17 @@ impl Settings {
             }
             self.setup = Some(setup);
         }
+        if let Some(isolation) = isolation {
+            let mut setup = match self.setup.take() {
+                Some(setup) => setup,
+                None => Setup::load(&arguments)?,
+            };
+            if !isolation.registry_files {
+                setup.registry = setup.registry.without_files();
+            }
+            setup.isolation = Some(isolation);
+            self.setup = Some(setup);
+        }
         Ok((arguments, self.setup, file))
     }
 }
@@ -341,6 +365,28 @@ pub(crate) fn check_id(id: &str) -> Result<(), Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn isolates_embedded_runs() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        std::fs::write(&config, "").unwrap();
+        let mut settings = Settings::new(root.path().join("main.nf"));
+        settings.config_file = Some(config);
+        settings.isolation = Some(crate::hosted::Isolation {
+            variables: ["PATH".to_owned()].into(),
+            ..Default::default()
+        });
+        let (arguments, setup, _) = settings.prepare().unwrap();
+        let setup = setup.expect("an isolated run gets its setup");
+        assert!(setup.isolation.is_some());
+        // Cargo sets the variable for tests; the host did not allow it.
+        assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
+        assert!(arguments.secrets.variable("CARGO_MANIFEST_DIR").is_none());
+        assert!(arguments.secrets.variable("PATH").is_some());
+        let registry = format!("{:?}", setup.registry);
+        assert!(registry.contains("paths: []"), "{registry}");
+    }
 
     #[test]
     fn preserves_preset_defaults() {

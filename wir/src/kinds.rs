@@ -18,14 +18,9 @@ impl<'d> Checker<'d> {
             Kind::Call(call) => self.call(at, op, &call.graph),
             Kind::Native(native) => self.native(at, op, native),
             Kind::Map(map) => self.map(at, op, map),
-            Kind::Expr(expr) => {
+            Kind::Expr(_) => {
                 if op.outputs.len() != 1 {
                     self.report(at, Problem::Single("an expr".into()));
-                }
-                let version = self.document.wir_version.as_str();
-                if !expr.library.is_empty() && matches!(version, "0.1" | "0.2" | "0.3") {
-                    let feature = "the library of an expr".into();
-                    self.report(at, Problem::Later(feature, "0.4".into()));
                 }
             }
             Kind::Branch(branch) => self.branch(at, op, branch),
@@ -41,17 +36,8 @@ impl<'d> Checker<'d> {
         if task.command.is_empty() {
             self.report(at, Problem::Empty("command".into()));
         }
-        if task.network && matches!(self.document.wir_version.as_str(), "0.1" | "0.2") {
-            let feature = "the network of a task".into();
-            self.report(at, Problem::Later(feature, "0.3".into()));
-        }
         let streams = [&task.stdout, &task.stderr];
         let named: Vec<&String> = streams.into_iter().flatten().collect();
-        if !named.is_empty() && matches!(self.document.wir_version.as_str(), "0.1" | "0.2" | "0.3")
-        {
-            let feature = "the stream files of a task".into();
-            self.report(at, Problem::Later(feature, "0.4".into()));
-        }
         for name in named.into_iter().filter(|name| !inside(name)) {
             self.report(at, Problem::Outside(name.clone()));
         }
@@ -342,27 +328,12 @@ impl<'d> Checker<'d> {
         }
         // Nextflow emits have no types, so a block may take what one gives as dynamic.
         let open = native.language == Language::Nextflow;
-        let mut dynamic = false;
         let sides = [(&op.inputs, false), (&op.outputs, open)];
         for (ports, allowed) in sides {
             for port in ports {
-                match (self.has_dynamic(&port.r#type), allowed) {
-                    (false, _) => {}
-                    (true, true) => dynamic = true,
-                    (true, false) => {
-                        self.report(at, Problem::Untyped(format!("port {}", port.name)));
-                    }
+                if !allowed && self.has_dynamic(&port.r#type) {
+                    self.report(at, Problem::Untyped(format!("port {}", port.name)));
                 }
-            }
-        }
-        if self.document.wir_version == "0.1" {
-            let features = [
-                (!native.profiles.is_empty(), "native profiles"),
-                (!native.configs.is_empty(), "native configs"),
-                (dynamic, "a dynamic native output"),
-            ];
-            for (_, feature) in features.iter().filter(|(used, _)| *used) {
-                self.report(at, Problem::Later((*feature).into(), "0.2".into()));
             }
         }
     }

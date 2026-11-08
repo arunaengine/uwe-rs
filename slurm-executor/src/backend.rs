@@ -60,6 +60,30 @@ const ARCHIVE_PATH: &str = "control/image.tar";
 /// The tools of SLURM that the backend runs.
 pub const TOOLS: [&str; 4] = ["sbatch", "squeue", "sacct", "scancel"];
 
+/// The variables of this process that `sbatch` and the jobs get: what tools and Apptainer
+/// need to run, and the web proxy. Other variables, like credentials of the service, stay.
+const PASSED: [&str; 16] = [
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "TMPDIR",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+    "no_proxy",
+];
+
+/// The prefixes of the variables that configure SLURM and Apptainer, which pass too.
+const PASSED_PREFIXES: [&str; 4] = ["SLURM_", "SBATCH_", "APPTAINER_", "SINGULARITY_"];
+
 /// Whether a program can run: a path to an executable file, or a name that the PATH has.
 pub fn executable(program: &Path) -> bool {
     let runs = |path: &Path| {
@@ -100,7 +124,7 @@ pub struct SlurmBackend {
     /// try.
     pub pull_pause: Duration,
     /// The web proxy of the jobs, when the nodes reach the web only through one. `sbatch`
-    /// hands its environment to the job, so the jobs get it as `HTTPS_PROXY` and
+    /// hands the variables it exports to the job, so the jobs get it as `HTTPS_PROXY` and
     /// `HTTP_PROXY` (and in lower case), and Apptainer pulls images through it.
     pub proxy: Option<String>,
     /// The entrypoints and default commands of images of registries, from the registries.
@@ -1011,15 +1035,38 @@ impl SlurmBackend {
         }
         journal_at(root, &journal)?;
         let mut sbatch = Command::new(self.command("sbatch"));
+        sbatch.env_clear();
+        let mut exported = Vec::new();
+        for (name, value) in std::env::vars_os() {
+            let Some(text) = name.to_str() else { continue };
+            if PASSED.contains(&text) || PASSED_PREFIXES.iter().any(|start| text.starts_with(start))
+            {
+                sbatch.env(text, value);
+                exported.push(text.to_owned());
+            }
+        }
         if let Some(proxy) = &self.proxy {
             for name in ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"] {
                 sbatch.env(name, proxy);
+                exported.push(name.to_owned());
             }
         }
         if let Some(secret) = secret {
             sbatch.env(executor::helper::STORAGE, secret);
+            exported.push(executor::helper::STORAGE.to_owned());
         }
-        sbatch.args(options).arg(&script);
+        // Names only: `--export` splits at commas, which values may hold. It comes after the
+        // options, so that it wins over an `--export` there.
+        exported.sort();
+        exported.dedup();
+        let export = match exported.is_empty() {
+            true => "NONE".to_owned(),
+            false => exported.join(","),
+        };
+        sbatch
+            .args(options)
+            .arg(format!("--export={export}"))
+            .arg(&script);
         let output = tokio::select! {
             output = crate::queue::output(&mut sbatch, self.submit_grace) => output.map_err(|error| unresolved(root, error))?,
             () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),

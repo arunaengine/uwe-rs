@@ -100,7 +100,10 @@ fn builder() -> Result<reqwest::ClientBuilder, String> {
             .filter_map(|root| reqwest::Certificate::from_der(root.as_ref()).ok());
         builder = builder.tls_certs_merge(roots);
     }
-    if let Some(address) = PROXY.get().filter(|_| !proxy_in_environment()) {
+    if let Some(address) = (PROXY.get())
+        .and_then(Option::as_deref)
+        .filter(|_| !proxy_in_environment())
+    {
         let proxy = reqwest::Proxy::all(address)
             .map_err(|error| format!("the proxy {address} of the config file: {error}"))?;
         builder = builder.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
@@ -108,8 +111,9 @@ fn builder() -> Result<reqwest::ClientBuilder, String> {
     Ok(builder)
 }
 
-/// The web proxy of `[network] proxy` of the config file.
-static PROXY: OnceLock<String> = OnceLock::new();
+/// The web proxy of `[network] proxy` of the config file, once the first request of the
+/// process settled it; `None` inside sends requests directly.
+static PROXY: OnceLock<Option<String>> = OnceLock::new();
 
 /// Whether the client trusts the roots of Mozilla besides those of the system.
 static MOZILLA_ROOTS: OnceLock<()> = OnceLock::new();
@@ -120,11 +124,21 @@ pub fn trust_mozilla_roots() {
     let _ = MOZILLA_ROOTS.set(());
 }
 
-/// Sends the requests of uwe through this web proxy, like `http://proxy.example.org:3128`,
-/// unless the environment names one (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, in either
-/// case), which wins. Takes effect only before the first request.
-pub fn use_proxy(address: &str) {
-    let _ = PROXY.set(address.to_owned());
+/// Sends the requests of uwe through this web proxy, or directly for `None`, unless the
+/// environment names one, like `HTTPS_PROXY`, which wins. The process shares its clients, so
+/// the first call settles the proxy and a later call with another one is refused.
+pub fn use_proxy(address: Option<&str>) -> Result<(), String> {
+    let settled = PROXY.get_or_init(|| address.map(str::to_owned));
+    if settled.as_deref() == address {
+        return Ok(());
+    }
+    // The address can hold a password, so the message does not name it.
+    Err(match settled {
+        Some(_) => "this process sends its web requests through another proxy than the config             file names; run requests with other proxy settings in another process"
+            .to_owned(),
+        None => "this process sends its web requests without the proxy that the config file             names; run requests with other proxy settings in another process"
+            .to_owned(),
+    })
 }
 
 /// The web proxy of the config file, unless the environment names one. Programs that uwe
@@ -132,7 +146,7 @@ pub fn use_proxy(address: &str) {
 pub fn config_proxy() -> Option<&'static str> {
     PROXY
         .get()
-        .map(String::as_str)
+        .and_then(Option::as_deref)
         .filter(|_| !proxy_in_environment())
 }
 

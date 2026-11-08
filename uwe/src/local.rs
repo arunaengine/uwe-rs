@@ -39,6 +39,7 @@ pub fn executor(
         holder: Holder::new(run, "Conda image preparation"),
         preparing: std::sync::Arc::new(tokio::sync::Semaphore::new(1)),
         secrets: setup.secrets.clone(),
+        secret_store: crate::nextflow::secret_store(setup),
         variables: setup.variables.clone(),
     };
     // Remote inputs share the folder of downloads with the files that workflow code reads.

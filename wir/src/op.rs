@@ -94,14 +94,13 @@ pub struct Task {
     pub success_codes: Vec<i32>,
     /// Whether the command may use the network; without it the task runs without network,
     /// so that runs can share its results. It is part of the task, unlike the attributes.
-    /// Since wir 0.3.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub network: bool,
     /// The file in the working folder that standard output goes to, like CWL `stdout`; a
-    /// `stdout` capture then reads it. Since wir 0.4.
+    /// `stdout` capture then reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stdout: Option<String>,
-    /// The file that standard error goes to, like CWL `stderr`. Since wir 0.4.
+    /// The file that standard error goes to, like CWL `stderr`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stderr: Option<String>,
 }
@@ -137,21 +136,21 @@ pub enum CaptureRule {
     Stderr,
 }
 
-/// A pure CWL expression over the op's inputs, which binds its one output. Since wir 0.4;
-/// languages other than `js` stay reserved.
+/// A pure CWL expression over the op's inputs, which binds its one output.
+/// Languages other than `js` stay reserved.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Expr {
     pub language: String,
     /// Text with `$(...)` parts, or a `${...}` function body, as a CWL expression.
     pub code: String,
-    /// Code that runs before it, like CWL `expressionLib`. Since wir 0.4.
+    /// Code that runs before it, like CWL `expressionLib`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<String>,
 }
 
 /// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the
-/// op ends skipped with every output null. Since wir 0.4.
+/// op ends skipped with every output null.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Branch {
@@ -161,7 +160,7 @@ pub struct Branch {
 
 /// Runs the `body` graph once per round: each round takes items of the array inputs in `over`
 /// and the other inputs as they are. Each output is the array of what the rounds gave, in
-/// round order. Since wir 0.4; `parallelism` and `min_success` stay reserved.
+/// round order. `parallelism` and `min_success` stay reserved.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Map {
@@ -213,11 +212,11 @@ pub struct Native {
     /// What to run inside the source: a workflow name, an entry point or a process id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
-    /// Profiles of the language, like Nextflow `-profile`, in order. Since wir 0.2.
+    /// Profiles of the language, like Nextflow `-profile`, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub profiles: Vec<String>,
     /// Ids of document sources that configure the run, like Nextflow `-c` files, in the order
-    /// read. Since wir 0.2.
+    /// read.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub configs: Vec<String>,
 }

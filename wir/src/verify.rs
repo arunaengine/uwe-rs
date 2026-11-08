@@ -20,7 +20,7 @@ pub struct VerifyError {
 /// What is wrong.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum Problem {
-    #[error("wir version {0} is not known; this verifier knows 0.1 to {VERSION}")]
+    #[error("wir version {0} is not known; this verifier knows {VERSION}")]
     Version(String),
     #[error(
         "{0:?} is not a valid name: use letters, digits, '_', '-' and '.', paths join them by '/'"
@@ -60,9 +60,6 @@ pub enum Problem {
     Cycle(String),
     #[error("native {0} needs a type without dynamic")]
     Untyped(String),
-    /// A feature, and the wir version that added it.
-    #[error("{0} needs wir version {1}")]
-    Later(String, String),
     #[error("language {found} differs from that of source {named}, {want}")]
     Language {
         named: String,
@@ -309,13 +306,6 @@ impl<'d> Checker<'d> {
                 self.report(at, Problem::Default(named));
             } else if !crate::fits(value, &port.r#type, self.defs) {
                 self.report(at, Problem::Unfit(named));
-            }
-            if matches!(
-                self.document.wir_version.as_str(),
-                "0.1" | "0.2" | "0.3" | "0.4"
-            ) {
-                let feature = "the default of a port".into();
-                self.report(at, Problem::Later(feature, "0.5".into()));
             }
         }
     }

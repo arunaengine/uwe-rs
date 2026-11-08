@@ -35,6 +35,7 @@ id=$(( $(cat "$state/last" 2>/dev/null || echo 100) + 1 ))
 echo "$id" > "$state/last"
 flock -u 9
 printf '%s\n' "$@" > "$state/$id.options"
+env > "$state/$id.environment"
 printf '%s\n' "$name" > "$state/$id.name"
 printf '%s\n' "${comment:-(null)}" > "$state/$id.comment"
 printf '%s\n' "$script" > "$state/$id.command"
@@ -518,6 +519,59 @@ async fn pulls_tagged_once() {
     let finished = next_run.run(job("run2-P-7-1"), &cancel).await;
     assert_eq!(finished.expect("the job ends").exit_code, Some(0));
     assert_eq!(pulls().lines().count(), 2);
+}
+
+#[tokio::test]
+async fn clears_submission_environment() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.proxy = Some("http://user:pass,word@proxy.example.org:3128".into());
+    let spec = spec("echo cleared > out.txt");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-8-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = backend.run(job, &CancellationToken::new()).await;
+    assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    // Cargo gives the tests variables of its own, which a job must not get.
+    assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
+    for id in [101, 102] {
+        let environment = std::fs::read_to_string(bin.join(format!("state/{id}.environment")));
+        let environment = environment.expect("the environment of sbatch");
+        let names: Vec<&str> = (environment.lines())
+            .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+            .collect();
+        assert!(
+            names.contains(&"PATH") && names.contains(&"HTTPS_PROXY"),
+            "{names:?}"
+        );
+        assert!(
+            !names.iter().any(|name| name.starts_with("CARGO")),
+            "{names:?}"
+        );
+        let options = std::fs::read_to_string(bin.join(format!("state/{id}.options")));
+        let options = options.expect("the options");
+        let export = (options.lines())
+            .find_map(|line| line.strip_prefix("--export="))
+            .expect("an export list");
+        let exported: Vec<&str> = export.split(',').collect();
+        assert!(
+            exported.contains(&"PATH") && exported.contains(&"https_proxy"),
+            "{export}"
+        );
+        assert!(
+            !export.contains('=') && !export.contains("CARGO"),
+            "{export}"
+        );
+    }
 }
 
 #[tokio::test]

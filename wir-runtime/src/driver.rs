@@ -350,6 +350,8 @@ impl WirDriver {
             outcome,
             files,
             bound,
+            inputs: &task.inputs,
+            simulated: self.launch.simulated,
         };
         match task::capture(spec, &node.op.outputs, ended, &self.document.types) {
             Ok(values) => {

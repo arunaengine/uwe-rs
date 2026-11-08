@@ -8,6 +8,7 @@ mod arrays;
 mod child;
 pub mod cwl;
 mod driver;
+mod engine;
 mod expr;
 mod flows;
 mod groovy;

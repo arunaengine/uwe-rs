@@ -338,6 +338,7 @@ impl Compiler {
             ancestors.insert(name.clone(), all);
         }
         let mut hooks: BTreeMap<String, String> = BTreeMap::new();
+        let mut built_ops: BTreeMap<String, String> = BTreeMap::new();
         // Dependencies first, so that a task sees the outputs and hooks of those it waits for.
         let ordered = order
             .iter()
@@ -386,11 +387,39 @@ impl Compiler {
                 let reason = "tasks that depend on a recursive call run after all its rounds";
                 return Err(kept(&graph.name, reason));
             }
+            built_ops.insert(task.name.clone(), built.op.clone());
             scope
                 .made
                 .insert(format!("tasks.{}", site.name), (built.op, built.outputs));
         }
+        for target in &targets {
+            let handled = (ancestors[target].iter()).filter_map(|name| built_ops.get(name));
+            let handled: Vec<String> = handled.cloned().collect();
+            let found = built_ops.get(target);
+            if let Some(op) = (graph.ops.iter_mut()).find(|op| Some(&op.path) == found) {
+                handle_failures(op, &handled);
+            }
+        }
         Ok(())
+    }
+}
+
+/// Lets a target of a DAG handle the failures of the tasks before it, once it succeeds: Argo
+/// judges a DAG by its targets, so a failure that a target ran past does not fail it.
+fn handle_failures(op: &mut wir::Op, handled: &[String]) {
+    for path in handled {
+        let on = [Status::Failed, Status::Errored];
+        match op.handles.iter_mut().find(|known| known.op == *path) {
+            Some(known) => {
+                let missing: Vec<Status> =
+                    on.into_iter().filter(|s| !known.on.contains(s)).collect();
+                known.on.extend(missing);
+            }
+            None => op.handles.push(Dependency {
+                op: path.clone(),
+                on: on.to_vec(),
+            }),
+        }
     }
 }
 

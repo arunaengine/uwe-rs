@@ -199,7 +199,9 @@ fn compiles_dag_control() {
     let expected =
         json!({"any": [{"result": {"op": "a", "on": bare}}, {"result": {"op": "b", "on": bare}}]});
     assert_eq!(op(main, "c")["depends"], expected);
-    assert!(op(main, "c").get("handles").is_none());
+    let failures = json!(["failed", "errored"]);
+    let ran_past = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
+    assert_eq!(op(main, "c")["handles"], ran_past, "the target judges the DAG");
 }
 
 #[test]
@@ -609,4 +611,27 @@ fn compiles_dag_in_dependency_order() {
     };
     assert_eq!(waits("b"), [json!("a.onExit")]);
     assert_eq!(waits("c"), [json!("b.onExit")]);
+}
+
+#[test]
+fn handles_failures_targets_ran_past() {
+    let folder = tempfile::tempdir().unwrap();
+    let spec = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: a, template: say}
+      - {name: b, template: say}
+      - {name: c, template: say, depends: "a.Succeeded || b.Succeeded"}
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+    let (document, kept) = compiled(folder.path(), spec);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let handles = &op(main, "c")["handles"];
+    let failures = json!(["failed", "errored"]);
+    let expected = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
+    assert_eq!(handles, &expected);
 }

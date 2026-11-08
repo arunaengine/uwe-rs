@@ -175,6 +175,10 @@ pub struct Task {
     /// the captures, like CWL `cwl.output.json`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub results: Option<String>,
+    /// The task input whose object sets `cpus`, `memory` and `disk` in bytes, `gpus` and
+    /// `time` in seconds over the attributes; a field that is null or missing keeps them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<String>,
     /// The JavaScript library that `code` arguments see, like the library of an expr.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<String>,

@@ -680,7 +680,7 @@ impl Progress {
 
 /// Whether an op kind runs on an empty value input.
 fn takes_empty(kind: &Kind) -> bool {
-    matches!(kind, Kind::Emit(_) | Kind::IfEmpty(_))
+    matches!(kind, Kind::Emit(_) | Kind::IfEmpty(_) | Kind::Process(_))
 }
 
 /// Values in round order as nested arrays of `shape`, one level per number.

@@ -357,7 +357,7 @@ impl WirDriver {
             return Ok(Vec::new());
         }
         if let Kind::Process(spec) = &self.progress.node(at).op.kind {
-            let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at));
+            let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at), &bound);
             self.processes.insert(at, rounding);
             return Ok(Vec::new());
         }

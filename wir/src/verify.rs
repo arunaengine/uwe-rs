@@ -482,6 +482,7 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Distinct(distinct) => distinct.key.iter().filter_map(Body::graph).collect(),
         Kind::Until(until) => until.predicate.graph().into_iter().collect(),
         Kind::IfEmpty(fallback) => fallback.body.iter().filter_map(Body::graph).collect(),
+        Kind::Split(split) => split.body.iter().filter_map(Body::graph).collect(),
         Kind::Route(route) => (route.cases.iter())
             .flat_map(|case| std::iter::once(&case.condition).chain(&case.body))
             .filter_map(Body::graph)

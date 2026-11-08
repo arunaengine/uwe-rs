@@ -628,3 +628,87 @@ fn selection_shapes() {
     let fallback = json!({"if_empty": {"body": {"language": "groovy", "code": "{ -> 0 }"}}});
     assert_eq!(shaped(fallback, ints), Vec::<String>::new());
 }
+
+#[test]
+fn split_options() {
+    let source = json!([typed("source", json!({"file": {}}), "stream")]);
+    let split = |fields: Json| {
+        problems(&many(
+            json!({"split": fields}),
+            source.clone(),
+            typed("out", json!("dynamic"), "stream"),
+        ))
+    };
+    let needs = |why: &str| vec![format!("main/op: a split needs {why}")];
+    assert_eq!(
+        split(json!({"format": {"fastq": {}}, "pair": "auto", "size": 4})),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        split(json!({"format": {"text": {}}, "size": 0})),
+        needs("a positive size")
+    );
+    assert_eq!(
+        split(json!({"format": {"fasta": {}}, "pair": "auto"})),
+        needs("a pair only for fastq")
+    );
+    assert_eq!(
+        split(json!({"format": {"fastq": {}}, "pair": "auto", "elem": 0})),
+        needs("a pair or an elem, not both")
+    );
+    assert_eq!(
+        split(json!({"format": {"fastq": {}}, "pair": {"at": [1, 1]}})),
+        needs("two different pair elements")
+    );
+    let fasta =
+        json!({"format": {"fasta": {"fields": [{"name": "q", "field": "quality_string"}]}}});
+    assert_eq!(
+        split(fasta),
+        needs("fields of its format, not QualityString")
+    );
+    let twice = json!({"format": {"fastq": {"fields": [{"name": "r", "field": "read_string"}, {"name": "r", "field": "text"}]}}});
+    assert_eq!(split(twice), needs("one field named r"));
+    let csv_files = json!({"format": {"csv": {}}, "files": {}});
+    assert_eq!(split(csv_files), needs("text chunks to write files"));
+    for path in ["", "a", "a.b", "samples[0].files", "[2]", "a[1][2]"] {
+        assert_eq!(
+            split(json!({"format": {"json": {"path": path}}})),
+            Vec::<String>::new(),
+            "{path}"
+        );
+    }
+    for path in ["a..b", "a[", "a[x]", "a[]", ".a", "a]"] {
+        let found = split(json!({"format": {"json": {"path": path}}}));
+        assert_eq!(
+            found,
+            needs(&format!("a JSON path of names and indices, not {path:?}")),
+            "{path}"
+        );
+    }
+    assert_eq!(
+        split(json!({"format": {"text": {}}, "charset": "ebcdic"})),
+        needs("a known charset, not ebcdic")
+    );
+    let outside = json!({"format": {"text": {}}, "files": {"directory": "/data/chunks"}});
+    assert_eq!(
+        split(outside.clone()),
+        needs("a publish effect to write to /data/chunks")
+    );
+    let mut published = many(
+        json!({"split": outside}),
+        source.clone(),
+        typed("out", json!("dynamic"), "stream"),
+    );
+    published["graphs"][0]["ops"][0]["effects"] = json!([{"publish": "chunks"}]);
+    assert_eq!(problems(&published), Vec::<String>::new());
+    let escaping = json!({"format": {"text": {}}, "files": {"directory": "../up", "name": "a/b"}});
+    let found = split(escaping);
+    assert!(
+        found.contains(&needs("a folder inside the run, not ../up")[0]),
+        "{found:?}"
+    );
+    assert!(
+        found.contains(&needs("a file name, not \"a/b\"")[0]),
+        "{found:?}"
+    );
+}

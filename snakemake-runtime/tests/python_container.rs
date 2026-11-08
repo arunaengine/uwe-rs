@@ -24,6 +24,7 @@ fn executes_container_packages() {
         image: None,
         cache: folder.path().join("python-cache"),
         show_output: false,
+        journals: None,
     };
     interpreter
         .packages

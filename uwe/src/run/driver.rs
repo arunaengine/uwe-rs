@@ -191,7 +191,13 @@ fn cwl_options(
             .default_image
             .clone()
             .unwrap_or_else(|| cwl_runtime::tool::DEFAULT_IMAGE.into()),
-        javascript: cwl_runtime::JavaScriptSettings::from_binary(setup.engine(), cancel.clone()),
+        javascript: {
+            let engine = setup.engine();
+            let mut javascript =
+                cwl_runtime::JavaScriptSettings::from_binary(engine, cancel.clone());
+            javascript.journals = Some(cache_directory().join("containers"));
+            javascript
+        },
         local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
             .then(|| setup.engine()),
         registry: setup.cwl_registry.clone(),
@@ -253,6 +259,7 @@ fn snakemake(
             image: arguments.python_image.clone(),
             cache: cache_directory().join("python"),
             show_output: true,
+            journals: Some(cache_directory().join("containers")),
         }),
         storage: setup.storage.clone(),
         cancel: cancel.clone(),

@@ -36,6 +36,9 @@ pub struct PythonContainers {
     /// Passes what the process writes to standard error, like what packages print, on to the
     /// standard error of uwe.
     pub show_output: bool,
+    /// Where the engine keeps the journal of the containers; `None` uses the cache folder of
+    /// the user.
+    pub journals: Option<PathBuf>,
 }
 
 /// Starts the Python container of a run, which sees the folders of the workflow.
@@ -242,6 +245,7 @@ impl ContainerStarter {
             let cache = &self.settings.cache;
             let spec = ContainerSpec {
                 engine: self.settings.engine.clone(),
+                journals: self.settings.journals.clone(),
                 name: container_name("prepare"),
                 image: DEFAULT_IMAGE.to_owned(),
                 user,
@@ -309,6 +313,7 @@ impl PythonStarter for ContainerStarter {
         };
         let spec = ContainerSpec {
             engine: self.settings.engine.clone(),
+            journals: self.settings.journals.clone(),
             name: container_name("helper"),
             image,
             user,
@@ -378,6 +383,7 @@ mod tests {
         let starter = ContainerStarter::with_cancel(
             PythonContainers {
                 engine: "unreachable".into(),
+                journals: None,
                 image: None,
                 cache: cache.clone(),
                 show_output: false,
@@ -408,6 +414,7 @@ mod tests {
         let starter = ContainerStarter::with_cancel(
             PythonContainers {
                 engine: "unreachable".into(),
+                journals: None,
                 image: None,
                 cache: folder.path().to_path_buf(),
                 show_output: false,
@@ -436,6 +443,7 @@ mod tests {
         let starter = ContainerStarter::new(
             PythonContainers {
                 engine: "unreachable".into(),
+                journals: None,
                 image: None,
                 cache: folder.path().to_path_buf(),
                 show_output: false,

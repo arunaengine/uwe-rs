@@ -63,6 +63,10 @@ settings.no_cache_steps = vec!["FASTQC".into()];
 let run = uwe::RunRequest::new(settings).run().await?;
 ```
 
+## The cache folder
+
+Set `run::Settings.cache_folder` to keep what a run caches in that folder: downloads, scratch folders, input digests, the run database unless `database` names another, and the journals of the containers that uwe starts. These are also the journals of the helper containers of CWL JavaScript, of Snakemake Python code and of Snakemake hooks. The containers of the nf-python plugin still keep their journal in the cache folder of the user. So two hosts, or two engines of one host, with different folders never share these files. Without the setting, uwe uses `[cache] folder` of the config file, else `$XDG_CACHE_HOME/uwe`, else `~/.cache/uwe`, as the command line does.
+
 ## Launch folder of Nextflow runs
 
 An embedded Nextflow run launches in a folder of its own, `scratch/launch/<run>` in the cache folder. Relative paths of the workflow start there, like `launchDir`, a `publishDir` of `results` and `file('data.csv')`. So runs at the same time never write the same relative path. uwe keeps the folder after the run, since it can hold published files, and the host removes it once it took them. A workflow publishes elsewhere with absolute paths, like an `outdir` parameter that the host sets. On the command line a run launches in the working directory, as in Nextflow, and the Nextflow blocks of a wir run launch in the folder of their block.

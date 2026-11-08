@@ -53,6 +53,9 @@ pub struct ContainerSpec {
     /// Passes what the container writes to standard error on to the standard error of
     /// uwe; the last lines are always kept for errors.
     pub show_stderr: bool,
+    /// Where the engine keeps the journal of its containers; `None` uses `uwe/containers` in
+    /// the cache folder of the user.
+    pub journals: Option<PathBuf>,
 }
 
 /// Hard bounds for an opt-in line protocol helper.
@@ -134,7 +137,11 @@ fn engine_cancellable(
         OPERATION_LIMIT,
         ContainerEngine::named(name),
     ))?;
-    found.map_err(|error| ProcessError::NoEngine(error.to_string()))
+    let engine = found.map_err(|error| ProcessError::NoEngine(error.to_string()))?;
+    Ok(match &spec.journals {
+        Some(root) => engine.with_journal_root(root.clone()),
+        None => engine,
+    })
 }
 
 /// A running container that answers lines.

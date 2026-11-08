@@ -243,6 +243,7 @@ fn diagnoses_missing_engine() {
                 image: None,
                 cache: folder.path().join("cache"),
                 show_output: false,
+                journals: None,
             }),
             ..Default::default()
         };

@@ -12,6 +12,7 @@ use workflow_graph::Task;
 pub fn run(
     task: &Task,
     engine: &str,
+    journals: Option<&Path>,
     scratch: &Path,
     offline: bool,
     cancel: &executor::CancellationToken,
@@ -24,6 +25,10 @@ pub fn run(
             .map_err(|error| {
                 format!("Lifecycle hook requires a local Docker or Podman engine: {error}")
             })?;
+        let engine = match journals {
+            Some(root) => engine.with_journal_root(root.to_owned()),
+            None => engine,
+        };
         let backend = LocalContainer::new(engine, scratch.join("hooks"), Pool::new(1, 1 << 30));
         let name = format!("uwe-hook-{}-{}", std::process::id(), task.id);
         let image = task

@@ -134,7 +134,7 @@ pub struct Session {
     cwl: HashMap<usize, crate::cwl::Run>,
     cwl_tasks: HashMap<TaskId, usize>,
     cwl_jobs: HashMap<usize, crate::cwl::Job>,
-    cwl_engine: Option<(String, executor::CancellationToken)>,
+    cwl_engine: Option<(String, Option<PathBuf>, executor::CancellationToken)>,
     storage: Storage,
     /// Temporary files whose removal waits until no checkpoint is pending, with their jobs.
     deferred: Vec<(String, usize)>,
@@ -1078,9 +1078,10 @@ impl Session {
         if let Some(image) = self.state.borrow().default_image.clone() {
             options.image = image;
         }
-        if let Some((engine, cancel)) = &self.cwl_engine {
+        if let Some((engine, journals, cancel)) = &self.cwl_engine {
             options.javascript =
                 cwl_runtime::JavaScriptSettings::new(engine.clone(), cancel.clone());
+            options.javascript.journals = journals.clone();
         }
         let downloads = folder.join("downloads");
         let mut driver =
@@ -1219,7 +1220,8 @@ impl Session {
         cancel: executor::CancellationToken,
     ) {
         self.embedded.python_image = settings.image.clone();
-        self.cwl_engine = Some((settings.engine.clone(), cancel.clone()));
+        let journals = settings.journals.clone();
+        self.cwl_engine = Some((settings.engine.clone(), journals, cancel.clone()));
         let mut folders = vec![self.workdir.clone()];
         if let Some(folder) = self.snakefile.parent() {
             folders.push(folder.to_path_buf());
@@ -3147,6 +3149,7 @@ pub fn spawn_driver(
                         .as_ref()
                         .map(|python| python.engine.clone())
                         .unwrap_or_default(),
+                    journals: (settings.python.as_ref()).and_then(|python| python.journals.clone()),
                     scratch: launch.scratch.clone(),
                     simulated: launch.simulated,
                     cancel: settings.cancel.clone(),

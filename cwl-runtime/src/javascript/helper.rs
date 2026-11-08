@@ -32,6 +32,9 @@ pub struct JavaScriptSettings {
     pub engine: String,
     pub image: String,
     pub cancel: CancellationToken,
+    /// Where the engine keeps the journal of the helper container; `None` uses the cache
+    /// folder of the user.
+    pub journals: Option<std::path::PathBuf>,
     helper: Arc<Mutex<Option<Helper>>>,
     /// Whether the helper runs the image of the running binary, made when it is missing,
     /// instead of `image`.
@@ -44,6 +47,7 @@ impl Default for JavaScriptSettings {
             engine: std::env::var("UWE_ENGINE").unwrap_or_default(),
             image: std::env::var("UWE_CWL_JS_IMAGE").unwrap_or_else(|_| "uwe-cwl-js:0.1.0".into()),
             cancel: CancellationToken::new(),
+            journals: None,
             helper: Arc::default(),
             own: false,
         }
@@ -366,6 +370,7 @@ impl JavaScriptSettings {
                 command: vec!["__cwl-js-worker".into()],
                 environment: vec![("UWE_CWL_WORKER".into(), "1".into())],
                 memory: Some(256 << 20),
+                journals: self.journals.clone(),
                 ..ContainerSpec::default()
             };
             let process = ContainerProcess::start_bounded(

@@ -667,3 +667,65 @@ fn launches_own_folder() {
     }
     assert!(!std::env::current_dir().unwrap().join("marker.txt").exists());
 }
+
+/// An embedded run with a cache folder writes nothing into the cache folder of the user,
+/// which `XDG_CACHE_HOME` and `HOME` name, also not the journal of its JavaScript helper
+/// container. The run goes in a child process with both set.
+#[test]
+fn keeps_user_cache() {
+    if let Some(root) = std::env::var_os("UWE_EMBEDDED_CACHE") {
+        let root = std::path::PathBuf::from(root);
+        let target = root.join("tool.cwl");
+        std::fs::write(
+            &target,
+            "cwlVersion: v1.2\nclass: CommandLineTool\nrequirements:\n  InlineJavascriptRequirement: {}\n\
+             baseCommand: echo\ninputs:\n  count: int\narguments: [$(inputs.count + 1)]\noutputs: []\n",
+        )
+        .unwrap();
+        let mut settings = Settings::new(target);
+        settings.executor = Some("simulator".into());
+        settings.database = Some(root.join("runs.sqlite"));
+        settings.cache = false;
+        settings.cache_folder = Some(root.join("cache"));
+        settings.inputs = Some(json!({"count": 3}));
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let run = runtime.block_on(RunRequest::new(settings).run()).unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let user = root.path().join("user");
+    std::fs::create_dir(&user).unwrap();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "keeps_user_cache", "--nocapture"])
+        .env("UWE_EMBEDDED_CACHE", root.path())
+        // The helper image that `just test` builds, as the test binary makes none.
+        .env(
+            "UWE_CWL_JS_IMAGE",
+            std::env::var("UWE_CWL_JS_IMAGE").unwrap_or("uwe-cwl-js:0.1.0".into()),
+        )
+        .env("XDG_CACHE_HOME", user.join(".cache"))
+        .env("HOME", &user)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&[output.stdout, output.stderr].concat()).into_owned();
+    assert!(output.status.success(), "the child failed:\n{text}");
+    assert!(text.contains("1 passed"), "the child ran no test:\n{text}");
+    let written: Vec<_> = walk(&user);
+    assert!(
+        written.is_empty(),
+        "written into the user cache: {written:?}"
+    );
+}
+
+/// The files below a folder.
+fn walk(folder: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
+        match entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            true => files.extend(walk(&entry.path())),
+            false => files.push(entry.path()),
+        }
+    }
+    files
+}

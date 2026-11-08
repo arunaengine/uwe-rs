@@ -31,6 +31,8 @@ mod plan;
 mod processes;
 mod python;
 mod reducing;
+#[allow(dead_code, reason = "the planner of the next commit uses the rest")]
+mod regions;
 mod routing;
 mod selecting;
 pub mod snakemake;

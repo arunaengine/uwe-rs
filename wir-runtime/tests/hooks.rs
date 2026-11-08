@@ -161,3 +161,26 @@ fn hook_scopes() {
         "the hook sees the helper of its scope"
     );
 }
+
+#[test]
+fn hook_prints() {
+    let folder = tempfile::tempdir().unwrap();
+    let hook = json!({"language": "groovy", "code": "{ println 'done ' + it.success }"});
+    let printed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let sink = std::sync::Arc::clone(&printed);
+    let settings = Settings {
+        print: false,
+        print_sink: wir_runtime::Printer::new(move |text| sink.lock().unwrap().push_str(text)),
+        ..Settings::default()
+    };
+    let launch = launch(folder.path(), "inputs.n + 1", json!([{"complete": hook}]));
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    execute("hooks", &mut driver, &mut Idle)
+        .into_result()
+        .unwrap();
+    assert_eq!(
+        *printed.lock().unwrap(),
+        "done true\n",
+        "a hook prints to the print sink"
+    );
+}

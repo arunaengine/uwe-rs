@@ -37,12 +37,14 @@ fn launch(target: &Path, output: &Path) -> Launch {
 }
 
 /// Runs each task by writing its command into each of its outputs; tasks whose name holds
-/// `fails` exit with 1, and the first task whose name holds `breaks` cannot run.
+/// `fails` exit with 1, and the first task whose name holds `breaks` cannot run; the first
+/// `tails` tasks whose name holds `flip` print `tails`, later ones `heads`.
 struct Writer {
     folder: PathBuf,
     fails: &'static str,
     breaks: &'static str,
     broke: bool,
+    tails: usize,
 }
 
 impl Writer {
@@ -52,6 +54,21 @@ impl Writer {
             fails: "\0",
             breaks: "\0",
             broke: false,
+            tails: 0,
+        }
+    }
+}
+
+impl Writer {
+    fn said(&mut self, task: &workflow_graph::Task) -> String {
+        if !task.name.contains("flip") {
+            return "out\n".into();
+        }
+        let tails = self.tails > 0;
+        self.tails = self.tails.saturating_sub(1);
+        match tails {
+            true => "tails\n".into(),
+            false => "heads\n".into(),
         }
     }
 }
@@ -89,7 +106,7 @@ impl Executor for Writer {
             id: task.id,
             attempt: attempt.number,
             exit_code: i32::from(task.name.contains(self.fails)),
-            stdout: "out\n".into(),
+            stdout: self.said(task),
             files,
             ..Outcome::default()
         }))
@@ -314,5 +331,31 @@ fn continues_on_errors() {
     let (one, other) = both(root, &file, &[], breaking);
     one.0.as_ref().unwrap();
     assert_eq!(one.1, ["runs[0].breaks", "runs[1].after"]);
+    assert_eq!(other, one);
+}
+
+const COINFLIP: &str = r#"  entrypoint: coinflip
+  templates:
+  - name: coinflip
+    steps:
+    - - {name: flip, template: say}
+    - - {name: heads, template: say, when: "{{steps.flip.outputs.result}} == heads"}
+      - {name: tails, template: coinflip, when: "{{steps.flip.outputs.result}} == tails"}
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+
+#[test]
+fn recurses_in_rounds() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, COINFLIP);
+    let flipping = |folder| Writer {
+        tails: 2,
+        ..Writer::new(folder)
+    };
+    let (one, other) = both(root, &file, &[], flipping);
+    one.0.as_ref().unwrap();
+    assert_eq!(one.1.len(), 4, "three flips and heads: {one:?}");
     assert_eq!(other, one);
 }

@@ -156,11 +156,31 @@ fn result(
         true => json!("directory"),
         false => json!({"file": {}}),
     };
+    let classes: Vec<Json> = files.iter().map(|file| class(file)).collect();
+    let mixed = classes.windows(2).any(|pair| pair[0] != pair[1]);
+    let mut library = Vec::new();
     let (code, kind) = match value {
+        // Files and folders in one list are typed one by one, the list as either.
+        Json::Array(_) if mixed => {
+            let names: Vec<String> = (0..files.len())
+                .map(|index| format!("item_{index}"))
+                .collect();
+            for ((name, location), class) in names.iter().zip(&locations).zip(&classes) {
+                let declared = if *class == json!("directory") {
+                    "Directory"
+                } else {
+                    "File"
+                };
+                library.push(format!("{declared} {name} = {location}"));
+            }
+            let items = json!({"union": [{"file": {}}, "directory"]});
+            (
+                format!("[{}]", names.join(", ")),
+                json!({"array": {"items": items}}),
+            )
+        }
         Json::Array(_) => {
-            let items = files
-                .first()
-                .map_or(json!({"file": {}}), |file| class(file));
+            let items = classes.first().cloned().unwrap_or(json!({"file": {}}));
             (
                 format!("[{}]", locations.join(", ")),
                 json!({"array": {"items": items}}),
@@ -169,7 +189,11 @@ fn result(
         file => (locations.join(""), class(file)),
     };
     let path = format!("result.{name}");
-    let mut op = json!({"path": path, "kind": {"expr": {"language": "wdl", "code": code}},
+    let mut expr = json!({"language": "wdl", "code": code});
+    if !library.is_empty() {
+        expr["library"] = json!(library);
+    }
+    let mut op = json!({"path": path, "kind": {"expr": expr},
         "outputs": [{"name": "value", "type": kind}]});
     if !after.is_empty() {
         op["after"] = json!(after);

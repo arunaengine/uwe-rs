@@ -9,7 +9,7 @@ use crate::closure::Body;
 use crate::document::Port;
 use crate::flow::Flow;
 use crate::op::Op;
-use crate::reserved::{Depth, Emit, FlatMap, Merge, NullRule, Transform};
+use crate::reserved::{Depth, Emit, FlatMap, Merge, MultiMap, NullRule, Route, Transform};
 use crate::types::{Type, resolve};
 
 impl<'d> Checker<'d> {
@@ -240,6 +240,70 @@ impl<'d> Checker<'d> {
             && out.flow.is_value()
         {
             self.report(at, Problem::Shape("a zip".into(), "a stream output".into()));
+        }
+    }
+}
+
+impl<'d> Checker<'d> {
+    pub(super) fn route(&mut self, at: &str, op: &Op, route: &Route) {
+        let Some(source) = self.fanned(at, op, "a route") else {
+            return;
+        };
+        if route.cases.is_empty() {
+            self.report(at, Problem::Empty("the cases of a route".into()));
+        }
+        for case in &route.cases {
+            self.declared(at, op, "a route", &case.output);
+            let item = [&source.r#type];
+            self.body(
+                at,
+                op,
+                &case.condition,
+                (Arity::Unary, &item),
+                Some(&Type::Bool),
+            );
+            if let Some(body) = &case.body {
+                self.body(at, op, body, (Arity::Unary, &item), None);
+            }
+        }
+    }
+
+    pub(super) fn multi_map(&mut self, at: &str, op: &Op, multi: &MultiMap) {
+        let Some(source) = self.fanned(at, op, "a multi_map") else {
+            return;
+        };
+        for output in &multi.outputs {
+            self.declared(at, op, "a multi_map", &output.output);
+            let item = [&source.r#type];
+            self.body(at, op, &output.body, (Arity::Unary, &item), None);
+        }
+        for port in &op.outputs {
+            let count = multi
+                .outputs
+                .iter()
+                .filter(|item| item.output == port.name)
+                .count();
+            if count != 1 {
+                let why = format!("one body for output {}", port.name);
+                self.report(at, Problem::Shape("a multi_map".into(), why));
+            }
+        }
+    }
+
+    /// The stream input `source` of an op with named stream outputs.
+    fn fanned<'o>(&mut self, at: &str, op: &'o Op, what: &str) -> Option<&'o Port> {
+        let source = self.named_input(at, op, what, "source", Some(Flow::Stream));
+        self.value_captures(at, op, what, &["source"]);
+        if op.outputs.is_empty() || op.outputs.iter().any(|port| port.flow.is_value()) {
+            self.report(at, Problem::Shape(what.into(), "stream outputs".into()));
+        }
+        source
+    }
+
+    /// A case or a body names a declared output.
+    fn declared(&mut self, at: &str, op: &Op, what: &str, output: &str) {
+        if !op.outputs.iter().any(|port| port.name == output) {
+            self.report(at, Problem::NoPort(format!("output {output} of {what}")));
         }
     }
 }

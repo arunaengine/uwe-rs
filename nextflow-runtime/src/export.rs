@@ -37,6 +37,9 @@ pub struct Network {
     /// The files that the build read, as Nextflow reads them while it builds the workflow, by
     /// location with their `sha256:` digests; the compiler pins them as sources.
     pub reads: Vec<(String, String)>,
+    /// Every script that the run loads: the main script, the scripts it includes, and the
+    /// Groovy classes of `lib/`, which the compiler pins as sources.
+    pub scripts: Vec<String>,
 }
 
 #[derive(Debug)]

@@ -21,4 +21,6 @@ wir.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]
+task-runner.workspace = true
 tempfile.workspace = true
+wir-runtime.workspace = true

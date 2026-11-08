@@ -40,6 +40,11 @@ pub(crate) trait Behaviour {
         Ok(State::Running)
     }
 
+    /// What the node does, as the lowering to wir reads it; an error names what has none.
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Err("a node without a lowering".into())
+    }
+
     /// The process that the node runs, for a process node.
     fn definition(&self) -> Option<Definition> {
         None

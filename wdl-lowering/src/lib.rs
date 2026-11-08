@@ -76,7 +76,8 @@ pub fn lower_with(
         Callable::Workflow(_) => match lowerer.workflow(&unit, "main") {
             Ok(graph) => graph,
             Err(reason) => {
-                let op = lowerer.native(&unit, &name, reason)?;
+                let mut op = lowerer.native(&unit, &name, reason)?;
+                op.inputs.extend(workflow::nested_inputs(&unit));
                 single(&unit, op)?
             }
         },

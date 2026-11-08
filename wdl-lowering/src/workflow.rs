@@ -17,7 +17,8 @@ use wir::{Dependency, Edge, Endpoint, Graph, Kind, Op, Origin, Port, Status, Typ
 use crate::bodies::{inner, selected};
 use crate::types::{array, convert, optional, port};
 use crate::{
-    Lowerer, blank, boundary, constant, edge, end, flag, origin, presence, reads, text, unclaimed,
+    Lowerer, blank, boundary, constant, defaulted, edge, end, flag, origin, presence, reads, text,
+    unclaimed,
 };
 
 /// A value where an op can read it, with its type.
@@ -446,6 +447,61 @@ pub(crate) fn place(document: &Analyzed, statement: &WorkflowStatement) -> Resul
             (format!("if.{name}"), defined)
         }
     })
+}
+
+/// The nested call inputs of a workflow that runs as one native op: `<call>.<input>` for each
+/// input that a call, also inside a scatter or an `if`, does not give, with its flag.
+pub(crate) fn nested_inputs(unit: &Unit) -> Vec<Port> {
+    let Callable::Workflow(workflow) = &unit.callable else {
+        return Vec::new();
+    };
+    let mut ports = Vec::new();
+    calls(&unit.document, workflow.statements(), &mut ports);
+    ports
+}
+
+fn calls(
+    document: &Analyzed,
+    statements: impl Iterator<Item = WorkflowStatement>,
+    ports: &mut Vec<Port>,
+) {
+    for statement in statements {
+        let call = match statement {
+            WorkflowStatement::Call(call) => call,
+            WorkflowStatement::Scatter(scatter) => {
+                calls(document, scatter.statements(), ports);
+                continue;
+            }
+            WorkflowStatement::Conditional(conditional) => {
+                for clause in conditional.clauses() {
+                    calls(document, clause.statements(), ports);
+                }
+                continue;
+            }
+            WorkflowStatement::Declaration(_) => continue,
+        };
+        let Ok(unit) = document::called(document, &call.target()) else {
+            continue;
+        };
+        let name = alias(&call, &unit);
+        let (Ok((inputs, _)), Ok(())) = (boundary(&unit), unclaimed(&name)) else {
+            continue;
+        };
+        let given: BTreeSet<String> = (call.inputs())
+            .map(|input| input.name().text().to_owned())
+            .collect();
+        let flagged = defaulted(&unit);
+        for item in inputs
+            .into_iter()
+            .filter(|item| !given.contains(&item.name))
+        {
+            let nested = format!("{name}.{}", item.name);
+            if flagged.contains(&item.name) {
+                ports.push(port(&presence(&nested), optional(Type::Bool)));
+            }
+            ports.push(port(&nested, optional(item.r#type)));
+        }
+    }
 }
 
 /// The name of a call: its alias, else the name of what it calls.

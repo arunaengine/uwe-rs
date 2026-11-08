@@ -27,16 +27,15 @@ impl Block for WdlDriver {
 }
 
 /// The WDL input file of a native op: the inputs that are not None, and None for an input
-/// whose flag `given.<input>` is set, as a call gave `None` to it.
+/// whose flag `given.<input>` or `<call>.given.<input>` is set, as it was given `None`.
 pub(crate) fn job(mut values: Map<String, Json>) -> Json {
-    let flags: Vec<String> = (values.keys())
-        .filter(|name| name.starts_with("given."))
-        .cloned()
+    let flags: Vec<(String, String)> = (values.keys())
+        .filter_map(|key| Some((key.clone(), flagged(key)?)))
         .collect();
     let mut given = Vec::new();
-    for flag in flags {
+    for (flag, name) in flags {
         if values.remove(&flag) == Some(Json::Bool(true)) {
-            given.push(flag["given.".len()..].to_owned());
+            given.push(name);
         }
     }
     let mut job = crate::nextflow::params(&values);
@@ -46,6 +45,13 @@ pub(crate) fn job(mut values: Map<String, Json>) -> Json {
         }
     }
     job
+}
+
+/// The input that a flag `given.<input>` or `<call>.given.<input>` is about.
+fn flagged(key: &str) -> Option<String> {
+    let (head, input) = key.rsplit_once('.')?;
+    let call = head.strip_suffix("given")?;
+    (call.is_empty() || call.ends_with('.')).then(|| format!("{call}{input}"))
 }
 
 /// The op inputs with each tuple of two as a WDL pair, an object with `left` and `right`, as

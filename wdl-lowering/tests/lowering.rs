@@ -566,6 +566,47 @@ workflow nested {
 }
 
 #[test]
+fn nested_bodies_given() {
+    let workflow = r#"version 1.2
+workflow nested {
+  hints {
+    allow_nested_inputs: true
+  }
+  input {
+    Array[String] names
+    Boolean go
+    File? extra
+  }
+  scatter (n in names) {
+    call say as each
+  }
+  if (go) {
+    call say as maybe
+  }
+  EXTRA
+  output {
+    Array[String] texts = each.text
+    String? text = maybe.text
+  }
+}
+"#;
+    let inputs = json!({
+        "names": ["a", "b"],
+        "go": true,
+        "nested.each.name": "ada",
+        "maybe.name": "bob",
+    });
+    for (extra, kept) in [("", 0), ("Float zero = size(extra)", 1)] {
+        let text = format!("{}{SAY}", workflow.replace("EXTRA", extra));
+        let runs = runs(&text, inputs.clone());
+        assert_eq!(runs.lowering.kept.len(), kept, "{:?}", runs.lowering.kept);
+        assert_eq!(runs.native, runs.lowered);
+        assert_eq!(runs.lowered.1["texts"], json!(["hi ada", "hi ada"]));
+        assert_eq!(runs.lowered.1["text"], json!("hi bob"));
+    }
+}
+
+#[test]
 fn nested_conditional_lowers() {
     let workflow = r#"version 1.1
 workflow nested {

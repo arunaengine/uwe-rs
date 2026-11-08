@@ -114,6 +114,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "argo-compiler"
+version = "0.1.0"
+dependencies = [
+ "argo-parser",
+ "regex",
+ "wir",
+]
+
+[[package]]
 name = "argo-parser"
 version = "0.1.0"
 dependencies = [

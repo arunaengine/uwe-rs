@@ -5,6 +5,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "argo-compiler",
     "argo-parser",
     "argo-runtime",
     "aws-batch-executor",

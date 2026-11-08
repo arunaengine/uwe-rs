@@ -39,6 +39,8 @@ pub enum CrateError {
     UnknownRun(String),
     #[error("RO-Crate: the workflow `{0}` is not a file")]
     Workflow(PathBuf),
+    #[error("RO-Crate: the workflow `{0}` holds a secret value of the run, so it is not exported")]
+    Secret(PathBuf),
 }
 
 /// What an export wrote.
@@ -89,9 +91,12 @@ pub fn export(
     let Some(name) = options.workflow.file_name() else {
         return Err(CrateError::Workflow(options.workflow.clone()));
     };
-    std::fs::create_dir_all(directory)?;
     let workflow = name.to_string_lossy().into_owned();
     let main = main_file(database, &record, options)?;
+    if hidden::holds_secret(&main.0, options)? {
+        return Err(CrateError::Secret(options.workflow.clone()));
+    }
+    std::fs::create_dir_all(directory)?;
     if let Some(expected) = &main.1 {
         if !pinned::copy_checked(&main.0, &directory.join(&workflow), expected)? {
             return Err(CrateError::Workflow(options.workflow.clone()));

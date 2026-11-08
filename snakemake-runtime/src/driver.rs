@@ -3052,8 +3052,8 @@ pub struct Settings {
     /// The environment that the workflow reads, like `os.environ` and the variables of
     /// `envvars`; `None` reads the environment of the process.
     pub environment: Option<Vec<(String, String)>>,
-    /// The folders that workflow code may reach on disk besides those of the workflow, its
-    /// working folder and the files of the launch; `None` reaches all.
+    /// The folders that workflow code may reach on disk besides its working folder and the
+    /// files of the launch; `None` reaches all. It only reads and lists the folder of the workflow.
     pub roots: Option<Vec<PathBuf>>,
     /// Shared folders of an isolated run, like the cache and the store, whose files workflow
     /// code may read by their paths but not list or change. The scratch folder is one too.
@@ -3140,13 +3140,14 @@ pub fn spawn_driver(
                 if let Some(roots) = &settings.roots {
                     let mut folders = roots.clone();
                     folders.push(session.workdir.clone());
-                    folders.extend(session.snakefile.parent().map(Path::to_owned));
                     folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
                     let shared = (settings.read_only.iter())
                         .chain([&launch.scratch])
                         .cloned();
                     let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
-                    let readable = settings.readable.iter().cloned();
+                    // The folder of the Snakefile stays writable only as the working folder.
+                    let mut readable = settings.readable.clone();
+                    readable.extend(session.snakefile.parent().map(Path::to_owned));
                     session.files.confine(roots.with_readable(readable));
                 }
                 *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();

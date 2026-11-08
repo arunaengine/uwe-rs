@@ -101,7 +101,9 @@ impl Console {
             .or(own);
         let mut folders = isolation.roots.clone();
         let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
-        folders.extend(match target.is_dir() {
+        // Other runs may reuse the workflow, like a fetched pipeline, so its code only reads it.
+        let mut readable = isolation.read_only.clone();
+        readable.extend(match target.is_dir() {
             true => Some(target),
             false => target.parent().map(std::path::Path::to_owned),
         });
@@ -110,7 +112,7 @@ impl Console {
         folders.extend(self.launch.clone());
         let shared = shared.iter().chain([&launch.scratch]).cloned();
         let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
-        self.roots = Some(roots.with_readable(isolation.read_only.clone()));
+        self.roots = Some(roots.with_readable(readable));
         self
     }
 }

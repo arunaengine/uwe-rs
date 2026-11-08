@@ -206,20 +206,25 @@ const SNAKEFILE_READ_ONLY: &str = "import os\nseen = []\n\
     with open(config['report'], 'w') as written:\n    written.write('\\n'.join(seen))\n\n\
     rule all:\n    input: []\n";
 
-/// Workflow code of an isolated run lists and reads the read-only folders of the host, but
-/// cannot change, remove or add anything in them.
+/// Workflow code of an isolated run lists and reads the read-only folders of the host and the
+/// folder of its workflow, but cannot change, remove or add anything in them.
 #[test]
 fn protects_read_only() {
     if std::env::var_os(CHILD).is_none() {
         return in_child("protects_read_only", None);
     }
     let root = tempfile::tempdir().unwrap();
-    let refused = "refused delete\nrefused write\nrefused create\nrefused mkdir";
+    let refused = "input\nrefused delete\nrefused write\nrefused create\nrefused mkdir";
     for (name, seen) in [
-        ("main.nf", format!("input.txt\ninput\n{refused}")),
+        (
+            "main.nf",
+            format!("input.txt\n{refused}\ninput.txt,main.nf\n{refused}"),
+        ),
         (
             "Snakefile",
-            format!("input.txt\ninput\n{refused}\nrefused rename"),
+            format!(
+                "input.txt\n{refused}\nrefused rename\nSnakefile,input.txt\n{refused}\nrefused rename"
+            ),
         ),
     ] {
         let script = match name {
@@ -229,15 +234,17 @@ fn protects_read_only() {
         let folder = root.path().join(name);
         let data = folder.join("data");
         let shared = folder.join("shared");
-        let workflow = folder.join("workflow").join(name);
-        for created in [&data, &shared, &workflow.parent().unwrap().to_owned()] {
+        let code = folder.join("workflow");
+        let workflow = code.join(name);
+        for created in [&data, &shared, &code] {
             std::fs::create_dir_all(created).unwrap();
+            std::fs::write(created.join("input.txt"), "input").unwrap();
         }
         std::fs::write(&workflow, script).unwrap();
-        std::fs::write(shared.join("input.txt"), "input").unwrap();
         let mut settings = settings(&folder, &workflow);
         let path = |path: &Path| json!(path.to_string_lossy());
-        (settings.params).insert("folders".into(), json!([path(&shared)]));
+        let folders = json!([path(&shared), path(&code)]);
+        (settings.params).insert("folders".into(), folders);
         (settings.params).insert("report".into(), path(&data.join("report.txt")));
         settings.isolation = Some(Isolation {
             roots: vec![data.clone()],
@@ -257,10 +264,11 @@ fn protects_read_only() {
         );
         let report = std::fs::read_to_string(data.join("report.txt")).unwrap();
         assert_eq!(report, seen, "{name}");
-        let names = std::fs::read_dir(&shared).unwrap().count();
-        assert_eq!(names, 1, "{name}");
-        let input = std::fs::read_to_string(shared.join("input.txt")).unwrap();
-        assert_eq!(input, "input", "{name}");
+        for (kept, count) in [(&shared, 1), (&code, 2)] {
+            assert_eq!(std::fs::read_dir(kept).unwrap().count(), count, "{name}");
+            let input = std::fs::read_to_string(kept.join("input.txt")).unwrap();
+            assert_eq!(input, "input", "{name}");
+        }
     }
 }
 

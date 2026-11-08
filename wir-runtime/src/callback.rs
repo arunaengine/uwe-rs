@@ -156,6 +156,7 @@ mod tests {
             javascript: &settings,
             scopes: &scopes,
             files: Path::new("/nonexistent"),
+            printer: &crate::driver::Printer::default(),
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("next".into());

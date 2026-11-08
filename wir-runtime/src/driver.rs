@@ -47,6 +47,34 @@ pub struct Settings {
     pub print: bool,
     /// How the run fetches the repository of a source with a `git:` digest.
     pub repositories: Repositories,
+    /// Where `view` ops print.
+    pub print_sink: Printer,
+}
+
+/// A function of the host that takes printed text.
+type Printing = dyn Fn(&str) + Send + Sync;
+
+/// Where the ops of a run print: a function of the host, else standard output.
+#[derive(Clone, Default)]
+pub struct Printer(Option<Arc<Printing>>);
+
+impl Printer {
+    pub fn new(sink: impl Fn(&str) + Send + Sync + 'static) -> Printer {
+        Printer(Some(Arc::new(sink)))
+    }
+
+    pub fn print(&self, text: &str) {
+        match &self.0 {
+            Some(sink) => sink(text),
+            None => print!("{text}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for Printer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Printer { .. }")
+    }
 }
 
 /// Fetches a repository at a commit and gives the folder of its checkout.
@@ -94,6 +122,7 @@ impl Default for Settings {
             wdl: wdl_runtime::Options::default(),
             print: true,
             repositories: Repositories::default(),
+            print_sink: Printer::default(),
         }
     }
 }
@@ -205,7 +234,10 @@ impl WirDriver {
     fn checked(mut self) -> Result<Self, DriverError> {
         self.scopes = self.read_scopes()?;
         let ops = self.document.graphs.iter().flat_map(|graph| &graph.ops);
-        let writes = |op: &wir::Op| matches!(&op.kind, Kind::Split(split) if split.files.is_some());
+        let writes = |op: &wir::Op| match &op.kind {
+            Kind::Split(split) => split.files.is_some(),
+            _ => false,
+        };
         if ops.into_iter().any(writes) {
             self.file_area = self.job_folder()?.join("files");
         }
@@ -244,6 +276,7 @@ impl WirDriver {
                 javascript: &self.settings.cwl.javascript,
                 scopes: &self.scopes,
                 files: &self.file_area,
+                printer: &self.settings.print_sink,
             };
             if !operator::step_all(&mut self.progress, &mut self.operators, &context) {
                 break;
@@ -264,6 +297,7 @@ impl WirDriver {
             javascript: &self.settings.cwl.javascript,
             scopes: &self.scopes,
             files: &self.file_area,
+            printer: &self.settings.print_sink,
         };
         if engine::begin(&mut self.progress, at, &bound, &context)? {
             return Ok(Vec::new());

@@ -11,6 +11,7 @@ mod child;
 mod collecting;
 pub mod cwl;
 mod driver;
+mod effects;
 mod engine;
 mod expr;
 mod flows;
@@ -42,4 +43,4 @@ mod wdl_closure;
 mod wdl_expr;
 
 pub use child::{Block, Child};
-pub use driver::{Repositories, Settings, WirDriver, driver};
+pub use driver::{Printer, Repositories, Settings, WirDriver, driver};

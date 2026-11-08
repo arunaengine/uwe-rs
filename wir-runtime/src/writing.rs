@@ -140,7 +140,7 @@ impl Collecting {
     }
 
     /// The bytes of an entry: a string, or the content of a File.
-    fn bytes(turn: &Turn<'_>, entry: &Json) -> Result<Vec<u8>, Failure> {
+    fn bytes(turn: &Turn<'_>, context: &Context<'_>, entry: &Json) -> Result<Vec<u8>, Failure> {
         match entry {
             Json::String(text) => Ok(text.clone().into_bytes()),
             Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("File") => {
@@ -148,9 +148,8 @@ impl Collecting {
                     .get("location")
                     .and_then(Json::as_str)
                     .unwrap_or_default();
-                let path = location.strip_prefix("file://").unwrap_or(location);
-                std::fs::read(path)
-                    .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))
+                (context.read(location))
+                    .map_err(|error| turn.failed(format!("cannot read {location}: {error}")))
             }
             other => Err(turn.failed(format!("the entry {other} is no text or File"))),
         }
@@ -184,7 +183,7 @@ impl Collecting {
                 }
             }
             for (at, entry) in entries.iter().enumerate() {
-                let entry = Self::bytes(turn, entry)?;
+                let entry = Self::bytes(turn, context, entry)?;
                 // The first entry keeps its header lines with `keep_header`.
                 let kept: Vec<u8> = match self.spec.skip as usize {
                     0 => entry,
@@ -246,7 +245,7 @@ impl Operator for Collecting {
 mod tests {
     use serde_json::{Map, Value as Json, json};
 
-    use crate::mixing::tests::{commit, node, steps, wired};
+    use crate::mixing::tests::{Fixture, Store, commit, node, steps, steps_in, wired};
     use crate::operator::{Step, make};
 
     fn groovy(code: &str) -> Json {
@@ -349,6 +348,40 @@ mod tests {
             written(fields, &[file]),
             [("all.gz".to_owned(), b"\x1f\x8b\xff\n".to_vec())],
             "File entries are bytes"
+        );
+    }
+
+    #[test]
+    fn collect_file_provider() {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join("a"), "a\n").unwrap();
+        let fixture = Fixture {
+            provider: Some(std::sync::Arc::new(Store(folder.path().to_owned()))),
+            files: folder.path().join("area"),
+            ..Fixture::default()
+        };
+        let spec = json!({"collect_file": {"name": "all.txt", "sort": "deep"}});
+        let node = node(spec, &["source"], &[], "stream");
+        let mut streams = wired(&node);
+        let mut operator = make(&node).unwrap();
+        let stored = json!({"class": "File", "location": "store://a", "basename": "a"});
+        commit(
+            &mut streams,
+            &[("source", stored.clone()), ("source", stored)],
+            &["source"],
+        );
+        let context = fixture.context();
+        let (_, _, step) = steps_in(
+            operator.as_mut(),
+            &node,
+            &mut streams,
+            &Map::new(),
+            &context,
+        );
+        assert_eq!(step, Ok(Step::Done), "sorted and read through the provider");
+        assert_eq!(
+            std::fs::read_to_string(folder.path().join("area/op/all.txt")).unwrap(),
+            "a\na\n"
         );
     }
 }

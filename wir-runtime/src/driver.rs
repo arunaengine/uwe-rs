@@ -290,6 +290,7 @@ impl WirDriver {
                 files: &self.file_area,
                 printer: &self.settings.print_sink,
                 simulated: self.launch.simulated,
+                provider: self.files.as_deref(),
             };
             let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
             let rounds =
@@ -320,6 +321,7 @@ impl WirDriver {
             files: &self.file_area,
             printer: &self.settings.print_sink,
             simulated: self.launch.simulated,
+            provider: self.files.as_deref(),
         };
         if engine::begin(&mut self.progress, at, &bound, &context)? {
             return Ok(Vec::new());

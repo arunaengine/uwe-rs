@@ -37,7 +37,11 @@ impl TaskAdapter for ExitCodes {
         let ending = match outcome.exit_code {
             0 => {
                 let file = json!({"class": "File", "location": outcome.files[0].location});
-                Ending::Succeeded(Map::from_iter([("out".to_owned(), file)]))
+                let values = Map::from_iter([("out".to_owned(), file)]);
+                Ending::Succeeded {
+                    values,
+                    empty: Vec::new(),
+                }
             }
             1 => Ending::Ignored("ignored".into()),
             2 => Ending::Skipped,

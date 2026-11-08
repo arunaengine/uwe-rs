@@ -43,8 +43,12 @@ pub struct TaskCall<'a> {
 /// How an op instance ended.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ending {
-    /// The values of its outputs, by port.
-    Succeeded(Map<String, Json>),
+    /// The values of its outputs by port, and the outputs that stay empty, like a missing
+    /// optional output; any other output without a value is null.
+    Succeeded {
+        values: Map<String, Json>,
+        empty: Vec<String>,
+    },
     /// Its condition was false, like a Nextflow `when:`.
     Skipped,
     /// Its failure is ignored: its outputs close empty.

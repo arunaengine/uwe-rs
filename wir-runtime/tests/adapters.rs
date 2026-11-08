@@ -75,7 +75,13 @@ impl TaskAdapter for Sorting {
         let values = Map::from_iter([("sorted".to_owned(), file)]);
         Ok(Changes {
             tasks: Vec::new(),
-            ended: vec![(call, Ending::Succeeded(values))],
+            ended: vec![(
+                call,
+                Ending::Succeeded {
+                    values,
+                    empty: Vec::new(),
+                },
+            )],
             ready: Vec::new(),
         })
     }
@@ -335,5 +341,68 @@ fn daemon_readiness() {
         names,
         ["d: d", "c: c"],
         "c starts once the daemon d is ready"
+    );
+}
+
+/// Ends each op at once with a value for its output `a` and its output `b` empty.
+struct Partial;
+
+impl TaskAdapter for Partial {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        let values = Map::from_iter([("a".to_owned(), json!("made"))]);
+        let ending = Ending::Succeeded {
+            values,
+            empty: vec!["b".into()],
+        };
+        Ok(Changes {
+            ended: vec![(call.call, ending)],
+            ..Changes::default()
+        })
+    }
+
+    fn complete(&mut self, _: Outcome) -> Result<Changes, DriverError> {
+        Ok(Changes::default())
+    }
+}
+
+#[test]
+fn empty_outputs() {
+    let folder = tempfile::tempdir().unwrap();
+    let maps = json!([{"port": "a", "native": "output/0"}, {"port": "b", "native": "output/1"}]);
+    let builder = json!({"nextflow_process": {"source": "nf", "entry": "main", "call": "P", "outputs": maps}});
+    let ports = json!([{"name": "a", "type": "string"}, {"name": "b", "type": "string"}]);
+    let edge = |port: &str| json!({"from": {"op": "p", "port": port}, "to": {"port": port}});
+    let document = json!({
+        "wir_version": wir::VERSION,
+        "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"}],
+        "graphs": [{"name": "main", "outputs": ports,
+            "ops": [{"path": "p", "kind": {"task": {"builder": builder}}, "outputs": ports}],
+            "edges": [edge("a"), edge("b")]}],
+        "entry": "main"
+    });
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let mut settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    (settings.adapters).register("nextflow_process", |_| Ok(Box::new(Partial)));
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    assert!(
+        workflow_graph::Driver::start(&mut driver)
+            .unwrap()
+            .is_empty()
+    );
+    workflow_graph::Driver::finish(&mut driver).unwrap();
+    let results = workflow_graph::Driver::results(&driver).unwrap();
+    assert_eq!(
+        results,
+        json!({"a": "made"}),
+        "the empty output b is no null"
     );
 }

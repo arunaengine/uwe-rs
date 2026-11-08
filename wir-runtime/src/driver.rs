@@ -166,6 +166,7 @@ pub struct WirDriver {
     /// Counts the calls of the engine, so that a planner hears of an instance after the call
     /// it ended in, once its files were delivered.
     turn: u64,
+    texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
     /// The tasks of task ops, by id, with the node of each.
@@ -203,6 +204,8 @@ pub struct WirDriver {
     scopes: HashMap<String, String>,
     /// The file area of the run, made when an op of the document writes files.
     file_area: PathBuf,
+    /// The deliveries of the file effects of stream ops.
+    published: crate::publishing::Deliveries,
 }
 
 impl WirDriver {
@@ -240,6 +243,7 @@ impl WirDriver {
             owners: HashMap::new(),
             dialects: adapter::Dialects::default(),
             turn: 0,
+            texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
             accepted: HashSet::new(),
@@ -260,6 +264,7 @@ impl WirDriver {
             regions: regions::Regions::new(),
             scopes: HashMap::new(),
             file_area: PathBuf::new(),
+            published: Default::default(),
         }
         .checked()
     }
@@ -316,6 +321,8 @@ impl WirDriver {
                 files: &self.file_area,
                 printer: &self.settings.print_sink,
                 simulated: self.launch.simulated,
+                provider: self.files.as_deref(),
+                deliveries: &self.published,
             };
             let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
             let rounds =
@@ -364,6 +371,8 @@ impl WirDriver {
             files: &self.file_area,
             printer: &self.settings.print_sink,
             simulated: self.launch.simulated,
+            provider: self.files.as_deref(),
+            deliveries: &self.published,
         };
         if engine::begin(&mut self.progress, at, &bound, &context)? {
             return Ok(Vec::new());
@@ -383,6 +392,7 @@ impl WirDriver {
                 builder: Some(builder),
                 ..
             }) => self.start_dialect(at, &builder, &bound),
+            Kind::Expr(spec) => self.argo_text(at, &spec, &bound),
             Kind::Task(_) => {
                 self.last += 1;
                 match self.attempt_task(at, TaskId(self.last), &bound, (1, Json::Null)) {
@@ -471,6 +481,8 @@ impl WirDriver {
                     files: &self.file_area,
                     printer: &self.settings.print_sink,
                     simulated: self.launch.simulated,
+                    provider: self.files.as_deref(),
+                    deliveries: &self.published,
                 };
                 let callbacks = &mut self.callbacks;
                 let given = task::callback(callbacks, &context, directives, argument, bound)
@@ -518,6 +530,8 @@ impl WirDriver {
                 files: &self.file_area,
                 printer: &self.settings.print_sink,
                 simulated: self.launch.simulated,
+                provider: self.files.as_deref(),
+                deliveries: &self.published,
             };
             match task::callback(&mut self.callbacks, &context, test, argument, &bound) {
                 Ok(Json::Bool(true)) => {}
@@ -565,6 +579,8 @@ impl WirDriver {
             files: &self.file_area,
             printer: &self.settings.print_sink,
             simulated: self.launch.simulated,
+            provider: self.files.as_deref(),
+            deliveries: &self.published,
         };
         let index = adapter::frame(&self.progress, at).rounds.last().copied();
         let accepted = captured.and_then(|(values, empty)| match &spec.accept {
@@ -796,6 +812,47 @@ impl WirDriver {
                 Ok(Vec::new())
             }
         }
+    }
+
+    /// Ends an argo expr op with the text that the Argo adapter of its origin substitutes.
+    fn argo_text(
+        &mut self,
+        at: usize,
+        spec: &wir::Expr,
+        bound: &Map<String, Json>,
+    ) -> Result<Vec<Task>, DriverError> {
+        let node = self.progress.node(at);
+        let (path, output) = (node.path.clone(), node.op.outputs[0].clone());
+        let source = node.op.origin.as_ref().map(|origin| origin.source.clone());
+        let source = source.ok_or_else(|| DriverError::new(format!("op {path}: no origin")))?;
+        if !self.texts.0.contains_key(&source) {
+            let folder = self.job_folder()?.join(format!("argo-texts-{source}"));
+            let (target, output) = (self.locate(&source)?, self.output_root());
+            let place = crate::argo::Place {
+                source: &target,
+                configs: &[],
+                folder: &folder,
+                output: &output,
+            };
+            let (inputs, argo) = (&self.progress.inputs, &self.settings.argo);
+            let adapter = crate::argo::load(&place, inputs, &self.launch, argo)?;
+            self.texts.0.insert(source.clone(), adapter);
+        }
+        let Some(adapter) = self.texts.0.get_mut(&source) else {
+            return Err(DriverError::new(format!("op {path}: no Argo adapter")));
+        };
+        let defs = &self.document.types;
+        match crate::argo::evaluate(adapter, spec, bound, &output, defs) {
+            Ok(value) => {
+                let values = Map::from_iter([(output.name, value)]);
+                self.progress.end(at, Status::Succeeded, values, None);
+            }
+            Err(why) => {
+                let message = Some(format!("op {path}: {why}"));
+                self.progress.end(at, Status::Failed, Map::new(), message);
+            }
+        }
+        Ok(Vec::new())
     }
 
     /// The adapter of the source context of a builder, opened the first time.
@@ -1256,10 +1313,16 @@ impl Driver for WirDriver {
         let mut deliveries = std::mem::take(&mut self.delivering);
         deliveries.extend((self.children.iter_mut()).flat_map(|(_, child)| child.deliveries()));
         deliveries.extend(self.dialects.deliveries());
+        deliveries.extend(self.published.take());
         deliveries
     }
 
     fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        // The stream op that waits for this delivery steps on the next wake.
+        if self.published.acknowledge(delivery) {
+            self.stepping = true;
+            return Ok(());
+        }
         if let Some(result) = self.dialects.delivered(delivery) {
             return result;
         }

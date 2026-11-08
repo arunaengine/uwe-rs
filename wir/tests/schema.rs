@@ -43,6 +43,7 @@ fn schema_matches_parser() {
         json!({"native": {"source": "s", "language": "nextflow", "entry": "w",
             "profiles": ["test"], "configs": ["c"]}}),
         json!({"expr": {"language": "js", "code": "1 + 1"}}),
+        json!({"expr": {"language": "argo", "code": "{{item}}", "form": "items"}}),
         json!({"map": {"body": "g", "over": ["a"], "mode": "flat_cross", "min_success": 1}}),
         json!({"collect": {}}),
         json!({"filter": {"body": "g"}}),

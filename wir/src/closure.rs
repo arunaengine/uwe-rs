@@ -17,6 +17,8 @@ pub enum ExprLanguage {
     Groovy,
     Python,
     Wdl,
+    /// An Argo text with `{{...}}` tags, as the Argo runtime of uwe substitutes it.
+    Argo,
 }
 
 /// The lexical scope of a closure in a pinned source: a half-open UTF-8 byte range.

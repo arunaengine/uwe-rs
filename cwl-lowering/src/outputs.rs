@@ -50,6 +50,7 @@ impl Lowerer {
                 library: library.to_vec(),
                 scope: None,
                 captures: Default::default(),
+                form: None,
             });
             let mut expr = blank(&at, kind, task.origin.clone());
             expr.inputs = (inputs.iter())

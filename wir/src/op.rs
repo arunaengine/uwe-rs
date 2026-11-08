@@ -359,6 +359,20 @@ pub struct Expr {
     pub scope: Option<Scope>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub captures: BTreeMap<String, Binding>,
+    /// What an Argo text gives once its tags are substituted; the text when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form: Option<ExprForm>,
+}
+
+/// What an `argo` expr gives: its text, whether it holds as a `when`, the items of a loop, or
+/// the labels that those items give the node names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExprForm {
+    Text,
+    Condition,
+    Items,
+    Labels,
 }
 
 /// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the
@@ -506,6 +520,22 @@ pub enum Effect {
     ReadFiles,
     /// Writes files in the file area of the run.
     WriteFiles,
+}
+
+impl Effect {
+    /// Whether this publishes to the folder `directory`: its target is that folder or one that
+    /// holds it.
+    pub fn publishes(&self, directory: &str) -> bool {
+        let Effect::Publish(target) = self else {
+            return false;
+        };
+        let (target, directory) = (
+            target.trim_end_matches('/'),
+            directory.trim_end_matches('/'),
+        );
+        let inside = |rest: &str| rest.is_empty() || rest.starts_with('/');
+        !target.is_empty() && directory.strip_prefix(target).is_some_and(inside)
+    }
 }
 
 /// Run settings that never enter a task cache key. A binding file per run may set them by

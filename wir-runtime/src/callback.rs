@@ -90,6 +90,7 @@ impl Callbacks {
                 crate::wdl::closure::call(&closure.code, &closure.parameters, &captures, arguments)
             }
             ExprLanguage::Js => Err("js is no closure language; use javascript".into()),
+            ExprLanguage::Argo => Err("argo is no closure language".into()),
         }
     }
 }
@@ -179,6 +180,8 @@ mod tests {
             files: Path::new("/nonexistent"),
             printer: &crate::driver::Printer::default(),
             simulated: false,
+            provider: None,
+            deliveries: &Default::default(),
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("next".into());
@@ -244,6 +247,8 @@ mod tests {
             files: Path::new("/nonexistent"),
             printer: &crate::driver::Printer::default(),
             simulated: false,
+            provider: None,
+            deliveries: &Default::default(),
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("pick".into());

@@ -96,6 +96,11 @@ fn refusal(op: &Op) -> Option<&'static str> {
     if !op.effects.is_empty() && !runs {
         return Some("only task and native ops have effects");
     }
+    if let Kind::Map(map) = &op.kind
+        && map.parallelism == Some(0)
+    {
+        return Some("a map runs at least one round at a time");
+    }
     let sized = op.attributes.resources.is_some() || op.attributes.time.is_some();
     if matches!(op.kind, Kind::Native(_)) && (sized || op.attributes.retry.is_some()) {
         return Some("a native block sets the resources, time and retry of its tasks itself");

@@ -429,7 +429,11 @@ pub fn export(
         .unwrap_or_default()
         .to_owned();
     network
-        .export(emits, &params, script)
+        .export(
+            emits,
+            &params,
+            (script, options.config_files.clone(), options.config.flat()),
+        )
         .map_err(|message| Error::Unsupported {
             message,
             span: Default::default(),

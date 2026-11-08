@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
 use python_evaluator::{Command, CommandOutcome, Error, FileKind, Host, LocalHost, Stat};
-use workflow_graph::{Files, Note};
+use workflow_graph::{Files, Note, Roots};
 
 use crate::commands::CommandRunner;
 use crate::remote::Mirrors;
@@ -46,6 +46,8 @@ pub struct WorkflowFiles {
     pub lifecycle: std::cell::Cell<Option<&'static str>>,
     /// The environment of the run; `None` for the environment of the process.
     pub(crate) environment: Option<Vec<(String, String)>>,
+    /// The folders that workflow code may reach on disk in an isolated run; `None` reaches all.
+    roots: RefCell<Option<Roots>>,
 }
 
 impl WorkflowFiles {
@@ -63,6 +65,21 @@ impl WorkflowFiles {
             on_disk: std::cell::Cell::new(false),
             lifecycle: std::cell::Cell::new(None),
             environment: None,
+            roots: RefCell::new(None),
+        }
+    }
+
+    /// Limits what workflow code reads and writes on disk to these folders, besides the
+    /// outputs of tasks.
+    pub fn confine(&self, roots: Roots) {
+        *self.roots.borrow_mut() = Some(roots);
+    }
+
+    /// Refuses a path on disk outside the folders of an isolated run.
+    fn reach(&self, path: &Path) -> std::io::Result<()> {
+        match &*self.roots.borrow() {
+            Some(roots) => roots.check(path),
+            None => Ok(()),
         }
     }
 
@@ -159,6 +176,7 @@ impl Host for WorkflowFiles {
                         .map_err(std::io::Error::other)?;
                     return std::fs::read(local);
                 }
+                self.reach(path)?;
                 self.mirrors.fetch(path)?;
                 self.local.read(path)
             }
@@ -195,9 +213,10 @@ impl Host for WorkflowFiles {
                     .map_or(0.0, |time| time.as_secs_f64()),
             });
         }
-        // A file on the web that cannot be downloaded counts as missing.
+        // A file on the web that cannot be downloaded counts as missing, as does a file that
+        // workflow code may not reach.
         let _ = self.mirrors.fetch(path);
-        if let Some(stat) = self.local.stat(path) {
+        if let Some(stat) = self.reach(path).ok().and_then(|()| self.local.stat(path)) {
             return Some(stat);
         }
         // A folder that only holds outputs of tasks.
@@ -223,7 +242,10 @@ impl Host for WorkflowFiles {
             }
             found = true;
         }
-        if let Ok(local) = self.local.list(path) {
+        let reached = self.reach(path);
+        if let Ok(local) =
+            (reached.as_ref().ok()).map_or(Err(()), |()| self.local.list(path).map_err(|_| ()))
+        {
             names.extend(local);
             found = true;
         }
@@ -236,6 +258,7 @@ impl Host for WorkflowFiles {
             }
         }
         if !found {
+            reached?;
             return Err(std::io::ErrorKind::NotFound.into());
         }
         Ok(names.into_iter().collect())
@@ -260,6 +283,7 @@ impl Host for WorkflowFiles {
     }
 
     fn write(&self, path: &Path, data: &[u8], append: bool) -> std::io::Result<()> {
+        self.reach(path)?;
         self.local.write(path, data, append)?;
         if self.on_disk.get() {
             let mut file = std::fs::OpenOptions::new()
@@ -274,6 +298,7 @@ impl Host for WorkflowFiles {
     }
 
     fn make_dir(&self, path: &Path) -> std::io::Result<()> {
+        self.reach(path)?;
         self.local.make_dir(path)?;
         if self.on_disk.get() {
             std::fs::create_dir(path)?;
@@ -282,6 +307,7 @@ impl Host for WorkflowFiles {
     }
 
     fn remove(&self, path: &Path) -> std::io::Result<()> {
+        self.reach(path)?;
         // What the disk holds before the code removes it in memory.
         let on_disk = (self.on_disk.get())
             .then(|| std::fs::symlink_metadata(path).ok())

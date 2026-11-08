@@ -328,7 +328,7 @@ pub fn list_local(directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
 }
 
 /// The local file of a path; remote files cannot be written yet.
-fn local_path(path: &PathValue) -> Result<PathBuf, Error> {
+pub fn local_path(path: &PathValue) -> Result<PathBuf, Error> {
     match path.prefix {
         Some(_) => Err(unsupported(
             format!("writing remote files like {}", path.uri()),
@@ -339,7 +339,7 @@ fn local_path(path: &PathValue) -> Result<PathBuf, Error> {
 }
 
 /// Java's `NoSuchFileException` for a missing file, else an `IOException`.
-fn file_error(path: &PathValue, error: &std::io::Error) -> Error {
+pub fn file_error(path: &PathValue, error: &std::io::Error) -> Error {
     let class = match error.kind() {
         std::io::ErrorKind::NotFound => "NoSuchFileException",
         _ => "IOException",

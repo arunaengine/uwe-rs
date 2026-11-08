@@ -19,6 +19,9 @@ use crate::requirements;
 use crate::runtime;
 use crate::types::convert;
 
+/// The file whose JSON object gives the outputs of a tool that writes it.
+const RESULTS: &str = "cwl.output.json";
+
 /// The image of tools without `DockerRequirement`, as uwe runs them.
 pub const DEFAULT_IMAGE: &str = "debian:stable-slim";
 
@@ -79,6 +82,7 @@ pub fn lower(
         stderr: None,
         workdir: Some(runtime::OUTDIR.into()),
         staging: Some(runtime::STAGING.into()),
+        results: Some(RESULTS.into()),
         ..Task::default()
     };
     let attributes = requirements::apply(scope, &mut task)?;
@@ -258,8 +262,8 @@ pub fn lower(
             },
         };
         let key = vec![Key::Number(position), Key::Number(index as i64)];
-        // The runner evaluates code over paths, as the tool sees its files staged.
-        if code(&text) && paths(&text) {
+        // The runner evaluates code as it builds the task, as the tool sees its files staged.
+        if code(&text) {
             let word = Argument::Code {
                 code: runtime_of(&text)?,
                 this: None,
@@ -268,24 +272,6 @@ pub fn lower(
                 separator: binding.and_then(|binding| binding.item_separator.clone()),
                 quote: true,
             };
-            words.push((key, quoted(binding, vec![word])));
-            continue;
-        }
-        if code(&text) {
-            let port = format!("argument.{index}");
-            let word = Argument::Input {
-                input: port.clone(),
-                prefix: binding.and_then(|binding| binding.prefix.clone()),
-                separate: binding.is_none_or(|binding| binding.separate),
-                separator: binding.and_then(|binding| binding.item_separator.clone()),
-                quote: true,
-            };
-            values.push(Computed {
-                port,
-                code: runtime_of(&text)?,
-                this: None,
-                r#type: None,
-            });
             words.push((key, quoted(binding, vec![word])));
             continue;
         }
@@ -551,7 +537,13 @@ fn capture(
         _ => {}
     }
     let Some(binding) = &output.binding else {
-        return Err("no glob".into());
+        // Only `cwl.output.json` gives an output without a binding, apart from a record.
+        let resolved = crate::types::resolve(&output.value_type, named);
+        if matches!(resolved, Cwl::Record(_)) || secondary {
+            return Err("no glob".into());
+        }
+        let r#type = with_format(convert(&output.value_type, named)?, format);
+        return read(CaptureRule::Results, r#type);
     };
     if binding.load_listing.is_some() {
         return Err("loadListing".into());

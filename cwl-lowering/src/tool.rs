@@ -90,20 +90,29 @@ pub fn lower(
     let computed = runtime::computed(scope, process.version);
     let given = format!("inputs[{:?}]", runtime::VALUES);
     // Code that the runner evaluates sees the `runtime` object of a task input when the
-    // resources are computed.
-    let compile = |code: &Expression, runner: bool| {
+    // resources are computed. References stay references, which need no JavaScript.
+    let compile = |code: &Expression, runner: bool, typed: bool| {
         // Without JavaScript, CWL refuses a reference to an input that the tool lacks.
         if !javascript && undeclared(code, &names) {
             return Err("a reference to an input that the tool does not declare".to_owned());
         }
-        let strict;
-        let code = match javascript {
-            true => code,
-            false => {
-                strict = Expression::parse(&runtime::strict(code), false)?;
-                &strict
+        // A reference that names no parameter is JavaScript, as CWL runs it with JavaScript.
+        let marked;
+        let code = match javascript.then(|| runtime::marked(code)).flatten() {
+            Some(text) => {
+                marked = Expression::parse(&text, false)?;
+                &marked
             }
+            None => code,
         };
+        let object = runtime.as_ref().ok().map(String::as_str);
+        if !code.text.contains("runtime") {
+            return Ok(code.text.clone());
+        }
+        let dynamic = runner && computed.is_some();
+        if let Some(text) = runtime::inlined(code, object, dynamic, typed) {
+            return Ok(text);
+        }
         match &runtime {
             Ok(object) => Ok(runtime::with(code, object)),
             Err(_) if runner && computed.is_some() => Ok(runtime::with(code, &given)),
@@ -111,8 +120,9 @@ pub fn lower(
             Err(_) => Ok(code.text.clone()),
         }
     };
-    let runtime_of = |code: &Expression| compile(code, false);
-    let runner_of = |code: &Expression| compile(code, true);
+    let runtime_of = |code: &Expression| compile(code, false, false);
+    let runner_of = |code: &Expression| compile(code, true, false);
+    let capture_of = |code: &Expression| compile(code, true, true);
     let mut values = Vec::new();
     if let Some((given, limits)) = computed.clone() {
         let made = [(runtime::VALUES, given), (runtime::LIMITS, limits)];
@@ -382,8 +392,7 @@ pub fn lower(
         let (rule, r#type, code) = match capture(output, &task, &named, &mut glob) {
             Ok(Read::Direct(rule, r#type)) => (rule, r#type, None),
             Ok(Read::Evaluated(rule, code, r#type)) => {
-                let code = Expression::parse(&runner_of(&code)?, false)?;
-                let code = unwrapped(&code, &r#type);
+                let code = capture_of(&code)?;
                 (rule.unwrap_or(CaptureRule::Empty), r#type, Some(code))
             }
             Err(why) => return Err(format!("output {name}: {why}")),
@@ -765,25 +774,4 @@ fn compare(a: &[Key], b: &[Key]) -> Ordering {
         }
     }
     Ordering::Equal
-}
-
-/// The code of an `outputEval` whose list of no or one item becomes that item or null for an
-/// output of one File or Directory, as CWL takes it.
-fn unwrapped(code: &Expression, r#type: &Type) -> String {
-    let single = match r#type {
-        Type::Optional(inner) => matches!(**inner, Type::File(_) | Type::Directory),
-        other => matches!(other, Type::File(_) | Type::Directory),
-    };
-    let value = match code.parts.as_slice() {
-        [Part::Function(body)] => format!("(function() {{{body}}})()"),
-        [Part::Javascript(code) | Part::Reference(code)] => format!("({code})"),
-        _ => return code.text.clone(),
-    };
-    match single {
-        true => format!(
-            "${{ var value = {value}; if (Array.isArray(value) && value.length < 2) \
-             {{ return value.length ? value[0] : null; }} return value; }}"
-        ),
-        false => code.text.clone(),
-    }
 }

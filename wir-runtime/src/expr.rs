@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use cwl_parser::model::Expression;
+use cwl_parser::model::{Expression, Part};
 use cwl_runtime::{Evaluator, JavaScriptSettings, Value, Variables};
 use serde_json::{Map, Value as Json, json};
 use wir::{Port, Type, TypeDef, resolve};
@@ -49,10 +49,7 @@ fn compute(
         None => Value::Null,
     };
     let runtime = Value::Map(Default::default());
-    let evaluator = Evaluator {
-        javascript: Some(Arc::new(spec.library.clone())),
-        settings: settings.clone(),
-    };
+    let evaluator = evaluator(&expression, &spec.library, settings);
     let variables = Variables {
         inputs: &inputs,
         this: &this,
@@ -85,10 +82,7 @@ pub fn code(
     let (mut inputs, mut this) = (value(inputs)?, value(this)?);
     listed(&mut inputs);
     listed(&mut this);
-    let evaluator = Evaluator {
-        javascript: Some(Arc::new(library.to_vec())),
-        settings: settings.clone(),
-    };
+    let evaluator = evaluator(&expression, library, settings);
     let variables = Variables {
         inputs: &inputs,
         this: &this,
@@ -96,6 +90,21 @@ pub fn code(
     };
     let result = evaluator.evaluate(&expression, variables)?;
     serde_json::from_str(&result.to_json()).map_err(|error| error.to_string())
+}
+
+/// The evaluator of an expression: parameter references and text without a library run in
+/// the engine, as uwe's CWL driver runs them, so only code needs the JavaScript helper.
+fn evaluator(
+    expression: &Expression,
+    library: &[String],
+    settings: &JavaScriptSettings,
+) -> Evaluator {
+    let code = (expression.parts.iter())
+        .any(|part| matches!(part, Part::Javascript(_) | Part::Function(_)));
+    Evaluator {
+        javascript: (code || !library.is_empty()).then(|| Arc::new(library.to_vec())),
+        settings: settings.clone(),
+    }
 }
 
 /// Gives each entry of the listing of a staged Directory that has no path its path inside.
@@ -194,5 +203,23 @@ fn integral(json: Json, r#type: &Type, defs: &[TypeDef]) -> Json {
             }
         }
         _ => json,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn references_need_no_javascript() {
+        let mut settings = JavaScriptSettings::default();
+        settings.engine = "/no/engine".into();
+        let inputs = json!({"name": "reads", "file": {"class": "File", "location": "/d/a.txt"}});
+        let values = (inputs, Json::Null, json!({}));
+        let code = "$(inputs.name)-$(inputs.file.basename)";
+        let value = super::code(code, values.clone(), (&[], &settings)).unwrap();
+        assert_eq!(value, json!("reads-a.txt"));
+        let failed = super::code("$(inputs.name.length + 1)", values, (&[], &settings));
+        assert!(failed.is_err(), "code needs the helper: {failed:?}");
     }
 }

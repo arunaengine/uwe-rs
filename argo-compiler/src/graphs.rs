@@ -115,9 +115,14 @@ impl Compiler {
                 "a retryStrategy of a steps or DAG template retries a graph",
             ));
         }
-        if template.parallelism.is_some() || template.fail_fast == Some(true) {
+        if template.fail_fast == Some(true) {
             return Err(at(
-                "parallelism and failFast limit the children of a template together",
+                "failFast stops the children of a template after a failure",
+            ));
+        }
+        if template.parallelism.is_some() && template.dag.is_some() {
+            return Err(at(
+                "the parallelism of a DAG template limits its tasks together",
             ));
         }
         if template.active_deadline_seconds.is_some() || template.timeout.is_some() {
@@ -161,7 +166,7 @@ impl Compiler {
             false => "steps",
         };
         match &template.dag {
-            None => self.steps(place, &mut graph, &mut scope, node)?,
+            None => self.steps(place, &mut graph, &mut scope, node, template.parallelism)?,
             Some(_) => self.dag(place, &mut graph, &mut scope, node)?,
         }
         for parameter in &template.outputs.parameters {
@@ -225,15 +230,27 @@ impl Compiler {
         graph: &mut Graph,
         scope: &mut Scope,
         node: &Node,
+        limit: Option<i64>,
     ) -> Result<(), Kept> {
         let mut before: Vec<(String, ContinueOn)> = Vec::new();
+        let limit = limit.filter(|limit| *limit > 0);
+        let rounds = limit.map(|limit| u32::try_from(limit).unwrap_or(u32::MAX));
         for (position, group) in sequence(node.get("steps")).iter().enumerate() {
             let mut made = Vec::new();
             let mut current = Vec::new();
+            if limit.is_some() && sequence(Some(group)).len() > 1 {
+                let reason = "the parallelism of a template limits its parallel steps together";
+                return Err(kept(&graph.name, reason));
+            }
             for step in sequence(Some(group)) {
                 let site =
                     Site::of_step(position, &step).map_err(|reason| kept(&graph.name, &reason))?;
                 let built = self.site(place, graph, scope, &site)?;
+                if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op)
+                    && let Kind::Map(map) = &mut op.kind
+                {
+                    map.parallelism = rounds.or(map.parallelism);
+                }
                 if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op) {
                     for (earlier, continues) in &before {
                         op.after.push(Dependency {

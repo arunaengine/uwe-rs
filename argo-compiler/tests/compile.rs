@@ -305,6 +305,13 @@ fn compiles_static_loops() {
         each["kind"]["map"],
         json!({"body": "template.main.each", "over": ["item"]})
     );
+    let limited = LOOPS
+        .replace("    steps:\n", "    parallelism: 2\n    steps:\n")
+        .replace("\n      - {name: count", "\n    - - {name: count");
+    let (limited, kept) = compiled(folder.path(), &limited);
+    assert!(kept.is_empty(), "{kept:?}");
+    let each_map = &op(graph(&limited, "template.main"), "each")["kind"]["map"];
+    assert_eq!(each_map["parallelism"], 2);
     let item = |op: &Json| {
         op["inputs"]
             .as_array()

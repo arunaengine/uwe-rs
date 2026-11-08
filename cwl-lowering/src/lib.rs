@@ -3,7 +3,10 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod defaults;
+mod expression;
 mod group;
+mod links;
 mod requirements;
 mod tool;
 mod types;
@@ -12,6 +15,7 @@ mod workflow;
 use std::path::{Path, PathBuf};
 
 use cwl_parser::model::{Class, Process, Requirement, RequirementClass, short_name};
+use group::Group;
 use wir::{
     Document, Edge, Endpoint, Flow, Graph, Kind, Language, Native, Op, Origin, Port, Source, Type,
 };
@@ -58,7 +62,7 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
             Ok(graph) => graph,
             Err(reason) => {
                 let op = lowerer.native(process, &name, reason)?;
-                single(process, op)?
+                single(process, one(op))?
             }
         },
         _ => {
@@ -88,13 +92,15 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
     })
 }
 
-/// The entry graph of a process that one op runs, with its ports.
-fn single(process: &Process, op: Op) -> Result<Graph, String> {
+/// The entry graph of a process that the ops of a group run, with its ports.
+fn single(process: &Process, group: Group) -> Result<Graph, String> {
     let (inputs, outputs) = boundary(process)?;
-    let name = op.path.clone();
-    let mut edges = Vec::new();
+    let name = group.main().path.clone();
+    let mut edges = group.edges.clone();
     for port in &inputs {
-        edges.push(edge((None, &port.name), (Some(&name), &port.name)));
+        for (op, input) in group.takers(&port.name) {
+            edges.push(edge((None, &port.name), (Some(&op), &input)));
+        }
     }
     for port in &outputs {
         edges.push(edge((Some(&name), &port.name), (None, &port.name)));
@@ -103,9 +109,13 @@ fn single(process: &Process, op: Op) -> Result<Graph, String> {
         name: "main".into(),
         inputs,
         outputs,
-        ops: vec![op],
+        ops: group.ops,
         edges,
     })
+}
+
+fn one(op: Op) -> Group {
+    Group::of(vec![op])
 }
 
 /// The requirements and hints in effect, outer ones first, as uwe's CWL driver keeps them.
@@ -122,6 +132,18 @@ impl Scope {
         inner.requirements.extend(requirements.iter().cloned());
         inner.hints.extend(hints.iter().cloned());
         inner
+    }
+
+    /// The `expressionLib` of the innermost `InlineJavascriptRequirement`.
+    pub fn library(&self) -> Vec<String> {
+        (self.requirements.iter().rev())
+            .find_map(|entry| match &entry.class {
+                RequirementClass::InlineJavascript { expression_lib } => {
+                    Some(expression_lib.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     /// The innermost requirement that `pick` takes, else the innermost hint.
@@ -143,8 +165,9 @@ struct Lowerer {
 }
 
 impl Lowerer {
-    /// The op at `path` that runs a process: lowered where it can be, else a native op.
-    fn op(&mut self, process: &Process, outer: &Scope, path: &str) -> Result<Op, String> {
+    /// The ops that run a process, the last at `path`: lowered where it can be, else a
+    /// native op.
+    fn op(&mut self, process: &Process, outer: &Scope, path: &str) -> Result<Group, String> {
         let scope = outer.with(&process.requirements, &process.hints);
         let (source, entry) = self.source(process);
         let origin = Some(Origin {
@@ -152,21 +175,26 @@ impl Lowerer {
             at: entry.clone(),
         });
         let lowered = match &process.class {
-            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope).map(|lowered| {
-                let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
-                (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
-                op.attributes = lowered.attributes;
-                op
-            }),
-            Class::Workflow(workflow) => self.call(process, workflow, &scope, path),
-            _ => Err("this process class has no lowering yet".into()),
+            Class::CommandLineTool(tool) => {
+                tool::lower(process, tool, &scope, &self.base).map(|lowered| {
+                    let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
+                    (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
+                    op.attributes = lowered.attributes;
+                    group::computed(op, &lowered.values, &scope.library())
+                })
+            }
+            Class::Workflow(workflow) => self.call(process, workflow, &scope, path).map(one),
+            Class::ExpressionTool(tool) => self.expression(process, tool, &scope, path).map(one),
+            Class::Operation => Err("this process class has no lowering yet".into()),
         };
         match lowered {
-            Ok(mut op) => {
-                op.origin = origin;
-                Ok(op)
+            Ok(mut group) => {
+                if let Some(main) = group.ops.last_mut() {
+                    main.origin = origin;
+                }
+                Ok(group)
             }
-            Err(reason) => self.native(process, path, reason),
+            Err(reason) => self.native(process, path, reason).map(one),
         }
     }
 
@@ -256,6 +284,7 @@ fn boundary(process: &Process) -> Result<(Vec<Port>, Vec<Port>), String> {
         name: short_name(name).to_owned(),
         r#type,
         flow: Flow::Value,
+        default: None,
     };
     let mut inputs = Vec::new();
     for input in &process.inputs {

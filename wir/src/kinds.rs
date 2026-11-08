@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
+use crate::document::Port;
 use crate::op::{Argument, Branch, CaptureRule, Kind, Map, Native, Op, Scatter, Task};
+use crate::reserved::Pick;
 use crate::types::{ArrayType, Type, TypeDef, resolve};
 
 impl<'d> Checker<'d> {
@@ -27,6 +29,9 @@ impl<'d> Checker<'d> {
                 }
             }
             Kind::Branch(branch) => self.branch(at, op, branch),
+            Kind::Select(select) => self.select(at, op, select.rule),
+            Kind::Merge(_) => self.merge(at, op),
+            Kind::Flatten(_) => self.flatten(at, op),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
             _ => {}
         }
@@ -92,7 +97,7 @@ impl<'d> Checker<'d> {
                 let other = theirs.iter().find(|item| item.name == port);
                 let fits = match (side, mine, other) {
                     ("input", Some(mine), Some(other)) => {
-                        other.r#type.accepts(&mine.r#type, self.defs)
+                        other.takes().accepts(&mine.r#type, self.defs)
                     }
                     (_, Some(mine), Some(other)) => mine.r#type.accepts(&other.r#type, self.defs),
                     _ => false,
@@ -139,13 +144,13 @@ impl<'d> Checker<'d> {
                     ("input", Some(mine), Some(other)) if map.over.iter().any(|n| n == port) => {
                         match resolve(&mine.r#type, self.defs) {
                             Some(Type::Array(array)) => {
-                                other.r#type.accepts(&array.items, self.defs)
+                                other.takes().accepts(&array.items, self.defs)
                             }
                             _ => false,
                         }
                     }
                     ("input", Some(mine), Some(other)) => {
-                        other.r#type.accepts(&mine.r#type, self.defs)
+                        other.takes().accepts(&mine.r#type, self.defs)
                     }
                     (_, Some(mine), Some(other)) => {
                         let mut made = other.r#type.clone();
@@ -214,7 +219,7 @@ impl<'d> Checker<'d> {
                 let other = theirs.iter().find(|item| item.name == port);
                 let fits = match (side, mine, other) {
                     ("input", Some(mine), Some(other)) => {
-                        other.r#type.accepts(&mine.r#type, self.defs)
+                        other.takes().accepts(&mine.r#type, self.defs)
                     }
                     (_, Some(mine), Some(other)) => {
                         let made = Type::Optional(Box::new(other.r#type.clone()));
@@ -232,6 +237,81 @@ impl<'d> Checker<'d> {
                     self.report(at, Problem::CallPort { port, graph });
                 }
             }
+        }
+    }
+
+    /// The output holds the items that are set, one for `first` and `only`, all for `all`.
+    fn select(&mut self, at: &str, op: &Op, rule: Pick) {
+        let Some((items, output)) = self.unary(at, op, "a select") else {
+            return;
+        };
+        let item = match resolve(&items, self.defs) {
+            Some(Type::Optional(inner)) => (**inner).clone(),
+            _ => items,
+        };
+        let made = match rule {
+            Pick::All => array_of(item),
+            Pick::First | Pick::Only => item,
+        };
+        self.gives(at, output, &made);
+    }
+
+    /// The output is an array whose items accept every input; streams stay reserved.
+    fn merge(&mut self, at: &str, op: &Op) {
+        if streams(op) {
+            return;
+        }
+        if op.inputs.is_empty() {
+            self.report(at, Problem::Empty("the inputs of a merge".into()));
+        }
+        let [output] = op.outputs.as_slice() else {
+            self.report(at, Problem::Single("a merge".into()));
+            return;
+        };
+        for input in &op.inputs {
+            self.gives(at, output, &array_of(input.r#type.clone()));
+        }
+    }
+
+    /// The output is an array of the items of the input's array items; streams stay reserved.
+    fn flatten(&mut self, at: &str, op: &Op) {
+        if streams(op) {
+            return;
+        }
+        let Some((items, output)) = self.unary(at, op, "a flatten") else {
+            return;
+        };
+        let inner = match resolve(&items, self.defs) {
+            Some(Type::Array(array)) => (*array.items).clone(),
+            _ => items,
+        };
+        self.gives(at, output, &array_of(inner));
+    }
+
+    /// The item type of the one input of an op, an array, and its one output.
+    fn unary<'o>(&mut self, at: &str, op: &'o Op, what: &str) -> Option<(Type, &'o Port)> {
+        let ([input], [output]) = (op.inputs.as_slice(), op.outputs.as_slice()) else {
+            self.report(at, Problem::Unary(what.into()));
+            return None;
+        };
+        match resolve(&input.r#type, self.defs) {
+            Some(Type::Array(array)) => Some(((*array.items).clone(), output)),
+            Some(Type::Dynamic) => Some((Type::Dynamic, output)),
+            _ => {
+                let port = format!("input {}", input.name);
+                let (found, want) = (show(&input.r#type), "an array".to_owned());
+                self.report(at, Problem::Mismatch { port, found, want });
+                None
+            }
+        }
+    }
+
+    /// The output port must accept what the op makes.
+    fn gives(&mut self, at: &str, output: &Port, made: &Type) {
+        if !output.r#type.accepts(made, self.defs) {
+            let port = format!("output {}", output.name);
+            let (found, want) = (show(made), show(&output.r#type));
+            self.report(at, Problem::Mismatch { port, found, want });
         }
     }
 
@@ -296,6 +376,18 @@ impl<'d> Checker<'d> {
         });
         found
     }
+}
+
+/// Whether an op has a stream port, which keeps `merge` and `flatten` reserved.
+fn streams(op: &Op) -> bool {
+    (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value())
+}
+
+fn array_of(items: Type) -> Type {
+    Type::Array(ArrayType {
+        items: Box::new(items),
+        nonempty: false,
+    })
 }
 
 /// Whether a path is relative and stays inside the working folder.

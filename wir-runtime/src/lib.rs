@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod argo;
+mod arrays;
 mod child;
 pub mod cwl;
 mod driver;

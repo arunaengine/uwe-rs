@@ -9,11 +9,11 @@ use crate::op::Op;
 use crate::types::{Type, TypeDef};
 
 /// The wir version this crate writes. The README states the versioning rule.
-pub const VERSION: &str = "0.4";
+pub const VERSION: &str = "0.5";
 
 /// The versions this crate reads. Each version only adds to the one before, so an older
 /// document reads as it is.
-pub(crate) const KNOWN: [&str; 4] = ["0.1", "0.2", "0.3", VERSION];
+pub(crate) const KNOWN: [&str; 5] = ["0.1", "0.2", "0.3", "0.4", VERSION];
 
 /// The JSON Schema (draft 2020-12) of the JSON form of this version.
 pub const SCHEMA: &str = include_str!("../schema.json");
@@ -84,6 +84,20 @@ pub struct Port {
     pub r#type: Type,
     #[serde(default, skip_serializing_if = "Flow::is_value")]
     pub flow: Flow,
+    /// The value an input takes when it is bound to null or has no producer. Since wir 0.5.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
+}
+
+impl Port {
+    /// The type of the values an input takes: its own type, and also null when it has a
+    /// default.
+    pub fn takes(&self) -> Type {
+        match &self.default {
+            Some(_) => Type::Optional(Box::new(self.r#type.clone())),
+            None => self.r#type.clone(),
+        }
+    }
 }
 
 /// A data edge from one producer port to one consumer port. A plain value edge binds the

@@ -32,9 +32,9 @@ pub struct Op {
     pub origin: Option<Origin>,
 }
 
-/// What an op does, with the fields of its kind. `task`, `call`, `native`, `map`, `expr` and
-/// `branch` have
-/// defined semantics in this version; the others are reserved, see [`reserved`].
+/// What an op does, with the fields of its kind. `task`, `call`, `native`, `map`, `expr`,
+/// `branch` and `select`, and `merge` and `flatten` on values, have defined semantics in this
+/// version; the others are reserved, see [`reserved`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Kind {
@@ -69,6 +69,9 @@ impl Kind {
                 | Kind::Map(_)
                 | Kind::Expr(_)
                 | Kind::Branch(_)
+                | Kind::Select(_)
+                | Kind::Merge(_)
+                | Kind::Flatten(_)
         )
     }
 }

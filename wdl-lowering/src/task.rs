@@ -3,16 +3,18 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use wdl_ast::v1::{Expr, NameRefExpr, TaskDefinition};
+use std::collections::{BTreeMap, BTreeSet};
+
+use wdl_ast::v1::{Decl, Expr, NameRefExpr, TaskDefinition};
 use wdl_ast::{AstNode, AstToken};
 use wdl_runtime::Value;
-use wdl_runtime::document::{Callable, Unit};
+use wdl_runtime::document::{Callable, Unit, declared};
 use wdl_runtime::expression::names;
 use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 
-use crate::library::{Inputs, Line, check, ordered, ports};
+use crate::library::{Inputs, Line, check, ordered, ports, staged};
 use crate::outputs::{Output, Read, listing, outputs, patterns};
-use crate::types::{has_files, port};
+use crate::types::{convert, has_files, port};
 use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text};
 
 /// Runs the command as uwe's WDL driver does, then copies below `.wdl/out/<output>/` the files
@@ -89,16 +91,34 @@ impl Lowerer {
             mut library,
             fallbacks,
         } = ports(unit, definition)?;
+        let defaulted: BTreeSet<String> = library.iter().map(|line| line.name.clone()).collect();
+        let mut types: BTreeMap<String, Type> = (inputs.iter())
+            .map(|port| (port.name.clone(), port.r#type.clone()))
+            .collect();
         for decl in definition.declarations() {
+            let name = decl.name().text().to_owned();
             if decl.env().is_some() {
                 return Err("an env declaration".into());
             }
             check(&decl.expr())?;
+            let ty = declared(&unit.document, &decl.ty())?;
+            let r#type = convert(&ty).map_err(|why| format!("{name}: {why}"))?;
+            types.insert(name.clone(), r#type);
             library.push(Line {
-                name: decl.name().text().to_owned(),
+                name,
                 uses: names(&decl.expr()),
                 code: text(&decl),
             });
+        }
+        let given: Vec<Decl> = (definition.input())
+            .map(|section| section.declarations().collect())
+            .unwrap_or_default();
+        let computed = given.into_iter().filter_map(|decl| match decl {
+            Decl::Bound(bound) if defaulted.contains(bound.name().text()) => Some(bound),
+            _ => None,
+        });
+        for decl in computed.chain(definition.declarations()) {
+            staged(&decl, &types)?;
         }
         let library = ordered(library)?;
         let command = match definition.command() {

@@ -3,17 +3,17 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value as Json;
 use wdl_analysis::types::Optional;
 
-use wdl_ast::AstToken;
-use wdl_ast::v1::{Decl, Expr, TaskDefinition};
+use wdl_ast::v1::{BoundDecl, Decl, Expr, LiteralString, TaskDefinition};
+use wdl_ast::{AstNode, AstToken};
 use wdl_runtime::Value;
 use wdl_runtime::document::{Unit, declared};
 use wdl_runtime::expression::names;
-use wir::{Port, Type};
+use wir::{KeyType, Port, Type};
 
 use crate::types::{convert, has_files, optional, port};
 use crate::{constant, reads, text};
@@ -108,6 +108,34 @@ pub(crate) fn check(expr: &Expr) -> Result<(), String> {
     match names(expr).contains("task") {
         true => Err("the task variable".into()),
         false => Ok(()),
+    }
+}
+
+/// Fails for a declaration that makes files from text, like `File f = path` for a String
+/// `path`: uwe's WDL driver stages those files, while a task op stages only its inputs.
+pub(crate) fn staged(decl: &BoundDecl, types: &BTreeMap<String, Type>) -> Result<(), String> {
+    let name = decl.name().text().to_owned();
+    if !types.get(&name).is_some_and(has_files) {
+        return Ok(());
+    }
+    let literal = decl.descendants::<LiteralString>().next().is_some();
+    let uses = names(&decl.expr());
+    match literal || uses.iter().any(|used| types.get(used).is_none_or(textual)) {
+        true => Err(format!("the declaration {name} makes files from text")),
+        false => Ok(()),
+    }
+}
+
+/// Whether a value of the type can hold text, which an expression can turn into a path.
+fn textual(r#type: &Type) -> bool {
+    match r#type {
+        Type::String | Type::Enum(_) | Type::Dynamic => true,
+        Type::Optional(inner) => textual(inner),
+        Type::Array(array) => textual(&array.items),
+        Type::Map(map) => map.key == KeyType::String || textual(&map.value),
+        Type::Record(fields) => fields.iter().any(|field| textual(&field.r#type)),
+        Type::Union(items) | Type::Tuple(items) => items.iter().any(textual),
+        _ => false,
     }
 }
 

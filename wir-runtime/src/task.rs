@@ -34,8 +34,12 @@ pub fn build(
     let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
     let mut staging = Staging::default();
     if let Some(folder) = &spec.staging {
-        for port in &op.inputs {
-            staging.job(bound.get(&port.name).unwrap_or(&Json::Null), folder);
+        let names: Vec<&String> = match &spec.staged {
+            None => op.inputs.iter().map(|port| &port.name).collect(),
+            Some(names) => names.iter().collect(),
+        };
+        for name in names {
+            staging.job(bound.get(name).unwrap_or(&Json::Null), folder);
         }
     }
     for staged in &spec.files {
@@ -122,7 +126,13 @@ pub fn build(
         let extra = port
             .map(|port| secondaries(&port.r#type))
             .unwrap_or_default();
-        for pattern in patterns(&capture.from, bound, workdir) {
+        // A stream file has its secondary files beside it too.
+        let read = match &capture.from {
+            CaptureRule::Stdout => stdout.iter().cloned().collect(),
+            CaptureRule::Stderr => stderr.iter().cloned().collect(),
+            rule => patterns(rule, bound, workdir),
+        };
+        for pattern in read {
             let names: Vec<String> = (extra.iter())
                 .map(|item| wir::secondary_name(&pattern, &item.pattern))
                 .collect();
@@ -719,7 +729,7 @@ impl Staging {
         let at = |name: String| relative(&name, workdir);
         match value {
             Json::Null => {}
-            Json::Array(items) => {
+            Json::Array(items) if path.is_none() => {
                 (items.iter()).for_each(|item| self.place(item, None, writable, workdir));
             }
             Json::Object(object) if object.contains_key("entry") => {
@@ -746,9 +756,15 @@ impl Staging {
                 }
             }
             other => {
+                // Other values are JSON text as Python writes it, as in uwe's CWL driver.
+                let python = |value: &Json| {
+                    let value =
+                        cwl_runtime::Value::parse(&crate::cwl::to_cwl(value.clone()).to_string());
+                    value.map_or_else(|_| other.to_string(), |value| value.to_python_json(true))
+                };
                 let text = match other {
                     Json::String(text) => text.clone(),
-                    other => other.to_string(),
+                    other => python(other),
                 };
                 if let Some(name) = path.map(str::to_owned).and_then(at) {
                     self.inputs.push(Input {
@@ -789,6 +805,12 @@ impl Staging {
             for item in listing.into_iter().flatten() {
                 if let Some(name) = basename(item) {
                     self.put(item, &join(path, &name), writable);
+                }
+                let beside = item.get("secondary_files").and_then(Json::as_array);
+                for secondary in beside.into_iter().flatten() {
+                    if let Some(name) = basename(secondary) {
+                        self.put(secondary, &join(path, &name), writable);
+                    }
                 }
             }
         }

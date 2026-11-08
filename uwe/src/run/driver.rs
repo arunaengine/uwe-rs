@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use crate::arguments::Arguments;
+use crate::hosted::Isolation;
 use crate::setup::Setup;
 use crate::{Failure, cache_directory, detect, failure, nextflow, repository};
 use std::path::{Path, PathBuf};
@@ -70,6 +71,19 @@ fn fetch_workflow(url: &str, downloads: &Path) -> Result<PathBuf, Failure> {
 /// Where `uwe resume` leaves its requests for the suspended Argo steps of a run.
 pub(crate) fn resume_folder(run: &str) -> PathBuf {
     cache_directory().join("scratch").join("resume").join(run)
+}
+
+/// The isolation of a run, with its cache folder, local store and output folder among the
+/// folders that workflow code may reach; `None` when the run is not isolated.
+pub(crate) fn isolation(arguments: &Arguments, setup: &Setup) -> Option<Isolation> {
+    let mut isolation = setup.isolation.clone()?;
+    isolation.roots.push(cache_directory());
+    let store = setup.store_location(arguments);
+    isolation
+        .roots
+        .extend((!store.contains("://")).then(|| PathBuf::from(store)));
+    isolation.roots.extend(arguments.output_dir.clone());
+    Some(isolation)
 }
 
 /// The driver of a language.
@@ -231,7 +245,7 @@ fn snakemake_options(arguments: &Arguments, setup: &Setup) -> snakemake_runtime:
         conda: setup.conda.is_some(),
         shared_workdir: shared_workdir(arguments, setup),
         local: arguments.executor.as_deref().unwrap_or("local") == "local",
-        workdir: None,
+        workdir: (setup.isolation.as_ref()).and_then(|isolation| isolation.launch.clone()),
     }
 }
 
@@ -265,6 +279,11 @@ fn snakemake(
         cancel: cancel.clone(),
         git: Some(snakemake_git(setup)),
         environment: Some(arguments.secrets.environment()),
+        roots: isolation(arguments, setup).map(|isolation| {
+            let mut roots = isolation.roots;
+            roots.extend(isolation.launch);
+            roots
+        }),
     }
 }
 

@@ -275,7 +275,7 @@ fn waits_for_deliveries() {
     std::fs::write(root.join("cat.cwl"), joined).unwrap();
     let files = json!({"array": {"items": {"file": {}}}});
     let document = json!({
-        "wir_version": "0.3",
+        "wir_version": "0.1",
         "sources": [
             {"id": "copy", "language": "cwl", "location": demos().join("directory-copy.cwl")},
             {"id": "cat", "language": "cwl", "location": root.join("cat.cwl")}
@@ -357,7 +357,7 @@ fn fetches_pinned_repositories() {
     std::fs::write(root.join("job.json"), "{}").unwrap();
     let commit = "32893afef8076a03a2767a020b3f0cab2e0b40b2";
     let document = json!({
-        "wir_version": "0.3",
+        "wir_version": "0.1",
         "sources": [{
             "id": "hello", "language": "cwl", "location": "https://example.org/demo/hello",
             "digest": format!("git:{commit}")

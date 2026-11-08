@@ -17,6 +17,7 @@ mod pending;
 mod queue;
 mod recorder;
 pub mod render;
+mod roots;
 pub mod simulator;
 mod steps;
 mod task;
@@ -30,6 +31,7 @@ pub use graph::{Edge, EdgeKind, ExecutionGraph, Node};
 pub use inputs::Inputs;
 pub use marker::{MORE_TASKS, Marker, MarkerKind, Note, SIMULATION};
 pub use options::{Order, RunOptions};
+pub use roots::Roots;
 pub use simulator::Simulator;
 pub use steps::{StepEdge, StepGraph, StepNode};
 pub use task::{

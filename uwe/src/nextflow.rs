@@ -7,13 +7,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use nextflow_evaluator::exception::Exception;
-use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
+use nextflow_evaluator::interpreter::{self, Error, FileMetadata, Host};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{Nextflow, Settings, run_folder};
 use storage::{Blocking, StorageError};
 use workflow_graph::{Driver, DriverError, Language, Launch};
 
 use crate::arguments::Arguments;
+use crate::run::driver::isolation;
 use crate::setup::Setup;
 
 /// Prints what the workflow prints, and downloads remote files into a cache.
@@ -26,6 +27,8 @@ struct Console {
     print: bool,
     storage: Blocking,
     secrets: std::collections::BTreeMap<String, config_file::Secret>,
+    /// The Nextflow secret store of the service user; `None` when the host keeps it away.
+    secret_store: Option<PathBuf>,
     /// The values of the run for the variables that the workflow and its plugins read.
     variables: config_file::SecretValues,
     /// Where operators like `collectFile` keep their files: the folder of the run, which the
@@ -34,6 +37,46 @@ struct Console {
     /// The launch folder of an embedded run or of a native block of a wir run; `None`
     /// launches in the working directory of the process.
     launch: Option<PathBuf>,
+    /// The folders that workflow code may reach in an isolated run; `None` reaches all.
+    roots: Option<workflow_graph::Roots>,
+}
+
+impl Console {
+    /// Refuses a local path outside the folders of an isolated run.
+    fn reach(&self, path: &PathValue) -> Result<(), Error> {
+        match (&self.roots, &path.prefix) {
+            (Some(roots), None) => (roots.check(std::path::Path::new(&path.path)))
+                .map_err(|error| io_error(error.to_string())),
+            _ => Ok(()),
+        }
+    }
+
+    /// The same host, limited to the folders of the launch and of the isolation of the run.
+    fn confined(
+        mut self,
+        launch: &Launch,
+        folder: Option<&std::path::Path>,
+        isolation: Option<&crate::hosted::Isolation>,
+    ) -> Self {
+        let Some(isolation) = isolation else {
+            return self;
+        };
+        self.launch = folder
+            .map(std::path::Path::to_owned)
+            .or(isolation.launch.clone());
+        let mut folders = isolation.roots.clone();
+        let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
+        folders.extend(match target.is_dir() {
+            true => Some(target),
+            false => target.parent().map(std::path::Path::to_owned),
+        });
+        folders.push(launch.scratch.clone());
+        folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
+        folders.extend(self.operators.clone());
+        folders.extend(self.launch.clone());
+        self.roots = Some(workflow_graph::Roots::new(folders));
+        self
+    }
 }
 
 impl Host for Console {
@@ -46,7 +89,7 @@ impl Host for Console {
     }
 
     fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
-        SecretSource(&self.secrets).secret(name)
+        SecretSource(&self.secrets, self.secret_store.as_deref()).secret(name)
     }
 
     fn environment(&self, name: &str) -> Option<String> {
@@ -101,6 +144,24 @@ impl Host for Console {
         Ok(PathValue::parse(&directory.keep().to_string_lossy(), "/"))
     }
 
+    fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
+        self.reach(path)?;
+        let local = match path.prefix {
+            Some(_) => self.download(path)?,
+            None => PathBuf::from(&path.path),
+        };
+        std::fs::read(local).map_err(|error| interpreter::file_error(path, &error))
+    }
+
+    fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        self.reach(path)?;
+        match std::fs::remove_file(interpreter::local_path(path)?) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(interpreter::file_error(path, &error)),
+        }
+    }
+
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
         let uri = path.uri();
         (self.storage.fetch(&uri, &self.downloads)).map_err(|error| storage_error(&uri, error))
@@ -109,6 +170,7 @@ impl Host for Console {
     /// Local directories, and directories of storage providers that can list them, like
     /// buckets.
     fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+        self.reach(directory)?;
         if directory.prefix.is_none() {
             return nextflow_evaluator::interpreter::list_local(directory);
         }
@@ -124,6 +186,7 @@ impl Host for Console {
     }
 
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        self.reach(path)?;
         if path.prefix.is_none() {
             return match std::fs::metadata(&path.path) {
                 Ok(metadata) => Ok(Some(FileMetadata::of(&metadata))),
@@ -151,6 +214,7 @@ impl Host for Console {
     }
 
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        self.reach(path)?;
         if path.prefix.is_none() {
             if let Some(parent) = std::path::Path::new(&path.path).parent() {
                 std::fs::create_dir_all(parent).map_err(|error| io_error(error.to_string()))?;
@@ -165,6 +229,8 @@ impl Host for Console {
     }
 
     fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        self.reach(source)?;
+        self.reach(target)?;
         let local = match source.prefix {
             Some(_) => self.download(source)?,
             None => PathBuf::from(&source.path),
@@ -186,6 +252,7 @@ impl Host for Console {
     }
 
     fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
+        self.reach(path)?;
         if path.prefix.is_none() {
             std::fs::create_dir_all(&path.path).map_err(|error| io_error(error.to_string()))?;
         }
@@ -260,7 +327,11 @@ pub(crate) fn conda_file(source: &str) -> Result<tempfile::NamedTempFile, execut
     Ok(file)
 }
 
-struct SecretSource<'a>(&'a std::collections::BTreeMap<String, config_file::Secret>);
+/// The secrets of the config, then those of the Nextflow secret store at the given path.
+struct SecretSource<'a>(
+    &'a std::collections::BTreeMap<String, config_file::Secret>,
+    Option<&'a std::path::Path>,
+);
 
 impl Host for SecretSource<'_> {
     fn print(&mut self, _: &str) {}
@@ -272,18 +343,34 @@ impl Host for SecretSource<'_> {
                 .map(Some)
                 .map_err(|error| io_error(error.to_string()));
         }
-        nextflow_evaluator::secrets::get(self, name)
+        match self.1 {
+            Some(store) => Ok(nextflow_evaluator::secrets::load(store)?.remove(name)),
+            None => Ok(None),
+        }
     }
+}
+
+/// Where the Nextflow secret store of the service user is, from the process environment;
+/// `None` when the isolation of the run keeps it away.
+pub(crate) fn secret_store(setup: &Setup) -> Option<PathBuf> {
+    struct Process;
+    impl Host for Process {
+        fn print(&mut self, _: &str) {}
+    }
+    (setup.isolation.as_ref())
+        .is_none_or(|isolation| isolation.secret_store)
+        .then(|| nextflow_evaluator::secrets::path(&Process))
 }
 
 pub(crate) fn secret_file(
     names: &str,
     secrets: &std::collections::BTreeMap<String, config_file::Secret>,
+    store: Option<&std::path::Path>,
 ) -> Result<tempfile::NamedTempFile, executor::ExecutorError> {
     let failed = executor::ExecutorError::Unsupported;
     let names: Vec<String> =
         serde_json::from_str(names).map_err(|_| failed("Invalid task secret names".into()))?;
-    let mut host = SecretSource(secrets);
+    let mut host = SecretSource(secrets, store);
     let mut text = String::new();
     for name in names {
         if name.is_empty()
@@ -317,9 +404,11 @@ fn console(quiet: bool, setup: &Setup, variables: &config_file::SecretValues) ->
         print: true,
         storage: setup.storage.blocking(),
         secrets: setup.secrets.clone(),
+        secret_store: secret_store(setup),
         variables: variables.clone(),
         operators: None,
         launch: None,
+        roots: None,
     }
 }
 
@@ -341,12 +430,14 @@ pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::n
     );
     let resume = arguments.resume.is_some();
     let run = run.to_owned();
+    let isolation = isolation(arguments, setup);
     wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
         let console = Console {
             operators: Some(run_folder(&launch.scratch, &run)),
             launch: Some(folder.to_owned()),
             ..console.clone()
-        };
+        }
+        .confined(launch, Some(folder), isolation.as_ref());
         Settings {
             host: Box::new(console),
             container_engine: Some(engine.clone()),
@@ -377,7 +468,8 @@ pub fn driver(
         print: !arguments.no_print,
         launch: own,
         ..console(quiet, setup, &arguments.secrets)
-    };
+    }
+    .confined(launch, None, isolation(arguments, setup).as_ref());
     let settings = Settings {
         host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),
@@ -989,6 +1081,42 @@ pub(crate) fn text(value: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use nextflow_evaluator::interpreter::Host;
+
+    #[test]
+    fn skips_secret_store() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().expect("a folder");
+        let store = folder.path().join("store.json");
+        std::fs::write(&store, r#"[{"name":"TOKEN","value":"stored"}]"#).expect("writes");
+        std::fs::set_permissions(&store, std::fs::Permissions::from_mode(0o600)).expect("mode");
+        let secrets = std::collections::BTreeMap::new();
+        let found = |store| {
+            super::SecretSource(&secrets, store)
+                .secret("TOKEN")
+                .expect("reads")
+        };
+        assert!(found(Some(&store)).as_deref() == Some("stored"));
+        assert!(found(None).is_none());
+        let setup = |isolation| crate::setup::Setup {
+            isolation,
+            ..crate::setup::Setup::default()
+        };
+        let isolated = setup(Some(crate::hosted::Isolation::default()));
+        assert!(super::secret_store(&setup(None)).is_some());
+        assert!(super::secret_store(&isolated).is_none());
+        assert!(
+            super::console(true, &isolated, &Default::default())
+                .secret_store
+                .is_none()
+        );
+        let allowed = crate::hosted::Isolation {
+            secret_store: true,
+            ..Default::default()
+        };
+        assert!(super::secret_store(&setup(Some(allowed))).is_some());
+    }
+
     /// The config of a pipeline whose `nextflow.config` is `text`.
     fn loaded(text: &str) -> nextflow_config::Config {
         let folder = tempfile::tempdir().expect("a folder");
@@ -1187,7 +1315,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let values = std::collections::BTreeMap::from([("TOKEN".into(), secret)]);
-        let file = super::secret_file("[\"TOKEN\"]", &values).unwrap();
+        let file = super::secret_file("[\"TOKEN\"]", &values, None).unwrap();
         assert_eq!(
             file.as_file().metadata().unwrap().permissions().mode() & 0o777,
             0o600
@@ -1202,7 +1330,7 @@ mod tests {
         let path = file.path().to_owned();
         drop(file);
         assert!(!path.exists());
-        let error = super::secret_file("[\"MISSING\"]", &values)
+        let error = super::secret_file("[\"MISSING\"]", &values, None)
             .unwrap_err()
             .to_string();
         assert!(error.contains("Required secret is missing"));

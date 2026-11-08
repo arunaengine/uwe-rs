@@ -3052,6 +3052,9 @@ pub struct Settings {
     /// The environment that the workflow reads, like `os.environ` and the variables of
     /// `envvars`; `None` reads the environment of the process.
     pub environment: Option<Vec<(String, String)>>,
+    /// The folders that workflow code may reach on disk besides those of the workflow, its
+    /// working folder, the scratch folder and the files of the launch; `None` reaches all.
+    pub roots: Option<Vec<PathBuf>>,
 }
 
 /// Runtime options supplied by the CLI in addition to workflow profile defaults.
@@ -3124,6 +3127,13 @@ pub fn spawn_driver(
                 let folder = options.workdir.as_deref();
                 let environment = settings.environment.clone();
                 let mut session = Session::within(&launch, &settings.storage, folder, environment)?;
+                if let Some(roots) = &settings.roots {
+                    let mut folders = roots.clone();
+                    folders.extend([session.workdir.clone(), launch.scratch.clone()]);
+                    folders.extend(session.snakefile.parent().map(Path::to_owned));
+                    folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
+                    session.files.confine(workflow_graph::Roots::new(folders));
+                }
                 *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();
                 session.rerun_triggers = options.rerun_triggers.clone();
                 session.shared = options.shared_workdir && !launch.simulated;

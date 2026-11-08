@@ -58,6 +58,9 @@ pub(crate) const EXECUTORS: &[&str] = &[
 pub struct Setup {
     pub references: task_runner::References,
     pub hosted: bool,
+    /// What workflow code may reach while uwe interprets it; `None` reaches what the process
+    /// can, as on the command line.
+    pub isolation: Option<crate::hosted::Isolation>,
     pub argo_policy: argo_runtime::Policy,
     pub argo_locks: argo_runtime::SharedLocks,
     pub cluster: Option<kubernetes_executor::Cluster>,
@@ -739,7 +742,7 @@ impl Defaults {
 
     /// Applies executor defaults to runs and checks; graph commands keep the simulator.
     /// Explicit executor and report options override configuration defaults.
-    pub fn apply(self, command: &str, arguments: &mut Arguments) {
+    pub fn apply(self, command: &str, arguments: &mut Arguments) -> Result<(), Failure> {
         if matches!(
             command,
             "run" | "graph" | "check-order" | "repeat" | "replay"
@@ -766,9 +769,8 @@ impl Defaults {
         if let Some(folder) = self.cache_folder {
             crate::use_cache_folder(folder);
         }
-        if let Some(proxy) = self.proxy {
-            storage::use_proxy(&proxy);
-        }
+        storage::use_proxy(self.proxy.as_deref())
+            .map_err(|error| Failure::setup(format!("uwe: {error}")))
     }
 }
 
@@ -941,7 +943,8 @@ mod tests {
         };
         super::Defaults::read(&config)
             .unwrap()
-            .apply("run", &mut arguments);
+            .apply("run", &mut arguments)
+            .unwrap();
         assert_eq!(arguments.machine_retries, Some(0));
         assert_eq!(arguments.retry_delay_ms, Some(250));
         for setting in ["machine_count = -1", "base_delay_ms = 0"] {
@@ -1231,24 +1234,26 @@ mod tests {
         };
         for command in ["run", "check"] {
             let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
-            slurm().apply(command, &mut arguments);
+            slurm().apply(command, &mut arguments).unwrap();
             assert_eq!(arguments.executor.as_deref(), Some("slurm"));
         }
         let words = ["main.nf".into(), "-executor".into(), "local".into()];
         let mut arguments = crate::arguments::parse(&words).expect("arguments");
-        slurm().apply("run", &mut arguments);
+        slurm().apply("run", &mut arguments).unwrap();
         assert_eq!(arguments.executor.as_deref(), Some("local"));
         let mut arguments = crate::arguments::parse(&["main.nf".into()]).expect("arguments");
-        slurm().apply("graph", &mut arguments);
+        slurm().apply("graph", &mut arguments).unwrap();
         assert_eq!(arguments.executor.as_deref(), Some("simulator"));
         for command in ["run", "check", "check-machine"] {
             let mut arguments = crate::arguments::Arguments::default();
-            super::Defaults::default().apply(command, &mut arguments);
+            super::Defaults::default()
+                .apply(command, &mut arguments)
+                .unwrap();
             assert_eq!(arguments.executor.as_deref(), Some("local"));
         }
         for command in ["graph", "check-order", "inputs", "outputs"] {
             let mut arguments = crate::arguments::Arguments::default();
-            slurm().apply(command, &mut arguments);
+            slurm().apply(command, &mut arguments).unwrap();
             assert_eq!(arguments.executor.as_deref(), Some("simulator"));
         }
     }

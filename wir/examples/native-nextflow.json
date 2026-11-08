@@ -1,5 +1,5 @@
 {
-  "wir_version": "0.2",
+  "wir_version": "0.1",
   "sources": [
     { "id": "rnaseq", "language": "nextflow", "location": "pipelines/rnaseq/main.nf" },
     { "id": "cluster", "language": "nextflow", "location": "pipelines/cluster.config" }

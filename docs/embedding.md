@@ -154,7 +154,7 @@ settings.secrets.allow_environment(false);
 let run = uwe::RunRequest::new(settings).run().await?;
 ```
 
-The same settings work for `RunRequest::describe` and for a run on the simulator. uwe writes the given values to neither the run database, the recorded command line nor the RO-Crate. `Debug` of `SecretValues` shows only the names.
+The same settings work for `RunRequest::describe` and for a run on the simulator. uwe writes the given values to neither the run database nor the recorded command line. A task can still hold one in its environment, like a variable of the `env` scope of a Nextflow config. So a host that makes an RO-Crate passes the values in `run_crate::Options.secrets`: the crate shows each as `[secret]`, and copies no file of the workflow or the command line that holds one. `run_crate::Options.folders` names the folders of the server, like the folder of the run: the crate names a path in one relative to it, so `/srv/runs/01JBXQ5Z7C2W9M/work/a.txt` becomes `work/a.txt`. `Debug` of `SecretValues` shows only the names.
 
 A host that passes its own `setup` made the secrets in it itself, so those do not take the given values. `UWE_TES_TOKEN`, the repository tokens and what workflows read still do.
 
@@ -163,8 +163,44 @@ These still come from the environment of the process, for every run alike:
 - the default sources of storage credentials, like the `AWS_` variables and files and `IRODS_ENVIRONMENT_FILE`, sign-in to AWS CodeCommit repositories, and the credentials of cloud metadata services,
 - `UWE_ENGINE` and the other settings of uwe itself,
 - the user and home of the process: `HOME` and `USER`, as `workflow.homeDir`, `workflow.userName` and `System.getProperty` give them and as plugins like nf-quilt, nf-teams, nf-fairscape and nf-report write them, and `NXF_ASSETS` of nf-lamin,
-- where the Nextflow secret store is: `NXF_HOME`, `HOME` and `NXF_SECRETS_FILE`,
+- where the Nextflow secret store is: `NXF_HOME`, `HOME` and `NXF_SECRETS_FILE`; an isolated run reads the store only when its host allows it, see [Isolated runs](#isolated-runs),
 - the terminal: `TERM` and `NXF_AGENT_MODE`, which nf-seqlab-progress reads.
+
+## Isolated runs
+
+A host that runs the workflows of many users in one process sets `run::Settings.isolation` to a `hosted::Isolation`. A run with a hosted policy and no isolation of its own gets `Isolation::default()`, with the tenant root among its folders. The command line is not isolated.
+
+While uwe interprets the code of an isolated workflow, that code reaches only the folders of its run. This covers what Nextflow code reads, writes, lists and deletes with `file()` and `Path` methods, like `.text`, `.delete()`, `.copyTo()`, `.mkdirs()` and `Channel.fromPath`, and what Snakemake code at the top level of a Snakefile does with `open()`, `os.listdir`, `os.remove` and the like. A path outside the folders fails with "workflow code may not reach PATH: it is outside the folders of the run". A Snakemake check whether such a path exists says that it does not. Links count where they lead, so a link in the run folder to `/etc` does not help. The folders are:
+
+- the folder of the workflow, or the folder of its main file,
+- the launch folder, `Isolation.launch`, which relative paths start from and which the host makes; without it the run starts in the working directory of the process, which its code may not reach,
+- the scratch folder of the run and the cache folder, `run::Settings.cache_folder`, with the downloads and the files of the run,
+- the local store, `run::Settings.store`, where the outputs of tasks are, and `run::Settings.output_dir`,
+- the files of the launch: the inputs file and the config files,
+- the folders of the host, `Isolation.roots`, like the input folders of the user and the output folder of the run.
+
+The environment that such code reads is the secret values of the run (`run::Settings.secrets`) and the variables of the process that `Isolation.variables` names, nothing else. This holds for `env()`, `System.getenv`, `os.environ` and the `envvars` of Snakemake, and also for the `{ environment = "NAME" }` secrets of the config files. `SecretValues::limit_environment` does the same for a host that builds its own `SecretValues`.
+
+An isolated run also leaves out two stores of the service user, unless the host turns them on:
+
+- `Isolation.secret_store`: the Nextflow secret store, `$HOME/.nextflow/secrets/store.json` or `NXF_SECRETS_FILE`. Without it, `secrets.NAME` and the secrets of a process come only from the `[secrets]` section of the config file and the secret values of the run.
+- `Isolation.registry_files`: the Docker and Podman credentials, `~/.docker/config.json`, `$DOCKER_CONFIG` and the files of Podman. Without them, only the `[registry]` section of the config file signs in to registries.
+
+```rust
+let mut settings = uwe::run::Settings::new("/srv/runs/01JBXQ5Z7C2W9M/workflow/main.nf");
+settings.cache_folder = Some("/srv/runs/01JBXQ5Z7C2W9M/cache".into());
+settings.output_dir = Some("/srv/runs/01JBXQ5Z7C2W9M/outputs".into());
+settings.secrets.insert("LAB_S3_SECRET", secret_key)?;
+settings.isolation = Some(uwe::hosted::Isolation {
+    roots: vec!["/srv/data/alice".into(), "/srv/runs/01JBXQ5Z7C2W9M/outputs".into()],
+    launch: Some("/srv/runs/01JBXQ5Z7C2W9M".into()),
+    variables: ["PATH".to_owned()].into(),
+    ..Default::default()
+});
+let run = uwe::RunRequest::new(settings).run().await?;
+```
+
+The isolation limits the code of the workflow while uwe interprets it. The files that a task reads are the inputs that the workflow gives it, and the host checks the paths of the inputs of a run itself. The tasks themselves run in containers or on a cluster, whose limits the executor sets.
 
 ## Tasks of a run whose process is gone
 
@@ -205,7 +241,7 @@ The splitters and counters of Nextflow, like `splitFastq`, `splitFasta`, `splitC
 
 The policy limits which presets are allowed and which cache, database and output paths a tenant gets. It also limits Argo host roots and volume mappings. Its authorization callback sees the merged inputs before planning, and the normalized inputs before execution.
 
-Hosted runs always use strict admission and strict provenance. Local execution in a hosted run needs explicit CPU and memory capacity. The service itself remains responsible for authentication, total quotas, file system access and network policy.
+Hosted runs always use strict admission and strict provenance, and they are [isolated](#isolated-runs). Local execution in a hosted run needs explicit CPU and memory capacity. The service itself remains responsible for authentication, total quotas, the paths of inputs and network policy.
 
 ## Kubernetes
 
@@ -215,7 +251,9 @@ Map installed references through named `[executor.kubernetes.references.NAME]` t
 
 ## Sharing between requests
 
-Share one `argo_runtime::SharedLocks` coordinator between related hosted policies, so that Argo mutexes and semaphores hold across requests. Requests that overlap must use equivalent registry settings. Use separate worker processes for different registry identities.
+Share one `argo_runtime::SharedLocks` coordinator between related hosted policies, so that Argo mutexes and semaphores hold across requests. Requests that overlap must use the same registry settings: the same credentials, by their values, and the same use of the credential files of the service user. uwe refuses an overlapping request whose credentials differ, also when two requests give different secret values for the same variable. Use separate worker processes for different registry identities.
+
+The web clients of uwe are shared by the whole process, so the first request settles the web proxy of `[network] proxy`, or that there is none. uwe refuses a later request with another proxy, or without the proxy, with "this process sends its web requests through another proxy than the config file names". Run requests with other proxy settings in another process.
 
 ## Operator commands
 

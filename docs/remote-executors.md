@@ -822,6 +822,10 @@ uwe sets `uwe-attempt`, `uwe-submission` and the `idempotency_tag` itself. A tag
 
 Some TES servers stage input files as read-only and owned by another user, and run the task as a user without rights to change them. uwe makes executable inputs and the helper executable with `chmod +x`. When `chmod` fails, uwe copies the file next to itself, makes the copy executable and moves it over the original. This needs a folder the task user may write to. If the copy fails too, the task stops with an error, as before. When `chmod` works, nothing changes.
 
+## SLURM job environment
+
+uwe runs `sbatch` with a cleared environment. It passes only `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `TZ`, `TMPDIR`, the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`, also in lower case) and the variables that start with `SLURM_`, `SBATCH_`, `APPTAINER_` or `SINGULARITY_`, like `SLURM_CONF`. With `proxy` in `[network]` it adds the proxy variables, and with `staging_access = "credentials"` the credentials of the staging root. Each job gets `--export` with the names of exactly these variables, so other variables of the uwe process, like the credentials of a service, reach neither `sbatch` nor the jobs. The list holds names only, since `--export` splits at commas. It comes after `options` of `[executor.slurm]`, so it wins over an `--export` there. The tasks get their own variables inside the container.
+
 ## nf-core on a SLURM cluster with Apptainer and a web proxy
 
 On many clusters the nodes share a file system, run Apptainer, and reach the web only through a proxy. uwe then runs in a batch job of its own, the coordinator, and submits each task as another batch job from there. The coordinator needs few resources: 4 CPUs and 16 GB are enough for nf-core/rnaseq.
@@ -865,7 +869,7 @@ sbatch --export=ALL,NAME=demo,PIPELINE=nf-core/demo,REV=32893afef8076a03a2767a02
 ```
 
 - `sbatch --export` splits its value at commas, so the script takes the profiles with colons.
-- `sbatch` hands the environment of the coordinator to each job, and Apptainer keeps the proxy variables in the container, also with `--containall`. So the tasks reach the web as the coordinator does. Without the variables, `proxy` in `[network]` of the config file gives the jobs `HTTPS_PROXY` and `HTTP_PROXY`, but no `NO_PROXY`.
+- `sbatch` hands the proxy variables of the coordinator to each job, and Apptainer keeps them in the container, also with `--containall`. So the tasks reach the web as the coordinator does. Without the variables, `proxy` in `[network]` of the config file gives the jobs `HTTPS_PROXY` and `HTTP_PROXY`, but no `NO_PROXY`.
 - uwe calls only `sbatch`, `squeue`, `sacct` and `scancel`, never `srun`, so it starts no step inside the coordinator.
 - Apptainer pulls each image once into the images folder of the cache. `APPTAINER_CACHEDIR` keeps its layer cache off a small home folder.
 - `-profile test,docker` works as well: the jobs still run Apptainer, as `container` says.

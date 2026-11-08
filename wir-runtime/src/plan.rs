@@ -177,17 +177,7 @@ fn instantiate(
     let (prefix, steps) = prefixes;
     let mut index = HashMap::new();
     for op in &graph.ops {
-        let version = document.wir_version.as_str();
-        let later = match op.kind {
-            Kind::Map(_) | Kind::Expr(_) | Kind::Branch(_) => {
-                matches!(version, "0.1" | "0.2" | "0.3")
-            }
-            Kind::Select(_) | Kind::Merge(_) | Kind::Flatten(_) => {
-                matches!(version, "0.1" | "0.2" | "0.3" | "0.4")
-            }
-            _ => false,
-        };
-        if op.kind.is_reserved() || later {
+        if op.kind.is_reserved() {
             let message = format!("op {prefix}{}: uwe does not run this op kind yet", op.path);
             return Err(DriverError::unsupported(message));
         }

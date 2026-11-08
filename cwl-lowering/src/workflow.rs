@@ -78,7 +78,8 @@ impl Lowerer {
         // A graph input keeps its type and takes null through its default.
         for (port, input) in inputs.iter_mut().zip(&process.inputs) {
             if let Some(default) = &input.default {
-                port.r#type = types::convert(&input.value_type, &named)?;
+                let r#type = types::convert(&input.value_type, &named)?;
+                port.r#type = types::formatted(r#type, &input.format, &named)?;
                 defaults::set(port, default, &self.base)
                     .map_err(|why| format!("input {}: {why}", port.name))?;
             }

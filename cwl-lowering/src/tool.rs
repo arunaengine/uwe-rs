@@ -178,7 +178,7 @@ pub fn lower(
     let mut inputs = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
-        if !input.secondary_files.is_empty() || !input.format.is_empty() {
+        if !input.secondary_files.is_empty() {
             return Err(format!("the secondary files or format of input {name}"));
         }
         // CWL reads the contents and refuses files over 64 KiB, which a task does not.
@@ -197,8 +197,9 @@ pub fn lower(
                 });
             }
         }
-        let r#type =
-            convert(&input.value_type, &named).map_err(|why| format!("input {name}: {why}"))?;
+        let r#type = convert(&input.value_type, &named)
+            .and_then(|r#type| crate::types::formatted(r#type, &input.format, &named))
+            .map_err(|why| format!("input {name}: {why}"))?;
         let mut port = Port {
             name,
             r#type,
@@ -386,7 +387,7 @@ fn literal(expression: Option<&Expression>, what: &str) -> Result<Option<String>
 fn capture(
     output: &cwl_parser::model::OutputParameter,
     task: &Task,
-    (listed, named): (bool, &[Cwl]),
+    (listed, named): (bool, &crate::types::Named),
     glob: &mut Globs<'_>,
 ) -> Result<Read, String> {
     let name = short_name(&output.id);

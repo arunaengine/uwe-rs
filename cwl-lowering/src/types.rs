@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{RequirementClass, Type as Cwl, short_name};
+use cwl_parser::model::{Expression, Part, RequirementClass, Type as Cwl, short_name};
 use wir::{ArrayType, Field, FileType, Type};
 
 use crate::Scope;
@@ -10,15 +10,24 @@ use crate::Scope;
 /// How deep named types may refer to other named types; CWL types do not refer to themselves.
 const DEPTH: usize = 32;
 
+/// The named types in scope, and whether formats may match through an ontology.
+pub struct Named {
+    types: Vec<Cwl>,
+    ontology: bool,
+}
+
 /// The named types in scope: those of `SchemaDefRequirement`, with the named types in them.
-pub fn named(scope: &Scope) -> Vec<Cwl> {
+pub fn named(scope: &Scope) -> Named {
     let mut found = Vec::new();
     for entry in scope.requirements.iter().chain(&scope.hints) {
         if let RequirementClass::SchemaDef { types } = &entry.class {
             types.iter().for_each(|item| collect(item, &mut found));
         }
     }
-    found
+    Named {
+        types: found,
+        ontology: scope.ontology,
+    }
 }
 
 fn collect(cwl: &Cwl, found: &mut Vec<Cwl>) {
@@ -54,11 +63,11 @@ fn name_of(cwl: &Cwl) -> Option<&str> {
 }
 
 /// The type that a named type stands for, else the type itself.
-pub fn resolve<'c>(cwl: &'c Cwl, named: &'c [Cwl]) -> &'c Cwl {
+pub fn resolve<'c>(cwl: &'c Cwl, named: &'c Named) -> &'c Cwl {
     let mut current = cwl;
     for _ in 0..DEPTH {
         match current {
-            Cwl::Named(name) => match find(name, named) {
+            Cwl::Named(name) => match find(name, &named.types) {
                 Some(found) => current = found,
                 None => break,
             },
@@ -77,11 +86,11 @@ fn find<'n>(name: &str, named: &'n [Cwl]) -> Option<&'n Cwl> {
 
 /// The wir type of a CWL type, or why it has none. A union with `null` becomes optional, and
 /// a named type is the type of that name in `named`.
-pub fn convert(cwl: &Cwl, named: &[Cwl]) -> Result<Type, String> {
+pub fn convert(cwl: &Cwl, named: &Named) -> Result<Type, String> {
     nested(cwl, named, 0)
 }
 
-fn nested(cwl: &Cwl, named: &[Cwl], depth: usize) -> Result<Type, String> {
+fn nested(cwl: &Cwl, named: &Named, depth: usize) -> Result<Type, String> {
     let convert = |cwl: &Cwl| nested(cwl, named, depth);
     Ok(match cwl {
         Cwl::Boolean => Type::Bool,
@@ -100,7 +109,7 @@ fn nested(cwl: &Cwl, named: &[Cwl], depth: usize) -> Result<Type, String> {
                 .map(|field| {
                     Ok(Field {
                         name: short_name(&field.name).to_owned(),
-                        r#type: convert(&field.value_type)?,
+                        r#type: formatted(convert(&field.value_type)?, &field.format, named)?,
                     })
                 })
                 .collect::<Result<_, String>>()?,
@@ -113,11 +122,57 @@ fn nested(cwl: &Cwl, named: &[Cwl], depth: usize) -> Result<Type, String> {
         Cwl::Union(members) => union(members, named, depth)?,
         Cwl::Null => return Err("a parameter of type null".into()),
         Cwl::Stdin => return Err("a stdin input".into()),
-        Cwl::Named(name) => match find(name, named) {
+        Cwl::Named(name) => match find(name, &named.types) {
             Some(found) if depth < DEPTH => nested(found, named, depth + 1)?,
             _ => return Err(format!("the named type {}", short_name(name))),
         },
     })
+}
+
+/// The type with the formats of a parameter on its Files, also inside an optional or an array:
+/// one format, or a union of Files for several, none where an ontology may match others. The
+/// formats must be text without code.
+pub fn formatted(r#type: Type, formats: &[Expression], named: &Named) -> Result<Type, String> {
+    if formats.is_empty() {
+        return Ok(r#type);
+    }
+    let mut texts = Vec::new();
+    for format in formats {
+        match format.parts.as_slice() {
+            [Part::Text(text)] => texts.push(text.clone()),
+            _ => return Err("a format set by an expression".into()),
+        }
+    }
+    match named.ontology {
+        true => Ok(r#type),
+        false => Ok(with_formats(r#type, &texts)),
+    }
+}
+
+fn with_formats(r#type: Type, formats: &[String]) -> Type {
+    let file = |format: &String| {
+        Type::File(FileType {
+            format: Some(format.clone()),
+            secondary_files: Vec::new(),
+        })
+    };
+    match r#type {
+        Type::File(_) => match formats {
+            [one] => file(one),
+            many => Type::Union(many.iter().map(file).collect()),
+        },
+        Type::Optional(inner) => Type::Optional(Box::new(with_formats(*inner, formats))),
+        Type::Array(mut array) => {
+            array.items = Box::new(with_formats(*array.items, formats));
+            Type::Array(array)
+        }
+        Type::Union(members) => Type::Union(
+            (members.into_iter())
+                .map(|member| with_formats(member, formats))
+                .collect(),
+        ),
+        other => other,
+    }
 }
 
 /// A type that also holds null.
@@ -128,7 +183,7 @@ pub fn optional(r#type: Type) -> Type {
     }
 }
 
-fn union(members: &[Cwl], named: &[Cwl], depth: usize) -> Result<Type, String> {
+fn union(members: &[Cwl], named: &Named, depth: usize) -> Result<Type, String> {
     let mut types: Vec<Type> = (members.iter())
         .filter(|member| **member != Cwl::Null)
         .map(|member| nested(member, named, depth))

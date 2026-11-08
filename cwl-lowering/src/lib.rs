@@ -339,6 +339,7 @@ fn edge(from: (Option<&str>, &str), to: (Option<&str>, &str)) -> Edge {
     Edge {
         from: end(from),
         to: end(to),
+        read: Default::default(),
     }
 }
 

@@ -67,13 +67,53 @@ A secondary file pattern is a suffix added to the primary basename; each leading
 
 ## Channel contract
 
-Every port has a flow kind, `value` or `stream`. Both ends of an edge have the same kind; nothing converts between them implicitly.
+Every port has a flow kind, `value` or `stream`. An edge connects ports with the same flow kind. Conversion between flow kinds requires an op.
 
-A `value` port is bound at most once and never changes. Any number of readers read it, each gets the same value, and reading does not use it up. A bound null (an optional with no value) is a value: a reader runs with null. A port whose producer failed stays unbound, which is not null.
+A value channel has one of these states:
 
-A `stream` port carries items in the producer's order and then closes exactly once. Every reader sees every item from the first, in that order, however many readers there are. A stream that closes with no items is empty: it is neither null nor an error. A producer failure ends the stream with that error instead of a close. Items of different streams have no order between them unless an op defines one.
+- waiting;
+- bound to one value;
+- closed empty;
+- failed;
+- cancelled.
 
-No op of this version reads or writes streams; `merge` and `flatten` are defined on values only. The rest of the stream contract belongs to the reserved ops: per-round reads of a process with several stream inputs, values reused in every round, Nextflow `each`, and completion order against fair order in `merge`.
+A bound null is a value. It differs from an empty channel. A bound value never changes and any number of readers may read it. A closed empty value channel has no item. Its consumers end `omitted`, unless an op explicitly handles empty input.
+
+A stream contains an ordered sequence of items followed by exactly one terminal event: close, error, or cancellation. Null is an item when the port type accepts null. Closing without items produces an empty stream.
+
+Each reader has its own cursor. Reading advances only that reader. Detaching a reader does not close the producer or affect other readers.
+
+An edge has a subscription rule:
+
+- `all`, the default: start at item zero;
+- `live`: start immediately after the last item committed when the reader is installed.
+
+The installation position of a live reader is fixed once. Replanning the same edge preserves its cursor. A new edge gets a new reader. A reader installed after termination still receives the terminal event.
+
+All readers of an edge must be installed before its consumer starts. A graph activation installs its streams and readers before starting any op in that activation. Dynamic graph adoption installs its new readers as one operation before starting any newly adopted op.
+
+The runner retains a run-local stream log from item zero. It may spill items to disk. It must not discard unread history needed by an `all` reader added later. It must report storage failure instead of silently dropping items.
+
+Items within a stream follow producer order. Items from different streams have no inherent order. Where an op needs an arrival order, it uses the runner's committed event order. Outputs committed together use output declaration order, then item order, to break ties.
+
+A stream error preserves its already emitted prefix. A consumer observes that prefix before the error. Unless an op defines early completion, the error fails the consumer and ends its outputs with an error. There is no rollback of an emitted prefix.
+
+Cancellation stops new rounds, requests cancellation of work owned by the cancelled region, detaches its readers, and ends its open outputs with cancellation. It never publishes buffered results as successful results.
+
+An op that ends successfully cannot later change an output's terminal event. A graph boundary may forward items before the graph finishes, but it holds a successful close until the graph succeeds. A later graph failure therefore produces an error at that boundary.
+
+Defaults apply only to value inputs. A default replaces null or an absent producer, as described below. It does not replace a closed empty channel. Stream inputs have no defaults and require a producer.
+
+At the entry boundary, a stream input is supplied as a JSON array of items. The runner checks each item against the port's item type and closes the input after the array. An empty array supplies an empty stream. A missing required stream input is an input error.
+
+At the result boundary, a successful stream output is represented as an array of its items. An empty value output is omitted from the result object. Null is included as null. A failed or cancelled output cannot become a successful result.
+
+Replay has two meanings:
+
+- A new reader of the same execution reads committed output events. It does not rerun closures, tasks, file writes, or printing.
+- A resumed run is a new execution. It rebuilds control and stream state and may reuse accepted task outcomes. Fair order and source order remain stable. Completion order may differ between executions.
+
+The stream log is not a replacement for the task cache or resume database. This contract does not promise transparent restoration of an interrupted interpreter continuation.
 
 ## Defined ops
 
@@ -156,7 +196,8 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - names are valid and unique: sources, types, graphs, ports on each side, op paths in a graph, record fields;
 - named types exist and are not defined through themselves; unions, enums and tuples are not empty;
 - the entry graph and every graph, source and op named by an op exist; graphs do not call themselves;
-- every edge joins existing ports of equal flow, and the target type accepts the source type;
+- every edge joins existing ports of equal flow, and the target type accepts the source type; only a stream edge reads `live`;
+- stream ports take no default, and every stream input of an op has a producer;
 - every input and graph output has at most one producer, and every required one without a default has a producer;
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;

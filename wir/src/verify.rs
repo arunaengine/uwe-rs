@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::{Document, Endpoint, Graph, KNOWN, Port, Source, VERSION};
+use crate::flow::Subscription;
 use crate::op::{Kind, Op};
 use crate::types::{Type, TypeDef};
 
@@ -56,6 +57,12 @@ pub enum Problem {
     },
     #[error("{0} joins a value port and a stream port")]
     FlowMismatch(String),
+    #[error("{0} reads a value, which has no live reader")]
+    LiveValue(String),
+    #[error("{0} is a stream and takes no default")]
+    StreamDefault(String),
+    #[error("{0} is a stream input without a producer")]
+    StreamUnbound(String),
     #[error("ops form a cycle through {0}")]
     Cycle(String),
     #[error("native {0} needs a type without dynamic")]
@@ -200,6 +207,9 @@ impl<'d> Checker<'d> {
             if from.flow != to.flow {
                 self.report(&at, Problem::FlowMismatch(name.clone()));
             }
+            if edge.read == Subscription::Live && from.flow.is_value() {
+                self.report(&at, Problem::LiveValue(name.clone()));
+            }
             if !to.takes().accepts(&from.r#type, self.defs) {
                 let (found, want) = (show(&from.r#type), show(&to.r#type));
                 self.report(
@@ -220,6 +230,11 @@ impl<'d> Checker<'d> {
         for op in &graph.ops {
             for input in &op.inputs {
                 let set = bound.contains(&(Some(op.path.as_str()), input.name.as_str()));
+                if !set && !input.flow.is_value() {
+                    let at = format!("{}/{}", graph.name, op.path);
+                    self.report(&at, Problem::StreamUnbound(format!("input {}", input.name)));
+                    continue;
+                }
                 if !set && input.default.is_none() && !input.r#type.is_optional(self.defs) {
                     let at = format!("{}/{}", graph.name, op.path);
                     self.report(&at, Problem::Unbound(format!("input {}", input.name)));
@@ -302,7 +317,9 @@ impl<'d> Checker<'d> {
                 continue;
             };
             let named = format!("{side} {}", port.name);
-            if side.ends_with("output") {
+            if !port.flow.is_value() {
+                self.report(at, Problem::StreamDefault(named));
+            } else if side.ends_with("output") {
                 self.report(at, Problem::Default(named));
             } else if !crate::fits(value, &port.r#type, self.defs) {
                 self.report(at, Problem::Unfit(named));

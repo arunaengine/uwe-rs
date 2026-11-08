@@ -170,7 +170,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["from", "to"],
-      "properties": { "from": { "$ref": "#/$defs/endpoint" }, "to": { "$ref": "#/$defs/endpoint" } }
+      "properties": {
+        "from": { "$ref": "#/$defs/endpoint" },
+        "to": { "$ref": "#/$defs/endpoint" },
+        "read": { "enum": ["all", "live"] }
+      }
     },
     "endpoint": {
       "type": "object",

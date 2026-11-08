@@ -143,6 +143,7 @@ impl Lowerer {
         group.edges.push(Edge {
             from: end(Some(&test), "out"),
             to: end(Some(path), CONDITION),
+            read: Default::default(),
         });
         group.ops.extend([condition, branch]);
         Ok(group)
@@ -212,12 +213,14 @@ impl Lowerer {
                 edges.push(Edge {
                     from: end(None, &port.name),
                     to: end(Some(&op), &input),
+                    read: Default::default(),
                 });
             }
         }
         edges.extend(main.outputs.iter().map(|port| Edge {
             from: end(Some(&main.path), &port.name),
             to: end(None, &port.name),
+            read: Default::default(),
         }));
         let outputs = main.outputs.clone();
         self.graphs.push(Graph {
@@ -282,6 +285,7 @@ fn feeds(group: &Group, inner: &Group) -> Vec<Edge> {
             edges.push(Edge {
                 from: end(Some(expr), "out"),
                 to: end(Some(&op), &input),
+                read: Default::default(),
             });
         }
     }
@@ -321,6 +325,7 @@ pub(crate) fn computed(mut task: Op, values: &[(String, Expression)], library: &
         group.edges.push(Edge {
             from: end(Some(&at), "out"),
             to: end(Some(&task.path), &input),
+            read: Default::default(),
         });
         group.selves.push((at, name.clone()));
         group.ops.push(expr);

@@ -179,9 +179,20 @@ impl Operator for Reducing {
                 Pull::Item(item) => {
                     self.seen = true;
                     self.take(turn, context, item)?;
+                    // With `steps`, the value after each item is an item of the output.
+                    if self.spec.steps {
+                        let value = match self.spec.rule {
+                            Reduction::Count => Json::from(self.count),
+                            _ => {
+                                (self.state.as_ref()).map_or(Json::Null, |(value, _)| value.clone())
+                            }
+                        };
+                        turn.emit("out", value);
+                    }
                     moved = true;
                 }
                 Pull::Pending => break,
+                Pull::Closed if self.spec.steps => return Ok(Step::Done),
                 Pull::Closed => {
                     self.close(turn)?;
                     return Ok(Step::Done);
@@ -232,6 +243,32 @@ mod tests {
             Ok(other) => panic!("the reduce did not end: {other:?}"),
             Err(failure) => Err(failure.message),
         }
+    }
+
+    #[test]
+    fn reduce_steps() {
+        let node = node(
+            json!({"reduce": {"rule": "sum", "steps": true}}),
+            &["source"],
+            &[],
+            "stream",
+        );
+        let mut streams = wired(&node);
+        let mut operator = make(&node).unwrap();
+        let items = [
+            ("source", json!(1)),
+            ("source", json!(2)),
+            ("source", json!(3)),
+        ];
+        commit(&mut streams, &items, &["source"]);
+        let (emitted, bound, step) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+        assert_eq!(step, Ok(Step::Done));
+        assert_eq!(
+            emitted,
+            [json!(1), json!(3), json!(6)],
+            "the sum after every item, like scan"
+        );
+        assert_eq!(bound, None, "no value is bound at the close");
     }
 
     fn groovy(code: &str) -> Json {

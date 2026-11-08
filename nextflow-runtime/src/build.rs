@@ -906,6 +906,28 @@ impl Builder<'_> {
         }
     }
 
+    /// The values of the channel factory `name`, like `fromPath`, as a run reads them when it
+    /// starts, for a compiled run, which calls the factory then.
+    pub(crate) fn factory_values(
+        &mut self,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Vec<Value>, Error> {
+        match (name, arguments.last()) {
+            ("fromPath", Some(pattern)) if !pattern.truth() => {
+                Err(thrown("Missing `fromPath` parameter".into()))
+            }
+            ("fromPath", _) => self.path_values(&arguments),
+            ("fromFilePairs", _) => self.file_pair_values(&arguments),
+            _ => match nextflow_plugins::factory_plugin(name) {
+                Some(plugin) => Ok(elements(
+                    &self.base.plugin_function(plugin, name, arguments)?,
+                )),
+                None => Err(thrown(format!("No such channel factory `{name}`"))),
+            },
+        }
+    }
+
     /// Fails for the compiler, which changes no files while the workflow is built.
     fn refuse_change(&self, what: &str) -> Result<(), Error> {
         match self.defer {

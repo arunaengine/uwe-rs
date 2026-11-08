@@ -12,11 +12,11 @@ use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
-    pipelines: 9,
-    full: 9,
-    native: 9,
-    compiled: 9,
-    same: 9,
+    pipelines: 10,
+    full: 10,
+    native: 10,
+    compiled: 10,
+    same: 10,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -85,6 +85,10 @@ const PIPELINES: &[(&str, &str)] = &[
     (
         "combine",
         "workflow {\n    GREET(channel.of('a', 'b').combine(channel.of(1, 2)).map { n, i -> [[id: \"${n}${i}\"], n] })\n    COUNT(GREET.out.text.map { it[1] }.toSortedList(), 'combined')\n}",
+    ),
+    (
+        "files",
+        "workflow {\n    GREET(channel.fromPath(\"${projectDir}/*.csv\").map { [[id: it.baseName], it.baseName] })\n    COUNT(channel.fromFilePairs(\"${projectDir}/*_{1,2}.fq\").map { it[1] }, 'pairs')\n}",
     ),
     (
         "closures",
@@ -164,6 +168,9 @@ fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
     let folder = directory.path();
     std::fs::write(folder.join("main.nf"), format!("{PROCESSES}\n{script}\n")).unwrap();
     std::fs::write(folder.join("nextflow.config"), "params.greeting = 'hi'\n").unwrap();
+    for name in ["a.csv", "b.csv", "s_1.fq", "s_2.fq"] {
+        std::fs::write(folder.join(name), name).unwrap();
+    }
     let launch = |target: PathBuf| Launch {
         target,
         scratch: folder.join("scratch"),

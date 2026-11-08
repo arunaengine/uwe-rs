@@ -79,6 +79,19 @@ impl Loader {
         extra: &str,
     ) -> Result<Rc<Module>, LoadError> {
         self.load(main)?;
+        let location = scope.to_string_lossy();
+        if let Some(source) = crate::plugin_script(&location) {
+            let plugin = location
+                .trim_start_matches("plugin/")
+                .trim_end_matches(".nf");
+            self.plugin_scripts.remove(plugin);
+            let module = self.plugin_script(plugin, &format!("{source}\n{extra}"));
+            return module
+                .filter(|_| self.errors.is_empty())
+                .ok_or_else(|| LoadError {
+                    messages: std::mem::take(&mut self.errors),
+                });
+        }
         let path = std::path::absolute(scope).unwrap_or_else(|_| scope.to_owned());
         let text = std::fs::read_to_string(&path).map_err(|error| LoadError {
             messages: vec![format!("{}: {error}", path.display())],

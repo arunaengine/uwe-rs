@@ -40,7 +40,13 @@ pub fn launching(context: &Context<'_>, source: &str) -> Option<Launching> {
     let sources: HashMap<String, PathBuf> = (document.sources.iter())
         .filter(|source| source.language == Language::Nextflow)
         .filter(|source| !source.location.contains(':'))
-        .map(|source| (source.id.clone(), context.base.join(&source.location)))
+        .map(|source| {
+            let path = match nextflow_runtime::plugin_script(&source.location) {
+                Some(_) => PathBuf::from(&source.location),
+                None => context.base.join(&source.location),
+            };
+            (source.id.clone(), path)
+        })
         .collect();
     let path = sources.get(source)?.clone();
     let main = sources.get("main").filter(|main| main.is_file())?.clone();
@@ -69,6 +75,15 @@ pub fn launching(context: &Context<'_>, source: &str) -> Option<Launching> {
     })
 }
 
+/// The text of a source that is the script of a Nextflow plugin, which has no file.
+pub fn plugin_text(document: &Document, id: &str) -> Option<&'static str> {
+    let source = document.sources.iter().find(|source| source.id == id)?;
+    match source.language {
+        Language::Nextflow => nextflow_runtime::plugin_script(&source.location),
+        _ => None,
+    }
+}
+
 /// The defaults of the inputs of the entry graph, which are the params of the run.
 fn defaults(document: &Document) -> Map<String, Json> {
     let entry = document
@@ -83,6 +98,8 @@ fn defaults(document: &Document) -> Map<String, Json> {
 thread_local! {
     /// The interpreters of the runs, by run, which keep the loaded config and plugins.
     static ADAPTERS: RefCell<HashMap<String, Rc<RefCell<Adapter>>>> = RefCell::default();
+    /// How the Nextflow drivers of this thread get their settings, which the interpreters use.
+    static OPTIONS: RefCell<Option<crate::nextflow::Options>> = const { RefCell::new(None) };
     /// The scripts loaded with the code of a callback, by script and code.
     static MODULES: RefCell<HashMap<(PathBuf, String), Rc<Module>>> = RefCell::default();
 }
@@ -220,6 +237,11 @@ fn module(launching: &Launching, path: &Path, extra: &str) -> Result<Rc<Module>,
     Ok(module)
 }
 
+/// Makes the interpreters of callbacks with the host of the Nextflow tasks of the run.
+pub fn use_options(options: crate::nextflow::Options) {
+    OPTIONS.with_borrow_mut(|known| *known = Some(options));
+}
+
 /// The interpreter of a run, made once with the config and params of the run.
 fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
     let key = format!(
@@ -241,9 +263,15 @@ fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
         simulated: launching.simulated,
         ..Launch::default()
     };
+    let made = OPTIONS.with_borrow(|options| {
+        let folder = std::env::current_dir().ok()?;
+        Some((options.as_ref()?.settings)(&launch, &folder))
+    });
+    let settings = made.unwrap_or_default();
+    // A folder of its own, which the driver deletes when it ends.
     let settings = Settings {
-        run_name: "uwe-callbacks".into(),
-        ..Settings::default()
+        run_name: format!("{}-callbacks", settings.run_name),
+        ..settings
     };
     let made = Adapter::new(&launch, settings, launching.params.clone());
     let adapter = Rc::new(RefCell::new(made.map_err(|error| error.message)?));

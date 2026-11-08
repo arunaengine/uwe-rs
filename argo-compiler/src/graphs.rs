@@ -7,10 +7,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use argo_parser::model::{ContinueOn, Template};
 use argo_parser::{Node, Value as Yaml};
 use argo_runtime::adapter::Adapter;
-use wir::{Dependency, Graph, Kind, Port, Status, StatusGroup, Type};
+use wir::reserved::Carry;
+use wir::{Dependency, ExprForm, Graph, Kind, Port, Status, StatusGroup, Type};
 
 use crate::sites::Site;
 use crate::tags::single_tag;
+use crate::texts::{VALUE, text_op};
 use crate::{Kept, edge, end, op, path_type, port, text, typed};
 
 /// Where a template is: its name, and the WorkflowTemplate that holds it with whether that
@@ -26,6 +28,8 @@ pub(crate) struct Place {
 pub(crate) enum Target {
     Leaf(Box<Template>),
     Graph(String, Vec<Port>, Vec<Port>),
+    /// A call of the template being compiled, the next round of its loop.
+    Recursion,
 }
 
 /// The values that the ops of a graph can read: the graph inputs, and what the steps or
@@ -43,6 +47,11 @@ pub(crate) struct Compiler {
     done: BTreeMap<String, (Vec<Port>, Vec<Port>)>,
     /// The templates being compiled, of which a call is a recursion.
     active: Vec<String>,
+    /// The graphs that run as loop bodies: the site that calls the template again, and the
+    /// body outputs that it gives the next round.
+    pub loops: BTreeMap<String, (String, Vec<Carry>)>,
+    /// Whether the workflow reads `workflow.status` or `workflow.failures` anywhere.
+    pub reads_status: bool,
 }
 
 impl Compiler {
@@ -52,6 +61,8 @@ impl Compiler {
             graphs: Vec::new(),
             done: BTreeMap::new(),
             active: Vec::new(),
+            loops: BTreeMap::new(),
+            reads_status: false,
         }
     }
 
@@ -71,8 +82,11 @@ impl Compiler {
             return Ok(Target::Leaf(Box::new(template)));
         }
         let name = graph_name(place);
+        if self.active.last() == Some(&name) {
+            return Ok(Target::Recursion);
+        }
         if self.active.contains(&name) {
-            let reason = format!("template {} calls itself", template.name);
+            let reason = format!("template {} calls itself through others", template.name);
             return Err(kept(at, &reason));
         }
         if let Some((takes, gives)) = self.done.get(&name) {
@@ -104,9 +118,14 @@ impl Compiler {
                 "a retryStrategy of a steps or DAG template retries a graph",
             ));
         }
-        if template.parallelism.is_some() || template.fail_fast == Some(true) {
+        if template.fail_fast == Some(true) {
             return Err(at(
-                "parallelism and failFast limit the children of a template together",
+                "failFast stops the children of a template after a failure",
+            ));
+        }
+        if template.parallelism.is_some() && template.dag.is_some() {
+            return Err(at(
+                "the parallelism of a DAG template limits its tasks together",
             ));
         }
         if template.active_deadline_seconds.is_some() || template.timeout.is_some() {
@@ -150,7 +169,7 @@ impl Compiler {
             false => "steps",
         };
         match &template.dag {
-            None => self.steps(place, &mut graph, &mut scope, node)?,
+            None => self.steps(place, &mut graph, &mut scope, node, template.parallelism)?,
             Some(_) => self.dag(place, &mut graph, &mut scope, node)?,
         }
         for parameter in &template.outputs.parameters {
@@ -161,30 +180,48 @@ impl Compiler {
             });
             let source = tag
                 .filter(|_| plain)
-                .and_then(|tag| made_port(&scope, prefix, tag));
-            let Some((producer, found)) = source else {
-                let reason = format!(
-                    "output parameter {} needs an Argo expression op",
-                    parameter.name
-                );
-                return Err(at(&reason));
-            };
+                .and_then(|tag| made_port(&scope, prefix, tag))
+                .filter(|(_, found)| !matches!(found.r#type, Type::Array(_)));
             let name = format!("outputs.parameters.{}", parameter.name);
-            push_output(&mut graph, &name, &producer, found)?;
+            if let Some((producer, found)) = source {
+                push_output(&mut graph, &name, &producer, found)?;
+                continue;
+            }
+            let code = output_text(parameter).map_err(|reason| at(&reason))?;
+            let found = |tag: &crate::tags::Tag| crate::sites::source(&scope, tag);
+            let (made, wires) =
+                text_op(&name, &code, ExprForm::Text, found).map_err(|reason| at(&reason))?;
+            graph.ops.push(made);
+            graph.edges.extend(wires);
+            graph.outputs.push(port(name.clone(), text()));
+            graph
+                .edges
+                .push(edge(end(Some(&name), VALUE), end(None, &name)));
         }
         for artifact in &template.outputs.artifacts {
             let tag = single_tag(&artifact.from);
             let Some((producer, found)) = tag.and_then(|tag| made_port(&scope, prefix, tag)) else {
-                let reason = format!(
-                    "output artifact {} needs an Argo expression op",
-                    artifact.name
-                );
+                let reason = format!("output artifact {} is no File of one tag", artifact.name);
                 return Err(at(&reason));
             };
             let name = format!("outputs.artifacts.{}", artifact.name);
             push_output(&mut graph, &name, &producer, found)?;
         }
-        let ports = (graph.inputs.clone(), graph.outputs.clone());
+        let gives = (graph.outputs.iter())
+            .filter(|output| !output.name.starts_with(crate::recursion::AGAIN))
+            .cloned()
+            .collect();
+        if self.loops.contains_key(name) && !template.outputs.parameters.is_empty() {
+            return Err(at(
+                "a recursive template gives outputs of its first round only",
+            ));
+        }
+        if self.loops.contains_key(name) && !template.outputs.artifacts.is_empty() {
+            return Err(at(
+                "a recursive template gives outputs of its first round only",
+            ));
+        }
+        let ports = (graph.inputs.clone(), gives);
         self.graphs.push(graph);
         Ok(ports)
     }
@@ -196,31 +233,54 @@ impl Compiler {
         graph: &mut Graph,
         scope: &mut Scope,
         node: &Node,
+        limit: Option<i64>,
     ) -> Result<(), Kept> {
-        let mut before: Vec<(String, ContinueOn)> = Vec::new();
+        let mut before: Vec<(String, Vec<Status>)> = Vec::new();
+        let limit = limit.filter(|limit| *limit > 0);
+        let rounds = limit.map(|limit| u32::try_from(limit).unwrap_or(u32::MAX));
         for (position, group) in sequence(node.get("steps")).iter().enumerate() {
             let mut made = Vec::new();
             let mut current = Vec::new();
+            if limit.is_some() && sequence(Some(group)).len() > 1 {
+                let reason = "the parallelism of a template limits its parallel steps together";
+                return Err(kept(&graph.name, reason));
+            }
             for step in sequence(Some(group)) {
                 let site =
                     Site::of_step(position, &step).map_err(|reason| kept(&graph.name, &reason))?;
                 let built = self.site(place, graph, scope, &site)?;
+                if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op)
+                    && let Kind::Map(map) = &mut op.kind
+                {
+                    map.parallelism = rounds.or(map.parallelism);
+                }
                 if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op) {
-                    for (earlier, continues) in &before {
+                    for (earlier, on) in &before {
                         op.after.push(Dependency {
                             op: earlier.clone(),
-                            on: statuses(continues),
+                            on: on.clone(),
                         });
                     }
                 }
                 handle_continue(graph, &built.op, site.continue_on);
-                current.push((built.op.clone(), site.continue_on));
+                current.push((built.op.clone(), statuses(&site.continue_on)));
+                if let Some(hook) = &built.hook {
+                    current.push((hook.clone(), ended()));
+                }
                 made.push((format!("steps.{}", site.name), built));
             }
             for (prefix, built) in made {
                 scope.made.insert(prefix, (built.op, built.outputs));
             }
             before = current;
+            let recurses = (self.loops.get(&graph.name)).is_some_and(|(site, _)| {
+                (sequence(Some(group)).iter())
+                    .any(|step| step.get("name").and_then(Node::as_str) == Some(site))
+            });
+            if recurses && position + 1 < sequence(node.get("steps")).len() {
+                let reason = "steps after a recursive call run after all its rounds";
+                return Err(kept(&graph.name, reason));
+            }
         }
         Ok(())
     }
@@ -277,6 +337,7 @@ impl Compiler {
             }
             ancestors.insert(name.clone(), all);
         }
+        let mut hooks: BTreeMap<String, String> = BTreeMap::new();
         let declared = (dag.tasks.iter()).filter(|task| order.contains(&task.name));
         for task in declared.collect::<Vec<_>>() {
             let raw = (raw.iter())
@@ -305,8 +366,23 @@ impl Compiler {
             {
                 op.handles = crate::depends::handled(&tree);
                 op.depends = Some(tree);
+                for hook in names.iter().filter_map(|name| hooks.get(name)) {
+                    let on = ended();
+                    op.after.push(Dependency {
+                        op: hook.clone(),
+                        on,
+                    });
+                }
+            }
+            if let Some(hook) = &built.hook {
+                hooks.insert(task.name.clone(), hook.clone());
             }
             handle_continue(graph, &built.op, site.continue_on);
+            let recursive = self.loops.get(&graph.name).map(|(site, _)| site);
+            if recursive.is_some_and(|site| trees.values().any(|(_, names)| names.contains(site))) {
+                let reason = "tasks that depend on a recursive call run after all its rounds";
+                return Err(kept(&graph.name, reason));
+            }
             scope
                 .made
                 .insert(format!("tasks.{}", site.name), (built.op, built.outputs));
@@ -319,6 +395,8 @@ impl Compiler {
 pub(crate) struct Built {
     pub op: String,
     pub outputs: Vec<Port>,
+    /// The op of its exit hook.
+    pub hook: Option<String>,
 }
 
 /// The statuses of a step that let the next group start.
@@ -333,9 +411,20 @@ fn statuses(continues: &ContinueOn) -> Vec<Status> {
     on
 }
 
+/// Every way an op ends, which an exit hook waits for.
+fn ended() -> Vec<Status> {
+    vec![
+        Status::Succeeded,
+        Status::Failed,
+        Status::Errored,
+        Status::Skipped,
+        Status::Omitted,
+    ]
+}
+
 /// A status group that handles the failures a step or task continues on, so that they do not
 /// fail the graph, as `continueOn` lets the template go on.
-fn handle_continue(graph: &mut Graph, path: &str, continues: ContinueOn) {
+pub(crate) fn handle_continue(graph: &mut Graph, path: &str, continues: ContinueOn) {
     let mut allow = Vec::new();
     if continues.failed {
         allow.push(Status::Failed);
@@ -402,7 +491,7 @@ fn push_output(graph: &mut Graph, name: &str, producer: &str, found: Port) -> Re
     if matches!(found.r#type, Type::Array(_)) {
         return Err(kept(
             &graph.name,
-            &format!("{name} reads a loop, which needs an Argo expression op"),
+            &format!("{name} reads the Files of a loop, which wir does not list"),
         ));
     }
     graph.outputs.push(port(name, found.r#type));
@@ -410,6 +499,27 @@ fn push_output(graph: &mut Graph, name: &str, producer: &str, found: Port) -> Re
         .edges
         .push(edge(end(Some(producer), &found.name), end(None, name)));
     Ok(())
+}
+
+/// The Argo text that gives an output parameter of a steps or DAG template.
+fn output_text(parameter: &argo_parser::model::Parameter) -> Result<String, String> {
+    let name = &parameter.name;
+    let Some(from) = &parameter.value_from else {
+        let value = parameter.value.as_ref();
+        return value
+            .map(|value| value.0.clone())
+            .ok_or_else(|| format!("output parameter {name} has no value"));
+    };
+    if from.default.is_some() {
+        return Err(format!(
+            "output parameter {name} has a default for when its source fails"
+        ));
+    }
+    match (from.expression.is_empty(), from.parameter.is_empty()) {
+        (false, _) => Ok(format!("{{{{={}}}}}", from.expression)),
+        (true, false) => Ok(from.parameter.clone()),
+        (true, true) => Err(format!("output parameter {name} has no source")),
+    }
 }
 
 /// A name of an input or output of a template that is no wir name, like one with a tag.

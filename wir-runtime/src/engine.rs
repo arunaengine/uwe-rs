@@ -1,6 +1,5 @@
-//! The ops that the engine runs at once, for the run and for callback graphs: calls and
-//! branches start their graph, maps add their rounds, and expr, select, merge and flatten
-//! bind their value.
+//! The ops that the engine runs at once, for the run and for callback graphs: calls, branches
+//! and maps start their graphs or rounds; expr, select, merge and flatten bind their value.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -28,6 +27,18 @@ pub struct Context<'a> {
     /// Where `view` prints.
     pub printer: &'a crate::driver::Printer,
     pub simulated: bool,
+    /// The files provider of the executor, which gives local paths of task outputs.
+    pub provider: Option<&'a dyn workflow_graph::Files>,
+    /// The deliveries that the file effects of stream ops ask the host for.
+    pub deliveries: &'a crate::publishing::Deliveries,
+}
+
+impl Context<'_> {
+    /// The bytes of the file at a location, through the files provider when there is one.
+    pub fn read(&self, location: &str) -> std::io::Result<Vec<u8>> {
+        let location = location.strip_prefix("file://").unwrap_or(location);
+        workflow_graph::files::read(self.provider, location)
+    }
 }
 
 /// Runs a node of an op that the engine runs at once; whether it was such an op.
@@ -96,8 +107,9 @@ pub fn begin(
                 ),
                 ExprLanguage::Groovy | ExprLanguage::Python => language_expr(&spec, bound, context),
                 ExprLanguage::Wdl => {
-                    crate::wdl_expr::evaluate(context.document, &node.op, &spec, bound)
+                    crate::wdl::expr::evaluate(context.document, &node.op, &spec, bound)
                 }
+                ExprLanguage::Argo => return Ok(false),
             };
             value.and_then(|value| {
                 let value = widen(value, &output.r#type, defs);

@@ -231,7 +231,8 @@ fn execute_with(
     let private;
     let (target, language, arguments) = match arguments.lowered {
         true => {
-            let (path, inputs, values) = crate::lower::document(&target, language, arguments)?;
+            let (path, inputs, values) =
+                crate::lower::document(&target, language, arguments, &setup)?;
             private = values;
             // A WDL input file and parameters become one file for the entry graph; Snakemake
             // config files and values are in the document.

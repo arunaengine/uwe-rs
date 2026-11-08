@@ -116,6 +116,48 @@ fn handles_failed_dependencies() {
     assert!(progress.outputs(&[]).is_err());
 }
 
+/// A call `c` of the graph `inner`, whose native ops are `a` and the extra `ops`.
+fn handled_call(ops: Json) -> Progress {
+    let native = json!({"path": "a", "kind": {"native": {"source": "s", "language": "cwl"}}});
+    let mut inner = vec![native];
+    inner.extend(ops.as_array().cloned().unwrap_or_default());
+    let call = json!({"path": "c", "kind": {"call": {"graph": "inner"}}});
+    let document = json!({"wir_version": "0.1",
+        "sources": [{"id": "s", "language": "cwl", "location": "s.cwl"}],
+        "graphs": [{"name": "main", "ops": [call]}, {"name": "inner", "ops": inner}],
+        "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    wir::verify(&document).unwrap();
+    Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new())
+}
+
+#[test]
+fn calls_handle_failures() {
+    let native =
+        |path: &str| json!({"path": path, "kind": {"native": {"source": "s", "language": "cwl"}}});
+    let mut handler = native("b");
+    handler["handles"] = json!([{"op": "a", "on": ["failed"]}]);
+    let group =
+        json!({"path": "g", "kind": {"status_group": {"members": ["a"], "allow": ["failed"]}}});
+    for ops in [json!([handler]), json!([group])] {
+        let mut progress = handled_call(ops);
+        progress.next(false).unwrap();
+        while let Some((node, _)) = progress.next(false) {
+            let status = match progress.node(node).path.as_str() {
+                "c/a" => Status::Failed,
+                _ => Status::Succeeded,
+            };
+            progress.end(node, status, Map::new(), Some("op c/a: broke".into()));
+        }
+        assert_eq!(
+            status_of(&progress, "c"),
+            Some(Status::Succeeded),
+            "the failure is handled"
+        );
+        assert!(progress.failures.is_empty());
+    }
+}
+
 #[test]
 fn calls_report_failures() {
     let mut progress = progress();
@@ -419,6 +461,23 @@ fn control_boolean() {
 }
 
 #[test]
+fn control_waits() {
+    let test = |op: &str, on: &str| json!({"result": {"op": op, "on": [on]}});
+    let tree = json!({"not": {"all": [test("a", "failed"), test("b", "succeeded")]}});
+    let mut progress = controlled(json!({"c": {"depends": tree}}), json!([]));
+    run_as(&mut progress, "a", Status::Succeeded);
+    let (b, _) = progress.next(false).unwrap();
+    assert_eq!(
+        progress.next(false),
+        None,
+        "c waits for the result of b, though a decides the tree"
+    );
+    progress.end(b, Status::Succeeded, Map::new(), None);
+    let (c, _) = progress.next(false).unwrap();
+    assert_eq!(progress.node(c).path, "c");
+}
+
+#[test]
 fn control_groups() {
     let group = json!({"path": "g", "kind": {"status_group": {"members": ["a", "b"], "allow": ["errored"]}}});
     let tests = json!({"c": {"depends": {"result": {"op": "g", "on": ["any_succeeded"]}}}});
@@ -472,5 +531,66 @@ fn failure_handler() {
         progress.failures,
         ["op a: Failed", "op b: Failed"],
         "a failed handler handles nothing"
+    );
+}
+
+#[test]
+fn scheduler_work() {
+    let rounds = 500;
+    let int = |name: &str| json!({"name": name, "type": "int"});
+    let ints = |name: &str| json!({"name": name, "type": {"array": {"items": "int"}}});
+    let edge = |from: (Option<&str>, &str), to: (Option<&str>, &str)| json!({"from": {"op": from.0, "port": from.1}, "to": {"op": to.0, "port": to.1}});
+    let work = json!({"path": "work", "kind": {"native": {"source": "s", "language": "cwl"}},
+        "inputs": [int("x")], "outputs": [int("y")]});
+    let body = json!({"name": "body", "inputs": [int("x")], "outputs": [int("y")], "ops": [work],
+        "edges": [edge((None, "x"), (Some("work"), "x")), edge((Some("work"), "y"), (None, "y"))]});
+    let each = json!({"path": "each", "kind": {"map": {"body": "body", "over": ["x"]}},
+        "inputs": [ints("x")], "outputs": [ints("y")]});
+    let main = json!({"name": "main", "inputs": [ints("xs")], "outputs": [ints("ys")], "ops": [each],
+        "edges": [edge((None, "xs"), (Some("each"), "x")), edge((Some("each"), "y"), (None, "ys"))]});
+    let document = json!({"wir_version": "0.1",
+        "sources": [{"id": "s", "language": "cwl", "location": "s.cwl"}],
+        "graphs": [main, body], "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    wir::verify(&document).unwrap();
+    let mut progress = Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new());
+    progress.inputs.insert("xs".into(), json!(vec![1; rounds]));
+    progress.activate(None).unwrap();
+    let (map, bound) = progress.next(false).unwrap();
+    let Kind::Map(spec) = progress.node(map).op.kind.clone() else {
+        panic!("no map");
+    };
+    let items = crate::plan::items(&spec, &bound).unwrap();
+    let start = progress.plan.nodes.len();
+    crate::plan::rounds(
+        &document,
+        &mut progress.plan.nodes,
+        map,
+        "body",
+        items.items,
+    )
+    .unwrap();
+    progress.plan.nodes[map].shape = items.shape;
+    progress.adopt(start);
+    while let Some((at, _)) = progress.next(false) {
+        match progress.node(at).op.kind {
+            Kind::Call(_) => progress.activate(Some(at)).unwrap(),
+            _ => progress.end(
+                at,
+                Status::Succeeded,
+                Map::from_iter([("y".into(), json!(2))]),
+                None,
+            ),
+        }
+    }
+    let State::Ended(Status::Succeeded, values) = &progress.states[map] else {
+        panic!("the map did not end: {:?}", progress.states[map]);
+    };
+    assert_eq!(values["y"].as_array().map(Vec::len), Some(rounds));
+    let nodes = progress.plan.nodes.len() as u64;
+    assert!(
+        progress.visits <= 8 * nodes,
+        "{} visits for {nodes} nodes: the scheduler looks at each node a few times",
+        progress.visits
     );
 }

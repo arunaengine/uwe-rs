@@ -55,6 +55,10 @@ pub(crate) enum SplitFiles {
 const BATCH: usize = 10_000;
 
 impl Behaviour for Split {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::split(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         loop {
             // The chunks of a large file go out a batch at a time.
@@ -190,6 +194,10 @@ pub(crate) struct Subscribe {
 }
 
 impl Behaviour for Subscribe {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::subscribe(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             match message {

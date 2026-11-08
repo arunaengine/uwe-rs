@@ -478,3 +478,50 @@ fn call_sites() {
     let (_, adapted) = adapter.start(&whole).unwrap();
     assert_same(&first, &adapted);
 }
+
+/// A step with an exit hook that reads its output, and an exit handler of the workflow.
+const HOOKS: &str = r#"  entrypoint: main
+  onExit: bye
+  templates:
+  - name: main
+    steps:
+    - - name: hello
+        template: say
+        arguments: {parameters: [{name: text, value: hi}]}
+        hooks:
+          exit:
+            template: say
+            arguments: {parameters: [{name: text, value: "{{steps.hello.outputs.result}}"}]}
+  - name: say
+    inputs: {parameters: [{name: text}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+  - name: bye
+    container: {image: alpine:3.20, command: [echo, bye]}
+"#;
+
+#[test]
+fn exit_hooks() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let launch = launch(root, HOOKS);
+    let mut native = load_driver(&launch, Services::default()).unwrap();
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let first = native.start().unwrap();
+    let (hello, adapted) = adapter.start(&site("main", "[0].hello", &[])).unwrap();
+    assert_same(&first, &adapted);
+    let done = outcome(root, &first[0], 1, 0, &[]);
+    let hook = native.complete(done.clone()).unwrap();
+    adapter.complete(done).unwrap();
+    let result = adapter.ending(hello).unwrap().outputs["outputs.result"].clone();
+    let given = [("steps.hello.outputs.result", result)];
+    let (_, adapted) = adapter
+        .start(&site("main", "[0].hello.onExit", &given))
+        .unwrap();
+    assert_same(&hook, &adapted);
+    let ended = outcome(root, &hook[0], 1, 0, &[]);
+    let handler = native.complete(ended.clone()).unwrap();
+    adapter.complete(ended).unwrap();
+    let (_, adapted) = adapter.start(&site("main", ".onExit", &[])).unwrap();
+    assert_same(&handler, &adapted);
+    assert!(adapted[0].name.ends_with(".onExit"), "{}", adapted[0].name);
+}

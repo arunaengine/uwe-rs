@@ -6,8 +6,10 @@
 pub mod depends;
 mod entry;
 mod graphs;
+mod recursion;
 mod sites;
 pub mod tags;
+mod texts;
 
 use std::path::Path;
 
@@ -77,6 +79,8 @@ pub fn compile(
         digest: Some(task_model::Digest::sha256(&bytes).to_string()),
     };
     let mut compiler = graphs::Compiler::new(adapter);
+    let text = String::from_utf8_lossy(&bytes);
+    compiler.reads_status = text.contains("workflow.status") || text.contains("workflow.failures");
     let (graphs, kept) = match compiler.workflow() {
         Ok(graphs) => (graphs, Vec::new()),
         Err(kept) => (vec![compiler.native()?], vec![kept]),

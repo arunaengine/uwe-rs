@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use wdl_analysis::Document as Analyzed;
+use wdl_analysis::types::Optional;
 use wdl_ast::AstToken;
 use wdl_ast::v1::{CallStatement, Decl, Expr, WorkflowStatement};
 use wdl_runtime::Value;
@@ -112,11 +113,13 @@ impl Lowerer {
     /// failed workflow leaves no graphs or kept ops of its own behind.
     pub(crate) fn workflow(&mut self, unit: &Unit, name: &str) -> Result<Graph, String> {
         let mark = (self.kept.len(), self.graphs.len(), self.done.len());
+        let held = self.fallbacks.len();
         let graph = self.statements(unit, name);
         if graph.is_err() {
             self.kept.truncate(mark.0);
             self.graphs.truncate(mark.1);
             self.done.truncate(mark.2);
+            self.fallbacks.truncate(held);
         }
         graph
     }
@@ -132,6 +135,11 @@ impl Lowerer {
                 self.prefix = outer;
                 let graph = graph.map(|mut graph| {
                     graph.name = self.graph_name(&unit.name());
+                    let renamed = self
+                        .fallbacks
+                        .iter_mut()
+                        .filter(|item| item.0 == unit.name());
+                    renamed.for_each(|item| item.0 = graph.name.clone());
                     let name = graph.name.clone();
                     self.graphs.push(graph);
                     name
@@ -155,6 +163,7 @@ impl Lowerer {
         let source = self.source(document);
         let empty = BTreeMap::new();
         let mut frame = Frame::new(&empty, origin(&source, &unit.name()));
+        let entry = name == "main";
         let mut inputs = Vec::new();
         let mut defaults = Vec::new();
         for decl in workflow
@@ -174,6 +183,10 @@ impl Lowerer {
                 let expr = bound.expr();
                 match constant(&expr).map(|value| value.coerce(&ty)) {
                     Some(Ok(Value::None)) => item.r#type = optional(r#type),
+                    Some(Ok(value)) if ty.is_optional() && !entry => {
+                        let fallback = (name.to_owned(), input.clone(), value.result_json());
+                        self.fallbacks.push(fallback);
+                    }
                     Some(Ok(value)) => item.default = Some(value.result_json()),
                     _ => {
                         item.r#type = optional(r#type.clone());
@@ -311,7 +324,10 @@ impl Lowerer {
             let name = input.name().text().to_owned();
             let found = op.inputs.iter().find(|port| port.name == name);
             let want = found.ok_or_else(|| format!("call {alias}: no input {name}"))?;
-            let want = want.takes();
+            let want = match want.default {
+                Some(_) => optional(want.r#type.clone()),
+                None => want.r#type.clone(),
+            };
             let held = match input.expr() {
                 Some(expr) => wire(frame, &expr, &want, &format!("{alias}.{name}"))?,
                 None => match frame.get(&name) {
@@ -320,6 +336,10 @@ impl Lowerer {
                 },
             };
             frame.edges.push(edge(held.end, end(Some(&alias), &name)));
+            // A given value, also `None`, takes the place of a default.
+            if let Some(port) = op.inputs.iter_mut().find(|port| port.name == name) {
+                port.default = None;
+            }
         }
         for after in call.after() {
             let name = after.name().text().to_owned();

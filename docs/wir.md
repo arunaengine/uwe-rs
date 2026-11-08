@@ -94,24 +94,23 @@ What keeps tasks native, by the first reason of each: an output that reads files
 - Commands that workflow code runs while the workflow is planned run while it compiles, as hooks run, so that the plan sees their output. A run starts the adapter, which runs them again as tasks before the jobs, and also those that a job runs while it is prepared, like a `conda:` function; the run checks that it plans every compiled job with its group.
 - The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a rule is a checkpoint, when a job runs a CWL document, and when uwe cannot plan the workflow, like a storage plugin that uwe lacks. Such a native op drops the plan settings, and `uwe lower` names each one.
 
-A compiled document runs only once the wir runtime runs dialect tasks, which it does not yet.
+The wir runtime runs the jobs of a document through one job adapter for the Snakefile, its profiles and config files, which `wir_runtime::snakemake::register` adds to a run. Job tasks keep their native names.
 
 ### Snakemake coverage
 
-`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled on the simulator, and compares the tasks (their descriptions, cache keys, resume fingerprints and acceptance) and the target files of both runs. The compiled run goes through the job adapter as a wir run of dialect tasks would. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
+`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs: their descriptions, cache keys, resume fingerprints and acceptance. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
 
 | Outcome | Workflows |
 | --- | --- |
 | test workflows | 890 |
 | the native run succeeds | 633 |
-| compiles fully | 565 |
-| stays one native op | 110 |
-| does not compile: planning fails, as the native run fails | 214 |
-| the compiled run ends as the native run does: both fail, or both give the same tasks | 564 |
-| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 545 |
-| both succeed with the same target files | 545 |
+| compiles fully | 616 |
+| stays one native op | 54 |
+| does not compile: planning fails, as the native run fails | 219 |
+| the compiled run ends as the native run does: both fail, or both give the same tasks | 616 |
+| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 593 |
 
-What keeps a workflow native, by the first reason: a checkpoint (50), jobs that run together in one task, as groups, pipes or services (28), workflow code that runs commands while it is planned (15), several targets (10), config values on the command line (4), a CWL job (1), and features that uwe does not run yet (2). The one compiled run that ends otherwise, `test_conda_function`, runs a command in a `conda:` function while its job is prepared, which the job adapter cannot run alone. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+What keeps a workflow native, by the first reason: a checkpoint (51), a CWL job (1), and features that uwe does not run yet (2). `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
 
 ## Detection
 

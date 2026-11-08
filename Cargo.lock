@@ -9390,6 +9390,7 @@ dependencies = [
  "storage",
  "tempfile",
  "tracing",
+ "wdl-ast",
  "wdl-runtime",
  "wir",
  "workflow-graph",

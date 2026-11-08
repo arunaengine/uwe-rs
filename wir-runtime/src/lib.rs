@@ -12,6 +12,8 @@ mod expr;
 mod flows;
 mod groovy;
 mod inputs;
+#[allow(dead_code, reason = "the stream ops of the next commits call it")]
+mod javascript;
 pub mod nextflow;
 #[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
 mod operator;
@@ -24,6 +26,8 @@ mod state;
 mod streams;
 mod task;
 mod wdl;
+#[allow(dead_code, reason = "the stream ops of the next commits call it")]
+mod wdl_closure;
 
 pub use child::{Block, Child};
 pub use driver::{Repositories, Settings, WirDriver, driver};

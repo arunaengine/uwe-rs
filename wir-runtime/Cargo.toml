@@ -26,6 +26,7 @@ snakemake-runtime.workspace = true
 storage.workspace = true
 tempfile.workspace = true
 tracing.workspace = true
+wdl-ast = "0.27.2"
 wdl-runtime.workspace = true
 wir.workspace = true
 workflow-graph.workspace = true

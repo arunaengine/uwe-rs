@@ -12,6 +12,7 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host, OutputOptions};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::split::{Splitter, positive};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
+use sha2::Digest;
 
 use crate::files::CollectFile;
 use crate::keyed::{Combine, Cross, GroupTuple, Join};
@@ -19,7 +20,7 @@ use crate::network::Network;
 use crate::operator::{
     Buffer, Closing, Collate, Each, Factory, Gather, Gathering, Invoke, Mix, Opening, Single, Sort,
 };
-use crate::process::{ProcessNode, singleton};
+use crate::process::{Binding, ProcessNode, singleton};
 use crate::route::{Concat, Merge, Route};
 use crate::split::{Split, SplitFiles, Subscribe};
 
@@ -85,8 +86,19 @@ const OPERATORS: &[&str] = &[
     "view",
 ];
 
+/// The plugin functions that check the run, which a compiled run checks at its entry.
+const RUN_CHECKS: &[&str] = &["validateParameters"];
+
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
+    /// Whether the build is for the compiler into wir: factories stay calls, and files that the
+    /// build reads, as Nextflow reads them eagerly, are kept with their digests.
+    pub defer: bool,
+    /// The files that the build for the compiler wrote, by location, which it keeps instead.
+    pub written: Vec<(String, Vec<u8>)>,
+    /// The files that the build for the compiler read, by location, with their digests.
+    pub reads: Vec<(String, String)>,
+    pub options: &'a crate::Options,
     pub base: &'a mut dyn Host,
     /// Whether tasks run their `stub:` section.
     pub stub: bool,
@@ -98,7 +110,13 @@ pub(crate) struct Builder<'a> {
 }
 
 impl Host for Builder<'_> {
+    /// Prints, or for the compiler keeps the text, which the compiled run prints when it starts.
     fn print(&mut self, text: &str) {
+        if self.defer {
+            let print = crate::export::Kind::Print(text.into());
+            self.network.add("print", &[], Box::new(Deferred(print)));
+            return;
+        }
         self.base.print(text);
     }
 
@@ -115,30 +133,71 @@ impl Host for Builder<'_> {
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
-        self.base.download(path)
+        let local = self.base.download(path)?;
+        if self.defer {
+            let bytes = std::fs::read(&local).unwrap_or_default();
+            self.keep_read(path, &bytes);
+        }
+        Ok(local)
     }
 
     fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
-        self.base.read(path)
+        if let Some(index) = self.kept_file(path) {
+            return Ok(self.written[index].1.clone());
+        }
+        let bytes = self.base.read(path)?;
+        if self.defer {
+            self.keep_read(path, &bytes);
+        }
+        Ok(bytes)
     }
 
+    /// Opens, or for the compiler reads the whole file, to keep its digest.
     fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
-        self.base.open(path)
+        match self.defer {
+            true => Ok(Box::new(std::io::Cursor::new(self.read(path)?))),
+            false => self.base.open(path),
+        }
     }
 
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        if let Some(index) = self.kept_file(path) {
+            return Ok(Some(FileMetadata {
+                directory: false,
+                size: self.written[index].1.len() as u64,
+                modified: 0,
+                mode: 0o644,
+            }));
+        }
         self.base.metadata(path)
     }
 
+    /// Writes, or for the compiler keeps the file, which the compiled run writes when it starts.
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        if self.defer {
+            self.keep_file(path, bytes.to_vec());
+            return Ok(());
+        }
         self.base.write(path, bytes)
     }
 
+    /// Copies, or for the compiler copies a file that the build wrote.
     fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        if let Some(index) = self.kept_file(source) {
+            let bytes = self.written[index].1.clone();
+            self.keep_file(target, bytes);
+            return Ok(());
+        }
+        self.refuse_change("copying files")?;
         self.base.copy_file(source, target)
     }
 
     fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        if let Some(index) = self.kept_file(path) {
+            self.written.remove(index);
+            return Ok(true);
+        }
+        self.refuse_change("deleting files")?;
         self.base.delete(path)
     }
 
@@ -184,7 +243,10 @@ impl Host for Builder<'_> {
     }
 
     fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
-        self.base.create_directories(path)
+        match self.defer {
+            true => Ok(()),
+            false => self.base.create_directories(path),
+        }
     }
 
     fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
@@ -205,7 +267,53 @@ impl Host for Builder<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
-        self.base.plugin_function(plugin, name, arguments)
+        if self.defer && RUN_CHECKS.contains(&name) {
+            let arguments: Result<_, _> = arguments.iter().map(crate::bridge::to_json).collect();
+            let arguments = arguments.map_err(thrown)?;
+            let check = crate::export::Kind::Check {
+                plugin: plugin.into(),
+                function: name.into(),
+                arguments,
+            };
+            self.network.add(name, &[], Box::new(Deferred(check)));
+            return Ok(Value::Null);
+        }
+        if !self.defer {
+            return self.base.plugin_function(plugin, name, arguments);
+        }
+        // The build for the compiler reads the files of plugin functions itself, to keep them.
+        let options = self.options;
+        let workflow = crate::workflow::metadata(options, &self.base.launch_dir());
+        let mut context = nextflow_plugins::Context {
+            host: self,
+            config: &options.config,
+            params: options.config.params(),
+            project_dir: &options.project_dir,
+            cli_params: &options.cli_params,
+            workflow,
+        };
+        nextflow_plugins::call(plugin, name, arguments, &mut context)
+    }
+
+    fn enter_workflow(&mut self, name: &str, arguments: &[Value]) {
+        let takes = arguments.iter().filter_map(channels).flatten();
+        let takes = takes.map(|channel| channel.0 as usize).collect();
+        self.network.enter(name, takes);
+    }
+
+    fn leave_workflow(&mut self, emitted: Option<&Value>) {
+        let emits = match emitted {
+            Some(Value::ChannelOut(out)) => (out.values.iter().zip(&out.names))
+                .filter_map(|(value, name)| match value {
+                    Value::Channel(channel) => {
+                        Some((name.as_deref().map(str::to_owned), channel.0 as usize))
+                    }
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        self.network.leave(emits);
     }
 
     fn plugin_method(
@@ -267,9 +375,35 @@ impl Host for Builder<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Option<Value>, Error> {
+        if let Some(text) = crate::session::printed(namespace, name, &arguments)
+            && self.defer
+        {
+            if !text.is_empty() {
+                self.print(&text);
+            }
+            return Ok(Some(Value::Null));
+        }
         if namespace == "channel" && name != "fromList" && arguments.iter().any(is_channel) {
             let message = format!("Argument of `channel.{name}` cannot be a channel object");
             return Err(thrown(message));
+        }
+        let plugin = nextflow_plugins::factory_plugin(name);
+        if self.defer && namespace == "channel" && plugin.is_some() {
+            let name = format!("{}:{name}", plugin.unwrap_or_default());
+            return Ok(Some(self.deferred_factory(&name, arguments, false)));
+        }
+        if self.defer && namespace == "channel" && matches!(name, "fromPath" | "fromFilePairs") {
+            return Ok(Some(self.deferred_factory(name, arguments, false)));
+        }
+        // The items of a list that a data source of the compiled run gives when the run starts.
+        if let ("channel", "fromList", [Value::Channel(list)]) = (namespace, name, &arguments[..])
+            && self.defer
+            && self.network.is_value(*list)
+        {
+            let output = self.network.channel(false);
+            let spread = Deferred(crate::export::Kind::Spread);
+            self.network.add(name, &[*list], Box::new(spread));
+            return Ok(Some(Value::Channel(output)));
         }
         // A factory of a plugin, like `Channel.fromSamplesheet`, gives the list of its values.
         if namespace == "channel"
@@ -384,46 +518,22 @@ impl Host for Builder<'_> {
             queue_inputs |= !self.network.is_value(channel);
             inputs.push(channel);
         }
-        // Selectors match the definition name, the alias and the fully qualified name.
-        let alias = name.rsplit(':').next().unwrap_or(name);
-        let names = [&*process.name, alias, name];
-        // Agents take no settings from the `process` scope, only from the `agent` scope.
-        let settings = match process.agent {
-            Some(_) => self.config.agent_settings(&names, &labels(process)),
-            None => self.config.process_settings(&names, &labels(process)),
-        };
-        let settings = settings.map_err(|exception| Error::Thrown {
-            exception: Rc::new(exception),
-            span: process.span,
-        })?;
         let singleton = singleton(process, queue_inputs);
+        let exec_folder = self.exec_folder.clone();
+        let call = (module, process, name);
+        let binding = binding(self.config, call, singleton, self.stub, exec_folder)?;
         let outputs: Vec<ChannelId> = process
             .outputs
             .iter()
             .map(|_| self.network.channel(singleton))
             .collect();
         let node = ProcessNode {
-            // Wave builds the `conda` packages of tasks as Conda does.
-            conda_enabled: ["conda", "wave"]
-                .iter()
-                .any(|scope| (self.config.get(&[scope, "enabled"])).is_some_and(|v| v.truth())),
-            spack_enabled: self
-                .config
-                .get(&["spack", "enabled"])
-                .is_some_and(|v| v.truth()),
-            module: module.clone(),
-            process: process.clone(),
-            name: name.into(),
+            binding,
             outputs: outputs.clone(),
-            singleton,
             one_round: !queue_inputs,
-            stub: self.stub,
-            exec_folder: self.exec_folder.clone(),
-            settings: Rc::new(settings),
             rounds: 0,
             tasks: 0,
-            max_forks: None,
-            fair: false,
+            limits: Default::default(),
             held: Default::default(),
             next_emission: 1,
             poisoned: false,
@@ -750,6 +860,70 @@ impl Builder<'_> {
             output,
             close,
             failure: None,
+            call: None,
+        };
+        self.network.add(name, &[], Box::new(factory));
+        Value::Channel(output)
+    }
+
+    /// The index of a file that the build for the compiler wrote.
+    fn kept_file(&self, path: &PathValue) -> Option<usize> {
+        let location = path.uri();
+        (self.defer).then(|| {
+            self.written
+                .iter()
+                .position(|(known, _)| *known == location)
+        })?
+    }
+
+    fn keep_file(&mut self, path: &PathValue, bytes: Vec<u8>) {
+        match self.kept_file(path) {
+            Some(index) => self.written[index].1 = bytes,
+            None => self.written.push((path.uri(), bytes)),
+        }
+    }
+
+    /// Keeps the digest of a file that the build for the compiler read.
+    fn keep_read(&mut self, path: &PathValue, bytes: &[u8]) {
+        let location = path.uri();
+        if !self.reads.iter().any(|(known, _)| *known == location) {
+            let digest = sha2::Sha256::digest(bytes);
+            let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+            self.reads.push((location, format!("sha256:{hex}")));
+        }
+    }
+
+    /// The files that the build for the compiler wrote, as nodes that write them when the
+    /// compiled run starts.
+    pub(crate) fn write_kept(&mut self) {
+        for (path, bytes) in std::mem::take(&mut self.written) {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let write = crate::export::Kind::Write { path, text };
+            self.network.add("write", &[], Box::new(Deferred(write)));
+        }
+    }
+
+    /// Fails for the compiler, which changes no files while the workflow is built.
+    fn refuse_change(&self, what: &str) -> Result<(), Error> {
+        match self.defer {
+            true => Err(Error::Unsupported {
+                message: format!("{what} while the workflow is built, for the compiler"),
+                span: Default::default(),
+            }),
+            false => Ok(()),
+        }
+    }
+
+    /// A factory of the compiler that keeps its call, which reads its values when the run
+    /// starts: one list into a value channel when `value`, else each value.
+    fn deferred_factory(&mut self, name: &str, arguments: Vec<Value>, value: bool) -> Value {
+        let output = self.network.channel(value);
+        let factory = Factory {
+            values: Vec::new(),
+            output,
+            close: true,
+            failure: None,
+            call: Some((name.into(), arguments)),
         };
         self.network.add(name, &[], Box::new(factory));
         Value::Channel(output)
@@ -763,6 +937,7 @@ impl Builder<'_> {
             output,
             close: true,
             failure: Some(failure),
+            call: None,
         };
         self.network.add(name, &[], Box::new(factory));
         Value::Channel(output)
@@ -850,6 +1025,57 @@ impl Builder<'_> {
             .map(|path| Value::Path(Rc::new(path)))
             .collect())
     }
+}
+
+/// A node that only the compiler builds, which never runs.
+struct Deferred(crate::export::Kind);
+
+impl crate::network::Behaviour for Deferred {
+    fn run(&mut self, _: &mut crate::network::Context) -> Result<crate::network::State, Error> {
+        Err(Error::Unsupported {
+            message: "running a node of the compiler".into(),
+            span: Default::default(),
+        })
+    }
+
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Ok(self.0.clone())
+    }
+}
+
+/// The binding of a call of a process, with the config settings that its selectors choose.
+pub(crate) fn binding(
+    config: &Config,
+    (module, process, name): (&Rc<Module>, &Rc<Process>, &str),
+    singleton: bool,
+    stub: bool,
+    exec_folder: Option<Rc<std::path::Path>>,
+) -> Result<Binding, Error> {
+    // Selectors match the definition name, the alias and the fully qualified name.
+    let alias = name.rsplit(':').next().unwrap_or(name);
+    let names = [&*process.name, alias, name];
+    // Agents take no settings from the `process` scope, only from the `agent` scope.
+    let settings = match process.agent {
+        Some(_) => config.agent_settings(&names, &labels(process)),
+        None => config.process_settings(&names, &labels(process)),
+    };
+    let settings = settings.map_err(|exception| Error::Thrown {
+        exception: Rc::new(exception),
+        span: process.span,
+    })?;
+    let enabled = |scope: &str| (config.get(&[scope, "enabled"])).is_some_and(|v| v.truth());
+    Ok(Binding {
+        // Wave builds the `conda` packages of tasks as Conda does.
+        conda_enabled: enabled("conda") || enabled("wave"),
+        spack_enabled: enabled("spack"),
+        module: module.clone(),
+        process: process.clone(),
+        name: name.into(),
+        singleton,
+        stub,
+        exec_folder,
+        settings: Rc::new(settings),
+    })
 }
 
 /// The labels of a process, from its `label` directives, which must be plain strings.

@@ -229,7 +229,7 @@ fn execute_with(
     let converted;
     let (target, language, arguments) = match arguments.lowered {
         true => {
-            let (path, inputs) = crate::lower::document(&target, language, arguments)?;
+            let (path, inputs) = crate::lower::document(&target, language, arguments, &setup)?;
             // A WDL input file and parameters become one file for the entry graph; Snakemake
             // config values are in the document.
             let params = match inputs {

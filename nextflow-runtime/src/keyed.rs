@@ -94,6 +94,10 @@ pub(crate) struct GroupTuple {
 }
 
 impl Behaviour for GroupTuple {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::group_tuple(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
@@ -208,6 +212,10 @@ pub(crate) struct Join {
 }
 
 impl Behaviour for Join {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Ok(crate::describe::join(self))
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         for side in 0..2 {
             while !self.done[side] {
@@ -354,6 +362,10 @@ pub(crate) struct Combine {
 }
 
 impl Behaviour for Combine {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::combine(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         for side in 0..context.input_count() {
             while !self.done[side] {
@@ -407,6 +419,10 @@ pub(crate) struct Cross {
 }
 
 impl Behaviour for Cross {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::cross(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         for side in 0..2 {
             while !self.done[side] {

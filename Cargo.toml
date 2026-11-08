@@ -5,6 +5,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "argo-compiler",
     "argo-parser",
     "argo-runtime",
     "aws-batch-executor",
@@ -36,6 +37,7 @@ members = [
     "run-page",
     "run-telemetry",
     "slurm-executor",
+    "snakemake-compiler",
     "snakemake-parser",
     "snakemake-runtime",
     "snowflake-executor",
@@ -61,6 +63,7 @@ publish = false
 
 [workspace.dependencies]
 # Workspace crates
+argo-compiler = { path = "argo-compiler" }
 argo-parser = { path = "argo-parser" }
 argo-runtime = { path = "argo-runtime" }
 aws-batch-executor = { path = "aws-batch-executor" }
@@ -92,6 +95,7 @@ run-database = { path = "run-database" }
 run-page = { path = "run-page" }
 run-telemetry = { path = "run-telemetry" }
 slurm-executor = { path = "slurm-executor" }
+snakemake-compiler = { path = "snakemake-compiler" }
 snakemake-parser = { path = "snakemake-parser" }
 snakemake-runtime = { path = "snakemake-runtime" }
 snowflake-executor = { path = "snowflake-executor" }

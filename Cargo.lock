@@ -114,6 +114,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "argo-compiler"
+version = "0.1.0"
+dependencies = [
+ "argo-parser",
+ "argo-runtime",
+ "regex",
+ "serde_json",
+ "task-model",
+ "task-runner",
+ "tempfile",
+ "wir",
+ "wir-runtime",
+ "workflow-graph",
+]
+
+[[package]]
 name = "argo-parser"
 version = "0.1.0"
 dependencies = [
@@ -130,9 +146,12 @@ dependencies = [
  "input-schema",
  "jiff",
  "regex",
+ "run-database",
  "serde",
  "serde_json",
  "tar",
+ "task-model",
+ "task-runner",
  "tempfile",
  "workflow-graph",
  "zip",
@@ -1521,6 +1540,7 @@ dependencies = [
  "cwl-parser",
  "cwl-runtime",
  "serde_json",
+ "sha1",
  "tempfile",
  "wir",
  "wir-runtime",
@@ -7688,6 +7708,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "snakemake-compiler"
+version = "0.1.0"
+dependencies = [
+ "run-database",
+ "serde_json",
+ "sha2 0.11.0",
+ "snakemake-runtime",
+ "task-runner",
+ "tempfile",
+ "wir",
+ "workflow-graph",
+]
+
+[[package]]
 name = "snakemake-parser"
 version = "0.1.0"
 dependencies = [
@@ -7713,6 +7747,7 @@ dependencies = [
  "jsonschema",
  "md-5",
  "python-evaluator",
+ "run-database",
  "rustix 1.1.5",
  "serde_json",
  "sha1",
@@ -7720,6 +7755,7 @@ dependencies = [
  "snakemake-parser",
  "storage",
  "task-model",
+ "task-runner",
  "tempfile",
  "tracing",
  "workflow-graph",
@@ -8783,6 +8819,7 @@ dependencies = [
 name = "uwe"
 version = "0.1.0"
 dependencies = [
+ "argo-compiler",
  "argo-runtime",
  "aws-batch-executor",
  "azure-batch-executor",
@@ -8826,6 +8863,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "slurm-executor",
+ "snakemake-compiler",
  "snakemake-runtime",
  "snowflake-executor",
  "storage",

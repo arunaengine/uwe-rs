@@ -27,6 +27,7 @@ pub struct Context<'a> {
     pub files: &'a Path,
     /// Where `view` prints.
     pub printer: &'a crate::driver::Printer,
+    pub simulated: bool,
 }
 
 /// Runs a node of an op that the engine runs at once; whether it was such an op.
@@ -86,9 +87,13 @@ pub fn begin(
         Kind::Expr(spec) => {
             let output = node.op.outputs[0].clone();
             let value = match spec.language {
-                ExprLanguage::Js | ExprLanguage::Javascript => {
-                    crate::expr::evaluate(&spec, bound, &output, defs, context.javascript)
-                }
+                ExprLanguage::Js | ExprLanguage::Javascript => crate::expr::evaluate(
+                    &spec,
+                    bound,
+                    &output,
+                    defs,
+                    (context.javascript, context.simulated),
+                ),
                 ExprLanguage::Groovy | ExprLanguage::Python => language_expr(&spec, bound, context),
                 ExprLanguage::Wdl => {
                     crate::wdl_expr::evaluate(context.document, &node.op, &spec, bound)

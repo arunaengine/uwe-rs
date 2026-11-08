@@ -111,6 +111,7 @@ pub fn steps_with(
         scopes: &scopes,
         files: Path::new("/nonexistent"),
         printer,
+        simulated: false,
     };
     let (mut emitted, mut bound) = (Vec::new(), None);
     loop {

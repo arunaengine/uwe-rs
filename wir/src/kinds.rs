@@ -9,7 +9,9 @@ use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
 use crate::flow::Flow;
-use crate::op::{Argument, Branch, CaptureRule, Kind, Map, Native, Op, Process, Scatter, Task};
+use crate::op::{
+    Argument, Branch, CaptureRule, Content, FileName, Kind, Map, Native, Op, Process, Scatter, Task,
+};
 use crate::reserved::Pick;
 use crate::types::{ArrayType, Type, TypeDef, resolve};
 
@@ -82,14 +84,51 @@ impl<'d> Checker<'d> {
         if task.command.is_empty() {
             self.report(at, Problem::Empty("command".into()));
         }
-        let streams = [&task.stdout, &task.stderr];
-        let named: Vec<&String> = streams.into_iter().flatten().collect();
-        for name in named.into_iter().filter(|name| !inside(name)) {
-            self.report(at, Problem::Outside(name.clone()));
+        let mut used = Vec::new();
+        for name in [&task.stdout, &task.stderr].into_iter().flatten() {
+            match name {
+                FileName::Text(text) if !inside(text) => {
+                    self.report(at, Problem::Outside(text.clone()));
+                }
+                FileName::Text(_) => {}
+                FileName::Input { input } => used.push(input),
+            }
+        }
+        for capture in &task.captures {
+            if let CaptureRule::Patterns(input) = &capture.from {
+                used.push(input);
+            }
+        }
+        let given = task.environment.values().chain(&task.stdin);
+        for content in given {
+            if let Content::Input { input } = content {
+                used.push(input);
+            }
+        }
+        for staged in &task.files {
+            match (&staged.value, &staged.path) {
+                (Content::Input { input }, _) => used.push(input),
+                (Content::Text(_), None) => {
+                    self.report(at, Problem::Empty("the path of staged text".into()));
+                }
+                (Content::Text(_), Some(_)) => {}
+            }
+            match &staged.path {
+                Some(FileName::Text(text)) if !inside(text) => {
+                    self.report(at, Problem::Outside(text.clone()));
+                }
+                Some(FileName::Input { input }) => used.push(input),
+                _ => {}
+            }
+        }
+        self.inputs(at, op, used);
+        let folders = [&task.workdir, &task.staging].into_iter().flatten();
+        for folder in folders.filter(|folder| !absolute(folder)) {
+            self.report(at, Problem::Absolute(folder.clone()));
         }
         let used = task.command.iter().filter_map(|argument| match argument {
-            Argument::Input { input } => Some(input),
-            Argument::Text(_) => None,
+            Argument::Input { input, .. } => Some(input),
+            Argument::Text(_) | Argument::Raw { .. } => None,
         });
         self.inputs(at, op, used);
         for capture in &task.captures {
@@ -106,7 +145,8 @@ impl<'d> Checker<'d> {
                 self.report(at, Problem::Capture(output.name.clone()));
                 continue;
             };
-            if !capture_fits(&capture.from, &output.r#type, self.defs) {
+            let loads = !capture.load_contents || holds_file(&output.r#type, self.defs);
+            if !loads || !capture_fits(&capture.from, &output.r#type, self.defs) {
                 self.report(at, Problem::CaptureType(output.name.clone()));
             }
             if let Some(arity) = &capture.arity {
@@ -505,9 +545,24 @@ pub(super) fn array_of(items: Type) -> Type {
     })
 }
 
+/// Whether a path is absolute and has no `..`.
+fn absolute(path: &str) -> bool {
+    path.starts_with('/') && !path.split('/').any(|part| part == "..")
+}
+
 /// Whether a path is relative and stays inside the working folder.
 fn inside(path: &str) -> bool {
     !path.is_empty() && !path.starts_with('/') && !path.split('/').any(|part| part == "..")
+}
+
+/// Whether a type is a File, also inside an optional or an array, so contents can be loaded.
+fn holds_file(r#type: &Type, defs: &[TypeDef]) -> bool {
+    match resolve(r#type, defs) {
+        Some(Type::File(_)) => true,
+        Some(Type::Optional(inner)) => holds_file(inner, defs),
+        Some(Type::Array(array)) => holds_file(&array.items, defs),
+        _ => false,
+    }
 }
 
 /// Glob captures fill File, Directory or arrays of them; stdout and stderr fill a File.
@@ -518,8 +573,8 @@ fn capture_fits(rule: &CaptureRule, r#type: &Type, defs: &[TypeDef]) -> bool {
     match (rule, r#type) {
         (_, Type::Optional(inner)) => capture_fits(rule, inner, defs),
         (_, Type::File(_) | Type::Dynamic) => true,
-        (CaptureRule::Glob(_), Type::Directory) => true,
-        (CaptureRule::Glob(_), Type::Array(array)) => {
+        (CaptureRule::Glob(_) | CaptureRule::Patterns(_), Type::Directory) => true,
+        (CaptureRule::Glob(_) | CaptureRule::Patterns(_), Type::Array(array)) => {
             matches!(
                 resolve(&array.items, defs),
                 Some(Type::File(_) | Type::Directory)

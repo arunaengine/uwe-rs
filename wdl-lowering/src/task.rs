@@ -13,7 +13,7 @@ use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 use crate::library::{Inputs, Line, check, ordered, ports};
 use crate::outputs::{Output, Read, listing, outputs};
 use crate::types::{has_files, port};
-use crate::{DEFAULT_IMAGE, Lowerer, READS, blank, called, constant, edge, end, origin, text};
+use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text};
 
 /// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
 /// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
@@ -98,7 +98,7 @@ impl Lowerer {
             }
             None => "command <<<\n>>>".into(),
         };
-        let mut task = runtime(definition)?;
+        let mut task = runtime(definition, &self.image)?;
         let outputs = outputs(unit, definition)?;
         let name = self.graph_name(&format!("task.{}", unit.name()));
         let held = fallbacks
@@ -135,9 +135,7 @@ impl Lowerer {
         let placed: Vec<&Output> = (outputs.iter())
             .filter(|item| matches!(item.read, Read::Placed))
             .collect();
-        task.task.command.push(Argument::Input {
-            input: COMMAND.into(),
-        });
+        task.task.command.push(Argument::input(COMMAND));
         let mut ports = vec![port(COMMAND, Type::String)];
         if placed.is_empty() {
             task.task.command.push(Argument::Text(String::new()));
@@ -152,9 +150,7 @@ impl Lowerer {
             graph
                 .ops
                 .push(expr(PATHS, listing(&placed), lines, Type::String));
-            task.task.command.push(Argument::Input {
-                input: PATHS.into(),
-            });
+            task.task.command.push(Argument::input(PATHS));
             ports.push(port(PATHS, Type::String));
             graph
                 .edges
@@ -164,9 +160,7 @@ impl Lowerer {
             .edges
             .push(edge(end(Some(COMMAND), "value"), end(Some(&path), COMMAND)));
         for input in inputs.iter().filter(|input| has_files(&input.r#type)) {
-            task.task.command.push(Argument::Input {
-                input: input.name.clone(),
-            });
+            task.task.command.push(Argument::input(&input.name));
             ports.push(port(&input.name, input.r#type.clone()));
         }
         let mut captured = Vec::new();
@@ -179,6 +173,7 @@ impl Lowerer {
             task.task.captures.push(Capture {
                 output: output.name.clone(),
                 from: CaptureRule::Glob(pattern),
+                load_contents: false,
                 optional: false,
                 arity: None,
             });
@@ -247,7 +242,7 @@ struct Built {
 
 /// The task op of the `runtime` or `requirements` section, whose values must not depend on
 /// inputs, without its inputs and captures.
-fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
+fn runtime(definition: &TaskDefinition, image: &str) -> Result<Built, String> {
     let items: Vec<(String, Expr)> = match (definition.requirements(), definition.runtime()) {
         (Some(section), _) => (section.items())
             .map(|item| (item.name().text().to_owned(), item.expr()))
@@ -257,7 +252,7 @@ fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
             .collect(),
         (None, None) => Vec::new(),
     };
-    let mut image = DEFAULT_IMAGE.to_owned();
+    let mut image = image.to_owned();
     let mut resources = wir::Resources::default();
     let mut codes = Vec::new();
     for (key, expr) in items {
@@ -316,11 +311,7 @@ fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
         success_codes,
         // WDL tasks may use the network, as uwe's WDL driver lets them.
         network: true,
-        stdout: None,
-        stderr: None,
-        builder: None,
-        accept: None,
-        retry: None,
+        ..wir::Task::default()
     };
     let resources = (resources != wir::Resources::default()).then_some(resources);
     Ok(Built { task, resources })

@@ -9,6 +9,7 @@ use std::rc::Rc;
 use nextflow_evaluator::interpreter::{Error, Interpreter};
 use nextflow_evaluator::lowered::{Module, Process};
 use nextflow_evaluator::value::{PathValue, Value};
+use nextflow_plugins::observer;
 use serde_json::Value as Json;
 use workflow_graph::{Delivery, Driver, DriverError, Launch, Outcome, Task};
 
@@ -109,12 +110,38 @@ impl Adapter {
     /// Takes the outcome of an attempt that [`Adapter::prepare`] or a retry asked for.
     pub fn complete(&mut self, outcome: Outcome) -> Result<Completed, DriverError> {
         let id = TaskId(outcome.id.0);
-        let Ended { outcome, .. } = self.driver.ended(outcome)?;
+        let Ended { outcome, heard, .. } = self.driver.ended(outcome)?;
         let (binding, flight) = self
             .flights
             .remove(&id)
             .ok_or_else(|| DriverError::new(format!("the task {} was not asked for", id.0)))?;
-        self.finish(binding, flight, outcome)
+        let completed = self.finish(binding, flight, outcome)?;
+        let accepted = matches!(completed, Completed::Accepted { .. });
+        self.driver.reports_ended(heard, accepted);
+        Ok(completed)
+    }
+
+    /// Starts the observers and reports of the run, which the config turns on, with the
+    /// process graph of the pipeline that the compiler recorded.
+    pub fn start(&mut self, processes: Vec<observer::Process>) {
+        self.driver.reports_started(&self.options, processes);
+    }
+
+    /// Tells the reports that an attempt started.
+    pub fn started(&mut self, task: workflow_graph::TaskId, attempt: u32) {
+        Driver::started(&mut self.driver, task, attempt);
+    }
+
+    /// Tells the reports that a file was delivered, like one that `publishDir` publishes.
+    pub fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        self.driver.delivered(delivery)
+    }
+
+    /// Ends the run, with the error that failed it: writes the reports and gives the files to
+    /// deliver, as the native driver does at the end of a run.
+    pub fn end(&mut self, error: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        self.driver.reports_finished(error)?;
+        Ok(self.driver.deliveries())
     }
 
     fn binding(&mut self, call: &Call) -> Result<Rc<Binding>, DriverError> {

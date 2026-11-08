@@ -225,3 +225,16 @@ fn refuses_engine_effects() {
         "op main/same: only task and native ops have effects"
     );
 }
+
+#[test]
+fn refuses_block_sizes() {
+    let message = "op main/block: a native block sets the resources, time and retry of its \
+                   tasks itself";
+    for attributes in [
+        json!({"resources": {"cpus": 2}}),
+        json!({"time": 60}),
+        json!({"retry": 1}),
+    ] {
+        assert_eq!(native(attributes).unwrap_err(), message);
+    }
+}

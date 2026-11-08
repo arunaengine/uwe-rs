@@ -30,14 +30,13 @@ const COMPILED: &[&str] = &[
     "viralrecon",
 ];
 
-/// How many pipelines compile into documents that the wir verifier accepts, run natively, run
-/// compiled, give equal tasks (descriptions and resume fingerprints) in both orders, and
-/// publish the same files.
+/// How many pipelines verify, run natively and compiled, give equal tasks in both orders, and
+/// publish the same files; compiled runs simulate no delivery, and demo's `mix` order differs.
 const RECORDED: Counts = Counts {
     verified: 2,
     native: 2,
-    compiled: 0,
-    tasks: 0,
+    compiled: 2,
+    tasks: 1,
     published: 0,
 };
 
@@ -65,16 +64,13 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     let output = folder.join(format!("{name}-out"));
     let mut command = common::isolated(Command::new("timeout"));
     command.args(["600", common::BINARY, "run", "-executor", "simulator"]);
-    command.arg(project).args(["-profile", "test", "-stub-run"]);
-    command.args(["-max-pending", "8", "-order", order]);
-    command
-        .arg("-graph")
-        .arg(&graph)
-        .arg("--outdir")
-        .arg(&output);
+    command.arg(project).args(["-profile", "test", "--outdir"]);
+    command.arg(&output);
     if compiled {
         command.arg("-lowered");
     }
+    command.args(["-stub-run", "-max-pending", "8", "-order", order]);
+    command.arg("-graph").arg(&graph);
     let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
         .current_dir(project)
         .output()
@@ -87,11 +83,16 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     let graph: ExecutionGraph = serde_json::from_str(&text).map_err(|error| error.to_string())?;
     let mut tasks: Vec<(String, Json)> = (graph.nodes.iter())
         .map(|node| {
-            let task = Task {
+            let mut task = Task {
                 id: TaskId(0),
                 after: Vec::new(),
                 ..node.task.clone()
             };
+            // The files of each run lie in folders of their own; the staged names stay.
+            for input in &mut task.inputs {
+                let name = input.source.rsplit('/').next().unwrap_or_default();
+                input.source = name.to_owned();
+            }
             let fingerprint = run_database::fingerprint(&task, &[]);
             (fingerprint, serde_json::to_value(&task).unwrap_or_default())
         })
@@ -101,7 +102,8 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     Ok(Ran { tasks, files })
 }
 
-/// The files below a folder, by their paths in it, sorted.
+/// The files below a folder, by their paths in it with digits as `0`, so that the times in
+/// names like `params_<time>.json` match, sorted.
 fn published(folder: &Path) -> Vec<String> {
     let mut files = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
@@ -111,10 +113,14 @@ fn published(folder: &Path) -> Vec<String> {
             match path.is_dir() {
                 true => pending.push(path),
                 false => files.push(
-                    path.strip_prefix(folder)
+                    (path
+                        .strip_prefix(folder)
                         .unwrap_or(&path)
                         .display()
-                        .to_string(),
+                        .to_string())
+                    .chars()
+                    .map(|letter| if letter.is_ascii_digit() { '0' } else { letter })
+                    .collect(),
                 ),
             }
         }

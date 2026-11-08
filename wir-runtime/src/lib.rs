@@ -24,6 +24,7 @@ mod javascript;
 mod looping;
 mod mixing;
 pub mod nextflow;
+mod nextflow_scope;
 #[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
 mod operator;
 mod pairing;

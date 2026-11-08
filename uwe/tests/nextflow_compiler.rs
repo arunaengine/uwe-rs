@@ -64,12 +64,11 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     let output = folder.join(format!("{name}-out"));
     let mut command = common::isolated(Command::new("timeout"));
     command.args(["600", common::BINARY, "run", "-executor", "simulator"]);
-    match compiled {
-        true => command.arg(checked(project, folder, &output, &name)?),
-        false => (command.arg(project))
-            .args(["-profile", "test", "--outdir"])
-            .arg(&output),
-    };
+    command.arg(project).args(["-profile", "test", "--outdir"]);
+    command.arg(&output);
+    if compiled {
+        command.arg("-lowered");
+    }
     command.args(["-stub-run", "-max-pending", "8", "-order", order]);
     command.arg("-graph").arg(&graph);
     let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
@@ -101,50 +100,6 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     tasks.sort_by(|a, b| a.0.cmp(&b.0));
     let files = published(&output);
     Ok(Ran { tasks, files })
-}
-
-/// The document that `uwe lower` gives for a run with `-profile test`, without the check of
-/// the params at its start, which the wir runtime does not run yet, and with absolute sources.
-fn checked(project: &Path, folder: &Path, output: &Path, name: &str) -> Result<PathBuf, String> {
-    let mut command = common::isolated(Command::new("timeout"));
-    command.args(["600", common::BINARY, "lower"]).arg(project);
-    command.args(["-profile", "test", "--outdir"]).arg(output);
-    let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
-        .current_dir(project)
-        .output()
-        .expect("runs uwe");
-    let mut document: Json = serde_json::from_slice(&ran.stdout).map_err(|e| e.to_string())?;
-    for graph in document["graphs"].as_array_mut().into_iter().flatten() {
-        let Some(ops) = graph.get_mut("ops").and_then(Json::as_array_mut) else {
-            continue;
-        };
-        let check = |op: &Json| {
-            op["kind"]["expr"]["code"]
-                .as_str()
-                .is_some_and(|code| code.starts_with("validateParameters"))
-        };
-        let dropped: Vec<Json> = ops
-            .iter()
-            .filter(|op| check(op))
-            .map(|op| op["path"].clone())
-            .collect();
-        ops.retain(|op| !check(op));
-        for op in ops.iter_mut() {
-            if let Some(after) = op.get_mut("after").and_then(Json::as_array_mut) {
-                after.retain(|dependency| !dropped.contains(&dependency["op"]));
-            }
-        }
-    }
-    for source in document["sources"].as_array_mut().into_iter().flatten() {
-        let location = source["location"].as_str().unwrap_or_default().to_owned();
-        if !location.contains(':') && !location.starts_with('/') && !location.starts_with("plugin/")
-        {
-            source["location"] = Json::from(project.join(location).to_string_lossy().into_owned());
-        }
-    }
-    let path = folder.join(format!("{name}.wir.json"));
-    std::fs::write(&path, document.to_string()).map_err(|error| error.to_string())?;
-    Ok(path)
 }
 
 /// The files below a folder, by their paths in it with digits as `0`, so that the times in

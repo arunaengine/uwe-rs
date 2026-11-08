@@ -87,9 +87,19 @@ fn keeps_workflow_calls() {
         .iter()
         .find(|node| matches!(node.kind, Kind::Process { .. }));
     let process = process.expect("the process call");
-    let Kind::Process { call, outputs, .. } = &process.kind else {
+    let Kind::Process {
+        call,
+        outputs,
+        start,
+        end,
+        ..
+    } = &process.kind
+    else {
         unreachable!()
     };
+    let definition = &PIPELINE[*start as usize..*end as usize];
+    assert!(definition.starts_with("process GREET {"), "{definition}");
+    assert_eq!(network.params, json!({}), "the params of the run");
     assert_eq!(
         (call.name.as_str(), call.process.as_str()),
         ("SUB:GREET", "GREET")

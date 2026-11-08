@@ -380,7 +380,10 @@ impl Network {
     pub(crate) fn export(
         &mut self,
         emits: Vec<(String, usize)>,
+        params: &Value,
     ) -> Result<crate::export::Network, String> {
+        let params =
+            crate::bridge::to_json(params).map_err(|error| format!("the params: {error}"))?;
         self.wire_topics();
         let written: HashSet<ChannelId> = (self.nodes.iter())
             .flat_map(|node| node.outputs.iter().copied())
@@ -435,6 +438,7 @@ impl Network {
             nodes,
             scopes,
             emits,
+            params,
         })
     }
 

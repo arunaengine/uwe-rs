@@ -33,6 +33,23 @@ fn compiled_with(
     snakefile: &str,
     launch: Launch,
 ) -> (tempfile::TempDir, snakemake_compiler::Compiled, Json) {
+    let (folder, compiled) = compile_in(snakefile, launch);
+    let compiled = compiled.expect("compiles");
+    if let Err(problems) = wir::verify(&compiled.document) {
+        panic!("{problems:?}");
+    }
+    let json = serde_json::to_value(&compiled.document).expect("serializes");
+    (folder, compiled, json)
+}
+
+/// Compiles `snakefile` in a folder of its own, which is also the working folder.
+fn compile_in(
+    snakefile: &str,
+    launch: Launch,
+) -> (
+    tempfile::TempDir,
+    Result<snakemake_compiler::Compiled, String>,
+) {
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(folder.path().join("Snakefile"), snakefile).expect("writes the Snakefile");
     let launch = Launch {
@@ -46,13 +63,8 @@ fn compiled_with(
         ..RunSettings::default()
     };
     let base = folder.path().to_owned();
-    let compiled =
-        snakemake_compiler::compile(&launch, Settings::default(), run, &base).expect("compiles");
-    if let Err(problems) = wir::verify(&compiled.document) {
-        panic!("{problems:?}");
-    }
-    let json = serde_json::to_value(&compiled.document).expect("serializes");
-    (folder, compiled, json)
+    let compiled = snakemake_compiler::compile(&launch, Settings::default(), run, &base);
+    (folder, compiled)
 }
 
 fn op<'a>(document: &'a Json, path: &str) -> &'a Json {
@@ -220,8 +232,10 @@ fn compiles_plan_settings() {
     assert_eq!(launch.target, folder.path().join("Snakefile"));
 }
 
+/// A workflow that stays one native op cannot hold config values of the command line, several
+/// targets or the options that pick jobs, so it does not compile with them.
 #[test]
-fn keeps_dropped_settings() {
+fn refuses_dropped_settings() {
     let snakefile =
         format!("checkpoint c:\n    output: \"c.txt\"\n    shell: \"touch {{output}}\"\n\n{TWO}");
     let launch = Launch {
@@ -229,18 +243,9 @@ fn keeps_dropped_settings() {
         params: vec![("x".into(), "1".into())],
         ..Launch::default()
     };
-    let (_folder, compiled, document) = compiled_with(&snakefile, launch);
-    let reasons: Vec<&str> = compiled
-        .kept
-        .iter()
-        .map(|kept| kept.reason.as_str())
-        .collect();
-    assert_eq!(
-        reasons,
-        [
-            "rule c is a checkpoint",
-            "it drops config values of the command line"
-        ]
-    );
-    assert_eq!(document["sources"].as_array().map(Vec::len), Some(1));
+    let (_folder, compiled) = compile_in(&snakefile, launch);
+    let error = compiled.err().unwrap_or_default();
+    let expected = "the workflow stays one native Snakemake op (rule c is a checkpoint), which \
+        cannot hold config values of the command line";
+    assert_eq!(error, expected);
 }

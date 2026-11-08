@@ -918,6 +918,7 @@ pub fn build(
         task: Task {
             output_manifest: None,
             run_as: None,
+            site: None,
             id,
             name: label,
             step: rule.name.clone(),

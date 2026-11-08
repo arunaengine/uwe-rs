@@ -60,7 +60,7 @@
             { "name": "variants", "type": { "file": { "format": "http://edamontology.org/format_3016" } } },
             { "name": "report", "type": { "optional": { "file": {} } } }
           ],
-          "attributes": { "cache": "default", "time": 7200 },
+          "attributes": { "cache": "default" },
           "origin": { "source": "variants" }
         }
       ],

@@ -4,37 +4,83 @@
 
 use std::collections::BTreeSet;
 
+use super::callbacks::Arity;
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
+use crate::flow::Flow;
 use crate::op::{
-    Argument, Branch, CaptureRule, Content, FileName, Kind, Map, Native, Op, Scatter, Task,
+    Argument, Branch, CaptureRule, Content, FileName, Kind, Map, Native, Op, Process, Scatter, Task,
 };
 use crate::reserved::Pick;
 use crate::types::{ArrayType, Type, TypeDef, resolve};
 
 impl<'d> Checker<'d> {
     pub(super) fn kind(&mut self, at: &str, op: &Op) {
+        self.declared_effects(at, op);
         match &op.kind {
             Kind::Task(task) => self.task(at, op, task),
             Kind::Call(call) => self.call(at, op, &call.graph),
             Kind::Native(native) => self.native(at, op, native),
             Kind::Map(map) => self.map(at, op, map),
-            Kind::Expr(_) => {
+            Kind::Expr(expr) => {
                 if op.outputs.len() != 1 {
                     self.report(at, Problem::Single("an expr".into()));
                 }
+                self.captures(at, op, &expr.captures);
+                if let Some(scope) = &expr.scope {
+                    self.scope(at, scope, expr.language);
+                }
             }
+            Kind::Emit(emit) => self.emit(at, op, emit),
+            Kind::Transform(transform) => self.transform(at, op, transform),
+            Kind::Filter(filter) => self.filter(at, op, &filter.body),
+            Kind::FlatMap(flat) => self.flat_map(at, op, flat),
             Kind::Branch(branch) => self.branch(at, op, branch),
+            Kind::Process(process) => self.process(at, op, process),
             Kind::Select(select) => self.select(at, op, select.rule),
+            Kind::Merge(merge) if merge.takes_rounds(streams(op)) => {
+                self.merge_rounds(at, op, merge)
+            }
             Kind::Merge(_) => self.merge(at, op),
+            Kind::Mix(_) => self.streams_of(at, op, "a mix"),
+            Kind::Concat(_) => self.streams_of(at, op, "a concat"),
+            Kind::Zip(zip) => self.zip(at, op, zip.remainder),
+            Kind::Group(group) | Kind::GroupTuple(group) => self.group(at, op, group),
+            Kind::Join(join) => self.join(at, op, join),
+            Kind::Combine(combine) => self.combine(at, op, combine),
+            Kind::Cross(cross) => self.cross(at, op, cross),
+            Kind::Collect(collect) => self.collect(at, op, collect),
+            Kind::ToList(_) => self.listed(at, op),
+            Kind::Reduce(reduce) => self.reduce(at, op, reduce),
+            Kind::First(first) => self.pick(at, op, "a first", &first.predicate, &first.empty),
+            Kind::Last(last) => self.pick(at, op, "a last", &last.predicate, &last.empty),
+            Kind::Buffer(buffer) => self.buffer(at, op, buffer),
+            Kind::Window(window) => self.window(at, op, window),
+            Kind::Take(_) => self.selects(at, op, "a take", None),
+            Kind::Unique(unique) => self.selects(at, op, "a unique", unique.key.as_ref()),
+            Kind::Distinct(distinct) => self.selects(at, op, "a distinct", distinct.key.as_ref()),
+            Kind::Until(until) => self.until(at, op, &until.predicate),
+            Kind::IfEmpty(fallback) => self.if_empty(at, op, fallback),
+            Kind::Split(split) => self.split(at, op, split),
+            Kind::CollectFile(collect) => self.collect_file(at, op, collect),
+            Kind::View(view) => self.view(at, op, view),
+            Kind::Observe(observe) => self.observe(at, op, observe),
+            Kind::Route(route) => self.route(at, op, route),
+            Kind::MultiMap(multi) => self.multi_map(at, op, multi),
+            Kind::Flatten(flatten) if streams(op) => self.flatten_stream(at, op, flatten.depth),
             Kind::Flatten(_) => self.flatten(at, op),
-            Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
+            Kind::Dynamic(dynamic) => self.region(at, op, dynamic),
+            Kind::Loop(looped) => self.looping(at, op, looped),
             _ => {}
         }
     }
 
     fn task(&mut self, at: &str, op: &Op, task: &Task) {
+        if let Some(builder) = &task.builder {
+            self.builder(at, op, task, builder);
+            return;
+        }
         if task.command.is_empty() {
             self.report(at, Problem::Empty("command".into()));
         }
@@ -103,6 +149,42 @@ impl<'d> Checker<'d> {
             if !loads || !capture_fits(&capture.from, &output.r#type, self.defs) {
                 self.report(at, Problem::CaptureType(output.name.clone()));
             }
+            if let Some(arity) = &capture.arity {
+                self.arity(at, output, arity);
+            }
+        }
+        let retry = task
+            .retry
+            .iter()
+            .flat_map(|retry| [&retry.retry_if, &retry.directives]);
+        for closure in [&task.accept].into_iter().chain(retry).flatten() {
+            self.closure(at, op, closure, Arity::Unary);
+        }
+    }
+
+    /// The bounds are ordered, and an output that is not an array holds one path at most.
+    fn arity(&mut self, at: &str, output: &Port, arity: &crate::op::Arity) {
+        if arity.max.is_some_and(|max| max < arity.min) {
+            let why = format!(
+                "output {}: a least count no more than the most",
+                output.name
+            );
+            self.report(at, Problem::Shape("a capture".into(), why));
+        }
+        let mut r#type = &output.r#type;
+        while let Some(Type::Optional(inner)) = resolve(r#type, self.defs) {
+            r#type = inner;
+        }
+        let single = !matches!(
+            resolve(r#type, self.defs),
+            Some(Type::Array(_) | Type::Dynamic)
+        );
+        if single && (arity.min > 1 || arity.max.is_some_and(|max| max > 1)) {
+            let why = format!(
+                "output {}: an array to hold more than one path",
+                output.name
+            );
+            self.report(at, Problem::Shape("a capture".into(), why));
         }
     }
 
@@ -203,6 +285,74 @@ impl<'d> Checker<'d> {
         }
     }
 
+    /// The body has the op's ports: the item type of a stream input, an element of an
+    /// `each` input, and each output the stream or value of what the body gives.
+    fn process(&mut self, at: &str, op: &Op, process: &Process) {
+        self.inputs(at, op, process.each.iter());
+        let mut seen = BTreeSet::new();
+        for name in process.each.iter().filter(|name| !seen.insert(*name)) {
+            self.report(at, Problem::Duplicate(format!("each input {name}")));
+        }
+        if process.parallelism == Some(0) {
+            self.report(
+                at,
+                Problem::Shape("a process".into(), "a positive parallelism".into()),
+            );
+        }
+        let streaming =
+            !process.each.is_empty() || op.inputs.iter().any(|port| !port.flow.is_value());
+        let Some(body) = self.graph(&process.body) else {
+            return;
+        };
+        let names: BTreeSet<&str> = (op
+            .inputs
+            .iter()
+            .chain(&op.outputs)
+            .chain(&body.inputs)
+            .chain(&body.outputs))
+        .map(|port| port.name.as_str())
+        .collect();
+        for name in names {
+            let mine = op.inputs.iter().find(|port| port.name == name);
+            let theirs = body.inputs.iter().find(|port| port.name == name);
+            let (made, side) = match (mine, theirs) {
+                (Some(mine), Some(theirs)) => {
+                    let each = process.each.iter().any(|item| item == name);
+                    let item = match each {
+                        true if !mine.flow.is_value() => None,
+                        true => match resolve(&mine.r#type, self.defs) {
+                            Some(Type::Array(array)) => Some((*array.items).clone()),
+                            _ => Some(mine.r#type.clone()),
+                        },
+                        false => Some(mine.r#type.clone()),
+                    };
+                    let fits = item.is_some_and(|item| theirs.takes().accepts(&item, self.defs));
+                    (fits && theirs.flow.is_value(), "input")
+                }
+                (None, None) => {
+                    let mine = op.outputs.iter().find(|port| port.name == name);
+                    let theirs = body.outputs.iter().find(|port| port.name == name);
+                    let fits = match (mine, theirs) {
+                        (Some(mine), Some(theirs)) => {
+                            let flow = if streaming { Flow::Stream } else { Flow::Value };
+                            mine.flow == flow
+                                && theirs.flow.is_value()
+                                && mine.r#type.accepts(&theirs.r#type, self.defs)
+                        }
+                        _ => false,
+                    };
+                    (fits, "output")
+                }
+                _ => (false, "input"),
+            };
+            if !made {
+                let port = format!("{side} {name}");
+                let graph = process.body.clone();
+                self.report(at, Problem::CallPort { port, graph });
+            }
+        }
+    }
+
     /// The condition is a bool input, the body has the other inputs, and each output takes
     /// the body's output or null.
     fn branch(&mut self, at: &str, op: &Op, branch: &Branch) {
@@ -282,11 +432,8 @@ impl<'d> Checker<'d> {
         self.gives(at, output, &made);
     }
 
-    /// The output is an array whose items accept every input; streams stay reserved.
+    /// The output is an array whose items accept every input.
     fn merge(&mut self, at: &str, op: &Op) {
-        if streams(op) {
-            return;
-        }
         if op.inputs.is_empty() {
             self.report(at, Problem::Empty("the inputs of a merge".into()));
         }
@@ -299,11 +446,8 @@ impl<'d> Checker<'d> {
         }
     }
 
-    /// The output is an array of the items of the input's array items; streams stay reserved.
+    /// The output is an array of the items of the input's array items.
     fn flatten(&mut self, at: &str, op: &Op) {
-        if streams(op) {
-            return;
-        }
         let Some((items, output)) = self.unary(at, op, "a flatten") else {
             return;
         };
@@ -333,7 +477,7 @@ impl<'d> Checker<'d> {
     }
 
     /// The output port must accept what the op makes.
-    fn gives(&mut self, at: &str, output: &Port, made: &Type) {
+    pub(super) fn gives(&mut self, at: &str, output: &Port, made: &Type) {
         if !output.r#type.accepts(made, self.defs) {
             let port = format!("output {}", output.name);
             let (found, want) = (show(made), show(&output.r#type));
@@ -389,12 +533,12 @@ impl<'d> Checker<'d> {
     }
 }
 
-/// Whether an op has a stream port, which keeps `merge` and `flatten` reserved.
-fn streams(op: &Op) -> bool {
+/// Whether an op has a stream port, which selects the stream form of `merge` and `flatten`.
+pub(super) fn streams(op: &Op) -> bool {
     (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value())
 }
 
-fn array_of(items: Type) -> Type {
+pub(super) fn array_of(items: Type) -> Type {
     Type::Array(ArrayType {
         items: Box::new(items),
         nonempty: false,

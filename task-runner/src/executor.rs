@@ -115,6 +115,13 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
             }
             Err(error) => return Running::ended(Err(error)),
         };
+        let site = match self.sites.choose(&task) {
+            Ok(site) => site.map(str::to_owned),
+            Err(message) => {
+                let task = task.name.clone();
+                return Running::ended(Err(ExecuteError::Executor { task, message }));
+            }
+        };
         let mut runner = self.runner.clone();
         let pending = Arc::new(Pending {
             task: task.clone(),
@@ -130,7 +137,6 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
         let reuse = self.reuse;
         let together = self.together;
         let right_sizing = self.right_sizing;
-        let site = self.sites.site(&task).map(str::to_owned);
         let measured = self.measured.clone();
         let completing = Completing {
             pending: pending.clone(),

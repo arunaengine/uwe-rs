@@ -144,6 +144,9 @@ pub struct Isolation {
     pub secret_store: bool,
     /// Reads the Docker and Podman registry credentials of the service user.
     pub registry_files: bool,
+    /// The hosts of private networks that inputs may come from, like a data server of the
+    /// lab; every other web, bucket or FTP address must be on a public network.
+    pub allowed_hosts: Vec<String>,
 }
 
 fn failed(path: &Path, error: std::io::Error) -> Failure {

@@ -2,21 +2,29 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod closure;
+mod control;
+mod dialect;
 mod document;
 mod flow;
 mod op;
 pub mod reserved;
+mod splits;
 mod types;
 mod value;
 mod verify;
 
+pub use closure::{Binding, Body, Closure, ExprLanguage, Scope, ValueRules};
+pub use control::{Control, ResultKind, StatusGroup, StatusTest};
+pub use dialect::{PortMap, RuleTask, TaskBuilder, TaskRef};
 pub use document::{
     Document, Edge, Endpoint, Graph, Language, ParseError, Port, SCHEMA, Source, VERSION, parse,
 };
-pub use flow::Flow;
+pub use flow::{Flow, Subscription};
 pub use op::{
-    Argument, Attributes, Branch, Cache, Call, Capture, CaptureRule, Content, Dependency, Effect,
-    Expr, FileName, Kind, Map, Native, Op, Origin, Resources, Scatter, Staged, Status, Task,
+    Argument, Arity, Attributes, Branch, Cache, Call, Capture, CaptureRule, Content, Dependency,
+    Effect, Emission, Expr, FailureRule, FileName, Kind, Map, Native, Op, Origin, Process,
+    Resources, Retry, Scatter, Staged, Status, Task, TaskPatch,
 };
 pub use types::{
     ArrayType, Field, FileType, KeyType, MapType, SecondaryFile, Type, TypeDef, resolve,

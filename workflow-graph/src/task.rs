@@ -101,6 +101,10 @@ pub struct Task {
     /// uwe user.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as: Option<RunAs>,
+    /// The site that must run the task, like the `place` of a wir op; a run without that
+    /// site refuses the task. `None` lets the run choose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<String>,
 }
 
 /// The user and group that a container runs as, like `runAsUser` and `runAsGroup` of a
@@ -163,6 +167,9 @@ pub enum Reuse {
     Denied,
     /// The task neither reads nor writes cached results, like Nextflow's `cache false`.
     Disabled,
+    /// Only a result of the run that is resumed answers the task, never one of another run,
+    /// like a wir op with `cache: resume`.
+    Lineage,
 }
 
 impl Reuse {

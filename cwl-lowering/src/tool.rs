@@ -79,9 +79,7 @@ pub fn lower(
         stderr: None,
         workdir: Some(runtime::OUTDIR.into()),
         staging: Some(runtime::STAGING.into()),
-        files: Vec::new(),
-        environment: Default::default(),
-        stdin: None,
+        ..Task::default()
     };
     let attributes = requirements::apply(scope, &mut task)?;
     let named = crate::types::named(scope);
@@ -380,6 +378,8 @@ pub fn lower(
                 output: name.clone(),
                 from: rule,
                 load_contents: loads(output),
+                optional: false,
+                arity: None,
             });
             outputs.push(port(r#type));
         }

@@ -77,7 +77,7 @@ pub(crate) async fn prepare(
         sources,
         step: task.step.clone(),
         per_container: 1,
-        reuse: task.reuse == Reuse::Allowed,
+        reuse: matches!(task.reuse, Reuse::Allowed | Reuse::Lineage),
         snapshots: inputs.snapshots.clone(),
     })
 }
@@ -148,6 +148,8 @@ pub fn request(
     };
     let scope = if task.reuse == Reuse::Disabled {
         ReuseScope::None
+    } else if task.reuse == Reuse::Lineage {
+        ReuseScope::Lineage
     } else if spec.image_pinned() && task.network == Network::Denied {
         ReuseScope::Shared
     } else {
@@ -288,6 +290,14 @@ mod tests {
         assert_eq!(online.scope, ReuseScope::Lineage);
         assert_eq!(explicitly_online.scope, ReuseScope::Lineage);
         assert_eq!(offline.scope, ReuseScope::Shared);
+        let resumed = Task {
+            command: vec!["true".into()],
+            network: Network::Denied,
+            reuse: Reuse::Lineage,
+            ..Task::default()
+        };
+        let resumed = request(&resumed, Some("image@sha256:ab".into()), Vec::new(), None);
+        assert_eq!(resumed.scope, ReuseScope::Lineage, "never shared");
     }
 
     #[test]

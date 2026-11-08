@@ -5,7 +5,7 @@
 
 use cwl_parser::model::{Expression, Part, Process, short_name};
 use serde_json::json;
-use wir::{ArrayType, Call, Expr, FileType, Flow, Graph, Kind, Port, Type};
+use wir::{ArrayType, Call, Expr, ExprLanguage, FileType, Flow, Graph, Kind, Port, Type};
 
 use crate::group::{Group, SELF};
 use crate::tool::Evaluated;
@@ -45,9 +45,11 @@ impl Lowerer {
             };
             let at = format!("{path}.{name}.outputEval");
             let kind = Kind::Expr(Expr {
-                language: "js".into(),
+                language: ExprLanguage::Js,
                 code: unwrapped(&item.code, &item.output.r#type),
                 library: library.to_vec(),
+                scope: None,
+                captures: Default::default(),
             });
             let mut expr = blank(&at, kind, task.origin.clone());
             expr.inputs = (inputs.iter())

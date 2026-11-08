@@ -28,6 +28,12 @@ pub enum Request {
     Delivered(Delivery),
     Finish,
     Failed(String),
+    /// The planned jobs of the workflow; with `true` a run of single jobs starts too.
+    Jobs(bool),
+    /// The first task of a planned job, with input files as wir values by their selectors.
+    Prepare(Box<(crate::driver::JobKey, Vec<(String, serde_json::Value)>)>),
+    /// The outcome of the task of a single job.
+    Take(Box<Outcome>),
 }
 
 /// The answer to a request: the tasks that can run now.
@@ -115,6 +121,7 @@ impl CommandRunner {
         Task {
             output_manifest: None,
             run_as: None,
+            site: None,
             id,
             name: format!("command {shown}"),
             step: "command".into(),
@@ -195,7 +202,13 @@ impl CommandRunner {
                     *self.channel.failed.borrow_mut() = Some(error);
                     return Err(ended());
                 }
-                Request::Inputs | Request::Outputs | Request::Start | Request::Finish => {
+                Request::Inputs
+                | Request::Outputs
+                | Request::Start
+                | Request::Finish
+                | Request::Jobs(_)
+                | Request::Prepare(_)
+                | Request::Take(_) => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",
                     ));

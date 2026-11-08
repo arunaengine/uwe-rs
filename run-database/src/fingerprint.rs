@@ -99,6 +99,7 @@ pub fn fingerprint(task: &Task, states: &[Option<InputState>]) -> String {
         name: String::new(),
         resources: Resources::default(),
         after: Vec::new(),
+        site: None,
         ..task.clone()
     };
     let mut hasher = Sha256::new();
@@ -146,6 +147,7 @@ mod tests {
         second.after = vec![TaskId(3)];
         second.name = "P (7)".into();
         second.resources.cpus = Some(4.0);
+        second.site = Some("hamburg".into());
         let states = input_states(&first);
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].map(|state| state.size), Some(3));

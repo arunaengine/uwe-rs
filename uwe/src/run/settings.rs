@@ -31,6 +31,8 @@ pub struct Settings {
     /// Resolves a remembered branch of a repository `target` again, like `-latest`.
     pub latest: bool,
     pub language: Option<Language>,
+    /// Runs the workflow through its lowered wir document, like `-lowered`.
+    pub lowered: bool,
     /// Typed input object. Use absolute paths for local file values.
     pub inputs: Option<Value>,
     /// Typed parameters override matching keys in `inputs`.
@@ -110,6 +112,7 @@ impl Default for Settings {
             revision: None,
             latest: false,
             language: None,
+            lowered: false,
             inputs: None,
             params: Map::new(),
             profiles: Vec::new(),
@@ -233,6 +236,7 @@ impl Settings {
         arguments.task_seconds =
             (self.default_time).map(|time| time.as_secs() + u64::from(time.subsec_nanos() > 0));
         arguments.no_print = !self.print;
+        arguments.lowered = self.lowered;
         arguments.output_dir = self.output_dir;
         arguments.database = self.database;
         arguments.store = self.store;
@@ -341,6 +345,7 @@ impl Settings {
             if !isolation.registry_files {
                 setup.registry = setup.registry.without_files();
             }
+            setup.storage = setup.storage.public_only(&isolation.allowed_hosts);
             setup.isolation = Some(isolation);
             self.setup = Some(setup);
         }
@@ -391,6 +396,27 @@ mod tests {
         assert!(arguments.secrets.variable("PATH").is_some());
         let registry = format!("{:?}", setup.registry);
         assert!(registry.contains("paths: []"), "{registry}");
+    }
+
+    #[test]
+    fn confines_input_downloads() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        std::fs::write(&config, "").unwrap();
+        let mut settings = Settings::new(root.path().join("main.nf"));
+        settings.config_file = Some(config);
+        settings.isolation = Some(crate::hosted::Isolation::default());
+        let (_, setup, _) = settings.prepare().unwrap();
+        let storage = setup
+            .expect("an isolated run gets its setup")
+            .storage
+            .blocking();
+        let downloads = root.path().join("downloads");
+        for address in ["http://127.0.0.1:9/a.txt", "http://169.254.169.254/latest"] {
+            let refused = storage.fetch(address, &downloads).unwrap_err().to_string();
+            assert!(refused.contains("private or local network"), "{refused}");
+        }
+        assert!(storage.fetch("drs://127.0.0.1/a", &downloads).is_err());
     }
 
     #[test]

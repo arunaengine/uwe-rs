@@ -27,7 +27,7 @@ pub struct Arguments {
     pub stub: bool,
     /// `-keep-going`: after a task failed, run every task that does not depend on it.
     pub keep_going: bool,
-    /// `-lowered`: run a CWL document through its lowered wir document.
+    /// `-lowered`: run a CWL or WDL document through its lowered wir document.
     pub lowered: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,
@@ -194,6 +194,7 @@ impl Arguments {
         crate::run::Settings {
             target: self.target.clone().unwrap_or_default(),
             language: self.language,
+            lowered: self.lowered,
             profiles: self.profiles.clone().unwrap_or_default(),
             configs: self.configs.clone(),
             config_file: self.config_file.clone(),
@@ -850,7 +851,7 @@ pub fn help(command: &str) -> Result<String, String> {
         "origin" => " <file>",
         "digest" => " <path>",
         "record" => " -- <command ...>",
-        "lower" => " <workflow.cwl>",
+        "lower" => " <workflow.cwl|workflow.wdl|Snakefile>",
         _ if WORKFLOW.contains(&command) => " <workflow> [targets] [--param value]",
         "lock-environment" => " <environment.yml>",
         _ => " <run>",

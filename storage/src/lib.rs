@@ -14,6 +14,7 @@ pub mod drs;
 mod error;
 mod folder;
 mod ftp;
+mod guard;
 pub mod irods;
 mod irods_protocol;
 mod journal;
@@ -139,6 +140,8 @@ struct Provider {
     source: Source,
     prefixes: Vec<String>,
     connection: Mutex<Option<Arc<Connection>>>,
+    /// The rules of a confined run for a built-in provider, which reaches only public hosts.
+    guard: Option<guard::Guard>,
 }
 
 impl Provider {
@@ -147,6 +150,7 @@ impl Provider {
             source,
             prefixes,
             connection: Mutex::new(None),
+            guard: None,
         }
     }
 
@@ -159,7 +163,7 @@ impl Provider {
         if let Some(connection) = &*connection {
             return Ok(connection.clone());
         }
-        let made = Arc::new(Connection::open(&self.source)?);
+        let made = Arc::new(Connection::open(&self.source, self.guard.as_ref())?);
         *connection = Some(made.clone());
         Ok(made)
     }
@@ -284,6 +288,39 @@ impl Storage {
             inner: Arc::new(Inner {
                 configured: Arc::new(configured),
                 built_in: self.inner.built_in.clone(),
+                store: self.inner.store.clone(),
+                local_store: self.inner.local_store.clone(),
+                journal: journal::Journal::default(),
+                downloading: Mutex::default(),
+                observed: Mutex::default(),
+                held: Mutex::default(),
+            }),
+        }
+    }
+
+    /// The same storage for a confined run: the built-in providers reach only hosts on
+    /// public networks or in `allowed_hosts`, and those of web, bucket and FTP addresses stay.
+    pub fn public_only(&self, allowed_hosts: &[String]) -> Storage {
+        let guard = guard::Guard::new(allowed_hosts);
+        let prefixes =
+            |prefixes: &[&str]| prefixes.iter().map(|&prefix| prefix.to_owned()).collect();
+        let guarded = |source, given: &[&str]| Provider {
+            guard: Some(guard.clone()),
+            ..Provider::new(source, prefixes(given))
+        };
+        let built_in = vec![
+            guarded(Source::Web, &["http://", "https://"]),
+            guarded(Source::PublicBuckets, &["s3://", "gs://"]),
+            Provider::new(Source::Files, prefixes(&["file://"])),
+            guarded(Source::Ftp, &["ftp://"]),
+        ];
+        let configured = (self.inner.configured.iter())
+            .map(|provider| Provider::new(provider.source.clone(), provider.prefixes.clone()))
+            .collect();
+        Storage {
+            inner: Arc::new(Inner {
+                configured: Arc::new(configured),
+                built_in: Arc::new(built_in),
                 store: self.inner.store.clone(),
                 local_store: self.inner.local_store.clone(),
                 journal: journal::Journal::default(),

@@ -4,7 +4,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use cwl_parser::model::{ScatterMethod, Step, short_name};
-use wir::{ArrayType, Branch, Edge, Expr, Flow, Graph, Kind, Map, Op, Port, Scatter, Type};
+use wir::{
+    ArrayType, Branch, Edge, Expr, ExprLanguage, Flow, Graph, Kind, Map, Op, Port, Scatter, Type,
+};
 
 use crate::tool::Computed;
 use crate::workflow::end;
@@ -112,9 +114,11 @@ impl Lowerer {
         let mut condition = blank(
             &test,
             Kind::Expr(Expr {
-                language: "js".into(),
+                language: ExprLanguage::Js,
                 code: when.text.clone(),
                 library,
+                scope: None,
+                captures: Default::default(),
             }),
             op.origin.clone(),
         );
@@ -144,6 +148,7 @@ impl Lowerer {
         group.edges.push(Edge {
             from: end(Some(&test), "out"),
             to: end(Some(path), CONDITION),
+            read: Default::default(),
         });
         group.ops.extend([condition, branch]);
         Ok(group)
@@ -213,12 +218,14 @@ impl Lowerer {
                 edges.push(Edge {
                     from: end(None, &port.name),
                     to: end(Some(&op), &input),
+                    read: Default::default(),
                 });
             }
         }
         edges.extend(main.outputs.iter().map(|port| Edge {
             from: end(Some(&main.path), &port.name),
             to: end(None, &port.name),
+            read: Default::default(),
         }));
         let outputs = main.outputs.clone();
         self.graphs.push(Graph {
@@ -263,9 +270,11 @@ fn values(step: &Step, op: &Op, path: &str, library: &[String]) -> Result<Group,
         }
         let at = format!("{path}.{name}");
         let kind = Kind::Expr(Expr {
-            language: "js".into(),
+            language: ExprLanguage::Js,
             code: code.text.clone(),
             library: library.to_vec(),
+            scope: None,
+            captures: Default::default(),
         });
         let mut expr = blank(&at, kind, op.origin.clone());
         expr.inputs = (step.inputs.iter())
@@ -290,6 +299,7 @@ fn feeds(group: &Group, inner: &Group) -> Vec<Edge> {
             edges.push(Edge {
                 from: end(Some(expr), "out"),
                 to: end(Some(&op), &input),
+                read: Default::default(),
             });
         }
     }
@@ -318,9 +328,11 @@ pub(crate) fn computed(mut task: Op, values: &[Computed], library: &[String]) ->
     for value in values {
         let at = format!("{}.{}", task.path, value.port);
         let kind = Kind::Expr(Expr {
-            language: "js".into(),
+            language: ExprLanguage::Js,
             code: value.code.clone(),
             library: library.to_vec(),
+            scope: None,
+            captures: Default::default(),
         });
         let mut expr = blank(&at, kind, task.origin.clone());
         expr.inputs = task.inputs.clone();
@@ -338,6 +350,7 @@ pub(crate) fn computed(mut task: Op, values: &[Computed], library: &[String]) ->
         group.edges.push(Edge {
             from: end(Some(&at), "out"),
             to: end(Some(&task.path), &value.port),
+            read: Default::default(),
         });
         if let Some(name) = this {
             group.selves.push((at, name.clone()));

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Document, Kind, Language as Dialect, Native, Status};
+use wir::{Document, Effect, ExprLanguage, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
     Launch, Note, Outcome, Reuse, Task, TaskId,
@@ -225,7 +225,8 @@ impl WirDriver {
                 self.last += 1;
                 let node = self.progress.node(at);
                 let names = (node.path.as_str(), node.step.as_str());
-                let task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
+                let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
+                task.site = node.op.attributes.place.clone();
                 self.tasks.insert(task.id, (at, task.clone(), bound));
                 Ok(vec![task])
             }
@@ -251,14 +252,22 @@ impl WirDriver {
             Kind::Expr(spec) => {
                 let node = self.progress.node(at);
                 let path = node.path.clone();
-                if spec.language != "js" {
-                    let message = format!("op {path}: the language {} is reserved", spec.language);
-                    return Err(DriverError::unsupported(message));
-                }
                 let output = node.op.outputs[0].clone();
                 let settings = (&self.settings.cwl.javascript, self.launch.simulated);
                 let defs = &self.document.types;
-                match crate::expr::evaluate(&spec, &bound, &output, defs, settings) {
+                let value = match spec.language {
+                    ExprLanguage::Js | ExprLanguage::Javascript => {
+                        crate::expr::evaluate(&spec, &bound, &output, defs, settings)
+                    }
+                    ExprLanguage::Wdl => {
+                        crate::wdl_expr::evaluate(&self.document, &node.op, &spec, &bound)
+                    }
+                    _ => {
+                        let message = format!("op {path}: uwe does not run this language here yet");
+                        return Err(DriverError::unsupported(message));
+                    }
+                };
+                match value {
                     Ok(value) => {
                         let values = Map::from_iter([(output.name, value)]);
                         self.progress.end(at, Status::Succeeded, values, None);
@@ -293,10 +302,6 @@ impl WirDriver {
             }
             Kind::Map(map) => {
                 let path = self.progress.node(at).path.clone();
-                if map.parallelism.is_some() || map.min_success.is_some() {
-                    let message = format!("op {path}: parallelism and min_success are reserved");
-                    return Err(DriverError::unsupported(message));
-                }
                 match plan::items(&map, &bound) {
                     Ok(rounds) => {
                         let start = self.progress.plan.nodes.len();
@@ -346,9 +351,12 @@ impl WirDriver {
                 vec![task.clone()]
             }
             Err(why) => {
-                let status = match outcome.error {
-                    Some(_) => Status::Errored,
-                    None => Status::Failed,
+                // A task that could not run says why in the last line of its error output.
+                let said = outcome.stderr.trim().lines().last();
+                let (status, why) = match (&outcome.error, said) {
+                    (Some(_), Some(said)) => (Status::Errored, said.to_owned()),
+                    (Some(_), None) => (Status::Errored, why),
+                    (None, _) => (Status::Failed, why),
                 };
                 let message = format!("op {}: {why}", node.path);
                 self.progress.end(at, status, Map::new(), Some(message));
@@ -376,7 +384,11 @@ impl WirDriver {
             // A Snakemake config file and an Argo parameter file take the values of params.
             Dialect::Snakemake => (folder.join("config.json"), nextflow::params(&bound)),
             Dialect::Argo => (folder.join("parameters.json"), nextflow::params(&bound)),
-            Dialect::Wdl => (folder.join("inputs.json"), nextflow::params(&bound)),
+            Dialect::Wdl => {
+                let ports = &self.progress.node(at).op.inputs;
+                let values = wdl::pairs(bound.clone(), ports, &self.document.types);
+                (folder.join("inputs.json"), nextflow::params(&values))
+            }
             _ => (
                 folder.join("job.json"),
                 cwl::to_cwl(Json::Object(bound.clone())),
@@ -452,12 +464,23 @@ impl WirDriver {
     fn adopt(&mut self, index: usize, mut tasks: Vec<Task>) -> Vec<Task> {
         let (at, child) = &mut self.children[index];
         let node = self.progress.node(*at);
+        // A block publishes as its language does, also for the tasks it reuses.
+        let effects = &node.op.effects;
+        let lineage = node.op.attributes.cache == Some(wir::Cache::Resume)
+            || effects
+                .iter()
+                .any(|effect| !matches!(effect, Effect::Publish(_)));
         for task in &mut tasks {
             self.owners.insert(task.id, index);
             task.name = format!("{}: {}", node.path, task.name);
             // A cache rule only makes reuse stricter, never overriding the block's own veto.
-            if node.op.attributes.cache == Some(wir::Cache::Never) {
-                task.reuse = Reuse::Disabled;
+            match node.op.attributes.cache {
+                Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
+                _ if lineage && task.reuse == Reuse::Allowed => task.reuse = Reuse::Lineage,
+                _ => {}
+            }
+            if let Some(place) = &node.op.attributes.place {
+                task.site = Some(place.clone());
             }
         }
         if !child.busy() && !child.finished() {
@@ -684,7 +707,19 @@ impl Driver for WirDriver {
                 let place = cwl_parser::iri::file_path(target).unwrap_or(PathBuf::from(target));
                 places.insert(place.clone(), place);
             }
-            deliver(&mut results, &root, &mut planned, &mut places).map_err(DriverError::new)?;
+            let sources = &self.document.sources;
+            let wdl = !sources.is_empty() && sources.iter().all(|s| s.language == Dialect::Wdl);
+            match (wdl, &mut results) {
+                (true, Json::Object(outputs)) => {
+                    for (name, value) in outputs.iter_mut() {
+                        let folder = root.join(name);
+                        wdl_layout(value, (&root, &folder), &mut planned, &mut places)
+                            .map_err(DriverError::new)?;
+                    }
+                }
+                _ => deliver(&mut results, &root, &mut planned, &mut places)
+                    .map_err(DriverError::new)?,
+            }
             nested(&planned, &places).map_err(DriverError::new)?;
             self.delivering.extend(planned);
             if self.settings.print {
@@ -749,6 +784,49 @@ impl Driver for WirDriver {
     fn draining(&self) -> bool {
         (!self.progress.failures.is_empty() && !self.launch.keep_going)
             || self.children.iter().any(|(_, child)| child.draining())
+    }
+}
+
+/// Delivers the files of one output of a lowered WDL document as the WDL driver does: to
+/// `folder/`, or to `folder/<index>/` for many files. Files in `root` already stay there.
+fn wdl_layout(
+    value: &mut Json,
+    (root, folder): (&Path, &Path),
+    deliveries: &mut Vec<Delivery>,
+    places: &mut BTreeMap<PathBuf, PathBuf>,
+) -> Result<(), String> {
+    let mut count = 0;
+    each_file(value, &mut |_| count += 1);
+    let mut index = 0;
+    let mut result = Ok(());
+    each_file(value, &mut |file| {
+        let location = file
+            .get("location")
+            .and_then(Json::as_str)
+            .unwrap_or_default();
+        let local = cwl_parser::iri::file_path(location).unwrap_or(PathBuf::from(location));
+        let place = match count {
+            _ if local.starts_with(root) => root.to_owned(),
+            1 => folder.to_owned(),
+            _ => folder.join(index.to_string()),
+        };
+        index += 1;
+        if result.is_ok() {
+            result = deliver(file, &place, deliveries, places);
+        }
+    });
+    result
+}
+
+/// Calls `visit` with each File and Directory object of a value, in order.
+fn each_file(value: &mut Json, visit: &mut impl FnMut(&mut Json)) {
+    match value {
+        Json::Array(items) => items.iter_mut().for_each(|item| each_file(item, visit)),
+        Json::Object(object) => match object.get("class").and_then(Json::as_str) {
+            Some("File" | "Directory") => visit(value),
+            _ => (object.values_mut()).for_each(|item| each_file(item, visit)),
+        },
+        _ => {}
     }
 }
 

@@ -7,6 +7,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::exception::Exception;
+use crate::lines::Lines;
 use crate::value::{Key, Map, MapKind, Value};
 
 /// How to read CSV text.
@@ -33,11 +34,13 @@ pub fn records(text: &str, options: &CsvOptions, simulated: bool) -> Result<Vec<
     Ok(records.collect())
 }
 
-/// The records of a text one by one, so that a large file need not be in records all at once.
+/// The records of a text one by one, so that a large file need not be in memory all at once.
 pub struct Records {
-    text: String,
-    /// Where the next line starts.
-    position: usize,
+    lines: Lines,
+    /// Why reading stopped early, which [`Records::error`] gives.
+    error: Option<std::io::Error>,
+    /// Whether the last line is read.
+    done: bool,
     separator: char,
     quote: Option<char>,
     strip: bool,
@@ -56,9 +59,15 @@ pub fn missing_header() -> Exception {
 
 impl Records {
     pub fn new(text: String, options: &CsvOptions) -> Records {
+        Records::read(Lines::text(text), options)
+    }
+
+    /// The records of lines that are read as they are needed.
+    pub fn read(lines: Lines, options: &CsvOptions) -> Records {
         let mut records = Records {
-            text,
-            position: 0,
+            lines,
+            error: None,
+            done: false,
             separator: options.separator,
             quote: options.quote,
             strip: options.strip,
@@ -95,19 +104,30 @@ impl Records {
 
     /// Whether the whole text is read.
     pub fn is_done(&self) -> bool {
-        self.position >= self.text.len()
+        self.done
+    }
+
+    /// The error that ended the records early, once.
+    pub fn error(&mut self) -> Option<std::io::Error> {
+        self.error.take()
     }
 
     /// The fields of the next line that is not blank.
     fn line(&mut self) -> Option<Vec<String>> {
         loop {
-            let rest = &self.text[self.position..];
-            if rest.is_empty() {
-                return None;
-            }
-            let end = rest.find('\n').unwrap_or(rest.len());
-            let line = rest[..end].strip_suffix('\r').unwrap_or(&rest[..end]);
-            self.position += (end + 1).min(rest.len());
+            let text = match self.lines.next_line() {
+                Ok(Some(text)) => text,
+                Ok(None) => {
+                    self.done = true;
+                    return None;
+                }
+                Err(error) => {
+                    self.error = Some(error);
+                    return None;
+                }
+            };
+            let line = text.strip_suffix('\n').unwrap_or(&text);
+            let line = line.strip_suffix('\r').unwrap_or(line);
             if !line.trim().is_empty() {
                 return Some(fields(line, self.separator, self.quote, self.strip));
             }

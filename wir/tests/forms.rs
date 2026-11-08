@@ -431,7 +431,7 @@ fn builder_forms() {
         builder(json!({"nextflow_process": reference})),
         builder(
             json!({"snakemake_job": {"task": {"source": "s", "entry": "Snakefile", "call": "bwa_map"},
-            "wildcards": {"sample": "A"}}}),
+            "wildcards": {"sample": "A"}, "targets": ["Snakefile", "b.txt"], "forceall": true}}),
         ),
         builder(json!({"argo_task": {"source": "s", "entry": "main", "call": "steps.align"}})),
         builder(json!({"wdl_task": {"source": "s", "entry": "main", "call": "align"}})),

@@ -677,6 +677,7 @@
     },
     "empty": { "type": "object", "additionalProperties": false },
     "texts": { "type": "array", "items": { "type": "string" } },
+    "wildcards": { "type": "object", "additionalProperties": { "type": "string" } },
     "null_rule": { "enum": ["drop", "keep"] },
     "literal": {
       "type": "object",
@@ -925,7 +926,26 @@
               "required": ["task"],
               "properties": {
                 "task": { "$ref": "#/$defs/task_ref" },
-                "wildcards": { "type": "object", "additionalProperties": { "type": "string" } }
+                "wildcards": { "$ref": "#/$defs/wildcards" },
+                "group": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["source", "rule"],
+                    "properties": {
+                      "source": { "type": "string" },
+                      "rule": { "type": "string" },
+                      "wildcards": { "$ref": "#/$defs/wildcards" }
+                    }
+                  }
+                },
+                "targets": { "$ref": "#/$defs/texts" },
+                "config_values": { "type": "string" },
+                "until": { "$ref": "#/$defs/texts" },
+                "omit_from": { "$ref": "#/$defs/texts" },
+                "forcerun": { "$ref": "#/$defs/texts" },
+                "forceall": { "type": "boolean" }
               }
             },
             "argo_task": { "$ref": "#/$defs/task_ref" },

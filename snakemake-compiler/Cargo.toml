@@ -22,3 +22,4 @@ workflow-graph.workspace = true
 run-database.workspace = true
 task-runner.workspace = true
 tempfile.workspace = true
+wir-runtime.workspace = true

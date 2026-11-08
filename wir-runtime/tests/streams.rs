@@ -87,3 +87,88 @@ fn stream_boundaries() {
     let missing = run(passing(), json!({})).unwrap_err();
     assert_eq!(missing, "the input xs has no value");
 }
+
+/// `main` emits its value `xs` into the stream `ys`, as one item or each item.
+fn emitting(each: bool, r#type: Json) -> Json {
+    let item = if each { json!("int") } else { r#type.clone() };
+    let emit = json!({"path": "emit", "kind": {"emit": {"each": each}},
+        "inputs": [{"name": "source", "type": r#type.clone()}],
+        "outputs": [{"name": "out", "type": item, "flow": "stream"}]});
+    let output = json!({"name": "ys", "type": item, "flow": "stream"});
+    json!([{"name": "main", "inputs": [{"name": "xs", "type": r#type}], "outputs": [output], "ops": [emit],
+        "edges": [edge((None, "xs"), (Some("emit"), "source")), edge((Some("emit"), "out"), (None, "ys"))]}])
+}
+
+#[test]
+fn emit_items() {
+    let ints = json!({"array": {"items": "int"}});
+    assert_eq!(
+        run(emitting(true, ints.clone()), json!({"xs": [1, 2, 3]})).unwrap()["ys"],
+        json!([1, 2, 3])
+    );
+    assert_eq!(
+        run(emitting(true, ints.clone()), json!({"xs": []})).unwrap()["ys"],
+        json!([])
+    );
+    assert_eq!(
+        run(emitting(false, ints), json!({"xs": [1, 2]})).unwrap()["ys"],
+        json!([[1, 2]]),
+        "one item"
+    );
+    let maybe = json!({"optional": "int"});
+    assert_eq!(
+        run(emitting(false, maybe), json!({"xs": null})).unwrap()["ys"],
+        json!([null]),
+        "null is an item"
+    );
+}
+
+#[test]
+fn scheduler_yields() {
+    let folder = tempfile::tempdir().unwrap();
+    let items: Vec<u32> = (0..20_000).collect();
+    let launch = launch(
+        folder.path(),
+        emitting(true, json!({"array": {"items": "int"}})),
+        json!({"xs": items}),
+    );
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    assert!(driver.start().unwrap().is_empty());
+    let mut wakes = 0;
+    while driver.wake_at().is_some() {
+        assert!(driver.wake().unwrap().is_empty());
+        wakes += 1;
+    }
+    assert!(
+        wakes > 0,
+        "a long stream yields to the engine and wakes again"
+    );
+    driver.finish().unwrap();
+    assert_eq!(
+        driver.results().unwrap()["ys"].as_array().unwrap().len(),
+        20_000
+    );
+}
+
+#[test]
+fn capability_fence() {
+    let mut graphs = emitting(true, json!({"array": {"items": "int"}}));
+    let call = json!({"path": "later", "kind": {"call": {"graph": "inner"}}});
+    graphs[0]["ops"].as_array_mut().unwrap().push(call);
+    let take = json!({"path": "take", "kind": {"take": {"count": 1}},
+        "inputs": [stream("source")], "outputs": [stream("out")]});
+    let inner = json!({"name": "inner", "inputs": [], "ops": [emitting(true, json!({"array": {"items": "int"}}))[0]["ops"][0], take],
+        "edges": [edge((Some("emit"), "out"), (Some("take"), "source"))]});
+    graphs.as_array_mut().unwrap().push(inner);
+    let mut graphs = graphs;
+    graphs[1]["ops"][0]["inputs"][0]["default"] = json!([1]);
+    let error = run(graphs, json!({"xs": [1]})).unwrap_err();
+    assert_eq!(
+        error, "op inner/take: uwe does not run stream ports yet",
+        "nothing of the run starts"
+    );
+}

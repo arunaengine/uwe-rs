@@ -265,6 +265,8 @@ impl Progress {
             let value = match self.value(source) {
                 Supply::Bound(value) => value,
                 Supply::Pending => return Readiness::Wait,
+                // An op that takes an empty value sees no value for it.
+                Supply::Empty if takes_empty(&node.op.kind) => continue,
                 Supply::Empty | Supply::Never => return Readiness::Omit,
             };
             let value = match node.op.inputs.iter().find(|item| item.name == *port) {
@@ -451,6 +453,11 @@ impl Progress {
         }
         true
     }
+}
+
+/// Whether an op kind runs on an empty value input.
+fn takes_empty(kind: &Kind) -> bool {
+    matches!(kind, Kind::Emit(_) | Kind::IfEmpty(_))
 }
 
 /// Values in round order as nested arrays of `shape`, one level per number.

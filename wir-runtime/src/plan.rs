@@ -111,10 +111,15 @@ fn refusal(op: &Op) -> Option<&'static str> {
     unrun(op)
 }
 
+/// Whether this runner runs a stream or control op kind.
+fn supported(kind: &Kind) -> bool {
+    matches!(kind, Kind::Emit(_))
+}
+
 /// Why this runner cannot run a field of the format that it does not run yet, if it cannot.
 fn unrun(op: &Op) -> Option<&'static str> {
     let streams = (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value());
-    if streams && !matches!(op.kind, Kind::Call(_)) {
+    if streams && !matches!(op.kind, Kind::Call(_)) && !supported(&op.kind) {
         return Some("uwe does not run stream ports yet");
     }
     if op.depends.is_some() || !op.handles.is_empty() {
@@ -258,7 +263,7 @@ fn instantiate(
     let (prefix, steps) = prefixes;
     let mut index = HashMap::new();
     for op in &graph.ops {
-        if op.kind.is_reserved() {
+        if op.kind.is_reserved() && !supported(&op.kind) {
             let message = format!("op {prefix}{}: uwe does not run this op kind yet", op.path);
             return Err(DriverError::unsupported(message));
         }

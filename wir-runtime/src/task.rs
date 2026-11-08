@@ -210,6 +210,12 @@ pub fn build(
     };
     let attributes = &op.attributes;
     let wanted = attributes.resources.clone().unwrap_or_default();
+    let limits = spec.limits.as_ref().and_then(|name| bound.get(name));
+    let limit = |key: &str| {
+        limits
+            .and_then(|limits| limits.get(key))
+            .and_then(Json::as_f64)
+    };
     Ok(Task {
         id,
         name: path.to_owned(),
@@ -221,11 +227,13 @@ pub fn build(
         inputs: staging.inputs,
         outputs,
         resources: Resources {
-            cpus: wanted.cpus.map(f64::from),
-            memory_bytes: wanted.memory,
-            disk_bytes: wanted.disk,
-            time_seconds: attributes.time,
-            gpus: wanted.gpus,
+            cpus: limit("cpus").or(wanted.cpus.map(f64::from)),
+            memory_bytes: limit("memory").map(|bytes| bytes as u64).or(wanted.memory),
+            disk_bytes: limit("disk").map(|bytes| bytes as u64).or(wanted.disk),
+            time_seconds: limit("time")
+                .map(|seconds| seconds as u64)
+                .or(attributes.time),
+            gpus: limit("gpus").map(|gpus| gpus as u32).or(wanted.gpus),
             ..Resources::default()
         },
         environment,
@@ -629,7 +637,11 @@ impl Staging {
         match value {
             Json::Null => Vec::new(),
             Json::Bool(flag) => vec![flag.to_string()],
-            Json::Number(number) => vec![number.to_string()],
+            // Floats in positional form, as uwe's CWL driver writes them.
+            Json::Number(number) => match number.as_f64().filter(|_| number.is_f64()) {
+                Some(float) => vec![cwl_runtime::value::plain_float(float)],
+                None => vec![number.to_string()],
+            },
             Json::String(text) => vec![text.clone()],
             Json::Array(items) => (items.iter().enumerate())
                 .flat_map(|(index, item)| self.texts(item, &format!("{folder}/{index}")))
@@ -787,11 +799,17 @@ fn class(object: &Map<String, Json>) -> Option<&str> {
     object.get("class").and_then(Json::as_str)
 }
 
-/// The basename of a File or Directory, else the last part of its location.
+/// The basename of a File or Directory, else the last part of its location, decoded.
 fn basename(value: &Json) -> Option<String> {
-    let location = value.get("location").and_then(Json::as_str);
-    (value.get("basename").and_then(Json::as_str))
-        .or_else(|| location.and_then(|text| text.trim_end_matches('/').rsplit('/').next()))
+    if let Some(name) = value.get("basename").and_then(Json::as_str) {
+        return Some(name.to_owned());
+    }
+    let location = value.get("location").and_then(Json::as_str)?;
+    let path = cwl_parser::iri::file_path(location).map(|path| path.to_string_lossy().into_owned());
+    let path = path.unwrap_or_else(|| location.to_owned());
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
         .map(str::to_owned)
 }
 

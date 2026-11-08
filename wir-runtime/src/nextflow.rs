@@ -1,6 +1,5 @@
-//! Nextflow native blocks: the Nextflow driver of uwe as a child in a launch folder of its
-//! own, its params file, and its emits and published files as op outputs. Also the adapter of
-//! `nextflow_process` tasks, which builds and judges them with the native driver.
+//! Nextflow native blocks and `nextflow_process` tasks: the Nextflow driver of uwe as a child
+//! in a launch folder of its own, and as the adapter that builds and judges single tasks.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 

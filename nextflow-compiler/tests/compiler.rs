@@ -355,7 +355,7 @@ fn pads_join_remainders() {
 }
 
 #[test]
-fn places_topics_by_readers() {
+fn topics_follow_readers() {
     let script = "process A {\n    output:\n    val 'a', topic: names\n    script:\n    'true'\n}\n\n\
                   process B {\n    output:\n    val 'b', topic: names\n    script:\n    'true'\n}\n\n\
                   workflow SUB {\n    main:\n    A()\n    channel.topic('names').collect().view()\n}\n\n\

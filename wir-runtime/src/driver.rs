@@ -289,6 +289,19 @@ impl WirDriver {
                 }
                 Ok(Vec::new())
             }
+            Kind::Load(spec) => {
+                let node = self.progress.node(at);
+                let mut access = self.settings.cwl.access();
+                access.assume_present |= self.launch.simulated;
+                match crate::load::load(&spec, &node.op, &bound, &access) {
+                    Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
+                    Err(why) => {
+                        let message = Some(format!("op {}: {why}", node.path));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
             Kind::Select(_) | Kind::Merge(_) | Kind::Flatten(_) => {
                 let node = self.progress.node(at);
                 let path = node.path.clone();

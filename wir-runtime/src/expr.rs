@@ -13,7 +13,8 @@ use crate::cwl::{to_cwl, to_wir};
 use crate::state::widen;
 
 /// The value of the output of an expr op from its input values, or why it has none. In a
-/// simulated run, whose files are made up, code over `self` that fails gives a placeholder.
+/// simulated run, whose files are made up, code over `self` or contents that fails gives a
+/// placeholder.
 pub fn evaluate(
     spec: &wir::Expr,
     bound: &Map<String, Json>,
@@ -22,7 +23,12 @@ pub fn evaluate(
     (settings, simulated): (&JavaScriptSettings, bool),
 ) -> Result<Json, String> {
     match compute(spec, bound, output, defs, settings) {
-        Err(_) if simulated && spec.code.contains("self") => {
+        Err(_)
+            if simulated
+                && ["self", "contents"]
+                    .iter()
+                    .any(|word| spec.code.contains(word)) =>
+        {
             Ok(placeholder(&output.r#type, &output.name, defs))
         }
         result => result,

@@ -489,6 +489,9 @@ fn prints_to_sink() {
             log.info 'logged'\n  System.out.println('said')\n}\n",
         )
         .unwrap();
+        let config = target.with_file_name("nextflow.config");
+        let line = "System.out.println(\"config ${System.getenv('LAB_TOKEN')}\")\n";
+        std::fs::write(config, line).unwrap();
         request
             .settings
             .secrets
@@ -504,6 +507,7 @@ fn prints_to_sink() {
         assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
         let printed = printed.lock().unwrap();
         assert!(printed.contains("token [secret]\n"), "{printed}");
+        assert!(printed.contains("config [secret]\n"), "{printed}");
         assert!(
             printed.contains("logged\n") && printed.contains("said\n"),
             "{printed}"
@@ -519,7 +523,7 @@ fn prints_to_sink() {
     assert!(output.status.success(), "{stdout}\n{stderr}");
     for text in [&stdout, &stderr] {
         assert!(
-            !text.contains(PRINTED) && !text.contains("token "),
+            !text.contains(PRINTED) && !text.contains("token ") && !text.contains("config "),
             "{text}"
         );
     }

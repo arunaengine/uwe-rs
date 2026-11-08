@@ -5,14 +5,17 @@
 
 use std::collections::BTreeMap;
 
-use argo_parser::model::{ContinueOn, DagTask, Sequence, Template, TemplateRef, WorkflowStep};
+use argo_parser::model::{
+    Arguments, ContinueOn, DagTask, Sequence, Template, TemplateRef, WorkflowStep,
+};
 use argo_parser::{Node, decode};
 use argo_runtime::adapter::Form;
 use serde_json::{Value as Json, json};
+use wir::reserved::{Flatten, Merge};
 use wir::{Binding, Edge, Endpoint, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type};
 
 use crate::graphs::{Built, Compiler, Place, Scope, Target, kept};
-use crate::tags::{Tag, has_tag, read_tags};
+use crate::tags::{Tag, has_tag, read_tags, single_tag};
 use crate::{Kept, SOURCE, array, artifact, edge, end, op, origin, path_type, port, text};
 
 /// A step or DAG task as the compiler reads it.
@@ -28,6 +31,7 @@ pub(crate) struct Site {
     pub with_items: Vec<Node>,
     pub with_param: String,
     pub with_sequence: Option<Sequence>,
+    pub arguments: Arguments,
     pub continue_on: ContinueOn,
     /// Whether it has lifecycle hooks or an exit handler.
     pub hooks: bool,
@@ -47,6 +51,7 @@ impl Site {
             with_items: step.with_items,
             with_param: step.with_param,
             with_sequence: step.with_sequence,
+            arguments: step.arguments,
             continue_on: step.continue_on.unwrap_or_default(),
             hooks: !step.hooks.is_empty() || !step.on_exit.is_empty(),
         })
@@ -65,6 +70,7 @@ impl Site {
             with_items: task.with_items,
             with_param: task.with_param,
             with_sequence: task.with_sequence,
+            arguments: task.arguments,
             continue_on: task.continue_on.unwrap_or_default(),
             hooks: !task.hooks.is_empty() || !task.on_exit.is_empty(),
         })
@@ -147,13 +153,15 @@ impl Compiler {
         let looping = rounds.is_some();
         let piece = match target {
             Target::Leaf(template) => dialect(site, holding, &template, &needs, looping),
-            Target::Graph(..) if !site.when.is_empty() => {
-                return fail(
-                    "a when of a call of a steps or DAG template needs an Argo expression op",
-                );
-            }
-            Target::Graph(..) => {
-                return fail("calls of steps and DAG templates do not compile yet");
+            Target::Graph(called, takes, gives) => {
+                if !site.when.is_empty() {
+                    return fail(
+                        "a when of a call of a steps or DAG template needs an Argo expression op",
+                    );
+                }
+                let items = rounds.as_ref().map(|(items, _)| items.as_slice());
+                call(site, &called, &takes, &gives, &needs, scope, items)
+                    .map_err(|reason| kept(&at, &reason))?
             }
         };
         let Some((items, labels)) = rounds else {
@@ -393,4 +401,140 @@ fn task_op(
     task.inputs = inputs.into_iter().map(|(port, _)| port).collect();
     task.outputs = outputs.into_iter().map(|(port, _)| port).collect();
     task
+}
+
+/// The call of the graph of a steps or DAG template, with its node name made from the path
+/// of the holding template: `merge` gives the parts and `flatten` joins them into one list.
+fn call(
+    site: &Site,
+    called: &str,
+    takes: &[Port],
+    gives: &[Port],
+    needs: &[Need],
+    scope: &Scope,
+    items: Option<&[Json]>,
+) -> Result<Piece, String> {
+    let main = site.name.clone();
+    let parts = format!("{main}.parts");
+    let joined = format!("{main}.path");
+    let mut merge = op(parts.clone(), Kind::Merge(Merge::default()));
+    merge.inputs.push(port("path", path_type()));
+    merge.inputs.push(crate::with_default(
+        port("step", text()),
+        site.call.clone().into(),
+    ));
+    if items.is_some() {
+        merge.inputs.push(port("label", text()));
+    }
+    merge.outputs.push(port("parts", array(Type::Dynamic)));
+    let mut flatten = op(joined.clone(), Kind::Flatten(Flatten::default()));
+    flatten.inputs.push(port("parts", array(Type::Dynamic)));
+    flatten.outputs.push(port("path", path_type()));
+    let mut edges = vec![
+        edge(end(None, "node.path"), end(Some(&parts), "path")),
+        edge(end(Some(&parts), "parts"), end(Some(&joined), "parts")),
+        edge(end(Some(&joined), "path"), end(Some(&main), "node.path")),
+    ];
+    if items.is_some() {
+        edges.push(edge(end(None, "label"), end(Some(&parts), "label")));
+    }
+    let mut call = op(
+        main.clone(),
+        Kind::Call(wir::Call {
+            graph: called.to_owned(),
+        }),
+    );
+    call.origin = origin(&site.raw);
+    for take in takes {
+        let name = &take.name;
+        let mut input = take.clone();
+        input.default = None;
+        if name == "node.path" {
+            call.inputs.push(input);
+            continue;
+        }
+        let from = match name.strip_prefix("inputs.parameters.") {
+            Some(parameter) => {
+                let given = site
+                    .arguments
+                    .parameters
+                    .iter()
+                    .find(|given| given.name == parameter);
+                let Some(given) = given else {
+                    call.inputs.push(input);
+                    continue;
+                };
+                if given.value_from.is_some() {
+                    return Err(format!("argument {parameter} reads valueFrom"));
+                }
+                let Some(value) = &given.value else {
+                    call.inputs.push(input);
+                    continue;
+                };
+                if !has_tag(&value.0) {
+                    call.inputs
+                        .push(crate::with_default(input, value.0.clone().into()));
+                    continue;
+                }
+                single_tag(&value.0)
+                    .ok_or_else(|| format!("argument {parameter} needs an Argo expression op"))?
+            }
+            None => {
+                let artifact = name.strip_prefix("inputs.artifacts.").unwrap_or(name);
+                let given = site
+                    .arguments
+                    .artifacts
+                    .iter()
+                    .find(|given| given.name == artifact);
+                let Some(given) = given else {
+                    call.inputs.push(input);
+                    continue;
+                };
+                single_tag(&given.from)
+                    .ok_or_else(|| format!("argument {artifact} needs an Argo expression op"))?
+            }
+        };
+        if from == "item" {
+            let strings = items.is_some_and(|items| items.iter().all(Json::is_string));
+            if !strings {
+                return Err("an argument reads an item that is not a text".into());
+            }
+            edges.push(edge(end(None, "item"), end(Some(&main), name)));
+        } else {
+            let tags = read_tags(&json_node(&format!("{{{{{from}}}}}")))?;
+            let Some(tag) = tags.into_iter().next() else {
+                return Err(format!(
+                    "argument {name} reads {from}, which wir has no value for"
+                ));
+            };
+            let source = source(scope, &tag);
+            if source
+                .as_ref()
+                .is_some_and(|(_, r#type)| matches!(r#type, Type::Array(_)))
+            {
+                return Err(format!(
+                    "argument {name} reads a loop, which needs an Argo expression op"
+                ));
+            }
+            if source.is_some() && needs.iter().any(|need| need.port.name == tag.name()) {
+                edges.push(edge(end(None, &tag.name()), end(Some(&main), name)));
+            }
+        }
+        call.inputs.push(input);
+    }
+    call.outputs = gives.to_vec();
+    Ok(Piece {
+        ops: vec![merge, flatten, call],
+        edges,
+        main,
+        outputs: gives.to_vec(),
+    })
+}
+
+/// A YAML node of one text, to read its tags.
+fn json_node(text: &str) -> Node {
+    Node::new(
+        argo_parser::Value::String(text.to_owned()),
+        argo_parser::Position::default(),
+    )
 }

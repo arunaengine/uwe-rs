@@ -6,7 +6,7 @@
 use nextflow_runtime::export::{Callback, Kind, Node, Process};
 use serde_json::{Value as Json, json};
 
-use crate::groovy::{closure, test, written};
+use crate::groovy::{closure, nested, test, written};
 use crate::process::{Definition, process, source};
 use crate::shapes::{format, invoke, keys, route, sorting, transpose};
 use crate::{Context, Sources};
@@ -406,7 +406,46 @@ pub(crate) fn piece(
             property,
         } => invoke(path, name, arguments, *property)?,
         Kind::Spread => unary(path, "emit", json!({"each": true}), false, true),
-        Kind::Publish { name } => return Err(format!("the workflow output `{name}`")),
+        Kind::Publish {
+            name,
+            directory,
+            mode,
+            overwrite,
+            options,
+            index,
+        } => {
+            let mut options = options.clone();
+            for value in options
+                .as_object_mut()
+                .into_iter()
+                .flat_map(|map| map.values_mut())
+            {
+                *value = nested(value, sources);
+            }
+            let output = json!({"name": name, "directory": directory, "mode": mode,
+                "overwrite": overwrite, "options": options, "index": index});
+            let captures = json!({"output": {"value": output}});
+            let mut item = written("{ value -> publishOutput(output, value) }".into());
+            item["captures"] = captures.clone();
+            let mut payload = json!({"item": item});
+            if index.as_object().is_some_and(|index| !index.is_empty()) {
+                payload["close"] = written("{ -> indexOutput(output) }".into());
+                payload["close"]["captures"] = captures;
+            }
+            let op = json!({
+                "path": path,
+                "kind": {"observe": payload},
+                "inputs": [port("source", true)],
+                "outputs": [port("out", true)],
+                "effects": [{"publish": directory}],
+                "values": "groovy",
+            });
+            Piece {
+                ops: vec![op],
+                inputs: vec![end(path, "source", true)],
+                ..Piece::default()
+            }
+        }
         Kind::Check { .. } | Kind::Print(_) | Kind::Write { .. } => {
             return Err("a node of the start of the run".into());
         }

@@ -27,7 +27,7 @@ pub(crate) fn closure(callback: &Callback, sources: &mut Sources) -> Json {
 }
 
 /// A captured value, whose captured closures name their scripts by source id.
-fn nested(value: &Json, sources: &mut Sources) -> Json {
+pub(crate) fn nested(value: &Json, sources: &mut Sources) -> Json {
     let mut value = value.clone();
     if let Some(object) = value.as_object_mut()
         && object.get("class").and_then(Json::as_str) == Some("Closure")

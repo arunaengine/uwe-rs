@@ -90,7 +90,8 @@ What keeps tasks native, by the first reason of each: an output that reads files
 - A workflow call becomes a `call` op of a graph of its own, whose ports are the channels that cross the call. The mix of a topic sits in the deepest call that holds its writers and readers.
 - The params become typed inputs of the entry graph, with the types of `nextflow_schema.json` and the values of the run as defaults. The source `run` pins the params and the resolved config by their digests, and the config files of the run are sources with their digests.
 - What the build prints or writes, and checks like `validateParameters`, become ops at the start of the run, before every other op. Channel factories, like `channel.fromPath` and factories of plugins, read when the run starts. Files that the build reads, like the samplesheet of `samplesheetToList`, are read when the pipeline is compiled, as Nextflow reads them when it builds the workflow; each is a source of the document with its digest.
-- Constructs without a wir op keep the whole pipeline one `native` op, and `uwe lower` names the first: nf-boost's `scan`, the `output { }` block, agent processes, typed workflow operators, and a value channel that is never bound.
+- Each workflow output of the `output { }` block becomes an `observe` op with the `publish` effect of the output folder. Its Groovy callback publishes the files of each item with the options of the output, to the places the native driver uses, and writes the index file when the channel closes.
+- Constructs without a wir op keep the whole pipeline one `native` op, and `uwe lower` names the first: nf-boost's `scan`, agent processes, typed workflow operators, and a value channel that is never bound.
 
 uwe does not run dialect tasks yet, so a run of a compiled Nextflow document stops before its first task.
 

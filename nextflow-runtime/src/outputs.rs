@@ -40,8 +40,21 @@ pub(crate) struct Publish {
 
 impl Behaviour for Publish {
     fn export(&self) -> Result<crate::export::Kind, String> {
-        let name = self.name.to_string();
-        Ok(crate::export::Kind::Publish { name })
+        let entries = |pairs: &[(Rc<str>, Value)]| -> Result<serde_json::Value, String> {
+            let mut object = serde_json::Map::new();
+            for (name, value) in pairs {
+                object.insert(name.to_string(), crate::export::option(value)?);
+            }
+            Ok(serde_json::Value::Object(object))
+        };
+        Ok(crate::export::Kind::Publish {
+            name: self.name.to_string(),
+            directory: self.directory.to_string_lossy().into_owned(),
+            mode: serde_json::to_value(self.mode).unwrap_or_default(),
+            overwrite: self.overwrite,
+            options: entries(&self.options.options)?,
+            index: entries(&self.options.index)?,
+        })
     }
 
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {

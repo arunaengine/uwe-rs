@@ -300,3 +300,31 @@ fn types_entry_ports() {
         "the defaults fit their types"
     );
 }
+
+#[test]
+fn publishes_workflow_outputs() {
+    let outputs = "workflow {\n    main:\n    GREET(channel.of('a'))\n    publish:\n    \
+                   texts = GREET.out.text\n    logs = GREET.out.text\n}\n\noutput {\n    \
+                   texts {\n        path 'texts'\n        mode 'copy'\n        \
+                   index { path 'texts.csv' }\n    }\n    \
+                   logs {\n        path { text -> text >> 'logs/' }\n    }\n}\n";
+    let document = full(&format!("{GREET}{outputs}"));
+    let main = graph(&document, "main");
+    let texts = op(main, "output-texts.2");
+    let output = &texts["kind"]["observe"]["item"]["captures"]["output"]["value"];
+    let directory = output["directory"].as_str().unwrap();
+    assert!(directory.ends_with("/results"), "{directory}");
+    assert_eq!(texts["effects"], json!([{"publish": directory}]));
+    assert_eq!(
+        (&output["mode"], &output["options"]["path"]),
+        (&json!("copy"), &json!("texts"))
+    );
+    assert!(texts["kind"]["observe"].get("close").is_some(), "the index");
+    let logs = op(main, "output-logs.3");
+    let path = &logs["kind"]["observe"]["item"]["captures"]["output"]["value"]["options"]["path"];
+    assert_eq!(
+        (&path["class"], &path["source"]),
+        (&json!("Closure"), &json!("main"))
+    );
+    assert!(logs["kind"]["observe"].get("close").is_none(), "no index");
+}

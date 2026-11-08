@@ -1749,6 +1749,10 @@ impl Session {
     /// global resources otherwise, as Snakemake's scheduler holds a group job back. A retry
     /// keeps what its task took.
     fn admit(&mut self, anchor: usize, retry: bool, usage: &crate::scheduling::Usage) -> bool {
+        // Jobs that run one by one, by their keys, leave scheduling to the caller.
+        if !self.keys.is_empty() {
+            return true;
+        }
         let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
         if !retry && !self.gate.fits(&self.tallied(usage.clone()), &limits) {
             if !self.held.contains(&anchor) {

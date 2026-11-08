@@ -12,7 +12,7 @@ use serde_json::Value as Json;
 use snakemake_runtime::{
     Answer, JobKey, JobResult, Prepared, RunSettings, Settings, SnakemakeDriver,
 };
-use wir::{Document, Kind, TaskBuilder};
+use wir::{Document, Kind, RuleTask, TaskBuilder};
 use workflow_graph::{
     Delivery, Driver, DriverError, ExecutionGraph, Files, Language, Launch, Note, Order, Outcome,
     RunOptions, Simulator, Task, TaskId, execute_with,
@@ -78,6 +78,7 @@ rule summary:
 
 /// A dialect task op of a compiled document: its job, and where its inputs come from.
 struct JobOp {
+    rule: RuleTask,
     key: JobKey,
     /// Each input port with its native selector and the op and port that feed it.
     inputs: Vec<(String, usize, String)>,
@@ -144,6 +145,7 @@ impl Runner {
                 .map(|map| (map.native.clone(), map.port.clone()))
                 .collect();
             ops.push(JobOp {
+                rule: rule.clone(),
                 key: snakemake_compiler::job_key(rule),
                 inputs,
                 outputs,
@@ -222,7 +224,14 @@ impl Runner {
                 self.held = Some(call);
                 commands
             }
-            (Call::Start, Answer::Jobs(_)) => Vec::new(),
+            (Call::Start, Answer::Jobs(jobs)) => {
+                let planned = |op: &JobOp| snakemake_compiler::plans_job(&jobs, &op.rule);
+                if let Some(op) = self.ops.iter().find(|op| !planned(op)) {
+                    let message = format!("the run plans no job {:?} as compiled", op.key);
+                    return Err(DriverError::new(message));
+                }
+                Vec::new()
+            }
             (Call::Prepare(index), Answer::Prepared(Prepared::Run(task))) => {
                 self.owners.insert(task.id, index);
                 vec![*task]
@@ -525,6 +534,25 @@ fn compiled_runs_match() {
     let compared = compared(SNAKEFILE, &[]);
     assert_eq!(compared.shown, "same: 6 tasks");
     assert!(compared.equal);
+}
+
+/// A group job and a pipe each run as one task.
+#[test]
+fn compiled_groups_match() {
+    let snakefile = SNAKEFILE.replace(
+        "    shell: \"echo {params.word} > {output}\"",
+        "    group: \"g\"\n    shell: \"echo {params.word} > {output}\"",
+    );
+    let snakefile = snakefile.replace("    retries: 1", "    retries: 1\n    group: \"g\"");
+    let piped = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: pipe(\"a.pipe\")\n    shell: \"echo a > {output}\"\n\nrule b:\n    input: \"a.pipe\"\n    output: \"b.txt\"\n    shell: \"cat {input} > {output}\"\n";
+    for (snakefile, shown) in [
+        (snakefile.as_str(), "same: 4 tasks"),
+        (piped, "same: 2 tasks"),
+    ] {
+        let compared = compared(snakefile, &[]);
+        assert_eq!(compared.shown, shown);
+        assert!(compared.equal);
+    }
 }
 
 /// Commands of workflow code run while the run plans and while a job is prepared, for two

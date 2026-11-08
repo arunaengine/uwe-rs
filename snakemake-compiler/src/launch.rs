@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde_json::{Value as Json, json};
 use sha2::{Digest, Sha256};
-use snakemake_runtime::JobKey;
+use snakemake_runtime::{JobKey, PlannedJob};
 use wir::{Document, RuleTask};
 use workflow_graph::Launch;
 
@@ -75,6 +75,21 @@ pub fn job_key(rule: &RuleTask) -> JobKey {
         wildcards: rule.wildcards.clone(),
         outputs: Vec::new(),
     }
+}
+
+/// Whether the jobs that a run planned hold the job of `rule`, with the same group, so that
+/// the run runs the plan that the document was compiled from.
+pub fn plans_job(jobs: &[PlannedJob], rule: &RuleTask) -> bool {
+    let key = job_key(rule);
+    let group = (rule.group.iter()).map(|member| JobKey {
+        rule: member.rule.clone(),
+        wildcards: member.wildcards.clone(),
+        outputs: Vec::new(),
+    });
+    let group: Vec<JobKey> = group.collect();
+    (jobs.iter()).any(|job| {
+        job.key.rule == key.rule && job.key.wildcards == key.wildcards && job.group == group
+    })
 }
 
 /// The config values of a source: a `data:` location, or a file below `base`.

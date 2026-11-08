@@ -14,7 +14,7 @@ use snakemake_runtime::{PlannedJob, RunSettings, Settings};
 use wir::Document;
 use workflow_graph::Launch;
 
-pub use launch::{job_key, job_launch};
+pub use launch::{job_key, job_launch, plans_job};
 
 /// The id of the source of the Snakefile in a compiled document.
 pub const SOURCE: &str = "snakefile";

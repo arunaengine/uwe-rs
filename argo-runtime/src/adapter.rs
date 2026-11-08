@@ -5,17 +5,22 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use argo_parser::model::{AnyString, Parameter, Sequence, TemplateRef, WorkflowSpec};
-use argo_parser::{Entry, Node, Position, Value as Yaml};
+use argo_parser::model::{
+    AnyString, Arguments, DagTask, Sequence, TemplateRef, WorkflowSpec, WorkflowStep,
+};
+use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use serde_json::{Map, Value as Json};
 use workflow_graph::{DriverError, Files, Launch, Outcome, Task, TaskId};
 
-use crate::items::{item_variables, items};
-use crate::node::{ArtifactValue, Facts, Location};
-use crate::run::{Args, Call, Holder, Run};
-use crate::scope::json_or_text;
-use crate::tags::Variables;
+use crate::dag::task_entry;
+use crate::items::{item_variables, items, loops, substitute_item, unknown_item};
+use crate::node::{ArtifactValue, Facts, Location, Phase};
+use crate::run::{Call, Expanded, Failure, Holder, Run};
+use crate::scope::{Scope, json_or_text};
+use crate::steps::step_entry;
+use crate::tags::{Variables, replace_node};
 use crate::value::Value;
+use crate::when::should_execute;
 use crate::{Document, Library, Options, Services, artifact_value, driver_error, load_launch};
 
 /// The template calls of one Argo document, for dialect tasks of wir. Each call is a node of
@@ -25,20 +30,26 @@ pub struct Adapter {
     calls: Vec<usize>,
 }
 
-/// A call of a template: its node name, the template and the values of its inputs.
+/// A call of a template: a step or DAG task of a holding template, as the native run expands
+/// it, or the call of the entrypoint by the workflow itself.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Instance {
-    /// The node name after the workflow name: `[0].make` for a step, `.make` for a DAG task.
-    pub name: String,
+    /// The template that holds the step or task, or the entrypoint.
     pub template: String,
-    /// The WorkflowTemplate that holds the template, and whether it is cluster scoped.
+    /// The WorkflowTemplate that holds that template, and whether it is cluster scoped.
     pub reference: Option<(String, bool)>,
-    pub parameters: Vec<(String, String)>,
-    /// Files and Directories in the form of wir, by artifact name; null leaves one out.
-    pub artifacts: Vec<(String, Json)>,
+    /// The step `[1].use` or the DAG task `.use`; empty for the call of the entrypoint.
+    pub call: String,
+    /// The node name of the holding template after the workflow name, in parts.
+    pub path: Vec<String>,
+    /// The round of a loop, which names the node with its item.
+    pub index: usize,
+    /// The tags that the step reads, by name: values like `steps.make.outputs.result` or
+    /// `item`, and artifacts like `steps.make.outputs.artifacts.data` as Files or Directories.
+    pub values: Vec<(String, Json)>,
 }
 
-/// What a lowered Argo text gives once its tags are substituted.
+/// What an Argo text that was compiled into wir gives once its tags are substituted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Form {
     /// The text itself.
@@ -56,9 +67,9 @@ pub enum Form {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CallId(usize);
 
-/// How a call ended: its results, its message, and its outputs by native selector:
-/// `parameter/<name>` and `result` as texts, `exitCode` as text, `artifact/<name>` as a File
-/// or Directory.
+/// How a call ended: its results, its message, and its outputs by the tag that reads them
+/// after the prefix of the step: `outputs.parameters.<name>`, `outputs.result` and
+/// `exitCode` as texts, `outputs.artifacts.<name>` as a File or Directory.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ending {
     pub facts: Facts,
@@ -107,15 +118,7 @@ impl Adapter {
         name: &str,
         reference: Option<&(String, bool)>,
     ) -> Result<Node, String> {
-        let holder = Holder {
-            template: name.to_owned(),
-            template_ref: reference.map(|(document, cluster_scope)| TemplateRef {
-                name: document.clone(),
-                template: name.to_owned(),
-                cluster_scope: *cluster_scope,
-            }),
-            inline: None,
-        };
+        let holder = holder_of(name, reference);
         let context = Rc::clone(&self.run.root_context);
         let (_, template) = self.run.resolve(&holder, &context)?;
         Ok(match &self.run.defaults {
@@ -130,42 +133,137 @@ impl Adapter {
 
     /// Starts a call, and gives the tasks it asks for first.
     pub fn start(&mut self, instance: &Instance) -> Result<(CallId, Vec<Task>), DriverError> {
-        let name = format!("{}{}", self.run.workflow_name, instance.name);
-        if self.run.names.contains_key(&name) {
-            return Err(DriverError::new(format!("node {name} has started already")));
+        let base = format!("{}{}", self.run.workflow_name, instance.path.concat());
+        let index = match instance.call.is_empty() {
+            true => {
+                let holder = Holder::named(&instance.template);
+                let context = Rc::clone(&self.run.root_context);
+                let args = self.run.arguments.clone();
+                (self.run).execute_template(&base, &holder, &context, &args, &Call::default())
+            }
+            false => self.call_site(instance, &base),
         }
-        let holder = Holder {
-            template: instance.template.clone(),
-            template_ref: (instance.reference.clone()).map(|(name, cluster_scope)| TemplateRef {
-                name,
-                template: instance.template.clone(),
-                cluster_scope,
-            }),
-            inline: None,
-        };
-        let parameters = (instance.parameters.iter())
-            .map(|(name, value)| Parameter {
-                name: name.clone(),
-                value: Some(AnyString(value.clone())),
-                ..Parameter::default()
-            })
-            .collect();
-        let mut artifacts = Vec::new();
-        for (name, value) in &instance.artifacts {
-            artifacts.extend(artifact_of(name, value)?);
-        }
-        let args = Args {
-            parameters,
-            artifacts,
-        };
-        let context = Rc::clone(&self.run.root_context);
-        let call = Call::default();
-        let index = (self
-            .run
-            .execute_template(&name, &holder, &context, &args, &call))
         .map_err(driver_error)?;
+        if self.calls.contains(&index) {
+            return Err(DriverError::new(format!(
+                "node {base}{} has started already",
+                instance.call
+            )));
+        }
         self.calls.push(index);
         Ok((CallId(index), self.settle()?))
+    }
+
+    /// Makes the node of a step or DAG task as the native run expands it: its tags, its loop
+    /// item, its `when`, its arguments and artifacts, then the call of its template.
+    fn call_site(&mut self, instance: &Instance, base: &str) -> crate::run::Result<usize> {
+        let holder = holder_of(&instance.template, instance.reference.as_ref());
+        let root = Rc::clone(&self.run.root_context);
+        let (context, holding) = self.run.resolve(&holder, &root).map_err(Failure::error)?;
+        let dag = !instance.call.starts_with('[');
+        let step = site_node(&holding, &instance.call).ok_or_else(|| {
+            Failure::error(format!(
+                "no step {} in template {}",
+                instance.call, instance.template
+            ))
+        })?;
+        let mut scope = Scope::default();
+        for (name, value) in &instance.values {
+            if name.contains(".artifacts.") {
+                if let Some(artifact) =
+                    artifact_of(name, value).map_err(|error| Failure::error(error.message))?
+                {
+                    scope.artifacts.insert(name.clone(), artifact);
+                }
+                continue;
+            }
+            scope
+                .values
+                .extend(tag_values(name, value).map_err(Failure::error)?);
+        }
+        let variables = self.run.variables(&scope);
+        let mut node = step.clone();
+        replace_node(&mut node, &variables, true).map_err(Failure::error)?;
+        let name = format!("{base}{}", instance.call);
+        let (when, template, sequence) = match dag {
+            true => decode::<DagTask>(&node)
+                .map(|(task, _)| (task.when, task.template, task.with_sequence)),
+            false => decode::<WorkflowStep>(&node)
+                .map(|(step, _)| (step.when, step.template, step.with_sequence)),
+        }
+        .map_err(|error| Failure::error(error.to_string()))?;
+        let arguments = decode::<Arguments>(
+            node.get("arguments")
+                .unwrap_or(&Node::new(Yaml::Mapping(Vec::new()), Position::default())),
+        )
+        .map(|(arguments, _)| arguments)
+        .map_err(|error| Failure::error(error.to_string()))?;
+        let artifacts = match should_execute(&when).unwrap_or(true) {
+            true => self
+                .run
+                .step_artifacts(&arguments.artifacts, &scope)
+                .map_err(Failure::error)?,
+            false => Vec::new(),
+        };
+        let build = match dag {
+            true => task_entry,
+            false => step_entry,
+        };
+        let entry = match loops(&step) {
+            false => build(name.clone(), node, &template, artifacts),
+            true => {
+                let mut warnings = Vec::new();
+                let assume = self.run.options.assume_inputs;
+                let list = items(&node, sequence.as_ref(), assume, &mut |warning| {
+                    warnings.push(warning)
+                });
+                for warning in warnings {
+                    self.run.warn(warning);
+                }
+                let given = (instance.values.iter()).find(|(name, _)| name == "item");
+                let item = match given {
+                    Some((_, item)) => Value::from_json(item),
+                    None => list
+                        .map_err(Failure::error)?
+                        .get(instance.index)
+                        .cloned()
+                        .unwrap_or(Value::Nil),
+                };
+                let (values, item_name) =
+                    item_variables(&name, instance.index, &item).map_err(Failure::error)?;
+                let strict =
+                    !matches!(should_execute(&when), Ok(false)) && !(assume && unknown_item(&item));
+                match substitute_item(&node, &variables.with_values(values), strict) {
+                    Ok(node) => build(item_name, node, &template, artifacts),
+                    Err(message) => Expanded::error(item_name, message),
+                }
+            }
+        };
+        let call = Call::default();
+        if let Some(error) = &entry.error {
+            return Ok(self
+                .run
+                .end_node(&entry.name, Phase::Error, &call, error.clone()));
+        }
+        match self.run.decide_when(&entry.when, &entry.name) {
+            Err(message) => Ok(self.run.end_node(&entry.name, Phase::Error, &call, message)),
+            Ok(false) => {
+                let message = format!("when '{}' evaluated false", entry.when);
+                let child = self
+                    .run
+                    .end_node(&entry.name, Phase::Skipped, &call, message);
+                self.run
+                    .skipped_outputs(child, &entry.holder, &context, !dag);
+                Ok(child)
+            }
+            Ok(true) => (self.run).execute_template(
+                &entry.name,
+                &entry.holder,
+                &context,
+                &entry.args,
+                &call,
+            ),
+        }
     }
 
     /// Takes the outcome of a task of a call, and gives the tasks that its calls ask for next,
@@ -193,14 +291,14 @@ impl Adapter {
         }
         let mut outputs = Map::new();
         for (name, value) in &node.outputs.parameters {
-            outputs.insert(format!("parameter/{name}"), value.as_str().into());
+            outputs.insert(format!("outputs.parameters.{name}"), value.as_str().into());
         }
         for artifact in &node.outputs.artifacts {
             let value = artifact_value(artifact);
-            outputs.insert(format!("artifact/{}", artifact.name), value);
+            outputs.insert(format!("outputs.artifacts.{}", artifact.name), value);
         }
         if let Some(result) = &node.outputs.result {
-            outputs.insert("result".into(), result.as_str().into());
+            outputs.insert("outputs.result".into(), result.as_str().into());
         }
         if let Some(code) = &node.outputs.exit_code {
             outputs.insert("exitCode".into(), code.as_str().into());
@@ -315,7 +413,7 @@ fn artifact_of(name: &str, value: &Json) -> Result<Option<ArtifactValue>, Driver
     }))
 }
 
-/// The tags that a value of a lowered text gives: text as it is, the outputs of a loop as the
+/// The tags that a value of a compiled text gives: text as it is, the outputs of a loop as the
 /// JSON list Argo aggregates them to, and an item with its fields.
 fn tag_values(name: &str, value: &Json) -> Result<Vec<(String, String)>, String> {
     let text = |value: &Json| match value {
@@ -381,5 +479,42 @@ fn tag_text(value: &Json) -> String {
     match value {
         Json::String(text) => text.clone(),
         other => other.to_string(),
+    }
+}
+
+/// What names a template of the workflow, or of the WorkflowTemplate `reference` names.
+fn holder_of(name: &str, reference: Option<&(String, bool)>) -> Holder {
+    Holder {
+        template: name.to_owned(),
+        template_ref: reference.map(|(document, cluster_scope)| TemplateRef {
+            name: document.clone(),
+            template: name.to_owned(),
+            cluster_scope: *cluster_scope,
+        }),
+        inline: None,
+    }
+}
+
+/// The step `[1].use` or the DAG task `.use` of a template, as written.
+fn site_node(template: &Node, call: &str) -> Option<Node> {
+    let named = |nodes: &[Node], name: &str| {
+        (nodes.iter())
+            .find(|node| node.get("name").and_then(Node::as_str) == Some(name))
+            .cloned()
+    };
+    let list = |node: Option<&Node>| match node.map(|node| &node.value) {
+        Some(Yaml::Sequence(nodes)) => nodes.clone(),
+        _ => Vec::new(),
+    };
+    match call.strip_prefix('[') {
+        Some(rest) => {
+            let (group, name) = rest.split_once("].")?;
+            let groups = list(template.get("steps"));
+            named(&list(groups.get(group.parse::<usize>().ok()?)), name)
+        }
+        None => named(
+            &list(template.get("dag").and_then(|dag| dag.get("tasks"))),
+            call.strip_prefix('.')?,
+        ),
     }
 }

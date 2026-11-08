@@ -835,7 +835,12 @@ fn expanded_source(processed: &Processed, name: &str) -> Node {
 }
 
 /// The entry of one item of a looping task.
-fn task_entry(name: String, node: Node, template: &str, artifacts: Vec<ArtifactValue>) -> Expanded {
+pub(crate) fn task_entry(
+    name: String,
+    node: Node,
+    template: &str,
+    artifacts: Vec<ArtifactValue>,
+) -> Expanded {
     match decode::<DagTask>(&node) {
         Ok((mut task, _)) => {
             task.template = template.to_owned();

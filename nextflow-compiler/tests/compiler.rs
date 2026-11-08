@@ -92,11 +92,20 @@ fn scoped<'a>(script: &'a str, scope: &Json) -> &'a str {
 }
 
 #[test]
-fn keeps_unbound_values() {
-    let compiled = compile("workflow {\n    channel.value().view()\n}\n");
+fn closes_unbound_values() {
+    let document = full("workflow {\n    channel.value().view()\n}\n");
+    let main = graph(&document, "main");
+    let empty = op(main, "value.0");
+    assert_eq!(empty["inputs"][0]["default"], json!([]), "an empty array");
+    assert_eq!(op(main, "value.0/then")["kind"], json!({"first": {}}));
+}
+
+#[test]
+fn keeps_typed_operators() {
+    let compiled = compile("workflow {\n    channel.of(['a', 1]).groupBy().view()\n}\n");
     assert_eq!(compiled.kept.len(), 1, "{:?}", compiled.kept);
     assert!(
-        compiled.kept[0].reason.contains("binds"),
+        compiled.kept[0].reason.contains("`groupBy` of typed workflows"),
         "{:?}",
         compiled.kept
     );

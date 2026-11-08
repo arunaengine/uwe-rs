@@ -12,7 +12,7 @@ use wdl_ast::v1::{CallStatement, Decl, Expr, WorkflowStatement};
 use wdl_runtime::Value;
 use wdl_runtime::document::{self, Callable, Unit, declared};
 use wdl_runtime::expression::names;
-use wir::{Dependency, Edge, Endpoint, Graph, Kind, Op, Origin, Status, Type};
+use wir::{Dependency, Edge, Endpoint, Graph, Kind, Op, Origin, Port, Status, Type};
 
 use crate::bodies::{inner, selected};
 use crate::types::{array, convert, optional, port};
@@ -51,6 +51,9 @@ pub(crate) struct Frame<'o> {
     pub ops: Vec<Op>,
     pub edges: Vec<Edge>,
     pub origin: Option<Origin>,
+    /// The inputs of the calls of the entry workflow that the calls do not give, as inputs of
+    /// the entry graph `<call>.<input>`, as WDL input files may give them.
+    pub nested: Option<Vec<Port>>,
 }
 
 impl<'o> Frame<'o> {
@@ -63,6 +66,7 @@ impl<'o> Frame<'o> {
             ops: Vec::new(),
             edges: Vec::new(),
             origin,
+            nested: None,
         }
     }
 
@@ -164,6 +168,7 @@ impl Lowerer {
         let empty = BTreeMap::new();
         let mut frame = Frame::new(&empty, origin(&source, &unit.name()));
         let entry = name == "main";
+        frame.nested = entry.then(Vec::new);
         let mut inputs = Vec::new();
         let mut defaults = Vec::new();
         for decl in workflow
@@ -228,6 +233,7 @@ impl Lowerer {
             frame.local.insert(output.clone(), Bound::Value(held));
             outputs.push(port(&output, r#type));
         }
+        inputs.extend(frame.nested.take().unwrap_or_default());
         let graph = Graph {
             name: name.to_owned(),
             inputs,
@@ -320,8 +326,10 @@ impl Lowerer {
             Callable::Task(_) => self.task(&unit, &alias)?,
             Callable::Workflow(_) => self.subworkflow(&unit, &alias)?,
         };
+        let mut given = BTreeSet::new();
         for input in call.inputs() {
             let name = input.name().text().to_owned();
+            given.insert(name.clone());
             let found = op.inputs.iter().find(|port| port.name == name);
             let want = found.ok_or_else(|| format!("call {alias}: no input {name}"))?;
             let want = match want.default {
@@ -339,6 +347,19 @@ impl Lowerer {
             // A given value, also `None`, takes the place of a default.
             if let Some(port) = op.inputs.iter_mut().find(|port| port.name == name) {
                 port.default = None;
+            }
+        }
+        if let Some(nested) = &mut frame.nested {
+            for item in op.inputs.iter().filter(|item| !given.contains(&item.name)) {
+                let outer = format!("{alias}.{}", item.name);
+                let r#type = match item.default.is_some() {
+                    true => optional(item.r#type.clone()),
+                    false => item.r#type.clone(),
+                };
+                nested.push(port(&outer, r#type));
+                frame
+                    .edges
+                    .push(edge(end(None, &outer), end(Some(&alias), &item.name)));
             }
         }
         for after in call.after() {

@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::closure::Body;
+
 /// Turns a stream into one array value once the stream closes. Open: order and what an
 /// error inside the stream does.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -15,7 +17,7 @@ pub struct Collect {}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Filter {
-    pub body: String,
+    pub body: Body,
 }
 
 /// Gives the items of each array item, one level deep, as the README defines for values.

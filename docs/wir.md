@@ -19,7 +19,7 @@ $ uwe lower workflow.cwl > workflow.wir.json
 uwe: op align stays a native CWL op: step align: scatter
 ```
 
-`uwe run workflow.cwl -lowered` runs a CWL document through its lowered wir document, which uwe writes below its scratch folder; `uwe graph -lowered` shows its graph. The crate `cwl-lowering` does the lowering:
+`uwe run workflow.cwl -lowered` runs a CWL document through its lowered wir document, which uwe writes below its scratch folder; `uwe graph -lowered` shows its graph. An embedding host sets `run::Settings.lowered`; the inputs are then checked with the schema of the CWL document. The crate `cwl-lowering` does the lowering:
 
 - A CommandLineTool becomes a `task` op when the task builds the same command: literal base command and arguments, inputs on the command line as one word each (scalars, Files, Directories, enums, and arrays of them without a prefix), `stdout` and `stderr` files, outputs of `stdout` and `stderr` type and outputs read by one literal glob. `DockerRequirement` with `dockerPull` sets the image, else it is `debian:stable-slim`; `NetworkAccess` sets `network`; `ResourceRequirement`, `ToolTimeLimit` and `WorkReuse` set the attributes.
 - A Workflow becomes a graph: an op per step, at the path of the step id, and an edge per link with one source. A step that runs a Workflow becomes a `call` op with a graph of its own, so its tasks have paths like `inner/wc`, as in the CWL run.
@@ -53,6 +53,33 @@ Without the helper image, 323 lowered runs end as the native run does and 167 gi
 What keeps most tests partly native, by the first reason of each: `outputEval` or `loadContents` of an output (89), a requirement (74: `InitialWorkDirRequirement` 42, `ShellCommandRequirement` 26, `EnvVarRequirement` 5), an expression in an argument (36), `stdin` (20), a `run` that the document defines twice (13), command line bindings (10), a resource or time limit set by an expression (8) and secondary files or a format of an input (7).
 
 Where the runs end differently, the lowered run refuses a job key that the document does not take, which CWL ignores (`wf_wc_nomultiple`, `listing_outputBinding_loadListing`), and job requirements (`cwl:requirements`); a simulated native op makes up values that do not fit their types, like the `int` of an ExpressionTool that loads the contents of its input (`step_input_default_value`), and a simulated glob of folders makes up files. These are differences of wir runs and of the simulator, not of lowered ops.
+
+## Lowering WDL
+
+`uwe lower` and `-lowered` take WDL 1.0, 1.1 and 1.2 documents too, and `-entry` picks the workflow or task as for `uwe run`. A run with `-lowered` turns its WDL input file into one for the entry graph: the keys lose the name of the workflow, paths become Files and Directories from the folder of the file, and a pair becomes a tuple. The crate `wdl-lowering` does the lowering:
+
+- A workflow becomes a graph with its inputs and outputs. A literal default of an input becomes the default of its port; another default is an `expr` op at the path of the input that takes the given value first.
+- A declaration becomes an `expr` op in WDL at the path of its name, and `select_first` or `select_all` of plain references becomes a `merge` op and a `select` op. A call becomes a `call` op at the path of its alias; an input that is not a plain reference is an `expr` op `<call>.<input>`, and `after` is a dependency.
+- A scatter becomes a `map` op `scatter.<name>`, after the first name defined in its body, and an `if` a `branch` op `if.<name>`, whose condition is an `expr` op `if.<name>.condition` unless it is a plain reference. Outside, the names defined inside are arrays or optional, as in WDL.
+- A call of a subworkflow becomes a `call` op of the graph of that workflow, which all its calls share.
+- A task becomes a graph `task.<name>` that all its calls share. The `expr` op `command` evaluates the command section after the input defaults and private declarations, with each File at the path where the task op stages it; the files of `write_lines` and the other write functions are made by the command before it runs. The `task` op at the task name runs the command with `bash`, as uwe's WDL driver does. An output `stdout()`, `stderr()`, a literal path or `glob("<pattern>")` is a capture. The paths of other file outputs come from the `expr` op `command.outputs`, and the command copies those files below `.wdl/out/<output>/`, where a capture finds them. An output without files is an `expr` op `output.<name>`. Literal `container`, `cpu`, `memory`, `gpu` and `returnCodes` set the image, the resources and the success codes. The task may use the network, as WDL tasks run by uwe may.
+- A task stays a `native` WDL op, and `uwe lower` names it, when a task op cannot run it the same way: an output that reads files the task makes, like `read_string(stdout())`, a declaration that reads or writes files, a command that reads files, a runtime value that depends on inputs, `returnCodes: "*"`, `env` declarations, the `task` variable and files inside struct or map inputs. A workflow keeps its statements only when each lowers, so a declaration that reads files or an `else` clause keeps the whole workflow one native op.
+
+A lowered task is a wir task, so its cache key differs from that of the same task run as WDL: its inputs are staged in `inputs/<port>` and the command comes as an argument. On the simulator the outputs of a lowered task are made up from its captures, as the simulator does not see its command: a glob or a copied path gives a made-up name like `simulated.log`.
+
+### WDL coverage
+
+`wdl-lowering/tests/conformance.rs` lowers each of the 170 examples of the WDL 1.2.1 specification that `just wdl-spec-tests` extracts, and runs it natively and lowered on the simulator; `WDL_SPEC_TESTS` names their folder, and `WDL_TEST=1` prints the outcome of each. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-08 (`SPEC.md` of openwdl/wdl commit `42c106d0`, the data files of openwdl/wdl-tests commit `082340ad`):
+
+| Outcome | Examples |
+| --- | --- |
+| lowers fully | 77 |
+| lowers partly: some tasks stay native | 73 |
+| does not lower: the analysis refuses it (12 of them are meant to fail), or a native op cannot hold an `Object` or a map with float keys | 20 |
+| the lowered run ends as the native run does: both succeed with as many tasks, or both fail | 150 |
+| both succeed with equal outputs | 137 |
+
+What keeps tasks native, by the first reason of each: an output that reads files the task makes, like `read_string(stdout())` (59), a write function in a declaration (2), a file inside a struct or map input (3), a runtime value that depends on inputs (2), a workflow expression that reads a file (2), and one each of the `task` variable, `returnCodes: "*"`, a read in the command, an array of optional output files and an `env` declaration. The one example whose outputs differ globs files that the simulator makes up.
 
 ## Detection
 

@@ -13,10 +13,8 @@ pub(crate) struct PublicBuckets {
 }
 
 impl PublicBuckets {
-    pub fn new() -> Result<PublicBuckets, Problem> {
-        Ok(PublicBuckets {
-            web: Web::public()?,
-        })
+    pub fn new(web: Web) -> PublicBuckets {
+        PublicBuckets { web }
     }
 
     /// Whether a file exists, and its size. A key that is a prefix of other keys is a directory.

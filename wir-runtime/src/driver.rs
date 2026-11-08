@@ -374,7 +374,11 @@ impl WirDriver {
             // A Snakemake config file and an Argo parameter file take the values of params.
             Dialect::Snakemake => (folder.join("config.json"), nextflow::params(&bound)),
             Dialect::Argo => (folder.join("parameters.json"), nextflow::params(&bound)),
-            Dialect::Wdl => (folder.join("inputs.json"), nextflow::params(&bound)),
+            Dialect::Wdl => {
+                let ports = &self.progress.node(at).op.inputs;
+                let values = wdl::pairs(bound.clone(), ports, &self.document.types);
+                (folder.join("inputs.json"), nextflow::params(&values))
+            }
             _ => (
                 folder.join("job.json"),
                 cwl::to_cwl(Json::Object(bound.clone())),

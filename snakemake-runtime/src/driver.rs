@@ -31,7 +31,7 @@ use crate::workflow::{Hook, State};
 #[path = "adapter.rs"]
 mod adapter;
 
-pub use adapter::{FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
+pub use adapter::{Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
 
 /// The Snakefile of a workflow folder, as Snakemake looks for it.
 pub fn find_snakefile(folder: &Path) -> Option<PathBuf> {
@@ -2969,6 +2969,8 @@ pub struct SnakemakeDriver {
     simulated: bool,
     /// The answer of the session to the last request of a job.
     answers: adapter::Answers,
+    /// The commands of workflow code that a request of a job waits for.
+    commands: HashSet<TaskId>,
 }
 
 impl SnakemakeDriver {
@@ -3276,7 +3278,12 @@ pub fn spawn_driver(
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
                     request @ (Request::Jobs(_) | Request::Prepare(_) | Request::Take(_)) => {
-                        session.answer(request, &session_answers)
+                        channel
+                            .planning
+                            .set(matches!(request, Request::Jobs(false)));
+                        let reply = session.answer(request, &session_answers);
+                        channel.planning.set(false);
+                        reply
                     }
                     Request::Delivered(delivery) => {
                         session.delivered(&delivery).map(|()| Vec::new())
@@ -3347,6 +3354,7 @@ pub fn spawn_driver(
         results,
         simulated,
         answers,
+        commands: HashSet::new(),
     })
 }
 

@@ -5,6 +5,8 @@
 
 use std::collections::HashMap;
 
+use cwl_runtime::JavaScriptSettings;
+
 use serde_json::{Map, Value as Json, json};
 use wir::{Argument, CaptureRule, Content, FileName, Op, Port, Type, TypeDef, resolve};
 use workflow_graph::simulator::glob_matches;
@@ -18,15 +20,16 @@ pub const WORKDIR: &str = "/work";
 /// The most bytes of a file that a capture loads as its contents, as in CWL.
 const CONTENTS_LIMIT: usize = 64 * 1024;
 
-/// The task of a task op with its input values. Inputs are staged below `inputs/<port>`,
-/// and the attributes only set what no cache key covers.
+/// The task of a task op with its input values, or why its code arguments fail. Inputs are
+/// staged below `inputs/<port>`, and the attributes only set what no cache key covers.
 pub fn build(
     id: TaskId,
     (path, step): (&str, &str),
     op: &Op,
     spec: &wir::Task,
     bound: &Map<String, Json>,
-) -> Task {
+    script: (&JavaScriptSettings, bool),
+) -> Result<Task, String> {
     let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
     let mut staging = Staging::default();
     if let Some(folder) = &spec.staging {
@@ -44,7 +47,7 @@ pub fn build(
     }
     // Each word, and whether a shell command takes it as it is.
     let mut words: Vec<(String, bool)> = Vec::new();
-    for argument in &spec.command {
+    for (index, argument) in spec.command.iter().enumerate() {
         match argument {
             Argument::Text(text) => words.push((text.clone(), false)),
             Argument::Raw { raw } => words.push((raw.clone(), spec.shell)),
@@ -64,6 +67,37 @@ pub fn build(
                         .into_iter()
                         .map(|word| (word, raw)),
                 );
+            }
+            Argument::Code {
+                code,
+                this,
+                prefix,
+                separate,
+                separator,
+                quote,
+            } => {
+                // As CWL binds no input that is null, its code gives no argument then.
+                if this
+                    .as_ref()
+                    .is_some_and(|name| bound.get(name).is_none_or(Json::is_null))
+                {
+                    continue;
+                }
+                let staged = staging.adjusted(&Json::Object(bound.clone()), workdir);
+                let context = (&spec.library[..], script.0);
+                let value = match crate::expr::argument((code, this.as_deref()), staged, context) {
+                    Ok(value) => value,
+                    // As uwe's CWL driver, a simulated run marks code over made-up contents.
+                    Err(_) if script.1 && code.contains("contents") => {
+                        json!(cwl_runtime::tool::FAKE_ARGUMENT)
+                    }
+                    Err(why) => return Err(format!("argument {index}: {why}")),
+                };
+                let texts = staging.texts(&value, &format!("arguments/{index}"));
+                let binding = (prefix.as_deref(), *separate, separator.as_deref());
+                let raw = spec.shell && !quote;
+                let bound = bind(&value, texts, binding).into_iter();
+                words.extend(bound.map(|word| (word, raw)));
             }
         }
     }
@@ -157,7 +191,7 @@ pub fn build(
     };
     let attributes = &op.attributes;
     let wanted = attributes.resources.clone().unwrap_or_default();
-    Task {
+    Ok(Task {
         id,
         name: path.to_owned(),
         step: step.to_owned(),
@@ -189,7 +223,7 @@ pub fn build(
             false => Network::Denied,
         },
         ..Task::default()
-    }
+    })
 }
 
 /// What a task gave back: its outcome, how to read its files, and its input values.
@@ -375,6 +409,8 @@ fn bind(
 struct Staging {
     inputs: Vec<Input>,
     placed: HashMap<String, String>,
+    /// The paths of Files and Directories without a location, by their JSON text.
+    literals: HashMap<String, String>,
     /// How many numbered folders the staging folder has.
     folders: usize,
 }
@@ -406,7 +442,7 @@ impl Staging {
             return None;
         }
         let location = value.get("location").and_then(Json::as_str);
-        if let Some(path) = location.and_then(|location| self.placed.get(location)) {
+        if let Some(path) = self.path(value) {
             return Some(path.clone());
         }
         let path = format!(
@@ -414,6 +450,9 @@ impl Staging {
             basename(value).unwrap_or_else(|| "input".into())
         );
         self.put(value, &path, false);
+        if location.is_none() {
+            self.literals.insert(value.to_string(), path.clone());
+        }
         for item in value
             .get("secondary_files")
             .and_then(Json::as_array)
@@ -431,14 +470,47 @@ impl Staging {
         match value {
             Json::Array(items) => items.iter().for_each(|item| self.job(item, folder)),
             Json::Object(object) if matches!(class(object), Some("File" | "Directory")) => {
-                let location = object.get("location").and_then(Json::as_str);
-                if location.is_some_and(|location| !self.placed.contains_key(location)) {
+                if self.path(value).is_none() {
                     self.stage(value, &format!("{folder}/{}", self.folders));
                     self.folders += 1;
                 }
             }
             Json::Object(object) => object.values().for_each(|item| self.job(item, folder)),
             _ => {}
+        }
+    }
+
+    /// Where a File or Directory value is staged.
+    fn path(&self, value: &Json) -> Option<&String> {
+        match value.get("location").and_then(Json::as_str) {
+            Some(location) => self.placed.get(location),
+            None => self.literals.get(&value.to_string()),
+        }
+    }
+
+    /// A value whose staged Files and Directories have their `path`, `dirname` and `basename`
+    /// in the container, as uwe's CWL driver adjusts them.
+    fn adjusted(&self, value: &Json, workdir: &str) -> Json {
+        match value {
+            Json::Array(items) => Json::Array(
+                (items.iter())
+                    .map(|item| self.adjusted(item, workdir))
+                    .collect(),
+            ),
+            Json::Object(object) => {
+                let path = self.path(value).map(|path| absolute(path, workdir));
+                let mut object: Map<String, Json> = (object.iter())
+                    .map(|(key, item)| (key.clone(), self.adjusted(item, workdir)))
+                    .collect();
+                if let Some(path) = path {
+                    let (folder, name) = path.rsplit_once('/').unwrap_or(("", &path));
+                    object.insert("dirname".into(), json!(folder));
+                    object.insert("basename".into(), json!(name));
+                    object.insert("path".into(), json!(path));
+                }
+                Json::Object(object)
+            }
+            other => other.clone(),
         }
     }
 
@@ -539,6 +611,14 @@ fn join(folder: &str, name: &str) -> String {
     match folder.is_empty() {
         true => name.to_owned(),
         false => format!("{folder}/{name}"),
+    }
+}
+
+/// A path in the container, from the working folder when it is relative.
+fn absolute(path: &str, workdir: &str) -> String {
+    match path.starts_with('/') {
+        true => path.to_owned(),
+        false => join(workdir, path),
     }
 }
 

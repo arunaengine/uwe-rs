@@ -23,7 +23,7 @@ pub use sources::Sources;
 /// A compiled pipeline, and the reasons why it stays one native op when it does.
 #[derive(Clone, Debug)]
 pub struct Compilation {
-    pub document: Json,
+    pub document: wir::Document,
     pub kept: Vec<Kept>,
 }
 
@@ -64,21 +64,22 @@ pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compi
     };
     let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
     match driver.export() {
-        Ok(network) => Ok(compile_network(&network, &context)),
+        Ok(network) => compile_network(&network, &context),
         Err(error) if error.unsupported => {
             let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
             let kept = vec![Kept {
                 path: "pipeline".into(),
                 reason: error.message,
             }];
-            Ok(native(&[], &context, &mut sources, kept))
+            native(&[], &context, &mut sources, kept)
         }
         Err(error) => Err(error.message),
     }
 }
 
 /// Compiles a built network; a node that does not compile keeps the pipeline one native op.
-pub fn compile_network(network: &Network, context: &Context) -> Compilation {
+/// It fails only when the compiler makes no wir document, which is a bug of the compiler.
+pub fn compile_network(network: &Network, context: &Context) -> Result<Compilation, String> {
     let mut sources = Sources::new(&network.script, &context.base);
     let opaque = network.nodes.iter().filter_map(|node| match &node.kind {
         Kind::Opaque(reason) => Some(Kept {
@@ -92,10 +93,10 @@ pub fn compile_network(network: &Network, context: &Context) -> Compilation {
         return native(&network.emits, context, &mut sources, kept);
     }
     match graph::compile(network, context, &mut sources) {
-        Ok(graphs) => Compilation {
-            document: document(&sources, context, graphs),
+        Ok(graphs) => Ok(Compilation {
+            document: document(&sources, context, graphs)?,
             kept: Vec::new(),
-        },
+        }),
         Err(kept) => native(&network.emits, context, &mut sources, vec![kept]),
     }
 }
@@ -106,7 +107,7 @@ fn native(
     context: &Context,
     sources: &mut Sources,
     kept: Vec<Kept>,
-) -> Compilation {
+) -> Result<Compilation, String> {
     let configs: Vec<String> = context
         .configs
         .iter()
@@ -135,17 +136,24 @@ fn native(
         "origin": {"source": sources.main()},
     });
     let graph = json!({"name": "main", "outputs": outputs, "ops": [op], "edges": edges});
-    Compilation {
-        document: document(sources, context, vec![graph]),
+    Ok(Compilation {
+        document: document(sources, context, vec![graph])?,
         kept,
-    }
+    })
 }
 
-fn document(sources: &Sources, _context: &Context, graphs: Vec<Json>) -> Json {
-    json!({
-        "wir_version": "0.1",
+/// The wir document of the graphs, which the strict format types check.
+fn document(
+    sources: &Sources,
+    _context: &Context,
+    graphs: Vec<Json>,
+) -> Result<wir::Document, String> {
+    let document = json!({
+        "wir_version": wir::VERSION,
         "sources": sources.list(),
         "graphs": graphs,
         "entry": "main",
-    })
+    });
+    let parsed = serde_json::from_value(document);
+    parsed.map_err(|error| format!("the compiler made no wir document: {error}"))
 }

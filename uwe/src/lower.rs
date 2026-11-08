@@ -101,12 +101,7 @@ fn nextflow(
             kept.path, kept.reason
         );
     }
-    serde_json::from_value(compiled.document).map_err(|error| {
-        failure(format!(
-            "uwe: {}: not a wir document: {error}",
-            target.display()
-        ))
-    })
+    Ok(compiled.document)
 }
 
 /// The lowering of the WDL workflow or task that `-entry` names, else the one a run picks.

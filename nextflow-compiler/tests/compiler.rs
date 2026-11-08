@@ -49,10 +49,20 @@ fn compile(script: &str) -> Compilation {
     nextflow_compiler::compile(&launch, settings, directory.path()).unwrap()
 }
 
+/// The document of a compilation as JSON.
+fn json(compiled: &Compilation) -> Json {
+    serde_json::to_value(&compiled.document).unwrap()
+}
+
+/// The document of a script that compiles fully, which the wir verifier accepts.
 fn full(script: &str) -> Json {
     let compiled = compile(script);
     assert!(compiled.full(), "nothing stays native: {:?}", compiled.kept);
-    compiled.document
+    if let Err(problems) = wir::verify(&compiled.document) {
+        let shown: Vec<String> = problems.iter().map(ToString::to_string).collect();
+        panic!("the document verifies: {}", shown.join("\n"));
+    }
+    json(&compiled)
 }
 
 fn graph<'a>(document: &'a Json, name: &str) -> &'a Json {
@@ -82,7 +92,8 @@ fn keeps_unbound_values() {
         "{:?}",
         compiled.kept
     );
-    let main = graph(&compiled.document, "main");
+    let document = json(&compiled);
+    let main = graph(&document, "main");
     assert_eq!(
         op(main, "pipeline")["kind"]["native"]["profiles"],
         json!(["test"])
@@ -219,6 +230,7 @@ fn keeps_data_reads() {
         "{:?}",
         compiled.kept
     );
-    let source = &compiled.document["sources"][0];
+    let document = json(&compiled);
+    let source = &document["sources"][0];
     assert_eq!(source["location"], ".", "the project folder");
 }

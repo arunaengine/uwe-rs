@@ -210,3 +210,14 @@ fn refuses_unknown_processes() {
         error.message
     );
 }
+
+#[test]
+fn finds_normal_scripts() {
+    let directory = tempfile::tempdir().unwrap();
+    let (launch, mut greet, _) = setup(directory.path());
+    let mut adapter = Adapter::new(&launch, settings(directory.path()), json!({})).unwrap();
+    let folder = directory.path().join("modules");
+    greet.script = folder.join("../main.nf").to_string_lossy().into_owned();
+    let word = [json!([{"id": "a"}, "hello"])];
+    run(adapter.prepare(&greet, &word, 1, TaskId(1)).unwrap());
+}

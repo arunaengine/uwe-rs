@@ -277,7 +277,23 @@ impl Adapter {
 
 /// The module that a script path names, among the main script and the scripts it includes,
 /// with its process of that name.
+/// A path without `.` and `..` parts, as includes like `../modules/x` leave them in.
+fn normal(path: &str) -> std::path::PathBuf {
+    let mut normal = std::path::PathBuf::new();
+    for part in std::path::Path::new(path).components() {
+        match part {
+            std::path::Component::ParentDir => {
+                normal.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normal.push(other),
+        }
+    }
+    normal
+}
+
 fn find(main: &Rc<Module>, script: &str, name: &str) -> Option<(Rc<Module>, Rc<Process>)> {
+    let script = normal(script);
     let mut pending = vec![main.clone()];
     let mut seen: Vec<Rc<Module>> = Vec::new();
     while let Some(module) = pending.pop() {
@@ -285,7 +301,7 @@ fn find(main: &Rc<Module>, script: &str, name: &str) -> Option<(Rc<Module>, Rc<P
             continue;
         }
         seen.push(module.clone());
-        if module.path.borrow().as_deref() == Some(script)
+        if module.path.borrow().as_deref().map(normal) == Some(script.clone())
             && let Some(process) = module.processes.iter().find(|p| &*p.name == name)
         {
             return Some((module.clone(), process.clone()));

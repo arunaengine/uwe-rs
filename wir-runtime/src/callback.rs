@@ -7,10 +7,11 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use serde_json::{Map, Value as Json};
-use wir::{Body, Closure, ExprLanguage};
+use wir::{Body, Closure, ExprLanguage, Kind};
 
 use crate::engine::{self, Context};
 use crate::groovy;
+use crate::operator;
 use crate::state::Progress;
 
 /// The callbacks of one op, which keeps the Groovy code it lowered between calls.
@@ -81,7 +82,7 @@ impl Callbacks {
                 crate::javascript::call(code, &captures, arguments, context.javascript)
             }
             ExprLanguage::Wdl => {
-                crate::wdl_closure::call(&closure.code, &closure.parameters, &captures, arguments)
+                crate::wdl::closure::call(&closure.code, &closure.parameters, &captures, arguments)
             }
             ExprLanguage::Js => Err("js is no closure language; use javascript".into()),
             ExprLanguage::Argo => Err("argo is no closure language".into()),
@@ -110,7 +111,26 @@ pub fn run_graph(
     let mut progress = Progress::new(plan, document.types.clone());
     progress.inputs = inputs;
     progress.activate(None).map_err(|error| error.message)?;
-    while let Some((at, bound)) = progress.next(false) {
+    let mut running = operator::Running::new();
+    loop {
+        let Some((at, bound)) = progress.next(false) else {
+            if operator::step_all(&mut progress, &mut running, context) {
+                continue;
+            }
+            break;
+        };
+        // A callback graph is pure: of the stream ops, only value transforms, filters and
+        // if-empty ops run in it.
+        let node = progress.node(at);
+        let pure = matches!(
+            node.op.kind,
+            Kind::Transform(_) | Kind::Filter(_) | Kind::IfEmpty(_)
+        ) && (node.op.inputs.iter().chain(&node.op.outputs))
+            .all(|port| port.flow.is_value());
+        if let Some(stepped) = operator::make_typed(node, &document.types).filter(|_| pure) {
+            running.insert(at, stepped);
+            continue;
+        }
         if !engine::begin(&mut progress, at, &bound, context).map_err(|error| error.message)? {
             return Err(format!(
                 "op {} of callback {name} does not run in the engine",
@@ -118,6 +138,7 @@ pub fn run_graph(
             ));
         }
     }
+    operator::cancel_all(&mut progress, &mut running);
     if let Some(first) = progress.failures.first() {
         return Err(first.clone());
     }
@@ -189,5 +210,49 @@ mod tests {
             wrong.is_err(),
             "a callback that fails is an error: {wrong:?}"
         );
+    }
+
+    #[test]
+    fn value_operators() {
+        let edge = |from: (Option<&str>, &str), to: (Option<&str>, &str)| json!({"from": {"op": from.0, "port": from.1}, "to": {"op": to.0, "port": to.1}});
+        let port = |name: &str| json!({"name": name, "type": "int"});
+        let closure = |code: &str| json!({"language": "groovy", "code": code});
+        let keep = json!({"path": "keep", "kind": {"filter": {"body": closure("{ it > 1 }")}},
+            "inputs": [port("source")], "outputs": [port("out")]});
+        let twice = json!({"path": "twice", "kind": {"transform": {"body": closure("{ it * 2 }")}},
+            "inputs": [port("source")], "outputs": [port("out")]});
+        let fill = json!({"path": "fill", "kind": {"if_empty": {"value": {"value": 5}}},
+            "inputs": [port("source")], "outputs": [port("out")]});
+        let graph = json!({"name": "pick", "inputs": [port("item")], "outputs": [port("out")],
+            "ops": [keep, twice, fill],
+            "edges": [edge((None, "item"), (Some("keep"), "source")),
+                edge((Some("keep"), "out"), (Some("fill"), "source")),
+                edge((Some("fill"), "out"), (Some("twice"), "source")),
+                edge((Some("twice"), "out"), (None, "out"))]});
+        let document = json!({"wir_version": "0.1", "graphs": [graph], "entry": "pick"});
+        let document = wir::parse(&document.to_string()).unwrap();
+        wir::verify(&document).unwrap();
+        let settings = cwl_runtime::JavaScriptSettings::default();
+        let scopes = HashMap::new();
+        let context = Context {
+            document: &document,
+            base: Path::new("/"),
+            javascript: &settings,
+            scopes: &scopes,
+            files: Path::new("/nonexistent"),
+            printer: &crate::driver::Printer::default(),
+            simulated: false,
+            provider: None,
+            deliveries: &Default::default(),
+        };
+        let mut callbacks = Callbacks::default();
+        let body = Body::Graph("pick".into());
+        let mut call = |item: i64| {
+            callbacks
+                .call(&context, &body, (&["item"], &[json!(item)]), &Map::new())
+                .unwrap()
+        };
+        assert_eq!(call(3), json!(6), "kept and doubled");
+        assert_eq!(call(1), json!(10), "filtered out, filled, then doubled");
     }
 }

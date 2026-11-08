@@ -166,6 +166,13 @@ pub fn truth(body: &Body, value: &Json) -> Option<bool> {
         (Some(ExprLanguage::Groovy | ExprLanguage::Python), Json::Array(items)) => {
             Some(!items.is_empty())
         }
+        // A set crosses the bridge as an object of its items, true when it has items.
+        (Some(ExprLanguage::Groovy | ExprLanguage::Python), Json::Object(object))
+            if object.get("class").and_then(Json::as_str) == Some("Set") =>
+        {
+            let items = object.get("items").and_then(Json::as_array);
+            Some(items.is_some_and(|items| !items.is_empty()))
+        }
         (Some(ExprLanguage::Groovy | ExprLanguage::Python), Json::Object(object)) => {
             Some(!object.is_empty())
         }

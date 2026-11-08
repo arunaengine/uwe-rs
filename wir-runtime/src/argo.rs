@@ -244,10 +244,13 @@ fn ended(ending: &argo_runtime::adapter::Ending, outputs: &[PortMap]) -> Ending 
             let value = ending.outputs.get(tag(map)).cloned().unwrap_or(Json::Null);
             (map.port.clone(), value)
         });
-        return Ending::Succeeded(values.collect());
+        return Ending::Succeeded {
+            values: values.collect(),
+            empty: Vec::new(),
+        };
     }
     match (facts.skipped || facts.omitted, facts.errored) {
-        (true, _) => Ending::Skipped,
+        (true, _) => Ending::Skipped(serde_json::Map::new()),
         (false, true) => Ending::Errored(ending.message.clone()),
         (false, false) => Ending::Failed(ending.message.clone()),
     }

@@ -147,6 +147,27 @@ pub(crate) fn layout(jobs: &[PlannedJob], index: usize) -> String {
     format!("sha256:{hex}")
 }
 
+/// Moves the config values that `document` holds in a `data:` source to the location that
+/// `place` writes their text to, which keeps the digest; a document without them stays.
+pub fn place_values(
+    document: &mut Document,
+    place: impl FnOnce(&str) -> Result<String, String>,
+) -> Result<(), String> {
+    let source = document
+        .sources
+        .iter_mut()
+        .find(|source| source.id == VALUES);
+    let Some(source) = source else {
+        return Ok(());
+    };
+    let Some(encoded) = source.location.strip_prefix(DATA) else {
+        return Ok(());
+    };
+    let text = decode(encoded).ok_or("a config value source is not percent-encoded")?;
+    source.location = place(&text)?;
+    Ok(())
+}
+
 /// The config values of a source: a `data:` location, or a file below `base`.
 fn read_values(location: &str, base: &Path) -> Result<Vec<(String, String)>, String> {
     let text = match location.strip_prefix(DATA) {

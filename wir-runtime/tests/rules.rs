@@ -238,3 +238,54 @@ fn refuses_block_sizes() {
         assert_eq!(native(attributes).unwrap_err(), message);
     }
 }
+
+#[test]
+fn refuses_unrun_fields() {
+    let control = refused(|document| {
+        op(document, 1)["depends"] = json!({"result": {"op": "sort", "on": ["succeeded"]}});
+    });
+    assert_eq!(
+        control,
+        "op main/head: uwe does not run depends and handles yet"
+    );
+    let rules = refused(|document| op(document, 0)["values"] = json!("groovy"));
+    assert_eq!(
+        rules,
+        "op main/sort: uwe compares values only by the wir rules yet"
+    );
+    let accept = refused(|document| {
+        op(document, 0)["kind"]["task"]["accept"] =
+            json!({"language": "groovy", "code": "{ true }"});
+    });
+    assert_eq!(
+        accept,
+        "op main/sort: uwe does not run task acceptance and retry rules yet"
+    );
+    let optional = refused(|document| {
+        op(document, 0)["kind"]["task"]["captures"][0]["optional"] = json!(true);
+    });
+    assert_eq!(
+        optional,
+        "op main/sort: uwe does not run optional captures and arity yet"
+    );
+    let captured = refused(|document| {
+        let mut same = expr(json!({}));
+        same["kind"]["expr"]["captures"] = json!({"n": {"value": 1}});
+        document["graphs"][0]["ops"]
+            .as_array_mut()
+            .unwrap()
+            .push(same);
+    });
+    assert_eq!(
+        captured,
+        "op main/same: uwe does not run expressions with a scope or captures yet"
+    );
+    let streams = refused(|document| {
+        let main = &mut document["graphs"][0];
+        main["inputs"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"name": "items", "type": "int", "flow": "stream"}));
+    });
+    assert_eq!(streams, "graph main: uwe does not run stream ports yet");
+}

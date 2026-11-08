@@ -19,6 +19,7 @@ use crate::pairing::{Combining, Joining};
 use crate::plan::Node;
 use crate::reducing::Reducing;
 use crate::routing::Routing;
+use crate::selecting::{Choice, Selecting};
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
 use crate::transforms::{Mapping, Rule};
 
@@ -208,6 +209,8 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         .any(|port| port.name == "source" && !port.flow.is_value());
     let mapping =
         |rule| -> Option<Box<dyn Operator>> { Some(Box::new(Mapping::new(rule, stream))) };
+    let selecting =
+        |choice| -> Option<Box<dyn Operator>> { Some(Box::new(Selecting::new(choice, stream))) };
     let collecting = |body, flat, sort, list| -> Option<Box<dyn Operator>> {
         Some(Box::new(Collecting {
             body,
@@ -238,6 +241,26 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         Kind::Reduce(spec) => Some(Box::new(Reducing::new(spec.clone()))),
         Kind::Buffer(spec) => Some(Box::new(Cutting::buffer(spec.rule.clone(), spec.remainder))),
         Kind::Window(spec) => Some(Box::new(Cutting::window(spec))),
+        Kind::Take(spec) => selecting(Choice::Take(spec.count)),
+        Kind::First(spec) => selecting(Choice::First(spec.predicate.clone(), spec.empty.clone())),
+        Kind::Last(spec) => selecting(Choice::Last(
+            spec.predicate.clone(),
+            spec.empty.clone(),
+            None,
+        )),
+        Kind::Unique(spec) => selecting(Choice::Unique(spec.key.clone(), Default::default())),
+        Kind::Distinct(spec) => {
+            let initial = spec
+                .initial
+                .as_ref()
+                .map(|literal| crate::values::canonical(&literal.value));
+            selecting(Choice::Distinct(spec.key.clone(), initial))
+        }
+        Kind::Until(spec) => selecting(Choice::Until(spec.predicate.clone(), spec.inclusive)),
+        Kind::IfEmpty(spec) => {
+            let value = spec.value.as_ref().map(|literal| literal.value.clone());
+            selecting(Choice::IfEmpty(value, spec.body.clone(), false))
+        }
         Kind::Combine(spec) => Some(Box::new(Combining {
             by: spec.by.clone(),
             body: spec.body.clone(),

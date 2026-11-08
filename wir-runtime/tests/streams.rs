@@ -159,16 +159,16 @@ fn capability_fence() {
     let mut graphs = emitting(true, json!({"array": {"items": "int"}}));
     let call = json!({"path": "later", "kind": {"call": {"graph": "inner"}}});
     graphs[0]["ops"].as_array_mut().unwrap().push(call);
-    let take = json!({"path": "take", "kind": {"take": {"count": 1}},
-        "inputs": [stream("source")], "outputs": [stream("out")]});
-    let inner = json!({"name": "inner", "inputs": [], "ops": [emitting(true, json!({"array": {"items": "int"}}))[0]["ops"][0], take],
-        "edges": [edge((Some("emit"), "out"), (Some("take"), "source"))]});
+    let region = json!({"path": "region", "kind": {"dynamic": {"plan": "plans"}},
+        "inputs": [{"name": "plans", "type": "dynamic", "flow": "stream"}]});
+    let inner = json!({"name": "inner", "inputs": [], "ops": [emitting(true, json!({"array": {"items": "int"}}))[0]["ops"][0], region],
+        "edges": [edge((Some("emit"), "out"), (Some("region"), "plans"))]});
     graphs.as_array_mut().unwrap().push(inner);
     let mut graphs = graphs;
     graphs[1]["ops"][0]["inputs"][0]["default"] = json!([1]);
     let error = run(graphs, json!({"xs": [1]})).unwrap_err();
     assert_eq!(
-        error, "op inner/take: uwe does not run stream ports yet",
+        error, "op inner/region: uwe does not run stream ports yet",
         "nothing of the run starts"
     );
 }

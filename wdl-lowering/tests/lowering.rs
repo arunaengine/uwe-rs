@@ -428,3 +428,27 @@ task hello {
     assert_eq!(runs.native, runs.lowered);
     assert_eq!(runs.lowered.1["greetings"], json!(["ada", "hello ada"]));
 }
+
+#[test]
+fn nested_inputs_given() {
+    let workflow = r#"version 1.2
+workflow nested {
+  hints {
+    allow_nested_inputs: true
+  }
+  call say
+  call say as again { input: name = "bob" }
+  output {
+    Array[String] texts = [say.text, again.text]
+  }
+}
+"#;
+    let text = format!("{workflow}{SAY}");
+    let runs = runs(&text, json!({"nested.say.name": "ada"}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    let inputs = &runs.lowering.document.graphs[0].inputs;
+    let names: Vec<&str> = inputs.iter().map(|port| port.name.as_str()).collect();
+    assert_eq!(names, ["say.name"]);
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1["texts"], json!(["hi ada", "hi bob"]));
+}

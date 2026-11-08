@@ -353,3 +353,16 @@ fn pads_join_remainders() {
     let split = &op(main, "join.2/left")["kind"]["transform"]["body"]["code"];
     assert!(split.as_str().unwrap().contains("[0].collect"), "{split}");
 }
+
+#[test]
+fn places_topics_by_readers() {
+    let script = "process A {\n    output:\n    val 'a', topic: names\n    script:\n    'true'\n}\n\n\
+                  process B {\n    output:\n    val 'b', topic: names\n    script:\n    'true'\n}\n\n\
+                  workflow SUB {\n    main:\n    A()\n    channel.topic('names').collect().view()\n}\n\n\
+                  workflow {\n    B()\n    SUB()\n}\n";
+    let document = full(script);
+    let sub = graph(&document, "workflow.SUB");
+    let ops = sub["ops"].as_array().unwrap();
+    let mix = ops.iter().find(|op| op["kind"].get("mix").is_some());
+    assert!(mix.is_some(), "the mix sits with its reader: {sub}");
+}

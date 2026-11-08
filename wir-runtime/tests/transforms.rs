@@ -260,15 +260,14 @@ fn split_runs() {
         Some(json!(["a\n", "b\n", "c\n"])),
         "a run plans and runs a split"
     );
-    let json_split = run(
-        json!({"split": {"format": {"json": {}}, "decompress": "never"}}),
+    let dynamic = (json!("string"), json!("dynamic"));
+    let document = json!(["{\"a\": {\"b\": [1, {\"c\": 2}]}}"]);
+    let items = run(
+        json!({"split": {"format": {"json": {"path": "a.b"}}}}),
         "stream",
-        texts,
+        dynamic,
         json!([]),
-        json!([]),
+        document,
     );
-    assert_eq!(
-        json_split.unwrap_err(),
-        "op main/op: uwe does not run this split yet"
-    );
+    assert_eq!(items.unwrap(), Some(json!([1, {"c": 2}])));
 }

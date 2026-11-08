@@ -15,6 +15,7 @@ publish.workspace = true
 argo-runtime.workspace = true
 cwl-parser.workspace = true
 cwl-runtime.workspace = true
+flate2.workspace = true
 indexmap.workspace = true
 input-schema.workspace = true
 nextflow-evaluator.workspace = true

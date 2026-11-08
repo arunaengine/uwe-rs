@@ -9394,6 +9394,7 @@ dependencies = [
  "argo-runtime",
  "cwl-parser",
  "cwl-runtime",
+ "flate2",
  "indexmap 2.14.2",
  "input-schema",
  "nextflow-evaluator",

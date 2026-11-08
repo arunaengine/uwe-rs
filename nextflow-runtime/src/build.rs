@@ -85,19 +85,19 @@ const OPERATORS: &[&str] = &[
     "view",
 ];
 
-/// The plugin functions that read data, like a samplesheet, which a lowered run calls when it
-/// starts, and those that check the run, which a lowered run checks at its entry.
+/// The plugin functions that read data, like a samplesheet, which a compiled run calls when it
+/// starts, and those that check the run, which a compiled run checks at its entry.
 const DATA_SOURCES: &[&str] = &["samplesheetToList"];
 const RUN_CHECKS: &[&str] = &["validateParameters"];
 
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
-    /// Whether the build is for the lowering to wir: factories and plugin functions that read
+    /// Whether the build is for the compiler into wir: factories and plugin functions that read
     /// data stay calls, and nothing reads files that a run reads.
     pub defer: bool,
-    /// The files that the build of the lowering wrote, by location, which it keeps instead.
+    /// The files that the build for the compiler wrote, by location, which it keeps instead.
     pub written: Vec<(String, Vec<u8>)>,
-    /// The value channels of the plugin functions that read data, which the lowering calls when
+    /// The value channels of the plugin functions that read data, which the compiled run calls when
     /// the run starts, with the names of the functions.
     pub sources: Vec<(ChannelId, String)>,
     pub base: &'a mut dyn Host,
@@ -111,7 +111,7 @@ pub(crate) struct Builder<'a> {
 }
 
 impl Host for Builder<'_> {
-    /// Prints, or for the lowering keeps the text, which the lowered run prints when it starts.
+    /// Prints, or for the compiler keeps the text, which the compiled run prints when it starts.
     fn print(&mut self, text: &str) {
         if self.defer {
             let print = crate::export::Kind::Print(text.into());
@@ -160,7 +160,7 @@ impl Host for Builder<'_> {
         self.base.metadata(path)
     }
 
-    /// Writes, or for the lowering keeps the file, which the lowered run writes when it starts.
+    /// Writes, or for the compiler keeps the file, which the compiled run writes when it starts.
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
         if self.defer {
             self.keep_file(path, bytes.to_vec());
@@ -169,7 +169,7 @@ impl Host for Builder<'_> {
         self.base.write(path, bytes)
     }
 
-    /// Copies, or for the lowering copies a file that the build wrote.
+    /// Copies, or for the compiler copies a file that the build wrote.
     fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
         if let Some(index) = self.kept_file(source) {
             let bytes = self.written[index].1.clone();
@@ -378,7 +378,7 @@ impl Host for Builder<'_> {
         if self.defer && namespace == "channel" && matches!(name, "fromPath" | "fromFilePairs") {
             return Ok(Some(self.deferred_factory(name, arguments, false)));
         }
-        // The items of a list that a data source of the lowering gives when the run starts.
+        // The items of a list that a data source of the compiled run gives when the run starts.
         if let ("channel", "fromList", [Value::Channel(list)]) = (namespace, name, &arguments[..])
             && self.defer
             && self.network.is_value(*list)
@@ -852,7 +852,7 @@ impl Builder<'_> {
         Value::Channel(output)
     }
 
-    /// The index of a file that the build of the lowering wrote.
+    /// The index of a file that the build for the compiler wrote.
     fn kept_file(&self, path: &PathValue) -> Option<usize> {
         let location = path.uri();
         (self.defer).then(|| {
@@ -869,8 +869,8 @@ impl Builder<'_> {
         }
     }
 
-    /// The files that the build of the lowering wrote, as nodes that write them when the
-    /// lowered run starts.
+    /// The files that the build for the compiler wrote, as nodes that write them when the
+    /// compiled run starts.
     pub(crate) fn write_kept(&mut self) {
         for (path, bytes) in std::mem::take(&mut self.written) {
             let text = String::from_utf8_lossy(&bytes).into_owned();
@@ -880,7 +880,7 @@ impl Builder<'_> {
     }
 
     /// Fails for code that reads the data of a plugin function while the workflow is built,
-    /// which the lowering reads only when the run starts.
+    /// which the compiled run reads only when the run starts.
     fn refuse_data(&self, channel: ChannelId) -> Result<(), Error> {
         match self.sources.iter().find(|(known, _)| *known == channel) {
             Some((_, name)) => Err(Error::Unsupported {
@@ -893,18 +893,18 @@ impl Builder<'_> {
         }
     }
 
-    /// Fails for the lowering, which changes no files while the workflow is built.
+    /// Fails for the compiler, which changes no files while the workflow is built.
     fn refuse_change(&self, what: &str) -> Result<(), Error> {
         match self.defer {
             true => Err(Error::Unsupported {
-                message: format!("{what} while the workflow is built, for the lowering"),
+                message: format!("{what} while the workflow is built, for the compiler"),
                 span: Default::default(),
             }),
             false => Ok(()),
         }
     }
 
-    /// A factory of the lowering that keeps its call, which reads its values when the run
+    /// A factory of the compiler that keeps its call, which reads its values when the run
     /// starts: one list into a value channel when `value`, else each value.
     fn deferred_factory(&mut self, name: &str, arguments: Vec<Value>, value: bool) -> Value {
         let output = self.network.channel(value);
@@ -1017,13 +1017,13 @@ impl Builder<'_> {
     }
 }
 
-/// A node that only the lowering builds, which never runs.
+/// A node that only the compiler builds, which never runs.
 struct Deferred(crate::export::Kind);
 
 impl crate::network::Behaviour for Deferred {
     fn run(&mut self, _: &mut crate::network::Context) -> Result<crate::network::State, Error> {
         Err(Error::Unsupported {
-            message: "running a node of the lowering".into(),
+            message: "running a node of the compiler".into(),
             span: Default::default(),
         })
     }

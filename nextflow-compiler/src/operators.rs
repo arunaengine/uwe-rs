@@ -37,7 +37,7 @@ pub(crate) struct Place<'a> {
     pub context: &'a Context,
 }
 
-/// The ops of a node; an error says why the node has no lowering.
+/// The ops of a node; an error says why the node has no compiled.
 pub(crate) fn piece(
     node: &Node,
     place: &Place,

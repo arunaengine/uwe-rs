@@ -1,4 +1,4 @@
-//! The ops of operators whose lowering needs more than one field: `branch` and `multiMap`,
+//! The ops of operators whose compiled form needs more than one field: `branch` and `multiMap`,
 //! methods of values, `transpose`, the splitter formats and the sort orders.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0

@@ -1,5 +1,5 @@
-//! `uwe lower` prints the wir of a CWL or WDL document or a Nextflow pipeline, and `-lowered`
-//! runs one through it.
+//! `uwe lower` prints the wir that a CWL or WDL document or a Nextflow pipeline compiles into,
+//! and `-lowered` runs one through it.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -67,7 +67,7 @@ fn lowered(
 ) -> Result<cwl_lowering::Lowering, Failure> {
     if language != Language::Cwl {
         return Err(Failure::usage(
-            "uwe: only CWL and WDL documents and Nextflow pipelines lower into wir yet",
+            "uwe: only CWL and WDL documents and Nextflow pipelines compile into wir yet",
         ));
     }
     let shown = target.display();
@@ -93,15 +93,15 @@ fn nextflow(
     base: &Path,
 ) -> Result<wir::Document, Failure> {
     let launch = crate::launch(arguments, target.to_owned());
-    let lowering = crate::nextflow::lower(&launch, arguments, setup, base)
+    let compiled = crate::nextflow::compile(&launch, arguments, setup, base)
         .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
-    for kept in &lowering.kept {
+    for kept in &compiled.kept {
         eprintln!(
             "uwe: {} keeps the pipeline a native Nextflow op: {}",
             kept.path, kept.reason
         );
     }
-    serde_json::from_value(lowering.document).map_err(|error| {
+    serde_json::from_value(compiled.document).map_err(|error| {
         failure(format!(
             "uwe: {}: not a wir document: {error}",
             target.display()

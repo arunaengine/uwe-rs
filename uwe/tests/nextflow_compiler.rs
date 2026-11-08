@@ -1,5 +1,5 @@
 //! Runs nf-core pipelines with `-profile test` on the simulator, natively and through their
-//! lowered wir documents in both completion orders, and compares tasks and published files.
+//! compiled wir documents in both completion orders, and compares tasks and published files.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -14,11 +14,11 @@ mod common;
 /// The pipelines of the comparison.
 const PIPELINES: &[&str] = &["demo", "fetchngs"];
 
-/// How many pipelines run natively, run lowered, give equal tasks (descriptions and resume
+/// How many pipelines run natively, run compiled, give equal tasks (descriptions and resume
 /// fingerprints) in both orders, and publish the same files.
 const RECORDED: Counts = Counts {
     native: 2,
-    lowered: 0,
+    compiled: 0,
     tasks: 0,
     published: 0,
 };
@@ -26,7 +26,7 @@ const RECORDED: Counts = Counts {
 #[derive(Debug, Default, PartialEq)]
 struct Counts {
     native: usize,
-    lowered: usize,
+    compiled: usize,
     tasks: usize,
     published: usize,
 }
@@ -40,8 +40,8 @@ struct Ran {
 
 type Outcome = Result<Ran, String>;
 
-fn run(project: &Path, folder: &Path, order: &str, lowered: bool) -> Outcome {
-    let name = format!("{order}-{}", if lowered { "lowered" } else { "native" });
+fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
+    let name = format!("{order}-{}", if compiled { "compiled" } else { "native" });
     let graph = folder.join(format!("{name}.json"));
     let output = folder.join(format!("{name}-out"));
     let mut command = common::isolated(Command::new("timeout"));
@@ -53,7 +53,7 @@ fn run(project: &Path, folder: &Path, order: &str, lowered: bool) -> Outcome {
         .arg(&graph)
         .arg("--outdir")
         .arg(&output);
-    if lowered {
+    if compiled {
         command.arg("-lowered");
     }
     let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
@@ -109,36 +109,36 @@ fn compare(project: &Path, counts: &mut Counts) -> String {
     let mut runs = Vec::new();
     for order in ["asked", "reversed"] {
         let native = run(project, directory.path(), order, false);
-        let lowered = run(project, directory.path(), order, true);
-        runs.push((native, lowered));
+        let compiled = run(project, directory.path(), order, true);
+        runs.push((native, compiled));
     }
     counts.native += usize::from(runs.iter().all(|(native, _)| native.is_ok()));
-    counts.lowered += usize::from(runs.iter().all(|(_, lowered)| lowered.is_ok()));
+    counts.compiled += usize::from(runs.iter().all(|(_, compiled)| compiled.is_ok()));
     let both = |same: fn(&Ran, &Ran) -> bool| {
         runs.iter().all(|run| match run {
-            (Ok(native), Ok(lowered)) => same(native, lowered),
+            (Ok(native), Ok(compiled)) => same(native, compiled),
             _ => false,
         })
     };
-    counts.tasks += usize::from(both(|native, lowered| native.tasks == lowered.tasks));
-    counts.published += usize::from(both(|native, lowered| native.files == lowered.files));
+    counts.tasks += usize::from(both(|native, compiled| native.tasks == compiled.tasks));
+    counts.published += usize::from(both(|native, compiled| native.files == compiled.files));
     match &runs[0] {
         (Err(error), _) => format!("native run fails: {error}"),
         (Ok(native), Err(error)) => format!(
-            "{} native tasks; lowered run fails: {error}",
+            "{} native tasks; compiled run fails: {error}",
             native.tasks.len()
         ),
-        (Ok(native), Ok(lowered)) => format!(
-            "{} native tasks, {} lowered",
+        (Ok(native), Ok(compiled)) => format!(
+            "{} native tasks, {} compiled",
             native.tasks.len(),
-            lowered.tasks.len()
+            compiled.tasks.len()
         ),
     }
 }
 
 #[test]
 #[ignore = "needs the nf-core test workflows and the network; run `just test-workflows` first"]
-fn lowered_pipelines_match() {
+fn compiled_pipelines_match() {
     let test_workflows = PathBuf::from(
         std::env::var("NF_CORE_TEST_WORKFLOWS").expect("NF_CORE_TEST_WORKFLOWS is set"),
     );

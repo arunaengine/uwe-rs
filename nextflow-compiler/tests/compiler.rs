@@ -1,9 +1,9 @@
-//! Small pipelines lower into call graphs, process ops with Nextflow dialect tasks, stream ops
+//! Small pipelines compile into call graphs, process ops with Nextflow dialect tasks, stream ops
 //! with Groovy callbacks and the ops of the start of the run.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use nextflow_lowering::Lowering;
+use nextflow_compiler::Compilation;
 use nextflow_runtime::driver::Settings;
 use serde_json::{Value as Json, json};
 use workflow_graph::Launch;
@@ -30,8 +30,8 @@ impl nextflow_evaluator::interpreter::Host for Quiet {
     }
 }
 
-/// Lowers a script with the profile `test`.
-fn lower(script: &str) -> Lowering {
+/// Compiles a script with the profile `test`.
+fn compile(script: &str) -> Compilation {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("main.nf"), script).unwrap();
     let config = "profiles {\n    test {\n        params.greeting = 'hi'\n    }\n}\n";
@@ -46,13 +46,13 @@ fn lower(script: &str) -> Lowering {
         host: Box::new(Quiet(directory.path().to_string_lossy().into_owned())),
         ..Settings::default()
     };
-    nextflow_lowering::lower(&launch, settings, directory.path()).unwrap()
+    nextflow_compiler::compile(&launch, settings, directory.path()).unwrap()
 }
 
 fn full(script: &str) -> Json {
-    let lowering = lower(script);
-    assert!(lowering.full(), "nothing stays native: {:?}", lowering.kept);
-    lowering.document
+    let compiled = compile(script);
+    assert!(compiled.full(), "nothing stays native: {:?}", compiled.kept);
+    compiled.document
 }
 
 fn graph<'a>(document: &'a Json, name: &str) -> &'a Json {
@@ -75,14 +75,14 @@ fn scoped<'a>(script: &'a str, scope: &Json) -> &'a str {
 
 #[test]
 fn keeps_unbound_values() {
-    let lowering = lower("workflow {\n    channel.value().view()\n}\n");
-    assert_eq!(lowering.kept.len(), 1, "{:?}", lowering.kept);
+    let compiled = compile("workflow {\n    channel.value().view()\n}\n");
+    assert_eq!(compiled.kept.len(), 1, "{:?}", compiled.kept);
     assert!(
-        lowering.kept[0].reason.contains("binds"),
+        compiled.kept[0].reason.contains("binds"),
         "{:?}",
-        lowering.kept
+        compiled.kept
     );
-    let main = graph(&lowering.document, "main");
+    let main = graph(&compiled.document, "main");
     assert_eq!(
         op(main, "pipeline")["kind"]["native"]["profiles"],
         json!(["test"])
@@ -94,7 +94,7 @@ fn keeps_unbound_values() {
 }
 
 #[test]
-fn lowers_process_calls() {
+fn compiles_process_calls() {
     let script = format!("{GREET}\nworkflow {{\n    GREET(channel.of('a', 'b'))\n}}\n");
     let document = full(&script);
     let source = &document["sources"][0];
@@ -131,7 +131,7 @@ fn lowers_process_calls() {
 }
 
 #[test]
-fn lowers_closure_callbacks() {
+fn compiles_closure_callbacks() {
     let script = format!(
         "{GREET}\nworkflow SUB {{\n    take:\n    words\n    main:\n    def suffix = '!'\n    \
          GREET(words.map {{ word -> word + suffix }})\n    emit:\n    text = GREET.out.text\n}}\n\n\
@@ -161,7 +161,7 @@ fn lowers_closure_callbacks() {
 }
 
 #[test]
-fn lowers_branch_routes() {
+fn compiles_branch_routes() {
     let script = "workflow {\n    numbers = channel.of(1, 2, 3).branch { n ->\n        \
                   small: n < 2\n        large: true\n    }\n    \
                   numbers.small.join(numbers.large).view()\n}\n";
@@ -213,12 +213,12 @@ fn keeps_data_reads() {
         host: Box::new(Quiet(directory.path().to_string_lossy().into_owned())),
         ..Settings::default()
     };
-    let lowering = nextflow_lowering::lower(&launch, settings, directory.path()).unwrap();
+    let compiled = nextflow_compiler::compile(&launch, settings, directory.path()).unwrap();
     assert!(
-        lowering.kept[0].reason.contains("reads the data"),
+        compiled.kept[0].reason.contains("reads the data"),
         "{:?}",
-        lowering.kept
+        compiled.kept
     );
-    let source = &lowering.document["sources"][0];
+    let source = &compiled.document["sources"][0];
     assert_eq!(source["location"], ".", "the project folder");
 }

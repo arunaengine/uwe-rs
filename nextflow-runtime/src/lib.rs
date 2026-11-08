@@ -371,7 +371,7 @@ impl Run {
     }
 }
 
-/// Builds the network of the entry workflow without starting it, for the lowering to wir:
+/// Builds the network of the entry workflow without starting it, for the compiler into wir:
 /// factories that read files and plugin functions that read data stay calls.
 pub fn export(
     module: &Rc<Module>,

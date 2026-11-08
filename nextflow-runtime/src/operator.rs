@@ -22,7 +22,7 @@ pub(crate) struct Factory {
     /// Why the factory cannot give its values, like a missing file of `fromPath` with
     /// `checkIfExists`, which Nextflow reports when the factory starts, not when it is made.
     pub failure: Option<Error>,
-    /// The call of a factory that reads its values when the run starts, which the lowering
+    /// The call of a factory that reads its values when the run starts, which the compiler
     /// keeps instead of the values that the build read.
     pub call: Option<(Rc<str>, Vec<Value>)>,
 }

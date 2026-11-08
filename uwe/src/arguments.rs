@@ -27,8 +27,8 @@ pub struct Arguments {
     pub stub: bool,
     /// `-keep-going`: after a task failed, run every task that does not depend on it.
     pub keep_going: bool,
-    /// `-lowered`: run a CWL or WDL document or a Nextflow pipeline through its lowered wir
-    /// document.
+    /// `-lowered`: run a CWL or WDL document or a Nextflow pipeline through the wir document
+    /// compiled from it.
     pub lowered: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,

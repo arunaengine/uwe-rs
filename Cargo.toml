@@ -23,9 +23,9 @@ members = [
     "jarvice-executor",
     "uwe",
     "kubernetes-executor",
+    "nextflow-compiler",
     "nextflow-config",
     "nextflow-evaluator",
-    "nextflow-lowering",
     "nextflow-parser",
     "nextflow-plugins",
     "nextflow-runtime",
@@ -79,9 +79,9 @@ htcondor-executor = { path = "htcondor-executor" }
 input-schema = { path = "input-schema" }
 jarvice-executor = { path = "jarvice-executor" }
 kubernetes-executor = { path = "kubernetes-executor" }
+nextflow-compiler = { path = "nextflow-compiler" }
 nextflow-config = { path = "nextflow-config" }
 nextflow-evaluator = { path = "nextflow-evaluator" }
-nextflow-lowering = { path = "nextflow-lowering" }
 nextflow-parser = { path = "nextflow-parser" }
 nextflow-plugins = { path = "nextflow-plugins" }
 nextflow-runtime = { path = "nextflow-runtime" }

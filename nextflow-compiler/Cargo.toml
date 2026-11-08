@@ -1,10 +1,10 @@
-# Manifest of nextflow-lowering, which lowers Nextflow pipelines into wir graphs.
+# Manifest of nextflow-compiler, which compiles Nextflow pipelines into wir graphs.
 # Copyright (c) 2026 The uwe Contributors
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
-name = "nextflow-lowering"
-description = "Lowers Nextflow pipelines into wir: process calls into process ops with dialect tasks, operators into stream ops, workflow calls into graphs"
+name = "nextflow-compiler"
+description = "Compiles Nextflow pipelines into wir: process calls into process ops with dialect tasks, operators into stream ops, workflow calls into graphs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

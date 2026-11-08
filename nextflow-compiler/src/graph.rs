@@ -1,4 +1,4 @@
-//! The graphs of a lowered network: one per workflow call, whose ports are the channels that
+//! The graphs of a compiled network: one per workflow call, whose ports are the channels that
 //! cross the call, with the process bodies, and the ops of the start of the run in `main`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
@@ -17,22 +17,22 @@ enum Literal {
     Empty,
 }
 
-/// The graphs of a network, `main` first; a node without a lowering is the error.
-pub(crate) fn lower(
+/// The graphs of a network, `main` first; a node that does not compile is the error.
+pub(crate) fn compile(
     network: &Network,
     context: &Context,
     sources: &mut Sources,
 ) -> Result<Vec<Json>, Kept> {
-    let mut lowerer = Lowerer::new(network);
+    let mut compiler = Compiler::new(network);
     let mut bodies = Vec::new();
     let mut pieces: Vec<Option<Piece>> = Vec::new();
     for (index, node) in network.nodes.iter().enumerate() {
-        if lowerer.start(index) || lowerer.literal_node(index) {
+        if compiler.start(index) || compiler.literal_node(index) {
             pieces.push(None);
             continue;
         }
         let place = Place {
-            path: &lowerer.paths[index],
+            path: &compiler.paths[index],
             values_in: node
                 .inputs
                 .iter()
@@ -51,17 +51,17 @@ pub(crate) fn lower(
         })?;
         pieces.push(Some(made));
     }
-    lowerer.pieces = pieces;
+    compiler.pieces = pieces;
     let mut graphs = Vec::new();
     for scope in 0..network.scopes.len() {
-        graphs.push(lowerer.graph(scope)?);
+        graphs.push(compiler.graph(scope)?);
     }
     crate::start::ops(network, &mut graphs[0])?;
     graphs.extend(bodies);
     Ok(graphs)
 }
 
-struct Lowerer<'a> {
+struct Compiler<'a> {
     network: &'a Network,
     /// The node and output that writes each channel.
     producer: Vec<Option<(usize, usize)>>,
@@ -82,7 +82,7 @@ struct Draft {
     values: BTreeMap<usize, String>,
 }
 
-impl<'a> Lowerer<'a> {
+impl<'a> Compiler<'a> {
     fn new(network: &'a Network) -> Self {
         let mut producer = vec![None; network.channels.len()];
         for (index, node) in network.nodes.iter().enumerate() {
@@ -98,7 +98,7 @@ impl<'a> Lowerer<'a> {
                 _ => format!("{}.{index}", name(&node.name)),
             })
             .collect();
-        let mut lowerer = Lowerer {
+        let mut compiler = Compiler {
             network,
             producer,
             paths,
@@ -107,10 +107,10 @@ impl<'a> Lowerer<'a> {
         };
         for (index, node) in network.nodes.iter().enumerate() {
             if node.name.starts_with("topic ") {
-                lowerer.scopes[index] = lowerer.common(index);
+                compiler.scopes[index] = compiler.common(index);
             }
         }
-        lowerer
+        compiler
     }
 
     /// The deepest workflow call that holds the writers and the readers of a node, where the

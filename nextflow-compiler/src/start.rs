@@ -1,4 +1,4 @@
-//! The ops of the start of a lowered run in `main`: the checks, prints and written files of
+//! The ops of the start of a compiled run in `main`: the checks, prints and written files of
 //! the build, in the order the build met them, before every other op of `main`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0

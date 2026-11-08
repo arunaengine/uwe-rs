@@ -196,7 +196,7 @@ fn compiles_closure_callbacks() {
     assert_eq!(sub["inputs"].as_array().unwrap().len(), 1, "the take");
     let body = &op(sub, "map.1")["kind"]["transform"]["body"];
     assert_eq!(body["code"], "{ word -> word + suffix }");
-    assert_eq!(body["captures"], json!({"0": {"value": "!"}}));
+    assert_eq!(body["captures"], json!({"suffix": {"value": "!"}}));
     assert_eq!(scoped(&script, &body["scope"]), body["code"]);
     let collect = op(main, "collect.3");
     assert_eq!(

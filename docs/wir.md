@@ -121,12 +121,13 @@ The wir runtime runs the jobs of a document through one job adapter for the Snak
 | test workflows | 890 |
 | the native run succeeds | 633 |
 | compiles fully | 616 |
-| stays one native op | 54 |
-| does not compile: planning fails, as the native run fails | 219 |
+| stays one native op | 49 |
+| does not compile: planning fails as the native run fails (219), or a native op cannot start as the run would (5) | 224 |
 | the compiled run ends as the native run does: both fail, or both give the same tasks | 616 |
-| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 593 |
+| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 594 |
+| both succeed with the same target files | 594 |
 
-What keeps a workflow native, by the first reason: a checkpoint (51), a CWL job (1), and features that uwe does not run yet (2). `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+What keeps a workflow native, by the first reason: a checkpoint (46), a group whose jobs run in several images (1), and features that uwe does not run yet (2). Of the five that a native op cannot start, four launch a Snakefile that their working folder does not find, and one sets config values on the command line. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
 
 ## Detection
 

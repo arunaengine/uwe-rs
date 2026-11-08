@@ -20,12 +20,12 @@ const RECORDED: Counts = Counts {
     workflows: 890,
     native: 633,
     full: 616,
-    partly: 54,
-    failed: 219,
-    compiled: 593,
+    partly: 49,
+    failed: 224,
+    compiled: 594,
     ends: 616,
-    same: 593,
-    equal: 593,
+    same: 594,
+    equal: 594,
 };
 
 #[derive(Debug, Default, PartialEq)]

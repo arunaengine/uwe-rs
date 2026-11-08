@@ -46,24 +46,33 @@ pub struct Rounding {
 }
 
 impl Rounding {
-    pub fn new(spec: wir::Process, node: &plan::Node) -> Rounding {
+    pub fn new(spec: wir::Process, node: &plan::Node, bound: &Map<String, Json>) -> Rounding {
         let streams: Vec<String> = (node.op.inputs.iter())
             .filter(|port| !port.flow.is_value())
             .map(|port| port.name.clone())
             .collect();
         let single = streams.is_empty() && spec.each.is_empty();
+        // An empty value input runs no round, and every output closes empty.
+        let empty = (node.op.inputs.iter())
+            .any(|port| port.flow.is_value() && !bound.contains_key(&port.name));
+        let outputs = node
+            .op
+            .outputs
+            .iter()
+            .map(|port| port.name.clone())
+            .collect();
         Rounding {
             spec,
             streams,
             single,
             base: 0,
-            exhausted: false,
+            exhausted: empty,
             choices: None,
             ordinal: 0,
             active: BTreeMap::new(),
             held: BTreeMap::new(),
             given: 0,
-            result: None,
+            result: empty.then(|| (Map::new(), outputs)),
         }
     }
 

@@ -42,6 +42,8 @@ pub struct PlannedJob {
     /// Jobs that end before it besides its producers: checkpoints its input functions read.
     pub after: Vec<usize>,
     pub checkpoint: bool,
+    /// Whether a target of the run names the job, like the first rule without targets.
+    pub target: bool,
     /// Why one task of its own cannot run the job, like a group job; `None` when one can.
     pub native: Option<String>,
 }
@@ -238,6 +240,7 @@ impl Session {
                 producers,
                 after,
                 checkpoint: rule.checkpoint,
+                target: self.roots.contains(job),
                 native,
             });
         }
@@ -312,8 +315,16 @@ impl Session {
         })
     }
 
+    /// The job of a key; a key without outputs names the job by its rule and wildcards.
     fn job_of(&self, key: &JobKey) -> Result<usize, DriverError> {
-        self.keys.get(key).copied().ok_or_else(|| {
+        let named = (self.keys.iter())
+            .find(|(known, _)| {
+                known.rule == key.rule
+                    && known.wildcards == key.wildcards
+                    && (key.outputs.is_empty() || known.outputs == key.outputs)
+            })
+            .map(|(_, job)| *job);
+        named.ok_or_else(|| {
             DriverError::new(format!(
                 "the plan has no job of rule {} with these wildcards and outputs",
                 key.rule

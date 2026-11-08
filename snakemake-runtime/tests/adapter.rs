@@ -326,4 +326,8 @@ fn keys_name_jobs() {
     assert_eq!(jobs[producer.job].key.rule, "make");
     assert_eq!(jobs[producer.job].outputs[producer.output].flags, ["temp"]);
     assert!(jobs.iter().all(|job| job.needed && job.native.is_none()));
+    let targets: Vec<&str> = (jobs.iter().filter(|job| job.target))
+        .map(|job| job.key.rule.as_str())
+        .collect();
+    assert_eq!(targets, ["all"]);
 }

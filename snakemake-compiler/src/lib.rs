@@ -70,13 +70,13 @@ pub fn compile(
         // A native op holds what uwe cannot plan job by job; its run says the same.
         Err(error) if error.unsupported => {
             let reason = error.message.lines().next().unwrap_or_default().to_owned();
-            return Ok(native(sources, &setting, launch, reason));
+            return native(sources, &setting, launch, reason);
         }
         Err(error) => return Err(error.message),
     };
     drop(driver);
     if let Some(reason) = jobs.iter().find_map(kept_job) {
-        return Ok(native(sources, &setting, launch, reason));
+        return native(sources, &setting, launch, reason);
     }
     let setting = Setting {
         entry: (setting.entry.clone()).or_else(|| jobs.iter().find_map(|job| job.target.clone())),
@@ -135,9 +135,21 @@ fn kept_job(job: &PlannedJob) -> Option<String> {
     Some(format!("a job of rule {rule}: {why}"))
 }
 
-/// The whole workflow as one native Snakemake op, with a reason for each setting of the launch
-/// that it drops.
-fn native(sources: Vec<Json>, setting: &Setting, launch: &Launch, reason: String) -> Compiled {
+/// The whole workflow as one native Snakemake op; it fails when the launch has settings
+/// that the op cannot hold, since the run would plan other jobs without them.
+fn native(
+    sources: Vec<Json>,
+    setting: &Setting,
+    launch: &Launch,
+    reason: String,
+) -> Result<Compiled, String> {
+    let dropped = unheld(launch);
+    if !dropped.is_empty() {
+        let dropped = dropped.join(", ");
+        return Err(format!(
+            "the workflow stays one native Snakemake op ({reason}), which cannot hold {dropped}"
+        ));
+    }
     let path = "snakemake";
     let mut native = json!({"source": SOURCE, "language": "snakemake"});
     if let Some(entry) = &setting.entry {
@@ -149,25 +161,19 @@ fn native(sources: Vec<Json>, setting: &Setting, launch: &Launch, reason: String
     if !setting.configs.is_empty() {
         native["configs"] = json!(setting.configs);
     }
-    let sources: Vec<Json> = (sources.into_iter())
-        .filter(|source| source["id"] != launch::VALUES)
-        .collect();
     let document = json!({
         "wir_version": wir::VERSION,
         "sources": sources,
         "graphs": [{"name": "main", "ops": [{"path": path, "kind": {"native": native}}]}],
         "entry": "main",
     });
-    let dropped = unheld(launch).into_iter();
-    let reasons = std::iter::once(reason).chain(dropped.map(|unheld| format!("it drops {unheld}")));
-    Compiled {
+    Ok(Compiled {
         document: serde_json::from_value(document).expect("a native document"),
-        kept: (reasons.map(|reason| Kept {
+        kept: vec![Kept {
             path: path.to_owned(),
             reason,
-        }))
-        .collect(),
-    }
+        }],
+    })
 }
 
 /// The source of the Snakefile, then the config files of the launch, each with the digest of

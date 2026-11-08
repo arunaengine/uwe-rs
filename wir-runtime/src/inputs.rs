@@ -33,6 +33,7 @@ pub fn read(
         };
         let base = std::path::absolute(path).unwrap_or_else(|_| path.clone());
         absolute(&mut json, base.parent().unwrap_or(Path::new("/")));
+        filled(&mut json, launch.simulated);
         let Json::Object(object) = json else {
             return Err(DriverError::new(format!("{shown} must hold an object")));
         };
@@ -92,6 +93,13 @@ fn discover(value: &mut Json, r#type: &Type, (defs, simulated): (&[TypeDef], boo
             (items.iter_mut()).for_each(|item| discover(item, &array.items, inner));
         }
         (value, Some(Type::Optional(inner_type))) => discover(value, inner_type, inner),
+        (Json::Object(object), Some(Type::Record(fields))) => {
+            for field in fields {
+                if let Some(item) = object.get_mut(&field.name) {
+                    discover(item, &field.r#type, inner);
+                }
+            }
+        }
         (Json::Object(file), Some(Type::File(wanted))) if !file.contains_key("secondary_files") => {
             let location = file
                 .get("location")
@@ -131,9 +139,17 @@ pub fn absolute(value: &mut Json, base: &Path) {
             let class = object.get("class").and_then(Json::as_str);
             if matches!(class, Some("File" | "Directory")) {
                 let path = object.remove("path");
+                let given = object.get("location").is_some();
                 if let Some(Json::String(text)) = object.get("location").or(path.as_ref()) {
                     let location = match text.contains("://") || text.starts_with('/') {
                         true => text.clone(),
+                        // A relative location is a URI reference, whose escapes stay escapes.
+                        false if given => {
+                            let folder = format!("{}/", cwl_parser::iri::file_url(base));
+                            let uri = cwl_runtime::files::resolve_uri(&folder, text);
+                            (cwl_parser::iri::file_path(&uri))
+                                .map_or(uri, |path| path.to_string_lossy().into_owned())
+                        }
                         false => base.join(text).to_string_lossy().into_owned(),
                     };
                     object.insert("location".into(), Json::String(location));
@@ -143,6 +159,47 @@ pub fn absolute(value: &mut Json, base: &Path) {
         }
         _ => {}
     }
+}
+
+/// Gives each File the basename of a literal and the size of its file or contents that uwe's
+/// CWL driver gives it; a simulated run takes a missing file as empty.
+pub(crate) fn filled(value: &mut Json, simulated: bool) {
+    match value {
+        Json::Array(items) => items.iter_mut().for_each(|item| filled(item, simulated)),
+        Json::Object(object) => {
+            object.values_mut().for_each(|item| filled(item, simulated));
+            if object.get("class").and_then(Json::as_str) != Some("File") {
+                return;
+            }
+            let literal = !object.contains_key("location") && !object.contains_key("basename");
+            if let Some(name) = literal.then(|| literal_name(object)).flatten() {
+                object.insert("basename".into(), Json::String(name));
+            }
+            if object.contains_key("size") {
+                return;
+            }
+            let location = object.get("location").and_then(Json::as_str);
+            let path = location.map(|text| cwl_parser::iri::file_path(text).unwrap_or(text.into()));
+            let size = match (path.map(std::fs::metadata), object.get("contents")) {
+                (Some(Ok(metadata)), _) => Some(metadata.len()),
+                (_, Some(Json::String(text))) => Some(text.len() as u64),
+                (Some(Err(_)), _) if simulated => Some(0),
+                _ => None,
+            };
+            if let Some(size) = size {
+                object.insert("size".into(), Json::from(size));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The basename that uwe's CWL driver gives a File literal: a digest of its fields.
+fn literal_name(object: &Map<String, Json>) -> Option<String> {
+    let text = crate::cwl::to_cwl(Json::Object(object.clone())).to_string();
+    let mut value = cwl_runtime::Value::parse(&text).ok()?;
+    cwl_runtime::files::normalize(&mut value).ok()?;
+    value.text("basename").map(str::to_owned)
 }
 
 /// The value of a parameter given on the command line, by the type of its port; repeated

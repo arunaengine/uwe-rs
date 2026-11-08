@@ -57,6 +57,7 @@ pub enum Kind {
     Call(Call),
     Native(Native),
     Expr(Expr),
+    Load(Load),
     Map(Map),
     Emit(reserved::Emit),
     Transform(reserved::Transform),
@@ -109,6 +110,7 @@ impl Kind {
                 | Kind::Native(_)
                 | Kind::Map(_)
                 | Kind::Expr(_)
+                | Kind::Load(_)
                 | Kind::Branch(_)
                 | Kind::Select(_)
                 | Kind::Merge(_)
@@ -159,6 +161,9 @@ pub struct Task {
     /// the input folder of CWL; without it, each goes below `inputs/<port>` when used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staging: Option<String>,
+    /// The task inputs that go to `staging`, in this order; without it every input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged: Option<Vec<String>>,
     /// What the working folder holds before the command starts, like CWL
     /// `InitialWorkDirRequirement`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -169,6 +174,17 @@ pub struct Task {
     /// What standard input reads: a path, or a task input whose File gives its path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stdin: Option<Content>,
+    /// The file whose JSON object, when the command writes it, gives the outputs in place of
+    /// the captures, like CWL `cwl.output.json`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub results: Option<String>,
+    /// The task input whose object sets `cpus`, `memory` and `disk` in bytes, `gpus` and
+    /// `time` in seconds over the attributes; a field that is null or missing keeps them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<String>,
+    /// The JavaScript library that `code` arguments see, like the library of an expr.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub library: Vec<String>,
     /// The language runtime that builds the task, instead of the command form.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub builder: Option<TaskBuilder>,
@@ -276,6 +292,22 @@ pub enum Argument {
     Raw {
         raw: String,
     },
+    /// Code like that of a `js` expr, which the runner evaluates as it builds the task, over
+    /// the inputs with their Files staged; its value binds like the value of an input.
+    Code {
+        code: String,
+        /// The task input that the code sees as `self`.
+        #[serde(default, rename = "self", skip_serializing_if = "Option::is_none")]
+        this: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prefix: Option<String>,
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        separate: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        separator: Option<String>,
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        quote: bool,
+    },
 }
 
 /// The name of a file in the working folder: text, or the string value of a task input, where
@@ -319,6 +351,13 @@ pub struct Capture {
     pub optional: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arity: Option<Arity>,
+    /// How deep each Directory it reads holds its listing, like CWL `loadListing`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listing: Option<Listing>,
+    /// Code like that of a `code` argument whose value is the output, over the matched paths
+    /// as an array in `self`; see the README.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 /// The least and the most paths a capture may match.
@@ -342,6 +381,10 @@ pub enum CaptureRule {
     Patterns(String),
     Stdout,
     Stderr,
+    /// The field of the output in the task's `results`; null without that file.
+    Results,
+    /// No paths, for a capture whose code gives the output.
+    Empty,
 }
 
 /// A pure expression over the op's inputs, which binds its one output. `js` and `javascript`
@@ -382,6 +425,25 @@ pub enum ExprForm {
 pub struct Branch {
     pub body: String,
     pub condition: String,
+}
+
+/// Gives the value of its one input with files read into it: the text of each File, alone or
+/// in arrays, as `contents`, like CWL `loadContents`, and the listing of each Directory.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Load {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub contents: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listing: Option<Listing>,
+}
+
+/// How deep a load reads the listing of a Directory: its entries, or all below it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Listing {
+    Shallow,
+    Deep,
 }
 
 /// Runs the `body` graph once per round over items of the array inputs in `over`; other inputs

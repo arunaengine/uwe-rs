@@ -433,6 +433,16 @@ mod tests {
         );
         let target = folder.path().to_string_lossy().into_owned();
         node.op.effects = vec![wir::Effect::Publish(target)];
+        let escaping = format!("{}/../other", outside.to_string_lossy());
+        let spec = json!({"collect_file": {"name": "all.txt", "directory": escaping}});
+        let mut traversing = crate::mixing::tests::node(spec, &["source"], &[], "stream");
+        traversing.op.effects = node.op.effects.clone();
+        let why = run(&traversing).2.2.unwrap_err().message;
+        assert!(why.contains("has an empty, . or .. part"), "{why}");
+        assert!(
+            fixture.deliveries.take().is_empty(),
+            "no delivery leaves the target"
+        );
         let (mut streams, mut operator, (emitted, _, step)) = run(&node);
         assert_eq!(
             (emitted, step),

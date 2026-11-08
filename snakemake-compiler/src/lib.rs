@@ -37,9 +37,8 @@ impl Compiled {
     }
 }
 
-/// Compiles the workflow that `launch` runs with the options `run`, as uwe plans it. Source
-/// locations are relative to `base` where they lie below it. It fails when the workflow
-/// cannot be planned, as a run would fail.
+/// Compiles the workflow of `launch` with the options `run` as uwe plans it, with source
+/// locations relative to `base`; it fails when planning fails, as a run would.
 pub fn compile(
     launch: &Launch,
     settings: Settings,

@@ -108,14 +108,13 @@ pub fn lower_with(
     })
 }
 
-/// The entry graph that runs one op with the ports of a callable.
+/// The entry graph that runs one op with the inputs of the op, with the flags of given
+/// inputs, and the outputs of a callable.
 fn single(unit: &Unit, op: Op) -> Result<Graph, String> {
-    let (inputs, outputs) = boundary(unit)?;
+    let (_, outputs) = boundary(unit)?;
+    let inputs = op.inputs.clone();
     let mut edges = Vec::new();
-    for port in inputs
-        .iter()
-        .filter(|port| op.inputs.iter().any(|p| p.name == port.name))
-    {
+    for port in &inputs {
         edges.push(edge(end(None, &port.name), end(Some(&op.path), &port.name)));
     }
     for port in &outputs {

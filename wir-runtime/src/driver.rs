@@ -160,6 +160,7 @@ pub struct WirDriver {
     owners: HashMap<TaskId, usize>,
     /// The adapters of dialect tasks that started, with their tasks.
     dialects: adapter::Dialects,
+    texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
     /// The tasks of task ops, by id, with the node of each.
@@ -225,6 +226,7 @@ impl WirDriver {
             children: Vec::new(),
             owners: HashMap::new(),
             dialects: adapter::Dialects::default(),
+            texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
             accepted: HashSet::new(),
@@ -346,6 +348,7 @@ impl WirDriver {
                 builder: Some(builder),
                 ..
             }) => self.start_dialect(at, &builder, &bound),
+            Kind::Expr(spec) => self.argo_text(at, &spec, &bound),
             Kind::Task(spec) => {
                 self.last += 1;
                 let node = self.progress.node(at);
@@ -617,6 +620,47 @@ impl WirDriver {
                 Ok(Vec::new())
             }
         }
+    }
+
+    /// Ends an argo expr op with the text that the Argo adapter of its origin substitutes.
+    fn argo_text(
+        &mut self,
+        at: usize,
+        spec: &wir::Expr,
+        bound: &Map<String, Json>,
+    ) -> Result<Vec<Task>, DriverError> {
+        let node = self.progress.node(at);
+        let (path, output) = (node.path.clone(), node.op.outputs[0].clone());
+        let source = node.op.origin.as_ref().map(|origin| origin.source.clone());
+        let source = source.ok_or_else(|| DriverError::new(format!("op {path}: no origin")))?;
+        if !self.texts.0.contains_key(&source) {
+            let folder = self.job_folder()?.join(format!("argo-texts-{source}"));
+            let (target, output) = (self.locate(&source)?, self.output_root());
+            let place = crate::argo::Place {
+                source: &target,
+                configs: &[],
+                folder: &folder,
+                output: &output,
+            };
+            let (inputs, argo) = (&self.progress.inputs, &self.settings.argo);
+            let adapter = crate::argo::load(&place, inputs, &self.launch, argo)?;
+            self.texts.0.insert(source.clone(), adapter);
+        }
+        let Some(adapter) = self.texts.0.get_mut(&source) else {
+            return Err(DriverError::new(format!("op {path}: no Argo adapter")));
+        };
+        let defs = &self.document.types;
+        match crate::argo::evaluate(adapter, spec, bound, &output, defs) {
+            Ok(value) => {
+                let values = Map::from_iter([(output.name, value)]);
+                self.progress.end(at, Status::Succeeded, values, None);
+            }
+            Err(why) => {
+                let message = Some(format!("op {path}: {why}"));
+                self.progress.end(at, Status::Failed, Map::new(), message);
+            }
+        }
+        Ok(Vec::new())
     }
 
     /// The adapter of the source context of a builder, opened the first time.

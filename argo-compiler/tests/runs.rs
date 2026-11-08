@@ -415,3 +415,17 @@ fn targets_inherit_failures() {
     assert_eq!(other.1, one.1);
     assert!(other.0.is_err(), "{other:?}");
 }
+
+#[test]
+fn reads_config_folders() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    std::fs::create_dir_all(root.join("flow")).unwrap();
+    std::fs::create_dir_all(root.join("templates")).unwrap();
+    let spec = "  workflowTemplateRef: {name: library}\n";
+    let file = workflow(&root.join("flow"), spec);
+    std::fs::write(root.join("templates/library.yaml"), LIBRARY).unwrap();
+    let (one, other) = both(root, &file, &[root.join("templates")], Writer::new);
+    one.0.as_ref().unwrap();
+    assert_eq!(other, one);
+}

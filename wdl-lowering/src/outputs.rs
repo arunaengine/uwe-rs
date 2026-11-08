@@ -127,11 +127,11 @@ fn relative(path: &str) -> bool {
 }
 
 /// Whether the runner can place the files of a value of the type: a File, a Directory, or a
-/// flat array of them.
+/// flat array of them without nulls.
 fn placeable(r#type: &Type) -> bool {
     match single(r#type) {
         Type::File(_) | Type::Directory => true,
-        Type::Array(array) => matches!(single(&array.items), Type::File(_) | Type::Directory),
+        Type::Array(array) => matches!(*array.items, Type::File(_) | Type::Directory),
         _ => false,
     }
 }

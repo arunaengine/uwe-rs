@@ -147,6 +147,7 @@ pub fn export(arguments: &Arguments) -> Result<(), Failure> {
         workflow,
         license: arguments.license.clone(),
         sources: std::mem::take(&mut kept.sources),
+        ..run_crate::Options::default()
     };
     let summary = run_crate::export(&database, &id, &output, &options)
         .map_err(|error| failure(error.to_string()))?;

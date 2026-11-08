@@ -234,6 +234,7 @@ fn exports_simulated_provenance() {
         workflow,
         license: None,
         sources: copies,
+        ..Options::default()
     };
     let summary = export(&database, "fixture-run", &output, &options).expect("exports");
     // The input, the two outputs and the config file; the assumed input does not exist.
@@ -456,4 +457,105 @@ fn redacts_metadata_passwords() {
         std::fs::read_to_string(output.join("main.nf")).expect("reads copied bytes"),
         WORKFLOW
     );
+}
+
+#[test]
+fn hides_private_values() {
+    let root = tempfile::tempdir().expect("a directory");
+    let folder = root.path().join("server/run");
+    let work = folder.join("work");
+    std::fs::create_dir_all(&work).expect("makes the work folder");
+    let secret = "sentinel-secret-value";
+    let workflow = folder.join("main.nf");
+    std::fs::write(&workflow, WORKFLOW).expect("writes the workflow");
+    let config = format!("params.token = '{secret}'\n");
+    let named = folder.join("secret.config");
+    std::fs::write(&named, &config).expect("writes the config");
+    let output = work.join("upper.txt");
+    std::fs::write(&output, "HELLO\n").expect("writes an output");
+    let text = |path: &Path| path.to_string_lossy().into_owned();
+    let start = RunStart {
+        id: "secret-run".into(),
+        resumes: None,
+        workflow: text(&workflow),
+        language: Language::Nextflow,
+        revision: None,
+        arguments: vec!["run".into(), text(&workflow), "-c".into(), text(&named)],
+        parameters: vec![],
+        executor: "local".into(),
+        simulated: false,
+        store: None,
+        program: Some("uwe 0.1.0".into()),
+        launch: Some(text(&folder)),
+        workflow_folder: Some(text(&folder)),
+        repeats: None,
+    };
+    let path = root.path().join("runs.sqlite");
+    let mut recorder = (Database::open(&path).expect("opens"))
+        .record(&start)
+        .expect("starts");
+    let digest = |bytes: &[u8]| task_model::Digest::sha256(bytes).to_string();
+    let source = |kind, path: String, bytes: &[u8]| Source {
+        kind,
+        path,
+        digest: digest(bytes),
+        size: bytes.len() as u64,
+        executable: false,
+    };
+    recorder.sources(&[
+        source(SourceKind::Workflow, "main.nf".into(), WORKFLOW.as_bytes()),
+        source(SourceKind::Named, text(&named), config.as_bytes()),
+    ]);
+    let mut upper = task(1, "UPPER", vec![], "upper.txt");
+    upper.environment.insert("TOKEN".into(), secret.into());
+    upper.script = Some(format!("cd {} && echo $TOKEN", text(&work)));
+    recorder.requested(&upper, &[]);
+    recorder.started(TaskId(1), 1);
+    recorder.finished(&finished(1, "upper.txt", output), 1, false);
+    recorder.ended(None);
+    recorder.close().expect("closes");
+    let database = Database::open(&path).expect("opens again");
+    let directory = root.path().join("crate");
+    let options = Options {
+        workflow,
+        secrets: vec![secret.into()],
+        folders: vec![folder.clone()],
+        ..Options::default()
+    };
+    export(&database, "secret-run", &directory, &options).expect("exports");
+    let server = text(&folder);
+    for entry in files_below(&directory) {
+        let bytes = std::fs::read(&entry).expect("reads a file of the crate");
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(
+            !content.contains(secret),
+            "{} holds the secret",
+            entry.display()
+        );
+        let named: Vec<&str> = (content.lines())
+            .filter(|line| line.contains(&server))
+            .collect();
+        assert!(
+            named.is_empty(),
+            "{} names the server folder: {named:?}",
+            entry.display()
+        );
+    }
+    let metadata = std::fs::read_to_string(directory.join(METADATA)).expect("reads metadata");
+    assert!(metadata.contains("[secret]"), "{metadata}");
+    assert!(metadata.contains("cd work && echo $TOKEN"), "{metadata}");
+    assert!(directory.join("main.nf").is_file());
+}
+
+/// The files below a folder.
+fn files_below(folder: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(folder).expect("lists the folder") {
+        let path = entry.expect("an entry").path();
+        match path.is_dir() {
+            true => files.extend(files_below(&path)),
+            false => files.push(path),
+        }
+    }
+    files
 }

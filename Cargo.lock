@@ -4783,6 +4783,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nextflow-lowering"
+version = "0.1.0"
+dependencies = [
+ "nextflow-evaluator",
+ "nextflow-runtime",
+ "serde_json",
+ "tempfile",
+ "workflow-graph",
+]
+
+[[package]]
 name = "nextflow-parser"
 version = "0.1.0"
 

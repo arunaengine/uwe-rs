@@ -1,5 +1,5 @@
-//! Runs dialect task ops through a registered adapter: the frame and inputs it starts with,
-//! retries under one task id, acceptance, op errors and the end of the source context.
+//! Runs dialect task ops through a registered adapter: the frame, inputs and sources it starts
+//! with, retries under one task id, acceptance, notes, op errors and the end of its context.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -11,7 +11,8 @@ use serde_json::{Map, Value as Json, json};
 use wir_runtime::adapter::{CallId, Changes, Ending, TaskAdapter, TaskCall};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{
-    Attempt, DriverError, Executor, Launch, Outcome, OutputFile, Running, Task, TaskId, execute,
+    Attempt, DriverError, Executor, Launch, Marker, MarkerKind, Note, Outcome, OutputFile, Running,
+    Task, TaskId, execute,
 };
 
 /// What the adapters of a run saw.
@@ -404,5 +405,73 @@ fn empty_outputs() {
         results,
         json!({"a": "made"}),
         "the empty output b is no null"
+    );
+}
+
+/// Runs each op as the task 100 of the adapter, which it marks as a checkpoint.
+#[derive(Default)]
+struct Marking {
+    marked: bool,
+}
+
+impl TaskAdapter for Marking {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        let task = Task {
+            id: TaskId(100),
+            ..Task::default()
+        };
+        Ok(Changes {
+            tasks: vec![(call.call, task)],
+            ..Changes::default()
+        })
+    }
+
+    fn complete(&mut self, _: Outcome) -> Result<Changes, DriverError> {
+        Ok(Changes::default())
+    }
+
+    fn notes(&mut self) -> Vec<Note> {
+        if std::mem::replace(&mut self.marked, true) {
+            return Vec::new();
+        }
+        let marker = Marker {
+            kind: MarkerKind::Checkpoint,
+            reason: "a checkpoint".into(),
+        };
+        vec![Note::Mark(TaskId(100), marker)]
+    }
+}
+
+#[test]
+fn adapter_notes() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = document(folder.path(), 1);
+    let mut settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    settings.adapters.register("nextflow_process", |opening| {
+        let sources: Vec<&str> = opening
+            .sources
+            .iter()
+            .map(|source| source.id.as_str())
+            .collect();
+        assert_eq!(
+            sources,
+            ["nf"],
+            "the opening has the sources of the document"
+        );
+        Ok(Box::new(Marking::default()))
+    });
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let tasks = workflow_graph::Driver::start(&mut driver).unwrap();
+    let notes = workflow_graph::Driver::notes(&mut driver);
+    let [Note::Mark(task, marker)] = &notes[..] else {
+        panic!("one mark: {notes:?}");
+    };
+    assert_eq!(
+        (*task, marker.kind),
+        (tasks[0].id, MarkerKind::Checkpoint),
+        "under the run id"
     );
 }

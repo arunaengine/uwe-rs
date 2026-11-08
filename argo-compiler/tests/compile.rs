@@ -184,3 +184,54 @@ fn compiles_dag_control() {
     assert_eq!(op(main, "c")["depends"], expected);
     assert!(op(main, "c").get("handles").is_none());
 }
+
+const LOOPS: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: each, template: say, withItems: [a, {x: 1}], arguments: {parameters: [{name: text, value: "{{item}}"}]}}
+      - {name: count, template: say, withSequence: {count: "2"}, arguments: {parameters: [{name: text, value: "{{item}}"}]}}
+  - name: say
+    inputs: {parameters: [{name: text}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn compiles_static_loops() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), LOOPS);
+    assert!(kept.is_empty(), "{kept:?}");
+    let main = graph(&document, "template.main");
+    let each = op(main, "each");
+    assert_eq!(
+        each["kind"]["map"],
+        json!({"body": "template.main.each", "over": ["item"]})
+    );
+    let item = |op: &Json| {
+        op["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|port| port["name"] == "item")
+            .cloned()
+    };
+    assert_eq!(item(each).unwrap()["default"], json!(["a", {"x": 1}]));
+    assert_eq!(
+        item(op(main, "count")).unwrap()["default"],
+        json!(["0", "1"])
+    );
+    let body = graph(&document, "template.main.each");
+    let task = &op(body, "each")["kind"]["task"]["builder"]["argo_task"];
+    assert_eq!(task["call"], "[0].each");
+    let maps = task["inputs"].as_array().unwrap();
+    assert!(maps.iter().any(|map| map["native"] == "parameter/item"));
+    let result =
+        (each["outputs"].as_array().unwrap().iter()).find(|port| port["name"] == "outputs.result");
+    assert_eq!(
+        result.unwrap()["type"],
+        json!({"array": {"items": {"optional": "string"}}})
+    );
+    let param = LOOPS.replace("withItems: [a, {x: 1}]", "withParam: '[\"a\"]'");
+    let (_, kept) = compiled(folder.path(), &param);
+    assert!(kept[0].reason.contains("withParam"), "{kept:?}");
+}

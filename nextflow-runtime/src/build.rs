@@ -384,41 +384,15 @@ impl Host for Builder<'_> {
             queue_inputs |= !self.network.is_value(channel);
             inputs.push(channel);
         }
-        // Selectors match the definition name, the alias and the fully qualified name.
-        let alias = name.rsplit(':').next().unwrap_or(name);
-        let names = [&*process.name, alias, name];
-        // Agents take no settings from the `process` scope, only from the `agent` scope.
-        let settings = match process.agent {
-            Some(_) => self.config.agent_settings(&names, &labels(process)),
-            None => self.config.process_settings(&names, &labels(process)),
-        };
-        let settings = settings.map_err(|exception| Error::Thrown {
-            exception: Rc::new(exception),
-            span: process.span,
-        })?;
         let singleton = singleton(process, queue_inputs);
+        let exec_folder = self.exec_folder.clone();
+        let call = (module, process, name);
+        let binding = binding(self.config, call, singleton, self.stub, exec_folder)?;
         let outputs: Vec<ChannelId> = process
             .outputs
             .iter()
             .map(|_| self.network.channel(singleton))
             .collect();
-        let binding = Binding {
-            // Wave builds the `conda` packages of tasks as Conda does.
-            conda_enabled: ["conda", "wave"]
-                .iter()
-                .any(|scope| (self.config.get(&[scope, "enabled"])).is_some_and(|v| v.truth())),
-            spack_enabled: self
-                .config
-                .get(&["spack", "enabled"])
-                .is_some_and(|v| v.truth()),
-            module: module.clone(),
-            process: process.clone(),
-            name: name.into(),
-            singleton,
-            stub: self.stub,
-            exec_folder: self.exec_folder.clone(),
-            settings: Rc::new(settings),
-        };
         let node = ProcessNode {
             binding,
             outputs: outputs.clone(),
@@ -852,6 +826,41 @@ impl Builder<'_> {
             .map(|path| Value::Path(Rc::new(path)))
             .collect())
     }
+}
+
+/// The binding of a call of a process, with the config settings that its selectors choose.
+pub(crate) fn binding(
+    config: &Config,
+    (module, process, name): (&Rc<Module>, &Rc<Process>, &str),
+    singleton: bool,
+    stub: bool,
+    exec_folder: Option<Rc<std::path::Path>>,
+) -> Result<Binding, Error> {
+    // Selectors match the definition name, the alias and the fully qualified name.
+    let alias = name.rsplit(':').next().unwrap_or(name);
+    let names = [&*process.name, alias, name];
+    // Agents take no settings from the `process` scope, only from the `agent` scope.
+    let settings = match process.agent {
+        Some(_) => config.agent_settings(&names, &labels(process)),
+        None => config.process_settings(&names, &labels(process)),
+    };
+    let settings = settings.map_err(|exception| Error::Thrown {
+        exception: Rc::new(exception),
+        span: process.span,
+    })?;
+    let enabled = |scope: &str| (config.get(&[scope, "enabled"])).is_some_and(|v| v.truth());
+    Ok(Binding {
+        // Wave builds the `conda` packages of tasks as Conda does.
+        conda_enabled: enabled("conda") || enabled("wave"),
+        spack_enabled: enabled("spack"),
+        module: module.clone(),
+        process: process.clone(),
+        name: name.into(),
+        singleton,
+        stub,
+        exec_folder,
+        settings: Rc::new(settings),
+    })
 }
 
 /// The labels of a process, from its `label` directives, which must be plain strings.

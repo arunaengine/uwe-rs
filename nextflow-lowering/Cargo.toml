@@ -1,0 +1,21 @@
+# Manifest of nextflow-lowering, which lowers Nextflow pipelines into wir graphs.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "nextflow-lowering"
+description = "Lowers Nextflow pipelines into wir: process calls into process ops with dialect tasks, operators into stream ops, workflow calls into graphs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+nextflow-evaluator.workspace = true
+nextflow-runtime.workspace = true
+serde_json.workspace = true
+workflow-graph.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

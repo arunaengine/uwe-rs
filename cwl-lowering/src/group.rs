@@ -230,12 +230,19 @@ impl Lowerer {
         });
     }
 
-    /// A graph name from `stem` that no graph has yet.
-    pub(crate) fn graph_name(&self, stem: &str) -> String {
+    /// A graph name from `stem` that no graph has or will have, as a graph is added once the
+    /// graphs it calls are.
+    pub(crate) fn graph_name(&mut self, stem: &str) -> String {
         let mut name = stem.to_owned();
-        while name == "main" || self.graphs.iter().any(|graph| graph.name == name) {
-            name = format!("{stem}-{}", self.graphs.len() + 1);
+        let mut number = self.graphs.len() + 1;
+        while name == "main"
+            || self.graphs.iter().any(|graph| graph.name == name)
+            || self.names.contains(&name)
+        {
+            name = format!("{stem}-{number}");
+            number += 1;
         }
+        self.names.push(name.clone());
         name
     }
 }

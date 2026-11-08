@@ -389,7 +389,8 @@
             "compare": { "$ref": "#/$defs/callback" },
             "seed": { "$ref": "#/$defs/literal" },
             "empty": { "$ref": "#/$defs/empty_rule" },
-            "nulls": { "enum": ["keep", "keep_state"] }
+            "nulls": { "enum": ["keep", "keep_state"] },
+            "steps": { "type": "boolean" }
           }
         },
         "first": { "$ref": "#/$defs/pick" },

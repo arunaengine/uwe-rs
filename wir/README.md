@@ -201,6 +201,7 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 | `cross` | none | order; empty input |
 | `group` | `by`, `size`, `remainder` | Nextflow `groupTuple` rules; order of groups |
 | `join` | `by`, `remainder`, `fail_on_mismatch`, `fail_on_duplicate` | duplicate keys; mismatch errors; order |
+| `reduce` | `rule`, `body`, `compare`, `seed`, `empty`, `nulls`, `steps` | with `steps`, a stream of the value after every item, like nf-boost `scan` |
 | `loop` | `body`, `condition`, `carry` | the first check; outputs of every round; limits |
 | `dynamic` | `plan` | typed boundaries; stable instance ids; reconciling with finished work |
 

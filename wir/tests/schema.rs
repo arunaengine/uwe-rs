@@ -46,6 +46,7 @@ fn schema_matches_parser() {
         json!({"expr": {"language": "argo", "code": "{{item}}", "form": "items"}}),
         json!({"map": {"body": "g", "over": ["a"], "mode": "flat_cross", "min_success": 1}}),
         json!({"collect": {}}),
+        json!({"reduce": {"rule": "sum", "steps": true}}),
         json!({"filter": {"body": "g"}}),
         json!({"flatten": {}}),
         json!({"merge": {}}),

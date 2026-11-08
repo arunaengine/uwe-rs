@@ -325,7 +325,17 @@ pub(crate) fn piece(
             labels,
             callback,
             all,
-        } => route(path, labels, &body(callback), *all, source_stream)?,
+        } => {
+            // The criteria closure as Nextflow rewrites it, which gives the label and value.
+            let mut criteria = body(callback);
+            let rewrite = if *all {
+                "multiMapCriteria"
+            } else {
+                "branchCriteria"
+            };
+            criteria["code"] = json!(format!("({rewrite} {})[1]", callback.code));
+            route(path, labels, &criteria, *all, source_stream)?
+        }
         Kind::CollectFile {
             callback,
             name,

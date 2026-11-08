@@ -233,6 +233,7 @@ impl WirDriver {
         });
         for default in ports.filter_map(|port| port.default.as_mut()) {
             inputs::absolute(default, &base);
+            inputs::filled(default, launch.simulated);
         }
         let progress = Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
         WirDriver {
@@ -410,6 +411,19 @@ impl WirDriver {
                     }
                 }
             }
+            Kind::Load(spec) => {
+                let node = self.progress.node(at);
+                let mut access = self.settings.cwl.access();
+                access.assume_present |= self.launch.simulated;
+                match crate::load::load(&spec, &node.op, &bound, &access) {
+                    Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
+                    Err(why) => {
+                        let message = Some(format!("op {}: {why}", node.path));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
             _ => {
                 let path = &self.progress.node(at).path;
                 Err(DriverError::unsupported(format!(
@@ -499,7 +513,8 @@ impl WirDriver {
             }
         };
         let (spec, op) = task::patched(spec, &node.op, &patch);
-        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound);
+        let script = (&self.settings.cwl.javascript, self.launch.simulated);
+        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound, script)?;
         task.site = op.attributes.place.clone();
         self.patches.insert(id, patch);
         Ok(task)
@@ -557,7 +572,7 @@ impl WirDriver {
     /// again while the op's `retry` allows it; then the op fails, or errors when the task
     /// could not run.
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
-        let (at, _, bound) = &self.tasks[&outcome.id];
+        let (at, task, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
         // The op of a stopped attempt was cancelled already.
         if matches!(self.progress.states[at], State::Ended(..)) {
@@ -567,10 +582,16 @@ impl WirDriver {
             return Vec::new();
         };
         let files = self.files.as_deref();
+        let mut access = self.settings.cwl.access();
+        access.assume_present |= self.launch.simulated;
         let ended = task::Ended {
             outcome,
             files,
             bound,
+            inputs: &task.inputs,
+            simulated: self.launch.simulated,
+            settings: &self.settings.cwl.javascript,
+            access: &access,
         };
         // An attempt is judged by its own patch, like its success codes.
         let patch = self.patches.get(&outcome.id).cloned().unwrap_or_default();

@@ -26,6 +26,28 @@ impl Block for WdlDriver {
     }
 }
 
+/// The WDL input file of a native op: the inputs that are not None, and None for an input
+/// whose flag `given.<input>` is set, as a call gave `None` to it.
+pub(crate) fn job(mut values: Map<String, Json>) -> Json {
+    let flags: Vec<String> = (values.keys())
+        .filter(|name| name.starts_with("given."))
+        .cloned()
+        .collect();
+    let mut given = Vec::new();
+    for flag in flags {
+        if values.remove(&flag) == Some(Json::Bool(true)) {
+            given.push(flag["given.".len()..].to_owned());
+        }
+    }
+    let mut job = crate::nextflow::params(&values);
+    if let Json::Object(job) = &mut job {
+        for name in given {
+            job.entry(name).or_insert(Json::Null);
+        }
+    }
+    job
+}
+
 /// The op inputs with each tuple of two as a WDL pair, an object with `left` and `right`, as
 /// WDL input files give pairs.
 pub(crate) fn pairs(

@@ -264,3 +264,30 @@ fn loops_over_no_items() {
     assert_eq!(one.1, ["runs[1].after"]);
     assert_eq!(other, one);
 }
+
+const SKIPPED: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: produce, template: make, when: "1 == 2"}
+    - - name: use
+        template: say
+        arguments: {parameters: [{name: text, value: "{{steps.produce.outputs.parameters.out}}"}]}
+  - name: make
+    container: {image: alpine:3.20, command: [sh, -c, "echo made > /tmp/out"]}
+    outputs: {parameters: [{name: out, valueFrom: {path: /tmp/out, default: fallback}}]}
+  - name: say
+    inputs: {parameters: [{name: text}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn reads_defaults_of_skipped_steps() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, SKIPPED);
+    let (one, other) = both(root, &file, &[], Writer::new);
+    one.0.as_ref().unwrap();
+    assert_eq!(one.1, ["runs[1].use"]);
+    assert_eq!(other, one);
+}

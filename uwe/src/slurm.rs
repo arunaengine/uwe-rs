@@ -71,6 +71,7 @@ pub fn configured(
         .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
     backend.staging_time = settings.slurm_staging.margin();
     backend.cpu_memory_gb = settings.slurm_cpu_memory;
+    backend.host_pull = settings.slurm_host_pull;
     if let Some(folder) = &settings.slurm_images {
         backend.images = folder.clone();
     }

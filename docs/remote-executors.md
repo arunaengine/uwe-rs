@@ -826,6 +826,13 @@ Some TES servers stage input files as read-only and owned by another user, and r
 
 With Apptainer or Singularity, uwe turns each image of a registry or an address into a SIF file once, before the first task of the image runs, and the jobs run that file. By default a job of its own pulls the image, with the resources of `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` (default 2, 4096 and 60). The files go to the `images` folder in the scratch folder of the cache, which the nodes must see at the same path.
 
+Where the nodes cannot reach the registries, set `on_host = true` in `[executor.slurm.pull]`. Then the machine that runs uwe pulls each image itself with `apptainer pull` (or `singularity pull`), before it submits the first task of the image, and the jobs only run the finished file. That machine needs Apptainer or Singularity and access to the registries. uwe checks that the result is a SIF file before the file gets its name. The pull gets the variables that `sbatch` gets, see [SLURM job environment](#slurm-job-environment), and may take `minutes`; `cpus` and `memory_mb` apply only to pull jobs. Pull jobs stay the default, as they keep the load of large images off the machine of uwe, which is often a login node.
+
+```toml
+[executor.slurm.pull]
+on_host = true
+```
+
 `image_folder` in `[executor.slurm]` names another folder, as an absolute path that the nodes see at the same path. Runs and users that share the folder reuse its files: an image named by a digest or an address is pulled once for all of them. An image named by a tag is pulled again in each run, as the tag may have moved. A pull writes to a temporary name and renames the file once it is whole. While a run pulls an image, it locks a file next to it, `<file>.lock`, and other runs wait until it is done. When runs on several machines share the folder, its file system must support such locks across machines. Where uwe cannot lock the file, it logs a warning and pulls without the lock. Each user of a shared folder needs the right to write in it.
 
 ```toml
@@ -833,7 +840,7 @@ With Apptainer or Singularity, uwe turns each image of a registry or an address 
 image_folder = "/shared/sif"
 ```
 
-The pulls reach the web through `proxy` in `[network]`, or through the proxy variables of the uwe process. A pull job gets them by name in `--export`, as in [SLURM job environment](#slurm-job-environment). The address of a proxy may hold a user and a password, like `http://user:password@proxy.example.org:3128`. When a failed pull prints it, the error shows `***` in place of the password.
+The pulls reach the web through `proxy` in `[network]`, or through the proxy variables of the uwe process. A pull on the machine of uwe gets them in its environment, and a pull job by name in `--export`, as in [SLURM job environment](#slurm-job-environment). The address of a proxy may hold a user and a password, like `http://user:password@proxy.example.org:3128`. When a failed pull prints it, the error shows `***` in place of the password.
 
 ## SLURM job environment
 

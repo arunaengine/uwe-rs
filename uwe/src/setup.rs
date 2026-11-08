@@ -109,6 +109,8 @@ pub struct Executors {
     /// `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` of the job that pulls an
     /// image into a SIF file.
     pub slurm_pull: PullResources,
+    /// `[executor.slurm.pull] on_host`: whether the machine of uwe pulls the images, not a job.
+    pub slurm_host_pull: bool,
     /// `[executor.slurm] query_seconds`: how long one call of `squeue`, `sacct` or `scancel`
     /// may take, for a busy controller.
     pub slurm_query: Option<u64>,
@@ -344,6 +346,7 @@ impl Executors {
             }
             if let Some(pull) = slurm.table("pull")? {
                 settings.slurm_pull = pull_resources(&pull)?;
+                settings.slurm_host_pull = pull.flag("on_host")?.unwrap_or(false);
             }
             if let Some(seconds) = slurm.integer("query_seconds")? {
                 if !(1..=3600).contains(&seconds) {
@@ -607,7 +610,7 @@ pub(crate) fn helper_file(table: &Table<'_>, named: bool) -> Result<Option<PathB
 /// The resources of the job that pulls an image, from `[executor.slurm.pull]`; what it leaves
 /// out keeps its default.
 fn pull_resources(pull: &Table<'_>) -> Result<PullResources, ConfigError> {
-    pull.only(&["cpus", "memory_mb", "minutes"])?;
+    pull.only(&["cpus", "memory_mb", "minutes", "on_host"])?;
     let positive = |key: &str| -> Result<Option<u64>, ConfigError> {
         match pull.integer(key)? {
             None => Ok(None),
@@ -1099,8 +1102,10 @@ mod tests {
 
     #[test]
     fn loads_slurm_resources() {
-        let text = "[executor.slurm.pull]\ncpus = 8\nminutes = 120\n";
-        let pull = read(text).expect("settings").slurm_pull;
+        let text = "[executor.slurm.pull]\ncpus = 8\nminutes = 120\non_host = true\n";
+        let settings = read(text).expect("settings");
+        assert!(settings.slurm_host_pull);
+        let pull = settings.slurm_pull;
         let expected = PullResources {
             cpus: 8,
             time_seconds: 7200,

@@ -147,15 +147,14 @@ fn compiles_jobs() {
     assert_eq!(all["inputs"].as_array().map(Vec::len), Some(2));
 }
 
+/// A workflow with a checkpoint is one dynamic region that the Snakemake planner plans.
 #[test]
-fn keeps_checkpoints() {
+fn compiles_checkpoints() {
     let snakefile = "rule all:\n    input: \"b.txt\"\n\ncheckpoint a:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
     let (_folder, compiled, document) = compiled(snakefile);
-    assert_eq!(compiled.kept.len(), 1);
-    assert_eq!(compiled.kept[0].reason, "rule a is a checkpoint");
-    let native = &op(&document, "snakemake")["kind"]["native"];
-    assert_eq!(native["source"], "snakefile");
-    assert!(native.get("entry").is_none());
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let planner = &op(&document, "snakemake")["kind"]["dynamic"]["planner"]["snakemake"];
+    assert_eq!(*planner, json!({"source": "snakefile", "targets": ["all"]}));
 }
 
 #[test]
@@ -261,9 +260,19 @@ fn refuses_dropped_settings() {
         params: vec![("x".into(), "1".into())],
         ..Launch::default()
     };
-    let (_folder, compiled) = compile_in(&snakefile, launch);
+    let (_folder, compiled) = compile_in(&snakefile, launch.clone());
     let error = compiled.err().unwrap_or_default();
-    let expected = "the workflow stays one native Snakemake op (rule c is a checkpoint), which \
-        cannot hold config values of the command line";
+    let expected =
+        "rule c is a checkpoint, whose region cannot hold config values of the command line";
+    assert_eq!(error, expected);
+    let images = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
+    let launch = Launch {
+        targets: vec!["b.txt".into()],
+        ..launch
+    };
+    let error = compile_in(images, launch).1.err().unwrap_or_default();
+    let expected = "the workflow stays one native Snakemake op (a job of rule a: its group runs \
+        jobs of several images, which a run splits), which cannot hold config values of the \
+        command line";
     assert_eq!(error, expected);
 }

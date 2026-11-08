@@ -294,10 +294,6 @@ impl WirDriver {
             }
             Kind::Map(map) => {
                 let path = self.progress.node(at).path.clone();
-                if map.parallelism.is_some() || map.min_success.is_some() {
-                    let message = format!("op {path}: parallelism and min_success are reserved");
-                    return Err(DriverError::unsupported(message));
-                }
                 match plan::items(&map, &bound) {
                     Ok(rounds) => {
                         let start = self.progress.plan.nodes.len();

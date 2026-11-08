@@ -160,7 +160,8 @@ pub struct Branch {
 
 /// Runs the `body` graph once per round: each round takes items of the array inputs in `over`
 /// and the other inputs as they are. Each output is the array of what the rounds gave, in
-/// round order. `parallelism` and `min_success` stay reserved.
+/// round order. `parallelism` limits the rounds that run at once, and `min_success` lets the
+/// map succeed with failed rounds, which give null.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Map {

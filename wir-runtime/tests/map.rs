@@ -1,5 +1,5 @@
-//! Runs map ops: their rounds in each mode, their outputs in round order, empty inputs and
-//! inputs of unequal lengths.
+//! Runs map ops: their rounds in each mode, their outputs in round order, empty inputs,
+//! inputs of unequal lengths, the limit of running rounds and rounds that may fail.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,7 +7,9 @@ use std::path::Path;
 
 use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
-use workflow_graph::{Attempt, Driver, Executor, Launch, Outcome, OutputFile, Running, execute};
+use workflow_graph::{
+    Attempt, Driver, Executor, Launch, Outcome, OutputFile, Running, Task, execute,
+};
 
 /// A document whose map `each` runs the task `cat` once per round of `texts` and `labels`.
 fn document(root: &Path, mode: &str, texts: usize, labels: usize) -> Launch {
@@ -81,27 +83,41 @@ fn document(root: &Path, mode: &str, texts: usize, labels: usize) -> Launch {
 struct Echoing {
     root: std::path::PathBuf,
     names: Vec<(String, String)>,
+    failing: bool,
 }
 
 impl Executor for Echoing {
     fn run(&mut self, attempt: Attempt) -> Running {
         let task = &attempt.task;
         self.names.push((task.name.clone(), task.step.clone()));
-        let work = self.root.join(format!("work-{}", task.id));
-        std::fs::create_dir_all(&work).unwrap();
-        let path = format!("{}.out", task.command.last().unwrap());
-        std::fs::write(work.join(&path), "").unwrap();
-        let files = vec![OutputFile {
-            location: work.join(&path).to_string_lossy().into_owned(),
-            path,
-            ..OutputFile::default()
-        }];
-        let outcome = Outcome {
-            id: task.id,
-            files,
-            ..Outcome::default()
-        };
-        Running::ended(Ok(outcome))
+        // The round of the label `l1` fails.
+        if self.failing && task.command.last().is_some_and(|word| word == "l1") {
+            let outcome = Outcome {
+                id: task.id,
+                exit_code: 1,
+                ..Outcome::default()
+            };
+            return Running::ended(Ok(outcome));
+        }
+        Running::ended(Ok(echo(&self.root, task)))
+    }
+}
+
+/// The outcome of a task that wrote `<last word of the command>.out`.
+fn echo(root: &Path, task: &Task) -> Outcome {
+    let work = root.join(format!("work-{}", task.id));
+    std::fs::create_dir_all(&work).unwrap();
+    let path = format!("{}.out", task.command.last().unwrap());
+    std::fs::write(work.join(&path), "").unwrap();
+    let files = vec![OutputFile {
+        location: work.join(&path).to_string_lossy().into_owned(),
+        path,
+        ..OutputFile::default()
+    }];
+    Outcome {
+        id: task.id,
+        files,
+        ..Outcome::default()
     }
 }
 
@@ -117,6 +133,7 @@ fn run(mode: &str, texts: usize, labels: usize) -> Result<(Vec<(String, String)>
     let mut executor = Echoing {
         root: folder.path().to_owned(),
         names: Vec::new(),
+        failing: false,
     };
     let execution = execute("map", &mut driver, &mut executor);
     execution.into_result().map_err(|error| error.to_string())?;
@@ -169,4 +186,111 @@ fn handles_empty_inputs() {
 fn refuses_unequal_lengths() {
     let error = run("dot", 2, 3).unwrap_err();
     assert_eq!(error, "op each: the inputs of a dot map have lengths 2, 3");
+}
+
+/// Changes the document of a launch.
+fn change(launch: &Launch, change: impl FnOnce(&mut Json)) {
+    let text = std::fs::read_to_string(&launch.target).unwrap();
+    let mut document: Json = serde_json::from_str(&text).unwrap();
+    change(&mut document);
+    std::fs::write(&launch.target, document.to_string()).unwrap();
+}
+
+fn settings() -> Settings {
+    Settings {
+        print: false,
+        ..Settings::default()
+    }
+}
+
+#[test]
+fn limits_running_rounds() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = document(folder.path(), "dot", 3, 3);
+    change(&launch, |document| {
+        document["graphs"][0]["ops"][0]["kind"]["map"]["parallelism"] = json!(2);
+    });
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let names =
+        |tasks: &[Task]| -> Vec<String> { tasks.iter().map(|task| task.name.clone()).collect() };
+    let started = driver.start().unwrap();
+    assert_eq!(
+        names(&started),
+        ["each/0/cat", "each/1/cat"],
+        "two rounds at a time"
+    );
+    let next = driver.complete(echo(folder.path(), &started[1])).unwrap();
+    assert_eq!(
+        names(&next),
+        ["each/2/cat"],
+        "a round ended, so the next one starts"
+    );
+    assert!(
+        driver
+            .complete(echo(folder.path(), &started[0]))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Runs a dot map of three rounds whose round `l1` fails, with `least` as its `min_success`
+/// and `items` as the item type of its outputs; the labels of the outputs.
+fn run_failing(least: u32, items: Json) -> Result<Json, String> {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = document(folder.path(), "dot", 3, 3);
+    change(&launch, |document| {
+        let main = &mut document["graphs"][0];
+        main["ops"][0]["kind"]["map"]["min_success"] = json!(least);
+        let outputs = json!({"array": {"items": items}});
+        main["ops"][0]["outputs"][0]["type"] = outputs.clone();
+        main["outputs"][0]["type"] = outputs;
+    });
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let mut executor = Echoing {
+        root: folder.path().to_owned(),
+        names: Vec::new(),
+        failing: true,
+    };
+    let execution = execute("map", &mut driver, &mut executor);
+    execution.into_result().map_err(|error| error.to_string())?;
+    let outs = driver.results().unwrap()["outs"].clone();
+    let labels = (outs.as_array().unwrap().iter())
+        .map(|item| match item {
+            Json::Null => Json::Null,
+            file => label(file),
+        })
+        .collect();
+    Ok(Json::Array(labels))
+}
+
+#[test]
+fn accepts_failed_rounds() {
+    let optional = json!({"optional": {"file": {}}});
+    let outs = run_failing(2, optional.clone()).unwrap();
+    assert_eq!(outs, json!(["l0", null, "l2"]), "a failed round gives null");
+    let error = run_failing(3, optional).unwrap_err();
+    assert_eq!(error, "op each/1/cat: the command ended with exit code 1");
+}
+
+#[test]
+fn refuses_null_rounds() {
+    let error = run_failing(2, json!({"file": {}})).unwrap_err();
+    assert_eq!(
+        error,
+        "op each: a round failed, and output out takes no null"
+    );
+}
+
+#[test]
+fn refuses_no_parallelism() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = document(folder.path(), "dot", 1, 1);
+    change(&launch, |document| {
+        document["graphs"][0]["ops"][0]["kind"]["map"]["parallelism"] = json!(0);
+    });
+    let error = WirDriver::new(&launch, settings()).err().unwrap();
+    assert_eq!(
+        error.message,
+        "op main/each: a map runs at least one round at a time"
+    );
 }

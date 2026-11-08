@@ -3,6 +3,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
+
 use serde_json::{Map, Value as Json};
 use wir::{Kind, Status, Type, TypeDef, resolve};
 
@@ -79,6 +81,7 @@ impl Progress {
     pub fn next(&mut self, draining: bool) -> Option<(usize, Map<String, Json>)> {
         loop {
             let mut changed = false;
+            let busy = self.busy();
             for at in 0..self.plan.nodes.len() {
                 match &self.states[at] {
                     State::Waiting => {}
@@ -93,6 +96,11 @@ impl Progress {
                         continue;
                     }
                     _ => continue,
+                }
+                if let Some((map, most)) = self.limit(at)
+                    && busy.get(&map).is_some_and(|running| running >= &most)
+                {
+                    continue;
                 }
                 match self.readiness(at) {
                     Readiness::Wait => {}
@@ -115,6 +123,26 @@ impl Progress {
                 return None;
             }
         }
+    }
+
+    /// The map whose `parallelism` limits a node, when it is a round of one, with the limit.
+    fn limit(&self, at: usize) -> Option<(usize, u32)> {
+        let parent = self.node(at).parent?;
+        match &self.node(parent).op.kind {
+            Kind::Map(map) => Some((parent, map.parallelism?)),
+            _ => None,
+        }
+    }
+
+    /// The number of running rounds of each map that limits them.
+    fn busy(&self) -> HashMap<usize, u32> {
+        let mut counts = HashMap::new();
+        for (at, state) in self.states.iter().enumerate() {
+            if let (State::Running(_), Some((map, _))) = (state, self.limit(at)) {
+                *counts.entry(map).or_insert(0) += 1;
+            }
+        }
+        counts
     }
 
     /// Ends a node. A failure that no dependency waits for fails the run; one inside a call
@@ -297,21 +325,27 @@ impl Progress {
 }
 
 impl Progress {
-    /// Ends a map once every round ended: it succeeds when every round succeeded, with each
-    /// output the array of the rounds' values in round order, nested by the map's shape.
+    /// Ends a map once every round ended: it succeeds when every round succeeded, or as many
+    /// as `min_success`, with each output the array of the rounds' values in round order,
+    /// nested by the map's shape. A round that did not succeed gives null.
     fn end_map(&mut self, at: usize) -> bool {
         let rounds: Vec<usize> = (0..self.plan.nodes.len())
             .filter(|node| self.node(*node).parent == Some(at))
             .collect();
-        let mut values: Vec<&Map<String, Json>> = Vec::new();
+        let mut values: Vec<Option<&Map<String, Json>>> = Vec::new();
         for round in &rounds {
             match &self.states[*round] {
-                State::Ended(Status::Succeeded, given) => values.push(given),
-                State::Ended(..) => {}
+                State::Ended(Status::Succeeded, given) => values.push(Some(given)),
+                State::Ended(..) => values.push(None),
                 _ => return false,
             }
         }
-        if values.len() < rounds.len() {
+        let least = match &self.node(at).op.kind {
+            Kind::Map(map) => map.min_success.map_or(rounds.len(), |least| least as usize),
+            _ => rounds.len(),
+        };
+        let succeeded = values.iter().flatten().count();
+        if succeeded < least {
             let reasons: Vec<&str> = (self.inner.iter())
                 .filter(|(map, _)| *map == at)
                 .map(|(_, why)| why.as_str())
@@ -324,14 +358,30 @@ impl Progress {
             return true;
         }
         let node = self.node(at);
+        for (_, why) in self.inner.iter().filter(|(map, _)| *map == at) {
+            tracing::warn!(op = %node.path, "a round failed: {why}");
+        }
         let mut outputs = Map::new();
+        let mut unfit = None;
         for port in &node.op.outputs {
             let items: Vec<Json> = (values.iter())
-                .map(|given| given.get(&port.name).cloned().unwrap_or_default())
+                .map(|given| given.and_then(|given| given.get(&port.name).cloned()))
+                .map(Option::unwrap_or_default)
                 .collect();
-            outputs.insert(port.name.clone(), nest(&items, &node.shape));
+            let value = nest(&items, &node.shape);
+            if succeeded < rounds.len() && !wir::fits(&value, &port.r#type, &self.defs) {
+                let (path, name) = (&node.path, &port.name);
+                unfit = Some(format!(
+                    "op {path}: a round failed, and output {name} takes no null"
+                ));
+                break;
+            }
+            outputs.insert(port.name.clone(), value);
         }
-        self.end(at, Status::Succeeded, outputs, None);
+        match unfit {
+            Some(why) => self.end(at, Status::Failed, Map::new(), Some(why)),
+            None => self.end(at, Status::Succeeded, outputs, None),
+        }
         true
     }
 }

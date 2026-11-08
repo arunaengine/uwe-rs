@@ -4,6 +4,7 @@
 
 use std::collections::BTreeSet;
 
+use super::callbacks::Arity;
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
@@ -18,10 +19,17 @@ impl<'d> Checker<'d> {
             Kind::Call(call) => self.call(at, op, &call.graph),
             Kind::Native(native) => self.native(at, op, native),
             Kind::Map(map) => self.map(at, op, map),
-            Kind::Expr(_) => {
+            Kind::Expr(expr) => {
                 if op.outputs.len() != 1 {
                     self.report(at, Problem::Single("an expr".into()));
                 }
+                self.captures(at, op, &expr.captures);
+                if let Some(scope) = &expr.scope {
+                    self.scope(at, scope, expr.language);
+                }
+            }
+            Kind::Filter(filter) => {
+                self.body(at, op, &filter.body, Arity::Unary, Some(&Type::Bool))
             }
             Kind::Branch(branch) => self.branch(at, op, branch),
             Kind::Select(select) => self.select(at, op, select.rule),

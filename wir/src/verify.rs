@@ -89,6 +89,10 @@ pub enum Problem {
     Default(String),
     #[error("{0} needs exactly one input and one output")]
     Unary(String),
+    #[error("callback {0}: {1}")]
+    Callback(String, String),
+    #[error("closure: {0}")]
+    Closure(String),
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.
@@ -434,7 +438,7 @@ fn called_by(kind: &Kind) -> Vec<&str> {
     match kind {
         Kind::Call(call) => vec![&call.graph],
         Kind::Map(map) => vec![&map.body],
-        Kind::Filter(filter) => vec![&filter.body],
+        Kind::Filter(filter) => filter.body.graph().into_iter().collect(),
         Kind::Branch(branch) => vec![&branch.body],
         Kind::Loop(body) => vec![&body.body],
         _ => Vec::new(),
@@ -530,6 +534,8 @@ fn show(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
+#[path = "callbacks.rs"]
+mod callbacks;
 #[path = "kinds.rs"]
 mod kinds;
 

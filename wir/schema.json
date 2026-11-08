@@ -302,7 +302,12 @@
           }
         },
         "collect": { "$ref": "#/$defs/empty" },
-        "filter": { "$ref": "#/$defs/body" },
+        "filter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["body"],
+          "properties": { "body": { "$ref": "#/$defs/callback" } }
+        },
         "flatten": { "$ref": "#/$defs/empty" },
         "merge": { "$ref": "#/$defs/empty" },
         "zip": {
@@ -423,12 +428,6 @@
       }
     },
     "callback": { "oneOf": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/closure" }] },
-    "body": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["body"],
-      "properties": { "body": { "$ref": "#/$defs/name" } }
-    },
     "task": {
       "type": "object",
       "additionalProperties": false,

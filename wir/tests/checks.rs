@@ -64,3 +64,129 @@ fn stream_flow_rules() {
         "{found:?}"
     );
 }
+
+fn port(name: &str, r#type: &str) -> Json {
+    json!({"name": name, "type": r#type})
+}
+
+/// A graph `main` whose op `keep` filters the input `n` with `body`, capturing `limit`.
+fn filtering(body: Json, callback: Json) -> Json {
+    let keep = json!({"path": "keep", "kind": {"filter": {"body": body}},
+        "inputs": [port("n", "int"), port("limit", "int")], "outputs": [port("out", "int")]});
+    let main = json!({"name": "main", "inputs": [port("n", "int"), port("limit", "int")],
+        "outputs": [port("kept", "int")], "ops": [keep],
+        "edges": [edge((None, "n"), (Some("keep"), "n")),
+            edge((None, "limit"), (Some("keep"), "limit")),
+            edge((Some("keep"), "out"), (None, "kept"))]});
+    let sources = json!([{"id": "nf", "language": "nextflow", "location": "main.nf"},
+        {"id": "cwl", "language": "cwl", "location": "main.cwl"}]);
+    let mut graphs = vec![main];
+    graphs.extend(callback.as_array().cloned().unwrap_or_default());
+    json!({"wir_version": wir::VERSION, "sources": sources, "graphs": graphs, "entry": "main"})
+}
+
+/// A callback graph `small` that compares `item` with the capture `limit`.
+fn small(outputs: Json, ops: Json) -> Json {
+    let compare = json!({"path": "lt", "kind": {"expr": {"language": "js",
+        "code": "$(inputs.item < inputs.limit)"}},
+        "inputs": [port("item", "int"), port("limit", "int")], "outputs": [port("out", "bool")]});
+    let mut all = vec![compare];
+    all.extend(ops.as_array().cloned().unwrap_or_default());
+    json!({"name": "small", "inputs": [port("item", "int"), port("limit", "int")],
+        "outputs": outputs, "ops": all,
+        "edges": [edge((None, "item"), (Some("lt"), "item")),
+            edge((None, "limit"), (Some("lt"), "limit")), edge((Some("lt"), "out"), (None, "out"))]})
+}
+
+#[test]
+fn callback_contract() {
+    let good = filtering(
+        json!("small"),
+        json!([small(json!([port("out", "bool")]), json!([]))]),
+    );
+    assert_eq!(problems(&good), Vec::<String>::new());
+    let named = filtering(
+        json!("small"),
+        json!([small(json!([port("ok", "bool")]), json!([]))]),
+    );
+    let found = problems(&named);
+    assert!(
+        found.contains(&"main/keep: callback small: a callback graph has one output, out".into()),
+        "{found:?}"
+    );
+    let typed = filtering(
+        json!("small"),
+        json!([small(json!([port("out", "int")]), json!([]))]),
+    );
+    let found = problems(&typed);
+    assert!(
+        found.iter().any(|problem| problem.contains("is wanted")),
+        "{found:?}"
+    );
+    let task = json!({"path": "t", "kind": {"task": {"command": ["true"]}}});
+    let effects = filtering(
+        json!("small"),
+        json!([small(json!([port("out", "bool")]), json!([task]))]),
+    );
+    reports(
+        &effects,
+        "main/keep: callback small: it runs small/t, which is not pure",
+    );
+    let mut stranger = filtering(
+        json!("small"),
+        json!([small(json!([port("out", "bool")]), json!([]))]),
+    );
+    stranger["graphs"][1]["inputs"][1]["name"] = json!("other");
+    stranger["graphs"][1]["edges"][1]["from"]["port"] = json!("other");
+    reports(
+        &stranger,
+        "main/keep: callback small: capture other names no value input of the op",
+    );
+    let closure = |extra: Json| {
+        let mut body = json!({"language": "groovy", "code": "{ it < limit }",
+            "captures": {"limit": {"input": "limit"}}});
+        body.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().cloned().unwrap());
+        filtering(body, json!([]))
+    };
+    assert_eq!(problems(&closure(json!({}))), Vec::<String>::new());
+    let missing = closure(json!({"captures": {"limit": {"input": "cap"}}}));
+    reports(
+        &missing,
+        "main/keep: closure: capture limit names no value input cap",
+    );
+    reports(
+        &closure(json!({"language": "js"})),
+        "main/keep: closure: js is no closure language; use javascript",
+    );
+    let wdl = closure(json!({"language": "wdl", "code": "x < limit"}));
+    reports(&wdl, "main/keep: closure: a wdl closure names 1 parameters");
+    let clash = closure(json!({"language": "wdl", "parameters": ["limit"]}));
+    reports(
+        &clash,
+        "main/keep: closure: capture limit is also a parameter",
+    );
+}
+
+#[test]
+fn scope_bounds() {
+    let scoped = |scope: Json| {
+        let body = json!({"language": "groovy", "code": "{ it > 1 }", "scope": scope});
+        filtering(body, json!([]))
+    };
+    let good = scoped(json!({"source": "nf", "start": 4, "end": 9}));
+    assert_eq!(problems(&good), Vec::<String>::new());
+    let reversed = scoped(json!({"source": "nf", "start": 9, "end": 4}));
+    reports(
+        &reversed,
+        "main/keep: closure: the scope 9..4 ends before it starts",
+    );
+    let other = scoped(json!({"source": "cwl", "start": 0, "end": 1}));
+    reports(
+        &other,
+        "main/keep: language \"groovy\" differs from that of source cwl, \"cwl\"",
+    );
+    let unknown = scoped(json!({"source": "nope", "start": 0, "end": 1}));
+    reports(&unknown, "main/keep: no source named nope");
+}

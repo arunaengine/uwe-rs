@@ -136,3 +136,28 @@ fn delivery_failures() {
     );
     assert!(driver.failed(&lost).is_ok(), "they run once");
 }
+
+#[test]
+fn hook_scopes() {
+    // The helper comes from a Nextflow source that only the hook names.
+    let folder = tempfile::tempdir().unwrap();
+    let text = "def helper() { 1 }\n";
+    std::fs::write(folder.path().join("lib.nf"), text).unwrap();
+    let scope = json!({"source": "nf", "start": 0, "end": text.len()});
+    let hook = json!({"language": "groovy", "code": "{ helper() == 1 ? 1 : it.nothing() }", "scope": scope});
+    let launch = launch(folder.path(), "inputs.n + 1", json!([{"complete": hook}]));
+    let mut document: Json =
+        serde_json::from_str(&std::fs::read_to_string(&launch.target).unwrap()).unwrap();
+    document["sources"] = json!([{"id": "nf", "language": "nextflow", "location": "lib.nf"}]);
+    std::fs::write(&launch.target, document.to_string()).unwrap();
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let execution = execute("hooks", &mut driver, &mut Idle);
+    assert!(
+        execution.into_result().is_ok(),
+        "the hook sees the helper of its scope"
+    );
+}

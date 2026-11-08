@@ -44,6 +44,7 @@ pub(crate) fn compile(
                 .map(|channel| network.channels[*channel].value)
                 .collect(),
             context,
+            observer: (network.processes.iter()).find(|process| process.name == node.name),
         };
         let made = piece(node, &place, sources, &mut bodies).map_err(|reason| Kept {
             path: node.name.clone(),

@@ -54,6 +54,11 @@ pub(crate) fn process(
         "outputs": maps(&outputs, "output"),
         "captures": {"singleton": {"value": call.singleton}},
     });
+    // Observers of the run, like nf-prov, know the process by its id and the ids it feeds.
+    if let Some(process) = place.observer {
+        let observer = json!({"id": process.id, "feeds": process.feeds});
+        task["captures"]["observer"] = json!({"value": observer});
+    }
     if !place.context.profiles.is_empty() {
         task["profiles"] = json!(place.context.profiles);
     }

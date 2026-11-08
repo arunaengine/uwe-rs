@@ -8,6 +8,7 @@ use nextflow_evaluator::value::{Closure, Value};
 use serde_json::Value as Json;
 
 use crate::adapter::Call;
+pub use nextflow_plugins::observer::Process;
 
 /// The network of a run before it starts.
 #[derive(Debug)]
@@ -31,6 +32,8 @@ pub struct Network {
     pub schema: Option<Json>,
     /// The launch folder, from which relative paths of params start.
     pub launch: String,
+    /// The processes of the run as observers see them, with the processes that each feeds.
+    pub processes: Vec<Process>,
 }
 
 #[derive(Debug)]

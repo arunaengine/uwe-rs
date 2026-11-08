@@ -397,3 +397,36 @@ fn passes_single_topics() {
         .find(|op| op["path"].as_str().unwrap().starts_with("topic-"));
     assert_eq!(topic.map(|op| op["kind"]["filter"].is_object()), Some(true));
 }
+
+#[test]
+fn pins_loaded_scripts() {
+    let script =
+        "include { tag } from './helper.nf'\nworkflow {\n    channel.of(tag()).view()\n}\n";
+    let helper = "def tag() { 'one' }\n";
+    let class = "class Util {\n    static String name() { 'util' }\n}\n";
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::write(directory.path().join("helper.nf"), helper).unwrap();
+    std::fs::create_dir(directory.path().join("lib")).unwrap();
+    std::fs::write(directory.path().join("lib").join("Util.groovy"), class).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Quiet(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let compiled = nextflow_compiler::compile(&launch, settings, directory.path()).unwrap();
+    let document = json(&compiled);
+    let sources = document["sources"].as_array().unwrap();
+    for location in ["helper.nf", "lib/Util.groovy"] {
+        let source = sources.iter().find(|source| source["location"] == location);
+        let digest = source.map(|source| source["digest"].as_str().unwrap_or_default());
+        assert!(
+            digest.is_some_and(|digest| digest.starts_with("sha256:")),
+            "{location}: {sources:?}"
+        );
+    }
+}

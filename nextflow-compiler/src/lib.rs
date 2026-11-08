@@ -89,6 +89,9 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
     for (location, digest) in &network.reads {
         sources.data(location, digest);
     }
+    for script in &network.scripts {
+        sources.script(script);
+    }
     let opaque = network.nodes.iter().filter_map(|node| match &node.kind {
         Kind::Opaque(reason) => Some(Kept {
             path: node.name.clone(),

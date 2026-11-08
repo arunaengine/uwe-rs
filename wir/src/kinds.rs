@@ -4,6 +4,7 @@
 
 use std::collections::BTreeSet;
 
+use super::callbacks::Arity;
 use super::{Checker, Problem, show, walk};
 use crate::document::Language;
 use crate::document::Port;
@@ -103,6 +104,42 @@ impl<'d> Checker<'d> {
             if !capture_fits(&capture.from, &output.r#type, self.defs) {
                 self.report(at, Problem::CaptureType(output.name.clone()));
             }
+            if let Some(arity) = &capture.arity {
+                self.arity(at, output, arity);
+            }
+        }
+        let retry = task
+            .retry
+            .iter()
+            .flat_map(|retry| [&retry.retry_if, &retry.directives]);
+        for closure in [&task.accept].into_iter().chain(retry).flatten() {
+            self.closure(at, op, closure, Arity::Unary);
+        }
+    }
+
+    /// The bounds are ordered, and an output that is not an array holds one path at most.
+    fn arity(&mut self, at: &str, output: &Port, arity: &crate::op::Arity) {
+        if arity.max.is_some_and(|max| max < arity.min) {
+            let why = format!(
+                "output {}: a least count no more than the most",
+                output.name
+            );
+            self.report(at, Problem::Shape("a capture".into(), why));
+        }
+        let mut r#type = &output.r#type;
+        while let Some(Type::Optional(inner)) = resolve(r#type, self.defs) {
+            r#type = inner;
+        }
+        let single = !matches!(
+            resolve(r#type, self.defs),
+            Some(Type::Array(_) | Type::Dynamic)
+        );
+        if single && (arity.min > 1 || arity.max.is_some_and(|max| max > 1)) {
+            let why = format!(
+                "output {}: an array to hold more than one path",
+                output.name
+            );
+            self.report(at, Problem::Shape("a capture".into(), why));
         }
     }
 

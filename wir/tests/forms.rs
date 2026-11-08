@@ -394,3 +394,28 @@ fn control_forms() {
 fn document_of(op: Json) -> Json {
     document(json!([op]), json!([]))
 }
+
+#[test]
+fn task_acceptance() {
+    let groovy = |code: &str| json!({"language": "groovy", "code": code});
+    let task = json!({"task": {"command": ["run"],
+        "captures": [{"output": "out", "from": {"glob": "*.txt"}, "optional": true, "arity": {"min": 0, "max": 4}}],
+        "accept": groovy("{ it.out.size() > 0 }"),
+        "retry": {"limit": 2, "retry_if": groovy("{ it.attempt < 3 }"),
+            "directives": groovy("{ [memory: it.attempt * 1024] }"), "failure": "ignore"}}});
+    kinds_round_trip(
+        &[task],
+        &[
+            json!({"task": {"command": ["run"], "retry": {"limit": -1}}}),
+            json!({"task": {"command": ["run"], "accept": "graph"}}),
+        ],
+    );
+    let patch: wir::TaskPatch =
+        serde_json::from_value(json!({"image": "debian:12", "time": 60})).expect("a patch");
+    assert_eq!(patch.time, Some(60));
+    assert!(serde_json::from_value::<wir::TaskPatch>(json!({"memory": 1})).is_err());
+    let plain = json!({"task": {"command": ["run"], "retry": {"limit": 0, "failure": "fail"}}});
+    let stored =
+        &written(&document_of(json!({"path": "a", "kind": plain})))["graphs"][0]["ops"][0]["kind"];
+    assert_eq!(*stored, json!({"task": {"command": ["run"], "retry": {}}}));
+}

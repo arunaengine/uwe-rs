@@ -91,7 +91,7 @@ pub fn sorted(
         Sort::Deep => {
             let mut keyed = Vec::new();
             for item in items {
-                let hash = values::deep_hash(&item)
+                let hash = values::deep_hash(&item, context)
                     .ok_or_else(|| turn.failed("cannot read a file to sort by its content"))?;
                 keyed.push((hash, item));
             }

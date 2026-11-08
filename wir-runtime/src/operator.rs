@@ -22,6 +22,7 @@ use crate::reducing::Reducing;
 use crate::routing::Routing;
 use crate::selecting::{Choice, Selecting};
 use crate::splitting::Splitting;
+use crate::state::widen;
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
 use crate::transforms::{Mapping, Rule};
 use crate::writing::Observing;
@@ -244,7 +245,7 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         Kind::Reduce(spec) => Some(Box::new(Reducing::new(spec.clone()))),
         Kind::Buffer(spec) => Some(Box::new(Cutting::buffer(spec.rule.clone(), spec.remainder))),
         Kind::Window(spec) => Some(Box::new(Cutting::window(spec))),
-        Kind::Split(spec) => Some(Box::new(Splitting::new(spec.clone()))),
+        Kind::Split(spec) => Some(Box::new(Splitting::new(spec.clone(), &node.op.effects))),
         Kind::View(spec) => Some(Box::new(Viewing {
             body: spec.body.clone(),
             new_line: spec.new_line,
@@ -255,7 +256,10 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
             spec: spec.clone(),
             callbacks: Default::default(),
         })),
-        Kind::CollectFile(spec) => Some(Box::new(crate::writing::Collecting::new(spec.clone()))),
+        Kind::CollectFile(spec) => Some(Box::new(crate::writing::Collecting::new(
+            spec.clone(),
+            &node.op.effects,
+        ))),
         Kind::Take(spec) => selecting(Choice::Take(spec.count)),
         Kind::First(spec) => selecting(Choice::First(spec.predicate.clone(), spec.empty.clone())),
         Kind::Last(spec) => selecting(Choice::Last(
@@ -397,20 +401,21 @@ pub fn step_all(
             .get_mut(&at)
             .map(|operator| operator.step(&mut turn, context));
         let Turn {
-            batch,
-            bound,
+            mut batch,
+            mut bound,
             empty,
             path,
             ..
         } = turn;
+        let fitted = fitted(node, (&mut batch, &mut bound), &context.document.types);
         // What an op gave before it failed is a prefix of its outputs, before their error.
         let committed = progress
             .streams
             .commit(batch)
             .map_err(|error| format!("op {path}: {}", error.message));
         let step = match step {
-            Some(Ok(step)) => committed.map(|()| step),
-            Some(Err(failure)) => Err(failure.message),
+            Some(Ok(step)) => fitted.and(committed).map(|()| step),
+            Some(Err(failure)) => fitted.and(Err(failure.message)),
             None => continue,
         };
         match step {
@@ -429,6 +434,46 @@ pub fn step_all(
         }
     }
     moved
+}
+
+/// Widens the items and values of a step to the types of their outputs. An item that does not
+/// fit fails the op, after the items before it.
+fn fitted(
+    node: &Node,
+    (batch, bound): (&mut StreamBatch, &mut Map<String, Json>),
+    defs: &[wir::TypeDef],
+) -> Result<(), String> {
+    let outputs = &node.op.outputs;
+    for at in 0..batch.items.len() {
+        let (stream, item) = &mut batch.items[at];
+        let port = outputs
+            .iter()
+            .find(|port| output_stream(&node.path, &port.name) == *stream);
+        let Some(port) = port else { continue };
+        let value = widen(std::mem::take(item), &port.r#type, defs);
+        if !wir::fits(&value, &port.r#type, defs) {
+            batch.items.truncate(at);
+            let path = &node.path;
+            return Err(format!(
+                "op {path}: the item {value} does not fit output {}",
+                port.name
+            ));
+        }
+        *item = value;
+    }
+    for (name, value) in bound.iter_mut() {
+        let Some(port) = outputs.iter().find(|port| port.name == *name) else {
+            continue;
+        };
+        *value = widen(std::mem::take(value), &port.r#type, defs);
+        if !wir::fits(value, &port.r#type, defs) {
+            return Err(format!(
+                "op {}: the value {value} does not fit output {name}",
+                node.path
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Cancels the stream ops that still run once nothing else can happen: their inputs never

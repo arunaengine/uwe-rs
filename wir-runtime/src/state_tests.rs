@@ -116,6 +116,48 @@ fn handles_failed_dependencies() {
     assert!(progress.outputs(&[]).is_err());
 }
 
+/// A call `c` of the graph `inner`, whose native ops are `a` and the extra `ops`.
+fn handled_call(ops: Json) -> Progress {
+    let native = json!({"path": "a", "kind": {"native": {"source": "s", "language": "cwl"}}});
+    let mut inner = vec![native];
+    inner.extend(ops.as_array().cloned().unwrap_or_default());
+    let call = json!({"path": "c", "kind": {"call": {"graph": "inner"}}});
+    let document = json!({"wir_version": "0.1",
+        "sources": [{"id": "s", "language": "cwl", "location": "s.cwl"}],
+        "graphs": [{"name": "main", "ops": [call]}, {"name": "inner", "ops": inner}],
+        "entry": "main"});
+    let document = wir::parse(&document.to_string()).unwrap();
+    wir::verify(&document).unwrap();
+    Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new())
+}
+
+#[test]
+fn calls_handle_failures() {
+    let native =
+        |path: &str| json!({"path": path, "kind": {"native": {"source": "s", "language": "cwl"}}});
+    let mut handler = native("b");
+    handler["handles"] = json!([{"op": "a", "on": ["failed"]}]);
+    let group =
+        json!({"path": "g", "kind": {"status_group": {"members": ["a"], "allow": ["failed"]}}});
+    for ops in [json!([handler]), json!([group])] {
+        let mut progress = handled_call(ops);
+        progress.next(false).unwrap();
+        while let Some((node, _)) = progress.next(false) {
+            let status = match progress.node(node).path.as_str() {
+                "c/a" => Status::Failed,
+                _ => Status::Succeeded,
+            };
+            progress.end(node, status, Map::new(), Some("op c/a: broke".into()));
+        }
+        assert_eq!(
+            status_of(&progress, "c"),
+            Some(Status::Succeeded),
+            "the failure is handled"
+        );
+        assert!(progress.failures.is_empty());
+    }
+}
+
 #[test]
 fn calls_report_failures() {
     let mut progress = progress();

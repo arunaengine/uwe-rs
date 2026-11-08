@@ -348,9 +348,6 @@ pub fn lower(
     task.staged = Some(names.iter().map(|name| (*name).to_owned()).collect());
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();
-    if (task.command.iter()).any(|word| matches!(word, Argument::Code { .. })) {
-        task.library = scope.library();
-    }
     let mut outputs = Vec::new();
     let required = scope.find(|class| match class {
         RequirementClass::LoadListing { load_listing } => *load_listing,
@@ -417,6 +414,11 @@ pub fn lower(
             code,
         });
         outputs.push(port(r#type));
+    }
+    // The code of arguments and captures sees the `expressionLib` of the tool.
+    let argued = (task.command.iter()).any(|word| matches!(word, Argument::Code { .. }));
+    if argued || task.captures.iter().any(|capture| capture.code.is_some()) {
+        task.library = scope.library();
     }
     Ok(Lowered {
         task,

@@ -283,3 +283,16 @@ fn lowers_environment_variables() {
     assert_eq!(task["task"]["environment"], environment);
     assert_eq!(ops[0].path, "environment.environment.NAME");
 }
+
+#[test]
+fn keeps_capture_library() {
+    let lowering = lowered("parsed.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let task = &only_op(&lowering)["kind"]["task"];
+    assert_eq!(task["captures"][0]["code"], "$(parse(self))");
+    let library = json!(["function parse(files) { return parseInt(files[0].contents); }"]);
+    assert_eq!(
+        task["library"], library,
+        "capture code sees the expressionLib"
+    );
+}

@@ -13,7 +13,7 @@ mod verify;
 pub use document::{
     Document, Edge, Endpoint, Graph, Language, ParseError, Port, SCHEMA, Source, VERSION, parse,
 };
-pub use flow::Flow;
+pub use flow::{Flow, Subscription};
 pub use op::{
     Argument, Attributes, Branch, Cache, Call, Capture, CaptureRule, Dependency, Effect, Expr,
     Kind, Map, Native, Op, Origin, Resources, Scatter, Status, Task,

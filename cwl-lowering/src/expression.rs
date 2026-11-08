@@ -83,11 +83,13 @@ impl Lowerer {
                 edges.push(Edge {
                     from: end(None, &port.name),
                     to: end(Some(&output.name), &port.name),
+                    read: Default::default(),
                 });
             }
             edges.push(Edge {
                 from: end(Some(&output.name), "out"),
                 to: end(None, &output.name),
+                read: Default::default(),
             });
             ops.push(op);
         }

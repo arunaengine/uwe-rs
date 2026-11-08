@@ -66,6 +66,7 @@ fn merged(path: &str, sources: &[(Endpoint, Type)], mode: LinkMerge) -> (Link, T
         link.edges.push(Edge {
             from: from.clone(),
             to: end(Some(&at), &index.to_string()),
+            read: Default::default(),
         });
     }
     op.outputs.push(port("out", array(items.clone())));
@@ -96,6 +97,7 @@ fn then(link: &mut Link, at: &str, kind: Kind, input: Type, output: Type) {
     link.edges.push(Edge {
         from: link.from.clone(),
         to: end(Some(at), "in"),
+        read: Default::default(),
     });
     link.from = end(Some(at), "out");
     link.ops.push(op);

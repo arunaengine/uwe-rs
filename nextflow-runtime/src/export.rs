@@ -1,0 +1,235 @@
+//! The dataflow network that a workflow builds, as plain data: nodes with their semantics,
+//! channels and the workflow calls they belong to, for lowering the workflow to wir.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use nextflow_evaluator::split::Splitter;
+use serde_json::Value as Json;
+
+use crate::adapter::Call;
+
+/// The network of a run before it starts.
+#[derive(Debug)]
+pub struct Network {
+    pub channels: Vec<Channel>,
+    pub nodes: Vec<Node>,
+    /// The workflow calls; the first is the entry workflow.
+    pub scopes: Vec<Scope>,
+    /// What the entry workflow emits, by emit name.
+    pub emits: Vec<(String, usize)>,
+}
+
+#[derive(Debug)]
+pub struct Channel {
+    /// Whether it is a value channel, which holds at most one value.
+    pub value: bool,
+    /// The value of a value channel that the build bound, which no node writes.
+    pub bound: Option<Json>,
+}
+
+/// A call of a workflow: its fully qualified name, the call it is in, and the channels of
+/// its takes and emits.
+#[derive(Debug)]
+pub struct Scope {
+    pub name: String,
+    pub parent: Option<usize>,
+    pub takes: Vec<usize>,
+    pub emits: Vec<(Option<String>, usize)>,
+}
+
+#[derive(Debug)]
+pub struct Node {
+    pub name: String,
+    /// The workflow call that made it.
+    pub scope: usize,
+    pub inputs: Vec<usize>,
+    pub outputs: Vec<usize>,
+    pub kind: Kind,
+}
+
+/// A closure of a script: where its code is and the values it captured, in slot order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Callback {
+    pub script: String,
+    pub start: u32,
+    pub end: u32,
+    pub code: String,
+    pub parameters: usize,
+    pub captures: Vec<Json>,
+}
+
+/// What a filter or a search tests an item against: a closure, or a value that Groovy's
+/// `isCase` compares, like a pattern or a class.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Criteria {
+    Callback(Callback),
+    Value(Json),
+    Pattern(String),
+    Class(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Order {
+    None,
+    Natural,
+    Key(Callback),
+    Compare(Callback),
+    Hash { deep: bool },
+}
+
+/// One output of a process call.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Output {
+    pub emit: Option<String>,
+    pub topic: Option<String>,
+    /// Whether the output only feeds its topic.
+    pub hidden: bool,
+}
+
+/// What a node does, by the native operator or node that it is.
+#[derive(Clone, Debug)]
+pub enum Kind {
+    Process {
+        call: Call,
+        /// The input declarations that are `each` inputs.
+        each: Vec<usize>,
+        outputs: Vec<Output>,
+    },
+    /// A factory with the values that the build gave it.
+    Values {
+        values: Vec<Json>,
+        close: bool,
+    },
+    /// A factory that reads its values when the run starts, like `channel.fromPath`.
+    Source {
+        factory: String,
+        arguments: Vec<Json>,
+    },
+    Map(Callback),
+    Filter(Criteria),
+    FlatMap(Option<Callback>),
+    Flatten,
+    Cast(String),
+    View {
+        callback: Option<Callback>,
+        new_line: bool,
+    },
+    Unique(Option<Callback>),
+    Distinct(Option<Callback>),
+    Take(i64),
+    Until(Callback),
+    Transpose {
+        by: Option<Vec<usize>>,
+        remainder: bool,
+    },
+    Scan {
+        callback: Callback,
+        seed: Json,
+    },
+    Collect {
+        callback: Option<Callback>,
+        flat: bool,
+        sort: Order,
+    },
+    ToList,
+    IfEmpty(Criteria),
+    First(Option<Criteria>),
+    ToSortedList(Option<Callback>),
+    Count(Option<Criteria>),
+    Sum(Option<Callback>),
+    Min(Option<Callback>),
+    Max(Option<Callback>),
+    Reduce {
+        callback: Callback,
+        seed: Option<Json>,
+    },
+    Last,
+    Collate {
+        size: usize,
+        step: usize,
+        remainder: bool,
+    },
+    Buffer {
+        open: Option<Criteria>,
+        close: Option<Criteria>,
+        size: usize,
+        skip: usize,
+        remainder: bool,
+    },
+    Mix,
+    Concat,
+    Merge(Option<Callback>),
+    GroupTuple {
+        by: Vec<usize>,
+        size: Option<usize>,
+        remainder: bool,
+        sort: Order,
+    },
+    Join {
+        by: Vec<usize>,
+        remainder: bool,
+        duplicate_error: bool,
+        mismatch_error: bool,
+    },
+    Combine {
+        by: Option<Vec<usize>>,
+        /// The values of a right side that is no channel.
+        right: Option<Vec<Json>>,
+    },
+    Cross(Option<Callback>),
+    Route {
+        labels: Vec<String>,
+        callback: Callback,
+        all: bool,
+    },
+    CollectFile {
+        callback: Option<Callback>,
+        name: Option<String>,
+        directory: String,
+        new_line: bool,
+        sort: Order,
+        skip: usize,
+        keep_header: bool,
+        seed: Option<String>,
+    },
+    Split {
+        splitter: Splitter,
+        elem: Option<usize>,
+        each: Option<Callback>,
+        decompress: bool,
+        count: bool,
+        files: bool,
+    },
+    Subscribe {
+        next: Option<Callback>,
+        complete: Option<Callback>,
+        error: Option<Callback>,
+    },
+    /// A method or property of the value of a value channel, like `ch.size()`.
+    Invoke {
+        name: String,
+        arguments: Vec<Option<Json>>,
+        property: bool,
+    },
+    /// A workflow output of the `output { }` block.
+    Publish {
+        name: String,
+    },
+    /// A plugin function that checks the run when it starts, like `validateParameters()`.
+    Check {
+        plugin: String,
+        function: String,
+        arguments: Vec<Json>,
+    },
+    /// The items of the list that a value channel holds, as `channel.fromList` gives them.
+    Spread,
+    /// What the workflow printed while it was built.
+    Print(String),
+    /// A file that the workflow wrote while it was built.
+    Write {
+        path: String,
+        text: String,
+    },
+    /// A node that has no lowering, with the reason.
+    Opaque(String),
+}

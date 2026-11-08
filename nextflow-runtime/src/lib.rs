@@ -11,6 +11,7 @@ pub mod channel;
 mod cleanup;
 pub mod driver;
 mod emits;
+pub mod export;
 mod files;
 mod hash;
 pub mod inputs;

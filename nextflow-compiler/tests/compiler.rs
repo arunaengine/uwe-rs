@@ -235,13 +235,17 @@ fn starts_with_prints() {
 }
 
 #[test]
-fn keeps_data_reads() {
+fn pins_data_reads() {
     let script = "include { samplesheetToList } from 'plugin/nf-schema'\n\nworkflow {\n    \
-                  def first = samplesheetToList('sheet.csv', 'schema.json').first()\n}\n";
+                  channel.fromList(samplesheetToList('sheet.csv', 'schema.json')).view()\n}\n";
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("main.nf"), script).unwrap();
     let config = "plugins {\n    id 'nf-schema@2.5.1'\n}\n";
     std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+    let schema = r#"{"type": "array", "items": {"type": "object",
+        "properties": {"id": {"type": "string"}}}}"#;
+    std::fs::write(directory.path().join("schema.json"), schema).unwrap();
+    std::fs::write(directory.path().join("sheet.csv"), "id\na\nb\n").unwrap();
     let launch = Launch {
         target: directory.path().to_owned(),
         scratch: directory.path().join("scratch"),
@@ -252,14 +256,14 @@ fn keeps_data_reads() {
         ..Settings::default()
     };
     let compiled = nextflow_compiler::compile(&launch, settings, directory.path()).unwrap();
-    assert!(
-        compiled.kept[0].reason.contains("reads the data"),
-        "{:?}",
-        compiled.kept
-    );
+    assert!(compiled.full(), "{:?}", compiled.kept);
     let document = json(&compiled);
-    let source = &document["sources"][0];
-    assert_eq!(source["location"], ".", "the project folder");
+    let sources = document["sources"].as_array().unwrap();
+    let sheet = sources
+        .iter()
+        .find(|source| source["location"] == "sheet.csv");
+    let digest = "sha256:55fc01feec80df5521dde64da128cf7c9a69b3dad5d275b5008f6ba671f8c915";
+    assert_eq!(sheet.map(|source| &source["digest"]), Some(&json!(digest)));
 }
 
 #[test]

@@ -39,10 +39,18 @@ impl Sources {
     /// The id of a script or config file, named by its location.
     pub fn script(&mut self, path: &str) -> String {
         let location = self.location(Path::new(path));
+        self.named(location, digest(Path::new(path)))
+    }
+
+    /// The id of the file at a location, which it adds with its digest when it is new.
+    fn named(&mut self, location: String, digest: Option<String>) -> String {
         if let Some((id, ..)) = self.files.iter().find(|(_, known, _)| *known == location) {
             return id.clone();
         }
-        let mut id: String = (location.trim_start_matches(['/', '.']).chars())
+        let name = location
+            .split_once("://")
+            .map_or(location.as_str(), |(_, rest)| rest);
+        let mut id: String = (name.trim_start_matches(['/', '.']).chars())
             .map(|letter| match letter {
                 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '.' => letter,
                 _ => '.',
@@ -51,8 +59,7 @@ impl Sources {
         while self.files.iter().any(|(known, ..)| *known == id) {
             id.push('_');
         }
-        self.files
-            .push((id.clone(), location, digest(Path::new(path))));
+        self.files.push((id.clone(), location, digest));
         id
     }
 
@@ -74,6 +81,16 @@ impl Sources {
         let location = format!("data:application/json,{encoded}");
         self.files
             .push(("run".into(), location, Some(sha256(text.as_bytes()))));
+    }
+
+    /// Pins a file that the build read, like a samplesheet, by its location and digest.
+    pub fn data(&mut self, location: &str, digest: &str) {
+        let location = match location.strip_prefix("file://") {
+            Some(path) => self.location(Path::new(path)),
+            None if location.contains("://") => location.to_owned(),
+            None => self.location(Path::new(location)),
+        };
+        self.named(location, Some(digest.to_owned()));
     }
 
     /// The id of a config file of the launch.

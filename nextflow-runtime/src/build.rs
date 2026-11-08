@@ -12,6 +12,7 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host, OutputOptions};
 use nextflow_evaluator::lowered::{Expression, ExpressionKind, Input, Module, Process};
 use nextflow_evaluator::split::{Splitter, positive};
 use nextflow_evaluator::value::{ChannelId, ChannelOut, ListKind, PathValue, Value};
+use sha2::Digest;
 
 use crate::files::CollectFile;
 use crate::keyed::{Combine, Cross, GroupTuple, Join};
@@ -85,21 +86,19 @@ const OPERATORS: &[&str] = &[
     "view",
 ];
 
-/// The plugin functions that read data, like a samplesheet, which a compiled run calls when it
-/// starts, and those that check the run, which a compiled run checks at its entry.
-const DATA_SOURCES: &[&str] = &["samplesheetToList"];
+/// The plugin functions that check the run, which a compiled run checks at its entry.
 const RUN_CHECKS: &[&str] = &["validateParameters"];
 
 pub(crate) struct Builder<'a> {
     pub network: &'a mut Network,
-    /// Whether the build is for the compiler into wir: factories and plugin functions that read
-    /// data stay calls, and nothing reads files that a run reads.
+    /// Whether the build is for the compiler into wir: factories stay calls, and files that the
+    /// build reads, as Nextflow reads them eagerly, are kept with their digests.
     pub defer: bool,
     /// The files that the build for the compiler wrote, by location, which it keeps instead.
     pub written: Vec<(String, Vec<u8>)>,
-    /// The value channels of the plugin functions that read data, which the compiled run calls when
-    /// the run starts, with the names of the functions.
-    pub sources: Vec<(ChannelId, String)>,
+    /// The files that the build for the compiler read, by location, with their digests.
+    pub reads: Vec<(String, String)>,
+    pub options: &'a crate::Options,
     pub base: &'a mut dyn Host,
     /// Whether tasks run their `stub:` section.
     pub stub: bool,
@@ -134,18 +133,31 @@ impl Host for Builder<'_> {
     }
 
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
-        self.base.download(path)
+        let local = self.base.download(path)?;
+        if self.defer {
+            let bytes = std::fs::read(&local).unwrap_or_default();
+            self.keep_read(path, &bytes);
+        }
+        Ok(local)
     }
 
     fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
-        match self.kept_file(path) {
-            Some(index) => Ok(self.written[index].1.clone()),
-            None => self.base.read(path),
+        if let Some(index) = self.kept_file(path) {
+            return Ok(self.written[index].1.clone());
         }
+        let bytes = self.base.read(path)?;
+        if self.defer {
+            self.keep_read(path, &bytes);
+        }
+        Ok(bytes)
     }
 
+    /// Opens, or for the compiler reads the whole file, to keep its digest.
     fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
-        self.base.open(path)
+        match self.defer {
+            true => Ok(Box::new(std::io::Cursor::new(self.read(path)?))),
+            false => self.base.open(path),
+        }
     }
 
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
@@ -209,7 +221,6 @@ impl Host for Builder<'_> {
         let Value::Channel(source) = channel else {
             return Ok(None);
         };
-        self.refuse_data(*source)?;
         if !self.network.is_value(*source) {
             return Ok(None);
         }
@@ -256,14 +267,6 @@ impl Host for Builder<'_> {
         name: &str,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
-        if self.defer && DATA_SOURCES.contains(&name) {
-            let call = format!("{plugin}:{name}");
-            let list = self.deferred_factory(&call, arguments, true);
-            if let Value::Channel(channel) = list {
-                self.sources.push((channel, name.into()));
-            }
-            return Ok(list);
-        }
         if self.defer && RUN_CHECKS.contains(&name) {
             let arguments: Result<_, _> = arguments.iter().map(crate::bridge::to_json).collect();
             let arguments = arguments.map_err(thrown)?;
@@ -275,7 +278,21 @@ impl Host for Builder<'_> {
             self.network.add(name, &[], Box::new(Deferred(check)));
             return Ok(Value::Null);
         }
-        self.base.plugin_function(plugin, name, arguments)
+        if !self.defer {
+            return self.base.plugin_function(plugin, name, arguments);
+        }
+        // The build for the compiler reads the files of plugin functions itself, to keep them.
+        let options = self.options;
+        let workflow = crate::workflow::metadata(options, &self.base.launch_dir());
+        let mut context = nextflow_plugins::Context {
+            host: self,
+            config: &options.config,
+            params: options.config.params(),
+            project_dir: &options.project_dir,
+            cli_params: &options.cli_params,
+            workflow,
+        };
+        nextflow_plugins::call(plugin, name, arguments, &mut context)
     }
 
     fn enter_workflow(&mut self, name: &str, arguments: &[Value]) {
@@ -551,10 +568,7 @@ impl Host for Builder<'_> {
         arguments: Vec<Value>,
     ) -> Result<Option<Value>, Error> {
         let (source, arguments) = match source {
-            Value::Channel(channel) => {
-                self.refuse_data(*channel)?;
-                (*channel, arguments)
-            }
+            Value::Channel(channel) => (*channel, arguments),
             Value::ChannelOut(out) => match (out.values.as_slice(), arguments.is_empty()) {
                 ([], _) => {
                     return Err(thrown(format!(
@@ -869,6 +883,16 @@ impl Builder<'_> {
         }
     }
 
+    /// Keeps the digest of a file that the build for the compiler read.
+    fn keep_read(&mut self, path: &PathValue, bytes: &[u8]) {
+        let location = path.uri();
+        if !self.reads.iter().any(|(known, _)| *known == location) {
+            let digest = sha2::Sha256::digest(bytes);
+            let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+            self.reads.push((location, format!("sha256:{hex}")));
+        }
+    }
+
     /// The files that the build for the compiler wrote, as nodes that write them when the
     /// compiled run starts.
     pub(crate) fn write_kept(&mut self) {
@@ -876,20 +900,6 @@ impl Builder<'_> {
             let text = String::from_utf8_lossy(&bytes).into_owned();
             let write = crate::export::Kind::Write { path, text };
             self.network.add("write", &[], Box::new(Deferred(write)));
-        }
-    }
-
-    /// Fails for code that reads the data of a plugin function while the workflow is built,
-    /// which the compiled run reads only when the run starts.
-    fn refuse_data(&self, channel: ChannelId) -> Result<(), Error> {
-        match self.sources.iter().find(|(known, _)| *known == channel) {
-            Some((_, name)) => Err(Error::Unsupported {
-                message: format!(
-                    "code that reads the data of `{name}` while the workflow is built"
-                ),
-                span: Default::default(),
-            }),
-            None => Ok(()),
         }
     }
 

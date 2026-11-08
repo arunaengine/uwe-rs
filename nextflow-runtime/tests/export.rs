@@ -169,18 +169,21 @@ fn defers_data_sources() {
 }
 
 #[test]
-fn refuses_data_reads() {
+fn reads_build_data() {
     let directory = tempfile::tempdir().unwrap();
     let script = "include { samplesheetToList } from 'plugin/nf-schema'\n\nworkflow {\n    \
                   def rows = samplesheetToList('sheet.csv', 'schema.json')\n    \
-                  channel.fromList(rows).view()\n    \
-                  def ids = samplesheetToList('sheet.csv', 'schema.json').collect { it[0] }\n}\n";
+                  channel.fromList(rows.findAll { it[0] != 'b' }).view()\n}\n";
     std::fs::write(directory.path().join("main.nf"), script).unwrap();
     std::fs::write(
         directory.path().join("nextflow.config"),
         "plugins {\n    id 'nf-schema@2.5.1'\n}\n",
     )
     .unwrap();
+    let schema = r#"{"type": "array", "items": {"type": "object",
+        "properties": {"id": {"type": "string"}}}}"#;
+    std::fs::write(directory.path().join("schema.json"), schema).unwrap();
+    std::fs::write(directory.path().join("sheet.csv"), "id\na\nb\n").unwrap();
     let launch = Launch {
         target: directory.path().to_owned(),
         scratch: directory.path().join("scratch"),
@@ -191,8 +194,20 @@ fn refuses_data_reads() {
         ..Settings::default()
     };
     let mut driver = Nextflow::new(&launch, settings).unwrap();
-    let error = driver.export().unwrap_err();
-    assert!(error.unsupported, "{}", error.message);
-    let reason = "code that reads the data of `samplesheetToList` while the workflow is built";
-    assert!(error.message.contains(reason), "{}", error.message);
+    let network = driver.export().unwrap();
+    let values = network.nodes.iter().find_map(|node| match &node.kind {
+        Kind::Values { values, .. } => Some(values.clone()),
+        _ => None,
+    });
+    assert_eq!(values, Some(vec![json!(["a"])]), "the build read the sheet");
+    let read: Vec<&str> = (network.reads.iter())
+        .map(|(location, _)| location.rsplit('/').next().unwrap())
+        .collect();
+    assert!(read.contains(&"sheet.csv"), "{read:?}");
+    let sheet = network
+        .reads
+        .iter()
+        .find(|(location, _)| location.ends_with("sheet.csv"));
+    let digest = "sha256:55fc01feec80df5521dde64da128cf7c9a69b3dad5d275b5008f6ba671f8c915";
+    assert_eq!(sheet.map(|(_, known)| known.as_str()), Some(digest));
 }

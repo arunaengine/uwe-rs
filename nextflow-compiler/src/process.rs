@@ -28,7 +28,10 @@ pub(crate) fn process(
 ) -> Piece {
     let path = place.path;
     let call = definition.call;
-    let streams = !call.singleton;
+    // A call of value channels reads them as streams, so that an empty one runs no task and
+    // closes the outputs empty, as in Nextflow; it runs at most one round.
+    let reads = |value: &bool| !value || call.singleton;
+    let streams = place.values_in.iter().any(reads);
     let source = sources.script(&call.script);
     let inputs: Vec<String> = (0..place.values_in.len())
         .map(|index| format!("input.{index}"))
@@ -98,7 +101,7 @@ pub(crate) fn process(
         process["each"] = json!(each);
     }
     let op_inputs: Vec<Json> = (inputs.iter().zip(&place.values_in))
-        .map(|(name, value)| port(name, !value))
+        .map(|(name, value)| port(name, reads(value)))
         .collect();
     let op_outputs: Vec<Json> = outputs.iter().map(|name| port(name, streams)).collect();
     let op = json!({
@@ -113,7 +116,7 @@ pub(crate) fn process(
         ops: vec![op],
         edges: Vec::new(),
         inputs: (inputs.iter().zip(&place.values_in))
-            .map(|(name, value)| end(path, name, !value))
+            .map(|(name, value)| end(path, name, reads(value)))
             .collect(),
         outputs: outputs
             .iter()

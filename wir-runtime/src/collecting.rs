@@ -86,14 +86,13 @@ pub fn sorted(
     };
     match sort {
         Sort::None | Sort::Index => {}
-        Sort::Natural => items.sort_by(|a, b| keep(values::compare(a, b))),
-        Sort::Hash => items.sort_by_cached_key(values::hash),
-        Sort::Deep => {
+        Sort::Natural => items.sort_by(|a, b| keep(values::order(turn.rules, context, a, b))),
+        Sort::Hash | Sort::Deep => {
+            let deep = matches!(sort, Sort::Deep);
             let mut keyed = Vec::new();
             for item in items {
-                let hash = values::deep_hash(&item, context)
-                    .ok_or_else(|| turn.failed("cannot read a file to sort by its content"))?;
-                keyed.push((hash, item));
+                let hash = values::sort_hash(turn.rules, context, &item, deep);
+                keyed.push((hash.map_err(|why| turn.failed(why))?, item));
             }
             keyed.sort_by(|a, b| a.0.cmp(&b.0));
             items = keyed.into_iter().map(|(_, item)| item).collect();
@@ -109,7 +108,7 @@ pub fn sorted(
                 );
                 keyed.push((key.map_err(|why| turn.failed(why))?, item));
             }
-            keyed.sort_by(|a, b| keep(values::compare(&a.0, &b.0)));
+            keyed.sort_by(|a, b| keep(values::order(turn.rules, context, &a.0, &b.0)));
             items = keyed.into_iter().map(|(_, item)| item).collect();
         }
         Sort::Compare(body) => items.sort_by(|a, b| {

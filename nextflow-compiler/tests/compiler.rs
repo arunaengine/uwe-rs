@@ -237,12 +237,12 @@ fn starts_with_prints() {
     let process = op(main, "GREET");
     let after = json!([{"op": "start.0/view", "on": ["succeeded"]}]);
     assert_eq!(process["after"], after, "the run prints first");
-    assert_eq!(process["inputs"][0]["default"], "a", "a plain value");
+    let literal = op(main, "literal.0");
     assert_eq!(
-        process["outputs"][0].get("flow"),
-        None,
-        "one task gives values"
+        literal["inputs"][0]["default"], "a",
+        "a plain value, read as a stream"
     );
+    assert_eq!(process["outputs"][0]["flow"], "stream", "at most one task");
 }
 
 #[test]

@@ -78,10 +78,15 @@ impl Reducing {
             Reduction::Sum => {
                 let value = self.call(turn, context, &["item"], &[item])?;
                 if !value.is_null() {
-                    let sum = match self.state.take() {
-                        Some((sum, _)) => add(&sum, &value).map_err(|why| turn.failed(why))?,
-                        None => add(&Json::from(0), &value).map_err(|why| turn.failed(why))?,
+                    // Groovy rules add from the first item, as Nextflow's `sum` does.
+                    let groovy = turn.rules == wir::ValueRules::Groovy;
+                    let sum = match (self.state.take(), groovy) {
+                        (Some((sum, _)), true) => crate::groovy::add(&sum, &value, context.base),
+                        (None, true) => Ok(value),
+                        (Some((sum, _)), false) => add(&sum, &value),
+                        (None, false) => add(&Json::from(0), &value),
                     };
+                    let sum = sum.map_err(|why| turn.failed(why))?;
                     self.state = Some((sum, Json::Null));
                 }
             }
@@ -106,9 +111,8 @@ impl Reducing {
                                 })?;
                                 number.partial_cmp(&0.0).unwrap_or(Ordering::Equal)
                             }
-                            None => {
-                                values::compare(&key, kept_key).map_err(|why| turn.failed(why))?
-                            }
+                            None => values::order(turn.rules, context, &key, kept_key)
+                                .map_err(|why| turn.failed(why))?,
                         };
                         // The least keeps the first of equal items, the greatest the last.
                         match self.spec.rule {

@@ -105,7 +105,10 @@ pub fn begin(
                     defs,
                     (context.javascript, context.simulated),
                 ),
-                ExprLanguage::Groovy | ExprLanguage::Python => language_expr(&spec, bound, context),
+                ExprLanguage::Groovy | ExprLanguage::Python => {
+                    let prints = node.op.effects.contains(&wir::Effect::Log);
+                    language_expr(&spec, bound, context, prints)
+                }
                 ExprLanguage::Wdl => {
                     crate::wdl::expr::evaluate(context.document, &node.op, &spec, bound)
                 }
@@ -171,6 +174,7 @@ fn language_expr(
     spec: &wir::Expr,
     bound: &Map<String, Json>,
     context: &Context<'_>,
+    prints: bool,
 ) -> Result<Json, String> {
     let mut values = captured(&spec.captures, bound);
     values.insert("inputs".to_owned(), Json::Object(bound.clone()));
@@ -181,12 +185,11 @@ fn language_expr(
         };
         return code.value(&values, context.base);
     }
-    let scope = spec
-        .scope
-        .as_ref()
-        .and_then(|scope| context.scopes.get(&scope.source));
+    let scope = crate::groovy::scope(context, spec.scope.as_ref());
     let names = values.keys().cloned().collect();
-    let compiled =
-        crate::groovy::compile(&spec.code, &spec.library, scope.map(String::as_str), names)?;
-    compiled.value(&values, context.base)
+    let compiled = crate::groovy::compile(&spec.code, &spec.library, scope, names)?;
+    match prints {
+        true => compiled.printed(&values, context.base, context.printer),
+        false => compiled.value(&values, context.base),
+    }
 }

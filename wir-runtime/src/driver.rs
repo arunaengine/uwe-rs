@@ -1275,7 +1275,12 @@ impl Driver for WirDriver {
         if self.dialects.owns(task) {
             return self.dialects.handles_error(task, error);
         }
-        (self.owner(task)).is_ok_and(|index| self.children[index].1.handles_error(task, error))
+        (self.owner(task)).is_ok_and(|index| {
+            let child = &self.children[index].1;
+            // A stopped block's cancelled attempt is no run error; its outcome is dropped.
+            let stopped = child.finished() && matches!(error, ExecuteError::Cancelled);
+            stopped || child.handles_error(task, error)
+        })
     }
 
     fn started(&mut self, task: TaskId, attempt: u32) {

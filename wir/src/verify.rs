@@ -606,6 +606,8 @@ fn show(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
+#[path = "builders.rs"]
+mod builders;
 #[path = "callbacks.rs"]
 mod callbacks;
 #[path = "controls.rs"]

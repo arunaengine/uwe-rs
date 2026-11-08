@@ -764,6 +764,31 @@
         }
       }
     },
+    "task_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "entry", "call"],
+      "properties": {
+        "source": { "$ref": "#/$defs/name" },
+        "entry": { "type": "string" },
+        "call": { "type": "string" },
+        "scope": { "$ref": "#/$defs/scope" },
+        "inputs": { "$ref": "#/$defs/port_maps" },
+        "outputs": { "$ref": "#/$defs/port_maps" },
+        "profiles": { "$ref": "#/$defs/texts" },
+        "configs": { "$ref": "#/$defs/names" },
+        "captures": { "$ref": "#/$defs/captures" }
+      }
+    },
+    "port_maps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["port", "native"],
+        "properties": { "port": { "$ref": "#/$defs/name" }, "native": { "type": "string" } }
+      }
+    },
     "keyed": {
       "type": "object",
       "additionalProperties": false,
@@ -854,8 +879,27 @@
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command"],
       "properties": {
+        "builder": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "nextflow_process": { "$ref": "#/$defs/task_ref" },
+            "snakemake_job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["task"],
+              "properties": {
+                "task": { "$ref": "#/$defs/task_ref" },
+                "wildcards": { "type": "object", "additionalProperties": { "type": "string" } }
+              }
+            },
+            "argo_task": { "$ref": "#/$defs/task_ref" },
+            "wdl_task": { "$ref": "#/$defs/task_ref" }
+          }
+        },
         "image": { "type": "string" },
         "command": {
           "type": "array",

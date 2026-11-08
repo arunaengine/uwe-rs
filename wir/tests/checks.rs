@@ -960,3 +960,70 @@ fn task_forms() {
     let found = task(glob(json!({"min": 1})), json!({"file": {}}), accept);
     assert_eq!(found, ["main/t: closure: a wdl closure names 1 parameters"]);
 }
+
+/// A graph `main` with a dialect task `t` of `builder` in a source of `language`, with the
+/// input `reads` and the output `bam`.
+fn dialect(language: &str, builder: Json, extra: Json) -> Vec<String> {
+    let mut task = json!({"builder": builder});
+    task.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().cloned().unwrap());
+    let op = json!({"path": "t", "kind": {"task": task},
+        "inputs": [port("reads", "string")], "outputs": [port("bam", "string")]});
+    let main = json!({"name": "main", "inputs": [port("reads", "string")], "outputs": [port("bam", "string")],
+        "ops": [op], "edges": [edge((None, "reads"), (Some("t"), "reads")), edge((Some("t"), "bam"), (None, "bam"))]});
+    let sources = json!([{"id": "s", "language": language, "location": "main", "digest": "sha256:ab"},
+        {"id": "loose", "language": language, "location": "other"}]);
+    problems(
+        &json!({"wir_version": wir::VERSION, "sources": sources, "graphs": [main], "entry": "main"}),
+    )
+}
+
+#[test]
+fn dialect_tasks() {
+    let reference = |source: &str, input: &str, output: &str| {
+        json!({"source": source, "entry": "main", "call": "ALIGN",
+        "inputs": [{"port": "reads", "native": input}], "outputs": [{"port": "bam", "native": output}]})
+    };
+    let nextflow = json!({"nextflow_process": reference("s", "input/0", "output/1")});
+    assert_eq!(
+        dialect("nextflow", nextflow.clone(), json!({})),
+        Vec::<String>::new()
+    );
+    let mixed = dialect("nextflow", nextflow.clone(), json!({"command": ["run"]}));
+    assert_eq!(
+        mixed,
+        ["main/t: a task needs no command, capture, acceptance or retry fields beside a builder"]
+    );
+    let wrong = dialect("snakemake", nextflow, json!({}));
+    assert_eq!(
+        wrong,
+        ["main/t: language \"nextflow\" differs from that of source s, \"snakemake\""]
+    );
+    let selector = dialect(
+        "nextflow",
+        json!({"nextflow_process": reference("s", "params/x", "output/1")}),
+        json!({}),
+    );
+    assert_eq!(
+        selector,
+        ["main/t: a port map needs a \"nextflow\" selector, not \"params/x\""]
+    );
+    let rule = json!({"snakemake_job": {"task": reference("s", "params/genome", "output/0")}});
+    assert_eq!(dialect("snakemake", rule, json!({})), Vec::<String>::new());
+    let argo = json!({"argo_task": reference("s", "artifact/reads", "parameter/bam")});
+    assert_eq!(dialect("argo", argo, json!({})), Vec::<String>::new());
+    let unpinned = dialect(
+        "wdl",
+        json!({"wdl_task": reference("loose", "reads", "bam")}),
+        json!({}),
+    );
+    assert_eq!(
+        unpinned,
+        ["main/t: a dialect task needs a digest that pins source loose"]
+    );
+    let mut unmapped = reference("s", "reads", "bam");
+    unmapped["outputs"] = json!([]);
+    let found = dialect("wdl", json!({"wdl_task": unmapped}), json!({}));
+    assert_eq!(found, ["main/t: a dialect task needs a map of output bam"]);
+}

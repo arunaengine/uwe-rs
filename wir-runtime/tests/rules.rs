@@ -288,4 +288,13 @@ fn refuses_unrun_fields() {
             .push(json!({"name": "items", "type": "int", "flow": "stream"}));
     });
     assert_eq!(streams, "graph main: uwe does not run stream ports yet");
+    let built = refused(|document| {
+        let source = json!({"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"});
+        document["sources"].as_array_mut().unwrap().push(source);
+        let maps = json!({"source": "nf", "entry": "main", "call": "SORT",
+            "inputs": [{"port": "text", "native": "input/0"}], "outputs": [{"port": "sorted", "native": "output/0"}]});
+        op(document, 0)["kind"] = json!({"task": {"builder": {"nextflow_process": maps}}});
+        op(document, 0)["attributes"] = json!({});
+    });
+    assert_eq!(built, "op main/sort: uwe does not run dialect tasks yet");
 }

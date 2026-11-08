@@ -128,6 +128,7 @@ fn unrun(op: &Op) -> Option<&'static str> {
         Kind::Expr(expr) if expr.scope.is_some() || !expr.captures.is_empty() => {
             Some("uwe does not run expressions with a scope or captures yet")
         }
+        Kind::Task(task) if task.builder.is_some() => Some("uwe does not run dialect tasks yet"),
         Kind::Task(task) if task.accept.is_some() || task.retry.is_some() => {
             Some("uwe does not run task acceptance and retry rules yet")
         }

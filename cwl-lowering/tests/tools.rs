@@ -161,7 +161,10 @@ fn lowers_output_evaluation() {
     let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
     assert_eq!(paths, ["names", "names.count.outputEval"]);
     let files = json!({"array": {"items": {"file": {}}}});
-    assert_eq!(ops[0]["outputs"][0], json!({"name": "count", "type": files}));
+    assert_eq!(
+        ops[0]["outputs"][0],
+        json!({"name": "count", "type": files})
+    );
     assert_eq!(ops[1]["kind"]["expr"]["code"], "$(self.length)");
     assert_eq!(ops[1]["inputs"][1], json!({"name": "self", "type": files}));
     assert_eq!(ops[1]["outputs"], json!([{"name": "count", "type": "int"}]));
@@ -169,4 +172,20 @@ fn lowers_output_evaluation() {
         .map(|port| port["name"].as_str().unwrap())
         .collect();
     assert_eq!(outputs, ["count", "made"]);
+}
+
+#[test]
+fn lowers_named_types() {
+    let lowering = lowered("greeting.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let op = only_op(&lowering);
+    let mood = json!({"enum": ["happy", "sad"]});
+    let person =
+        json!({"record": [{"name": "mood", "type": mood}, {"name": "name", "type": "string"}]});
+    let typed = |name: &str| {
+        let ports = op["inputs"].as_array().unwrap();
+        ports.iter().find(|port| port["name"] == name).unwrap()["type"].clone()
+    };
+    assert_eq!(typed("person"), person);
+    assert_eq!(typed("mood"), mood);
 }

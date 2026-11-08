@@ -73,11 +73,12 @@ impl Lowerer {
                 short_name(&input.id)
             ));
         }
-        let (mut inputs, outputs) = boundary(process)?;
+        let (mut inputs, outputs) = boundary(process, scope)?;
+        let named = types::named(scope);
         // A graph input keeps its type and takes null through its default.
         for (port, input) in inputs.iter_mut().zip(&process.inputs) {
             if let Some(default) = &input.default {
-                port.r#type = types::convert(&input.value_type)?;
+                port.r#type = types::convert(&input.value_type, &named)?;
                 defaults::set(port, default, &self.base)
                     .map_err(|why| format!("input {}: {why}", port.name))?;
             }

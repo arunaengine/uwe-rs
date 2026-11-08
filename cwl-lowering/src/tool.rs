@@ -63,6 +63,7 @@ pub fn lower(
         stderr: literal(tool.stderr.as_ref(), "stderr")?,
     };
     let attributes = requirements::apply(scope, &mut task)?;
+    let named = crate::types::named(scope);
     if tool.stdin.is_some() {
         return Err("stdin".into());
     }
@@ -106,12 +107,14 @@ pub fn lower(
         }
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
-            words.push((key, bound(binding, &input.value_type, &name)?));
+            let resolved = crate::types::resolve(&input.value_type, &named);
+            words.push((key, bound(binding, resolved, &name)?));
             if let Some(code) = &binding.value_from {
                 values.push((name.clone(), code.clone()));
             }
         }
-        let r#type = convert(&input.value_type).map_err(|why| format!("input {name}: {why}"))?;
+        let r#type =
+            convert(&input.value_type, &named).map_err(|why| format!("input {name}: {why}"))?;
         let mut port = Port {
             name,
             r#type,
@@ -148,13 +151,13 @@ pub fn lower(
             flow: wir::Flow::Value,
             default: None,
         };
-        let (files, code) = match capture(output, &task, listed) {
+        let (files, code) = match capture(output, &task, (listed, &named)) {
             Ok(Read::Direct(rule, r#type)) => (Some((rule, r#type)), None),
             Ok(Read::Evaluated(files, code)) => (files, Some(code)),
             Err(why) => return Err(format!("output {name}: {why}")),
         };
         if let Some(code) = code {
-            let r#type = convert(&output.value_type)?;
+            let r#type = convert(&output.value_type, &named)?;
             evaluated.push(Evaluated {
                 output: port(r#type),
                 code,
@@ -275,7 +278,7 @@ fn literal(expression: Option<&Expression>, what: &str) -> Result<Option<String>
 fn capture(
     output: &cwl_parser::model::OutputParameter,
     task: &Task,
-    listed: bool,
+    (listed, named): (bool, &[Cwl]),
 ) -> Result<Read, String> {
     let file = |format: Option<String>| {
         Type::File(FileType {
@@ -333,7 +336,7 @@ fn capture(
         return Err("not one glob".into());
     };
     let pattern = pattern(glob)?;
-    let r#type = convert(&output.value_type)?;
+    let r#type = convert(&output.value_type, named)?;
     let r#type = with_format(r#type, format);
     let fits = match &r#type {
         Type::Optional(inner) => matches!(**inner, Type::File(_) | Type::Directory),

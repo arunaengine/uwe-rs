@@ -170,9 +170,11 @@ impl Jobs {
                 let values = (made.into_iter().enumerate()).filter_map(|(index, file)| {
                     Some((ports.get(&format!("output/{index}"))?.clone(), file))
                 });
-                changes
-                    .ended
-                    .push((call, Ending::Succeeded(values.collect())));
+                let ending = Ending::Succeeded {
+                    values: values.collect(),
+                    empty: Vec::new(),
+                };
+                changes.ended.push((call, ending));
             }
             Answer::Prepared(Prepared::Failed(why)) | Answer::Taken(JobResult::Failed(why)) => {
                 changes.ended.push((call, Ending::Failed(why)));

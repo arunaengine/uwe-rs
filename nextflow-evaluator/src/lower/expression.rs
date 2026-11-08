@@ -377,6 +377,7 @@ impl Lowering<'_> {
             implicit_parameter: explicit.is_none(),
             slot_count: layout.slot_count,
             captures: layout.captures,
+            capture_names: layout.capture_names,
             body,
             span,
         }))

@@ -123,7 +123,8 @@ fn keeps_closure_captures() {
     });
     let map = map.expect("the map");
     assert_eq!(map.code, "{ word -> word + suffix }");
-    assert_eq!(map.captures, [json!("!")], "the captured local");
+    let captured = [("suffix".to_owned(), json!("!"))];
+    assert_eq!(map.captures, captured, "the captured local");
     assert_eq!(map.parameters, 1);
     assert_eq!(&PIPELINE[map.start as usize..map.end as usize], map.code);
 }
@@ -148,7 +149,8 @@ fn keeps_captured_closures() {
         Kind::Map(callback) => Some(callback),
         _ => None,
     });
-    let inner = &map.expect("the map").captures[0];
+    let (name, inner) = &map.expect("the map").captures[0];
+    assert_eq!(name, "keep");
     assert_eq!(inner["class"], "Closure");
     assert_eq!(inner["code"], "{ w -> w != 'b' }");
     let span = inner["start"].as_u64().unwrap() as usize..inner["end"].as_u64().unwrap() as usize;

@@ -9,7 +9,7 @@ use serde_json::{Map, Value as Json, json};
 use crate::Sources;
 
 /// A closure of the script: its code and the bytes of it in its source, which the Groovy
-/// bridge finds it by, with its captured values named by their slot, from `0`.
+/// bridge finds it by, with its captured values by variable name.
 pub(crate) fn closure(callback: &Callback, sources: &mut Sources) -> Json {
     let source = sources.script(&callback.script);
     let mut closure = json!({
@@ -18,8 +18,8 @@ pub(crate) fn closure(callback: &Callback, sources: &mut Sources) -> Json {
         "scope": {"source": source, "start": callback.start, "end": callback.end},
     });
     if !callback.captures.is_empty() {
-        let captures: Map<String, Json> = (callback.captures.iter().enumerate())
-            .map(|(slot, value)| (slot.to_string(), json!({"value": nested(value, sources)})))
+        let captures: Map<String, Json> = (callback.captures.iter())
+            .map(|(name, value)| (name.clone(), json!({"value": nested(value, sources)})))
             .collect();
         closure["captures"] = Json::Object(captures);
     }
@@ -34,8 +34,8 @@ pub(crate) fn nested(value: &Json, sources: &mut Sources) -> Json {
         && let Some(Json::String(script)) = object.remove("script")
     {
         object.insert("source".into(), json!(sources.script(&script)));
-        if let Some(Json::Array(captures)) = object.get_mut("captures") {
-            for capture in captures.iter_mut() {
+        if let Some(Json::Object(captures)) = object.get_mut("captures") {
+            for capture in captures.values_mut() {
                 *capture = nested(capture, sources);
             }
         }
@@ -116,14 +116,14 @@ mod tests {
     }
 
     #[test]
-    fn names_slot_captures() {
+    fn names_captures() {
         let callback = Callback {
             script: "/p/main.nf".into(),
             start: 3,
             end: 10,
             code: "{ x -> x + y }".into(),
             parameters: 1,
-            captures: vec![json!("!")],
+            captures: vec![("y".into(), json!("!"))],
         };
         let mut sources = Sources::new("/p/main.nf", std::path::Path::new("/p"));
         let closure = closure(&callback, &mut sources);
@@ -131,13 +131,13 @@ mod tests {
             closure["scope"],
             json!({"source": "main", "start": 3, "end": 10})
         );
-        assert_eq!(closure["captures"], json!({"0": {"value": "!"}}));
+        assert_eq!(closure["captures"], json!({"y": {"value": "!"}}));
     }
 
     #[test]
     fn names_captured_closures() {
         let inner = json!({"class": "Closure", "script": "/p/lib.nf", "start": 1, "end": 4,
-            "code": "{ it }", "captures": []});
+            "code": "{ it }", "captures": {}});
         let mut sources = Sources::new("/p/main.nf", std::path::Path::new("/p"));
         let value = nested(&inner, &mut sources);
         assert_eq!(value["source"], "lib.nf");

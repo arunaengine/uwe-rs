@@ -67,7 +67,7 @@ pub struct Node {
     pub kind: Kind,
 }
 
-/// A closure of a script: where its code is and the values it captured, in slot order.
+/// A closure of a script: where its code is and the values it captured, by variable name.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Callback {
     pub script: String,
@@ -75,7 +75,7 @@ pub struct Callback {
     pub end: u32,
     pub code: String,
     pub parameters: usize,
-    pub captures: Vec<Json>,
+    pub captures: Vec<(String, Json)>,
 }
 
 /// What a filter or a search tests an item against: a closure, or a value that Groovy's
@@ -285,10 +285,16 @@ impl Callback {
         let code = (source.as_deref())
             .and_then(|text| text.get(span.start as usize..span.end as usize))
             .ok_or_else(|| format!("the code of a closure in {script}"))?;
-        let captures = (closure.captured.iter())
-            .map(|value| match &*value.borrow() {
-                Value::Closure(inner) if depth < 8 => Callback::nested(inner, depth + 1).map(form),
-                other => crate::bridge::to_json(other),
+        let names = closure.code.capture_names.iter();
+        let captures = (closure.captured.iter().zip(names))
+            .map(|(value, name)| {
+                let value = match &*value.borrow() {
+                    Value::Closure(inner) if depth < 8 => {
+                        Callback::nested(inner, depth + 1).map(form)
+                    }
+                    other => crate::bridge::to_json(other),
+                };
+                value.map(|value| (name.to_string(), value))
             })
             .collect::<Result<_, String>>()
             .map_err(|message| format!("a closure captures {message}"))?;
@@ -305,8 +311,9 @@ impl Callback {
 
 /// A callback as the reserved `Closure` form of a value.
 fn form(callback: Callback) -> Json {
+    let captures: serde_json::Map<String, Json> = callback.captures.into_iter().collect();
     json!({"class": "Closure", "script": callback.script, "start": callback.start,
-        "end": callback.end, "code": callback.code, "captures": callback.captures})
+        "end": callback.end, "code": callback.code, "captures": captures})
 }
 
 /// An option of a workflow output as JSON, a closure as its reserved `Closure` form.

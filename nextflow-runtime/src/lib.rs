@@ -48,6 +48,7 @@ use nextflow_evaluator::value::{PathValue, Value};
 pub use adapter::{Adapter, Call, Completed, Prepared};
 pub use driver::driver;
 pub use hash::key as hash_key;
+pub use outputs::index_text;
 
 /// The text of the script of a plugin that a location like `plugin/nf-core-utils.nf` names,
 /// which ports functions of the plugin.

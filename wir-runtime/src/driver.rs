@@ -485,6 +485,9 @@ impl WirDriver {
             }
             (finished, _) => finished,
         };
+        // A simulated CWL block reads made-up files, which can leave an output null.
+        let lenient = self.launch.simulated
+            && matches!(&node.op.kind, Kind::Native(native) if native.language == Dialect::Cwl);
         let result = match finished {
             Ok(Some(Json::Object(results))) => (node.op.outputs.iter())
                 .map(|port| {
@@ -492,6 +495,10 @@ impl WirDriver {
                     let value = widen(value, &port.r#type, defs);
                     match wir::fits(&value, &port.r#type, defs) {
                         true => Ok((port.name.clone(), value)),
+                        false if lenient && value.is_null() => {
+                            let made = crate::expr::placeholder(&port.r#type, &port.name, defs);
+                            Ok((port.name.clone(), made))
+                        }
                         false => Err(format!(
                             "op {path}: output {} does not fit its type",
                             port.name

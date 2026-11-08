@@ -70,7 +70,7 @@ fn compute(
 
 /// A value of a type named after `name`, like the placeholders of uwe's CWL driver: arrays of
 /// two items, the first member of a union, and files that do not exist.
-fn placeholder(r#type: &Type, name: &str, defs: &[TypeDef]) -> Json {
+pub(crate) fn placeholder(r#type: &Type, name: &str, defs: &[TypeDef]) -> Json {
     match resolve(r#type, defs) {
         Some(Type::Bool) => Json::Bool(false),
         Some(Type::Int) => Json::from(1),

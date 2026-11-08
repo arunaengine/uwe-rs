@@ -55,6 +55,7 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
         sources: Vec::new(),
         kept: Vec::new(),
         graphs: Vec::new(),
+        names: Vec::new(),
         prefix: String::new(),
     };
     let process = &document.process;
@@ -177,6 +178,8 @@ struct Lowerer {
     kept: Vec<Kept>,
     /// The graphs that call ops run, apart from the entry graph.
     graphs: Vec<Graph>,
+    /// The graph names given out, also to graphs that are not added yet.
+    names: Vec<String>,
     /// The path of the call whose graph is being lowered, like `inner/`, for the kept ops.
     prefix: String,
 }

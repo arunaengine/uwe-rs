@@ -7688,6 +7688,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "snakemake-compiler"
+version = "0.1.0"
+dependencies = [
+ "run-database",
+ "serde_json",
+ "sha2 0.11.0",
+ "snakemake-runtime",
+ "task-runner",
+ "tempfile",
+ "wir",
+ "workflow-graph",
+]
+
+[[package]]
 name = "snakemake-parser"
 version = "0.1.0"
 dependencies = [

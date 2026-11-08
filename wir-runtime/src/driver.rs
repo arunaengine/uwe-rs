@@ -23,6 +23,7 @@ use crate::child::Child;
 use crate::cwl;
 use crate::engine;
 use crate::inputs;
+use crate::looping;
 use crate::nextflow;
 use crate::operator;
 use crate::plan::{Node, plan};
@@ -190,6 +191,8 @@ pub struct WirDriver {
     stepping: bool,
     /// The processes that run, by node.
     processes: processes::Processes,
+    /// The loops that run, by node.
+    loops: looping::Loops,
     /// The text of each source that a scope names, by source id.
     scopes: HashMap<String, String>,
     /// The file area of the run, made when an op of the document writes files.
@@ -246,6 +249,7 @@ impl WirDriver {
             operators: operator::Running::new(),
             stepping: false,
             processes: processes::Processes::new(),
+            loops: looping::Loops::new(),
             scopes: HashMap::new(),
             file_area: PathBuf::new(),
         }
@@ -288,7 +292,9 @@ impl WirDriver {
                 continue;
             }
             if passes == PASSES {
-                self.stepping = !self.operators.is_empty() || !self.processes.is_empty();
+                self.stepping = !self.operators.is_empty()
+                    || !self.processes.is_empty()
+                    || !self.loops.is_empty();
                 break;
             }
             passes += 1;
@@ -304,7 +310,8 @@ impl WirDriver {
             let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
             let rounds =
                 processes::step_all(&mut self.progress, &self.document, &mut self.processes);
-            if !stepped && !rounds {
+            let runs = looping::step_all(&mut self.progress, &self.document, &mut self.loops);
+            if !stepped && !rounds && !runs {
                 break;
             }
         }
@@ -313,6 +320,11 @@ impl WirDriver {
 
     /// Starts a node with its input values; the tasks it asks for.
     fn begin(&mut self, at: usize, bound: Map<String, Json>) -> Result<Vec<Task>, DriverError> {
+        if let Kind::Loop(spec) = &self.progress.node(at).op.kind {
+            self.loops
+                .insert(at, looping::Looping::new(spec.clone(), bound));
+            return Ok(Vec::new());
+        }
         if let Kind::Process(spec) = &self.progress.node(at).op.kind {
             let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at));
             self.processes.insert(at, rounding);
@@ -1067,6 +1079,12 @@ impl Driver for WirDriver {
             self.progress
                 .failures
                 .push(format!("op {path}: its rounds never ended"));
+        }
+        for at in std::mem::take(&mut self.loops).into_keys() {
+            let path = self.progress.node(at).path.clone();
+            self.progress.end(at, Status::Cancelled, Map::new(), None);
+            let failures = &mut self.progress.failures;
+            failures.push(format!("op {path}: its runs never ended"));
         }
         for at in self.dialects.open_calls() {
             if matches!(self.progress.states[at], State::Ended(..)) {

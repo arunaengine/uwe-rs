@@ -107,12 +107,12 @@ fn builds_task_commands() {
         sort.image.as_deref(),
         Some("docker.io/library/debian:12-slim")
     );
-    let script = "exec > 'sorted.stdout'\n'sort' 'inputs/text/text.txt'";
+    let script = "exec > sorted.stdout\nsort inputs/text/text.txt";
     assert_eq!(sort.command, ["/bin/sh", "-c", script]);
     assert_eq!(sort.inputs[0].path, "inputs/text/text.txt");
     assert_eq!(sort.outputs, ["sorted.stdout"]);
     assert_eq!(sort.resources.memory_bytes, Some(268_435_456));
-    assert!(head.command[2].ends_with("'head' '-n' '2' 'inputs/sorted/sorted.stdout'"));
+    assert!(head.command[2].ends_with("head -n 2 inputs/sorted/sorted.stdout"));
     let edge = &graph.edges[0];
     let file = EdgeKind::File {
         path: "inputs/sorted/sorted.stdout".into(),
@@ -158,12 +158,12 @@ fn names_stream_files() {
         .into_result()
         .unwrap();
     let sort = &graph.nodes[0].task;
-    let script = "exec > 'sorted.txt' 2> 'log.txt'\n'sort' 'inputs/text/text.txt'";
+    let script = "exec > sorted.txt 2> log.txt\nsort inputs/text/text.txt";
     assert_eq!(sort.command, ["/bin/sh", "-c", script]);
     assert_eq!(sort.outputs, ["sorted.txt", "log.txt"]);
     let head = &graph.nodes[1].task;
     assert!(
-        head.command[2].ends_with("'inputs/sorted/sorted.txt'"),
+        head.command[2].ends_with(" inputs/sorted/sorted.txt"),
         "the capture reads the named file"
     );
 }

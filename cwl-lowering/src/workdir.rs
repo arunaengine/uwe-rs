@@ -56,7 +56,7 @@ pub fn entries(
         };
         let path = match name {
             None => None,
-            Some(name) if !has_code(name) => Some(FileName::Text(text(name))),
+            Some(name) if !has_code(name) => Some(FileName::Text(inside(&text(name))?)),
             Some(name) => {
                 let port = fill(format!("entryname.{index}"), name, Some(Type::String))?;
                 Some(FileName::Input { input: port })
@@ -65,6 +65,18 @@ pub fn entries(
         staged.push(entry(value, path, writable));
     }
     Ok(staged)
+}
+
+/// A literal entry name as a path in the working folder, which may name it as CWL does.
+fn inside(name: &str) -> Result<String, String> {
+    let inner = format!("{}/", crate::runtime::OUTDIR);
+    let name = name.strip_prefix(&inner).unwrap_or(name);
+    match name.starts_with('/') || name.split('/').any(|part| part == "..") {
+        true => Err(format!(
+            "the InitialWorkDir entry {name:?} outside the working folder"
+        )),
+        false => Ok(name.to_owned()),
+    }
 }
 
 fn entry(value: Content, path: Option<FileName>, writable: bool) -> Staged {

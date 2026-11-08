@@ -25,6 +25,17 @@ struct Instance {
     heard: bool,
 }
 
+/// A producer that a stream output of a region forwards, attached once: the output, the
+/// producer's identity and port, its node, the reader, and whether its stream ended.
+struct Attachment {
+    output: String,
+    key: String,
+    port: String,
+    node: usize,
+    reader: ReaderId,
+    ended: bool,
+}
+
 /// A region that runs, with the instances of its plans by canonical identity.
 pub struct Region {
     pub spec: Dynamic,
@@ -35,11 +46,18 @@ pub struct Region {
     instances: BTreeMap<String, Instance>,
     /// Whether the planner gave its first plan, or the value plan input was read.
     pub planned: bool,
+    /// Whether no plan can come any more: the plan input closed, or a planner plans.
+    plan_closed: bool,
+    /// The producers that its stream outputs forward, in the order they were attached, and
+    /// how many readers it installed for them.
+    attached: Vec<Attachment>,
+    readers: usize,
 }
 
 impl Region {
     pub fn new(spec: Dynamic, bound: Map<String, Json>) -> Region {
         Region {
+            plan_closed: spec.plan.is_none(),
             spec,
             bound,
             revision: None,
@@ -47,6 +65,8 @@ impl Region {
             final_plan: false,
             instances: BTreeMap::new(),
             planned: false,
+            attached: Vec::new(),
+            readers: 0,
         }
     }
 
@@ -59,6 +79,7 @@ impl Region {
         let streamed = (progress.node(at).op.inputs.iter())
             .any(|port| port.name == input && !port.flow.is_value());
         if !streamed {
+            self.plan_closed = true;
             if std::mem::replace(&mut self.planned, true) {
                 return Ok(Vec::new());
             }
@@ -83,6 +104,7 @@ impl Region {
                 Read::Pending => return Ok(updates),
                 Read::End(terminal) => match terminal.end {
                     StreamEnd::Close if self.final_plan || !updates.is_empty() => {
+                        self.plan_closed = true;
                         return Ok(updates);
                     }
                     StreamEnd::Close => {
@@ -125,6 +147,7 @@ impl Region {
         }
         let (checked, name) = checked(document, adapters, &update)?;
         let mut reuse = HashMap::new();
+        let mut keys = HashMap::new();
         let mut kept = Vec::new();
         let mut added = Vec::new();
         for op in &update.graph.ops {
@@ -135,6 +158,7 @@ impl Region {
                     |key| key.identity.clone(),
                 );
             let key = serde_json::to_string(&identity).unwrap_or_default();
+            keys.insert(op.path.clone(), key.clone());
             let edges: Vec<&wir::Edge> = (update.graph.edges.iter())
                 .filter(|edge| edge.to.op.as_deref() == Some(op.path.as_str()))
                 .collect();
@@ -162,7 +186,9 @@ impl Region {
         let start = progress.plan.nodes.len();
         let path = progress.node(at).path.clone();
         let step = progress.node(at).step.clone();
-        let prefixes = (format!("{path}/"), format!("{step}/"));
+        // New instances live below the revision that added them, so that a replacement never
+        // takes the streams of the instance it replaced.
+        let prefixes = (format!("{path}/{revision}/"), format!("{step}/"));
         let exports = plan::extend(
             &checked,
             graph,
@@ -175,7 +201,7 @@ impl Region {
         progress.adopt(start);
         for (op, key, identity, definition) in added {
             let node = (start..progress.plan.nodes.len())
-                .find(|node| progress.node(*node).path == format!("{path}/{op}"))
+                .find(|node| progress.node(*node).path == format!("{path}/{revision}/{op}"))
                 .ok_or_else(|| format!("instance {key} has no node"))?;
             let instance = Instance {
                 node,
@@ -187,10 +213,136 @@ impl Region {
             };
             self.instances.insert(key, instance);
         }
+        // New instances open their streams and install their readers before any starts.
+        let added: Vec<usize> = (start..progress.plan.nodes.len())
+            .filter(|node| progress.node(*node).parent == Some(at))
+            .collect();
+        progress.install(&added).map_err(|error| error.message)?;
+        self.attach(progress, at, &update, &keys)?;
         self.revision = Some(revision);
         self.final_plan = update.final_plan;
         self.last = Some(update);
         Ok(())
+    }
+
+    /// Attaches each producer that a stream output of the plan names, once by its identity
+    /// and port; a producer that the plan replaced before it started is attached anew.
+    fn attach(
+        &mut self,
+        progress: &mut Progress,
+        at: usize,
+        update: &PlanUpdate,
+        keys: &HashMap<String, String>,
+    ) -> Result<(), String> {
+        let path = progress.node(at).path.clone();
+        let outputs: Vec<String> = (progress.node(at).op.outputs.iter())
+            .filter(|port| !port.flow.is_value())
+            .map(|port| port.name.clone())
+            .collect();
+        for edge in update
+            .graph
+            .edges
+            .iter()
+            .filter(|edge| edge.to.op.is_none())
+        {
+            let output = &edge.to.port;
+            if !outputs.contains(output) {
+                continue;
+            }
+            let Some(key) = edge.from.op.as_ref().and_then(|op| keys.get(op)) else {
+                return Err(format!(
+                    "output {output} comes from no instance of the plan"
+                ));
+            };
+            let node = self.instances[key].node;
+            let port = edge.from.port.clone();
+            let same =
+                |item: &Attachment| item.output == *output && item.key == *key && item.port == port;
+            let found = self.attached.iter().position(same);
+            if found.is_some_and(|index| self.attached[index].node == node) {
+                continue;
+            }
+            self.readers += 1;
+            let reader = ReaderId {
+                owner: path.clone(),
+                input: format!("export {output} {}", self.readers),
+            };
+            let stream = crate::flows::output_stream(&progress.node(node).path, &port);
+            let mode = wir::Subscription::All;
+            (progress.streams)
+                .subscribe(&stream, reader.clone(), mode)
+                .map_err(|e| e.message)?;
+            match found.map(|index| &mut self.attached[index]) {
+                Some(item) => {
+                    progress.streams.detach(&item.reader);
+                    (item.node, item.reader, item.ended) = (node, reader, false);
+                }
+                None => self.attached.push(Attachment {
+                    output: output.clone(),
+                    key: key.clone(),
+                    port,
+                    node,
+                    reader,
+                    ended: false,
+                }),
+            }
+        }
+        Ok(())
+    }
+
+    /// Forwards the items of the attached producers to the stream outputs: in fair order one
+    /// producer after the other by attachment, else as they come; whether any moved.
+    pub fn forward(&mut self, progress: &mut Progress, at: usize) -> Result<bool, String> {
+        let path = progress.node(at).path.clone();
+        let fair = self.spec.order == wir::Emission::Fair;
+        let mut batch = crate::streams::StreamBatch::default();
+        let mut moved = false;
+        let mut waiting: Vec<String> = Vec::new();
+        for item in self.attached.iter_mut().filter(|item| !item.ended) {
+            if fair && waiting.contains(&item.output) {
+                continue;
+            }
+            let stream = crate::flows::output_stream(&path, &item.output);
+            loop {
+                match progress
+                    .streams
+                    .peek(&item.reader)
+                    .map_err(|error| error.message)?
+                {
+                    Read::Item(_) => {
+                        let reader = std::slice::from_ref(&item.reader);
+                        let items = progress.streams.consume(reader).map_err(|e| e.message)?;
+                        let items = items.unwrap_or_default().into_iter();
+                        batch
+                            .items
+                            .extend(items.map(|value| (stream.clone(), value)));
+                        moved = true;
+                    }
+                    Read::Pending => break,
+                    Read::End(terminal) => {
+                        if let StreamEnd::Error(failure) = terminal.end {
+                            return Err(failure.message);
+                        }
+                        item.ended = true;
+                        moved = true;
+                        break;
+                    }
+                }
+            }
+            if !item.ended {
+                waiting.push(item.output.clone());
+            }
+        }
+        progress
+            .streams
+            .commit(batch)
+            .map_err(|error| error.message)?;
+        Ok(moved)
+    }
+
+    /// Whether every attached producer ended its stream.
+    pub fn exported(&self) -> bool {
+        self.attached.iter().all(|item| item.ended)
     }
 
     /// The instances that ended before the driver call `call`, with their identity and
@@ -287,7 +439,10 @@ pub fn settle(progress: &mut Progress, regions: &mut Regions) -> bool {
             regions.remove(&at);
             continue;
         }
-        let settled = region.final_plan && region.running(progress).is_empty();
+        let settled = region.final_plan
+            && region.plan_closed
+            && region.running(progress).is_empty()
+            && region.exported();
         let heard = region.spec.planner.is_none() || !region.unheard(progress);
         if settled && heard && progress.end_call(at) {
             regions.remove(&at);

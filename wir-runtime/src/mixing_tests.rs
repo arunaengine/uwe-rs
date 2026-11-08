@@ -36,6 +36,7 @@ pub fn node(kind: Json, streams: &[&str], values: &[&str], out: &str) -> Node {
         depends: None,
         handles: Vec::new(),
         members: Vec::new(),
+        ordinal: None,
     }
 }
 

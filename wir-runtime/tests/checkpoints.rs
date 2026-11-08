@@ -130,7 +130,7 @@ fn checkpoint_replans() {
     let names: Vec<&str> = replanned.iter().map(|task| task.name.as_str()).collect();
     assert_eq!(
         names,
-        ["jobs/after: jobs/after"],
+        ["jobs/1/after: jobs/1/after"],
         "check stays, after is added"
     );
     driver.complete(done(&replanned[0])).unwrap();

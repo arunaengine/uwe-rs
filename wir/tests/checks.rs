@@ -1251,3 +1251,55 @@ fn argo_forms() {
         "main/when: an argo expr needs no library and no captures",
     );
 }
+
+#[test]
+fn hook_rules() {
+    let closure =
+        |captures: Json| json!({"language": "groovy", "code": "{ it }", "captures": captures});
+    let document = |hooks: Json| {
+        json!({"wir_version": wir::VERSION,
+            "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf"}],
+            "graphs": [{"name": "main", "inputs": [{"name": "outdir", "type": "string"}]}],
+            "entry": "main", "hooks": hooks})
+    };
+    let good = document(
+        json!([{"complete": closure(json!({"dir": {"input": "outdir"}}))},
+        {"observe": {"source": "nf", "processes": [{"id": 1, "name": "A", "feeds": [2]}, {"id": 2, "name": "B"}]}}]),
+    );
+    assert_eq!(problems(&good), Vec::<String>::new());
+    let captured = document(json!([{"error": closure(json!({"x": {"input": "nothing"}}))}]));
+    assert_eq!(
+        problems(&captured).len(),
+        1,
+        "a capture names an input of the entry graph"
+    );
+    let observed = document(json!([{"observe": {"source": "gone",
+        "processes": [{"id": 1, "name": "A", "feeds": [3]}, {"id": 1, "name": "B"}]}}]));
+    assert_eq!(problems(&observed).len(), 3, "{:?}", problems(&observed));
+}
+
+#[test]
+fn reduce_steps() {
+    let document = |output: &str, fields: Json| {
+        let op = json!({"path": "r", "kind": {"reduce": fields}, "inputs": [stream("source")],
+            "outputs": [{"name": "out", "type": "int", "flow": output}]});
+        json!({"wir_version": wir::VERSION, "graphs": [{"name": "main", "inputs": [stream("xs")], "ops": [op],
+            "edges": [edge((None, "xs"), (Some("r"), "source"))]}], "entry": "main"})
+    };
+    let steps = json!({"rule": "sum", "steps": true});
+    assert_eq!(
+        problems(&document("stream", steps.clone())),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        problems(&document("value", steps)).len(),
+        1,
+        "steps give a stream"
+    );
+    let empty = json!({"rule": "sum", "steps": true, "empty": "null"});
+    assert_eq!(
+        problems(&document("stream", empty)).len(),
+        1,
+        "steps take no empty rule"
+    );
+}

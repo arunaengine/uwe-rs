@@ -479,7 +479,20 @@ fn adapter_notes() {
         print: false,
         ..Settings::default()
     };
+    let target = &launch.target;
+    let mut written: Json =
+        serde_json::from_str(&std::fs::read_to_string(target).unwrap()).unwrap();
+    written["hooks"] =
+        json!([{"observe": {"source": "nf", "processes": [{"id": 1, "name": "SORT"}]}}]);
+    std::fs::write(target, written.to_string()).unwrap();
     settings.adapters.register("nextflow_process", |opening| {
+        let observed = &opening.observers;
+        assert_eq!(
+            observed.len(),
+            1,
+            "the opening has the observers of its source"
+        );
+        assert_eq!(observed[0].processes[0].name, "SORT");
         let sources: Vec<&str> = opening
             .sources
             .iter()
@@ -508,4 +521,230 @@ fn adapter_notes() {
     let delivered = workflow_graph::Driver::deliveries(&mut driver);
     let targets: Vec<&str> = delivered.iter().map(|item| item.target.as_str()).collect();
     assert_eq!(targets, ["out/report.html"]);
+}
+
+/// Ends each op at once with the File `work/report.html` as its output `a`, and delivers
+/// another `report.html` to the output folder at its end.
+struct Reporting {
+    root: PathBuf,
+}
+
+impl TaskAdapter for Reporting {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        let made = self.root.join("work/report.html");
+        let file = json!({"class": "File", "location": made, "basename": "report.html"});
+        let ending = Ending::Succeeded {
+            values: Map::from_iter([("a".to_owned(), file)]),
+            empty: Vec::new(),
+        };
+        Ok(Changes {
+            ended: vec![(call.call, ending)],
+            ..Changes::default()
+        })
+    }
+
+    fn complete(&mut self, _: Outcome) -> Result<Changes, DriverError> {
+        Ok(Changes::default())
+    }
+
+    fn end(&mut self, _: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        let report = Delivery {
+            location: self
+                .root
+                .join("reports/report.html")
+                .to_string_lossy()
+                .into_owned(),
+            target: self
+                .root
+                .join("out/report.html")
+                .to_string_lossy()
+                .into_owned(),
+            mode: DeliveryMode::Copy,
+            overwrite: true,
+        };
+        Ok(vec![report])
+    }
+}
+
+#[test]
+fn report_places() {
+    let folder = tempfile::tempdir().unwrap();
+    let maps = json!([{"port": "a", "native": "output/0"}]);
+    let builder = json!({"nextflow_process": {"source": "nf", "entry": "main", "call": "P", "outputs": maps}});
+    let ports = json!([{"name": "a", "type": {"file": {}}}]);
+    let document = json!({
+        "wir_version": wir::VERSION,
+        "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"}],
+        "graphs": [{"name": "main", "outputs": ports,
+            "ops": [{"path": "p", "kind": {"task": {"builder": builder}}, "outputs": ports}],
+            "edges": [{"from": {"op": "p", "port": "a"}, "to": {"port": "a"}}]}],
+        "entry": "main"
+    });
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let mut settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let root = folder.path().to_owned();
+    settings.adapters.register("nextflow_process", move |_| {
+        Ok(Box::new(Reporting { root: root.clone() }))
+    });
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    workflow_graph::Driver::start(&mut driver).unwrap();
+    workflow_graph::Driver::finish(&mut driver).unwrap();
+    let delivered = workflow_graph::Driver::deliveries(&mut driver);
+    let mut targets: Vec<String> = delivered.iter().map(|item| item.target.clone()).collect();
+    targets.sort();
+    targets.dedup();
+    assert_eq!(
+        targets.len(),
+        2,
+        "the graph output takes another place: {targets:?}"
+    );
+}
+
+/// Answers the op `think` like a model call, on a wake-up and without a task, and runs the
+/// op `run` as one task that it runs again when the task could not run.
+#[derive(Default)]
+struct Agent {
+    thinking: Option<CallId>,
+    running: Option<(CallId, Task)>,
+}
+
+impl TaskAdapter for Agent {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        if call.frame.path == "think" {
+            self.thinking = Some(call.call);
+            return Ok(Changes::default());
+        }
+        let task = Task {
+            id: TaskId(1),
+            name: "run".into(),
+            ..Task::default()
+        };
+        self.running = Some((call.call, task.clone()));
+        Ok(Changes {
+            tasks: vec![(call.call, task)],
+            ..Changes::default()
+        })
+    }
+
+    fn complete(&mut self, outcome: Outcome) -> Result<Changes, DriverError> {
+        let (call, task) = self.running.clone().unwrap();
+        if outcome.error.is_some() {
+            return Ok(Changes {
+                tasks: vec![(call, task)],
+                ..Changes::default()
+            });
+        }
+        let ending = Ending::Succeeded {
+            values: Map::from_iter([("a".to_owned(), json!("ran"))]),
+            empty: Vec::new(),
+        };
+        Ok(Changes {
+            ended: vec![(call, ending)],
+            ..Changes::default()
+        })
+    }
+
+    fn handles_error(&self, _: TaskId, _: &workflow_graph::ExecuteError) -> bool {
+        true
+    }
+
+    fn wake_at(&self) -> Option<std::time::Instant> {
+        self.thinking.map(|_| std::time::Instant::now())
+    }
+
+    fn wake(&mut self) -> Result<Changes, DriverError> {
+        let Some(call) = self.thinking.take() else {
+            return Ok(Changes::default());
+        };
+        let ending = Ending::Succeeded {
+            values: Map::from_iter([("a".to_owned(), json!("answer"))]),
+            empty: Vec::new(),
+        };
+        Ok(Changes {
+            ended: vec![(call, ending)],
+            ..Changes::default()
+        })
+    }
+}
+
+#[test]
+fn agent_tasks() {
+    let folder = tempfile::tempdir().unwrap();
+    let maps = json!([{"port": "a", "native": "output/0"}]);
+    let op = |path: &str| {
+        let builder = json!({"nextflow_process": {"source": "nf", "entry": "main", "call": path, "outputs": maps}});
+        json!({"path": path, "kind": {"task": {"builder": builder}}, "outputs": [{"name": "a", "type": "string"}]})
+    };
+    let outputs = json!([{"name": "think", "type": "string"}, {"name": "run", "type": "string"}]);
+    let edge = |op: &str| json!({"from": {"op": op, "port": "a"}, "to": {"port": op}});
+    let document = json!({
+        "wir_version": wir::VERSION,
+        "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"}],
+        "graphs": [{"name": "main", "outputs": outputs, "ops": [op("think"), op("run")],
+            "edges": [edge("think"), edge("run")]}],
+        "entry": "main"
+    });
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let mut settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    settings
+        .adapters
+        .register("nextflow_process", |_| Ok(Box::new(Agent::default())));
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    use workflow_graph::Driver as _;
+    let tasks = driver.start().unwrap();
+    assert_eq!(tasks.len(), 1, "the model call asks for no task");
+    assert!(
+        driver.wake_at().is_some(),
+        "the driver wakes for the model call"
+    );
+    assert!(driver.wake().unwrap().is_empty());
+    let error = workflow_graph::ExecuteError::Executor {
+        task: "run".into(),
+        message: "the node was lost".into(),
+    };
+    assert!(
+        driver.handles_error(tasks[0].id, &error),
+        "the adapter hears execution errors"
+    );
+    let lost = Outcome {
+        id: tasks[0].id,
+        attempt: 1,
+        error: Some(workflow_graph::TaskError::System),
+        ..Outcome::default()
+    };
+    let again = driver.complete(lost).unwrap();
+    assert_eq!(
+        again.iter().map(|task| task.id).collect::<Vec<_>>(),
+        [tasks[0].id],
+        "a retry"
+    );
+    let done = Outcome {
+        id: tasks[0].id,
+        attempt: 2,
+        ..Outcome::default()
+    };
+    assert!(driver.complete(done).unwrap().is_empty());
+    driver.finish().unwrap();
+    assert_eq!(
+        driver.results().unwrap(),
+        json!({"think": "answer", "run": "ran"})
+    );
 }

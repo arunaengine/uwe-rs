@@ -21,6 +21,7 @@ use crate::child::Child;
 use crate::cwl;
 use crate::inputs;
 use crate::nextflow;
+use crate::operator;
 use crate::plan::{self, plan};
 use crate::snakemake;
 use crate::state::{Progress, widen};
@@ -139,6 +140,10 @@ pub struct WirDriver {
     /// A native block ended in this call. Its results name the files it delivers, which the
     /// engine delivers after the call, so the ops after it start on the next wake.
     ended: bool,
+    /// The stream ops that run, by node.
+    operators: operator::Running,
+    /// Stream ops have steps left to take on the next wake.
+    stepping: bool,
 }
 
 impl WirDriver {
@@ -184,6 +189,8 @@ impl WirDriver {
             results: None,
             delivering: Vec::new(),
             ended: false,
+            operators: operator::Running::new(),
+            stepping: false,
         })
     }
 
@@ -196,20 +203,36 @@ impl WirDriver {
     }
 
     /// Starts every node that can start, until a native block ends; the tasks they ask for.
+    /// Steps of stream ops run in passes; after this many, the driver wakes again later.
     fn advance(&mut self) -> Result<Vec<Task>, DriverError> {
+        const PASSES: usize = 64;
         let mut tasks = Vec::new();
+        let mut passes = 0;
+        self.stepping = false;
         while !self.ended {
             let draining = self.draining();
-            let Some((at, bound)) = self.progress.next(draining) else {
-                return Ok(tasks);
-            };
-            tasks.extend(self.begin(at, bound)?);
+            if let Some((at, bound)) = self.progress.next(draining) {
+                tasks.extend(self.begin(at, bound)?);
+                continue;
+            }
+            if passes == PASSES {
+                self.stepping = !self.operators.is_empty();
+                break;
+            }
+            passes += 1;
+            if !operator::step_all(&mut self.progress, &mut self.operators) {
+                break;
+            }
         }
         Ok(tasks)
     }
 
     /// Starts a node with its input values; the tasks it asks for.
     fn begin(&mut self, at: usize, bound: Map<String, Json>) -> Result<Vec<Task>, DriverError> {
+        if let Some(stepped) = operator::make(self.progress.node(at)) {
+            self.operators.insert(at, stepped);
+            return Ok(Vec::new());
+        }
         match self.progress.node(at).op.kind.clone() {
             Kind::Native(native) => match self.start_native(at, &native, bound) {
                 Ok(tasks) => Ok(tasks),
@@ -621,7 +644,7 @@ impl Driver for WirDriver {
     }
 
     fn wake_at(&self) -> Option<Instant> {
-        if self.ended {
+        if self.ended || self.stepping {
             return Some(Instant::now());
         }
         self.children
@@ -683,6 +706,7 @@ impl Driver for WirDriver {
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
+        operator::cancel_all(&mut self.progress, &mut self.operators);
         for index in 0..self.children.len() {
             if !self.children[index].1.finished() {
                 self.end_child(index);

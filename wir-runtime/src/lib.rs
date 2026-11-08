@@ -12,12 +12,13 @@ mod expr;
 mod flows;
 mod inputs;
 pub mod nextflow;
+#[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
+mod operator;
 mod plan;
 pub mod snakemake;
 #[allow(dead_code, reason = "the stream ops of the next commits use it")]
 mod spill;
 mod state;
-#[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
 mod streams;
 mod task;
 mod wdl;

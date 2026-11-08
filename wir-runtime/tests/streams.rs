@@ -193,6 +193,28 @@ fn typed_items() {
     );
 }
 
+/// `main` maps its int value `xs` with `code` to an output of `to`, which `ys` takes as it is.
+fn valued(code: &str, to: Json) -> Json {
+    let op = json!({"path": "map", "kind": {"transform": {"body": {"language": "groovy", "code": code}}},
+        "inputs": [{"name": "source", "type": "int"}], "outputs": [{"name": "out", "type": to}]});
+    json!([{"name": "main", "inputs": [{"name": "xs", "type": "int"}], "outputs": [{"name": "ys", "type": "dynamic"}],
+        "ops": [op], "edges": [edge((None, "xs"), (Some("map"), "source")), edge((Some("map"), "out"), (None, "ys"))]}])
+}
+
+#[test]
+fn typed_values() {
+    let error = run(valued("{ 'x' }", json!("int")), json!({"xs": 1})).unwrap_err();
+    assert!(
+        error.contains("the value \"x\" does not fit output out"),
+        "{error}"
+    );
+    assert_eq!(
+        run(valued("{ it }", json!("float")), json!({"xs": 1})).unwrap()["ys"],
+        json!(1.0),
+        "a value widens to its output type"
+    );
+}
+
 /// Runs no task, and delivers files on this machine.
 struct Local;
 

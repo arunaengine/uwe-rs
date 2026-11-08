@@ -525,7 +525,7 @@ task lines {
 }
 
 #[test]
-fn objects_do_not_lower() {
+fn objects_stay_unlowered() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let target = folder.path().join("main.wdl");
     let text = r#"version 1.1

@@ -57,9 +57,20 @@ pub fn compile(
     configs: &[std::path::PathBuf],
     base: &Path,
 ) -> Result<Compiled, String> {
+    compile_with(path, configs, None, base)
+}
+
+/// Compiles like [`compile`], from the template `entry` instead of the entrypoint of the spec.
+pub fn compile_with(
+    path: &Path,
+    configs: &[std::path::PathBuf],
+    entry: Option<&str>,
+    base: &Path,
+) -> Result<Compiled, String> {
     let launch = Launch {
         target: path.to_owned(),
         configs: configs.to_vec(),
+        targets: entry.iter().map(|entry| (*entry).to_owned()).collect(),
         simulated: true,
         ..Launch::default()
     };

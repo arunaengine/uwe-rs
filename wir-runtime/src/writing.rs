@@ -4,16 +4,16 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use serde_json::{Value as Json, json};
 use wir::reserved::{CollectFile, Observe};
-use wir::{Body, Closure};
+use wir::{Body, Closure, Effect};
 
 use crate::callback::Callbacks;
 use crate::collecting::sorted;
 use crate::engine::Context;
 use crate::operator::{CHUNK, Operator, Pull, Step, Turn};
+use crate::publishing::{self, Publication};
 use crate::streams::Failure;
 
 /// Calls its closures on the items, the close and the error of `source`, and forwards it.
@@ -84,14 +84,19 @@ pub struct Collecting {
     pub spec: CollectFile,
     pub callbacks: Callbacks,
     entries: BTreeMap<String, Vec<Json>>,
+    effects: Vec<Effect>,
+    /// The files written at the close, while their deliveries are not acknowledged.
+    waiting: Option<(Publication, Vec<Json>)>,
 }
 
 impl Collecting {
-    pub fn new(spec: CollectFile) -> Collecting {
+    pub fn new(spec: CollectFile, effects: &[Effect]) -> Collecting {
         Collecting {
             spec,
             callbacks: Callbacks::default(),
             entries: BTreeMap::new(),
+            effects: effects.to_vec(),
+            waiting: None,
         }
     }
 
@@ -155,18 +160,10 @@ impl Collecting {
         }
     }
 
-    /// Writes every file, then gives them in name order.
+    /// Writes every file, then waits for their deliveries to give them in name order.
     fn close(&mut self, turn: &mut Turn<'_>, context: &Context<'_>) -> Result<(), Failure> {
-        let folder = match self.spec.directory.as_deref() {
-            Some(directory) if directory.contains("://") => {
-                return Err(turn.failed(format!(
-                    "uwe collects files only into local folders yet, not {directory}"
-                )));
-            }
-            Some(directory) if directory.starts_with('/') => PathBuf::from(directory),
-            Some(directory) => context.files.join(&turn.path).join(directory),
-            None => context.files.join(&turn.path),
-        };
+        let directory = self.spec.directory.as_deref();
+        let (folder, outside) = publishing::folder(turn, context, &self.effects, directory)?;
         let mut texts = Vec::new();
         for (name, entries) in std::mem::take(&mut self.entries) {
             let entries = sorted(
@@ -202,21 +199,22 @@ impl Collecting {
             texts.push((name, text));
         }
         if texts.is_empty() {
+            self.waiting = Some(Default::default());
             return Ok(());
         }
         std::fs::create_dir_all(&folder)
             .map_err(|error| turn.failed(format!("cannot make {}: {error}", folder.display())))?;
-        let mut files = Vec::new();
+        let (mut publication, mut files) = (Publication::default(), Vec::new());
         for (name, text) in texts {
             let path = folder.join(&name);
             std::fs::write(&path, &text).map_err(|error| {
                 turn.failed(format!("cannot write {}: {error}", path.display()))
             })?;
-            files.push(json!({"class": "File", "location": path.to_string_lossy(), "basename": name, "size": text.len()}));
+            let size = text.len();
+            files.push(publication.file(context, &path, (&name, size), outside.as_deref()));
         }
-        for file in files {
-            turn.emit("out", file);
-        }
+        publication.ask(context);
+        self.waiting = Some((publication, files));
         Ok(())
     }
 }
@@ -225,6 +223,14 @@ impl Operator for Collecting {
     fn step(&mut self, turn: &mut Turn<'_>, context: &Context<'_>) -> Result<Step, Failure> {
         let mut moved = false;
         for _ in 0..CHUNK {
+            if let Some((publication, files)) = self.waiting.take() {
+                if !publication.delivered(context) {
+                    self.waiting = Some((publication, files));
+                    break;
+                }
+                files.into_iter().for_each(|file| turn.emit("out", file));
+                return Ok(Step::Done);
+            }
             match turn.pull("source")? {
                 Pull::Item(item) => {
                     self.take(turn, context, item)?;
@@ -233,7 +239,7 @@ impl Operator for Collecting {
                 Pull::Pending => break,
                 Pull::Closed => {
                     self.close(turn, context)?;
-                    return Ok(Step::Done);
+                    moved = true;
                 }
             }
         }
@@ -282,18 +288,23 @@ mod tests {
     /// The names and bytes of the files a collect_file with `fields` writes.
     fn written(fields: Json, items: &[Json]) -> Vec<(String, Vec<u8>)> {
         let folder = tempfile::tempdir().unwrap();
-        let mut fields = fields;
-        fields["directory"] = json!(folder.path().to_string_lossy());
+        let fixture = Fixture {
+            files: folder.path().to_owned(),
+            ..Fixture::default()
+        };
+        let context = fixture.context();
         let node = node(json!({"collect_file": fields}), &["source"], &[], "stream");
         let mut streams = wired(&node);
         let mut operator = make(&node).unwrap();
         let items: Vec<(&str, Json)> = items.iter().map(|item| ("source", item.clone())).collect();
         commit(&mut streams, &items, &[]);
-        let (emitted, _, _) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+        let mut step =
+            |streams: &mut _| steps_in(operator.as_mut(), &node, streams, &Map::new(), &context);
+        let (emitted, _, _) = step(&mut streams);
         assert!(emitted.is_empty(), "no file before the close");
         assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(), 0);
         commit(&mut streams, &[], &["source"]);
-        let (emitted, _, step) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+        let (emitted, _, step) = step(&mut streams);
         assert_eq!(step, Ok(Step::Done));
         (emitted.iter())
             .map(|file| {
@@ -382,6 +393,65 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(folder.path().join("area/op/all.txt")).unwrap(),
             "a\na\n"
+        );
+    }
+
+    #[test]
+    fn collect_file_publish() {
+        let folder = tempfile::tempdir().unwrap();
+        let fixture = Fixture {
+            provider: Some(std::sync::Arc::new(workflow_graph::LocalFiles)),
+            files: folder.path().join("area"),
+            ..Fixture::default()
+        };
+        let context = fixture.context();
+        let outside = folder.path().join("results");
+        let spec =
+            json!({"collect_file": {"name": "all.txt", "directory": outside.to_string_lossy()}});
+        let mut node = node(spec, &["source"], &[], "stream");
+        let run = |node: &crate::plan::Node| {
+            let mut streams = wired(node);
+            let mut operator = make(node).unwrap();
+            commit(&mut streams, &[("source", json!("a"))], &["source"]);
+            let first = steps_in(operator.as_mut(), node, &mut streams, &Map::new(), &context);
+            (streams, operator, first)
+        };
+        let why = run(&node).2.2.unwrap_err().message;
+        assert!(why.contains("needs a publish effect"), "{why}");
+        let other = folder.path().join("other").to_string_lossy().into_owned();
+        node.op.effects = vec![wir::Effect::Publish(other)];
+        assert!(
+            run(&node).2.2.is_err(),
+            "the publish effect names another folder"
+        );
+        let target = folder.path().to_string_lossy().into_owned();
+        node.op.effects = vec![wir::Effect::Publish(target)];
+        let (mut streams, mut operator, (emitted, _, step)) = run(&node);
+        assert_eq!(
+            (emitted, step),
+            (vec![], Ok(Step::Idle)),
+            "no File before its delivery"
+        );
+        assert!(!outside.exists(), "the op writes nothing outside the run");
+        let asked = fixture.deliveries.take();
+        let place = outside.join("all.txt").to_string_lossy().into_owned();
+        let targets: Vec<&String> = asked.iter().map(|delivery| &delivery.target).collect();
+        assert_eq!(targets, [&place]);
+        let area = folder.path().join("area");
+        assert!(asked[0].location.starts_with(&*area.to_string_lossy()));
+        assert!(fixture.deliveries.acknowledge(&asked[0]));
+        let (emitted, _, step) = steps_in(
+            operator.as_mut(),
+            &node,
+            &mut streams,
+            &Map::new(),
+            &context,
+        );
+        assert_eq!(step, Ok(Step::Done));
+        assert_eq!(
+            emitted[0]["location"],
+            json!(place),
+            "the File names the delivered file"
         );
     }
 }

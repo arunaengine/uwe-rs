@@ -245,7 +245,7 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         Kind::Reduce(spec) => Some(Box::new(Reducing::new(spec.clone()))),
         Kind::Buffer(spec) => Some(Box::new(Cutting::buffer(spec.rule.clone(), spec.remainder))),
         Kind::Window(spec) => Some(Box::new(Cutting::window(spec))),
-        Kind::Split(spec) => Some(Box::new(Splitting::new(spec.clone()))),
+        Kind::Split(spec) => Some(Box::new(Splitting::new(spec.clone(), &node.op.effects))),
         Kind::View(spec) => Some(Box::new(Viewing {
             body: spec.body.clone(),
             new_line: spec.new_line,
@@ -256,7 +256,10 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
             spec: spec.clone(),
             callbacks: Default::default(),
         })),
-        Kind::CollectFile(spec) => Some(Box::new(crate::writing::Collecting::new(spec.clone()))),
+        Kind::CollectFile(spec) => Some(Box::new(crate::writing::Collecting::new(
+            spec.clone(),
+            &node.op.effects,
+        ))),
         Kind::Take(spec) => selecting(Choice::Take(spec.count)),
         Kind::First(spec) => selecting(Choice::First(spec.predicate.clone(), spec.empty.clone())),
         Kind::Last(spec) => selecting(Choice::Last(

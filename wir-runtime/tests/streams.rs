@@ -192,3 +192,44 @@ fn typed_items() {
         "items widen to their output type"
     );
 }
+
+/// Runs no task, and delivers files on this machine.
+struct Local;
+
+impl Executor for Local {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        panic!("no task runs here: {}", attempt.task.name)
+    }
+
+    fn files(&self) -> Option<std::sync::Arc<dyn workflow_graph::Files>> {
+        Some(std::sync::Arc::new(workflow_graph::LocalFiles))
+    }
+}
+
+#[test]
+fn collect_file_delivery() {
+    let folder = tempfile::tempdir().unwrap();
+    let results = folder.path().join("results");
+    let text = json!({"name": "xs", "type": "string", "flow": "stream"});
+    let file = json!({"name": "out", "type": {"file": {}}, "flow": "stream"});
+    let op = json!({"path": "collect", "kind": {"collect_file": {"name": "all.txt", "directory": results}},
+        "inputs": [{"name": "source", "type": "string", "flow": "stream"}], "outputs": [file],
+        "effects": ["write_files", {"publish": results}]});
+    let main = json!({"name": "main", "inputs": [text], "outputs": [{"name": "ys", "type": {"file": {}}, "flow": "stream"}],
+        "ops": [op], "edges": [edge((None, "xs"), (Some("collect"), "source")), edge((Some("collect"), "out"), (None, "ys"))]});
+    let launch = launch(folder.path(), json!([main]), json!({"xs": ["a\n", "b\n"]}));
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let run = execute("streams", &mut driver, &mut Local).into_result();
+    assert!(run.is_ok(), "{run:?}");
+    let place = results.join("all.txt");
+    assert_eq!(
+        std::fs::read_to_string(&place).unwrap(),
+        "a\nb\n",
+        "delivered before the File is given"
+    );
+    assert_eq!(driver.results().unwrap()["ys"][0]["basename"], "all.txt");
+}

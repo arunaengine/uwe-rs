@@ -104,7 +104,7 @@ impl Single {
                     .collect();
                 self.started[index] = true;
                 moved = true;
-                match prepared(self.driver.prepare_job(&job.key.clone(), staged)?) {
+                match prepared(self.driver.prepare_job(&job.key.clone(), &[], staged)?) {
                     Prepared::Run(task) => {
                         self.owners.insert(task.id, index);
                         tasks.push(*task);
@@ -280,7 +280,7 @@ fn retries_match() {
                 .expect("make")
                 .key
                 .clone();
-            match prepared(driver.prepare_job(&key, Vec::new()).expect("prepares")) {
+            match prepared(driver.prepare_job(&key, &[], Vec::new()).expect("prepares")) {
                 Prepared::Run(task) => (*task, Some(key)),
                 other => panic!("the job does not run: {other:?}"),
             }

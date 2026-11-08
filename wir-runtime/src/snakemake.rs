@@ -140,7 +140,8 @@ impl Jobs {
                         continue;
                     }
                     let key = snakemake_compiler::job_key(&rule);
-                    (call, self.driver.prepare_job(&key, staged)?)
+                    let group = snakemake_compiler::group_keys(&rule);
+                    (call, self.driver.prepare_job(&key, &group, staged)?)
                 }
                 Step::Take(outcome) => (self.owners[&outcome.id], self.driver.take_job(*outcome)?),
             };

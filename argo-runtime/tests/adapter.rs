@@ -142,17 +142,12 @@ fn assert_same(native: &[Task], adapted: &[Task]) {
     }
 }
 
-fn instance(name: &str, template: &str, parameters: &[(&str, Json)]) -> Instance {
-    let text = |value: &Json| value.as_str().unwrap_or_default().to_owned();
+/// The call site `call` of the template `template`, with the tags it reads.
+fn site(template: &str, call: &str, values: &[(&str, Json)]) -> Instance {
     Instance {
-        name: name.into(),
         template: template.into(),
-        parameters: (parameters.iter())
-            .filter(|(_, value)| value.is_string())
-            .map(|(name, value)| ((*name).into(), text(value)))
-            .collect(),
-        artifacts: (parameters.iter())
-            .filter(|(_, value)| value.is_object())
+        call: call.into(),
+        values: (values.iter())
             .map(|(name, value)| ((*name).into(), value.clone()))
             .collect(),
         ..Instance::default()
@@ -180,9 +175,7 @@ fn native_task_keys() {
     assert!(adapter.template("none", None).is_err());
 
     let first = native.start().unwrap();
-    let (make, adapted) = adapter
-        .start(&instance("[0].make", "make", &[("word", json!("hello"))]))
-        .unwrap();
+    let (make, adapted) = adapter.start(&site("main", "[0].make", &[])).unwrap();
     assert_same(&first, &adapted);
     let failed = outcome(&files, &first[0], 1, 1, &[]);
     let second = native.complete(failed.clone()).unwrap();
@@ -195,10 +188,16 @@ fn native_task_keys() {
     let ending = adapter.ending(make).unwrap();
     assert!(ending.facts.succeeded);
     let given = [
-        ("text", ending.outputs["parameter/text"].clone()),
-        ("data", ending.outputs["artifact/data"].clone()),
+        (
+            "steps.make.outputs.parameters.text",
+            ending.outputs["outputs.parameters.text"].clone(),
+        ),
+        (
+            "steps.make.outputs.artifacts.data",
+            ending.outputs["outputs.artifacts.data"].clone(),
+        ),
     ];
-    let (_, adapted) = adapter.start(&instance("[1].use", "use", &given)).unwrap();
+    let (_, adapted) = adapter.start(&site("main", "[1].use", &given)).unwrap();
     assert_same(&third, &adapted);
 }
 
@@ -211,9 +210,7 @@ fn native_acceptance() {
     let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
     let made = [("/tmp/text", "hello\n"), ("/tmp/data/", "")];
     let task = native.start().unwrap().remove(0);
-    let (make, _) = adapter
-        .start(&instance("[0].make", "make", &[("word", json!("hello"))]))
-        .unwrap();
+    let (make, _) = adapter.start(&site("main", "[0].make", &[])).unwrap();
     let failed = outcome(root, &task, 1, 1, &[]);
     let retry = native.complete(failed.clone()).unwrap().remove(0);
     adapter.complete(failed).unwrap();
@@ -228,15 +225,24 @@ fn native_acceptance() {
         "the attempt that made the outputs"
     );
     let ending = adapter.ending(make).unwrap();
-    assert_eq!(ending.outputs["parameter/text"], json!("hello"));
-    assert_eq!(ending.outputs["result"], json!("printed"));
+    assert_eq!(ending.outputs["outputs.parameters.text"], json!("hello"));
+    assert_eq!(ending.outputs["outputs.result"], json!("printed"));
     assert_eq!(ending.outputs["exitCode"], json!("0"));
-    assert_eq!(ending.outputs["artifact/data"]["class"], json!("Directory"));
+    assert_eq!(
+        ending.outputs["outputs.artifacts.data"]["class"],
+        json!("Directory")
+    );
     let given = [
-        ("text", ending.outputs["parameter/text"].clone()),
-        ("data", ending.outputs["artifact/data"].clone()),
+        (
+            "steps.make.outputs.parameters.text",
+            ending.outputs["outputs.parameters.text"].clone(),
+        ),
+        (
+            "steps.make.outputs.artifacts.data",
+            ending.outputs["outputs.artifacts.data"].clone(),
+        ),
     ];
-    let (used_call, tasks) = adapter.start(&instance("[1].use", "use", &given)).unwrap();
+    let (used_call, tasks) = adapter.start(&site("main", "[1].use", &given)).unwrap();
     let out = [("/tmp/out", "hello parity-use-1\n")];
     let last = outcome(root, &tasks[0], 1, 0, &out);
     assert!(
@@ -248,9 +254,9 @@ fn native_acceptance() {
     adapter.complete(last).unwrap();
     let ending = adapter.ending(used_call).unwrap();
     let exported = native.exported().unwrap();
-    assert_eq!(ending.outputs["parameter/text"], exported["text"]);
+    assert_eq!(ending.outputs["outputs.parameters.text"], exported["text"]);
     let mut again = Adapter::load(&launch, Services::default()).unwrap();
-    let (call, tasks) = again.start(&instance("[1].use", "use", &given)).unwrap();
+    let (call, tasks) = again.start(&site("main", "[1].use", &given)).unwrap();
     again.complete(outcome(root, &tasks[0], 1, 0, &[])).unwrap();
     let ending = again.ending(call).unwrap();
     assert!(ending.facts.errored, "an output parameter without its file");
@@ -269,7 +275,7 @@ fn daemon_control() {
         "the client waits for the daemon to be ready"
     );
     let (server, adapted): (CallId, Vec<Task>) =
-        adapter.start(&instance(".server", "server", &[])).unwrap();
+        adapter.start(&site("main", ".server", &[])).unwrap();
     assert_same(&started, &adapted);
     let facts = adapter.facts(server);
     assert!(
@@ -317,7 +323,7 @@ const LOOPS: &str = r#"  entrypoint: main
 "#;
 
 #[test]
-fn lowered_expressions() {
+fn compiled_expressions() {
     use argo_runtime::adapter::Form;
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
@@ -379,4 +385,95 @@ fn lowered_expressions() {
         text,
         "the results of a loop as JSON"
     );
+}
+
+/// A steps template inside another, and a step whose `when` does not hold.
+const NESTED: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: inner, template: inner}
+    - - {name: never, template: say, when: "1 == 2", arguments: {parameters: [{name: text, value: no}]}}
+  - name: inner
+    steps:
+    - - {name: hi, template: say, arguments: {parameters: [{name: text, value: "{{workflow.name}}"}]}}
+  - name: say
+    inputs: {parameters: [{name: text, value: alone}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn call_sites() {
+    use argo_runtime::adapter::Form;
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let launch = launch(root, LOOPS);
+    let mut native = load_driver(&launch, Services::default()).unwrap();
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let first = native.start().unwrap();
+    let (_, adapted) = adapter.start(&site("main", "[0].gen", &[])).unwrap();
+    assert_same(&first, &adapted);
+    let mut printed = outcome(root, &first[0], 1, 0, &[]);
+    let list = r#"[{"name": "a"}, {"name": "b(1)"}]"#;
+    printed.stdout = list.into();
+    let looped = native.complete(printed.clone()).unwrap();
+    adapter.complete(printed).unwrap();
+    let mut rounds = Vec::new();
+    let result = json!(list);
+    let sequence = r#"{"count": "2", "format": "n%02d"}"#;
+    let empty = serde_json::Map::new();
+    let counted = adapter.evaluate(sequence, Form::Items, "", &empty).unwrap();
+    for (index, item) in [json!({"name": "a"}), json!({"name": "b(1)"})]
+        .iter()
+        .enumerate()
+    {
+        let values = [
+            ("steps.gen.outputs.result", result.clone()),
+            ("item", item.clone()),
+        ];
+        let instance = Instance {
+            index,
+            ..site("main", "[1].each", &values)
+        };
+        rounds.extend(adapter.start(&instance).unwrap().1);
+    }
+    for (index, item) in counted.as_array().unwrap().iter().enumerate() {
+        let instance = Instance {
+            index,
+            ..site("main", "[1].count", &[("item", item.clone())])
+        };
+        rounds.extend(adapter.start(&instance).unwrap().1);
+    }
+    assert_same(&looped, &rounds);
+
+    let launch = self::launch(root, NESTED);
+    let mut native = load_driver(&launch, Services::default()).unwrap();
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let first = native.start().unwrap();
+    let inner = Instance {
+        path: vec!["[0].inner".into()],
+        ..site("inner", "[0].hi", &[])
+    };
+    let (_, adapted) = adapter.start(&inner).unwrap();
+    assert_same(&first, &adapted);
+    let done = outcome(root, &first[0], 1, 0, &[]);
+    assert!(
+        native.complete(done).unwrap().is_empty(),
+        "the last step is skipped"
+    );
+    let (never, tasks) = adapter.start(&site("main", "[1].never", &[])).unwrap();
+    assert!(tasks.is_empty());
+    assert!(adapter.ending(never).unwrap().facts.skipped);
+
+    let leaf = NESTED.replace("entrypoint: main", "entrypoint: say");
+    let launch = self::launch(root, &leaf);
+    let mut native = load_driver(&launch, Services::default()).unwrap();
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let first = native.start().unwrap();
+    let whole = Instance {
+        template: "say".into(),
+        ..Instance::default()
+    };
+    let (_, adapted) = adapter.start(&whole).unwrap();
+    assert_same(&first, &adapted);
 }

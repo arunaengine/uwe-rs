@@ -523,3 +523,24 @@ task lines {
     assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
     assert_eq!(runs.native, runs.lowered);
 }
+
+#[test]
+fn objects_do_not_lower() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let target = folder.path().join("main.wdl");
+    let text = r#"version 1.1
+task rows {
+  command <<<
+    printf 'a\tb\n1\t2\n'
+  >>>
+  output {
+    Array[Object] objects = read_objects(stdout())
+  }
+}
+"#;
+    std::fs::write(&target, text).expect("writes the document");
+    let error = wdl_lowering::lower(&target, None, folder.path()).expect_err("no lowering");
+    let why = "rows: output objects reads files that the task makes, and a native block cannot \
+               take an Object";
+    assert_eq!(error, why);
+}

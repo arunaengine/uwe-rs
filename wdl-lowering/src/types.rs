@@ -84,6 +84,19 @@ pub(crate) fn has_files(r#type: &Type) -> bool {
     }
 }
 
+/// Whether a type is dynamic or holds a dynamic type, which a native op cannot take.
+pub(crate) fn open(r#type: &Type) -> bool {
+    match r#type {
+        Type::Dynamic => true,
+        Type::Optional(inner) => open(inner),
+        Type::Array(array) => open(&array.items),
+        Type::Map(map) => open(&map.value),
+        Type::Record(fields) => fields.iter().any(|field| open(&field.r#type)),
+        Type::Union(items) | Type::Tuple(items) => items.iter().any(open),
+        _ => false,
+    }
+}
+
 pub(crate) fn port(name: &str, r#type: Type) -> Port {
     Port {
         name: name.to_owned(),

@@ -82,7 +82,8 @@ fn wdl(
     base: &Path,
 ) -> Result<wdl_lowering::Lowering, Failure> {
     let entry = arguments.targets.first().map(String::as_str);
-    let lowering = wdl_lowering::lower(target, entry, base)
+    let image = (arguments.default_image.as_deref()).unwrap_or(wdl_lowering::DEFAULT_IMAGE);
+    let lowering = wdl_lowering::lower_with(target, entry, base, image)
         .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
     for kept in &lowering.kept {
         eprintln!(

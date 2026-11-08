@@ -3,6 +3,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod graph;
+mod operators;
 mod sources;
 
 use std::path::{Path, PathBuf};
@@ -60,19 +62,27 @@ pub fn lower(launch: &Launch, settings: Settings, base: &Path) -> Result<Lowerin
     Ok(lower_network(&network, &context))
 }
 
-/// Lowers a built network. This version keeps every node native, with the reason why.
+/// Lowers a built network; a node without a lowering keeps the pipeline one native op.
 pub fn lower_network(network: &Network, context: &Context) -> Lowering {
     let mut sources = Sources::new(&network.script, &context.base);
-    let kept = (network.nodes.iter())
-        .map(|node| Kept {
+    let opaque = network.nodes.iter().filter_map(|node| match &node.kind {
+        Kind::Opaque(reason) => Some(Kept {
             path: node.name.clone(),
-            reason: match &node.kind {
-                Kind::Opaque(reason) => reason.clone(),
-                _ => "a node that the lowering does not cover yet".into(),
-            },
-        })
-        .collect();
-    native(network, context, &mut sources, kept)
+            reason: reason.clone(),
+        }),
+        _ => None,
+    });
+    let kept: Vec<Kept> = opaque.collect();
+    if !kept.is_empty() {
+        return native(network, context, &mut sources, kept);
+    }
+    match graph::lower(network, context, &mut sources) {
+        Ok(graphs) => Lowering {
+            document: document(&sources, context, graphs),
+            kept: Vec::new(),
+        },
+        Err(kept) => native(network, context, &mut sources, vec![kept]),
+    }
 }
 
 /// The pipeline as one native op, which runs it with the native driver.

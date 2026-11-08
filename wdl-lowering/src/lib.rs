@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod bodies;
+mod inputs;
 mod library;
 mod outputs;
 mod task;

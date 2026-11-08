@@ -38,7 +38,7 @@ impl Lowerer {
             r#type: items.clone(),
         };
         inner.local.insert(variable.clone(), Bound::Value(held));
-        self.block(document, &body, &mut inner)?;
+        self.nested(document, &body, &mut inner, path)?;
         let variable_port = port(&variable, items.clone());
         let (graph, outputs) = self.body(document, &body, inner, path, Some(variable_port))?;
         let kind = Kind::Map(Map {
@@ -77,7 +77,7 @@ impl Lowerer {
         let body: Vec<WorkflowStatement> = clause.statements().collect();
         let visible = frame.visible();
         let mut inner = Frame::new(&visible, frame.origin.clone());
-        self.block(document, &body, &mut inner)?;
+        self.nested(document, &body, &mut inner, path)?;
         let (graph, outputs) = self.body(document, &body, inner, path, None)?;
         let kind = Kind::Branch(Branch {
             body: graph.name.clone(),
@@ -98,6 +98,21 @@ impl Lowerer {
         self.graphs.push(graph);
         frame.ops.push(branch);
         Ok(())
+    }
+
+    /// The ops of a body, whose kept ops get paths below the op of its scatter or `if`.
+    fn nested(
+        &mut self,
+        document: &Analyzed,
+        body: &[WorkflowStatement],
+        inner: &mut Frame,
+        path: &str,
+    ) -> Result<(), String> {
+        let prefix = format!("{}{path}/", self.prefix);
+        let outer = std::mem::replace(&mut self.prefix, prefix);
+        let done = self.block(document, body, inner);
+        self.prefix = outer;
+        done
     }
 
     /// The body graph of a scatter or an `if`: the names it takes are its inputs, after the

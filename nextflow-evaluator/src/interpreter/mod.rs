@@ -272,6 +272,13 @@ pub trait Host {
         Err(unsupported("validating JSON schemas", Span::default()))
     }
 
+    /// Starts a call of a named workflow with its arguments; `name` is the fully qualified
+    /// name, like `RNASEQ:QC`. The host sees what the body builds until the call ends.
+    fn enter_workflow(&mut self, _name: &str, _arguments: &[Value]) {}
+
+    /// Ends the latest workflow call, with what it emits when its body succeeded.
+    fn leave_workflow(&mut self, _emitted: Option<&Value>) {}
+
     /// Calls a process with its input channels or values, as a workflow does; the result is
     /// the outputs of the call. `name` is the fully qualified name, like `RNASEQ:FASTQC`.
     fn call_process(

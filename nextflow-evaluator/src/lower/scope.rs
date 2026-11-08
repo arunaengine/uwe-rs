@@ -24,6 +24,7 @@ struct Frame {
     slot_count: usize,
     /// The enclosing places this closure captures, in the order of `Place::Captured`.
     captures: Vec<Place>,
+    capture_names: Vec<Rc<str>>,
 }
 
 /// The frames being lowered, innermost last.
@@ -38,6 +39,7 @@ pub(super) struct Scopes {
 pub(super) struct FrameLayout {
     pub slot_count: usize,
     pub captures: Vec<Place>,
+    pub capture_names: Vec<Rc<str>>,
     /// The names declared in the outermost block, with their slots.
     pub names: Vec<(Rc<str>, Slot)>,
 }
@@ -57,6 +59,7 @@ impl Scopes {
             blocks: vec![Vec::new()],
             slot_count: 0,
             captures: Vec::new(),
+            capture_names: Vec::new(),
         });
     }
 
@@ -69,6 +72,7 @@ impl Scopes {
         FrameLayout {
             slot_count: frame.slot_count,
             captures: frame.captures,
+            capture_names: frame.capture_names,
             names,
         }
     }
@@ -228,6 +232,7 @@ fn resolve_in(frames: &mut [Frame], name: &str) -> Option<Place> {
         Some(index) => index,
         None => {
             frame.captures.push(place);
+            frame.capture_names.push(name.into());
             frame.captures.len() - 1
         }
     };

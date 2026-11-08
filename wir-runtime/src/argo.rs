@@ -280,16 +280,18 @@ fn ended(ending: &argo_runtime::adapter::Ending, outputs: &[PortMap]) -> Ending 
             .get(tag(map))
             .map(|v| (map.port.clone(), v.clone()))
     };
+    // An output that Argo gives no value is null, so that a step reading it still runs and
+    // takes its own default, as the native run does.
+    let values =
+        (outputs.iter()).map(|map| given(map).unwrap_or_else(|| (map.port.clone(), Json::Null)));
     if facts.succeeded {
-        let values = (outputs.iter())
-            .map(|map| given(map).unwrap_or_else(|| (map.port.clone(), Json::Null)));
         return Ending::Succeeded {
             values: values.collect(),
             empty: Vec::new(),
         };
     }
     match (facts.skipped || facts.omitted, facts.errored) {
-        (true, _) => Ending::Skipped(outputs.iter().filter_map(given).collect()),
+        (true, _) => Ending::Skipped(values.collect()),
         (false, true) => Ending::Errored(ending.message.clone()),
         (false, false) => Ending::Failed(ending.message.clone()),
     }

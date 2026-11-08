@@ -119,7 +119,7 @@ impl Splitting {
         item: &Json,
     ) -> Result<Vec<Json>, Failure> {
         let Json::Array(fields) = item else {
-            return self.pieces(turn, context, item, None);
+            return Ok(self.pieces(turn, context, item, None)?.0);
         };
         let files: Vec<usize> = (fields.iter().enumerate())
             .filter(|(_, field)| field.get("class").and_then(Json::as_str) == Some("File"))
@@ -137,18 +137,17 @@ impl Splitting {
                     .unwrap_or(0),
             ],
         };
-        let mut columns = Vec::new();
+        let (mut columns, mut records) = (Vec::new(), Vec::new());
         for (mate, place) in places.iter().enumerate() {
             let source = fields
                 .get(*place)
                 .ok_or_else(|| turn.failed(format!("the item has no element {place}")))?;
             let mate = (places.len() > 1).then_some(mate + 1);
-            columns.push(self.pieces(turn, context, source, mate)?);
+            let (column, count) = self.pieces(turn, context, source, mate)?;
+            columns.push(column);
+            records.push(count);
         }
-        if columns
-            .iter()
-            .any(|column| column.len() != columns[0].len())
-        {
+        if records.iter().any(|count| *count != records[0]) {
             return Err(turn.failed("the paired files have different numbers of records"));
         }
         Ok((0..columns[0].len())
@@ -162,14 +161,15 @@ impl Splitting {
             .collect())
     }
 
-    /// The chunks of one text or File, of the mate `mate` of a pair.
+    /// The chunks of one text or File, of the mate `mate` of a pair, and how many records
+    /// they hold.
     fn pieces(
         &self,
         turn: &Turn<'_>,
         context: &Context<'_>,
         source: &Json,
         mate: Option<usize>,
-    ) -> Result<Vec<Json>, Failure> {
+    ) -> Result<(Vec<Json>, usize), Failure> {
         let mut text = self.text(turn, source)?;
         if let SplitFormat::Json(json) = &self.spec.format {
             let document: Json = serde_json::from_str(&text)
@@ -191,12 +191,12 @@ impl Splitting {
             }
             _ => None,
         };
-        let chunks = self
+        let mut chunks = self
             .splitter()
             .text(text)
             .map_err(|error| turn.failed(error.to_string()))?;
         let mut pieces = Vec::new();
-        for chunk in chunks {
+        for chunk in chunks.by_ref() {
             let chunk = chunk.map_err(|error| turn.failed(error.to_string()))?;
             let value = self.named(groovy::to_json(&chunk).map_err(|why| turn.failed(why))?);
             pieces.push(match (&header, value) {
@@ -204,10 +204,11 @@ impl Splitting {
                 (_, value) => value,
             });
         }
-        match &self.spec.files {
-            Some(files) => self.written(turn, context, (files, mate), source, pieces),
-            None => Ok(pieces),
-        }
+        let pieces = match &self.spec.files {
+            Some(files) => self.written(turn, context, (files, mate), source, pieces)?,
+            None => pieces,
+        };
+        Ok((pieces, chunks.records()))
     }
 
     /// The text chunks of a source written as files of the op in the file area of the run,
@@ -607,6 +608,18 @@ mod sequences {
             unequal
                 .unwrap_err()
                 .contains("different numbers of records")
+        );
+        let three = FASTQ.to_owned() + "@r3\nT\n+\nI\n";
+        let four = three.clone() + "@r4\nT\n+\nI\n";
+        let chunked = split(
+            json!({"format": {"fastq": {}}, "pair": "auto", "size": 2}),
+            &[json!(["s", file("r5.fq", &three), file("r6.fq", &four)])],
+        );
+        assert!(
+            chunked
+                .unwrap_err()
+                .contains("different numbers of records"),
+            "records count, not chunks"
         );
     }
 }

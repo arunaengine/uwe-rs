@@ -474,8 +474,8 @@ impl WirDriver {
         let patch = match directives {
             None => wir::TaskPatch::default(),
             Some(directives) => {
-                let index = adapter::frame(&self.progress, at).rounds.last().copied();
-                let argument = task::attempt_context(bound, index.unwrap_or(0), attempt, previous);
+                let index = self.progress.round_index(at);
+                let argument = task::attempt_context(bound, index, attempt, previous);
                 let context = engine::Context {
                     document: &self.document,
                     base: &self.base,
@@ -522,9 +522,8 @@ impl WirDriver {
         let bound = self.tasks[&outcome.id].2.clone();
         let attempt = outcome.attempt + 1;
         if let Some(test) = retry.and_then(|retry| retry.retry_if.as_ref()) {
-            let index = adapter::frame(&self.progress, at).rounds.last().copied();
-            let argument =
-                task::attempt_context(&bound, index.unwrap_or(0), attempt, previous.clone());
+            let index = self.progress.round_index(at);
+            let argument = task::attempt_context(&bound, index, attempt, previous.clone());
             let context = engine::Context {
                 document: &self.document,
                 base: &self.base,
@@ -585,11 +584,11 @@ impl WirDriver {
             provider: self.files.as_deref(),
             deliveries: &self.published,
         };
-        let index = adapter::frame(&self.progress, at).rounds.last().copied();
+        let index = self.progress.round_index(at);
         let accepted = captured.and_then(|(values, empty)| match &spec.accept {
             None => Ok((values, empty)),
             Some(accept) => {
-                let attempt = (bound, &values, index.unwrap_or(0));
+                let attempt = (bound, &values, index);
                 let callbacks = &mut self.callbacks;
                 match task::accepts(callbacks, &context, accept, attempt, outcome) {
                     Ok(true) => Ok((values, empty)),

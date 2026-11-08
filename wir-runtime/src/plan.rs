@@ -38,6 +38,8 @@ pub struct Node {
     pub handles: Vec<(usize, Vec<Status>)>,
     /// For a status group: the nodes it waits for.
     pub members: Vec<usize>,
+    /// For a round of a map, a process or a loop: its stable ordinal among the rounds.
+    pub ordinal: Option<u64>,
 }
 
 /// A tree of status tests with the ops resolved to nodes.
@@ -264,7 +266,8 @@ pub fn rounds(
     items: Vec<Map<String, Json>>,
 ) -> Result<(), DriverError> {
     for (index, item) in items.into_iter().enumerate() {
-        round(document, nodes, (at, &index.to_string()), body, item)?;
+        let node = round(document, nodes, (at, &index.to_string()), body, item)?;
+        nodes[node].ordinal = Some(index as u64);
     }
     Ok(())
 }
@@ -307,6 +310,7 @@ pub fn round(
         depends: None,
         handles: Vec::new(),
         members: Vec::new(),
+        ordinal: None,
     });
     let (inner, steps) = (format!("{path}/"), format!("{step}/"));
     nodes[round].exports = instantiate(document, graph, (&inner, &steps), Some(round), nodes)?;
@@ -418,6 +422,7 @@ pub fn extend(
             depends: None,
             handles: Vec::new(),
             members: Vec::new(),
+            ordinal: None,
         });
     }
     let source = |from: &Endpoint| match &from.op {

@@ -36,6 +36,7 @@ fn lowers_plain_tools() {
         "stdout": "out.txt",
         "workdir": "/var/spool/cwl",
         "staging": "/var/lib/cwl/inputs",
+        "staged": ["message", "unused", "words"],
         "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"},
         "results": "cwl.output.json"
     });

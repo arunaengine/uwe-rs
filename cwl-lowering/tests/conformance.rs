@@ -14,13 +14,13 @@ use workflow_graph::{Driver, Launch, Simulator, execute};
 /// with outputs equal by class and basename; that end as the test expects (outputs or failure);
 /// and with outputs whose Files also have equal sizes and contents.
 const RECORDED: Counts = Counts {
-    full: 308,
-    partly: 51,
+    full: 307,
+    partly: 52,
     unlowered: 19,
-    same: 344,
+    same: 345,
     equal: 316,
-    expected: 138,
-    exact: 312,
+    expected: 141,
+    exact: 314,
 };
 
 #[derive(Debug, Default, PartialEq)]

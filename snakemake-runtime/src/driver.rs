@@ -28,6 +28,11 @@ use crate::python::{ContainerStarter, PythonContainers};
 use crate::remote::Mirrors;
 use crate::workflow::{Hook, State};
 
+#[path = "adapter.rs"]
+mod adapter;
+
+pub use adapter::{FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
+
 /// The Snakefile of a workflow folder, as Snakemake looks for it.
 pub fn find_snakefile(folder: &Path) -> Option<PathBuf> {
     [
@@ -148,6 +153,8 @@ pub struct Session {
     run: String,
     /// The `priority` of each built job, by which ready jobs start, highest first.
     priorities: HashMap<usize, f64>,
+    /// The planned jobs by their identity, for jobs that run one by one.
+    keys: HashMap<JobKey, usize>,
 }
 
 struct SignaturePublication {
@@ -305,6 +312,7 @@ impl Session {
                 format!("{}-{nanos}", std::process::id())
             },
             priorities: HashMap::new(),
+            keys: HashMap::new(),
         })
     }
 
@@ -2954,6 +2962,8 @@ pub struct SnakemakeDriver {
     /// The files of the targets once the session has finished.
     results: Arc<Mutex<Option<serde_json::Value>>>,
     simulated: bool,
+    /// The answer of the session to the last request of a job.
+    answers: adapter::Answers,
 }
 
 impl SnakemakeDriver {
@@ -3155,6 +3165,8 @@ pub fn spawn_driver(
     let session_acceptance = acceptance.clone();
     let results: Arc<Mutex<Option<serde_json::Value>>> = Arc::default();
     let session_results = results.clone();
+    let answers: adapter::Answers = Arc::default();
+    let session_answers = answers.clone();
     let simulated = launch.simulated;
     let worker = std::thread::Builder::new()
         .name("snakemake".into())
@@ -3258,6 +3270,9 @@ pub fn spawn_driver(
                     }
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
+                    request @ (Request::Jobs(_) | Request::Prepare(_) | Request::Take(_)) => {
+                        session.answer(request, &session_answers)
+                    }
                     Request::Delivered(delivery) => {
                         session.delivered(&delivery).map(|()| Vec::new())
                     }
@@ -3326,6 +3341,7 @@ pub fn spawn_driver(
         acceptance,
         results,
         simulated,
+        answers,
     })
 }
 

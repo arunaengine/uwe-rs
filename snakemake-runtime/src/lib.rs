@@ -47,8 +47,9 @@ mod utils;
 mod workflow;
 
 pub use driver::{
-    RunSettings, Session, Settings, SnakemakeDriver, driver, driver_with, driver_with_options,
-    find_snakefile, spawn_driver,
+    FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer, RunSettings, Session,
+    Settings, SnakemakeDriver, driver, driver_with, driver_with_options, find_snakefile,
+    spawn_driver,
 };
 pub use gitfile::{Checkout, GitClient};
 pub use locks::release_locks;

@@ -226,6 +226,8 @@ An isolated run also leaves out two stores of the service user, unless the host 
 - `Isolation.secret_store`: the Nextflow secret store, `$HOME/.nextflow/secrets/store.json` or `NXF_SECRETS_FILE`. Without it, `secrets.NAME` and the secrets of a process come only from the `[secrets]` section of the config file and the secret values of the run.
 - `Isolation.registry_files`: the Docker and Podman credentials, `~/.docker/config.json`, `$DOCKER_CONFIG` and the files of Podman. Without them, only the `[registry]` section of the config file signs in to registries, also while other requests that read the files run, see [Sharing between requests](#sharing-between-requests).
 
+The inputs of an isolated run come only from hosts on public networks. The built-in providers of `http`, `https`, `s3`, `gs` and `ftp` addresses refuse a host that is, or whose name resolves to, a loopback, private, link-local or other local address, also after a redirect and through a web proxy. The other built-in providers, like `drs` and `oci`, serve no address in an isolated run. The providers of the config file stay as they are. `Isolation.allowed_hosts` names the hosts of private networks that inputs may still come from, like a data server of the lab.
+
 ```rust
 let mut settings = uwe::run::Settings::new("/srv/runs/01JBXQ5Z7C2W9M/workflow/main.nf");
 settings.cache_folder = Some("/srv/runs/01JBXQ5Z7C2W9M/cache".into());

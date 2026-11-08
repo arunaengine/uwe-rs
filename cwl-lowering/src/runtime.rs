@@ -5,6 +5,7 @@
 
 use cwl_parser::model::{Dynamic, Expression, Part, RequirementClass, Version};
 use serde_json::json;
+use wir::Resources;
 
 use crate::Scope;
 
@@ -20,6 +21,35 @@ pub const TMPDIR: &str = "/tmp";
 /// The `runtime` object of a tool as JSON, as uwe's CWL driver makes it, or why it is not
 /// known before the tool runs.
 pub fn object(scope: &Scope, version: Version) -> Result<String, String> {
+    let (cores, ram, tmpdir, outdir) = amounts(scope, version)?;
+    let whole = |amount: f64| amount.ceil() as i64;
+    let object = json!({
+        "outdir": OUTDIR,
+        "tmpdir": TMPDIR,
+        "cores": whole(cores),
+        "ram": whole(ram),
+        "outdirSize": whole(outdir),
+        "tmpdirSize": whole(tmpdir),
+    });
+    Ok(object.to_string())
+}
+
+/// The resources of a tool as uwe's CWL driver gives them to its task, when no expression
+/// sets them and the cores are whole.
+pub fn resources(scope: &Scope, version: Version) -> Option<Resources> {
+    let (cores, ram, tmpdir, outdir) = amounts(scope, version).ok()?;
+    let mebibytes = |amount: f64| (amount.ceil() as u64).saturating_mul(1_048_576);
+    (cores.fract() == 0.0).then(|| Resources {
+        cpus: Some(cores as u32),
+        memory: Some(mebibytes(ram)),
+        disk: Some(mebibytes(tmpdir).saturating_add(mebibytes(outdir))),
+        gpus: None,
+    })
+}
+
+/// The cores, RAM, temporary and output folder sizes of a tool, in MiB, or why expressions
+/// set them.
+fn amounts(scope: &Scope, version: Version) -> Result<(f64, f64, f64, f64), String> {
     let resource = scope.find(|class| match class {
         RequirementClass::Resource(resource) => Some(resource),
         _ => None,
@@ -43,17 +73,94 @@ pub fn object(scope: &Scope, version: Version) -> Result<String, String> {
         tmpdir = pick(&resource.tmpdir_min, &resource.tmpdir_max, tmpdir)?;
         outdir = pick(&resource.outdir_min, &resource.outdir_max, outdir)?;
     }
-    let whole = |amount: f64| amount.ceil() as i64;
-    let object = json!({
-        "outdir": OUTDIR,
-        "tmpdir": TMPDIR,
-        "cores": whole(cores),
-        "ram": whole(ram),
-        "outdirSize": whole(outdir),
-        "tmpdirSize": whole(tmpdir),
-    });
-    Ok(object.to_string())
+    Ok((cores, ram, tmpdir, outdir))
 }
+
+/// The task input that holds the `runtime` object when expressions set the resources.
+pub const VALUES: &str = "runtime.values";
+
+/// The task input that holds the limits of the task when expressions set them.
+pub const LIMITS: &str = "runtime.limits";
+
+/// The code of the `runtime` object and of the task limits, by the inputs, when expressions
+/// set the resources or the time limit, as uwe's CWL driver computes them.
+pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
+    let resource = scope.find(|class| match class {
+        RequirementClass::Resource(resource) => Some(resource),
+        _ => None,
+    });
+    let time = scope.find(|class| match class {
+        RequirementClass::ToolTimeLimit { timelimit } => Some(timelimit),
+        _ => None,
+    });
+    let amount = |setting: &Option<Dynamic<f64>>| match setting {
+        Some(Dynamic::Value(value)) => value.to_string(),
+        Some(Dynamic::Expression(code)) => value(code),
+        None => "null".into(),
+    };
+    let pairs = resource.map(|resource| {
+        [
+            (&resource.cores_min, &resource.cores_max),
+            (&resource.ram_min, &resource.ram_max),
+            (&resource.tmpdir_min, &resource.tmpdir_max),
+            (&resource.outdir_min, &resource.outdir_max),
+        ]
+    });
+    let dynamic = |setting: &Option<Dynamic<f64>>| matches!(setting, Some(Dynamic::Expression(_)));
+    let set = pairs
+        .iter()
+        .flatten()
+        .any(|(min, max)| dynamic(min) || dynamic(max));
+    // Cores that are not whole fit no task attribute.
+    let whole = resources(scope, version).is_some();
+    if whole && !set && !matches!(time, Some(Dynamic::Expression(_))) {
+        return None;
+    }
+    let ram = match version {
+        Version::V1_0 => 1024,
+        _ => 256,
+    };
+    let picks: Vec<String> = match pairs {
+        Some(pairs) => (pairs.iter().zip([1, ram, 1024, 1024]))
+            .map(|((min, max), fallback)| {
+                format!("pick({}, {}, {fallback})", amount(min), amount(max))
+            })
+            .collect(),
+        None => vec!["1".into(), ram.to_string(), "1024".into(), "1024".into()],
+    };
+    let time = match time {
+        Some(Dynamic::Value(seconds)) => seconds.to_string(),
+        Some(Dynamic::Expression(code)) => value(code),
+        None => "null".into(),
+    };
+    let base = format!(
+        "var runtime = {{\"outdir\": \"{OUTDIR}\", \"tmpdir\": \"{TMPDIR}\"}}; {TEXT} {PICK} \
+         var cores = {}, ram = {}, tmpdir = {}, outdir = {}; var time = {time}; \
+         if (time !== null && time !== undefined && (time % 1 !== 0 || time < 0)) \
+         {{ throw new Error(\"the timelimit is no whole number of 0 or more\"); }} \
+         var mib = function(v) {{ return Math.ceil(v) * 1048576; }};",
+        picks[0], picks[1], picks[2], picks[3]
+    );
+    let values = format!(
+        "${{ {base} return {{\"outdir\": runtime.outdir, \"tmpdir\": runtime.tmpdir, \
+         \"cores\": Math.ceil(cores), \"ram\": Math.ceil(ram), \
+         \"outdirSize\": Math.ceil(outdir), \"tmpdirSize\": Math.ceil(tmpdir)}}; }}"
+    );
+    let limits = format!(
+        "${{ {base} return {{\"cpus\": cores, \"memory\": mib(ram), \
+         \"disk\": mib(tmpdir) + mib(outdir), \"time\": time > 0 ? time : null}}; }}"
+    );
+    Some((values, limits))
+}
+
+/// A function `pick` that takes the least amount, else the most, else the fallback, and
+/// fails on an amount that is not finite, negative or over the most.
+const PICK: &str = "var pick = function(min, max, fallback) { \
+    var bad = function(v) { return typeof v !== \"number\" || !isFinite(v) || v < 0; }; \
+    var given = function(v) { return v !== null && v !== undefined; }; \
+    if ((given(min) && bad(min)) || (given(max) && bad(max)) || (given(min) && given(max) && min > max)) \
+    { throw new Error(\"resource amounts must be finite, nonnegative and min <= max\"); } \
+    return given(min) ? min : given(max) ? max : fallback; };";
 
 /// The code of an expression that reads `runtime`, as a function that sees `runtime`, the
 /// JSON object of the tool with the fields that the runner gives, like `exitCode`.

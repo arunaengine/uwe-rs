@@ -1,6 +1,5 @@
-//! The streams of a plan: the activation that opens the streams and installs the readers of
-//! a graph, the stream inputs of nodes, and the calls that forward stream outputs and hold
-//! their close until the call succeeds.
+//! The streams of a plan: activations open the streams and readers of a graph, and calls
+//! forward stream outputs and hold their close until the call succeeds.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -34,9 +33,7 @@ impl Progress {
     /// Opens the stream outputs of the nodes of one activation, the entry graph or the graph
     /// of a call, then installs their readers, all before any of them starts.
     pub fn activate(&mut self, parent: Option<usize>) -> Result<(), DriverError> {
-        let members: Vec<usize> = (0..self.plan.nodes.len())
-            .filter(|at| self.node(*at).parent == parent)
-            .collect();
+        let members = self.children(parent).to_vec();
         for at in &members {
             let node = self.node(*at);
             let ports = node.op.outputs.iter().filter(|port| !port.flow.is_value());

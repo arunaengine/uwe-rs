@@ -273,7 +273,7 @@ mod tests {
     use serde_json::{Map, Value as Json, json};
 
     use crate::mixing::tests::{commit, node, steps, wired};
-    use crate::operator::{Step, make};
+    use crate::operator::{Step, make, make_typed};
     use crate::streams::Failure;
 
     /// What an op of `kind` gives for left and right items committed in the given order,
@@ -375,6 +375,35 @@ mod tests {
                 json!(["c", null, 3])
             ],
             "first-seen key order"
+        );
+    }
+
+    #[test]
+    fn named_remainder() {
+        let mut node = node(
+            json!({"join": {"remainder": true}}),
+            &["left", "right"],
+            &[],
+            "stream",
+        );
+        let tuple = wir::Type::Tuple(vec![wir::Type::Dynamic; 3]);
+        let defs = [wir::TypeDef {
+            name: "triple".into(),
+            r#type: tuple,
+        }];
+        for port in &mut node.op.inputs {
+            port.r#type = wir::Type::Named("triple".into());
+        }
+        let mut streams = wired(&node);
+        let mut operator = make_typed(&node, &defs).unwrap();
+        commit(&mut streams, &[("left", json!(["a", 1, 2]))], &[]);
+        commit(&mut streams, &[], &["left", "right"]);
+        let (emitted, _, step) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+        assert_eq!(step, Ok(Step::Done));
+        assert_eq!(
+            emitted,
+            [json!(["a", 1, 2, null, null])],
+            "the named tuple's width"
         );
     }
 

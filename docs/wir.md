@@ -81,6 +81,20 @@ A lowered task is a wir task, so its cache key differs from that of the same tas
 
 What keeps tasks native, by the first reason of each: an output that reads files the task makes, like `read_string(stdout())` (59), a write function in a declaration (2), a file inside a struct or map input (3), a runtime value that depends on inputs (2), a workflow expression that reads a file (2), and one each of the `task` variable, `returnCodes: "*"`, a read in the command, an array of optional output files and an `env` declaration. The one example whose outputs differ globs files that the simulator makes up.
 
+## Compiling Nextflow
+
+`uwe lower` and `-lowered` take Nextflow pipelines too, with `-profile`, `-c`, `-entry` and the params of the command line as for `uwe run`. A Nextflow document is compiled for the params and config of one run, as Nextflow builds its dataflow once per run from them; the crate `nextflow-compiler` compiles it from the network that the build phase of uwe's Nextflow driver wires up, without running a task:
+
+- A process call becomes a `process` op whose body graph has one dialect task `nextflow_process`, which builds, accepts, retries and publishes each task as the native driver does, so the tasks and their cache keys are those of a native run. An `each` input is an `each` port; a call with a queue channel input has stream outputs, one without has value outputs.
+- An operator becomes the stream op of its meaning, such as `transform` for `map`, `route` for `branch`, `join`, `group_tuple` and `collect`; its closures are Groovy callbacks found by their place in the source, with the values they capture. A value channel that an op reads as a stream goes through an `emit` op.
+- A workflow call becomes a `call` op of a graph of its own, whose ports are the channels that cross the call. The mix of a topic sits in the deepest call that holds its readers.
+- The params become typed inputs of the entry graph, with the types of `nextflow_schema.json` and the values of the run as defaults. The source `run` pins the params and the resolved config by their digests, and the config files of the run are sources with their digests.
+- What the build prints or writes, and checks like `validateParameters`, become ops at the start of the run, before every other op. Channel factories, like `channel.fromPath` and factories of plugins, read when the run starts. Files that the build reads, like the samplesheet of `samplesheetToList`, are read when the pipeline is compiled, as Nextflow reads them when it builds the workflow; each is a source of the document with its digest.
+- Each workflow output of the `output { }` block becomes an `observe` op with the `publish` effect of the output folder. Its Groovy callback publishes the files of each item with the options of the output, to the places the native driver uses, and writes the index file when the channel closes.
+- Constructs without a wir op keep the whole pipeline one `native` op, and `uwe lower` names the first: nf-boost's `scan`, and the typed operators `groupBy`, `join` of records and `combine` of typed workflows, whose results depend on tuple and record kinds that wir values do not keep. A value channel that is never bound, like `channel.value()`, closes empty. An agent process compiles like a process, but its dialect task does not run agents yet.
+
+A run of a compiled document builds, accepts and publishes the tasks of `nextflow_process` ops through the task adapter of the native driver, with the names of the native tasks. It still stops at the first op that compares values by Groovy's rules, which uwe does not do yet; `nextflow-compiler/tests/differential.rs` counts the runs that give the native tasks when the ops use the wir rules instead.
+
 ## Compiling Snakemake
 
 `uwe lower` and `-lowered` take Snakefiles and Snakemake project folders too, with the targets, config files and profiles of the command line. The crate `snakemake-compiler` compiles the jobs that the planner of uwe plans for them, as a run plans them:

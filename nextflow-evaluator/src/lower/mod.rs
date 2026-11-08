@@ -118,6 +118,7 @@ pub fn lower_config_statement(
         implicit_parameter: false,
         slot_count: layout.slot_count,
         captures: layout.captures,
+        capture_names: layout.capture_names,
         body,
         span: statement.span,
     };
@@ -490,6 +491,7 @@ impl<'a> Lowering<'a> {
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,
+            capture_names: layout.capture_names,
             body,
             span: function.span,
         }
@@ -592,6 +594,7 @@ impl<'a> Lowering<'a> {
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,
+            capture_names: layout.capture_names,
             body: vec![Statement {
                 span: value.span,
                 kind: StatementKind::Expression(value),
@@ -676,6 +679,7 @@ impl<'a> Lowering<'a> {
             implicit_parameter: false,
             slot_count: layout.slot_count,
             captures: layout.captures,
+            capture_names: layout.capture_names,
             body,
             span,
         }

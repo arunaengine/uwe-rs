@@ -30,6 +30,7 @@ pub fn call(
         library: library.to_vec(),
         scope: None,
         captures: Default::default(),
+        form: None,
     };
     let bound = Map::from_iter([
         ("wir_arguments".to_owned(), Json::Array(arguments.to_vec())),

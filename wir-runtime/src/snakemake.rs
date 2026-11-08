@@ -177,9 +177,11 @@ impl Jobs {
                 let values = (made.into_iter().enumerate()).filter_map(|(index, file)| {
                     Some((ports.get(&format!("output/{index}"))?.clone(), file))
                 });
-                changes
-                    .ended
-                    .push((call, Ending::Succeeded(values.collect())));
+                let ending = Ending::Succeeded {
+                    values: values.collect(),
+                    empty: Vec::new(),
+                };
+                changes.ended.push((call, ending));
             }
             Answer::Prepared(Prepared::Failed(why)) | Answer::Taken(JobResult::Failed(why)) => {
                 changes.ended.push((call, Ending::Failed(why)));
@@ -236,13 +238,15 @@ impl TaskAdapter for Jobs {
         self.driver.delivered(delivery)
     }
 
-    fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
-        match failure {
+    fn end(&mut self, failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        let ended = match failure {
             None => self.driver.finish(),
             Some(why) => self
                 .driver
                 .failed(&ExecuteError::Driver(DriverError::new(why))),
-        }
+        };
+        // The deliveries of its end come through `deliveries`, as those of its tasks do.
+        ended.map(|()| Vec::new())
     }
 
     /// Job tasks keep the names of the native run, which name the rule and wildcards.

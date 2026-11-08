@@ -381,6 +381,8 @@ pub struct Code {
     pub slot_count: usize,
     /// For a closure: the enclosing variables it captures, in the order of `Place::Captured`.
     pub captures: Vec<Place>,
+    /// The names of the captured variables, in the same order.
+    pub capture_names: Vec<Rc<str>>,
     pub body: Vec<Statement>,
     pub span: Span,
 }

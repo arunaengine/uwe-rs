@@ -2,13 +2,17 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod adapter;
 mod agent;
+pub mod bridge;
 mod build;
 mod calls;
 pub mod channel;
 mod cleanup;
+mod describe;
 pub mod driver;
 mod emits;
+pub mod export;
 mod files;
 mod hash;
 pub mod inputs;
@@ -41,6 +45,7 @@ use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::{PathValue, Value};
 
+pub use adapter::{Adapter, Call, Completed, Prepared};
 pub use driver::driver;
 pub use loader::{LoadError, Loader};
 pub use network::Network;
@@ -151,6 +156,10 @@ impl Run {
             {
                 let mut builder = build::Builder {
                     network: &mut network,
+                    defer: false,
+                    written: Vec::new(),
+                    reads: Vec::new(),
+                    options,
                     base: &mut session,
                     stub: options.stub,
                     config: &options.config,
@@ -363,6 +372,85 @@ impl Run {
     }
 }
 
+/// Builds the network of the entry workflow without starting it, for the compiler into wir:
+/// factories stay calls, and the files that the build reads are kept with their digests.
+pub fn export(
+    module: &Rc<Module>,
+    options: &Options,
+    host: &mut dyn Host,
+) -> Result<export::Network, Error> {
+    let mut network = Network::default();
+    let launch = host.launch_dir();
+    let workflow = workflow::metadata(options, &launch);
+    let mut operator_directory = None;
+    let mut session = Session {
+        base: host,
+        options,
+        network: None,
+        operator_directory: &mut operator_directory,
+    };
+    let mut builder = build::Builder {
+        network: &mut network,
+        defer: true,
+        written: Vec::new(),
+        reads: Vec::new(),
+        options,
+        base: &mut session,
+        stub: options.stub,
+        config: &options.config,
+        output_dir: options.output_dir.clone(),
+        exec_folder: options.exec_folder.clone().map(Rc::from),
+    };
+    let mut interpreter = Interpreter::new(&mut builder);
+    set_globals(&mut interpreter, options, &workflow);
+    let params = options.config.params();
+    let emitted = script_params(&mut interpreter, module, &params, &mut Vec::new())
+        .and_then(|()| typed_params(&mut interpreter, module, &params))
+        .and_then(|()| interpreter.start_statements(module))
+        .and_then(|()| match options.entry.as_deref() {
+            Some(name) => interpreter.run_named_entry(module, name),
+            None => interpreter.run_entry(module),
+        })
+        .map_err(|error| interpreter.locate(error))?;
+    drop(interpreter);
+    builder.write_kept();
+    let reads = std::mem::take(&mut builder.reads);
+    let emits = match &emitted {
+        Value::ChannelOut(out) => (out.values.iter().zip(&out.names))
+            .filter_map(|(value, name)| match (value, name) {
+                (Value::Channel(channel), Some(name)) => {
+                    Some((name.to_string(), channel.0 as usize))
+                }
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let mut exported = network
+        .export(emits, &params)
+        .map_err(|message| Error::Unsupported {
+            message,
+            span: Default::default(),
+        })?;
+    exported.script = module
+        .path
+        .borrow()
+        .as_deref()
+        .unwrap_or_default()
+        .to_owned();
+    exported.configs = options.config_files.clone();
+    exported.config = options.config.flat();
+    let project = std::path::Path::new(&options.project_dir);
+    let schema = inputs::schema_file(&options.config, project);
+    exported.schema = schema
+        .is_file()
+        .then(|| inputs::from_file(&schema, project).ok())
+        .flatten();
+    exported.launch = launch;
+    exported.reads = reads;
+    Ok(exported)
+}
+
 /// Runs a script whose workflow runs no tasks.
 pub fn run(module: &Rc<Module>, host: &mut dyn Host) -> Result<(), Error> {
     let (mut run, requests) = Run::start(module, &Options::default(), host)?;
@@ -470,7 +558,7 @@ pub fn output_targets(
 
 /// Runs the `params.x = value` statements of a script and the scripts it includes: each one
 /// only sets a param that the config and the command line leave unset.
-fn script_params(
+pub(crate) fn script_params(
     interpreter: &mut Interpreter,
     module: &Rc<Module>,
     params: &Value,
@@ -519,7 +607,7 @@ fn included(module: &Module) -> Vec<Rc<Module>> {
 /// Applies the typed `params { }` block of the main script: each param takes its value from
 /// the command line or the config, converted to its type, else its default. A `Boolean`
 /// without a default is `false`, a nullable type may stay `null`, other params are required.
-fn typed_params(
+pub(crate) fn typed_params(
     interpreter: &mut Interpreter,
     module: &Rc<Module>,
     params: &Value,
@@ -586,7 +674,7 @@ fn typed_value(text: &str, class: &str, launch: &str) -> Option<Value> {
     })
 }
 
-fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Value) {
+pub(crate) fn set_globals(interpreter: &mut Interpreter, options: &Options, workflow: &Value) {
     interpreter.set_global("params", options.config.params());
     // The command-line arguments after the script; uwe takes none.
     interpreter.set_global("args", Value::list(Vec::new()));

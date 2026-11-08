@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde_json::{Map, Value as Json, json};
 use wir::{Status, Subscription};
@@ -90,6 +91,64 @@ pub fn steps(
     )
 }
 
+/// What the ops of a test read besides their inputs: a file area and a files provider.
+pub struct Fixture {
+    pub document: wir::Document,
+    pub javascript: cwl_runtime::JavaScriptSettings,
+    pub scopes: HashMap<String, String>,
+    pub printer: crate::driver::Printer,
+    pub files: PathBuf,
+    pub provider: Option<Arc<dyn workflow_graph::Files>>,
+    pub deliveries: crate::publishing::Deliveries,
+}
+
+impl Default for Fixture {
+    fn default() -> Fixture {
+        let document =
+            json!({"wir_version": "0.1", "graphs": [{"name": "g"}], "entry": "g"}).to_string();
+        Fixture {
+            document: wir::parse(&document).unwrap(),
+            javascript: Default::default(),
+            scopes: HashMap::new(),
+            printer: Default::default(),
+            files: PathBuf::from("/nonexistent"),
+            provider: None,
+            deliveries: Default::default(),
+        }
+    }
+}
+
+impl Fixture {
+    pub fn context(&self) -> Context<'_> {
+        Context {
+            document: &self.document,
+            base: Path::new("/"),
+            javascript: &self.javascript,
+            scopes: &self.scopes,
+            files: &self.files,
+            printer: &self.printer,
+            simulated: false,
+            provider: self.provider.as_deref(),
+            deliveries: &self.deliveries,
+        }
+    }
+}
+
+/// A files provider whose locations `store://<name>` are files in its folder.
+pub struct Store(pub PathBuf);
+
+impl workflow_graph::Files for Store {
+    fn local(&self, location: &str) -> std::io::Result<PathBuf> {
+        let name = location.strip_prefix("store://");
+        name.map(|name| self.0.join(name))
+            .ok_or_else(|| std::io::Error::other(format!("no store location: {location}")))
+    }
+
+    fn deliver(&self, _: &workflow_graph::Delivery) -> std::io::Result<()> {
+        Err(std::io::Error::other("the store delivers nothing"))
+    }
+}
+
 /// The steps of [`steps`] with a printer for `view`.
 pub fn steps_with(
     operator: &mut dyn Operator,
@@ -98,25 +157,26 @@ pub fn steps_with(
     values: &Map<String, Json>,
     printer: &crate::driver::Printer,
 ) -> (Vec<Json>, Option<Json>, Result<Step, Failure>) {
-    let document = wir::parse(
-        &json!({"wir_version": "0.1", "graphs": [{"name": "g"}], "entry": "g"}).to_string(),
-    )
-    .unwrap();
-    let javascript = cwl_runtime::JavaScriptSettings::default();
-    let scopes = HashMap::new();
+    let fixture = Fixture::default();
     let context = Context {
-        document: &document,
-        base: Path::new("/"),
-        javascript: &javascript,
-        scopes: &scopes,
-        files: Path::new("/nonexistent"),
         printer,
-        simulated: false,
+        ..fixture.context()
     };
+    steps_in(operator, node, streams, values, &context)
+}
+
+/// The steps of [`steps`] in a context.
+pub fn steps_in(
+    operator: &mut dyn Operator,
+    node: &Node,
+    streams: &mut Streams,
+    values: &Map<String, Json>,
+    context: &Context<'_>,
+) -> (Vec<Json>, Option<Json>, Result<Step, Failure>) {
     let (mut emitted, mut bound) = (Vec::new(), None);
     loop {
         let mut turn = Turn::new(node, values.clone(), streams);
-        let step = operator.step(&mut turn, &context);
+        let step = operator.step(&mut turn, context);
         let Turn {
             batch,
             bound: values_out,
@@ -151,6 +211,26 @@ fn mix_arrivals() {
     assert_eq!(
         steps(operator.as_mut(), &node, &mut streams, &Map::new()).2,
         Ok(Step::Done)
+    );
+    let mut streams = wired(&node);
+    let mut operator = make(&node).unwrap();
+    let failure = Failure {
+        status: Status::Failed,
+        message: "a broke".into(),
+        source: "up".into(),
+    };
+    streams
+        .commit(StreamBatch {
+            items: vec![(StreamId("a".into()), json!(1))],
+            ends: vec![(StreamId("a".into()), StreamEnd::Error(failure))],
+            ..StreamBatch::default()
+        })
+        .unwrap();
+    let (emitted, _, step) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+    assert_eq!(
+        (emitted, step.unwrap_err().message),
+        (vec![json!(1)], "a broke".to_owned()),
+        "the items before an error first"
     );
 }
 

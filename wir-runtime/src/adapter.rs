@@ -9,9 +9,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Kind, Op, TaskBuilder};
+use wir::reserved::{Identity, PlanUpdate, Planner};
+use wir::{Kind, Op, Status, TaskBuilder};
 use workflow_graph::{
-    CancellationToken, Delivery, DriverError, ExecuteError, Files, Launch, Outcome, Task, TaskId,
+    CancellationToken, Delivery, DriverError, ExecuteError, Files, Launch, Note, Outcome, Task,
+    TaskId,
 };
 
 use crate::state::Progress;
@@ -40,13 +42,26 @@ pub struct TaskCall<'a> {
     pub inputs: &'a Map<String, Json>,
 }
 
+/// A dynamic region whose planner is an adapter, with the values of its inputs by port.
+pub struct RegionCall<'a> {
+    pub call: CallId,
+    pub frame: Frame,
+    pub planner: &'a Planner,
+    pub inputs: &'a Map<String, Json>,
+}
+
 /// How an op instance ended.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ending {
-    /// The values of its outputs, by port.
-    Succeeded(Map<String, Json>),
-    /// Its condition was false, like a Nextflow `when:`.
-    Skipped,
+    /// The values of its outputs by port, and the outputs that stay empty, like a missing
+    /// optional output; any other output without a value is null.
+    Succeeded {
+        values: Map<String, Json>,
+        empty: Vec<String>,
+    },
+    /// Its condition was false, like a Nextflow `when:`, with the values it gives some
+    /// outputs anyway, like the defaults of a skipped Argo step; the others close empty.
+    Skipped(Map<String, Json>),
     /// Its failure is ignored: its outputs close empty.
     Ignored(String),
     Failed(String),
@@ -54,11 +69,13 @@ pub enum Ending {
     Errored(String),
 }
 
-/// The tasks that the op instances of an adapter ask for, and the instances that ended.
+/// The tasks that the op instances of an adapter ask for, the instances that ended, and
+/// those whose daemon is ready, like a running Argo daemon step.
 #[derive(Debug, Default)]
 pub struct Changes {
     pub tasks: Vec<(CallId, Task)>,
     pub ended: Vec<(CallId, Ending)>,
+    pub ready: Vec<CallId>,
 }
 
 /// The runtime of a language for the dialect tasks of one source context. It keeps the native
@@ -106,9 +123,32 @@ pub trait TaskAdapter {
         Ok(())
     }
 
-    /// Ends the source context once the run ends, with why the run failed, if it did.
-    fn end(&mut self, _failure: Option<&str>) -> Result<(), DriverError> {
-        Ok(())
+    /// What it noticed since the last call, like checkpoint marks or files that workflow code
+    /// read, with the task ids it gave.
+    fn notes(&mut self) -> Vec<Note> {
+        Vec::new()
+    }
+
+    /// The first plan of a region that it plans, like the jobs of a Snakefile.
+    fn plan(&mut self, _region: &RegionCall) -> Result<PlanUpdate, DriverError> {
+        Err(DriverError::unsupported("this adapter plans no regions"))
+    }
+
+    /// Hears that an instance of a region ended, after its acceptance and the delivery of
+    /// its files; a new plan when it plans the region again, like after a checkpoint.
+    fn replan(
+        &mut self,
+        _region: CallId,
+        _instance: &Identity,
+        _status: Status,
+    ) -> Result<Option<PlanUpdate>, DriverError> {
+        Ok(None)
+    }
+
+    /// Ends the source context once the run ends, with why the run failed, if it did; the
+    /// files to deliver then, like the reports of a Nextflow run.
+    fn end(&mut self, _failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        Ok(Vec::new())
     }
 
     /// Whether task names get the op path in front, as `<path>: <name>`.
@@ -120,6 +160,8 @@ pub trait TaskAdapter {
 /// What an adapter opens with: the source context of its first op and the run around it.
 pub struct Opening<'a> {
     pub builder: &'a TaskBuilder,
+    /// The sources of the document, like the config values a compiler pinned.
+    pub sources: &'a [wir::Source],
     pub source: PathBuf,
     pub configs: Vec<PathBuf>,
     /// The input values of the run.
@@ -178,6 +220,33 @@ pub fn builder_name(builder: &TaskBuilder) -> &'static str {
     }
 }
 
+/// The builder whose adapter plans a region: the job adapter of the planner's source context.
+pub(crate) fn planner_builder(planner: &Planner) -> TaskBuilder {
+    let Planner::Snakemake(reference) = planner;
+    TaskBuilder::SnakemakeJob(wir::RuleTask {
+        task: wir::TaskRef {
+            source: reference.source.clone(),
+            entry: reference.targets.first().cloned().unwrap_or_default(),
+            call: String::new(),
+            scope: None,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            profiles: reference.profiles.clone(),
+            configs: reference.configs.clone(),
+            captures: BTreeMap::new(),
+        },
+        wildcards: BTreeMap::new(),
+        group: Vec::new(),
+        targets: reference.targets.clone(),
+        config_values: None,
+        until: Vec::new(),
+        omit_from: Vec::new(),
+        forcerun: Vec::new(),
+        forceall: false,
+        layout: None,
+    })
+}
+
 /// The frame of a node: its paths and the round numbers of the rounds around it.
 pub(crate) fn frame(progress: &Progress, at: usize) -> Frame {
     let node = progress.node(at);
@@ -212,6 +281,8 @@ struct Opened {
     accepted: HashSet<(TaskId, u32)>,
     /// Deliveries handed to the run and not acknowledged yet.
     delivering: Vec<Delivery>,
+    /// Deliveries that its end gave, which the run has not asked for yet.
+    held: Vec<Delivery>,
 }
 
 /// The adapters a run opened, and the op instances and tasks of each.
@@ -219,8 +290,9 @@ struct Opened {
 pub(crate) struct Dialects {
     opened: Vec<Opened>,
     keys: HashMap<SourceKey, usize>,
-    /// The adapter of each task, by run id.
+    /// The adapter and the call of each task, by run id.
     owners: HashMap<TaskId, usize>,
+    calls_of: HashMap<TaskId, CallId>,
     /// The calls that have not ended, with their adapter.
     calls: BTreeMap<CallId, usize>,
     ended: bool,
@@ -239,6 +311,7 @@ impl Dialects {
             inner: HashMap::new(),
             accepted: HashSet::new(),
             delivering: Vec::new(),
+            held: Vec::new(),
         });
         self.keys.insert(key, self.opened.len() - 1);
         self.opened.len() - 1
@@ -262,6 +335,11 @@ impl Dialects {
             self.calls.remove(&call.call);
         }
         self.number(index, changes?, next)
+    }
+
+    /// Each task by run id, with the node of its call.
+    pub fn tasks(&self) -> impl Iterator<Item = (TaskId, usize)> + '_ {
+        self.calls_of.iter().map(|(task, call)| (*task, call.0))
     }
 
     pub fn owns(&self, task: TaskId) -> bool {
@@ -329,6 +407,7 @@ impl Dialects {
             let changes = self.number(index, changes, next)?;
             all.tasks.extend(changes.tasks);
             all.ended.extend(changes.ended);
+            all.ready.extend(changes.ready);
         }
         Ok(all)
     }
@@ -349,11 +428,52 @@ impl Dialects {
     pub fn deliveries(&mut self) -> Vec<Delivery> {
         let mut deliveries = Vec::new();
         for opened in &mut self.opened {
-            let given = opened.adapter.deliveries();
+            let mut given = std::mem::take(&mut opened.held);
+            given.extend(opened.adapter.deliveries());
             opened.delivering.extend(given.iter().cloned());
             deliveries.extend(given);
         }
         deliveries
+    }
+
+    /// What the adapters noticed, with the tasks that notes name under their run ids.
+    pub fn notes(&mut self) -> Vec<Note> {
+        let mut notes = Vec::new();
+        for opened in &mut self.opened {
+            notes.extend(
+                opened
+                    .adapter
+                    .notes()
+                    .into_iter()
+                    .filter_map(|note| match note {
+                        Note::Mark(task, marker) => {
+                            (opened.outer.get(&task)).map(|id| Note::Mark(*id, marker))
+                        }
+                        other => Some(other),
+                    }),
+            );
+        }
+        notes
+    }
+
+    pub fn plan(&mut self, index: usize, region: &RegionCall) -> Result<PlanUpdate, DriverError> {
+        self.opened[index].adapter.plan(region)
+    }
+
+    pub fn replan(
+        &mut self,
+        index: usize,
+        region: CallId,
+        ended: (&Identity, Status),
+    ) -> Result<Option<PlanUpdate>, DriverError> {
+        self.opened[index].adapter.replan(region, ended.0, ended.1)
+    }
+
+    /// Whether a delivery that an adapter gave waits for its acknowledgement.
+    pub fn delivering(&self) -> bool {
+        self.opened
+            .iter()
+            .any(|opened| !opened.delivering.is_empty())
     }
 
     /// Acknowledges a delivery to the adapter that gave it; `None` when none gave it.
@@ -376,10 +496,13 @@ impl Dialects {
         if std::mem::replace(&mut self.ended, true) {
             return Ok(());
         }
-        let problems: Vec<String> = (self.opened.iter_mut())
-            .filter_map(|opened| opened.adapter.end(failure).err())
-            .map(|error| error.message)
-            .collect();
+        let mut problems = Vec::new();
+        for opened in &mut self.opened {
+            match opened.adapter.end(failure) {
+                Ok(given) => opened.held.extend(given),
+                Err(error) => problems.push(error.message),
+            }
+        }
         match problems.is_empty() {
             true => Ok(()),
             false => Err(DriverError::new(problems.join("; "))),
@@ -410,6 +533,7 @@ impl Dialects {
             }
             task.id = id;
             self.owners.insert(id, index);
+            self.calls_of.insert(id, call);
             tasks.push((call, task));
         }
         for (call, _) in &changes.ended {
@@ -418,6 +542,7 @@ impl Dialects {
         Ok(Changes {
             tasks,
             ended: changes.ended,
+            ready: changes.ready,
         })
     }
 }

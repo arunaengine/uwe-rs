@@ -14,6 +14,10 @@ use nextflow_evaluator::value::{ChannelId, Key, List, ListKind, MapKind, Value};
 use crate::channel::Message;
 use crate::network::{Behaviour, Context, State};
 
+/// Why the typed operators do not compile: their results depend on whether a value is a tuple
+/// or a record, which wir values do not keep.
+const KINDS: &str = "{}, which tells tuples and records from lists and maps, as wir values do not";
+
 /// `groupBy`: groups `(key, value)` or `(key, size, value)` tuples by key; a group with a
 /// size goes out when it is full, the others at the end, each as `(key, values)`.
 pub(crate) struct GroupBy {
@@ -24,6 +28,10 @@ pub(crate) struct GroupBy {
 }
 
 impl Behaviour for GroupBy {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Err(KINDS.replace("{}", "`groupBy` of typed workflows"))
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(tuple) = message else {
@@ -105,6 +113,10 @@ pub(crate) struct RecordJoin {
 }
 
 impl Behaviour for RecordJoin {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Err(KINDS.replace("{}", "`join` of records"))
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         for side in 0..2 {
             while !self.done[side] {
@@ -177,6 +189,10 @@ pub(crate) struct TypedCombine {
 }
 
 impl Behaviour for TypedCombine {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Err(KINDS.replace("{}", "`combine` of typed workflows"))
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         if let Some(fields) = &self.fields {
             while let Some(message) = context.read(0) {

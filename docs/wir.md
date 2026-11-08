@@ -81,6 +81,19 @@ A lowered task is a wir task, so its cache key differs from that of the same tas
 
 What keeps tasks native, by the first reason of each: an output that reads files the task makes, like `read_string(stdout())` (59), a write function in a declaration (2), a file inside a struct or map input (3), a runtime value that depends on inputs (2), a workflow expression that reads a file (2), and one each of the `task` variable, `returnCodes: "*"`, a read in the command, an array of optional output files and an `env` declaration. The one example whose outputs differ globs files that the simulator makes up.
 
+## Compiling Nextflow
+
+`uwe lower` and `-lowered` take Nextflow pipelines too, with `-profile`, `-c`, `-entry` and the params of the command line as for `uwe run`. A Nextflow document is compiled for the params and config of one run, as Nextflow builds its dataflow once per run from them; the crate `nextflow-compiler` compiles it from the network that the build phase of uwe's Nextflow driver wires up, without running a task:
+
+- A process call becomes a `process` op whose body graph has one dialect task `nextflow_process`, which builds, accepts, retries and publishes each task as the native driver does, so the tasks and their cache keys are those of a native run. An `each` input is an `each` port; a call with a queue channel input has stream outputs, one without has value outputs.
+- An operator becomes the stream op of its meaning, such as `transform` for `map`, `route` for `branch`, `join`, `group_tuple` and `collect`; its closures are Groovy callbacks found by their place in the source, with the values they capture. A value channel that an op reads as a stream goes through an `emit` op.
+- A workflow call becomes a `call` op of a graph of its own, whose ports are the channels that cross the call. The mix of a topic sits in the deepest call that holds its writers and readers.
+- The params become typed inputs of the entry graph, with the types of `nextflow_schema.json` and the values of the run as defaults. The source `run` pins the params and the resolved config by their digests, and the config files of the run are sources with their digests.
+- What the build prints or writes, and checks like `validateParameters`, become ops at the start of the run, before every other op. Sources that read data, like `samplesheetToList`, `channel.fromPath` and factories of plugins, read when the run starts; a pipeline whose build itself reads such data stays one `native` op.
+- Constructs without a wir op keep the whole pipeline one `native` op, and `uwe lower` names the first: nf-boost's `scan`, the `output { }` block, agent processes, typed workflow operators, and a value channel that is never bound.
+
+uwe does not run dialect tasks yet, so a run of a compiled Nextflow document stops before its first task.
+
 ## Detection
 
 uwe takes a file as a wir document when it is JSON and has a top-level `wir_version` key. The file name does not matter, but `<name>.wir.json` is the convention. `-lang wir` picks wir for any file. uwe parses the document, checks its version, runs the verifier and refuses the document with every problem the verifier found before any task starts.

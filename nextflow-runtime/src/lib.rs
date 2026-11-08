@@ -157,6 +157,7 @@ impl Run {
                 let mut builder = build::Builder {
                     network: &mut network,
                     defer: false,
+                    written: Vec::new(),
                     base: &mut session,
                     stub: options.stub,
                     config: &options.config,
@@ -388,6 +389,7 @@ pub fn export(
     let mut builder = build::Builder {
         network: &mut network,
         defer: true,
+        written: Vec::new(),
         base: &mut session,
         stub: options.stub,
         config: &options.config,
@@ -406,6 +408,7 @@ pub fn export(
         })
         .map_err(|error| interpreter.locate(error))?;
     drop(interpreter);
+    builder.write_kept();
     let emits = match &emitted {
         Value::ChannelOut(out) => (out.values.iter().zip(&out.names))
             .filter_map(|(value, name)| match (value, name) {
@@ -417,8 +420,14 @@ pub fn export(
             .collect(),
         _ => Vec::new(),
     };
+    let script = module
+        .path
+        .borrow()
+        .as_deref()
+        .unwrap_or_default()
+        .to_owned();
     network
-        .export(emits, &params)
+        .export(emits, &params, script)
         .map_err(|message| Error::Unsupported {
             message,
             span: Default::default(),

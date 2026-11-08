@@ -11,7 +11,6 @@ use std::rc::Rc;
 use nextflow_evaluator::interpreter::{Error, Interpreter};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::Value;
-use nextflow_runtime::driver::Settings;
 use nextflow_runtime::{Adapter, Loader};
 use serde_json::{Map, Value as Json};
 use wir::{Document, Language, TaskBuilder};
@@ -21,10 +20,34 @@ use crate::engine::Context;
 use crate::groovy::ENTRY;
 use crate::operator::Turn;
 
+/// What the Groovy callbacks of one wir run share: how Nextflow drivers get their settings,
+/// and the interpreters and loaded scripts of the run, which end with it.
+#[derive(Clone, Default)]
+pub struct ScopeRun(Rc<RunState>);
+
+#[derive(Default)]
+struct RunState {
+    options: crate::nextflow::Options,
+    adapters: RefCell<HashMap<String, Rc<RefCell<Adapter>>>>,
+    modules: RefCell<HashMap<(PathBuf, String), Rc<Module>>>,
+    /// The published values of each output op, with their files at their new places.
+    indexes: RefCell<HashMap<String, Vec<Json>>>,
+}
+
+impl ScopeRun {
+    pub fn new(options: crate::nextflow::Options) -> ScopeRun {
+        ScopeRun(Rc::new(RunState {
+            options,
+            ..RunState::default()
+        }))
+    }
+}
+
 /// The run of a Nextflow scope: its main script, the script of the scope, the profiles,
 /// config files and params of the run, and the scripts of the document by source id.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Launching {
+    run: ScopeRun,
     main: PathBuf,
     path: PathBuf,
     profiles: Vec<String>,
@@ -64,12 +87,15 @@ pub fn launching(context: &Context<'_>, source: &str) -> Option<Launching> {
         });
     let configs = (task.iter()).flat_map(|task| &task.configs);
     let configs = configs.filter_map(|id| sources.get(id).cloned()).collect();
+    let mut params = defaults(document);
+    params.extend(context.inputs.clone());
     Some(Launching {
+        run: context.nextflow.clone(),
         main,
         path,
         profiles: task.map(|task| task.profiles.clone()).unwrap_or_default(),
         configs,
-        params: crate::nextflow::params(&defaults(document)),
+        params: crate::nextflow::params(&params),
         scratch: context.files.to_owned(),
         simulated: context.simulated,
         sources,
@@ -94,15 +120,6 @@ fn defaults(document: &Document) -> Map<String, Json> {
     let inputs = entry.into_iter().flat_map(|graph| &graph.inputs);
     let given = inputs.filter_map(|port| Some((port.name.clone(), port.default.clone()?)));
     given.collect()
-}
-
-thread_local! {
-    /// The interpreters of the runs, by run, which keep the loaded config and plugins.
-    static ADAPTERS: RefCell<HashMap<String, Rc<RefCell<Adapter>>>> = RefCell::default();
-    /// How the Nextflow drivers of this thread get their settings, which the interpreters use.
-    static OPTIONS: RefCell<Option<crate::nextflow::Options>> = const { RefCell::new(None) };
-    /// The scripts loaded with the code of a callback, by script and code.
-    static MODULES: RefCell<HashMap<(PathBuf, String), Rc<Module>>> = RefCell::default();
 }
 
 /// A callback of a Nextflow scope, loaded once.
@@ -229,54 +246,44 @@ fn unsupported(message: &str) -> Error {
 /// The script at `path` with `extra` code at its end, loaded once with its includes.
 fn module(launching: &Launching, path: &Path, extra: &str) -> Result<Rc<Module>, String> {
     let key = (path.to_owned(), extra.to_owned());
-    if let Some(module) = MODULES.with_borrow(|modules| modules.get(&key).cloned()) {
+    let modules = &launching.run.0.modules;
+    if let Some(module) = modules.borrow().get(&key).cloned() {
         return Ok(module);
     }
     let loaded = Loader::default().load_extended(&launching.main, path, extra);
     let module = loaded.map_err(|error| format!("the Groovy code does not load: {error}"))?;
-    MODULES.with_borrow_mut(|modules| modules.insert(key, module.clone()));
+    modules.borrow_mut().insert(key, module.clone());
     Ok(module)
-}
-
-/// Makes the interpreters of callbacks with the host of the Nextflow tasks of the run.
-pub fn use_options(options: crate::nextflow::Options) {
-    OPTIONS.with_borrow_mut(|known| *known = Some(options));
 }
 
 /// The interpreter of a run, made once with the config and params of the run.
 fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
     let key = format!(
-        "{}|{:?}|{:?}|{}|{}",
+        "{}|{:?}|{:?}|{}",
         launching.main.display(),
         launching.profiles,
         launching.configs,
         launching.params,
-        launching.scratch.display()
     );
-    if let Some(adapter) = ADAPTERS.with_borrow(|adapters| adapters.get(&key).cloned()) {
+    let adapters = &launching.run.0.adapters;
+    if let Some(adapter) = adapters.borrow().get(&key).cloned() {
         return Ok(adapter);
     }
+    // A scratch folder of its own, which the driver deletes when it ends, so that the run
+    // keeps its name and session.
     let launch = Launch {
         target: launching.main.clone(),
         profiles: launching.profiles.clone(),
         configs: launching.configs.clone(),
-        scratch: launching.scratch.clone(),
+        scratch: launching.scratch.join("callbacks"),
         simulated: launching.simulated,
         ..Launch::default()
     };
-    let made = OPTIONS.with_borrow(|options| {
-        let folder = std::env::current_dir().ok()?;
-        Some((options.as_ref()?.settings)(&launch, &folder))
-    });
-    let settings = made.unwrap_or_default();
-    // A folder of its own, which the driver deletes when it ends.
-    let settings = Settings {
-        run_name: format!("{}-callbacks", settings.run_name),
-        ..settings
-    };
+    let folder = std::env::current_dir().map_err(|error| error.to_string())?;
+    let settings = (launching.run.0.options.settings)(&launch, &folder);
     let made = Adapter::new(&launch, settings, launching.params.clone());
     let adapter = Rc::new(RefCell::new(made.map_err(|error| error.message)?));
-    ADAPTERS.with_borrow_mut(|adapters| adapters.insert(key, adapter.clone()));
+    adapters.borrow_mut().insert(key, adapter.clone());
     Ok(adapter)
 }
 
@@ -284,11 +291,6 @@ fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
 /// the output as the capture `output`.
 const PUBLISH: &str = "{ value -> publishOutput(output, value) }";
 const INDEX: &str = "{ -> indexOutput(output) }";
-
-thread_local! {
-    /// The published values of each output op, with their files at their new places.
-    static INDEXES: RefCell<HashMap<String, Vec<Json>>> = RefCell::default();
-}
 
 /// Publishes the files of an item of a workflow output, or writes its index at the close, as
 /// the native driver does, when `closure` is a callback of the `output { }` block.
@@ -354,8 +356,8 @@ fn publish(
     context.deliveries.ask(&deliveries);
     if output["index"]["path"].is_string() {
         let record = placed(item, &places);
-        INDEXES
-            .with_borrow_mut(|indexes| indexes.entry(turn.path.clone()).or_default().push(record));
+        let mut indexes = context.nextflow.0.indexes.borrow_mut();
+        indexes.entry(turn.path.clone()).or_default().push(record);
     }
     Ok(())
 }
@@ -410,9 +412,8 @@ fn targets(
 /// Writes the index file of an output at its close, which a simulated run does not, as the
 /// native driver does not.
 fn index(turn: &Turn<'_>, context: &Context<'_>, output: &Json) -> Result<(), String> {
-    let records = INDEXES
-        .with_borrow_mut(|indexes| indexes.remove(&turn.path))
-        .unwrap_or_default();
+    let records = context.nextflow.0.indexes.borrow_mut().remove(&turn.path);
+    let records = records.unwrap_or_default();
     let Some(path) = output["index"]["path"].as_str() else {
         return Ok(());
     };

@@ -3,10 +3,12 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeSet;
+
 use nextflow_runtime::export::{Kind, Network};
 use serde_json::{Value as Json, json};
 
-use crate::operators::{End, Piece, Place, piece, port};
+use crate::operators::{End, Piece, Place, end, piece, port};
 use crate::{Context, Kept, Sources};
 
 /// What a channel without a node that writes it holds.
@@ -18,7 +20,7 @@ enum Literal {
 /// The graphs of a network, `main` first; a node without a lowering is the error.
 pub(crate) fn lower(
     network: &Network,
-    _context: &Context,
+    context: &Context,
     sources: &mut Sources,
 ) -> Result<Vec<Json>, Kept> {
     let mut lowerer = Lowerer::new(network);
@@ -31,11 +33,17 @@ pub(crate) fn lower(
         }
         let place = Place {
             path: &lowerer.paths[index],
+            values_in: node
+                .inputs
+                .iter()
+                .map(|channel| network.channels[*channel].value)
+                .collect(),
             values_out: node
                 .outputs
                 .iter()
                 .map(|channel| network.channels[*channel].value)
                 .collect(),
+            context,
         };
         let made = piece(node, &place, sources, &mut bodies).map_err(|reason| Kept {
             path: node.name.clone(),
@@ -44,14 +52,10 @@ pub(crate) fn lower(
         pieces.push(Some(made));
     }
     lowerer.pieces = pieces;
-    if let Some(node) = network.nodes.iter().find(|node| node.scope != 0) {
-        let reason = "a node of a workflow call, which the lowering does not cover yet";
-        return Err(Kept {
-            path: node.name.clone(),
-            reason: reason.into(),
-        });
+    let mut graphs = Vec::new();
+    for scope in 0..network.scopes.len() {
+        graphs.push(lowerer.graph(scope)?);
     }
-    let mut graphs = vec![lowerer.graph(0)?];
     graphs.extend(bodies);
     Ok(graphs)
 }
@@ -130,9 +134,80 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Whether the scope `inner` is `outer` or inside it.
+    fn inside(&self, outer: usize, inner: usize) -> bool {
+        let mut scope = Some(inner);
+        while let Some(current) = scope {
+            if current == outer {
+                return true;
+            }
+            scope = self.network.scopes[current].parent;
+        }
+        false
+    }
+
+    /// The child of `outer` that holds the scope `inner`.
+    fn child(&self, outer: usize, inner: usize) -> usize {
+        let mut scope = inner;
+        while self.network.scopes[scope].parent != Some(outer) {
+            scope = self.network.scopes[scope].parent.unwrap_or(outer);
+        }
+        scope
+    }
+
+    /// The channels that the nodes of a scope read and a node outside it writes.
+    fn inputs(&self, scope: usize) -> BTreeSet<usize> {
+        let mut inputs = BTreeSet::new();
+        for node in self
+            .network
+            .nodes
+            .iter()
+            .filter(|node| self.inside(scope, node.scope))
+        {
+            for channel in &node.inputs {
+                if let Some((writer, _)) = self.producer[*channel]
+                    && self.literal(*channel).is_none()
+                    && !self.inside(scope, self.network.nodes[writer].scope)
+                {
+                    inputs.insert(*channel);
+                }
+            }
+        }
+        inputs
+    }
+
+    /// The channels that the nodes of a call write and a node outside it reads, or that the
+    /// entry workflow emits.
+    fn outputs(&self, scope: usize) -> BTreeSet<usize> {
+        let emitted: BTreeSet<usize> = self
+            .network
+            .emits
+            .iter()
+            .map(|(_, channel)| *channel)
+            .collect();
+        let mut outputs = BTreeSet::new();
+        for (channel, writer) in self.producer.iter().enumerate() {
+            let Some((writer, _)) = writer else {
+                continue;
+            };
+            if !self.inside(scope, self.network.nodes[*writer].scope)
+                || self.literal(channel).is_some()
+            {
+                continue;
+            }
+            let read_outside = (self.network.nodes.iter())
+                .any(|node| node.inputs.contains(&channel) && !self.inside(scope, node.scope));
+            if read_outside || emitted.contains(&channel) {
+                outputs.insert(channel);
+            }
+        }
+        outputs
+    }
+
     fn graph(&self, scope: usize) -> Result<Json, Kept> {
         let network = self.network;
         let mut draft = Draft::default();
+        let mut calls = Vec::new();
         for (index, node) in network.nodes.iter().enumerate() {
             let Some(piece) = self.pieces[index].as_ref().filter(|_| node.scope == scope) else {
                 continue;
@@ -145,6 +220,41 @@ impl<'a> Lowerer<'a> {
                     .push(json!({"from": {"port": "params"}, "to": {"op": op, "port": "params"}}));
             }
         }
+        for (child, record) in network.scopes.iter().enumerate() {
+            if record.parent != Some(scope) {
+                continue;
+            }
+            let path = name(record.name.rsplit(':').next().unwrap_or_default());
+            let inputs = self.inputs(child);
+            let outputs = self.outputs(child);
+            let mut ports: Vec<Json> = (inputs.iter())
+                .map(|channel| {
+                    port(
+                        &format!("channel.{channel}"),
+                        !network.channels[*channel].value,
+                    )
+                })
+                .collect();
+            ports.push(port("params", false));
+            let outs: Vec<Json> = (outputs.iter())
+                .map(|channel| {
+                    port(
+                        &format!("channel.{channel}"),
+                        !network.channels[*channel].value,
+                    )
+                })
+                .collect();
+            draft.ops.push(json!({
+                "path": path,
+                "kind": {"call": {"graph": graph_name(&record.name)}},
+                "inputs": ports,
+                "outputs": outs,
+            }));
+            draft
+                .edges
+                .push(json!({"from": {"port": "params"}, "to": {"op": path, "port": "params"}}));
+            calls.push((path, inputs));
+        }
         // The readers of every channel: the inputs of the pieces, then those of the calls.
         for (index, node) in network.nodes.iter().enumerate() {
             let Some(piece) = self.pieces[index].as_ref().filter(|_| node.scope == scope) else {
@@ -154,14 +264,34 @@ impl<'a> Lowerer<'a> {
                 self.read(scope, *channel, reader, &mut draft)?;
             }
         }
+        for (path, inputs) in &calls {
+            for channel in inputs {
+                let stream = !network.channels[*channel].value;
+                let reader = end(path, &format!("channel.{channel}"), stream);
+                self.read(scope, *channel, &reader, &mut draft)?;
+            }
+        }
         let mut inputs: Vec<Json> = Vec::new();
+        if scope != 0 {
+            for channel in self.inputs(scope) {
+                inputs.push(port(
+                    &format!("channel.{channel}"),
+                    !network.channels[channel].value,
+                ));
+            }
+        }
         let mut params = port("params", false);
         if scope == 0 {
             params["default"] = network.params.clone();
         }
         inputs.push(params);
         let mut outputs = Vec::new();
-        let named = network.emits.clone();
+        let named: Vec<(String, usize)> = match scope {
+            0 => network.emits.clone(),
+            _ => (self.outputs(scope).into_iter())
+                .map(|channel| (format!("channel.{channel}"), channel))
+                .collect(),
+        };
         for (output, channel) in named {
             let stream = !network.channels[channel].value;
             outputs.push(port(&output, stream));
@@ -214,22 +344,37 @@ impl<'a> Lowerer<'a> {
     /// Where a channel comes from in a graph: a piece of the graph, a call of a child graph
     /// that holds its writer, or an input of the graph.
     fn writer(&self, scope: usize, channel: usize) -> Result<End, Kept> {
+        let value = self.network.channels[channel].value;
         let Some((node, output)) = self.producer[channel] else {
             return Err(kept(
                 &format!("channel.{channel}"),
                 "a channel that no node writes",
             ));
         };
-        if self.network.nodes[node].scope == scope {
+        let writer_scope = self.network.nodes[node].scope;
+        if writer_scope == scope {
             let piece = self.pieces[node]
                 .as_ref()
                 .ok_or_else(|| kept(&self.paths[node], "a node without ops"))?;
             return Ok(piece.outputs[output].clone());
         }
-        Err(kept(
-            &format!("channel.{channel}"),
-            "a channel of a workflow call",
-        ))
+        let port_name = format!("channel.{channel}");
+        if self.inside(scope, writer_scope) {
+            let child = self.child(scope, writer_scope);
+            let path = name(
+                self.network.scopes[child]
+                    .name
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or_default(),
+            );
+            return Ok(end(&path, &port_name, !value));
+        }
+        Ok(End {
+            op: String::new(),
+            port: port_name,
+            stream: !value,
+        })
     }
 }
 

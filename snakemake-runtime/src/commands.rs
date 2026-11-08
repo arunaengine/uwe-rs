@@ -57,6 +57,8 @@ pub struct Channel {
     pub describing: Cell<bool>,
     /// Whether a command of workflow code had to be refused while describing.
     pub refused: Cell<bool>,
+    /// Whether the session plans jobs for a compiler, which runs commands at once.
+    pub planning: Cell<bool>,
     pub failed: RefCell<Option<String>>,
 }
 
@@ -69,6 +71,7 @@ impl Channel {
             parked_deliveries: RefCell::new(VecDeque::new()),
             describing: Cell::new(false),
             refused: Cell::new(false),
+            planning: Cell::new(false),
             failed: RefCell::new(None),
         }
     }
@@ -165,6 +168,9 @@ impl CommandRunner {
                 "the workflow runs a command while it is loaded, which only a run can do",
             ));
         }
+        if self.channel.planning.get() {
+            return self.run_now(command);
+        }
         let id = TaskId(self.next_task.get());
         self.next_task.set(id.0 + 1);
         let task = self.task(id, command);
@@ -225,14 +231,7 @@ impl CommandRunner {
         self.next_task.set(id.0 + 1);
         let task = self.task(id, command);
         let cancel = hook_cancel(hook, &self.cancel);
-        let outcome = crate::hooks::run(
-            &task,
-            &self.engine,
-            self.journals.as_deref(),
-            &self.scratch,
-            self.settings.offline,
-            &cancel,
-        )?;
+        let outcome = self.contained(&task, &cancel)?;
         if outcome.exit_code != 0 {
             eprintln!(
                 "{hook} hook command in {} exited with {}:\n{}",
@@ -242,6 +241,32 @@ impl CommandRunner {
             );
         }
         Ok(outcome)
+    }
+
+    /// Runs a command in its container at once and waits for it, as a simulated task when
+    /// the run is simulated.
+    fn run_now(&self, command: &Command) -> Result<CommandOutcome, Error> {
+        let id = TaskId(self.next_task.get());
+        self.next_task.set(id.0 + 1);
+        match self.simulated {
+            true => Ok(CommandOutcome::default()),
+            false => self.contained(&self.task(id, command), &self.cancel),
+        }
+    }
+
+    fn contained(
+        &self,
+        task: &Task,
+        cancel: &executor::CancellationToken,
+    ) -> Result<CommandOutcome, Error> {
+        crate::hooks::run(
+            task,
+            &self.engine,
+            self.journals.as_deref(),
+            &self.scratch,
+            self.settings.offline,
+            cancel,
+        )
     }
 }
 

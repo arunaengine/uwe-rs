@@ -3,17 +3,17 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::PathBuf;
-
 use nextflow_evaluator::split::{Format, Splitter};
 use nextflow_evaluator::value::Value;
 use serde_json::Value as Json;
+use wir::Effect;
 use wir::reserved::{ChunkFiles, Decompress, Header, Pair, SequenceField, Split, SplitFormat};
 
 use crate::callback::Callbacks;
 use crate::engine::Context;
 use crate::groovy;
 use crate::operator::{Operator, Pull, Step, Turn};
+use crate::publishing::{self, Publication};
 use crate::streams::Failure;
 
 /// Splits the items of `source`, one item a step.
@@ -22,14 +22,22 @@ pub struct Splitting {
     pub callbacks: Callbacks,
     /// The number of source items split so far.
     pub sources: u64,
+    effects: Vec<Effect>,
+    /// The deliveries of the chunk files of the source item it splits.
+    publication: Publication,
+    /// The chunks of a source item, while the deliveries of their files are not acknowledged.
+    waiting: Option<(Publication, Vec<Json>)>,
 }
 
 impl Splitting {
-    pub fn new(spec: Split) -> Splitting {
+    pub fn new(spec: Split, effects: &[Effect]) -> Splitting {
         Splitting {
             spec,
             callbacks: Callbacks::default(),
             sources: 0,
+            effects: effects.to_vec(),
+            publication: Publication::default(),
+            waiting: None,
         }
     }
 
@@ -54,13 +62,23 @@ impl Splitting {
                 strip: csv.strip,
             },
             SplitFormat::Fasta(sequence) => Format::Fasta(record(&sequence.fields)),
-            SplitFormat::Fastq(sequence) => Format::Fastq(record(&sequence.fields)),
+            SplitFormat::Fastq(sequence) => {
+                Format::Fastq(record(&sequence.fields).map(|mut names| {
+                    // The splitter gives no FASTQ text; `named` makes it of the four lines.
+                    if names.iter().any(|name| name == "text") {
+                        names.extend(FASTQ_LINES.map(str::to_owned));
+                    }
+                    names
+                }))
+            }
             SplitFormat::Json(json) => Format::Json {
                 path: json.path.clone(),
             },
         };
-        // One record a chunk is the record itself, more are an array or a joined text.
-        let by = (self.spec.size > 1).then_some(self.spec.size as usize);
+        // One record a chunk is the record itself, more are an array or a joined text; the
+        // splitter joins JSON records as text, so `pieces` groups them.
+        let json = matches!(self.spec.format, SplitFormat::Json(_));
+        let by = (self.spec.size > 1 && !json).then_some(self.spec.size as usize);
         Splitter {
             format,
             by,
@@ -70,7 +88,7 @@ impl Splitting {
     }
 
     /// The text of a text item, or of the local file of a File item.
-    fn text(&self, turn: &Turn<'_>, item: &Json) -> Result<String, Failure> {
+    fn text(&self, turn: &Turn<'_>, context: &Context<'_>, item: &Json) -> Result<String, Failure> {
         match item {
             Json::String(text) => Ok(text.replace("\r\n", "\n")),
             Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("File") => {
@@ -79,12 +97,12 @@ impl Splitting {
                     .and_then(Json::as_str)
                     .unwrap_or_default();
                 let path = location.strip_prefix("file://").unwrap_or(location);
-                if path.contains("://") {
+                if path.contains("://") && context.provider.is_none() {
                     return Err(
                         turn.failed(format!("uwe splits only local files yet, not {location}"))
                     );
                 }
-                let bytes = std::fs::read(path)
+                let bytes = (context.read(location))
                     .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?;
                 let gzip = match self.spec.decompress {
                     Decompress::Always => true,
@@ -113,13 +131,13 @@ impl Splitting {
     /// The chunks of one source item, with the item rebuilt around each of them; paired
     /// FASTQ files give aligned chunks of both.
     fn chunks(
-        &self,
+        &mut self,
         turn: &Turn<'_>,
         context: &Context<'_>,
         item: &Json,
     ) -> Result<Vec<Json>, Failure> {
         let Json::Array(fields) = item else {
-            return self.pieces(turn, context, item);
+            return Ok(self.pieces(turn, context, item, None)?.0);
         };
         let files: Vec<usize> = (fields.iter().enumerate())
             .filter(|(_, field)| field.get("class").and_then(Json::as_str) == Some("File"))
@@ -137,17 +155,17 @@ impl Splitting {
                     .unwrap_or(0),
             ],
         };
-        let mut columns = Vec::new();
-        for place in &places {
+        let (mut columns, mut records) = (Vec::new(), Vec::new());
+        for (mate, place) in places.iter().enumerate() {
             let source = fields
                 .get(*place)
                 .ok_or_else(|| turn.failed(format!("the item has no element {place}")))?;
-            columns.push(self.pieces(turn, context, source)?);
+            let mate = (places.len() > 1).then_some(mate + 1);
+            let (column, count) = self.pieces(turn, context, source, mate)?;
+            columns.push(column);
+            records.push(count);
         }
-        if columns
-            .iter()
-            .any(|column| column.len() != columns[0].len())
-        {
+        if records.iter().any(|count| *count != records[0]) {
             return Err(turn.failed("the paired files have different numbers of records"));
         }
         Ok((0..columns[0].len())
@@ -161,14 +179,16 @@ impl Splitting {
             .collect())
     }
 
-    /// The chunks of one text or File.
+    /// The chunks of one text or File, of the mate `mate` of a pair, and how many records
+    /// they hold.
     fn pieces(
-        &self,
+        &mut self,
         turn: &Turn<'_>,
         context: &Context<'_>,
         source: &Json,
-    ) -> Result<Vec<Json>, Failure> {
-        let mut text = self.text(turn, source)?;
+        mate: Option<usize>,
+    ) -> Result<(Vec<Json>, usize), Failure> {
+        let mut text = self.text(turn, context, source)?;
         if let SplitFormat::Json(json) = &self.spec.format {
             let document: Json = serde_json::from_str(&text)
                 .map_err(|error| turn.failed(format!("the JSON does not parse: {error}")))?;
@@ -189,12 +209,12 @@ impl Splitting {
             }
             _ => None,
         };
-        let chunks = self
+        let mut chunks = self
             .splitter()
             .text(text)
             .map_err(|error| turn.failed(error.to_string()))?;
         let mut pieces = Vec::new();
-        for chunk in chunks {
+        for chunk in chunks.by_ref() {
             let chunk = chunk.map_err(|error| turn.failed(error.to_string()))?;
             let value = self.named(groovy::to_json(&chunk).map_err(|why| turn.failed(why))?);
             pieces.push(match (&header, value) {
@@ -202,39 +222,43 @@ impl Splitting {
                 (_, value) => value,
             });
         }
-        match &self.spec.files {
-            Some(files) => self.written(turn, context, files, source, pieces),
-            None => Ok(pieces),
+        if matches!(self.spec.format, SplitFormat::Json(_)) && self.spec.size > 1 {
+            let size = self.spec.size as usize;
+            pieces = (pieces.chunks(size).map(|group| Json::Array(group.to_vec()))).collect();
         }
+        let pieces = match self.spec.files.clone() {
+            Some(files) => self.written(turn, context, (&files, mate), source, pieces)?,
+            None => pieces,
+        };
+        Ok((pieces, chunks.records()))
     }
 
     /// The text chunks of a source written as files of the op in the file area of the run,
-    /// all before any is given: `<name or stem>.<source>.<chunk>` with the format extension.
+    /// all before any is given: `<name or stem>.<source>.<chunk>`, with `_<mate>` for a pair,
+    /// and the format extension.
     fn written(
-        &self,
+        &mut self,
         turn: &Turn<'_>,
         context: &Context<'_>,
-        files: &ChunkFiles,
+        (files, mate): (&ChunkFiles, Option<usize>),
         source: &Json,
         pieces: Vec<Json>,
     ) -> Result<Vec<Json>, Failure> {
-        let mut folder = context.files.join(&turn.path);
-        match files.directory.as_deref() {
-            Some(directory) if directory.contains("://") => {
-                return Err(turn.failed(format!(
-                    "uwe writes chunk files only to local folders yet, not {directory}"
-                )));
-            }
-            Some(directory) if directory.starts_with('/') => folder = PathBuf::from(directory),
-            Some(directory) => folder = folder.join(directory),
-            None => {}
-        }
-        std::fs::create_dir_all(&folder)
-            .map_err(|error| turn.failed(format!("cannot make {}: {error}", folder.display())))?;
+        let directory = files.directory.as_deref();
+        let (folder, outside) = publishing::folder(turn, context, &self.effects, directory)?;
         let basename = source
             .get("basename")
             .and_then(Json::as_str)
             .unwrap_or("chunk");
+        if let Some(name) = [Some(basename), files.name.as_deref()]
+            .into_iter()
+            .flatten()
+            .find(|name| !plain(name))
+        {
+            return Err(turn.failed(format!("the file name {name:?} leaves its folder")));
+        }
+        std::fs::create_dir_all(&folder)
+            .map_err(|error| turn.failed(format!("cannot make {}: {error}", folder.display())))?;
         let stem = basename.trim_end_matches(".gz");
         let stem = stem.rsplit_once('.').map_or(stem, |(stem, _)| stem);
         let stem = files.name.as_deref().unwrap_or(stem);
@@ -249,8 +273,12 @@ impl Splitting {
                 return Err(turn.failed("only text chunks are written as files"));
             };
             let gzip = if files.compress { ".gz" } else { "" };
-            let name = format!("{stem}.{}.{chunk}.{extension}{gzip}", self.sources);
+            let mate = mate.map_or(String::new(), |mate| format!("_{mate}"));
+            let name = format!("{stem}.{}.{chunk}{mate}.{extension}{gzip}", self.sources);
             let path = folder.join(&name);
+            if path.parent() != Some(folder.as_path()) {
+                return Err(turn.failed(format!("the chunk {name:?} leaves its folder")));
+            }
             let bytes = match files.compress {
                 true => {
                     let mut encoder = flate2::GzBuilder::new()
@@ -264,7 +292,8 @@ impl Splitting {
             let size = (bytes
                 .and_then(|bytes| std::fs::write(&path, &bytes).map(|()| bytes.len())))
             .map_err(|error| turn.failed(format!("cannot write {}: {error}", path.display())))?;
-            written.push(serde_json::json!({"class": "File", "location": path.to_string_lossy(), "basename": name, "size": size}));
+            let outside = outside.as_deref();
+            written.push((self.publication).file(context, &path, (&name, size), outside));
         }
         Ok(written)
     }
@@ -279,20 +308,34 @@ impl Splitting {
             Json::Array(items) => {
                 Json::Array(items.into_iter().map(|item| self.named(item)).collect())
             }
-            Json::Object(mut record) => Json::Object(
-                (fields.iter())
-                    .map(|field| {
-                        (
-                            field.name.clone(),
-                            record.remove(native(field.field)).unwrap_or_default(),
-                        )
-                    })
-                    .collect(),
-            ),
+            Json::Object(mut record) => {
+                let text = fields
+                    .iter()
+                    .any(|field| field.field == SequenceField::Text);
+                if text && matches!(self.spec.format, SplitFormat::Fastq(_)) {
+                    let line = |name| record.get(name).and_then(Json::as_str).unwrap_or_default();
+                    let [header, read, quality, string] = FASTQ_LINES.map(line);
+                    let text = format!("@{header}\n{read}\n+{quality}\n{string}\n");
+                    record.insert("text".into(), Json::String(text));
+                }
+                Json::Object(
+                    (fields.iter())
+                        .map(|field| {
+                            (
+                                field.name.clone(),
+                                record.remove(native(field.field)).unwrap_or_default(),
+                            )
+                        })
+                        .collect(),
+                )
+            }
             other => other,
         }
     }
 }
+
+/// The fields of the four lines of a FASTQ record in the records of the Nextflow splitter.
+const FASTQ_LINES: [&str; 4] = ["readHeader", "readString", "qualityHeader", "qualityString"];
 
 /// The name of a sequence field in the records of the Nextflow splitter.
 fn native(field: SequenceField) -> &'static str {
@@ -312,13 +355,27 @@ fn native(field: SequenceField) -> &'static str {
 
 impl Operator for Splitting {
     fn step(&mut self, turn: &mut Turn<'_>, context: &Context<'_>) -> Result<Step, Failure> {
-        let item = match turn.pull("source")? {
-            Pull::Item(item) => item,
-            Pull::Pending => return Ok(Step::Idle),
-            Pull::Closed => return Ok(Step::Done),
+        // The chunks of a source item wait until the files they name are delivered.
+        let chunks = match self.waiting.take() {
+            Some((publication, chunks)) if publication.delivered(context) => chunks,
+            Some(waiting) => {
+                self.waiting = Some(waiting);
+                return Ok(Step::Idle);
+            }
+            None => {
+                let item = match turn.pull("source")? {
+                    Pull::Item(item) => item,
+                    Pull::Pending => return Ok(Step::Idle),
+                    Pull::Closed => return Ok(Step::Done),
+                };
+                let chunks = self.chunks(turn, context, &item)?;
+                self.sources += 1;
+                let publication = std::mem::take(&mut self.publication);
+                publication.ask(context);
+                self.waiting = Some((publication, chunks));
+                return Ok(Step::Moved);
+            }
         };
-        let chunks = self.chunks(turn, context, &item)?;
-        self.sources += 1;
         for chunk in chunks {
             let value = match &self.spec.body {
                 Some(body) => {
@@ -349,6 +406,11 @@ fn reach<'v>(document: &'v Json, path: &str) -> Option<&'v Json> {
         }
     }
     Some(value)
+}
+
+/// Whether a file name names a file in its folder: not empty, no folder and no `..`.
+fn plain(name: &str) -> bool {
+    !name.is_empty() && !name.contains('/') && name != "." && name != ".."
 }
 
 /// The native names of the fields of sequence records, or none for their text.
@@ -382,17 +444,29 @@ fn decode(bytes: &[u8], charset: &str) -> Result<String, String> {
 pub(crate) mod tests {
     use serde_json::{Map, Value as Json, json};
 
-    use crate::mixing::tests::{commit, node, steps, wired};
+    use crate::mixing::tests::{Fixture, Store, commit, node, steps_in, wired};
     use crate::operator::{Step, make};
 
     /// What a split with `fields` gives for the items of a closed stream, or why it failed.
     pub fn split(fields: Json, items: &[Json]) -> Result<Vec<Json>, String> {
+        split_in(fields, items, &Fixture::default())
+    }
+
+    /// What [`split`] gives with the file area and files provider of `fixture`.
+    pub fn split_in(fields: Json, items: &[Json], fixture: &Fixture) -> Result<Vec<Json>, String> {
         let node = node(json!({"split": fields}), &["source"], &[], "stream");
         let mut streams = wired(&node);
         let mut operator = make(&node).unwrap();
         let items: Vec<(&str, Json)> = items.iter().map(|item| ("source", item.clone())).collect();
         commit(&mut streams, &items, &["source"]);
-        let (emitted, _, step) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+        let context = fixture.context();
+        let (emitted, _, step) = steps_in(
+            operator.as_mut(),
+            &node,
+            &mut streams,
+            &Map::new(),
+            &context,
+        );
         match step {
             Ok(Step::Done) => Ok(emitted),
             Ok(other) => panic!("the split did not end: {other:?}"),
@@ -447,6 +521,17 @@ pub(crate) mod tests {
             split(json!({"format": {"text": {}}}), &[file])
                 .unwrap_err()
                 .contains("no UTF-8")
+        );
+        let fixture = Fixture {
+            provider: Some(std::sync::Arc::new(Store(folder.path().to_owned()))),
+            ..Fixture::default()
+        };
+        std::fs::write(folder.path().join("stored.txt"), "s\n").unwrap();
+        let stored = json!({"class": "File", "location": "store://stored.txt"});
+        assert_eq!(
+            split_in(json!({"format": {"text": {}}}), &[stored], &fixture),
+            Ok(vec![json!("s\n")]),
+            "through the files provider of the run"
         );
     }
 
@@ -506,7 +591,8 @@ pub(crate) mod tests {
 mod sequences {
     use serde_json::json;
 
-    use super::tests::split;
+    use super::tests::{split, split_in};
+    use crate::mixing::tests::Fixture;
 
     const FASTA: &str = ">s1 first one\nACGT\nAC\n>s2\nGG\n";
     const FASTQ: &str = "@r1\nACGT\n+\nIIII\n@r2\nGG\n+\nII\n";
@@ -528,6 +614,15 @@ mod sequences {
             ])
         );
         let reads = json!({"fastq": {"fields": [{"name": "readString", "field": "read_string"}, {"name": "q", "field": "quality_string"}]}});
+        let texts = json!({"fastq": {"fields": [{"name": "t", "field": "text"}, {"name": "id", "field": "read_header"}]}});
+        assert_eq!(
+            split(json!({"format": texts}), &[json!(FASTQ)]),
+            Ok(vec![
+                json!({"t": "@r1\nACGT\n+\nIIII\n", "id": "r1"}),
+                json!({"t": "@r2\nGG\n+\nII\n", "id": "r2"})
+            ]),
+            "the text of a FASTQ record"
+        );
         let chunked = split(json!({"format": reads, "size": 2}), &[json!(FASTQ)]);
         assert_eq!(
             chunked,
@@ -556,6 +651,31 @@ mod sequences {
             json!(["s", "@r1\nACGT\n+\nIIII\n", "@r1\nACGT\n+\nIIII\n"]),
             "aligned chunks of both files"
         );
+        let fixture = Fixture {
+            files: folder.path().join("area"),
+            ..Fixture::default()
+        };
+        let unnamed = |name: &str, text: &str| {
+            let mut file = file(name, text);
+            file.as_object_mut().unwrap().remove("basename");
+            file
+        };
+        let (one, two) = (
+            unnamed("m1.fq", "@a\nA\n+\nI\n"),
+            unnamed("m2.fq", "@b\nC\n+\nI\n"),
+        );
+        let files =
+            json!({"format": {"fastq": {}}, "pair": "auto", "files": {"directory": "chunks"}});
+        let written = split_in(files, &[json!(["s", one, two])], &fixture);
+        let written = written.unwrap().remove(0);
+        let read =
+            |at: usize| std::fs::read_to_string(written[at]["location"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            (read(1), read(2)),
+            ("@a\nA\n+\nI\n".to_owned(), "@b\nC\n+\nI\n".to_owned()),
+            "each mate keeps its own chunk file"
+        );
+        assert_eq!(written[2]["basename"], "chunk.0.0_2.fq");
         let short = file("r3.fq", "@r1\nA\n+\nI\n");
         let unequal = split(
             json!({"format": {"fastq": {}}, "pair": {"at": [1, 2]}}),
@@ -566,6 +686,18 @@ mod sequences {
                 .unwrap_err()
                 .contains("different numbers of records")
         );
+        let three = FASTQ.to_owned() + "@r3\nT\n+\nI\n";
+        let four = three.clone() + "@r4\nT\n+\nI\n";
+        let chunked = split(
+            json!({"format": {"fastq": {}}, "pair": "auto", "size": 2}),
+            &[json!(["s", file("r5.fq", &three), file("r6.fq", &four)])],
+        );
+        assert!(
+            chunked
+                .unwrap_err()
+                .contains("different numbers of records"),
+            "records count, not chunks"
+        );
     }
 }
 
@@ -575,7 +707,8 @@ mod files {
 
     use serde_json::{Value as Json, json};
 
-    use super::tests::split;
+    use super::tests::{split, split_in};
+    use crate::mixing::tests::Fixture;
 
     #[test]
     fn split_json() {
@@ -600,6 +733,15 @@ mod files {
             items,
             Ok(vec![Json::Null, json!({"x": 2})]),
             "null elements stay"
+        );
+        let grouped = split(
+            json!({"format": {"json": {}}, "size": 2}),
+            &[json!("[1,2,3]")],
+        );
+        assert_eq!(
+            grouped,
+            Ok(vec![json!([1, 2]), json!([3])]),
+            "records grouped into arrays"
         );
         let missing = split(json!({"format": {"json": {"path": "a[3]"}}}), &[document]);
         assert!(
@@ -662,8 +804,14 @@ mod files {
         std::fs::write(&source, "@r1\nA\n+\nI\n@r2\nC\n+\nI\n@r3\nG\n+\nI\n").unwrap();
         let file =
             json!({"class": "File", "location": source.to_string_lossy(), "basename": "reads.fq"});
-        let out = folder.path().join("chunks");
-        let fields = |compress: bool| json!({"format": {"fastq": {}}, "size": 2, "files": {"directory": out.to_string_lossy(), "compress": compress}});
+        let area = folder.path().join("area");
+        let fixture = Fixture {
+            files: area.clone(),
+            ..Fixture::default()
+        };
+        let split = |fields: Json, items: &[Json]| split_in(fields, items, &fixture);
+        let out = area.join("op/chunks");
+        let fields = |compress: bool| json!({"format": {"fastq": {}}, "size": 2, "files": {"directory": "chunks", "compress": compress}});
         let chunks = split(fields(false), &[file.clone(), file.clone()]).unwrap();
         let names: Vec<&str> = chunks
             .iter()
@@ -691,14 +839,62 @@ mod files {
             read(&again[0]),
             "gzip output does not depend on the time"
         );
-        let blocked = folder.path().join("blocked");
+        let blocked = area.join("op/blocked");
+        let escaping = |basename: &str| {
+            let file = json!({"class": "File", "location": source.to_string_lossy(), "basename": basename});
+            split(fields(false), &[file])
+        };
+        let outside = folder.path().join("x.fq");
+        for basename in ["../x.fq", &*outside.to_string_lossy()] {
+            let failed = escaping(basename).unwrap_err();
+            assert!(failed.contains("leaves its folder"), "{failed}");
+        }
+        assert!(
+            !area.join("op/x.0.0.fq").exists() && !outside.with_extension("0.0.fq").exists(),
+            "no chunk outside its folder"
+        );
         std::fs::write(&blocked, "").unwrap();
-        let fields = json!({"format": {"text": {}}, "files": {"directory": blocked.join("x").to_string_lossy()}});
+        let fields = json!({"format": {"text": {}}, "files": {"directory": "blocked/x"}});
         assert!(
             split(fields, &[json!("a\n")])
                 .unwrap_err()
                 .contains("cannot make"),
             "a failed write fails the op"
         );
+        let outside =
+            json!({"format": {"text": {}}, "files": {"directory": out.to_string_lossy()}});
+        assert!(
+            split(outside, &[json!("a\n")])
+                .unwrap_err()
+                .contains("needs a publish effect"),
+            "an outside folder needs a publish effect"
+        );
+    }
+
+    #[test]
+    fn split_publish() {
+        use crate::mixing::tests::{commit, node, steps_in, wired};
+        let folder = tempfile::tempdir().unwrap();
+        let fixture = Fixture {
+            provider: Some(std::sync::Arc::new(workflow_graph::LocalFiles)),
+            files: folder.path().join("area"),
+            ..Fixture::default()
+        };
+        let context = fixture.context();
+        let outside = folder.path().join("chunks").to_string_lossy().into_owned();
+        let spec = json!({"split": {"format": {"text": {}}, "files": {"directory": outside}}});
+        let mut node = node(spec, &["source"], &[], "stream");
+        node.op.effects = vec![wir::Effect::Publish(outside.clone())];
+        let mut streams = wired(&node);
+        let mut operator = crate::operator::make(&node).unwrap();
+        commit(&mut streams, &[("source", json!("a\n"))], &["source"]);
+        let values = serde_json::Map::new();
+        let (emitted, _, _) = steps_in(operator.as_mut(), &node, &mut streams, &values, &context);
+        assert!(emitted.is_empty(), "no chunk before its delivery");
+        let asked = fixture.deliveries.take();
+        assert_eq!(asked[0].target, format!("{outside}/chunk.0.0.txt"));
+        assert!(fixture.deliveries.acknowledge(&asked[0]));
+        let (emitted, _, _) = steps_in(operator.as_mut(), &node, &mut streams, &values, &context);
+        assert_eq!(emitted[0]["location"], json!(asked[0].target));
     }
 }

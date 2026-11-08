@@ -31,7 +31,7 @@ use crate::workflow::{Hook, State};
 #[path = "adapter.rs"]
 mod adapter;
 
-pub use adapter::{FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
+pub use adapter::{Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
 
 /// The Snakefile of a workflow folder, as Snakemake looks for it.
 pub fn find_snakefile(folder: &Path) -> Option<PathBuf> {
@@ -1465,12 +1465,10 @@ impl Session {
         match self.take_job(job, outcome)? {
             Taken::Retry(task) => Ok(vec![*task]),
             Taken::Failed(message) => self.failed(message),
+            // Accepted before the next jobs, whose workflow code may run commands first.
             Taken::Accepted => {
-                let next = self.next_tasks(&[job]);
-                if next.is_ok() {
-                    self.accept(identity);
-                }
-                next
+                self.accept(identity);
+                self.next_tasks(&[job])
             }
         }
     }
@@ -1548,12 +1546,34 @@ impl Session {
         outcome: Outcome,
     ) -> Result<Vec<Task>, DriverError> {
         let identity = (outcome.id, outcome.attempt);
+        let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
+        match self.take_group(members, outcome)? {
+            Taken::Retry(task) => Ok(vec![*task]),
+            Taken::Failed(message) => self.failed(message),
+            Taken::Accepted => {
+                let next = self.next_tasks(&jobs);
+                if next.is_ok() {
+                    self.accept(identity);
+                }
+                next
+            }
+        }
+    }
+
+    /// Takes the outcome of the task of a group as Snakemake does: a failed attempt runs again
+    /// while a rule of the group allows, else the group fails; each job takes its outputs.
+    fn take_group(
+        &mut self,
+        members: Vec<(usize, Vec<String>)>,
+        outcome: Outcome,
+    ) -> Result<Taken, DriverError> {
         self.outstanding = self.outstanding.saturating_sub(1);
         self.gate.release(outcome.id);
         *self.files.last_output_read.borrow_mut() = None;
+        let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
         if outcome.exit_code != 0 {
             if let Some(task) = self.retry_group(&members, outcome.id)? {
-                return Ok(vec![task]);
+                return Ok(Taken::Retry(Box::new(task)));
             }
             let rules: Vec<String> = (members.iter())
                 .map(|(job, _)| self.rule_name(*job))
@@ -1563,11 +1583,9 @@ impl Session {
                 rules.join(", "),
                 outcome.exit_code
             );
-            let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
             self.remove_failed(&jobs)?;
-            return self.failed(message);
+            return Ok(Taken::Failed(message));
         }
-        let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
         let mut outcomes = Vec::new();
         for (job, declared) in &members {
             let mut own = outcome.clone();
@@ -1587,11 +1605,10 @@ impl Session {
                 && let Err(error) = self.check_outputs(*job, &mut own)
             {
                 if let Some(task) = self.retry_group(&members, outcome.id)? {
-                    return Ok(vec![task]);
+                    return Ok(Taken::Retry(Box::new(task)));
                 }
-                let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
                 self.remove_failed(&jobs)?;
-                return self.failed(error.message);
+                return Ok(Taken::Failed(error.message));
             }
             outcomes.push((*job, own));
         }
@@ -1603,16 +1620,12 @@ impl Session {
             .len();
         for (job, own) in outcomes {
             if let Some(message) = self.take_outcome(job, own)? {
-                return self.failed(message);
+                return Ok(Taken::Failed(message));
             }
         }
         self.queue_signatures(&jobs, delivery_start)?;
         self.release_temporary(&jobs)?;
-        let next = self.next_tasks(&jobs);
-        if next.is_ok() {
-            self.accept(identity);
-        }
-        next
+        Ok(Taken::Accepted)
     }
 
     /// Readies the task of `jobs` for the shared working directory when jobs run there: each
@@ -1736,6 +1749,10 @@ impl Session {
     /// global resources otherwise, as Snakemake's scheduler holds a group job back. A retry
     /// keeps what its task took.
     fn admit(&mut self, anchor: usize, retry: bool, usage: &crate::scheduling::Usage) -> bool {
+        // Jobs that run one by one, by their keys, leave scheduling to the caller.
+        if !self.keys.is_empty() {
+            return true;
+        }
         let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
         if !retry && !self.gate.fits(&self.tallied(usage.clone()), &limits) {
             if !self.held.contains(&anchor) {
@@ -2171,63 +2188,11 @@ impl Session {
         services: &[String],
         retry: Option<TaskId>,
     ) -> Result<Option<Task>, DriverError> {
+        let (users, expanded) = self.service_users(job, services)?;
         let planner = self
             .planner
             .as_ref()
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
-        let mut users: Vec<usize> = (self.order.iter().copied())
-            .filter(|user| {
-                (planner.jobs[*user].dependencies.iter())
-                    .any(|(file, producer)| *producer == job && services.contains(file))
-            })
-            .filter(|user| self.needrun.get(user).copied().unwrap_or(false))
-            .collect();
-        let direct_users = users.clone();
-        let mut expanded = false;
-        for user in direct_users {
-            if let Some(component) = self.components.get(&user) {
-                for member in component.iter() {
-                    if !users.contains(member) {
-                        users.push(*member);
-                        expanded = true;
-                    }
-                }
-            }
-        }
-        let mut connected = HashSet::from([job]);
-        for member in &self.order {
-            if planner.jobs[*member]
-                .dependencies
-                .iter()
-                .any(|(_, producer)| connected.contains(producer))
-            {
-                connected.insert(*member);
-            }
-        }
-        let mut required = HashSet::new();
-        let mut pending = users;
-        while let Some(member) = pending.pop() {
-            if required.insert(member) {
-                pending.extend(
-                    planner.jobs[member]
-                        .dependencies
-                        .iter()
-                        .map(|(_, producer)| *producer),
-                );
-            }
-        }
-        let users: Vec<usize> = self
-            .order
-            .iter()
-            .copied()
-            .filter(|member| {
-                *member != job
-                    && connected.contains(member)
-                    && required.contains(member)
-                    && self.needrun.get(member).copied().unwrap_or(false)
-                    && !self.done.contains(member)
-            })
-            .collect();
         let waiting = |user: &usize| {
             planner.jobs[*user].incomplete
                 || planner.jobs[*user]
@@ -2336,6 +2301,73 @@ impl Session {
         self.groups.insert(id, declared);
         self.outstanding += 1;
         Ok(Some(task))
+    }
+
+    /// The jobs that use the `services` of `job` and run in its task, with the jobs that run
+    /// together with them, and whether those came in through groups or pipes.
+    fn service_users(
+        &self,
+        job: usize,
+        services: &[String],
+    ) -> Result<(Vec<usize>, bool), DriverError> {
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
+        let mut users: Vec<usize> = (self.order.iter().copied())
+            .filter(|user| {
+                (planner.jobs[*user].dependencies.iter())
+                    .any(|(file, producer)| *producer == job && services.contains(file))
+            })
+            .filter(|user| self.needrun.get(user).copied().unwrap_or(false))
+            .collect();
+        let direct_users = users.clone();
+        let mut expanded = false;
+        for user in direct_users {
+            if let Some(component) = self.components.get(&user) {
+                for member in component.iter() {
+                    if !users.contains(member) {
+                        users.push(*member);
+                        expanded = true;
+                    }
+                }
+            }
+        }
+        let mut connected = HashSet::from([job]);
+        for member in &self.order {
+            if planner.jobs[*member]
+                .dependencies
+                .iter()
+                .any(|(_, producer)| connected.contains(producer))
+            {
+                connected.insert(*member);
+            }
+        }
+        let mut required = HashSet::new();
+        let mut pending = users;
+        while let Some(member) = pending.pop() {
+            if required.insert(member) {
+                pending.extend(
+                    planner.jobs[member]
+                        .dependencies
+                        .iter()
+                        .map(|(_, producer)| *producer),
+                );
+            }
+        }
+        let users = self
+            .order
+            .iter()
+            .copied()
+            .filter(|member| {
+                *member != job
+                    && connected.contains(member)
+                    && required.contains(member)
+                    && self.needrun.get(member).copied().unwrap_or(false)
+                    && !self.done.contains(member)
+            })
+            .collect();
+        Ok((users, expanded))
     }
 
     fn retry_group(
@@ -2971,6 +3003,8 @@ pub struct SnakemakeDriver {
     simulated: bool,
     /// The answer of the session to the last request of a job.
     answers: adapter::Answers,
+    /// The commands of workflow code that a request of a job waits for.
+    commands: HashSet<TaskId>,
 }
 
 impl SnakemakeDriver {
@@ -3278,7 +3312,12 @@ pub fn spawn_driver(
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
                     request @ (Request::Jobs(_) | Request::Prepare(_) | Request::Take(_)) => {
-                        session.answer(request, &session_answers)
+                        channel
+                            .planning
+                            .set(matches!(request, Request::Jobs(false)));
+                        let reply = session.answer(request, &session_answers);
+                        channel.planning.set(false);
+                        reply
                     }
                     Request::Delivered(delivery) => {
                         session.delivered(&delivery).map(|()| Vec::new())
@@ -3349,6 +3388,7 @@ pub fn spawn_driver(
         results,
         simulated,
         answers,
+        commands: HashSet::new(),
     })
 }
 

@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use wdl_analysis::types::Optional;
+use wdl_analysis::types::{CompoundType, CustomType, Optional, Type as Declared};
 
 use wdl_ast::v1::{BoundDecl, Decl, Expr, LiteralString, TaskDefinition};
 use wdl_ast::{AstNode, AstToken};
@@ -91,6 +91,53 @@ pub(crate) fn ports(unit: &Unit, definition: &TaskDefinition) -> Result<Inputs, 
         ports: inputs,
         library,
     })
+}
+
+/// The definitions of the structs that the declarations of a task use, each after the
+/// structs of its members, as lines of the library, so that expressions coerce to them.
+pub(crate) fn structs(unit: &Unit, definition: &TaskDefinition) -> Result<Vec<String>, String> {
+    let (input, output) = (definition.input(), definition.output());
+    let inputs = input.iter().flat_map(|section| section.declarations());
+    let outputs = output.iter().flat_map(|section| section.declarations());
+    let mut types = Vec::new();
+    for decl in inputs {
+        types.push(declared(&unit.document, &decl.ty())?);
+    }
+    for decl in definition.declarations().chain(outputs) {
+        types.push(declared(&unit.document, &decl.ty())?);
+    }
+    let (mut seen, mut lines) = (BTreeSet::new(), Vec::new());
+    for ty in &types {
+        define(ty, &mut seen, &mut lines);
+    }
+    Ok(lines)
+}
+
+/// Adds the definitions of the structs in a type, each after the structs it uses.
+fn define(ty: &Declared, seen: &mut BTreeSet<String>, lines: &mut Vec<String>) {
+    let Declared::Compound(compound, _) = ty else {
+        return;
+    };
+    match compound {
+        CompoundType::Array(array) => define(array.element_type(), seen, lines),
+        CompoundType::Pair(pair) => {
+            define(pair.left_type(), seen, lines);
+            define(pair.right_type(), seen, lines);
+        }
+        CompoundType::Map(map) => define(map.value_type(), seen, lines),
+        CompoundType::Custom(CustomType::Struct(record)) => {
+            if !seen.insert(record.name().to_string()) {
+                return;
+            }
+            let mut members = String::new();
+            for (name, member) in record.members() {
+                define(member, seen, lines);
+                members.push_str(&format!(" {member} {name}"));
+            }
+            lines.push(format!("struct {} {{{members} }}", record.name()));
+        }
+        _ => {}
+    }
 }
 
 /// Whether a type holds files inside a record or a map, which a task op does not stage.

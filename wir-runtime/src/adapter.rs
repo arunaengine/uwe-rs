@@ -54,11 +54,13 @@ pub enum Ending {
     Errored(String),
 }
 
-/// The tasks that the op instances of an adapter ask for, and the instances that ended.
+/// The tasks that the op instances of an adapter ask for, the instances that ended, and
+/// those whose daemon is ready, like a running Argo daemon step.
 #[derive(Debug, Default)]
 pub struct Changes {
     pub tasks: Vec<(CallId, Task)>,
     pub ended: Vec<(CallId, Ending)>,
+    pub ready: Vec<CallId>,
 }
 
 /// The runtime of a language for the dialect tasks of one source context. It keeps the native
@@ -335,6 +337,7 @@ impl Dialects {
             let changes = self.number(index, changes, next)?;
             all.tasks.extend(changes.tasks);
             all.ended.extend(changes.ended);
+            all.ready.extend(changes.ready);
         }
         Ok(all)
     }
@@ -425,6 +428,7 @@ impl Dialects {
         Ok(Changes {
             tasks,
             ended: changes.ended,
+            ready: changes.ready,
         })
     }
 }

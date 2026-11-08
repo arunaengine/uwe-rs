@@ -29,6 +29,7 @@ impl TaskAdapter for ExitCodes {
         Ok(Changes {
             tasks: vec![(call.call, task)],
             ended: Vec::new(),
+            ready: Vec::new(),
         })
     }
 
@@ -45,6 +46,7 @@ impl TaskAdapter for ExitCodes {
         Ok(Changes {
             tasks: Vec::new(),
             ended: vec![(self.calls[&outcome.id], ending)],
+            ready: Vec::new(),
         })
     }
 }

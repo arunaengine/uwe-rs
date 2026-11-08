@@ -32,7 +32,9 @@ impl Progress {
                 items.iter().all(|item| self.resolved(item))
             }
             ControlPlan::Not(inner) => self.resolved(inner),
-            ControlPlan::Test(node, _) => self.result(*node).is_some(),
+            ControlPlan::Test(node, _) => {
+                self.result(*node).is_some() || self.daemons.contains(node)
+            }
         }
     }
 
@@ -66,16 +68,20 @@ impl Progress {
                 Truth::False => Truth::True,
                 Truth::Pending => Truth::Pending,
             },
-            ControlPlan::Test(node, results) => match self.result(*node) {
-                None => Truth::Pending,
-                Some(status) => match results
-                    .iter()
-                    .any(|result| self.holds(*node, status, *result))
-                {
-                    true => Truth::True,
-                    false => Truth::False,
-                },
-            },
+            ControlPlan::Test(node, results) => {
+                let status = self.result(*node);
+                let ready = self.daemons.contains(node);
+                let holds = |result: &ResultKind| match status {
+                    Some(status) => self.holds(*node, status, *result),
+                    // A daemon that runs has only its readiness as its result.
+                    None => *result == ResultKind::Daemoned && ready,
+                };
+                match (status.is_some() || ready, results.iter().any(holds)) {
+                    (false, _) => Truth::Pending,
+                    (true, true) => Truth::True,
+                    (true, false) => Truth::False,
+                }
+            }
         }
     }
 
@@ -87,7 +93,7 @@ impl Progress {
         }
     }
 
-    /// Whether an ended node has a result. No op reports a ready daemon yet.
+    /// Whether an ended node has a result; a daemon keeps its readiness once it ends.
     fn holds(&self, node: usize, status: Status, result: ResultKind) -> bool {
         let members = self.members(node);
         let statuses: Vec<Option<Status>> =
@@ -99,7 +105,7 @@ impl Progress {
             ResultKind::Skipped => status == Status::Skipped,
             ResultKind::Omitted => status == Status::Omitted,
             ResultKind::Cancelled => status == Status::Cancelled,
-            ResultKind::Daemoned => false,
+            ResultKind::Daemoned => self.daemons.contains(&node),
             ResultKind::AnySucceeded => statuses.contains(&Some(Status::Succeeded)),
             ResultKind::AllFailed => {
                 !statuses.is_empty() && statuses.iter().all(|item| *item == Some(Status::Failed))

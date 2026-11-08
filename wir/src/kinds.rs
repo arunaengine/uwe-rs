@@ -159,7 +159,8 @@ impl<'d> Checker<'d> {
                 continue;
             };
             let loads = !capture.load_contents || holds_file(&output.r#type, self.defs);
-            if !loads || !capture_fits(&capture.from, &output.r#type, self.defs) {
+            let fits = capture_fits(&capture.from, &output.r#type, self.defs);
+            if capture.code.is_none() && (!loads || !fits || capture.from == CaptureRule::Empty) {
                 self.report(at, Problem::CaptureType(output.name.clone()));
             }
             if let Some(arity) = &capture.arity {

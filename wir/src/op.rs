@@ -344,6 +344,13 @@ pub struct Capture {
     pub optional: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arity: Option<Arity>,
+    /// How deep each Directory it reads holds its listing, like CWL `loadListing`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listing: Option<Listing>,
+    /// Code like that of a `code` argument whose value is the output, over the matched paths
+    /// as an array in `self`; see the README.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 /// The least and the most paths a capture may match.
@@ -369,6 +376,8 @@ pub enum CaptureRule {
     Stderr,
     /// The field of the output in the task's `results`; null without that file.
     Results,
+    /// No paths, for a capture whose code gives the output.
+    Empty,
 }
 
 /// A pure expression over the op's inputs, which binds its one output. `js` and `javascript`

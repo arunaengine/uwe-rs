@@ -93,7 +93,7 @@ Set `run::Settings.listener` to a `run::Listener`, which is an `Arc<dyn Fn(run::
 - `Event::Task` carries a `TaskEvent`: the task number, name and step, its `TaskState`, the attempt, times, whether the task reused a cached result, the exit code and an error message.
 - `Event::Ended` is the last event. Its `error` is set when the run failed or stopped. Without strict provenance, a failure to record the run is only a warning, so `Ended` does not prove that the record is complete.
 
-A task goes from `requested` to `started` to `finished`, `reused` or `failed`. A machine failure gives `retried`, then `started` again. Tasks that did not end when the run ended become `stopped`. The workflow's own output checks can still turn a `finished` attempt into `failed`.
+A task goes from `requested` to `started` to `finished`, `reused` or `failed`. A machine failure gives `retried`, then `started` again. Once a failure ends the run, uwe only waits for the attempts that run: it starts no new attempt, also no retry, as the run fails anyway and a retry would submit new work after that. A machine failure in that time leaves its task `failed`, and a task that waited for its retry becomes `stopped`. A new run of the workflow takes the finished tasks from the cache. Tasks that did not end when the run ended become `stopped`. The workflow's own output checks can still turn a `finished` attempt into `failed`.
 
 Times are milliseconds since the Unix epoch, as in the run database. All event types are `Clone`, `Debug` and `serde::Serialize`.
 
@@ -248,6 +248,10 @@ Hosted runs always use strict admission and strict provenance, and they are [iso
 Pass `Setup.cluster` with `kubernetes_executor::Cluster::new(client, namespace, server)`, or set `in_cluster = true` in `[executor.kubernetes]`.
 
 Map installed references through named `[executor.kubernetes.references.NAME]` tables. Each has a `path` and either a `claim`, or an `nfs_server` and `nfs_path`. Only declared reference paths are mounted, and always read-only. Local and mapped Kubernetes references avoid copying the whole installation. Remote SLURM and TES staging still checks the bytes of the source.
+
+## SLURM
+
+A service that starts many SLURM runs with Apptainer can give them one shared folder of SIF files with `image_folder` in `[executor.slurm]`. Runs in one process and in several processes use it safely at the same time: a run waits while another run pulls the same image. When the nodes cannot reach the registries but the machine of the service can, set `on_host = true` in `[executor.slurm.pull]`, so that this machine pulls the images and the jobs only run the files. Where the web is reached only through a proxy, pass it as `proxy` in `[network]`. The pulls on this machine and the pull jobs get it, and errors never show its password. See [SLURM images](remote-executors.md#slurm-images).
 
 ## Sharing between requests
 

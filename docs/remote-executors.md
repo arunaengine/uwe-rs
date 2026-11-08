@@ -822,6 +822,26 @@ uwe sets `uwe-attempt`, `uwe-submission` and the `idempotency_tag` itself. A tag
 
 Some TES servers stage input files as read-only and owned by another user, and run the task as a user without rights to change them. uwe makes executable inputs and the helper executable with `chmod +x`. When `chmod` fails, uwe copies the file next to itself, makes the copy executable and moves it over the original. This needs a folder the task user may write to. If the copy fails too, the task stops with an error, as before. When `chmod` works, nothing changes.
 
+## SLURM images
+
+With Apptainer or Singularity, uwe turns each image of a registry or an address into a SIF file once, before the first task of the image runs, and the jobs run that file. By default a job of its own pulls the image, with the resources of `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` (default 2, 4096 and 60). The files go to the `images` folder in the scratch folder of the cache, which the nodes must see at the same path.
+
+Where the nodes cannot reach the registries, set `on_host = true` in `[executor.slurm.pull]`. Then the machine that runs uwe pulls each image itself with `apptainer pull` (or `singularity pull`), before it submits the first task of the image, and the jobs only run the finished file. That machine needs Apptainer or Singularity and access to the registries. uwe checks that the result is a SIF file before the file gets its name. The pull gets the variables that `sbatch` gets, see [SLURM job environment](#slurm-job-environment), and may take `minutes`; `cpus` and `memory_mb` apply only to pull jobs. Pull jobs stay the default, as they keep the load of large images off the machine of uwe, which is often a login node.
+
+```toml
+[executor.slurm.pull]
+on_host = true
+```
+
+`image_folder` in `[executor.slurm]` names another folder, as an absolute path that the nodes see at the same path. Runs and users that share the folder reuse its files: an image named by a digest or an address is pulled once for all of them. An image named by a tag is pulled again in each run, as the tag may have moved. A pull writes to a temporary name and renames the file once it is whole. While a run pulls an image, it locks a file next to it, `<file>.lock`, and other runs wait until it is done. When runs on several machines share the folder, its file system must support such locks across machines. Where uwe cannot lock the file, it logs a warning and pulls without the lock. Each user of a shared folder needs the right to write in it.
+
+```toml
+[executor.slurm]
+image_folder = "/shared/sif"
+```
+
+The pulls reach the web through `proxy` in `[network]`, or through the proxy variables of the uwe process. A pull on the machine of uwe gets them in its environment, and a pull job by name in `--export`, as in [SLURM job environment](#slurm-job-environment). The address of a proxy may hold a user and a password, like `http://user:password@proxy.example.org:3128`. When a failed pull prints it, the error shows `***` in place of the password.
+
 ## SLURM job environment
 
 uwe runs `sbatch` with a cleared environment. It passes only `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `TZ`, `TMPDIR`, the proxy variables (`HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`, also in lower case) and the variables that start with `SLURM_`, `SBATCH_`, `APPTAINER_` or `SINGULARITY_`, like `SLURM_CONF`. With `proxy` in `[network]` it adds the proxy variables, and with `staging_access = "credentials"` the credentials of the staging root. Each job gets `--export` with the names of exactly these variables, so other variables of the uwe process, like the credentials of a service, reach neither `sbatch` nor the jobs. The list holds names only, since `--export` splits at commas. It comes after `options` of `[executor.slurm]`, so it wins over an `--export` there. The tasks get their own variables inside the container.
@@ -876,7 +896,7 @@ sbatch --export=ALL,NAME=demo,PIPELINE=nf-core/demo,REV=32893afef8076a03a2767a02
 
 Tools that bring their own network code may ignore the proxy. On nodes with IPv6 only, `prefetch` of sra-tools 3.2.1 could not reach NCBI, neither directly nor through the proxy, also with `/http/proxy/path` in its settings. So nf-core/fetchngs fails for the ids that it must fetch with sra-tools (in its test list `SRR12848126`, `SRR14593545` and `SRR14709033`), and downloads the others from ENA.
 
-On CephFS, a read of a file that a job on another node wrote can wait for its read rights for a long time (Linux before 7.1.10). uwe wakes such a read every 10 seconds. A read that still gets no answer after 310 seconds fails the attempt. uwe counts that as a failure of the machine and tries the task again, up to `-machine-retries` times (default 2), but on this cluster such a retry has not been seen yet. Running the pipeline again takes the finished tasks from the cache.
+On CephFS, a read of a file that a job on another node wrote can wait for its read rights for a long time (Linux before 7.1.10). uwe wakes such a read every 10 seconds. A read that still gets no answer after 310 seconds fails the attempt. uwe counts that as a failure of the machine and tries the task again, up to `-machine-retries` times (default 2), but on this cluster such a retry has not been seen yet. After another task failed, the run only waits for its running tasks and retries none of them, see [Following a run live](embedding.md#following-a-run-live). Running the pipeline again takes the finished tasks from the cache.
 
 On 2026-11-07, uwe ran these on a cluster of Debian 13 nodes with Slurm 24.11.5, Apptainer 1.4.5 and CephFS, with `-profile test,apptainer` and the commits of the curated templates of flowy:
 

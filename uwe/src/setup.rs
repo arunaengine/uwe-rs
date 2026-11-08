@@ -109,6 +109,8 @@ pub struct Executors {
     /// `[executor.slurm.pull]`: `cpus`, `memory_mb` and `minutes` of the job that pulls an
     /// image into a SIF file.
     pub slurm_pull: PullResources,
+    /// `[executor.slurm.pull] on_host`: whether the machine of uwe pulls the images, not a job.
+    pub slurm_host_pull: bool,
     /// `[executor.slurm] query_seconds`: how long one call of `squeue`, `sacct` or `scancel`
     /// may take, for a busy controller.
     pub slurm_query: Option<u64>,
@@ -128,6 +130,8 @@ pub struct Executors {
     /// `[executor.slurm] staging_secret_file`: the storage providers of the staging root for
     /// `staging_access = "credentials"`, in a file that only its owner may read.
     pub slurm_secret_file: Option<PathBuf>,
+    /// `[executor.slurm] image_folder`: the shared folder of the SIF files of the images.
+    pub slurm_images: Option<PathBuf>,
     /// `[executor.kubernetes] kubeconfig`, like `-kubeconfig`.
     pub kubeconfig: Option<PathBuf>,
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
@@ -307,6 +311,7 @@ impl Executors {
                 "node_folder",
                 "query_seconds",
                 "memory_per_cpu_gb",
+                "image_folder",
             ];
             keys.push("staging_secret_file");
             keys.extend(["helper_path", "helper_url", "helper_sha256", "helper_file"]);
@@ -333,8 +338,15 @@ impl Executors {
                 settings.slurm_cpu_memory = Some(gb);
             }
             settings.slurm_options = slurm.texts("options")?;
+            if let Some(folder) = slurm.text("image_folder")?.map(PathBuf::from) {
+                if !folder.is_absolute() {
+                    return Err(slurm.invalid("image_folder", "must be an absolute path"));
+                }
+                settings.slurm_images = Some(folder);
+            }
             if let Some(pull) = slurm.table("pull")? {
                 settings.slurm_pull = pull_resources(&pull)?;
+                settings.slurm_host_pull = pull.flag("on_host")?.unwrap_or(false);
             }
             if let Some(seconds) = slurm.integer("query_seconds")? {
                 if !(1..=3600).contains(&seconds) {
@@ -598,7 +610,7 @@ pub(crate) fn helper_file(table: &Table<'_>, named: bool) -> Result<Option<PathB
 /// The resources of the job that pulls an image, from `[executor.slurm.pull]`; what it leaves
 /// out keeps its default.
 fn pull_resources(pull: &Table<'_>) -> Result<PullResources, ConfigError> {
-    pull.only(&["cpus", "memory_mb", "minutes"])?;
+    pull.only(&["cpus", "memory_mb", "minutes", "on_host"])?;
     let positive = |key: &str| -> Result<Option<u64>, ConfigError> {
         match pull.integer(key)? {
             None => Ok(None),
@@ -1090,8 +1102,10 @@ mod tests {
 
     #[test]
     fn loads_slurm_resources() {
-        let text = "[executor.slurm.pull]\ncpus = 8\nminutes = 120\n";
-        let pull = read(text).expect("settings").slurm_pull;
+        let text = "[executor.slurm.pull]\ncpus = 8\nminutes = 120\non_host = true\n";
+        let settings = read(text).expect("settings");
+        assert!(settings.slurm_host_pull);
+        let pull = settings.slurm_pull;
         let expected = PullResources {
             cpus: 8,
             time_seconds: 7200,
@@ -1111,6 +1125,12 @@ mod tests {
         assert_eq!(settings.kubernetes_start_grace, Some(300));
         assert!(read("[executor.kubernetes]\nstart_grace_seconds = 5\n").is_err());
         assert!(read("[executor.kubernetes]\nstart_grace_seconds = 3601\n").is_err());
+        let settings = read("[executor.slurm]\nimage_folder = '/shared/sif'\n").expect("settings");
+        assert_eq!(
+            settings.slurm_images.as_deref(),
+            Some(Path::new("/shared/sif"))
+        );
+        assert!(read("[executor.slurm]\nimage_folder = 'sif'\n").is_err());
         let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
         assert_eq!(settings.slurm_query, Some(120));
         assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());

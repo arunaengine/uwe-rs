@@ -113,9 +113,11 @@ pub fn runtime() -> Result<&'static tokio::runtime::Runtime, ExecuteError> {
     static RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
     let runtime = RUNTIME.get_or_init(|| {
         let workers = std::thread::available_parallelism().map_or(2, |cpus| cpus.get().min(4));
+        // Attempts run deep driver code; debug builds overflow the default stack of 2 MiB.
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(workers)
             .thread_name("uwe-attempts")
+            .thread_stack_size(8 << 20)
             .enable_all()
             .build()
             .map_err(|error| error.to_string())

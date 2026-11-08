@@ -607,6 +607,36 @@ workflow nested {
 }
 
 #[test]
+fn skipped_nested_inputs() {
+    let workflow = r#"version 1.2
+workflow nested {
+  hints {
+    allow_nested_inputs: true
+  }
+  input {
+    Array[String] names
+    Boolean go
+  }
+  scatter (n in names) {
+    call say as each
+  }
+  if (go) {
+    call say as maybe
+  }
+  output {
+    Array[String] texts = each.text
+    String? text = maybe.text
+  }
+}
+"#;
+    let text = format!("{workflow}{SAY}");
+    let runs = runs(&text, json!({"names": [], "go": false}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1, json!({"texts": [], "text": null}));
+}
+
+#[test]
 fn nested_conditional_lowers() {
     let workflow = r#"version 1.1
 workflow nested {

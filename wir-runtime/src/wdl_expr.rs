@@ -70,6 +70,10 @@ pub fn evaluate(
         }
     };
     let output = &op.outputs[0];
+    let plain = op.inputs.iter().any(|port| port.name == spec.code);
+    if plain && value == Value::None && !output.r#type.is_optional(defs) {
+        return Err(format!("the input `{}` has no value", spec.code));
+    }
     let json = to_wir(value, &output.r#type, defs, &scope.files)?;
     match wir::fits(&json, &output.r#type, defs) {
         true => Ok(json),

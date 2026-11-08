@@ -165,7 +165,7 @@ task greet {
     // The simulator reads the files a native command makes from its script; a task op shows
     // it no script, so it makes up the files that a glob or a copied path matches.
     assert_eq!(native["logs"], json!(["a.log", "b.log"]));
-    assert_eq!(lowered["logs"], json!(["simulated.log"]));
+    assert_eq!(lowered["logs"], json!(["simulated"]));
     assert_eq!(lowered["named"], json!("simulated"));
 }
 

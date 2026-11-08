@@ -108,6 +108,7 @@ pub fn compile_with(
         types: Vec::new(),
         graphs,
         entry: ENTRY.into(),
+        hooks: Vec::new(),
     };
     if let Err(problems) = wir::verify(&document) {
         let problems: Vec<String> = problems.iter().map(ToString::to_string).collect();
@@ -119,9 +120,31 @@ pub fn compile_with(
     Ok(Compiled { document, kept })
 }
 
-/// The source `id` of an Argo document at `path`, its location relative to `base`, and its bytes.
+/// The source `id` of an Argo document at `path`, its location relative to `base`, and the bytes
+/// it is pinned by; a folder of documents, as `-c` takes one, by those of its Argo files.
 fn argo_source(id: &str, path: &Path, base: &Path) -> Result<(Source, Vec<u8>), String> {
-    let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let read = |path: &Path| std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()));
+    let bytes = match path.is_dir() {
+        false => read(path)?,
+        true => {
+            let mut files = Vec::new();
+            argo_runtime::library::collect_files(path, &mut files);
+            files.sort();
+            let mut bytes = Vec::new();
+            for file in files {
+                let relative = file.strip_prefix(path).unwrap_or(&file);
+                bytes.extend(relative.to_string_lossy().as_bytes());
+                bytes.push(0);
+                bytes.extend(
+                    task_model::Digest::sha256(&read(&file)?)
+                        .to_string()
+                        .as_bytes(),
+                );
+                bytes.push(b'\n');
+            }
+            bytes
+        }
+    };
     let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
     let location = match absolute.strip_prefix(base) {
         Ok(relative) => relative.to_string_lossy().into_owned(),

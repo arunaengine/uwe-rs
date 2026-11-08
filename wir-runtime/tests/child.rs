@@ -205,6 +205,29 @@ fn retries_keep_ids() {
 }
 
 #[test]
+fn stops_children() {
+    let seen = Rc::new(RefCell::new(Seen::default()));
+    let mut child = Child::new(Box::new(Script::new(&seen)));
+    let mut next = counter();
+    child.start(&mut next).unwrap();
+    assert_eq!(
+        child.stop(),
+        [TaskId(100), TaskId(101)],
+        "the tasks that run stop"
+    );
+    assert!(
+        child.finished() && !child.busy(),
+        "a stopped child takes no more calls"
+    );
+    assert!(child.stop().is_empty());
+    assert_eq!(
+        seen.borrow().finishes,
+        0,
+        "a stopped child never finishes with results"
+    );
+}
+
+#[test]
 fn errors_keep_acceptance() {
     let seen = Rc::new(RefCell::new(Seen::default()));
     let mut script = Script::new(&seen);

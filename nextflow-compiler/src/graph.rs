@@ -449,7 +449,7 @@ impl<'a> Compiler<'a> {
             }
             // A stream op that writes a value channel, like a branch of a value, gives its
             // first item.
-            let path = format!("first.{channel}");
+            let path = format!("channel.{channel}.first");
             if !draft.values.contains_key(&channel) {
                 draft.ops.push(json!({
                     "path": path,

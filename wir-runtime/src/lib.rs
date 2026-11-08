@@ -31,6 +31,7 @@ mod selecting;
 pub mod snakemake;
 #[allow(dead_code, reason = "the stream ops of the next commits use it")]
 mod spill;
+mod splitting;
 mod state;
 mod streams;
 mod task;

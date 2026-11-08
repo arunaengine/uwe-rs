@@ -20,6 +20,7 @@ use crate::plan::Node;
 use crate::reducing::Reducing;
 use crate::routing::Routing;
 use crate::selecting::{Choice, Selecting};
+use crate::splitting::Splitting;
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
 use crate::transforms::{Mapping, Rule};
 
@@ -241,6 +242,7 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         Kind::Reduce(spec) => Some(Box::new(Reducing::new(spec.clone()))),
         Kind::Buffer(spec) => Some(Box::new(Cutting::buffer(spec.rule.clone(), spec.remainder))),
         Kind::Window(spec) => Some(Box::new(Cutting::window(spec))),
+        Kind::Split(spec) => Some(Box::new(Splitting::new(spec.clone()))),
         Kind::Take(spec) => selecting(Choice::Take(spec.count)),
         Kind::First(spec) => selecting(Choice::First(spec.predicate.clone(), spec.empty.clone())),
         Kind::Last(spec) => selecting(Choice::Last(

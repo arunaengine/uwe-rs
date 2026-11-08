@@ -111,6 +111,19 @@ fn refusal(op: &Op) -> Option<&'static str> {
     unrun(op)
 }
 
+/// Whether a split needs what this runner does not run yet: sequence and JSON formats,
+/// pairs, chunk files and gzip.
+fn unsplit(split: &wir::reserved::Split) -> bool {
+    let formats = !matches!(
+        split.format,
+        wir::reserved::SplitFormat::Text(_) | wir::reserved::SplitFormat::Csv(_)
+    );
+    formats
+        || split.pair.is_some()
+        || split.files.is_some()
+        || split.decompress != wir::reserved::Decompress::Never
+}
+
 /// Whether this runner runs a stream or control op kind.
 fn supported(kind: &Kind) -> bool {
     matches!(
@@ -143,6 +156,7 @@ fn supported(kind: &Kind) -> bool {
             | Kind::Distinct(_)
             | Kind::Until(_)
             | Kind::IfEmpty(_)
+            | Kind::Split(_)
     )
 }
 
@@ -171,6 +185,7 @@ fn unrun(op: &Op) -> Option<&'static str> {
             Some("uwe does not run expressions with a scope or captures yet")
         }
         Kind::Task(task) if task.builder.is_some() => Some("uwe does not run dialect tasks yet"),
+        Kind::Split(split) if unsplit(split) => Some("uwe does not run this split yet"),
         Kind::Task(task) if task.accept.is_some() || task.retry.is_some() => {
             Some("uwe does not run task acceptance and retry rules yet")
         }

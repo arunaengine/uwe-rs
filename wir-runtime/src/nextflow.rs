@@ -1,21 +1,25 @@
 //! Nextflow native blocks: the Nextflow driver of uwe as a child in a launch folder of its
-//! own, its params file, and its emits and published files as op outputs.
+//! own, its params file, and its emits and published files as op outputs. Also the adapter of
+//! `nextflow_process` tasks, which builds and judges them with the native driver.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use nextflow_evaluator::interpreter::Host;
 use nextflow_runtime::driver::{Nextflow, Settings};
+use nextflow_runtime::{Adapter, Completed, Prepared};
 use serde_json::{Map, Value as Json, json};
-use wir::{Port, Type, TypeDef};
-use workflow_graph::{DriverError, Launch};
+use wir::{Binding, Port, Type, TypeDef};
+use workflow_graph::{Delivery, DriverError, Launch, Outcome, TaskId};
 
+use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use crate::child::Block;
 
 /// Makes the settings of the driver of a block from its launch and its launch folder.
-type Making = dyn Fn(&Launch, &Path) -> Settings;
+type Making = dyn Fn(&Launch, &Path) -> Settings + Send + Sync;
 
 /// How a run makes the settings of the Nextflow driver of each block, from the launch of the
 /// block and its launch folder. The host of the settings must start in that folder.
@@ -25,7 +29,7 @@ pub struct Options {
 }
 
 impl Options {
-    pub fn new(settings: impl Fn(&Launch, &Path) -> Settings + 'static) -> Options {
+    pub fn new(settings: impl Fn(&Launch, &Path) -> Settings + Send + Sync + 'static) -> Options {
         Options {
             settings: Arc::new(settings),
         }
@@ -84,6 +88,166 @@ impl Block for Nextflow {
     /// What the entry workflow emitted, which a simulated run makes up too.
     fn exported(&self) -> Result<Option<Json>, DriverError> {
         self.emitted()
+    }
+}
+
+/// Runs `nextflow_process` tasks through adapters whose drivers get their settings from
+/// `options`, launched in the working folder, as a Nextflow run alone is.
+pub fn register(adapters: &mut Adapters, options: Options) {
+    adapters.register("nextflow_process", move |opening| open(opening, &options));
+}
+
+fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, DriverError> {
+    let launch = Launch {
+        target: opening.source.clone(),
+        params: Vec::new(),
+        inputs: None,
+        profiles: opening.builder.task().profiles.clone(),
+        configs: opening.configs.clone(),
+        targets: Vec::new(),
+        ..opening.launch.clone()
+    };
+    let folder = std::env::current_dir()
+        .map_err(|error| DriverError::new(format!("no working folder: {error}")))?;
+    let settings = (options.settings)(&launch, &folder);
+    let mut adapter = Adapter::new(&launch, settings, params(opening.inputs))?;
+    adapter.start(Vec::new());
+    Ok(Box::new(Tasks {
+        adapter,
+        calls: HashMap::new(),
+        counts: HashMap::new(),
+        next: 0,
+        accepted: HashSet::new(),
+        deliveries: Vec::new(),
+    }))
+}
+
+/// The process tasks of one source context.
+struct Tasks {
+    adapter: Adapter,
+    /// The op instance of each task and its output ports by output index.
+    calls: HashMap<TaskId, (CallId, Vec<(usize, String)>)>,
+    /// How many tasks each process call asked for, which numbers them as Nextflow does.
+    counts: HashMap<String, u32>,
+    next: u64,
+    accepted: HashSet<(TaskId, u32)>,
+    deliveries: Vec<Delivery>,
+}
+
+impl Tasks {
+    /// What an attempt that the native driver judged gives: a retry, or the ending.
+    fn judged(&mut self, id: TaskId, attempt: u32, completed: Completed) -> Changes {
+        let Some((call, ports)) = self.calls.get(&id).cloned() else {
+            return Changes::default();
+        };
+        let ending = match completed {
+            Completed::Retry(task) => {
+                return Changes {
+                    tasks: vec![(call, *task)],
+                    ended: Vec::new(),
+                };
+            }
+            Completed::Accepted {
+                outputs,
+                deliveries,
+            } => {
+                self.accepted.insert((id, attempt));
+                self.deliveries.extend(deliveries);
+                let given = ports.into_iter().filter_map(|(index, port)| {
+                    let value = outputs.get(index).cloned().flatten()?;
+                    Some((port, value))
+                });
+                Ending::Succeeded(given.collect())
+            }
+            Completed::Ignored(message) => Ending::Ignored(message),
+            Completed::Failed(message) => Ending::Failed(message),
+        };
+        self.calls.remove(&id);
+        Changes {
+            tasks: Vec::new(),
+            ended: vec![(call, ending)],
+        }
+    }
+}
+
+impl TaskAdapter for Tasks {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        let task = call.builder.task();
+        let singleton = match task.captures.get("singleton") {
+            Some(Binding::Value(value)) => value.as_bool().unwrap_or(false),
+            _ => false,
+        };
+        let script = (task.scope.as_ref())
+            .and_then(|scope| self.adapter.script_at(&task.entry, scope.start, scope.end));
+        let native = nextflow_runtime::Call {
+            script: script.unwrap_or_default(),
+            process: task.entry.clone(),
+            name: task.call.clone(),
+            singleton,
+        };
+        let index = |selector: &str, side: &str| {
+            let number = selector.strip_prefix(side)?.strip_prefix('/')?;
+            number.parse::<usize>().ok()
+        };
+        let mut inputs = vec![Json::Null; task.inputs.len()];
+        for map in &task.inputs {
+            if let Some(slot) = index(&map.native, "input").and_then(|at| inputs.get_mut(at)) {
+                *slot = call.inputs.get(&map.port).cloned().unwrap_or_default();
+            }
+        }
+        let ports = (task.outputs.iter())
+            .filter_map(|map| Some((index(&map.native, "output")?, map.port.clone())))
+            .collect();
+        let count = self.counts.entry(task.call.clone()).or_default();
+        *count += 1;
+        self.next += 1;
+        let id = TaskId(self.next);
+        self.calls.insert(id, (call.call, ports));
+        Ok(match self.adapter.prepare(&native, &inputs, *count, id)? {
+            Prepared::Run(task) => Changes {
+                tasks: vec![(call.call, *task)],
+                ended: Vec::new(),
+            },
+            Prepared::Skipped => {
+                self.calls.remove(&id);
+                Changes {
+                    tasks: Vec::new(),
+                    ended: vec![(call.call, Ending::Skipped)],
+                }
+            }
+            Prepared::Done(completed) => self.judged(id, 0, completed),
+        })
+    }
+
+    fn complete(&mut self, outcome: Outcome) -> Result<Changes, DriverError> {
+        let (id, attempt) = (outcome.id, outcome.attempt);
+        let completed = self.adapter.complete(outcome)?;
+        Ok(self.judged(id, attempt, completed))
+    }
+
+    fn started(&mut self, task: TaskId, attempt: u32) {
+        self.adapter.started(task, attempt);
+    }
+
+    fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
+        self.accepted.remove(&(task, attempt))
+    }
+
+    fn deliveries(&mut self) -> Vec<Delivery> {
+        std::mem::take(&mut self.deliveries)
+    }
+
+    fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        self.adapter.delivered(delivery)
+    }
+
+    fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
+        self.adapter.end(failure).map(drop)
+    }
+
+    /// Tasks keep the names of the native run, like `NFCORE_DEMO:DEMO:FASTQC (sample1)`.
+    fn prefixed(&self) -> bool {
+        false
     }
 }
 

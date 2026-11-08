@@ -27,7 +27,7 @@ use crate::operator;
 use crate::plan::{Node, plan};
 use crate::processes;
 use crate::snakemake;
-use crate::state::{Progress, widen};
+use crate::state::{Progress, State, widen};
 use crate::task;
 use crate::wdl;
 
@@ -166,6 +166,8 @@ pub struct WirDriver {
     tasks: HashMap<TaskId, (usize, Task, Map<String, Json>)>,
     /// The attempts of task ops that their captures accepted.
     accepted: HashSet<(TaskId, u32)>,
+    /// The tasks of cancelled ops whose attempts were asked to stop.
+    stopping: HashSet<TaskId>,
     last: u64,
     files: Option<Arc<dyn Files>>,
     cancel: Option<CancellationToken>,
@@ -226,6 +228,7 @@ impl WirDriver {
             launched: HashMap::new(),
             tasks: HashMap::new(),
             accepted: HashSet::new(),
+            stopping: HashSet::new(),
             last: 0,
             files: None,
             cancel: None,
@@ -398,6 +401,10 @@ impl WirDriver {
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
         let (at, task, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
+        // The op of a stopped attempt was cancelled already.
+        if matches!(self.progress.states[at], State::Ended(..)) {
+            return Vec::new();
+        }
         let Kind::Task(spec) = &node.op.kind else {
             return Vec::new();
         };
@@ -645,6 +652,17 @@ impl WirDriver {
     /// Ends the op instances that an adapter ended; the tasks it asks for, under their op.
     fn take_changes(&mut self, changes: Changes) -> Vec<Task> {
         let mut tasks = Vec::with_capacity(changes.tasks.len());
+        let ended = |progress: &Progress, call: adapter::CallId| {
+            matches!(progress.states[call.0], State::Ended(..))
+        };
+        let changes = Changes {
+            tasks: (changes.tasks.into_iter())
+                .filter(|(call, _)| !ended(&self.progress, *call))
+                .collect(),
+            ended: (changes.ended.into_iter())
+                .filter(|(call, _)| !ended(&self.progress, *call))
+                .collect(),
+        };
         for (call, mut task) in changes.tasks {
             let prefixed = self.dialects.prefixed(task.id);
             mark(&mut task, self.progress.node(call.0), prefixed);
@@ -664,7 +682,11 @@ impl WirDriver {
                         }
                     }
                 }
-                Ending::Skipped => self.progress.end(at, Status::Skipped, Map::new(), None),
+                Ending::Skipped => {
+                    let empty = node.op.outputs.iter().map(|port| port.name.clone());
+                    let empty = empty.collect();
+                    (self.progress).end_with(at, Status::Skipped, Map::new(), empty);
+                }
                 Ending::Ignored(_) => {
                     let empty = node.op.outputs.iter().map(|port| port.name.clone());
                     let empty = empty.collect();
@@ -837,6 +859,15 @@ impl Driver for WirDriver {
             .flat_map(|(_, child)| child.cancellations())
             .collect();
         tasks.extend(self.dialects.cancellations());
+        // The tasks of ops that a failed process cancelled stop too.
+        let cancelled =
+            |at: usize| matches!(self.progress.states[at], State::Ended(Status::Cancelled, _));
+        let ops = (self.tasks.iter()).map(|(id, (at, ..))| (*id, *at));
+        for (id, at) in ops.chain(self.dialects.tasks()) {
+            if cancelled(at) && self.stopping.insert(id) {
+                tasks.push(id);
+            }
+        }
         tasks
     }
 
@@ -882,6 +913,9 @@ impl Driver for WirDriver {
                 .push(format!("op {path}: its rounds never ended"));
         }
         for at in self.dialects.open_calls() {
+            if matches!(self.progress.states[at], State::Ended(..)) {
+                continue;
+            }
             let path = self.progress.node(at).path.clone();
             self.progress.end(at, Status::Cancelled, Map::new(), None);
             let failures = &mut self.progress.failures;

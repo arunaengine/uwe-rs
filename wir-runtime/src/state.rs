@@ -193,6 +193,20 @@ impl Progress {
         reasons.join("; ")
     }
 
+    /// Cancels a node and every node below it that has not ended, without failing the run.
+    pub fn cancel(&mut self, at: usize) {
+        for node in 0..self.plan.nodes.len() {
+            let mut above = Some(node);
+            while above.is_some_and(|above| above != at) {
+                above = above.and_then(|above| self.node(above).parent);
+            }
+            if above.is_some() && !matches!(self.states[node], State::Ended(..)) {
+                self.states[node] = State::Ended(Status::Cancelled, Map::new());
+                self.close_streams(node, Status::Cancelled, None);
+            }
+        }
+    }
+
     /// Whether an output of an ended node closed empty.
     pub fn closed_empty(&self, at: usize, port: &str) -> bool {
         self.empty.contains(&(at, port.to_owned()))

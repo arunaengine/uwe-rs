@@ -444,6 +444,7 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Filter(filter) => filter.body.graph().into_iter().collect(),
         Kind::Transform(transform) => transform.body.graph().into_iter().collect(),
         Kind::FlatMap(flat) => flat.body.iter().filter_map(Body::graph).collect(),
+        Kind::Merge(merge) => merge.body.iter().filter_map(Body::graph).collect(),
         Kind::Branch(branch) => vec![&branch.body],
         Kind::Loop(body) => vec![&body.body],
         _ => Vec::new(),

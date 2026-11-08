@@ -9,7 +9,7 @@ use crate::closure::Body;
 use crate::document::Port;
 use crate::flow::Flow;
 use crate::op::Op;
-use crate::reserved::{Depth, Emit, FlatMap, NullRule, Transform};
+use crate::reserved::{Depth, Emit, FlatMap, Merge, NullRule, Transform};
 use crate::types::{Type, resolve};
 
 impl<'d> Checker<'d> {
@@ -173,5 +173,73 @@ fn flow_name(flow: Flow) -> &'static str {
     match flow {
         Flow::Value => "value",
         Flow::Stream => "stream",
+    }
+}
+
+impl<'d> Checker<'d> {
+    /// Two or more stream inputs, and one stream output `out` that accepts each of them.
+    pub(super) fn streams_of(&mut self, at: &str, op: &Op, what: &str) {
+        if op.inputs.len() < 2 || op.inputs.iter().any(|port| port.flow.is_value()) {
+            self.report(
+                at,
+                Problem::Shape(what.into(), "two or more stream inputs".into()),
+            );
+        }
+        let Some(out) = self.single_out(at, op, what) else {
+            return;
+        };
+        if out.flow.is_value() {
+            self.report(at, Problem::Shape(what.into(), "a stream output".into()));
+        }
+        for input in &op.inputs {
+            self.gives(at, out, &input.r#type);
+        }
+    }
+
+    /// Takes rounds: a stream output when the first input is a stream, else a value; the
+    /// body sees the inputs by name.
+    pub(super) fn merge_rounds(&mut self, at: &str, op: &Op, merge: &Merge) {
+        let Some(out) = self.single_out(at, op, "a merge") else {
+            return;
+        };
+        let Some(first) = op.inputs.first() else {
+            self.report(at, Problem::Shape("a merge".into(), "an input".into()));
+            return;
+        };
+        if out.flow != first.flow {
+            let why = format!("a {} output, as its first input", flow_name(first.flow));
+            self.report(at, Problem::Shape("a merge".into(), why));
+        }
+        if let Some(body) = &merge.body {
+            self.body(at, op, body, (Arity::Ports, &[]), None);
+        }
+    }
+
+    /// Two or more streams, and a stream of tuples of their items, which take null where
+    /// a `remainder` pads them.
+    pub(super) fn zip(&mut self, at: &str, op: &Op, remainder: bool) {
+        self.streams_of_tuples(at, op);
+        let Some(out) = op.outputs.first() else {
+            return;
+        };
+        let items = op.inputs.iter().map(|port| match remainder {
+            true => Type::Optional(Box::new(port.r#type.clone())),
+            false => port.r#type.clone(),
+        });
+        self.gives(at, out, &Type::Tuple(items.collect()));
+    }
+
+    fn streams_of_tuples(&mut self, at: &str, op: &Op) {
+        if op.inputs.len() < 2 || op.inputs.iter().any(|port| port.flow.is_value()) {
+            self.report(
+                at,
+                Problem::Shape("a zip".into(), "two or more stream inputs".into()),
+            );
+        }
+        if let Some(out) = self.single_out(at, op, "a zip")
+            && out.flow.is_value()
+        {
+            self.report(at, Problem::Shape("a zip".into(), "a stream output".into()));
+        }
     }
 }

@@ -55,6 +55,8 @@ pub enum Kind {
     Collect(reserved::Collect),
     Filter(reserved::Filter),
     Flatten(reserved::Flatten),
+    Mix(reserved::Mix),
+    Concat(reserved::Concat),
     Merge(reserved::Merge),
     Zip(reserved::Zip),
     Cross(reserved::Cross),

@@ -90,13 +90,36 @@ impl Depth {
     }
 }
 
-/// Gives the array of its input values, as the README defines for values. Open on streams:
-/// completion order against fair order.
+/// Gives each available item of its streams in arrival order; each stream keeps its order.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Merge {}
+pub struct Mix {}
 
-/// Pairs items by position. Open: unequal lengths; `remainder` keeps unpaired items.
+/// Gives all items of its first stream, then of the next, in input order.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Concat {}
+
+/// Gives the array of its input values, or in round mode one result per round: an item of
+/// every stream with every value, through the optional body.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Merge {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub rounds: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+}
+
+impl Merge {
+    /// Whether the op takes rounds: it has a stream port or sets `rounds`.
+    pub fn takes_rounds(&self, streams: bool) -> bool {
+        self.rounds || streams
+    }
+}
+
+/// Pairs items by position into tuples; with `remainder` up to the longest input, padded
+/// with null.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Zip {

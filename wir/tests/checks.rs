@@ -293,3 +293,87 @@ fn transform_shapes() {
         "{found:?}"
     );
 }
+
+/// A graph `main` with one op `op` of `kind`, each input fed by a graph input of its name.
+fn many(kind: Json, inputs: Json, out: Json) -> Json {
+    let names: Vec<String> = (inputs.as_array().unwrap().iter())
+        .map(|port| port["name"].as_str().unwrap().to_owned())
+        .collect();
+    let mut edges: Vec<Json> = (names.iter())
+        .map(|name| edge((None, name), (Some("op"), name)))
+        .collect();
+    edges.push(edge((Some("op"), "out"), (None, "result")));
+    let mut output = out.clone();
+    output["name"] = json!("result");
+    let op = json!({"path": "op", "kind": kind, "inputs": inputs, "outputs": [out]});
+    let main =
+        json!({"name": "main", "inputs": inputs, "outputs": [output], "ops": [op], "edges": edges});
+    json!({"wir_version": wir::VERSION, "graphs": [main], "entry": "main"})
+}
+
+#[test]
+fn combination_shapes() {
+    let two = json!([
+        typed("a", json!("int"), "stream"),
+        typed("b", json!("int"), "stream")
+    ]);
+    let out = typed("out", json!("int"), "stream");
+    assert_eq!(
+        problems(&many(json!({"mix": {}}), two.clone(), out.clone())),
+        Vec::<String>::new()
+    );
+    let one = json!([typed("a", json!("int"), "stream")]);
+    reports(
+        &many(json!({"concat": {}}), one, out.clone()),
+        "main/op: a concat needs two or more stream inputs",
+    );
+    let mixed = json!([
+        typed("a", json!("int"), "stream"),
+        typed("b", json!("string"), "stream")
+    ]);
+    reports(
+        &many(json!({"mix": {}}), mixed, out.clone()),
+        "main/op: output out gets \"string\" but accepts \"int\"",
+    );
+    let pairs = typed("out", json!({"tuple": ["int", "int"]}), "stream");
+    assert_eq!(
+        problems(&many(json!({"zip": {}}), two.clone(), pairs.clone())),
+        Vec::<String>::new()
+    );
+    let found = problems(&many(
+        json!({"zip": {"remainder": true}}),
+        two.clone(),
+        pairs,
+    ));
+    assert!(
+        found.iter().any(|problem| problem.contains("accepts")),
+        "padding needs optional items: {found:?}"
+    );
+    let padded = typed(
+        "out",
+        json!({"tuple": [{"optional": "int"}, {"optional": "int"}]}),
+        "stream",
+    );
+    assert_eq!(
+        problems(&many(
+            json!({"zip": {"remainder": true}}),
+            two.clone(),
+            padded
+        )),
+        Vec::<String>::new()
+    );
+    let rounds = typed("out", json!("dynamic"), "stream");
+    assert_eq!(
+        problems(&many(json!({"merge": {}}), two.clone(), rounds)),
+        Vec::<String>::new()
+    );
+    let first_value = json!([
+        typed("a", json!("int"), "value"),
+        typed("b", json!("int"), "stream")
+    ]);
+    let value_out = typed("out", json!("dynamic"), "stream");
+    reports(
+        &many(json!({"merge": {}}), first_value, value_out),
+        "main/op: a merge needs a value output, as its first input",
+    );
+}

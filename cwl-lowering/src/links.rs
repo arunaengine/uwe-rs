@@ -59,7 +59,7 @@ fn merged(path: &str, sources: &[(Endpoint, Type)], mode: LinkMerge) -> (Link, T
     let same = sources.iter().all(|(_, r#type)| Some(r#type) == first);
     let items = first.filter(|_| same).cloned().unwrap_or(Type::Dynamic);
     let at = format!("{path}.merge");
-    let mut op = blank(&at, Kind::Merge(Merge {}), None);
+    let mut op = blank(&at, Kind::Merge(Merge::default()), None);
     let mut link = start(end(Some(&at), "out"));
     for (index, (from, r#type)) in sources.iter().enumerate() {
         op.inputs.push(port(&index.to_string(), r#type.clone()));

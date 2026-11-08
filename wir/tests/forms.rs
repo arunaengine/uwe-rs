@@ -140,3 +140,19 @@ fn transform_forms() {
     let stored = &written(&document)["graphs"][0]["ops"][0]["kind"]["transform"];
     assert_eq!(*stored, json!({"body": "double"}));
 }
+
+#[test]
+fn combination_forms() {
+    let good = [
+        json!({"mix": {}}),
+        json!({"concat": {}}),
+        json!({"merge": {}}),
+        json!({"merge": {"rounds": true, "body": "pair"}}),
+        json!({"zip": {"remainder": true}}),
+    ];
+    let bad = [
+        json!({"mix": {"order": "fair"}}),
+        json!({"merge": {"rounds": 1}}),
+    ];
+    kinds_round_trip(&good, &bad);
+}

@@ -335,7 +335,13 @@
             "drop_null": { "type": "boolean" }
           }
         },
-        "merge": { "$ref": "#/$defs/empty" },
+        "mix": { "$ref": "#/$defs/empty" },
+        "concat": { "$ref": "#/$defs/empty" },
+        "merge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "rounds": { "type": "boolean" }, "body": { "$ref": "#/$defs/callback" } }
+        },
         "zip": {
           "type": "object",
           "additionalProperties": false,

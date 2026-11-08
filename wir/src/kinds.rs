@@ -33,7 +33,13 @@ impl<'d> Checker<'d> {
             Kind::FlatMap(flat) => self.flat_map(at, op, flat),
             Kind::Branch(branch) => self.branch(at, op, branch),
             Kind::Select(select) => self.select(at, op, select.rule),
+            Kind::Merge(merge) if merge.takes_rounds(streams(op)) => {
+                self.merge_rounds(at, op, merge)
+            }
             Kind::Merge(_) => self.merge(at, op),
+            Kind::Mix(_) => self.streams_of(at, op, "a mix"),
+            Kind::Concat(_) => self.streams_of(at, op, "a concat"),
+            Kind::Zip(zip) => self.zip(at, op, zip.remainder),
             Kind::Flatten(flatten) if streams(op) => self.flatten_stream(at, op, flatten.depth),
             Kind::Flatten(_) => self.flatten(at, op),
             Kind::Dynamic(dynamic) => self.inputs(at, op, [&dynamic.plan]),
@@ -251,11 +257,8 @@ impl<'d> Checker<'d> {
         self.gives(at, output, &made);
     }
 
-    /// The output is an array whose items accept every input; streams stay reserved.
+    /// The output is an array whose items accept every input.
     fn merge(&mut self, at: &str, op: &Op) {
-        if streams(op) {
-            return;
-        }
         if op.inputs.is_empty() {
             self.report(at, Problem::Empty("the inputs of a merge".into()));
         }

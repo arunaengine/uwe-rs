@@ -4,7 +4,9 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use cwl_parser::model::{Expression, ScatterMethod, Step, short_name};
-use wir::{ArrayType, Branch, Edge, Expr, Flow, Graph, Kind, Map, Op, Port, Scatter, Type};
+use wir::{
+    ArrayType, Branch, Edge, Expr, ExprLanguage, Flow, Graph, Kind, Map, Op, Port, Scatter, Type,
+};
 
 use crate::workflow::end;
 use crate::{Lowerer, Scope, blank};
@@ -111,9 +113,11 @@ impl Lowerer {
         let mut condition = blank(
             &test,
             Kind::Expr(Expr {
-                language: "js".into(),
+                language: ExprLanguage::Js,
                 code: when.text.clone(),
                 library,
+                scope: None,
+                captures: Default::default(),
             }),
             op.origin.clone(),
         );
@@ -258,9 +262,11 @@ fn values(step: &Step, op: &Op, path: &str, library: &[String]) -> Result<Group,
         }
         let at = format!("{path}.{name}");
         let kind = Kind::Expr(Expr {
-            language: "js".into(),
+            language: ExprLanguage::Js,
             code: code.text.clone(),
             library: library.to_vec(),
+            scope: None,
+            captures: Default::default(),
         });
         let mut expr = blank(&at, kind, op.origin.clone());
         expr.inputs = (step.inputs.iter())
@@ -309,9 +315,11 @@ pub(crate) fn computed(mut task: Op, values: &[(String, Expression)], library: &
         let input = format!("{name}.{VALUE}");
         let at = format!("{}.{input}", task.path);
         let kind = Kind::Expr(Expr {
-            language: "js".into(),
+            language: ExprLanguage::Js,
             code: code.text.clone(),
             library: library.to_vec(),
+            scope: None,
+            captures: Default::default(),
         });
         let mut expr = blank(&at, kind, task.origin.clone());
         expr.inputs = task.inputs.clone();

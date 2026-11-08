@@ -235,6 +235,7 @@ impl Lowerer {
             effects: Vec::new(),
             attributes: Default::default(),
             origin,
+            values: Default::default(),
         })
     }
 
@@ -328,6 +329,7 @@ fn blank(path: &str, kind: Kind, origin: Option<Origin>) -> Op {
         effects: Vec::new(),
         attributes: Default::default(),
         origin,
+        values: Default::default(),
     }
 }
 

@@ -194,6 +194,7 @@
         "after": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
         "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
         "attributes": { "$ref": "#/$defs/attributes" },
+        "values": { "$ref": "#/$defs/value_rules" },
         "origin": {
           "type": "object",
           "additionalProperties": false,
@@ -281,9 +282,11 @@
           "additionalProperties": false,
           "required": ["language", "code"],
           "properties": {
-            "language": { "type": "string" },
+            "language": { "$ref": "#/$defs/expr_language" },
             "code": { "type": "string" },
-            "library": { "type": "array", "items": { "type": "string" } }
+            "library": { "$ref": "#/$defs/texts" },
+            "scope": { "$ref": "#/$defs/scope" },
+            "captures": { "$ref": "#/$defs/captures" }
           }
         },
         "map": {
@@ -374,6 +377,52 @@
       }
     },
     "empty": { "type": "object", "additionalProperties": false },
+    "texts": { "type": "array", "items": { "type": "string" } },
+    "expr_language": { "enum": ["js", "javascript", "groovy", "python", "wdl"] },
+    "value_rules": { "enum": ["wir", "groovy", "python", "wdl", "javascript"] },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "start", "end"],
+      "properties": {
+        "source": { "$ref": "#/$defs/name" },
+        "start": { "$ref": "#/$defs/count" },
+        "end": { "$ref": "#/$defs/count" }
+      }
+    },
+    "captures": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["input"],
+            "properties": { "input": { "$ref": "#/$defs/name" } }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": { "value": true }
+          }
+        ]
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "code"],
+      "properties": {
+        "language": { "$ref": "#/$defs/expr_language" },
+        "code": { "type": "string" },
+        "parameters": { "$ref": "#/$defs/texts" },
+        "library": { "$ref": "#/$defs/texts" },
+        "scope": { "$ref": "#/$defs/scope" },
+        "captures": { "$ref": "#/$defs/captures" }
+      }
+    },
+    "callback": { "oneOf": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/closure" }] },
     "body": {
       "type": "object",
       "additionalProperties": false,

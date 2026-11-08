@@ -381,6 +381,16 @@ fn compiled_targets_match() {
     assert_eq!(compared(snakefile, &[]).shown, "same: 3 tasks");
 }
 
+/// A workflow with a checkpoint runs as a region that the Snakemake planner plans again
+/// once the checkpoint ended, as natively.
+#[test]
+fn checkpoints_match() {
+    let snakefile = "import os\n\nrule all:\n    input: \"aggregated.txt\"\n\ncheckpoint split:\n    output: directory(\"parts\")\n    shell: \"mkdir -p {output}\"\n\nrule process:\n    input: \"parts/{n}.txt\"\n    output: \"processed/{n}.txt\"\n    shell: \"cp {input} {output}\"\n\ndef parts(wildcards):\n    folder = checkpoints.split.get().output[0]\n    names = glob_wildcards(os.path.join(folder, \"{n}.txt\")).n\n    return expand(\"processed/{n}.txt\", n=names)\n\nrule aggregate:\n    input: parts\n    output: \"aggregated.txt\"\n    shell: \"cat {input} > {output}\"\n";
+    let compared = compared(snakefile, &[]);
+    assert!(compared.full, "{}", compared.shown);
+    assert!(compared.same, "{}", compared.shown);
+}
+
 /// A `cwl:` job runs the tasks of its CWL run, as natively.
 #[test]
 fn cwl_jobs_match() {

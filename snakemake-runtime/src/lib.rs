@@ -49,7 +49,7 @@ mod workflow;
 pub use driver::{
     Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer, RunSettings,
     Session, Settings, SnakemakeDriver, driver, driver_with, driver_with_options, find_snakefile,
-    spawn_driver,
+    spawn_driver, WAITING,
 };
 pub use gitfile::{Checkout, GitClient};
 pub use locks::release_locks;

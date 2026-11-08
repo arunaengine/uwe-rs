@@ -5,6 +5,7 @@
 
 mod jobs;
 mod launch;
+mod region;
 
 use std::path::Path;
 
@@ -17,6 +18,7 @@ use workflow_graph::Launch;
 pub use launch::{
     group_keys, job_key, job_launch, place_values, plan_launch, plans_job, rule_values,
 };
+pub use region::region_plan;
 
 /// The id of the source of the Snakefile in a compiled document.
 pub const SOURCE: &str = "snakefile";
@@ -87,7 +89,11 @@ pub fn compile(
         entry: (setting.entry.clone()).or_else(|| jobs.iter().find_map(|job| job.target.clone())),
         ..setting
     };
-    let graph = jobs::graph(&jobs, &setting, launch, &targets);
+    let checkpoint = jobs.iter().find(|job| job.checkpoint);
+    let graph = match checkpoint {
+        Some(job) => region(&setting, launch, &job.key.rule)?,
+        None => jobs::graph(&jobs, &setting, launch, &targets),
+    };
     let document = json!({
         "wir_version": wir::VERSION,
         "sources": sources,
@@ -129,15 +135,41 @@ fn unheld(launch: &Launch) -> Vec<&'static str> {
         .collect()
 }
 
-/// Why a job keeps the workflow native: checkpoints need a dynamic region, and jobs that run
-/// together in one task have no form in wir yet.
+/// Why a job keeps the workflow native, like a group of several images; a job that waits for
+/// a checkpoint runs in a region.
 fn kept_job(job: &PlannedJob) -> Option<String> {
     let rule = &job.key.rule;
-    if job.checkpoint {
-        return Some(format!("rule {rule} is a checkpoint"));
-    }
-    let why = job.native.as_ref()?;
+    let why = job
+        .native
+        .as_ref()
+        .filter(|why| *why != snakemake_runtime::WAITING)?;
     Some(format!("a job of rule {rule}: {why}"))
+}
+
+/// The entry graph of a workflow with checkpoints: one dynamic region that the Snakemake
+/// planner plans again after each checkpoint, as a native run does.
+fn region(setting: &Setting, launch: &Launch, checkpoint: &str) -> Result<Json, String> {
+    let held = (unheld(launch).into_iter()).filter(|unheld| *unheld != "several targets");
+    let held: Vec<&str> = held.collect();
+    if !held.is_empty() || setting.values.is_some() {
+        let held = held.join(", ");
+        return Err(format!(
+            "rule {checkpoint} is a checkpoint, whose region cannot hold {held}"
+        ));
+    }
+    let targets = match launch.targets.is_empty() {
+        true => setting.entry.iter().cloned().collect(),
+        false => launch.targets.clone(),
+    };
+    let mut planner = json!({"source": SOURCE, "targets": targets});
+    if !setting.profiles.is_empty() {
+        planner["profiles"] = json!(setting.profiles);
+    }
+    if !setting.configs.is_empty() {
+        planner["configs"] = json!(setting.configs);
+    }
+    let kind = json!({"dynamic": {"planner": {"snakemake": planner}}});
+    Ok(json!({"name": "main", "ops": [{"path": "snakemake", "kind": kind}]}))
 }
 
 /// The whole workflow as one native Snakemake op; it fails when the launch has settings

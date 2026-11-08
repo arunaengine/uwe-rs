@@ -32,7 +32,9 @@ use crate::workflow::{Hook, State};
 mod adapter;
 
 pub(crate) use adapter::JobCall;
-pub use adapter::{Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
+pub use adapter::{
+    Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer, WAITING,
+};
 
 /// The Snakefile of a workflow folder, as Snakemake looks for it.
 pub fn find_snakefile(folder: &Path) -> Option<PathBuf> {
@@ -3323,7 +3325,8 @@ pub fn spawn_driver(
                     request @ (Request::Jobs(_)
                     | Request::Prepare(_)
                     | Request::Take(_)
-                    | Request::Targets) => {
+                    | Request::Targets
+                    | Request::Replan) => {
                         channel
                             .planning
                             .set(matches!(request, Request::Jobs(false)));

@@ -28,6 +28,9 @@ pub struct JobKey {
 /// input files as wir values by their selectors.
 pub(crate) type JobCall = (JobKey, Vec<JobKey>, Vec<(String, Json)>);
 
+/// Why a planned job cannot run yet: an input function of it reads the files of a checkpoint.
+pub const WAITING: &str = "it waits for a checkpoint";
+
 /// A planned job, in the order a native run asks for the tasks of jobs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlannedJob {
@@ -111,6 +114,8 @@ pub enum Answer {
     /// The files of the targets by output name, as a finished native run names them, in
     /// the working folder.
     Targets(Json),
+    /// The jobs of a new plan after a checkpoint ended, or `None` without one.
+    Replanned(Option<Vec<PlannedJob>>),
 }
 
 pub(crate) type Answers = Arc<Mutex<Option<Answer>>>;
@@ -132,6 +137,12 @@ impl SnakemakeDriver {
             Answer::Targets(targets) => Ok(targets),
             _ => Err(DriverError::new("the Snakemake session gave no targets")),
         }
+    }
+
+    /// The jobs of a new plan once a checkpoint was accepted, as a native run plans them
+    /// then; `None` while no checkpoint ended since the last plan.
+    pub fn replan_jobs(&mut self) -> Result<Answer, DriverError> {
+        self.ask_job(Request::Replan)
     }
 
     /// Starts a run whose jobs run one by one through [`SnakemakeDriver::prepare_job`]: plans
@@ -182,6 +193,7 @@ impl Session {
     pub(crate) fn answer(&mut self, request: Request, answers: &Answers) -> Reply {
         let answer = match request {
             Request::Jobs(start) => Answer::Jobs(self.planned_jobs(start)?),
+            Request::Replan => Answer::Replanned(self.replanned_jobs()?),
             Request::Prepare(request) => {
                 let (key, group, staged) = *request;
                 Answer::Prepared(self.prepare_key(&key, &group, &staged)?)
@@ -201,6 +213,22 @@ impl Session {
         if start {
             self.begin_run()?;
         }
+        self.listed_jobs(start)
+    }
+
+    /// The jobs of a new plan after an accepted checkpoint, as a native run plans again then;
+    /// `None` while no checkpoint ended since the last plan.
+    fn replanned_jobs(&mut self) -> Result<Option<Vec<PlannedJob>>, DriverError> {
+        if !std::mem::replace(&mut self.replan, false) {
+            return Ok(None);
+        }
+        self.plan()?;
+        self.take_lock()?;
+        self.listed_jobs(true).map(Some)
+    }
+
+    /// The planned jobs, each job alone or with the jobs of its task.
+    fn listed_jobs(&mut self, start: bool) -> Result<Vec<PlannedJob>, DriverError> {
         let planner = (self.planner.as_ref())
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         // Each planned job with the jobs of its task, and where each job and its files are.
@@ -291,7 +319,7 @@ impl Session {
                 members.iter().find_map(|member| {
                     let entry = &planner.jobs[*member];
                     if entry.incomplete {
-                        Some("it waits for a checkpoint".to_owned())
+                        Some(WAITING.to_owned())
                     } else if members.len() == 1
                         && !crate::services::service_files(entry).is_empty()
                     {

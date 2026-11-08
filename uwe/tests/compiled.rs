@@ -50,15 +50,18 @@ fn prints_compiled_snakefiles() {
 
 #[test]
 fn names_native_parts() {
-    let snakefile = "rule all:\n    input: \"b.txt\"\n\ncheckpoint a:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let snakefile = "storage:\n    provider=\"xrootd\"\n\nrule all:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n";
     let (code, printed, errors) = lower(snakefile);
     assert_eq!(code, 0, "{errors}");
-    let expected = "uwe: op snakemake stays a native Snakemake op: rule a is a checkpoint\n";
-    assert_eq!(errors, expected);
+    let expected = "uwe: op snakemake stays a native Snakemake op: Snakefile:1: Not supported yet:";
+    assert!(errors.starts_with(expected), "{errors}");
     let document: Json = serde_json::from_str(&printed).expect("prints JSON");
     let native = &document["graphs"][0]["ops"][0]["kind"]["native"];
     assert_eq!(native["language"], "snakemake");
 }
+
+/// A group of jobs in two images, which keeps a workflow one native op.
+const IMAGES: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    input: \"in.txt\"\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"cp {input} {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
 
 const WORD: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
 
@@ -121,12 +124,11 @@ fn takes_config_inputs() {
 /// A Snakefile that stays one native op runs in the launch folder, where its inputs are.
 #[test]
 fn starts_in_place() {
-    let snakefile = "rule all:\n    input: \"c.txt\"\n\ncheckpoint c:\n    input: \"in.txt\"\n    output: \"c.txt\"\n    shell: \"cp {input} {output}\"\n";
-    let (folder, graph) = graph_lowered(snakefile, &[("in.txt", "raw\n")], &[]);
+    let (folder, graph) = graph_lowered(IMAGES, &[("in.txt", "raw\n")], &[]);
     let nodes = graph["nodes"].as_array().expect("nodes");
     let copy = (nodes.iter())
-        .find(|node| node["task"]["step"] == "c")
-        .expect("the checkpoint task");
+        .find(|node| node["task"]["step"] == "a")
+        .expect("the task of rule a");
     let source = copy["task"]["inputs"][0]["source"]
         .as_str()
         .unwrap_or_default();

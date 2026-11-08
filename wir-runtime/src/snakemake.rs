@@ -10,10 +10,13 @@ use serde_json::Value as Json;
 use snakemake_runtime::{
     Answer, JobResult, PlannedJob, Prepared, RunSettings, Settings, SnakemakeDriver,
 };
-use wir::{RuleTask, TaskBuilder};
+use wir::reserved::{Identity, PlanUpdate};
+use wir::{RuleTask, Status, TaskBuilder};
 use workflow_graph::{Delivery, Driver, DriverError, ExecuteError, Launch, Outcome, Task, TaskId};
 
-use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
+use crate::adapter::{
+    Adapters, CallId, Changes, Ending, Opening, RegionCall, TaskAdapter, TaskCall,
+};
 use crate::child::Block;
 
 /// What the drivers of Snakemake blocks use, as a Snakemake run alone does.
@@ -75,6 +78,11 @@ struct Jobs {
     /// The call of each job task, and the output port of each output selector of a call.
     owners: HashMap<TaskId, CallId>,
     ports: HashMap<CallId, HashMap<String, String>>,
+    /// The job of the source context, which a region plans with, and its last revision.
+    rule: RuleTask,
+    revision: Option<u64>,
+    /// Whether the run is simulated, which delivers no files.
+    simulated: bool,
 }
 
 impl Jobs {
@@ -118,7 +126,32 @@ impl Jobs {
             ready: Vec::new(),
             owners: HashMap::new(),
             ports: HashMap::new(),
+            rule: rule.clone(),
+            revision: None,
+            simulated: opening.launch.simulated,
         })
+    }
+
+    /// The jobs of the plan, planned by starting the run of the jobs the first time.
+    fn started_jobs(&mut self) -> Result<Vec<PlannedJob>, DriverError> {
+        if self.planned.is_none() {
+            match self.driver.start_jobs()? {
+                Answer::Jobs(jobs) => self.planned = Some(jobs),
+                // A region plans when it starts, which takes no tasks of workflow code.
+                _ => {
+                    let why = "workflow code runs commands while a checkpoint region is planned";
+                    return Err(DriverError::unsupported(why));
+                }
+            }
+        }
+        Ok(self.planned.clone().unwrap_or_default())
+    }
+
+    /// The next plan update of a region with the jobs `jobs`.
+    fn update(&mut self, jobs: &[PlannedJob]) -> Result<PlanUpdate, DriverError> {
+        let revision = self.revision.map_or(0, |revision| revision + 1);
+        self.revision = Some(revision);
+        snakemake_compiler::region_plan(jobs, &self.rule, revision).map_err(DriverError::new)
     }
 
     /// Runs the steps that wait while no command holds them up.
@@ -161,7 +194,7 @@ impl Jobs {
                     .extend(commands.into_iter().map(|task| (call, task)));
             }
             Answer::Jobs(jobs) => self.planned = Some(jobs),
-            Answer::Targets(_) => {}
+            Answer::Targets(_) | Answer::Replanned(_) => {}
             Answer::Prepared(Prepared::Run(task)) | Answer::Taken(JobResult::Retry(task)) => {
                 self.owners.insert(task.id, call);
                 self.ready.push((call, *task));
@@ -230,8 +263,13 @@ impl TaskAdapter for Jobs {
         self.driver.take_acceptance(task, attempt)
     }
 
+    /// The files to deliver; a simulated run delivers none, and so acknowledges none.
     fn deliveries(&mut self) -> Vec<Delivery> {
-        self.driver.deliveries()
+        let deliveries = self.driver.deliveries();
+        match self.simulated {
+            true => Vec::new(),
+            false => deliveries,
+        }
     }
 
     fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
@@ -252,5 +290,31 @@ impl TaskAdapter for Jobs {
     /// Job tasks keep the names of the native run, which name the rule and wildcards.
     fn prefixed(&self) -> bool {
         false
+    }
+
+    /// The jobs that wait for no checkpoint, as the native Planner plans them.
+    fn plan(&mut self, _region: &RegionCall) -> Result<PlanUpdate, DriverError> {
+        let jobs = self.started_jobs()?;
+        self.update(&jobs)
+    }
+
+    /// A new plan once an accepted checkpoint ended, as a native run plans again then.
+    fn replan(
+        &mut self,
+        _region: CallId,
+        _instance: &Identity,
+        _status: Status,
+    ) -> Result<Option<PlanUpdate>, DriverError> {
+        match self.driver.replan_jobs()? {
+            Answer::Replanned(Some(jobs)) => {
+                self.planned = Some(jobs.clone());
+                self.update(&jobs).map(Some)
+            }
+            Answer::Replanned(None) => Ok(None),
+            _ => {
+                let why = "workflow code runs commands while a checkpoint region is planned again";
+                Err(DriverError::unsupported(why))
+            }
+        }
     }
 }

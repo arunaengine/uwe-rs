@@ -37,11 +37,12 @@ fn launch(target: &Path, output: &Path) -> Launch {
 }
 
 /// Runs each task by writing its command into each of its outputs; tasks whose name holds
-/// `fails` exit with 1, and those whose name holds `breaks` cannot run.
+/// `fails` exit with 1, and the first task whose name holds `breaks` cannot run.
 struct Writer {
     folder: PathBuf,
     fails: &'static str,
     breaks: &'static str,
+    broke: bool,
 }
 
 impl Writer {
@@ -50,6 +51,7 @@ impl Writer {
             folder,
             fails: "\0",
             breaks: "\0",
+            broke: false,
         }
     }
 }
@@ -61,7 +63,7 @@ impl Executor for Writer {
 
     fn run(&mut self, attempt: Attempt) -> Running {
         let task = &attempt.task;
-        if task.name.contains(self.breaks) {
+        if task.name.contains(self.breaks) && !std::mem::replace(&mut self.broke, true) {
             let error = workflow_graph::ExecuteError::Machine {
                 task: task.name.clone(),
                 message: "the node went away".into(),
@@ -182,4 +184,29 @@ fn delivers_output_artifacts() {
     let native = files(&root.join("native"));
     assert!(!native.is_empty(), "the native run delivers its artifacts");
     assert_eq!(files(&root.join("wir")), native);
+}
+
+const BREAKS: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: breaks, template: say}
+    - - {name: after, template: say}
+  - name: say
+    retryStrategy: {limit: 1, retryPolicy: Always}
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+
+#[test]
+fn hands_errors_to_argo() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, BREAKS);
+    let breaking = |folder| Writer {
+        breaks: "breaks",
+        ..Writer::new(folder)
+    };
+    let (one, other) = both(root, &file, &[], breaking);
+    one.0.as_ref().unwrap();
+    assert_eq!(other, one);
 }

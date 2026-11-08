@@ -10,7 +10,7 @@ use std::time::Instant;
 use argo_runtime::adapter::{Adapter, CallId as ArgoCall, Form, Instance};
 use serde_json::{Map, Value as Json};
 use wir::{Binding, ExprForm, Port, PortMap, TaskBuilder, TaskRef, TypeDef};
-use workflow_graph::{Delivery, DriverError, Launch, Outcome, Task, TaskId};
+use workflow_graph::{Delivery, DriverError, ExecuteError, Launch, Outcome, Task, TaskId};
 
 use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use crate::child::Block;
@@ -179,6 +179,10 @@ impl TaskAdapter for ArgoTasks {
 
     fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
         self.adapter.take_acceptance(task, attempt)
+    }
+
+    fn handles_error(&self, task: TaskId, error: &ExecuteError) -> bool {
+        self.adapter.handles_error(task, error)
     }
 
     /// A call that waits, like for the backoff of a retry; the deadline of the workflow alone

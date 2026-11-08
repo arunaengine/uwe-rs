@@ -319,6 +319,11 @@ impl Adapter {
         self.settle(call)
     }
 
+    /// Whether an execution failure of a task comes back as an outcome, as in the native run.
+    pub fn handles_error(&self, task: TaskId, error: &workflow_graph::ExecuteError) -> bool {
+        crate::handled_error(Some(&self.run), task, error)
+    }
+
     /// The started call that a task belongs to.
     pub fn call_of(&self, task: TaskId) -> Option<CallId> {
         self.owners.get(&task).map(|call| CallId(*call))

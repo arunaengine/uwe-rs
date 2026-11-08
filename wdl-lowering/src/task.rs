@@ -1,5 +1,5 @@
-//! Lowers a WDL task into a graph: an expr op that builds its command, a task op that runs
-//! the command, and an expr op per output.
+//! Lowers a WDL task into a graph: expr ops that build its command and the paths of its
+//! outputs, a task op that runs the command, and an expr op per output that is a value.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,26 +7,37 @@ use wdl_ast::v1::{NameRefExpr, TaskDefinition};
 use wdl_ast::{AstNode, AstToken};
 use wdl_runtime::document::{Callable, Unit};
 use wdl_runtime::expression::names;
-use wir::{Argument, Expr as Code, Graph, Kind, Op, Type};
+use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 
 use crate::library::{Line, check, ordered, ports};
-use crate::outputs::{Output, outputs};
+use crate::outputs::{Output, Read, listing, outputs};
 use crate::types::{has_files, port};
 use crate::{DEFAULT_IMAGE, Lowerer, blank, edge, end, origin, reads, text};
 
 /// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
-/// `.wdl/stderr`.
-const RUNNER: &str = r#"mkdir -p .wdl
+/// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
+pub(crate) const RUNNER: &str = r#"mkdir -p .wdl
 printf '%s' "$1" > .wdl/command.sh
 bash .wdl/command.sh > .wdl/stdout 2> .wdl/stderr
 status=$?
 cat .wdl/stdout
 cat .wdl/stderr >&2
+tab=$(printf '\t')
+line=0
+printf '%s\n' "$2" | while IFS="$tab" read -r name path; do
+  line=$((line + 1))
+  path=${path%/}
+  if [ -n "$name" ] && [ -e "$path" ]; then
+    folder=.wdl/out/$name/$(printf '%06d' "$line")
+    mkdir -p "$folder" && cp -R "$path" "$folder/"
+  fi
+done
 exit $status
 "#;
 
-/// The input of the task op with the command.
+/// The input of the task op with the command, and the one with the output paths.
 const COMMAND: &str = "command";
+const PATHS: &str = "command.outputs";
 
 impl Lowerer {
     /// The op at `path` that runs a call of a task: a call of its lowered graph, else a native
@@ -110,10 +121,34 @@ impl Lowerer {
         graph
             .ops
             .push(expr(COMMAND, command, library.clone(), Type::String));
+        let placed: Vec<&Output> = (outputs.iter())
+            .filter(|item| matches!(item.read, Read::Placed))
+            .collect();
         task.task.command.push(Argument::Input {
             input: COMMAND.into(),
         });
         let mut ports = vec![port(COMMAND, Type::String)];
+        if placed.is_empty() {
+            task.task.command.push(Argument::Text(String::new()));
+        } else {
+            let mut lines = library.clone();
+            lines.extend(
+                outputs
+                    .iter()
+                    .filter(|item| !matches!(item.read, Read::Glob(_)))
+                    .map(|item| item.decl.clone()),
+            );
+            graph
+                .ops
+                .push(expr(PATHS, listing(&placed), lines, Type::String));
+            task.task.command.push(Argument::Input {
+                input: PATHS.into(),
+            });
+            ports.push(port(PATHS, Type::String));
+            graph
+                .edges
+                .push(edge(end(Some(PATHS), "value"), end(Some(&path), PATHS)));
+        }
         graph
             .edges
             .push(edge(end(Some(COMMAND), "value"), end(Some(&path), COMMAND)));
@@ -123,10 +158,26 @@ impl Lowerer {
             });
             ports.push(port(&input.name, input.r#type.clone()));
         }
+        let mut captured = Vec::new();
+        for output in &outputs {
+            let pattern = match &output.read {
+                Read::Glob(pattern) => pattern.clone(),
+                Read::Placed => format!(".wdl/out/{}/*/*", output.name),
+                Read::Value => continue,
+            };
+            task.task.captures.push(Capture {
+                output: output.name.clone(),
+                from: CaptureRule::Glob(pattern),
+            });
+            captured.push(port(&output.name, output.r#type.clone()));
+        }
         let mut run = blank(&path, Kind::Task(task.task), at.clone());
         run.attributes.resources = task.resources;
-        run.inputs = ports;
-        for output in &outputs {
+        (run.inputs, run.outputs) = (ports, captured);
+        for output in outputs
+            .iter()
+            .filter(|item| matches!(item.read, Read::Value))
+        {
             let at = format!("output.{}", output.name);
             let mut op = expr(
                 &at,
@@ -141,7 +192,7 @@ impl Lowerer {
                 op.inputs.push(port(used, other.r#type.clone()));
                 graph
                     .edges
-                    .push(edge(produced(other), end(Some(&at), used)));
+                    .push(edge(produced(&path, other), end(Some(&at), used)));
             }
             graph.ops.push(op);
         }
@@ -159,7 +210,7 @@ impl Lowerer {
         for output in &outputs {
             graph
                 .edges
-                .push(edge(produced(output), end(None, &output.name)));
+                .push(edge(produced(&path, output), end(None, &output.name)));
         }
         graph.ops.push(run);
         self.graphs.push(graph);
@@ -167,9 +218,12 @@ impl Lowerer {
     }
 }
 
-/// Where an output of the task graph comes from: its own expr op.
-fn produced(output: &Output) -> wir::Endpoint {
-    end(Some(&format!("output.{}", output.name)), "value")
+/// Where an output of the task graph comes from: the task op, or its own expr op.
+fn produced(task: &str, output: &Output) -> wir::Endpoint {
+    match output.read {
+        Read::Value => end(Some(&format!("output.{}", output.name)), "value"),
+        _ => end(Some(task), &output.name),
+    }
 }
 
 /// The task op without its inputs, and the resources it asks for.
@@ -200,4 +254,38 @@ fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
         task,
         resources: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::process::Command;
+
+    use super::RUNNER;
+
+    #[test]
+    fn runner_places_outputs() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let work = folder.path();
+        let command =
+            "mkdir -p d && echo x > d/a.txt && echo y > 'b c.txt' && echo shown && exit 3";
+        let paths = "first\td/a.txt\nlist\tb c.txt\nlist\tmissing.txt\nlist\td/\n";
+        let status = Command::new("bash")
+            .args(["-c", RUNNER, "wdl", command, paths])
+            .current_dir(work)
+            .status()
+            .expect("bash runs");
+        assert_eq!(status.code(), Some(3), "the exit code of the command");
+        let read = |path: &str| std::fs::read_to_string(work.join(path)).ok();
+        assert_eq!(read(".wdl/stdout").as_deref(), Some("shown\n"));
+        assert_eq!(read(".wdl/out/first/000001/a.txt").as_deref(), Some("x\n"));
+        assert_eq!(read(".wdl/out/list/000002/b c.txt").as_deref(), Some("y\n"));
+        assert!(
+            !work.join(".wdl/out/list/000003").exists(),
+            "a missing path is left out"
+        );
+        assert!(
+            work.join(".wdl/out/list/000004/d/a.txt").is_file(),
+            "a folder is copied"
+        );
+    }
 }

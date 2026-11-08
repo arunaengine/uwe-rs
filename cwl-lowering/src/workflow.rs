@@ -158,6 +158,7 @@ impl Lowerer {
                     edges.push(Edge {
                         from: joined.from.clone(),
                         to: end(Some(&op), &input),
+                        read: Default::default(),
                     });
                 }
                 joins.extend(joined.ops);
@@ -176,6 +177,7 @@ impl Lowerer {
             edges.push(Edge {
                 from: joined.from,
                 to: end(None, port),
+                read: Default::default(),
             });
             joins.extend(joined.ops);
             edges.extend(joined.edges);

@@ -6,6 +6,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::closure::{Binding, Closure, ExprLanguage, Scope, ValueRules};
+use crate::control::{Control, StatusGroup};
+use crate::dialect::TaskBuilder;
 use crate::document::{Language, Port};
 use crate::reserved;
 
@@ -25,6 +28,12 @@ pub struct Op {
     /// Control and status dependencies on other ops of the same graph; all must hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub after: Vec<Dependency>,
+    /// A boolean tree of status tests that must hold too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depends: Option<Control>,
+    /// The failures of other ops that this op handles once it succeeds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub handles: Vec<Dependency>,
     /// What the op does besides binding its outputs. An op with effects is a root for pruning.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<Effect>,
@@ -32,6 +41,9 @@ pub struct Op {
     pub attributes: Attributes,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    /// The rules the op compares, orders and adds values by.
+    #[serde(default, skip_serializing_if = "ValueRules::is_wir")]
+    pub values: ValueRules,
 }
 
 /// What an op does, with the fields of its kind. `task`, `call`, `native`, `map`, `expr`,
@@ -39,21 +51,48 @@ pub struct Op {
 /// version; the others are reserved, see [`reserved`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[allow(clippy::large_enum_variant, reason = "a parsed document holds few ops")]
 pub enum Kind {
     Task(Task),
     Call(Call),
     Native(Native),
     Expr(Expr),
     Map(Map),
+    Emit(reserved::Emit),
+    Transform(reserved::Transform),
+    FlatMap(reserved::FlatMap),
     Collect(reserved::Collect),
+    ToList(reserved::ToList),
+    Reduce(reserved::Reduce),
+    First(reserved::First),
+    Last(reserved::Last),
     Filter(reserved::Filter),
     Flatten(reserved::Flatten),
+    Mix(reserved::Mix),
+    Concat(reserved::Concat),
     Merge(reserved::Merge),
     Zip(reserved::Zip),
     Cross(reserved::Cross),
-    Group(reserved::Group),
+    Group(reserved::GroupTuple),
+    GroupTuple(reserved::GroupTuple),
     Join(reserved::Join),
+    Combine(reserved::Combine),
+    Buffer(reserved::Buffer),
+    Window(reserved::Window),
+    Take(reserved::Take),
+    Unique(reserved::Unique),
+    Distinct(reserved::Distinct),
+    Until(reserved::Until),
+    IfEmpty(reserved::IfEmpty),
+    Split(reserved::Split),
+    CollectFile(reserved::CollectFile),
+    View(reserved::View),
+    Observe(reserved::Observe),
+    Route(reserved::Route),
+    MultiMap(reserved::MultiMap),
     Branch(Branch),
+    Process(Process),
+    StatusGroup(StatusGroup),
     Select(reserved::Select),
     Loop(reserved::Loop),
     Dynamic(reserved::Dynamic),
@@ -78,15 +117,17 @@ impl Kind {
     }
 }
 
-/// One container command. It succeeds when its exit code is in `success_codes` and every
-/// non-optional output was captured; otherwise it fails and binds no output.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// One container command. It succeeds when its exit code is in `success_codes`, every
+/// capture worked and `accept` holds; otherwise it fails and binds no output.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Task {
     /// The container image; none runs the command on the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    /// The argument vector, run without a shell, in a fresh working folder, unless `shell`.
+    /// The argument vector, run without a shell, in a fresh working folder, unless `shell`; a
+    /// task with a builder has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub command: Vec<Argument>,
     /// Whether the arguments form one `/bin/sh` command line, each quoted apart from raw text
     /// and input values that are not quoted, like CWL `ShellCommandRequirement`.
@@ -128,6 +169,64 @@ pub struct Task {
     /// What standard input reads: a path, or a task input whose File gives its path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stdin: Option<Content>,
+    /// The language runtime that builds the task, instead of the command form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub builder: Option<TaskBuilder>,
+    /// A check of the outputs of an attempt that must hold for the task to succeed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accept: Option<Closure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<Retry>,
+}
+
+/// When an attempt that is not accepted runs again, and how each attempt changes the task.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Retry {
+    /// More attempts after the first; the `retry` attribute wins when it is set.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub limit: u32,
+    /// Whether to try again after a rejected attempt; true when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_if: Option<Closure>,
+    /// The [`TaskPatch`] of each attempt, the first included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directives: Option<Closure>,
+    #[serde(default, skip_serializing_if = "FailureRule::is_fail")]
+    pub failure: FailureRule,
+}
+
+/// What a task does after its last rejected attempt: fail, or end with empty outputs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureRule {
+    #[default]
+    Fail,
+    Ignore,
+}
+
+impl FailureRule {
+    pub fn is_fail(&self) -> bool {
+        *self == FailureRule::Fail
+    }
+}
+
+/// The changes of one attempt to the base settings of a task; a field left out keeps them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<Vec<Argument>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<Resources>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub success_codes: Option<Vec<i32>>,
 }
 
 /// One entry of the working folder: a value placed at a path.
@@ -205,7 +304,8 @@ impl Argument {
     }
 }
 
-/// How one task output is read.
+/// How one task output is read. An `optional` capture that matches nothing leaves the
+/// output empty, which is not null; `arity` bounds the number of matched paths.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Capture {
@@ -215,6 +315,19 @@ pub struct Capture {
     /// file over 64 KiB fails the task.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub load_contents: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arity: Option<Arity>,
+}
+
+/// The least and the most paths a capture may match.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Arity {
+    pub min: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u64>,
 }
 
 /// Where a captured output comes from.
@@ -231,17 +344,21 @@ pub enum CaptureRule {
     Stderr,
 }
 
-/// A pure CWL expression over the op's inputs, which binds its one output.
-/// Languages other than `js` stay reserved.
+/// A pure expression over the op's inputs, which binds its one output. `js` and `javascript`
+/// are CWL expressions; the other languages use their own evaluator.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Expr {
-    pub language: String,
-    /// Text with `$(...)` parts, or a `${...}` function body, as a CWL expression.
+    pub language: ExprLanguage,
+    /// For CWL, text with `$(...)` parts or a `${...}` function body.
     pub code: String,
     /// Code that runs before it, like CWL `expressionLib`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Scope>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub captures: BTreeMap<String, Binding>,
 }
 
 /// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the
@@ -255,7 +372,8 @@ pub struct Branch {
 
 /// Runs the `body` graph once per round: each round takes items of the array inputs in `over`
 /// and the other inputs as they are. Each output is the array of what the rounds gave, in
-/// round order. `parallelism` and `min_success` stay reserved.
+/// round order. `parallelism` limits the rounds that run at once, and `min_success` lets the
+/// map succeed with failed rounds, which give null.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Map {
@@ -267,6 +385,37 @@ pub struct Map {
     pub parallelism: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_success: Option<u32>,
+}
+
+/// Runs the `body` graph once per round: each base round takes an item of every stream input
+/// and every value input as it is, and each choice of the `each` inputs makes a child round.
+/// With a stream input or an `each` input, every output is a stream of the rounds' values.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Process {
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub each: Vec<String>,
+    #[serde(default, skip_serializing_if = "Emission::is_completion")]
+    pub order: Emission,
+    /// The most child rounds that run at once, retries included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallelism: Option<u32>,
+}
+
+/// The order in which rounds give their outputs: as they end, or in round order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Emission {
+    #[default]
+    Completion,
+    Fair,
+}
+
+impl Emission {
+    pub fn is_completion(&self) -> bool {
+        *self == Emission::Completion
+    }
 }
 
 /// How a `map` makes rounds of several inputs, as CWL `scatterMethod`.
@@ -337,6 +486,8 @@ pub enum Status {
     Skipped,
     /// It did not run because a dependency did not hold.
     Omitted,
+    /// It was stopped.
+    Cancelled,
 }
 
 /// Something an op does that its outputs do not show. Effectful work stays in `task` or
@@ -350,6 +501,12 @@ pub enum Effect {
     External(String),
     /// Outputs may differ between runs with equal inputs.
     Nondeterministic,
+    /// Prints through the print sink of the host.
+    Log,
+    /// Reads the files of its items.
+    ReadFiles,
+    /// Writes files in the file area of the run.
+    WriteFiles,
 }
 
 /// Run settings that never enter a task cache key. A binding file per run may set them by
@@ -411,4 +568,8 @@ impl Attributes {
     pub fn is_empty(&self) -> bool {
         *self == Attributes::default()
     }
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }

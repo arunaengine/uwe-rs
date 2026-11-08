@@ -12,6 +12,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+argo-compiler.workspace = true
 argo-runtime.workspace = true
 conda-environment.workspace = true
 config-file.workspace = true
@@ -42,6 +43,7 @@ reqwest.workspace = true
 rustix = { workspace = true, features = ["fs", "pipe", "rand", "stdio", "termios"] }
 serde.workspace = true
 serde_json.workspace = true
+snakemake-compiler.workspace = true
 snakemake-runtime.workspace = true
 snowflake-executor.workspace = true
 storage.workspace = true
@@ -61,6 +63,7 @@ wr-executor.workspace = true
 slurm-executor.workspace = true
 tes-executor.workspace = true
 tokio = { workspace = true, features = ["signal", "sync"] }
+wdl-lowering.workspace = true
 wdl-runtime.workspace = true
 wir-runtime.workspace = true
 workflow-graph.workspace = true

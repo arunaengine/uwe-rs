@@ -13,13 +13,30 @@ pub enum Flow {
     /// it reads it. A bound null is a value; a producer that fails binds nothing.
     #[default]
     Value,
-    /// Items in the producer's order, then a close. Every reader sees every item; a stream that
-    /// closes with no items is empty, not null. Reserved: no op of this version reads streams.
+    /// Items in the producer's order, then one end: a close, an error or a cancellation.
+    /// Every reader has its own cursor; a stream that closes with no items is empty, not null.
     Stream,
 }
 
 impl Flow {
     pub fn is_value(&self) -> bool {
         *self == Flow::Value
+    }
+}
+
+/// Where the reader of a stream edge starts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Subscription {
+    /// At item zero.
+    #[default]
+    All,
+    /// Right after the last item committed when the reader is installed.
+    Live,
+}
+
+impl Subscription {
+    pub fn is_all(&self) -> bool {
+        *self == Subscription::All
     }
 }

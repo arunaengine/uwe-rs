@@ -222,9 +222,22 @@ fn execute_with(
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();
     let (target, language) = target_and_language(arguments)?;
-    let (target, language) = match arguments.lowered {
-        true => (crate::lower::document(&target, language)?, Language::Wir),
-        false => (target, language),
+    // A lowered run checks its inputs with the schema of the document it was lowered from.
+    let source = arguments
+        .lowered
+        .then(|| (launch(arguments, target.clone()), language));
+    let converted;
+    let (target, language, arguments) = match arguments.lowered {
+        true => {
+            let (path, inputs) = crate::lower::document(&target, language, arguments)?;
+            // A WDL input file becomes one for the entry graph of the lowered document.
+            converted = Arguments {
+                inputs: inputs.or(arguments.inputs.clone()),
+                ..arguments.clone()
+            };
+            (path, Language::Wir, &converted)
+        }
+        false => (target, language, arguments),
     };
     let target = &target;
     let launch = launch(arguments, target.clone());
@@ -352,7 +365,15 @@ fn execute_with(
         )?;
         let inputs = match admission {
             Some(policy) => {
-                let inputs = driver.inputs()?;
+                let inputs = match &source {
+                    Some((launch, language)) => {
+                        let mut source = driver::driver(
+                            *language, launch, &run, quiet, arguments, &setup, &interrupt,
+                        )?;
+                        source.inputs()?
+                    }
+                    None => driver.inputs()?,
+                };
                 let admission = application::validate_json(
                     Description {
                         language,
@@ -366,7 +387,8 @@ fn execute_with(
                 if let Some(hosted) = &hosted {
                     hosted.authorize(&admission)?;
                 }
-                if let Some(inputs) = &admission.inputs {
+                // A wir driver reads the values of a lowered run from its input file.
+                if let Some(inputs) = admission.inputs.as_ref().filter(|_| source.is_none()) {
                     driver.use_inputs(inputs.values.clone())?;
                 }
                 admission.inputs

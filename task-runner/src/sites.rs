@@ -23,6 +23,18 @@ pub struct SiteRule {
 }
 
 impl SiteRule {
+    /// The site of a task: the one it names, which must be a site of the rule, else the
+    /// site near most of its inputs.
+    pub fn choose<'a>(&'a self, task: &'a Task) -> Result<Option<&'a str>, String> {
+        match &task.site {
+            Some(name) if self.sites.iter().any(|site| site.name == *name) => Ok(Some(name)),
+            Some(name) => Err(format!(
+                "the task is placed at {name}, a site this run lacks"
+            )),
+            None => Ok(self.site(task)),
+        }
+    }
+
     /// The site near most of the input files of a task: an input is near the site with the
     /// longest prefix that its address or path starts with. A tie goes to the site named
     /// first. `None` for a task near no site.
@@ -168,6 +180,27 @@ mod tests {
         );
         assert_eq!(rule.site(&task(&["https://example.org/a"])), None);
         assert_eq!(SiteRule::default().site(&task(&["s3://hh/a"])), None);
+    }
+
+    #[test]
+    fn keeps_named_site() {
+        let rule = rule();
+        let mut placed = task(&["s3://hh/a"]);
+        placed.site = Some("heidelberg".into());
+        assert_eq!(rule.choose(&placed), Ok(Some("heidelberg")));
+        placed.site = Some("elsewhere".into());
+        let error = rule.choose(&placed).expect_err("no such site");
+        assert_eq!(
+            error,
+            "the task is placed at elsewhere, a site this run lacks"
+        );
+        let empty = SiteRule::default();
+        assert!(
+            empty.choose(&placed).is_err(),
+            "a run without sites never falls back"
+        );
+        let near = task(&["s3://hh/a"]);
+        assert_eq!(rule.choose(&near), Ok(Some("hamburg")));
     }
 
     /// Remembers the jobs it was given, and fails them.

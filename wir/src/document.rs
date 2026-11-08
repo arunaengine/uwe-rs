@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::flow::Flow;
+use crate::flow::{Flow, Subscription};
 use crate::op::Op;
 use crate::types::{Type, TypeDef};
 
@@ -107,6 +107,9 @@ impl Port {
 pub struct Edge {
     pub from: Endpoint,
     pub to: Endpoint,
+    /// Where the reader of a stream edge starts; only stream edges may read `live`.
+    #[serde(default, skip_serializing_if = "Subscription::is_all")]
+    pub read: Subscription,
 }
 
 /// One end of an edge. Without an op it is a graph port: an input of the graph as a source,

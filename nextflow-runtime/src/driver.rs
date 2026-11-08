@@ -1159,6 +1159,7 @@ pub fn task(
     Ok(Task {
         output_manifest: None,
         run_as: None,
+        site: None,
         // Only a `stdout` output reads the standard output, from its log.
         defer_logs: true,
         id: workflow_graph::TaskId(request.id.0),
@@ -1204,6 +1205,7 @@ fn exec_task(
     Task {
         output_manifest: None,
         run_as: None,
+        site: None,
         defer_logs: false,
         id: workflow_graph::TaskId(request.id.0),
         name: request.name.clone(),

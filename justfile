@@ -338,6 +338,52 @@ cwl-graph-test-workflows-test:
 cwl-job-test-workflows-test:
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
 
+# Extracts the examples of the WDL 1.2.1 specification into `<name>.wdl` files with their
+# inputs, outputs and test config, beside the data files of the WDL 1.1 tests, which they use.
+wdl-spec-tests:
+	#!/usr/bin/env python3
+	import json, os, re, subprocess
+	root = os.environ.get("WDL_SPEC_TESTS") or os.path.expanduser("~/.cache/uwe/test-workflows/wdl-spec")
+	spec = "https://raw.githubusercontent.com/openwdl/wdl/42c106d0b12b4af06d619262a99e94aef028f7fe/SPEC.md"
+	data = "https://raw.githubusercontent.com/openwdl/wdl-tests/082340ad2fc86d18ceaf4bf5bcfaf51ea6067590/spec/wdl-1.1/data"
+	fetch = lambda url: subprocess.run(["curl", "-sfL", "--retry", "3", url], capture_output=True, check=True).stdout
+	os.makedirs(os.path.join(root, "data"), exist_ok=True)
+	for name in ["cities.txt", "comment.txt", "greetings.txt", "hello.txt", "person.json"]:
+	    with open(os.path.join(root, "data", name), "wb") as file:
+	        file.write(fetch(f"{data}/{name}"))
+	text = fetch(spec).decode()
+	pattern = re.compile(r"<details>\s*<summary>\s*Example: (.+?)\s*```wdl(.+?)```\s*</summary>\s*"
+	                     r"(?:<p>\s*(?:Example input:\s*```json(.*?)```)?\s*(?:Example output:\s*```json(.*?)```)?"
+	                     r"\s*(?:Test config:\s*(?:```json(.*?)```)?)?\s*</p>\s*)?</details>$", re.S)
+	count, skipped = 0, []
+	for block in re.findall(r"<details>.*?</details>", text, re.S):
+	    found = pattern.match(block)
+	    if not found:
+	        continue
+	    name, wdl, *parts = found.groups()
+	    try:
+	        parts = [json.loads(part) if part and part.strip() else None for part in parts]
+	    except json.JSONDecodeError:
+	        skipped.append(name)
+	        continue
+	    stem = name.removesuffix(".wdl")
+	    with open(os.path.join(root, name), "w") as file:
+	        file.write(wdl.strip() + "\n")
+	    for suffix, part in zip(["inputs", "outputs", "config"], parts):
+	        if part is not None:
+	            with open(os.path.join(root, f"{stem}.{suffix}.json"), "w") as file:
+	                json.dump(part, file, indent=2)
+	    count += 1
+	if skipped:
+	    print("left out, as their JSON does not parse:", ", ".join(skipped))
+	print(f"{count} examples in {root}")
+
+# Lowers each example of the WDL specification into wir, runs it natively and lowered on the
+# simulator, and compares the counts with the recorded ones; `just wdl-spec-tests` fetches them.
+wdl-conformance-test:
+	WDL_SPEC_TESTS="${WDL_SPEC_TESTS:-$HOME/.cache/uwe/test-workflows/wdl-spec}" \
+	cargo test --release --locked -p wdl-lowering --test conformance -- --ignored
+
 # Fetches the text-only Snakemake test workflows at the commits their test expects.
 snakemake-test-workflows:
 	#!/usr/bin/env bash
@@ -465,6 +511,11 @@ argo-test-workflows:
 # argo-runtime/tests/fixtures/test-workflows/outcomes.txt.
 argo-test-workflows-test:
 	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
+
+# Compiles every Argo test workflow into wir, runs it natively and compiled on the simulator,
+# and compares the counts with the recorded ones; `ARGO_TEST=1` prints each outcome.
+argo-compiler-test:
+	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-compiler --test conformance -- --ignored --nocapture
 
 # Runs Funnel (a GA4GH TES server) from ~/.cache/uwe/tools/funnel in the foreground, at
 # http://localhost:18000, with the config of the TES tests: tasks get a memory limit and no

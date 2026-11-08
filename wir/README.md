@@ -67,13 +67,53 @@ A secondary file pattern is a suffix added to the primary basename; each leading
 
 ## Channel contract
 
-Every port has a flow kind, `value` or `stream`. Both ends of an edge have the same kind; nothing converts between them implicitly.
+Every port has a flow kind, `value` or `stream`. An edge connects ports with the same flow kind. Conversion between flow kinds requires an op.
 
-A `value` port is bound at most once and never changes. Any number of readers read it, each gets the same value, and reading does not use it up. A bound null (an optional with no value) is a value: a reader runs with null. A port whose producer failed stays unbound, which is not null.
+A value channel has one of these states:
 
-A `stream` port carries items in the producer's order and then closes exactly once. Every reader sees every item from the first, in that order, however many readers there are. A stream that closes with no items is empty: it is neither null nor an error. A producer failure ends the stream with that error instead of a close. Items of different streams have no order between them unless an op defines one.
+- waiting;
+- bound to one value;
+- closed empty;
+- failed;
+- cancelled.
 
-No op of this version reads or writes streams; `merge` and `flatten` are defined on values only. The rest of the stream contract belongs to the reserved ops: per-round reads of a process with several stream inputs, values reused in every round, Nextflow `each`, and completion order against fair order in `merge`.
+A bound null is a value. It differs from an empty channel. A bound value never changes and any number of readers may read it. A closed empty value channel has no item. Its consumers end `omitted`, unless an op explicitly handles empty input.
+
+A stream contains an ordered sequence of items followed by exactly one terminal event: close, error, or cancellation. Null is an item when the port type accepts null. Closing without items produces an empty stream.
+
+Each reader has its own cursor. Reading advances only that reader. Detaching a reader does not close the producer or affect other readers.
+
+An edge has a subscription rule:
+
+- `all`, the default: start at item zero;
+- `live`: start immediately after the last item committed when the reader is installed.
+
+The installation position of a live reader is fixed once. Replanning the same edge preserves its cursor. A new edge gets a new reader. A reader installed after termination still receives the terminal event.
+
+All readers of an edge must be installed before its consumer starts. A graph activation installs its streams and readers before starting any op in that activation. Dynamic graph adoption installs its new readers as one operation before starting any newly adopted op.
+
+The runner retains a run-local stream log from item zero. It may spill items to disk. It must not discard unread history needed by an `all` reader added later. It must report storage failure instead of silently dropping items.
+
+Items within a stream follow producer order. Items from different streams have no inherent order. Where an op needs an arrival order, it uses the runner's committed event order. Outputs committed together use output declaration order, then item order, to break ties.
+
+A stream error preserves its already emitted prefix. A consumer observes that prefix before the error. Unless an op defines early completion, the error fails the consumer and ends its outputs with an error. There is no rollback of an emitted prefix.
+
+Cancellation stops new rounds, requests cancellation of work owned by the cancelled region, detaches its readers, and ends its open outputs with cancellation. It never publishes buffered results as successful results.
+
+An op that ends successfully cannot later change an output's terminal event. A graph boundary may forward items before the graph finishes, but it holds a successful close until the graph succeeds. A later graph failure therefore produces an error at that boundary.
+
+Defaults apply only to value inputs. A default replaces null or an absent producer, as described below. It does not replace a closed empty channel. Stream inputs have no defaults and require a producer.
+
+At the entry boundary, a stream input is supplied as a JSON array of items. The runner checks each item against the port's item type and closes the input after the array. An empty array supplies an empty stream. A missing required stream input is an input error.
+
+At the result boundary, a successful stream output is represented as an array of its items. An empty value output is omitted from the result object. Null is included as null. A failed or cancelled output cannot become a successful result.
+
+Replay has two meanings:
+
+- A new reader of the same execution reads committed output events. It does not rerun closures, tasks, file writes, or printing.
+- A resumed run is a new execution. It rebuilds control and stream state and may reuse accepted task outcomes. Fair order and source order remain stable. Completion order may differ between executions.
+
+The stream log is not a replacement for the task cache or resume database. This contract does not promise transparent restoration of an interrupted interpreter continuation.
 
 ## Defined ops
 
@@ -83,7 +123,7 @@ No op of this version reads or writes streams; `merge` and `flatten` are defined
 
 **Defaults.** An input port of an op or a graph may have a `default`, a value that fits its type. When the input is bound to null, or has no producer, it takes the default; any other value stays. So a port with a default also takes null from an edge, and its op or graph always sees a value of its type. An op's defaults apply when it starts, a graph's defaults when it runs: for the entry graph to the inputs of the run, else to the inputs of the `call`, the `branch` body or the round of a `map`, after the defaults of that op. Output ports take no default. A relative `location` of a File or Directory in a default starts from the folder of the document.
 
-**`task`** runs one command. A runner gives it a fresh working folder, makes its input files and folders available, and builds the argument vector from `command`: text stays text, a scalar input becomes its text (`true` or `false` for a bool), a File or Directory becomes its path, an array one argument per item, and null no argument. There is no shell. An input argument may have a `prefix`, an argument before the value, joined to it when `separate` is false; then false and an empty array give no argument, true only the prefix, and an array the prefix once before its items, as in CWL. A `separator` joins the items of an array into one argument. With `shell`, the arguments form one `/bin/sh` command line, like CWL `ShellCommandRequirement`: each is quoted for the shell, apart from `{"raw": text}`, which stays as it is, and the words of an input argument with `quote: false`; without `shell`, raw text is an argument like other text. Then every output is read by its one capture:
+**`task`** runs one command. A runner gives it a fresh working folder, makes its input files and folders available, and builds the argument vector from `command`: text stays text, a scalar input becomes its text (`true` or `false` for a bool), a File or Directory becomes its path, an array one argument per item, and null no argument. There is no shell. The file or folder of the input `p` is staged at `inputs/p/<basename>` in the working folder, an item of an array or a tuple at `inputs/p/<index>/<basename>`, one index per level. An input argument may have a `prefix`, an argument before the value, joined to it when `separate` is false; then false and an empty array give no argument, true only the prefix, and an array the prefix once before its items, as in CWL. A `separator` joins the items of an array into one argument. With `shell`, the arguments form one `/bin/sh` command line, like CWL `ShellCommandRequirement`: each is quoted for the shell, apart from `{"raw": text}`, which stays as it is, and the words of an input argument with `quote: false`; without `shell`, raw text is an argument like other text. Then every output is read by its one capture:
 
 - `{"glob": pattern}`: paths in the working folder that match, sorted by path. One match fills a File or Directory output, all matches fill an array output. No match fills an optional output with null and fails the task otherwise; several matches fail a non-array output; an empty match fails a nonempty array.
 - `{"patterns": input}`: paths that match any pattern that the task input holds, a string or an array of strings, like a glob per pattern, in the order of the patterns; each pattern stays inside the working folder.
@@ -105,9 +145,14 @@ The task succeeds when its exit code is in `success_codes` (only 0 when empty) a
 - `flat_cross`: one round per combination of items, the first `over` input varying slowest.
 - `nested_cross`: the rounds of `flat_cross`, with every output nested one level per `over` input, in their order.
 
-Each output is the array of the values that the rounds gave for it, in round order, whatever the order in which the rounds end; a round that gives null puts null at its place. An empty `over` input gives no rounds and empty arrays; for `nested_cross` the levels of the inputs before it stay, so lengths 2 and 0 give `[[], []]`. The op succeeds when every round succeeds; a failed round fails the op and binds no output, and a failure inside a round is the failure of the op. Rounds start as their inputs allow, like calls; round i of the op `p` runs its ops at `p/<i>/<op>`, and a task keeps the path without the round numbers as its step. `parallelism` and `min_success` stay reserved: a runner of this version refuses a `map` that sets them.
+Each output is the array of the values that the rounds gave for it, in round order, whatever the order in which the rounds end; a round that gives null puts null at its place. An empty `over` input gives no rounds and empty arrays; for `nested_cross` the levels of the inputs before it stay, so lengths 2 and 0 give `[[], []]`. The op succeeds when every round succeeds; a failed round fails the op and binds no output, and a failure inside a round is the failure of the op. Rounds start as their inputs allow, like calls; round i of the op `p` runs its ops at `p/<i>/<op>`, and a task keeps the path without the round numbers as its step.
 
-**`expr`** computes its one output from its inputs, in the engine and without a task. With `language` `js`, `code` is a CWL expression: text with `$(...)` parts or one `${...}` function body, evaluated as CWL evaluates it, so one `$(...)` keeps the type of its value and text with parts becomes a string. `library` holds code that runs first, like CWL `expressionLib`. The code sees the op's input values as `inputs`, the input `self`, when there is one, also as `self`, and an empty `runtime`. A File or Directory looks as in CWL: with `path`, `nameroot`, `nameext` and `secondaryFiles` beside the wir fields. The value must fit the output type, where an integral number fits an `int` in the signed 64-bit range; a File or Directory value keeps the wir fields. An expression that throws, takes too long or gives a value that does not fit fails the op. An `expr` is pure: it reads no files and has no effects, and equal inputs give equal outputs. Other languages stay reserved: a runner of this version refuses them.
+- `parallelism` limits how many rounds run at once. The rounds still start in round order: the next one starts when a running one ends. It is at least 1; a runner refuses 0.
+- `min_success` lets the op succeed when at least that many rounds succeed, once every round has ended. A round that did not succeed then gives null at its place in every output, so the items of the outputs must take null, or the op fails. With fewer successful rounds the op fails as without `min_success`.
+
+**`expr`** computes its one output from its inputs, in the engine and without a task. With `language` `js`, `code` is a CWL expression: text with `$(...)` parts or one `${...}` function body, evaluated as CWL evaluates it, so one `$(...)` keeps the type of its value and text with parts becomes a string. `library` holds code that runs first, like CWL `expressionLib`. The code sees the op's input values as `inputs`, the input `self`, when there is one, also as `self`, and an empty `runtime`. A File or Directory looks as in CWL: with `path`, `nameroot`, `nameext` and `secondaryFiles` beside the wir fields. The value must fit the output type, where an integral number fits an `int` in the signed 64-bit range; a File or Directory value keeps the wir fields. An expression that throws, takes too long or gives a value that does not fit fails the op. An `expr` is pure: it reads no files and has no effects, and equal inputs give equal outputs.
+
+With `language` `wdl`, `code` is a WDL expression, or a WDL command section (`command <<< ... >>>` or `command { ... }`) whose value is its text, with the common indentation removed as WDL removes it. `library` holds WDL declarations like `Int n = count + 1`, evaluated in order before the code; each sees the inputs and the declarations before it, and its value takes its declared type. The code is WDL of the version of the op's `origin` source, else 1.2. The inputs are seen by name, and an input `a.b` as the member `b` of an object `a`, as WDL sees the outputs of a call. A File or Directory is seen as its path. In a command section and its library, a File or Directory of the input `p` is at the path where a task op stages it. The value takes the output type as WDL coerces to a declared type: a pair becomes a tuple of two, a map an object, a struct a record. The functions that read files, `stdout`, `stderr` and `glob` fail, and so do those that write files outside a command section; in a command section, `write_lines` and the other write functions give files below `.wdl/written/` that the command makes before it runs. Other languages stay reserved: a runner of this version refuses them.
 
 **`branch`** runs its `body` graph when its input `condition`, a bool, is true. The body has the op's ports apart from the input `condition`; each output of the op holds the body's output or null. When the condition is true the op runs like a `call` of the body, and it succeeds, fails or errors as that call does. When it is false the body does not run: the op ends `skipped` and binds every output to null, so the ops that read them run with null; inside a `map` that round gives null at its place. A dependency on `succeeded` does not hold for a skipped op, one on `skipped` does. A null condition fails the op.
 
@@ -123,9 +168,13 @@ The output of `select`, `merge` and `flatten` must fit its type, or the op fails
 
 **`after` dependencies** name another op of the same graph and the statuses that satisfy it: `succeeded`, `failed` (ran and not accepted), `errored` (could not run), `skipped` (its own condition was false) and `omitted` (did not run because a dependency did not hold). All dependencies of an op must hold. Data edges and dependencies together must not form a cycle.
 
-**Effects** declare what an op does beyond its outputs: `{"publish": target}`, `{"external": target}` and `"nondeterministic"`. Removing ops whose outputs nobody needs keeps every op with an effect. Effectful work stays in `task` and `native` ops.
+**Effects** declare what an op does beyond its outputs: `{"publish": target}`, `{"external": target}` and `"nondeterministic"`. Removing ops whose outputs nobody needs keeps every op with an effect. Effectful work stays in `task` and `native` ops; a runner refuses effects on other ops. A result of another run never answers a task of an op with effects, since its outputs or its effect may differ: the task reuses only results of the resumed run, as with `cache: resume`. A `native` op with only `publish` effects is the exception, since its block publishes as its language does, also for the tasks it reuses.
 
 **Attributes** never enter a task cache key: `cache` (`default` reuses a result with an equal key, `never`, `resume` reuses only results of the resumed run; no setting overrides a source's own veto on reuse), `place` (a site or a rule; explicit placement never falls back silently), `resources` (`cpus`, `gpus`, `memory` and `disk` in bytes), `retry` (more attempts after a failed or errored one) and `time` (seconds per attempt). A binding file per run may set them by op path without changing the document.
+
+On a `native` op only `cache` and `place` apply, to every task of its block. Its language sets the resources, time limits and retries of those tasks, so a runner refuses `resources`, `retry` and `time` there.
+
+`place` names a site of the executor. Every task of a placed `task` or `native` op runs at that site, and a run that has no site of that name refuses the task. The other ops run in the engine, so a runner refuses a `place` on them when it plans the run.
 
 ## Reserved ops
 
@@ -152,7 +201,8 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - names are valid and unique: sources, types, graphs, ports on each side, op paths in a graph, record fields;
 - named types exist and are not defined through themselves; unions, enums and tuples are not empty;
 - the entry graph and every graph, source and op named by an op exist; graphs do not call themselves;
-- every edge joins existing ports of equal flow, and the target type accepts the source type;
+- every edge joins existing ports of equal flow, and the target type accepts the source type; only a stream edge reads `live`;
+- stream ports take no default, and every stream input of an op has a producer;
 - every input and graph output has at most one producer, and every required one without a default has a producer;
 - data edges and `after` dependencies form no cycle, and every dependency lists a status;
 - a task has a command, uses only its own inputs, and has exactly one fitting capture per output;
@@ -161,4 +211,4 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - the stream files of a task are relative paths that stay inside the working folder;
 - a default sits on an input port and fits its type;
 
-Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering`. The runner is the crate `wir-runtime`.
+Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering` and the WDL lowering of the crate `wdl-lowering`. The runner is the crate `wir-runtime`.

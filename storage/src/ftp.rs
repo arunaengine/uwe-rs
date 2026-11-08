@@ -14,6 +14,7 @@ use suppaftp::tokio::AsyncFtpStream;
 use suppaftp::types::FileType;
 
 use crate::error::Problem;
+use crate::guard::Guard;
 use crate::web::open;
 use crate::{Downloaded, Entry, Metadata, address};
 
@@ -28,6 +29,8 @@ pub(crate) struct Ftp {
     from_address: bool,
     /// The address of each server, by its name and port.
     servers: Mutex<HashMap<(String, u16), SocketAddr>>,
+    /// The rules of a confined run, which reaches only servers on public networks.
+    guard: Option<Guard>,
 }
 
 /// The user and password, the server, the port and the path of an `ftp://` address.
@@ -47,14 +50,16 @@ impl Ftp {
             password: password.unwrap_or_else(|| "anonymous@".to_owned()),
             from_address: false,
             servers: Mutex::new(HashMap::new()),
+            guard: None,
         }
     }
 
     /// The client of `ftp://` addresses that no provider serves: it logs in as `anonymous`, or
     /// as the user and password that an address names.
-    pub fn public() -> Ftp {
+    pub fn public(guard: Option<Guard>) -> Ftp {
         Ftp {
             from_address: true,
+            guard,
             ..Ftp::new(None, None)
         }
     }
@@ -71,12 +76,19 @@ impl Ftp {
         let server = match known {
             Some(server) => server,
             None => {
-                let mut found = tokio::net::lookup_host((parts.host.as_str(), parts.port))
-                    .await
-                    .map_err(|error| {
-                        Problem::passing(format!("cannot find the server {}: {error}", parts.host))
-                    })?;
-                let server = found.next().ok_or_else(|| {
+                let found: Vec<SocketAddr> =
+                    tokio::net::lookup_host((parts.host.as_str(), parts.port))
+                        .await
+                        .map_err(|error| {
+                            let host = &parts.host;
+                            Problem::passing(format!("cannot find the server {host}: {error}"))
+                        })?
+                        .collect();
+                if let Some(guard) = &self.guard {
+                    (guard.public_all(&parts.host, found.iter().copied()))
+                        .map_err(Problem::fixed)?;
+                }
+                let server = found.first().copied().ok_or_else(|| {
                     Problem::fixed(format!("the server {} has no address", parts.host))
                 })?;
                 (self.servers.lock())

@@ -311,7 +311,10 @@ fn stream_files_checked() {
     let outside = Problem::Outside("../err.txt".into());
     assert_eq!(only(document.clone()), ("main/head".into(), outside));
     document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("err.txt");
-    assert!(problems(document).is_empty());
+    assert!(problems(document.clone()).is_empty());
+    document["graphs"][0]["ops"][1]["kind"]["task"]["workdir"] = json!("work");
+    let relative = Problem::Absolute("work".into());
+    assert_eq!(only(document), ("main/head".into(), relative));
 }
 
 /// A map `each` over the files `texts`, whose body `round` runs one task.

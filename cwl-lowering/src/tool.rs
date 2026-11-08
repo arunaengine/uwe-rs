@@ -14,6 +14,7 @@ use wir::{Argument, Attributes, Capture, CaptureRule, FileType, Port, Task, Type
 use crate::Scope;
 use crate::defaults;
 use crate::requirements;
+use crate::runtime;
 use crate::types::convert;
 
 /// The image of tools without `DockerRequirement`, as uwe runs them.
@@ -25,10 +26,17 @@ pub struct Lowered {
     pub inputs: Vec<Port>,
     pub outputs: Vec<Port>,
     pub attributes: Attributes,
-    /// The inputs whose words come from the `valueFrom` of their binding, with its code.
-    pub values: Vec<(String, Expression)>,
+    /// The task inputs that exprs fill: arguments and the `valueFrom` of input bindings.
+    pub values: Vec<Computed>,
     /// The outputs that `outputEval` computes, from the files of the task output of that name.
     pub evaluated: Vec<Evaluated>,
+}
+
+/// A task input that an expr fills, with the code and the task input it sees as `self`.
+pub struct Computed {
+    pub port: String,
+    pub code: String,
+    pub this: Option<String>,
 }
 
 /// An output of a tool that an expr computes from the files that its glob found, if any.
@@ -61,9 +69,42 @@ pub fn lower(
         network: false,
         stdout: literal(tool.stdout.as_ref(), "stdout")?,
         stderr: literal(tool.stderr.as_ref(), "stderr")?,
+        workdir: Some(runtime::OUTDIR.into()),
     };
     let attributes = requirements::apply(scope, &mut task)?;
+    let streams = [
+        (&mut task.stdout, Cwl::Stdout),
+        (&mut task.stderr, Cwl::Stderr),
+    ];
+    for (name, kind) in streams {
+        if name.is_none()
+            && process
+                .outputs
+                .iter()
+                .any(|output| output.value_type == kind)
+        {
+            *name = Some(stream_name(&process.id, &kind));
+        }
+    }
     let named = crate::types::named(scope);
+    let runtime = runtime::object(scope, process.version);
+    let javascript = (scope.requirements.iter().chain(&scope.hints))
+        .any(|entry| matches!(entry.class, RequirementClass::InlineJavascript { .. }));
+    let names: Vec<&str> = (process.inputs.iter())
+        .map(|input| short_name(&input.id))
+        .collect();
+    let runtime_of = |code: &Expression| {
+        // Without JavaScript, CWL refuses a reference to an input that the tool lacks.
+        if !javascript && undeclared(code, &names) {
+            return Err("a reference to an input that the tool does not declare".to_owned());
+        }
+        match &runtime {
+            Ok(object) => Ok(runtime::with(code, object)),
+            Err(why) if code.text.contains("runtime") => Err(why.clone()),
+            Err(_) => Ok(code.text.clone()),
+        }
+    };
+    let mut values = Vec::new();
     if tool.stdin.is_some() {
         return Err("stdin".into());
     }
@@ -79,23 +120,42 @@ pub fn lower(
         words.push((key, vec![Argument::Text(word.clone())]));
     }
     for (index, argument) in tool.arguments.iter().enumerate() {
-        let (position, text) = match argument {
-            CwlArgument::Text(text) => (0, text.clone()),
+        let (position, text, binding) = match argument {
+            CwlArgument::Text(text) => (0, text.clone(), None),
             CwlArgument::Binding(binding) => match &binding.value_from {
-                Some(text) => (position(binding)?, text.clone()),
+                Some(text) => (position(binding)?, text.clone(), Some(binding)),
                 None => continue,
             },
         };
-        let text = literal(Some(&text), "an argument")?.unwrap_or_default();
         let key = vec![Key::Number(position), Key::Number(index as i64)];
-        let words_of = match argument {
-            CwlArgument::Binding(binding) => prefixed(binding, Argument::Text(text))?,
-            CwlArgument::Text(_) => vec![Argument::Text(text)],
+        if code(&text) {
+            // An expr sees where a file is otherwise than the tool, which sees it staged.
+            if paths(&text) {
+                return Err("an expression in an argument that reads a path".into());
+            }
+            let port = format!("argument.{index}");
+            let word = Argument::Input {
+                input: port.clone(),
+                prefix: binding.and_then(|binding| binding.prefix.clone()),
+                separate: binding.is_none_or(|binding| binding.separate),
+                separator: binding.and_then(|binding| binding.item_separator.clone()),
+            };
+            values.push(Computed {
+                port,
+                code: runtime_of(&text)?,
+                this: None,
+            });
+            words.push((key, vec![word]));
+            continue;
+        }
+        let text = literal(Some(&text), "an argument")?.unwrap_or_default();
+        let words_of = match binding {
+            Some(binding) => prefixed(binding, Argument::Text(text))?,
+            None => vec![Argument::Text(text)],
         };
         words.push((key, words_of));
     }
     let mut inputs = Vec::new();
-    let mut values = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
         if !input.secondary_files.is_empty() || !input.format.is_empty() {
@@ -110,7 +170,11 @@ pub fn lower(
             let resolved = crate::types::resolve(&input.value_type, &named);
             words.push((key, bound(binding, resolved, &name)?));
             if let Some(code) = &binding.value_from {
-                values.push((name.clone(), code.clone()));
+                values.push(Computed {
+                    port: format!("{name}.{}", crate::group::VALUE),
+                    code: runtime_of(code)?,
+                    this: Some(name.clone()),
+                });
             }
         }
         let r#type =
@@ -160,7 +224,7 @@ pub fn lower(
             let r#type = convert(&output.value_type, &named)?;
             evaluated.push(Evaluated {
                 output: port(r#type),
-                code,
+                code: Expression::parse(&runtime_of(&code)?, false)?,
                 captured: files.is_some(),
             });
         }
@@ -309,8 +373,9 @@ fn capture(
         if format.is_some() {
             return Err("the format of an evaluated output".into());
         }
-        if placed(code) || (listed && code.text.contains("listing")) {
-            return Err("an outputEval that reads runtime, a path or a listing".into());
+        let reads = paths(code) || code.text.contains("exitCode");
+        if reads || (listed && code.text.contains("listing")) {
+            return Err("an outputEval that reads the exit code, a path or a listing".into());
         }
         let files = match binding.glob.as_slice() {
             [] => None,
@@ -372,10 +437,48 @@ fn rule(pattern: &str, task: &Task) -> CaptureRule {
     }
 }
 
-/// Whether code reads `runtime` or where files are, which an expr sees otherwise than a tool.
-fn placed(code: &Expression) -> bool {
-    let words = ["runtime", ".path", "dirname", "location"];
+/// The name uwe's CWL driver gives the stream file of a tool that names none.
+fn stream_name(id: &str, kind: &Cwl) -> String {
+    use sha1::Digest;
+    let label = match kind {
+        Cwl::Stderr => "stderr",
+        _ => "stdout",
+    };
+    let digest = sha1::Sha1::digest(format!("{id}#{label}").as_bytes());
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("{}.{label}", &hex[..16])
+}
+
+/// Whether code reads or makes where files are, which an expr sees otherwise than a tool.
+fn paths(code: &Expression) -> bool {
+    let words = ["path", "dirname", "location"];
     words.iter().any(|word| code.text.contains(word))
+}
+
+/// Whether a parameter reference of an expression names an input that is not in `names`.
+fn undeclared(code: &Expression, names: &[&str]) -> bool {
+    code.parts.iter().any(|part| {
+        let Part::Reference(text) = part else {
+            return false;
+        };
+        let Some(rest) = text.strip_prefix("inputs") else {
+            return false;
+        };
+        let name: String = match rest.strip_prefix('.') {
+            Some(rest) => (rest.chars())
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect(),
+            None => (rest.trim_start_matches(['[', '\'', '"']).chars())
+                .take_while(|c| !matches!(c, '\'' | '"'))
+                .collect(),
+        };
+        !name.is_empty() && !names.contains(&name.as_str())
+    })
+}
+
+/// Whether an expression has code.
+fn code(expression: &Expression) -> bool {
+    (expression.parts.iter()).any(|part| !matches!(part, Part::Text(_)))
 }
 
 /// Whether a CWL type is `kind`, or holds it in a union or an array.

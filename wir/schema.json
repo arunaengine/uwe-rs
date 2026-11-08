@@ -427,7 +427,8 @@
         "success_codes": { "type": "array", "items": { "type": "integer" } },
         "network": { "type": "boolean" },
         "stdout": { "type": "string" },
-        "stderr": { "type": "string" }
+        "stderr": { "type": "string" },
+        "workdir": { "type": "string" }
       }
     }
   }

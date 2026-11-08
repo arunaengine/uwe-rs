@@ -118,6 +118,8 @@ pub(crate) fn driver(
         Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
         Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments)),
         Language::Wir => {
+            let mut adapters = wir_runtime::adapter::Adapters::default();
+            wir_runtime::nextflow::register(&mut adapters, nextflow::blocks(run, arguments, setup));
             let settings = wir_runtime::Settings {
                 // A block runs no `uwe resume` requests: they name the steps of a whole run.
                 argo: argo_runtime::Services {
@@ -136,7 +138,7 @@ pub(crate) fn driver(
                     Some(sink) => wir_runtime::Printer::new(move |text| sink.print(text)),
                     None => wir_runtime::Printer::default(),
                 },
-                adapters: wir_runtime::adapter::Adapters::default(),
+                adapters,
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();

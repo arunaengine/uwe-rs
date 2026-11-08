@@ -165,8 +165,13 @@ fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
         let native = Nextflow::new(&launch(folder.to_owned()), settings(folder));
         let native = native.map_err(|error| error.message);
         let native = native.and_then(|mut driver| tasks(&mut driver, folder, order));
+        let mut adapters = wir_runtime::adapter::Adapters::default();
+        let launched = folder.to_owned();
+        let options = wir_runtime::nextflow::Options::new(move |_, _| settings(&launched));
+        wir_runtime::nextflow::register(&mut adapters, options);
         let wir = wir_runtime::Settings {
             print: false,
+            adapters,
             ..wir_runtime::Settings::default()
         };
         let compiled = wir_runtime::WirDriver::new(&launch(document.clone()), wir);

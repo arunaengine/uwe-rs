@@ -107,6 +107,30 @@ impl Adapter {
         self.attempt(binding, values, index, TaskId(id.0), 1)
     }
 
+    /// The script that defines the process of this name at these bytes, which a compiled
+    /// document names by its source id only.
+    pub fn script_at(&self, name: &str, start: u64, end: u64) -> Option<String> {
+        let mut pending = vec![self.module.clone()];
+        let mut seen: Vec<Rc<Module>> = Vec::new();
+        while let Some(module) = pending.pop() {
+            if seen.iter().any(|known| Rc::ptr_eq(known, &module)) {
+                continue;
+            }
+            seen.push(module.clone());
+            let span = |process: &Rc<Process>| {
+                (u64::from(process.span.start), u64::from(process.span.end)) == (start, end)
+            };
+            if module.processes.iter().any(|p| &*p.name == name && span(p)) {
+                return module.path.borrow().as_deref().map(str::to_owned);
+            }
+            let links = module.links.borrow();
+            let conditional = module.conditional_links.borrow();
+            let linked = links.values().chain(conditional.values());
+            pending.extend(linked.map(|link| link.module.clone()));
+        }
+        None
+    }
+
     /// Takes the outcome of an attempt that [`Adapter::prepare`] or a retry asked for.
     pub fn complete(&mut self, outcome: Outcome) -> Result<Completed, DriverError> {
         let id = TaskId(outcome.id.0);

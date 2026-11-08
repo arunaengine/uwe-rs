@@ -8842,6 +8842,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "slurm-executor",
+ "snakemake-compiler",
  "snakemake-runtime",
  "snowflake-executor",
  "storage",

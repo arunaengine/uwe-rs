@@ -19,11 +19,28 @@ pub(crate) fn closure(callback: &Callback, sources: &mut Sources) -> Json {
     });
     if !callback.captures.is_empty() {
         let captures: Map<String, Json> = (callback.captures.iter().enumerate())
-            .map(|(slot, value)| (slot.to_string(), json!({"value": value})))
+            .map(|(slot, value)| (slot.to_string(), json!({"value": nested(value, sources)})))
             .collect();
         closure["captures"] = Json::Object(captures);
     }
     closure
+}
+
+/// A captured value, whose captured closures name their scripts by source id.
+fn nested(value: &Json, sources: &mut Sources) -> Json {
+    let mut value = value.clone();
+    if let Some(object) = value.as_object_mut()
+        && object.get("class").and_then(Json::as_str) == Some("Closure")
+        && let Some(Json::String(script)) = object.remove("script")
+    {
+        object.insert("source".into(), json!(sources.script(&script)));
+        if let Some(Json::Array(captures)) = object.get_mut("captures") {
+            for capture in captures.iter_mut() {
+                *capture = nested(capture, sources);
+            }
+        }
+    }
+    value
 }
 
 /// A closure that the compiler writes, which has no place in the script.
@@ -115,5 +132,15 @@ mod tests {
             json!({"source": "main", "start": 3, "end": 10})
         );
         assert_eq!(closure["captures"], json!({"0": {"value": "!"}}));
+    }
+
+    #[test]
+    fn names_captured_closures() {
+        let inner = json!({"class": "Closure", "script": "/p/lib.nf", "start": 1, "end": 4,
+            "code": "{ it }", "captures": []});
+        let mut sources = Sources::new("/p/main.nf", std::path::Path::new("/p"));
+        let value = nested(&inner, &mut sources);
+        assert_eq!(value["source"], "lib.nf");
+        assert_eq!(value.get("script"), None, "the document names no paths");
     }
 }

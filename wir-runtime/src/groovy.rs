@@ -105,14 +105,42 @@ impl Host for Quiet {
     fn print(&mut self, _text: &str) {}
 }
 
+/// Prints through the print sink of the run, for an expression with the `log` effect.
+struct Printing<'a>(&'a crate::driver::Printer);
+
+impl Host for Printing<'_> {
+    fn print(&mut self, text: &str) {
+        self.0.print(text);
+    }
+}
+
 impl Compiled {
-    /// The value of the code for the values of its names.
+    /// The value of the code for the values of its names, which prints nothing.
     pub fn value(&self, values: &Map<String, Json>, base: &Path) -> Result<Json, String> {
+        self.value_in(&mut Quiet, values, base)
+    }
+
+    /// The value of the code, which prints through `printer`, like a check at the start of a
+    /// run; code of a Nextflow scope prints through the host of the Nextflow run.
+    pub fn printed(
+        &self,
+        values: &Map<String, Json>,
+        base: &Path,
+        printer: &crate::driver::Printer,
+    ) -> Result<Json, String> {
+        self.value_in(&mut Printing(printer), values, base)
+    }
+
+    fn value_in(
+        &self,
+        host: &mut dyn Host,
+        values: &Map<String, Json>,
+        base: &Path,
+    ) -> Result<Json, String> {
         if let Some(scoped) = &self.nextflow {
             return scoped.run(values, None, base);
         }
-        let mut host = Quiet;
-        let mut interpreter = Interpreter::new(&mut host);
+        let mut interpreter = Interpreter::new(host);
         let result = self.run(&mut interpreter, values, base)?;
         to_json(&result)
     }

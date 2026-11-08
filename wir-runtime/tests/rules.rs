@@ -222,7 +222,22 @@ fn refuses_engine_effects() {
     });
     assert_eq!(
         message,
-        "op main/same: only task, native and effect ops have effects"
+        "op main/same: only task, native, effect and check ops have effects"
+    );
+    let folder = tempfile::tempdir().unwrap();
+    let launch = example(folder.path(), |document| {
+        let mut check = expr(json!({}));
+        check["effects"] = json!(["log", "read_files"]);
+        document["graphs"][0]["ops"]
+            .as_array_mut()
+            .unwrap()
+            .push(check);
+    });
+    let planned = WirDriver::new(&launch, settings());
+    assert!(
+        planned.is_ok(),
+        "an expr may check the start of a run: {:?}",
+        planned.err()
     );
 }
 

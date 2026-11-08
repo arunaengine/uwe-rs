@@ -16,6 +16,7 @@ const DEPTH: usize = 32;
 pub struct Named {
     types: Vec<Cwl>,
     ontology: bool,
+    unreadable: bool,
 }
 
 /// The named types in scope: those of `SchemaDefRequirement`, with the named types in them.
@@ -29,6 +30,7 @@ pub fn named(scope: &Scope) -> Named {
     Named {
         types: found,
         ontology: scope.ontology,
+        unreadable: scope.unreadable,
     }
 }
 
@@ -146,6 +148,7 @@ pub fn formatted(r#type: Type, formats: &[Expression], named: &Named) -> Result<
         }
     }
     match named.ontology {
+        true if named.unreadable => Err("formats with an ontology that cannot be read".into()),
         true => Ok(r#type),
         false => Ok(with_formats(r#type, &texts)),
     }

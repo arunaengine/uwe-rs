@@ -59,8 +59,12 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
     };
     let process = &document.process;
     // With an ontology, or prefixes that a job may use, formats match beyond equal text.
+    let unreadable = (document.schemas.iter())
+        .filter_map(|schema| cwl_parser::iri::file_path(schema))
+        .any(|path| !path.is_file());
     let outer = Scope {
         ontology: !document.schemas.is_empty() || !document.namespaces.is_empty(),
+        unreadable,
         ..Scope::default()
     };
     let scope = outer.with(&process.requirements, &process.hints);
@@ -134,6 +138,8 @@ pub(crate) struct Scope {
     /// Whether the document has `$schemas` or `$namespaces`, so formats may match otherwise
     /// than by equal text.
     pub ontology: bool,
+    /// Whether a local file of `$schemas` is missing, which fails CWL format checks.
+    pub unreadable: bool,
 }
 
 impl Scope {
@@ -311,9 +317,10 @@ fn boundary(process: &Process, scope: &Scope) -> Result<(Vec<Port>, Vec<Port>), 
     let mut inputs = Vec::new();
     for input in &process.inputs {
         let r#type = types::convert(&input.value_type, &named)
-            .and_then(|r#type| types::formatted(r#type, &input.format, &named))
             .map(|r#type| {
-                // A native op finds secondary files itself, also by expressions.
+                // A native op checks formats and finds secondary files itself.
+                let formatted = types::formatted(r#type.clone(), &input.format, &named);
+                let r#type = formatted.unwrap_or(r#type);
                 let found = types::secondary(r#type.clone(), &input.secondary_files, true);
                 found.unwrap_or(r#type)
             })

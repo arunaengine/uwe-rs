@@ -111,10 +111,35 @@ pub struct Task {
 pub enum Argument {
     Text(String),
     /// A scalar becomes its text, a File or Directory its path, an array one argument per
-    /// item, and a null no argument.
+    /// item, and a null no argument. `separator` joins the items of an array into one.
     Input {
         input: String,
+        /// Comes before the value; with it, false and an empty array give no argument and
+        /// true only the prefix, as in CWL.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prefix: Option<String>,
+        /// Whether the prefix is an argument of its own, else joined to the value.
+        #[serde(default = "separate", skip_serializing_if = "Clone::clone")]
+        separate: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        separator: Option<String>,
     },
+}
+
+fn separate() -> bool {
+    true
+}
+
+impl Argument {
+    /// An argument of the plain value of an input.
+    pub fn input(name: &str) -> Argument {
+        Argument::Input {
+            input: name.to_owned(),
+            prefix: None,
+            separate: true,
+            separator: None,
+        }
+    }
 }
 
 /// How one task output is read.

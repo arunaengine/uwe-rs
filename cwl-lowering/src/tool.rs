@@ -186,17 +186,17 @@ fn bound(
     value_type: &Cwl,
     name: &str,
 ) -> Result<Vec<Argument>, String> {
-    if binding.item_separator.is_some() {
-        return Err(format!("the itemSeparator of input {name}"));
-    }
+    let input = |input: String, separator: Option<&String>| Argument::Input {
+        input,
+        prefix: binding.prefix.clone(),
+        separate: binding.separate,
+        separator: separator.cloned(),
+    };
     if binding.value_from.is_some() {
-        // CWL writes no prefix for a null and no word for a bool, so only plain inputs and
-        // words without a prefix stay the same.
-        return match (value_type, &binding.prefix) {
-            (Cwl::Union(_), _) | (_, Some(_)) => Err(format!("the valueFrom of input {name}")),
-            _ => Ok(vec![Argument::Input {
-                input: format!("{name}.{}", crate::group::VALUE),
-            }]),
+        // CWL binds no input that is null, where an expr of its valueFrom still runs.
+        return match value_type {
+            Cwl::Union(_) => Err(format!("the valueFrom of input {name}")),
+            _ => Ok(vec![input(format!("{name}.{}", crate::group::VALUE), None)]),
         };
     }
     let members: Vec<&Cwl> = match value_type {
@@ -207,18 +207,21 @@ fn bound(
         other => vec![other],
     };
     let optional = matches!(value_type, Cwl::Union(members) if members.contains(&Cwl::Null));
-    let input = Argument::Input {
-        input: name.to_owned(),
-    };
     match members.as_slice() {
-        [Cwl::Array(array)]
-            if binding.prefix.is_none() && array.binding.is_none() && plain(&array.items) =>
-        {
-            Ok(vec![input])
+        // CWL writes no word for a bool without a prefix.
+        [Cwl::Boolean] if binding.prefix.is_none() => Ok(Vec::new()),
+        [Cwl::Boolean] => Ok(vec![input(name.to_owned(), None)]),
+        [Cwl::Array(array)] if array.binding.is_none() && plain(&array.items) => {
+            let separator = binding.item_separator.as_ref();
+            match (&binding.prefix, separator) {
+                (None, None) => Ok(vec![Argument::input(name)]),
+                _ => Ok(vec![input(name.to_owned(), separator)]),
+            }
         }
-        [single] if plain(single) && !(optional && binding.prefix.is_some()) => {
-            prefixed(binding, input)
+        [single] if plain(single) && !optional && binding.separate => {
+            prefixed(binding, Argument::input(name))
         }
+        [single] if plain(single) => Ok(vec![input(name.to_owned(), None)]),
         _ => Err(format!("the command line binding of input {name}")),
     }
 }

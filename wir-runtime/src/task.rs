@@ -28,9 +28,16 @@ pub fn build(
     for argument in &spec.command {
         match argument {
             Argument::Text(text) => words.push(text.clone()),
-            Argument::Input { input } => {
+            Argument::Input {
+                input,
+                prefix,
+                separate,
+                separator,
+            } => {
                 let value = bound.get(input).unwrap_or(&Json::Null);
-                words.extend(texts(value, &format!("inputs/{input}"), &mut inputs));
+                let texts = texts(value, &format!("inputs/{input}"), &mut inputs);
+                let binding = (prefix.as_deref(), *separate, separator.as_deref());
+                words.extend(bind(value, texts, binding));
             }
         }
     }
@@ -227,6 +234,31 @@ fn entry(file: &OutputFile, format: Option<&str>) -> Json {
     value
 }
 
+/// The arguments of an input value from its texts, after its prefix or joined, as CWL binds
+/// a value with a prefix or an item separator.
+fn bind(
+    value: &Json,
+    texts: Vec<String>,
+    (prefix, separate, separator): (Option<&str>, bool, Option<&str>),
+) -> Vec<String> {
+    let prefixed = |text: String| match (prefix, separate) {
+        (Some(prefix), true) => vec![prefix.to_owned(), text],
+        (Some(prefix), false) => vec![format!("{prefix}{text}")],
+        (None, _) => vec![text],
+    };
+    match (value, prefix, separator) {
+        (_, None, None) => texts,
+        (Json::Null | Json::Bool(false), _, _) => Vec::new(),
+        (Json::Bool(true), Some(prefix), _) => vec![prefix.to_owned()],
+        (Json::Array(items), _, _) if items.is_empty() => Vec::new(),
+        (Json::Array(_), _, Some(separator)) => prefixed(texts.join(separator)),
+        (Json::Array(_), Some(prefix), None) => {
+            [prefix.to_owned()].into_iter().chain(texts).collect()
+        }
+        _ => texts.into_iter().flat_map(prefixed).collect(),
+    }
+}
+
 /// The arguments of an input value, staging its files and folders below `folder`.
 fn texts(value: &Json, folder: &str, inputs: &mut Vec<Input>) -> Vec<String> {
     match value {
@@ -295,4 +327,34 @@ fn stream_name(spec: &wir::Task, output: &str, rule: &CaptureRule) -> String {
 /// A word quoted for `/bin/sh`.
 fn quote(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn binds_prefixed_values() {
+        let words = |value: Json, binding| {
+            let texts = texts(&value, "inputs/x", &mut Vec::new());
+            bind(&value, texts, binding)
+        };
+        let flag = (Some("-v"), true, None);
+        assert_eq!(words(json!(true), flag), ["-v"]);
+        assert!(words(json!(false), flag).is_empty(), "false gives nothing");
+        assert!(words(Json::Null, flag).is_empty());
+        assert_eq!(words(json!(3), (Some("-n"), false, None)), ["-n3"]);
+        assert_eq!(words(json!(["a", "b"]), flag), ["-v", "a", "b"]);
+        assert_eq!(
+            words(json!([1, 2]), (Some("-l"), true, Some(","))),
+            ["-l", "1,2"]
+        );
+        assert!(
+            words(json!([]), flag).is_empty(),
+            "an empty array gives nothing"
+        );
+        assert_eq!(words(json!(true), (None, true, None)), ["true"]);
+    }
 }

@@ -454,6 +454,7 @@
         "stdout": { "$ref": "#/$defs/file_name" },
         "stderr": { "$ref": "#/$defs/file_name" },
         "workdir": { "type": "string" },
+        "staging": { "type": "string" },
         "environment": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/file_name" }

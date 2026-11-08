@@ -110,11 +110,13 @@ fn matches_native_steps() {
         for ((one, _, _), (other, _, _)) in alone.iter().zip(&through) {
             assert_eq!(one.step, other.step, "{document}: the same steps");
             assert_eq!(one.image, other.image, "{document}: the same image");
-            // Tasks with files differ by where they stage them, see docs/wir.md.
-            match one.inputs.is_empty() {
-                true => assert_eq!(key(one), key(other), "{document}: {}", one.step),
-                false => assert_ne!(key(one), key(other), "{document}: {}", one.step),
-            }
+            // A compiled tool builds the task of the CWL driver, see docs/wir.md.
+            assert_eq!(one.command, other.command, "{document}: {}", one.step);
+            let paths = |task: &Task| -> Vec<String> {
+                task.inputs.iter().map(|input| input.path.clone()).collect()
+            };
+            assert_eq!(paths(one), paths(other), "{document}: {}", one.step);
+            assert_eq!(key(one), key(other), "{document}: {}", one.step);
             assert_eq!(one.workdir.as_deref(), Some("/var/spool/cwl"));
             assert_eq!(one.workdir, other.workdir, "{document}: {}", other.step);
             let variables: Vec<&String> = one.environment.keys().collect();
@@ -159,6 +161,12 @@ fn matches_scatter_steps() {
         assert_eq!(code, 0, "{document}: {errors}");
         let (_, through) = latest(&cache);
         assert_eq!((alone.len(), through.len()), (count, count), "{document}");
+        let keys = |tasks: &[(Task, String, Option<String>)]| {
+            let mut keys: Vec<String> = tasks.iter().map(|(task, _, _)| key(task)).collect();
+            keys.sort();
+            keys
+        };
+        assert_eq!(keys(&alone), keys(&through), "{document}: the same tasks");
         let mut names: Vec<(&str, &str)> = (alone.iter().zip(&through))
             .map(|((one, _, _), (other, _, _))| (one.step.as_str(), other.step.as_str()))
             .collect();
@@ -230,9 +238,7 @@ fn matches_native_outputs() {
     let read = |path: &str| std::fs::read_to_string(root.join(path)).expect("reads an output");
     assert_eq!(read("native/out.txt"), "hello");
     assert_eq!(read("lowered/out.txt"), read("native/out.txt"));
-    // wc prints the path of its input, where the CWL wrapper and a wir task stage it.
-    let count = |path: &str| read(path).split_whitespace().next().map(str::to_owned);
-    assert_eq!(count("lowered/count.txt"), count("native/count.txt"));
+    // wc prints the path of its input, which both stage in the same place.
     assert!(read("native/count.txt").contains("/var/lib/cwl/inputs/0/out.txt"));
-    assert!(read("lowered/count.txt").contains("inputs/text/out.txt"));
+    assert_eq!(read("lowered/count.txt"), read("native/count.txt"));
 }

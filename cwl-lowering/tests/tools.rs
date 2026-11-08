@@ -35,6 +35,7 @@ fn lowers_plain_tools() {
         "captures": [{"output": "out", "from": "stdout"}],
         "stdout": "out.txt",
         "workdir": "/var/spool/cwl",
+        "staging": "/var/lib/cwl/inputs",
         "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"}
     });
     assert_eq!(op["path"], "echo");

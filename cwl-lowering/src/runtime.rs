@@ -11,6 +11,9 @@ use crate::Scope;
 /// The output folder of a CWL tool in its container, its working folder, as in uwe's driver.
 pub const OUTDIR: &str = "/var/spool/cwl";
 
+/// Where uwe's CWL driver stages the input files of a tool in its container.
+pub const STAGING: &str = "/var/lib/cwl/inputs";
+
 /// The temporary folder of a CWL tool in its container.
 pub const TMPDIR: &str = "/tmp";
 

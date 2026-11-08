@@ -144,6 +144,7 @@ mod tests {
             stdout: None,
             stderr: None,
             workdir: None,
+            staging: None,
             files: Vec::new(),
             environment: Default::default(),
             stdin: None,

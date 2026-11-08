@@ -113,6 +113,11 @@ pub struct Task {
     /// CWL; without it the runner picks one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workdir: Option<String>,
+    /// The absolute folder that the Files and Directories of the task inputs go to first, in
+    /// the order of the op's inputs, each top-level one in a numbered folder of its own, like
+    /// the input folder of CWL; without it, each goes below `inputs/<port>` when used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staging: Option<String>,
     /// What the working folder holds before the command starts, like CWL
     /// `InitialWorkDirRequirement`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -11,6 +11,7 @@ use reqwest::header::{CONTENT_LENGTH, ETAG, HeaderMap, LAST_MODIFIED, RANGE};
 use tokio::io::AsyncWriteExt;
 
 use crate::error::Problem;
+use crate::guard::Guard;
 use crate::{Downloaded, Metadata, address};
 
 /// A client for web servers.
@@ -22,6 +23,8 @@ pub(crate) struct Web {
     /// Whether a refused request is an error. Public servers answer `HEAD` requests in many
     /// ways, so there any answer but success means that the file is not there, as before.
     strict: bool,
+    /// The rules of a confined run, which reaches only hosts on public networks.
+    guard: Option<Guard>,
 }
 
 /// How long a request may make no progress: for a download no answer or read, for an upload
@@ -173,6 +176,18 @@ impl Web {
             client: shared_client()?,
             headers: HeaderMap::new(),
             strict: false,
+            guard: None,
+        })
+    }
+
+    /// The client for public files of a confined run, which reaches only public hosts.
+    pub fn guarded(guard: Guard) -> Result<Web, Problem> {
+        let client = guard.client(builder().map_err(Problem::fixed)?.read_timeout(IDLE));
+        Ok(Web {
+            client: client.build().map_err(network)?,
+            headers: HeaderMap::new(),
+            strict: false,
+            guard: Some(guard),
         })
     }
 
@@ -182,6 +197,7 @@ impl Web {
             client: origin_client().cloned().map_err(Problem::fixed)?,
             headers,
             strict: true,
+            guard: None,
         })
     }
 
@@ -289,6 +305,12 @@ impl Web {
         &self,
         request: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, Problem> {
+        if let Some(guard) = &self.guard {
+            let probe = request.try_clone().and_then(|probe| probe.build().ok());
+            let url = probe.map(|probe| probe.url().clone());
+            let url = url.ok_or_else(|| Problem::fixed("the request has no address to check"))?;
+            guard.admit(&url).await.map_err(Problem::fixed)?;
+        }
         let again = request.try_clone();
         let response = (request.headers(self.headers.clone()).send())
             .await

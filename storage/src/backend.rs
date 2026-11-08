@@ -13,6 +13,7 @@ use crate::drs::{self, Drs};
 use crate::error::Problem;
 use crate::folder::Folder;
 use crate::ftp::Ftp;
+use crate::guard::Guard;
 use crate::irods::{self, Irods};
 use crate::lakefs::{self, Lakefs};
 use crate::lamin::{self, Lamin};
@@ -217,16 +218,18 @@ pub(crate) struct Connection {
 
 impl Connection {
     /// Makes the client of a provider, and reads its secrets.
-    pub fn open(source: &Source) -> Result<Connection, StorageError> {
+    pub fn open(source: &Source, guard: Option<&Guard>) -> Result<Connection, StorageError> {
         let failed = |problem: Problem| StorageError::Unsupported(problem.message);
         let mut secrets = Revealed::default();
         let backend = match source {
-            Source::Web => Backend::Web(Web::public().map_err(failed)?),
-            Source::PublicBuckets => Backend::PublicBuckets(PublicBuckets::new().map_err(failed)?),
+            Source::Web => Backend::Web(web(guard).map_err(failed)?),
+            Source::PublicBuckets => {
+                Backend::PublicBuckets(PublicBuckets::new(web(guard).map_err(failed)?))
+            }
             Source::Files => Backend::Folder(Folder {
                 root: PathBuf::from("/"),
             }),
-            Source::Ftp => Backend::Ftp(Ftp::public()),
+            Source::Ftp => Backend::Ftp(Ftp::public(guard.cloned())),
             Source::Drs => Backend::Drs(Drs::new(drs::scope()).map_err(failed)?),
             Source::Synapse => Backend::Synapse(Synapse::new(synapse::scope()).map_err(failed)?),
             Source::Irods => Backend::Irods(Irods::new(irods::scope()).map_err(failed)?),
@@ -567,4 +570,12 @@ fn headers(
         add(name, value, secret.origin())?;
     }
     Ok(headers)
+}
+
+/// The web client of public addresses, kept to public hosts for a confined run.
+fn web(guard: Option<&Guard>) -> Result<Web, Problem> {
+    match guard {
+        Some(guard) => Web::guarded(guard.clone()),
+        None => Web::public(),
+    }
 }

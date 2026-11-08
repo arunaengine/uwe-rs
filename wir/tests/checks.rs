@@ -631,13 +631,12 @@ fn selection_shapes() {
 
 #[test]
 fn split_options() {
-    let source = json!([typed("source", json!({"file": {}}), "stream")]);
+    let source = json!([typed("source", json!("string"), "stream")]);
     let split = |fields: Json| {
-        problems(&many(
-            json!({"split": fields}),
-            source.clone(),
-            typed("out", json!("dynamic"), "stream"),
-        ))
+        let out = typed("out", json!("dynamic"), "stream");
+        let mut document = many(json!({"split": fields}), source.clone(), out);
+        document["graphs"][0]["ops"][0]["effects"] = json!(["write_files"]);
+        problems(&document)
     };
     let needs = |why: &str| vec![format!("main/op: a split needs {why}")];
     assert_eq!(
@@ -699,7 +698,7 @@ fn split_options() {
         source.clone(),
         typed("out", json!("dynamic"), "stream"),
     );
-    published["graphs"][0]["ops"][0]["effects"] = json!([{"publish": "chunks"}]);
+    published["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": "chunks"}]);
     assert_eq!(problems(&published), Vec::<String>::new());
     let escaping = json!({"format": {"text": {}}, "files": {"directory": "../up", "name": "a/b"}});
     let found = split(escaping);
@@ -710,5 +709,68 @@ fn split_options() {
     assert!(
         found.contains(&needs("a file name, not \"a/b\"")[0]),
         "{found:?}"
+    );
+}
+
+#[test]
+fn effect_declarations() {
+    let ints = json!([typed("source", json!("int"), "stream")]);
+    let files = json!([typed("source", json!({"file": {}}), "stream")]);
+    let checked = |kind: Json, inputs: &Json, out: Json, effects: Json| {
+        let mut document = many(kind, inputs.clone(), out);
+        document["graphs"][0]["ops"][0]["effects"] = effects;
+        problems(&document)
+    };
+    let int_out = typed("out", json!("int"), "stream");
+    let file_out = typed("out", json!({"file": {}}), "stream");
+    assert_eq!(
+        checked(json!({"view": {}}), &ints, int_out.clone(), json!(["log"])),
+        Vec::<String>::new()
+    );
+    let silent = checked(json!({"view": {}}), &ints, int_out.clone(), json!([]));
+    assert_eq!(silent, ["main/op: op kind view needs the effect \"log\""]);
+    let collected = checked(
+        json!({"collect_file": {}}),
+        &ints,
+        file_out.clone(),
+        json!([]),
+    );
+    assert_eq!(
+        collected,
+        ["main/op: op kind collect_file needs the effect \"write_files\""]
+    );
+    let outside = checked(
+        json!({"collect_file": {"directory": "s3://bucket/out"}}),
+        &ints,
+        file_out,
+        json!(["write_files"]),
+    );
+    assert_eq!(
+        outside,
+        ["main/op: a collect_file needs a publish effect to write to s3://bucket/out"]
+    );
+    let text = typed("out", json!("string"), "stream");
+    let read = checked(
+        json!({"split": {"format": {"text": {}}}}),
+        &files,
+        text.clone(),
+        json!([]),
+    );
+    assert_eq!(
+        read,
+        ["main/op: op kind split needs the effect \"read_files\""]
+    );
+    let both = checked(
+        json!({"split": {"format": {"text": {}}, "files": {}}}),
+        &files,
+        text,
+        json!(["read_files", "write_files"]),
+    );
+    assert_eq!(both, Vec::<String>::new());
+    let observed = json!({"observe": {"item": {"language": "js", "code": "x"}}});
+    let found = checked(observed, &ints, int_out, json!([]));
+    assert_eq!(
+        found,
+        ["main/op: closure: js is no closure language; use javascript"]
     );
 }

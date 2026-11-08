@@ -483,6 +483,16 @@ fn called_by(kind: &Kind) -> Vec<&str> {
         Kind::Until(until) => until.predicate.graph().into_iter().collect(),
         Kind::IfEmpty(fallback) => fallback.body.iter().filter_map(Body::graph).collect(),
         Kind::Split(split) => split.body.iter().filter_map(Body::graph).collect(),
+        Kind::CollectFile(collect) => {
+            let sort = sorted(&collect.sort).into_iter();
+            collect
+                .body
+                .iter()
+                .chain(sort)
+                .filter_map(Body::graph)
+                .collect()
+        }
+        Kind::View(view) => view.body.iter().filter_map(Body::graph).collect(),
         Kind::Route(route) => (route.cases.iter())
             .flat_map(|case| std::iter::once(&case.condition).chain(&case.body))
             .filter_map(Body::graph)
@@ -595,6 +605,8 @@ fn show(value: &impl serde::Serialize) -> String {
 
 #[path = "callbacks.rs"]
 mod callbacks;
+#[path = "effects.rs"]
+mod effects;
 #[path = "keyed.rs"]
 mod keyed;
 #[path = "kinds.rs"]

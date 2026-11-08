@@ -217,7 +217,7 @@
     },
     "effect": {
       "oneOf": [
-        { "const": "nondeterministic" },
+        { "enum": ["nondeterministic", "log", "read_files", "write_files"] },
         {
           "type": "object",
           "additionalProperties": false,
@@ -475,6 +475,34 @@
           "properties": { "value": { "$ref": "#/$defs/literal" }, "body": { "$ref": "#/$defs/callback" } }
         },
         "split": { "$ref": "#/$defs/split" },
+        "collect_file": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body": { "$ref": "#/$defs/callback" },
+            "name": { "type": "string" },
+            "directory": { "type": "string" },
+            "sort": { "$ref": "#/$defs/sort" },
+            "new_line": { "type": "boolean" },
+            "skip": { "$ref": "#/$defs/count" },
+            "keep_header": { "type": "boolean" },
+            "seed": { "type": "string" }
+          }
+        },
+        "view": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "body": { "$ref": "#/$defs/callback" }, "new_line": { "type": "boolean" } }
+        },
+        "observe": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "item": { "$ref": "#/$defs/closure" },
+            "close": { "$ref": "#/$defs/closure" },
+            "error": { "$ref": "#/$defs/closure" }
+          }
+        },
         "route": {
           "type": "object",
           "additionalProperties": false,

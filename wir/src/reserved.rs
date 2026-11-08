@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::closure::Body;
+use crate::closure::{Body, Closure};
 pub use crate::splits::{
     ChunkFiles, CsvSplit, Decompress, Header, JsonSplit, Pair, RecordField, SequenceField,
     SequenceSplit, Split, SplitFormat, TextSplit,
@@ -448,6 +448,53 @@ pub struct IfEmpty {
     pub body: Option<Body>,
 }
 
+/// Writes the entries of its items to files by name at the close, then gives the files in
+/// name order. It writes files, so it declares `write_files`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CollectFile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
+    #[serde(default = "by_hash", skip_serializing_if = "is_hash")]
+    pub sort: Sort,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub new_line: bool,
+    #[serde(default, skip_serializing_if = "is_none_u64")]
+    pub skip: u64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub keep_header: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<String>,
+}
+
+/// Prints each item, formatted by the optional body, and forwards it. It prints, so it
+/// declares `log`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct View {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub new_line: bool,
+}
+
+/// Calls `item` for each item before forwarding it, `close` once at a successful close and
+/// `error` once at an error, which stays an error.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Observe {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item: Option<Closure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close: Option<Closure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<Closure>,
+}
+
 /// Sends each item to the output of the first case whose condition holds, through the body
 /// of that case; an item that no case takes is dropped.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -542,6 +589,18 @@ where
     T: Deserialize<'de>,
 {
     T::deserialize(deserializer).map(Some)
+}
+
+fn by_hash() -> Sort {
+    Sort::Hash
+}
+
+fn is_hash(sort: &Sort) -> bool {
+    *sort == Sort::Hash
+}
+
+fn is_none_u64(value: &u64) -> bool {
+    *value == 0
 }
 
 fn is_zero(value: &u32) -> bool {

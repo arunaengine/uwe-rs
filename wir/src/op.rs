@@ -77,6 +77,9 @@ pub enum Kind {
     Until(reserved::Until),
     IfEmpty(reserved::IfEmpty),
     Split(reserved::Split),
+    CollectFile(reserved::CollectFile),
+    View(reserved::View),
+    Observe(reserved::Observe),
     Route(reserved::Route),
     MultiMap(reserved::MultiMap),
     Branch(Branch),
@@ -288,6 +291,12 @@ pub enum Effect {
     External(String),
     /// Outputs may differ between runs with equal inputs.
     Nondeterministic,
+    /// Prints through the print sink of the host.
+    Log,
+    /// Reads the files of its items.
+    ReadFiles,
+    /// Writes files in the file area of the run.
+    WriteFiles,
 }
 
 /// Run settings that never enter a task cache key. A binding file per run may set them by

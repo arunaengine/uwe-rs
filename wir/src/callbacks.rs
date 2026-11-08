@@ -162,7 +162,7 @@ impl<'d> Checker<'d> {
         None
     }
 
-    fn closure(&mut self, at: &str, op: &Op, closure: &Closure, arity: Arity) {
+    pub(super) fn closure(&mut self, at: &str, op: &Op, closure: &Closure, arity: Arity) {
         let mut why = Vec::new();
         match (closure.language, closure.parameters.len()) {
             (ExprLanguage::Js, _) => why.push("js is no closure language; use javascript".into()),

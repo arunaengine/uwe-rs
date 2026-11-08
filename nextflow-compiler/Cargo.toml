@@ -16,6 +16,7 @@ nextflow-evaluator.workspace = true
 nextflow-runtime.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+wir.workspace = true
 workflow-graph.workspace = true
 
 [dev-dependencies]

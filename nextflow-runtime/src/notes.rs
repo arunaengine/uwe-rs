@@ -56,6 +56,13 @@ impl Host for Noting<'_> {
         self.host.read(path)
     }
 
+    fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
+        if path.name() != VERSIONS {
+            self.note(path, Note::Read);
+        }
+        self.host.open(path)
+    }
+
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
         self.host.metadata(path)
     }

@@ -122,6 +122,10 @@ impl Host for Builder<'_> {
         self.base.read(path)
     }
 
+    fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
+        self.base.open(path)
+    }
+
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
         self.base.metadata(path)
     }

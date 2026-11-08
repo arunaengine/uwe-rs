@@ -99,6 +99,18 @@ pub trait Host {
         std::fs::read(local).map_err(|error| file_error(path, &error))
     }
 
+    /// A reader of a file, which the splitters read a part at a time. The default opens local
+    /// files and downloads remote ones, as `read` does; a host that overrides `read` also
+    /// overrides this.
+    fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
+        let local = match path.prefix {
+            Some(_) => self.download(path)?,
+            None => PathBuf::from(&path.path),
+        };
+        let file = std::fs::File::open(local).map_err(|error| file_error(path, &error))?;
+        Ok(Box::new(file))
+    }
+
     /// Whether a file exists: `None` when it does not, else whether it is a directory and its
     /// size. The default looks at local files and downloads remote ones.
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {

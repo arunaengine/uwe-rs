@@ -75,14 +75,23 @@ pub fn list(codes: &[Expression]) -> String {
 const TEXT: &str =
     "var text = function(v) { return typeof v === \"string\" ? v : JSON.stringify(v); };";
 
+/// The code of parts as one string, the text of each value joined.
+pub fn joined(parts: &[Part]) -> String {
+    format!("${{ {TEXT} return {}; }}", value_of(parts))
+}
+
 /// An expression as JavaScript code of its value.
 fn value(code: &Expression) -> String {
+    value_of(&code.parts)
+}
+
+fn value_of(parts: &[Part]) -> String {
     let part = |part: &Part| match part {
         Part::Text(text) => serde_json::to_string(text).unwrap_or_default(),
         Part::Function(body) => format!("(function() {{{body}}})()"),
         Part::Javascript(code) | Part::Reference(code) => format!("({code})"),
     };
-    match code.parts.as_slice() {
+    match parts {
         [] => "\"\"".into(),
         [one] => part(one),
         parts => {

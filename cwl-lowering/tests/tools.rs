@@ -238,3 +238,25 @@ fn lowers_secondary_files() {
     let output = json!({"file": {"secondary_files": [{"pattern": ".bai", "required": false}]}});
     assert_eq!(op["outputs"][0]["type"], output, "outputs ask by default");
 }
+
+#[test]
+fn lowers_working_folder() {
+    let lowering = lowered("staged.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let task = serde_json::to_value(&ops.last().unwrap().kind).unwrap();
+    let files = json!([
+        {"value": {"input": "genome"}},
+        {"value": {"input": "entry.1"}, "path": "index.conf"}
+    ]);
+    assert_eq!(task["task"]["files"], files);
+    let entry = ops.iter().find(|op| op.path == "staged.entry.1").unwrap();
+    let wir::Kind::Expr(expr) = &entry.kind else {
+        panic!("an expr: {:?}", entry.kind);
+    };
+    assert!(
+        expr.code.contains(r#""\n""#),
+        "keeps the line end: {}",
+        expr.code
+    );
+}

@@ -12,6 +12,7 @@ mod requirements;
 mod runtime;
 mod tool;
 mod types;
+mod workdir;
 mod workflow;
 
 use std::path::{Path, PathBuf};

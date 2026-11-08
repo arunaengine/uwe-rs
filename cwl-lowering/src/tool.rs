@@ -32,11 +32,13 @@ pub struct Lowered {
     pub evaluated: Vec<Evaluated>,
 }
 
-/// A task input that an expr fills, with the code and the task input it sees as `self`.
+/// A task input that an expr fills, with the code, the task input it sees as `self`, and
+/// its type, by default words of the command line.
 pub struct Computed {
     pub port: String,
     pub code: String,
     pub this: Option<String>,
+    pub r#type: Option<Type>,
 }
 
 /// An output of a tool that an expr computes from the files that its glob found, if any.
@@ -104,6 +106,7 @@ pub fn lower(
                 port: port.to_owned(),
                 code: runtime_of(text)?,
                 this: None,
+                r#type: None,
             });
             Ok(Some(FileName::Input {
                 input: port.to_owned(),
@@ -112,6 +115,16 @@ pub fn lower(
     };
     task.stdout = stream(tool.stdout.as_ref(), "stdout.name")?;
     task.stderr = stream(tool.stderr.as_ref(), "stderr.name")?;
+    if let Some(listing) = scope.find(|class| match class {
+        RequirementClass::InitialWorkDir { listing } => Some(listing),
+        _ => None,
+    }) {
+        let code = |text: &Expression| match paths(text) {
+            true => Err("an InitialWorkDir entry that reads a path".to_owned()),
+            false => runtime_of(text),
+        };
+        task.files = crate::workdir::entries(listing, &names, &mut values, &code)?;
+    }
     let streams = [
         (&mut task.stdout, Cwl::Stdout),
         (&mut task.stderr, Cwl::Stderr),
@@ -165,6 +178,7 @@ pub fn lower(
                 port,
                 code: runtime_of(&text)?,
                 this: None,
+                r#type: None,
             });
             words.push((key, vec![word]));
             continue;
@@ -192,6 +206,7 @@ pub fn lower(
                     port: format!("{name}.{}", crate::group::VALUE),
                     code: runtime_of(code)?,
                     this: Some(name.clone()),
+                    r#type: None,
                 });
             }
         }
@@ -247,6 +262,7 @@ pub fn lower(
                 port: port.clone(),
                 code,
                 this: None,
+                r#type: None,
             });
             Ok(CaptureRule::Patterns(port))
         }

@@ -246,21 +246,10 @@ fn refuses_unrun_fields() {
         rules,
         "op main/sort: uwe compares values only by the wir rules yet"
     );
-    let accept = refused(|document| {
-        op(document, 0)["kind"]["task"]["accept"] =
-            json!({"language": "groovy", "code": "{ true }"});
+    let retry = refused(|document| {
+        op(document, 0)["kind"]["task"]["retry"] = json!({"limit": 1});
     });
-    assert_eq!(
-        accept,
-        "op main/sort: uwe does not run task acceptance and retry rules yet"
-    );
-    let optional = refused(|document| {
-        op(document, 0)["kind"]["task"]["captures"][0]["optional"] = json!(true);
-    });
-    assert_eq!(
-        optional,
-        "op main/sort: uwe does not run optional captures and arity yet"
-    );
+    assert_eq!(retry, "op main/sort: uwe does not run task retry rules yet");
     let captured = refused(|document| {
         let mut same = expr(json!({}));
         same["kind"]["expr"]["captures"] = json!({"n": {"value": 1}});

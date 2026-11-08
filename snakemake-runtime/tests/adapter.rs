@@ -17,6 +17,9 @@ use workflow_graph::{
 const SNAKEFILE: &str = r#"
 SAMPLES = ["a", "b"]
 
+onstart:
+    print("starting")
+
 rule all:
     input: expand("counts/{s}.txt", s=SAMPLES), "summary.txt"
 

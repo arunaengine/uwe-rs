@@ -258,11 +258,20 @@ pub fn lower(
             },
         };
         let key = vec![Key::Number(position), Key::Number(index as i64)];
+        // The runner evaluates code over paths, as the tool sees its files staged.
+        if code(&text) && paths(&text) {
+            let word = Argument::Code {
+                code: runtime_of(&text)?,
+                this: None,
+                prefix: binding.and_then(|binding| binding.prefix.clone()),
+                separate: binding.is_none_or(|binding| binding.separate),
+                separator: binding.and_then(|binding| binding.item_separator.clone()),
+                quote: true,
+            };
+            words.push((key, quoted(binding, vec![word])));
+            continue;
+        }
         if code(&text) {
-            // An expr sees where a file is otherwise than the tool, which sees it staged.
-            if paths(&text) {
-                return Err("an expression in an argument that reads a path".into());
-            }
             let port = format!("argument.{index}");
             let word = Argument::Input {
                 input: port.clone(),
@@ -297,8 +306,23 @@ pub fn lower(
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
             let resolved = crate::types::resolve(&input.value_type, &named);
-            words.push((key, quoted(Some(binding), bound(binding, resolved, &name)?)));
-            if let Some(code) = &binding.value_from {
+            // CWL evaluates the valueFrom of an input that is not null over staged paths.
+            let evaluated = (binding.value_from.as_ref())
+                .filter(|code| paths(code) || matches!(resolved, Cwl::Union(_)));
+            if let Some(code) = evaluated {
+                let word = Argument::Code {
+                    code: runtime_of(code)?,
+                    this: Some(name.clone()),
+                    prefix: binding.prefix.clone(),
+                    separate: binding.separate,
+                    separator: binding.item_separator.clone(),
+                    quote: true,
+                };
+                words.push((key, quoted(Some(binding), vec![word])));
+            } else {
+                words.push((key, quoted(Some(binding), bound(binding, resolved, &name)?)));
+            }
+            if let Some(code) = binding.value_from.as_ref().filter(|_| evaluated.is_none()) {
                 values.push(Computed {
                     port: format!("{name}.{}", crate::group::VALUE),
                     code: runtime_of(code)?,
@@ -325,6 +349,9 @@ pub fn lower(
     }
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();
+    if (task.command.iter()).any(|word| matches!(word, Argument::Code { .. })) {
+        task.library = scope.library();
+    }
     let mut outputs = Vec::new();
     let mut evaluated = Vec::new();
     let mut glob = |name: &str, globs: &[Expression]| match globs {
@@ -624,6 +651,21 @@ fn unquoted(word: Argument) -> Argument {
             ..
         } => Argument::Input {
             input,
+            prefix,
+            separate,
+            separator,
+            quote: false,
+        },
+        Argument::Code {
+            code,
+            this,
+            prefix,
+            separate,
+            separator,
+            ..
+        } => Argument::Code {
+            code,
+            this,
             prefix,
             separate,
             separator,

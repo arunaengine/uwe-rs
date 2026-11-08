@@ -115,7 +115,15 @@ fn refusal(op: &Op) -> Option<&'static str> {
 fn supported(kind: &Kind) -> bool {
     matches!(
         kind,
-        Kind::Emit(_) | Kind::Transform(_) | Kind::Filter(_) | Kind::FlatMap(_) | Kind::Flatten(_)
+        Kind::Emit(_)
+            | Kind::Transform(_)
+            | Kind::Filter(_)
+            | Kind::FlatMap(_)
+            | Kind::Flatten(_)
+            | Kind::Mix(_)
+            | Kind::Concat(_)
+            | Kind::Merge(_)
+            | Kind::Zip(_)
     )
 }
 

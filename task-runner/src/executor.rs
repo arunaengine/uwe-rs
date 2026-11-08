@@ -67,6 +67,12 @@ impl<B: Backend> RunnerExecutor<B> {
         }
     }
 
+    /// Lets the backend sign in to registries with these settings, wherever the tasks of the
+    /// run go on, like on the runtime that all runs share.
+    pub fn use_registry(&mut self, registry: executor::credentials::Registry) {
+        self.runner.registry = Some(registry);
+    }
+
     pub fn runner(&self) -> &Runner<B> {
         &self.runner
     }

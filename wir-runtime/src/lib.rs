@@ -24,6 +24,7 @@ mod operator;
 mod pairing;
 mod plan;
 mod python;
+mod reducing;
 mod routing;
 pub mod snakemake;
 #[allow(dead_code, reason = "the stream ops of the next commits use it")]

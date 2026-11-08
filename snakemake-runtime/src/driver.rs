@@ -3053,8 +3053,11 @@ pub struct Settings {
     /// `envvars`; `None` reads the environment of the process.
     pub environment: Option<Vec<(String, String)>>,
     /// The folders that workflow code may reach on disk besides those of the workflow, its
-    /// working folder, the scratch folder and the files of the launch; `None` reaches all.
+    /// working folder and the files of the launch; `None` reaches all.
     pub roots: Option<Vec<PathBuf>>,
+    /// Shared folders of an isolated run, like the cache and the store, whose files workflow
+    /// code may read by their paths but not list or change. The scratch folder is one too.
+    pub read_only: Vec<PathBuf>,
 }
 
 /// Runtime options supplied by the CLI in addition to workflow profile defaults.
@@ -3129,10 +3132,14 @@ pub fn spawn_driver(
                 let mut session = Session::within(&launch, &settings.storage, folder, environment)?;
                 if let Some(roots) = &settings.roots {
                     let mut folders = roots.clone();
-                    folders.extend([session.workdir.clone(), launch.scratch.clone()]);
+                    folders.push(session.workdir.clone());
                     folders.extend(session.snakefile.parent().map(Path::to_owned));
                     folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
-                    session.files.confine(workflow_graph::Roots::new(folders));
+                    let shared = (settings.read_only.iter())
+                        .chain([&launch.scratch])
+                        .cloned();
+                    let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
+                    session.files.confine(roots);
                 }
                 *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();
                 session.rerun_triggers = options.rerun_triggers.clone();

@@ -202,10 +202,12 @@ While uwe interprets the code of an isolated workflow, that code reaches only th
 
 - the folder of the workflow, or the folder of its main file,
 - the launch folder, `Isolation.launch`, which relative paths start from and which the host makes; without it the run starts in the working directory of the process, which its code may not reach,
-- the scratch folder of the run and the cache folder, `run::Settings.cache_folder`, with the downloads and the files of the run,
-- the local store, `run::Settings.store`, where the outputs of tasks are, and `run::Settings.output_dir`,
+- the folders of the run in the scratch folder: the launch folder of a Nextflow run, `scratch/launch/<run>`, when the host gives none, and the folder of Nextflow operators like `collectFile` and `splitFastq(file: true)`,
+- `run::Settings.output_dir`,
 - the files of the launch: the inputs file and the config files,
 - the folders of the host, `Isolation.roots`, like the input folders of the user and the output folder of the run.
+
+Other runs share the cache folder, `run::Settings.cache_folder`, with its scratch folder and downloads, and the local store, `run::Settings.store`, where the outputs of tasks are. Workflow code reads a file there by its path, like the output of one of its tasks, which it gets from the task. It cannot list these folders, and it cannot write, delete or make anything in them outside the folders of its run above. So one run cannot change the cached results of another.
 
 The environment that such code reads is the secret values of the run (`run::Settings.secrets`) and the variables of the process that `Isolation.variables` names, nothing else. This holds for `env()`, `System.getenv`, `os.environ` and the `envvars` of Snakemake, and also for the `{ environment = "NAME" }` secrets of the config files. `SecretValues::limit_environment` does the same for a host that builds its own `SecretValues`.
 

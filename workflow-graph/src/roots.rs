@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Roots {
     folders: Vec<PathBuf>,
+    /// Shared folders, like the cache of all runs, whose files workflow code only reads.
+    read_only: Vec<PathBuf>,
 }
 
 impl Roots {
@@ -17,7 +19,15 @@ impl Roots {
         let folders = folders.into_iter().filter_map(|folder| resolve(&folder));
         Roots {
             folders: folders.collect(),
+            read_only: Vec::new(),
         }
+    }
+
+    /// Adds folders whose files workflow code may read by their paths, but not list or change.
+    pub fn with_read_only(mut self, folders: impl IntoIterator<Item = PathBuf>) -> Roots {
+        let folders = folders.into_iter().filter_map(|folder| resolve(&folder));
+        self.read_only.extend(folders);
+        self
     }
 
     /// Refuses a path that leads outside the folders, also through a link.
@@ -33,6 +43,16 @@ impl Roots {
                 path.display()
             ),
         ))
+    }
+
+    /// Like [`Roots::check`], but also lets a path in a read-only folder through, to read it.
+    pub fn check_read(&self, path: &Path) -> io::Result<()> {
+        if resolve(path)
+            .is_some_and(|real| self.read_only.iter().any(|root| real.starts_with(root)))
+        {
+            return Ok(());
+        }
+        self.check(path)
     }
 }
 
@@ -91,5 +111,20 @@ mod tests {
             assert!(error.to_string().contains("outside the folders of the run"));
         }
         assert!(Roots::default().check(&run).is_err());
+    }
+
+    #[test]
+    fn reads_shared_folders() {
+        let folder = tempfile::tempdir().unwrap();
+        let run = folder.path().join("cache/scratch/launch/run");
+        let shared = folder.path().join("cache");
+        std::fs::create_dir_all(&run).unwrap();
+        let roots = Roots::new([run.clone()]).with_read_only([shared.clone()]);
+        assert!(roots.check(&run.join("file.txt")).is_ok());
+        assert!(roots.check_read(&run.join("file.txt")).is_ok());
+        assert!(roots.check_read(&shared.join("store/file.txt")).is_ok());
+        assert!(roots.check(&shared.join("store/file.txt")).is_err());
+        assert!(roots.check(&shared).is_err());
+        assert!(roots.check_read(&folder.path().join("other.txt")).is_err());
     }
 }

@@ -73,17 +73,20 @@ pub(crate) fn resume_folder(run: &str) -> PathBuf {
     cache_directory().join("scratch").join("resume").join(run)
 }
 
-/// The isolation of a run, with its cache folder, local store and output folder among the
-/// folders that workflow code may reach; `None` when the run is not isolated.
+/// The isolation of a run, with its output folder among the folders that workflow code may
+/// reach; `None` when the run is not isolated.
 pub(crate) fn isolation(arguments: &Arguments, setup: &Setup) -> Option<Isolation> {
     let mut isolation = setup.isolation.clone()?;
-    isolation.roots.push(cache_directory());
-    let store = setup.store_location(arguments);
-    isolation
-        .roots
-        .extend((!store.contains("://")).then(|| PathBuf::from(store)));
     isolation.roots.extend(arguments.output_dir.clone());
     Some(isolation)
+}
+
+/// The cache folder and the local store, which other runs share: isolated workflow code reads
+/// their files by path, but may not list or change them.
+pub(crate) fn shared_folders(arguments: &Arguments, setup: &Setup) -> Vec<PathBuf> {
+    let store = setup.store_location(arguments);
+    let store = (!store.contains("://")).then(|| PathBuf::from(store));
+    [cache_directory()].into_iter().chain(store).collect()
 }
 
 /// The driver of a language.
@@ -284,6 +287,7 @@ fn snakemake(
             roots.extend(isolation.launch);
             roots
         }),
+        read_only: shared_folders(arguments, setup),
     }
 }
 

@@ -576,7 +576,7 @@ fn runs_compiled_texts() {
 }
 
 #[test]
-fn compiles_dag_in_dependency_order() {
+fn compiles_dependency_order() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   templates:
@@ -618,7 +618,7 @@ fn compiles_dag_in_dependency_order() {
 }
 
 #[test]
-fn handles_failures_targets_ran_past() {
+fn targets_handle_failures() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   templates:
@@ -641,7 +641,7 @@ fn handles_failures_targets_ran_past() {
 }
 
 #[test]
-fn keeps_loops_that_continue_native() {
+fn keeps_continuing_loops() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   templates:
@@ -697,7 +697,7 @@ fn prints_output_expressions() {
 }
 
 #[test]
-fn keeps_tagged_input_values_native() {
+fn keeps_tagged_inputs() {
     let folder = tempfile::tempdir().unwrap();
     let spec = r#"  entrypoint: main
   templates:

@@ -622,6 +622,8 @@ mod kinds;
 mod operators;
 #[path = "reductions.rs"]
 mod reductions;
+#[path = "regions.rs"]
+mod regions;
 #[path = "selection.rs"]
 mod selection;
 

@@ -1027,3 +1027,106 @@ fn dialect_tasks() {
     let found = dialect("wdl", json!({"wdl_task": unmapped}), json!({}));
     assert_eq!(found, ["main/t: a dialect task needs a map of output bam"]);
 }
+
+/// A graph `main` with a loop `op` over the body `count`, which adds one to `n` and says
+/// `again` while it is below three.
+fn looping(looped: Json, inputs: Json, outputs: Json) -> Json {
+    let mut document = many(json!({"loop": looped}), inputs, outputs);
+    let add = json!({"path": "add", "kind": {"expr": {"language": "js", "code": "$(inputs.n + 1)"}},
+        "inputs": [port("n", "int")], "outputs": [port("out", "int")]});
+    let test = json!({"path": "test", "kind": {"expr": {"language": "js", "code": "$(inputs.n < 2)"}},
+        "inputs": [port("n", "int")], "outputs": [port("out", "bool")]});
+    let body = json!({"name": "count", "inputs": [port("n", "int")], "outputs": [port("n", "int"), port("again", "bool")],
+        "ops": [add, test], "edges": [edge((None, "n"), (Some("add"), "n")), edge((None, "n"), (Some("test"), "n")),
+            edge((Some("add"), "out"), (None, "n")), edge((Some("test"), "out"), (None, "again"))]});
+    document["graphs"].as_array_mut().unwrap().push(body);
+    document["graphs"][0]["edges"][1]["from"]["port"] = outputs_name(&document);
+    document
+}
+
+fn outputs_name(document: &Json) -> Json {
+    document["graphs"][0]["ops"][0]["outputs"][0]["name"].clone()
+}
+
+#[test]
+fn loop_bodies() {
+    let carry = json!([{"output": "n", "input": "n"}]);
+    let input = json!([port("n", "int")]);
+    let good = looping(
+        json!({"body": "count", "condition": "again", "carry": carry, "limit": 5}),
+        input.clone(),
+        port("n", "int"),
+    );
+    assert_eq!(problems(&good), Vec::<String>::new());
+    let per_round = looping(
+        json!({"body": "count", "condition": "again", "carry": carry}),
+        input.clone(),
+        typed("n", json!("int"), "stream"),
+    );
+    assert_eq!(
+        problems(&per_round),
+        Vec::<String>::new(),
+        "a stream output gives one item per run"
+    );
+    let zero = looping(
+        json!({"body": "count", "condition": "again", "limit": 0}),
+        input.clone(),
+        port("n", "int"),
+    );
+    reports(&zero, "main/op: a loop needs a positive limit");
+    let unconditioned = looping(
+        json!({"body": "count", "condition": "n"}),
+        input.clone(),
+        port("n", "int"),
+    );
+    let found = problems(&unconditioned);
+    assert!(
+        found.contains(&"main/op: a loop needs a bool body output n".into()),
+        "{found:?}"
+    );
+    let twice = looping(
+        json!({"body": "count", "condition": "again", "carry": [{"output": "n", "input": "n"},
+        {"output": "n", "input": "n"}]}),
+        input,
+        port("n", "int"),
+    );
+    reports(&twice, "main/op: a loop needs one carry into n");
+    let unfed = looping(
+        json!({"body": "count", "condition": "again"}),
+        json!([port("m", "int")]),
+        port("n", "int"),
+    );
+    let found = problems(&unfed);
+    assert!(
+        found.contains(&"main/op: a loop needs an input n for the first run".into()),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn dynamic_boundary() {
+    let plans = json!([typed("plans", json!("dynamic"), "stream")]);
+    let out = typed("out", json!("dynamic"), "stream");
+    let region = |dynamic: Json, inputs: &Json| {
+        problems(&many(
+            json!({"dynamic": dynamic}),
+            inputs.clone(),
+            out.clone(),
+        ))
+    };
+    assert_eq!(
+        region(json!({"plan": "plans"}), &plans),
+        Vec::<String>::new()
+    );
+    let typed_plan = json!([typed("plans", json!("string"), "stream")]);
+    assert_eq!(
+        region(json!({"plan": "plans"}), &typed_plan),
+        ["main/op: a dynamic region needs a dynamic plan input plans"]
+    );
+    assert_eq!(
+        region(json!({}), &plans),
+        ["main/op: a dynamic region needs a plan input or a planner, exactly one"]
+    );
+    let planner = json!({"planner": {"snakemake": {"source": "smk"}}});
+    assert_eq!(region(planner, &plans), ["main/op: no source named smk"]);
+}

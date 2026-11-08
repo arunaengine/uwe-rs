@@ -64,6 +64,63 @@ pub fn with(code: &Expression, runtime: &str) -> String {
     )
 }
 
+/// The code of an expression whose parameter references fail on a missing field, as CWL
+/// evaluates them without JavaScript, where JavaScript gives `undefined`.
+pub fn strict(code: &Expression) -> String {
+    if !(code.parts.iter()).any(|part| matches!(part, Part::Reference(_))) {
+        return code.text.clone();
+    }
+    let parts: Vec<Part> = (code.parts.iter())
+        .map(|part| match part {
+            Part::Reference(path) => Part::Javascript(lookup(path)),
+            other => other.clone(),
+        })
+        .collect();
+    format!("${{ {GET} {TEXT} return {}; }}", value_of(&parts))
+}
+
+/// A function `get` that takes a field of an object or the length or an item of an array, and
+/// fails on anything else.
+const GET: &str = "var get = function(v, k) { \
+    if (Array.isArray(v)) { if (k === \"length\") { return v.length; } \
+    if (typeof k === \"number\" && k < v.length) { return v[k]; } } \
+    else if (v !== null && typeof v === \"object\" && Object.prototype.hasOwnProperty.call(v, k)) \
+    { return v[k]; } throw new Error(\"the parameter reference has no \" + k); };";
+
+/// A parameter reference like `inputs.a['b'][0]` as calls of `get`.
+fn lookup(path: &str) -> String {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let end = path.find(|c: char| !word(c)).unwrap_or(path.len());
+    let mut code = path[..end].to_owned();
+    let mut rest = &path[end..];
+    while !rest.is_empty() {
+        let (key, after) = if let Some(tail) = rest.strip_prefix('.') {
+            let end = tail.find(|c: char| !word(c)).unwrap_or(tail.len());
+            (
+                serde_json::to_string(&tail[..end]).unwrap_or_default(),
+                &tail[end..],
+            )
+        } else if let Some(tail) = rest.strip_prefix("['").or(rest.strip_prefix("[\"")) {
+            let quote = rest.as_bytes()[1] as char;
+            let end = tail.find(quote).unwrap_or(tail.len());
+            let key = tail[..end].replace("\\'", "'").replace("\\\"", "\"");
+            let after = tail.get(end + 2..).unwrap_or_default();
+            (serde_json::to_string(&key).unwrap_or_default(), after)
+        } else if let Some(tail) = rest.strip_prefix('[') {
+            let end = tail.find(']').unwrap_or(tail.len());
+            (
+                tail[..end].to_owned(),
+                tail.get(end + 1..).unwrap_or_default(),
+            )
+        } else {
+            break;
+        };
+        code = format!("get({code}, {key})");
+        rest = after;
+    }
+    code
+}
+
 /// The code of a list of expressions, like the globs of an output, as one array of their
 /// values, where a value that is an array adds its items.
 pub fn list(codes: &[Expression]) -> String {

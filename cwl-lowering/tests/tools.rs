@@ -82,7 +82,8 @@ fn lowers_glob_expressions() {
     let wir::Kind::Expr(expr) = &ops[0].kind else {
         panic!("an expr: {:?}", ops[0].kind);
     };
-    assert_eq!(expr.code, "$(inputs.prefix)*");
+    let strict = r#"return [text((get(inputs, "prefix"))), "*"].join(""); }"#;
+    assert!(expr.code.ends_with(strict), "{}", expr.code);
 }
 
 #[test]
@@ -163,7 +164,11 @@ fn lowers_output_evaluation() {
         ops[0]["outputs"][0],
         json!({"name": "count", "type": files})
     );
-    assert_eq!(ops[1]["kind"]["expr"]["code"], "$(self.length)");
+    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    assert!(
+        code.ends_with(r#"return (get(self, "length")); }"#),
+        "strict: {code}"
+    );
     assert_eq!(ops[1]["inputs"][1], json!({"name": "self", "type": files}));
     assert_eq!(ops[1]["outputs"], json!([{"name": "count", "type": "int"}]));
     let outputs: Vec<&str> = (graph["outputs"].as_array().unwrap().iter())

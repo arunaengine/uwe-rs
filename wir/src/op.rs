@@ -359,6 +359,20 @@ pub struct Expr {
     pub scope: Option<Scope>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub captures: BTreeMap<String, Binding>,
+    /// What an Argo text gives once its tags are substituted; the text when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form: Option<ExprForm>,
+}
+
+/// What an `argo` expr gives: its text, whether it holds as a `when`, the items of a loop, or
+/// the labels that those items give the node names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExprForm {
+    Text,
+    Condition,
+    Items,
+    Labels,
 }
 
 /// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the

@@ -14,10 +14,15 @@ fn validator() -> Validator {
     .expect("a validator")
 }
 
-/// A document of one graph `g` with these ops and edges.
+/// A document of one graph `g` with these ops and edges; empty lists are left out.
 fn document(ops: Json, edges: Json) -> Json {
-    json!({"wir_version": wir::VERSION,
-        "graphs": [{"name": "g", "ops": ops, "edges": edges}], "entry": "g"})
+    let mut graph = json!({"name": "g"});
+    for (key, list) in [("ops", ops), ("edges", edges)] {
+        if list.as_array().is_some_and(|items| !items.is_empty()) {
+            graph[key] = list;
+        }
+    }
+    json!({"wir_version": wir::VERSION, "graphs": [graph], "entry": "g"})
 }
 
 /// Whether the schema and the parser both accept the document; panics when they disagree.
@@ -55,4 +60,44 @@ fn subscription_forms() {
     assert!(accepted(&live));
     assert_eq!(written(&live)["graphs"][0]["edges"][0]["read"], "live");
     assert!(!accepted(&edge(json!("late"))));
+}
+
+#[test]
+fn body_forms() {
+    let graph: wir::Body = serde_json::from_value(json!("square")).expect("a graph body");
+    assert_eq!(graph.graph(), Some("square"));
+    let closure = json!({"language": "groovy", "code": "{ x -> x * 2 }",
+        "scope": {"source": "main", "start": 10, "end": 42},
+        "captures": {"factor": {"input": "factor"}, "base": {"value": [1, 2]}}});
+    let body: wir::Body = serde_json::from_value(closure.clone()).expect("a closure body");
+    assert_eq!(body.graph(), None);
+    assert_eq!(serde_json::to_value(&body).expect("serializes"), closure);
+    let unknown = json!({"language": "groovy", "code": "{ it }", "frame": 1});
+    assert!(serde_json::from_value::<wir::Body>(unknown).is_err());
+    let binding =
+        json!({"captures": {"x": {"input": "a", "value": 1}}, "language": "wdl", "code": "x"});
+    assert!(serde_json::from_value::<wir::Body>(binding).is_err());
+}
+
+#[test]
+fn expr_closure_fields() {
+    let expr = |language: &str| {
+        let op = json!({"path": "e", "kind": {"expr": {"language": language, "code": "1",
+            "captures": {"n": {"value": 3}}}}, "values": "groovy",
+            "outputs": [{"name": "out", "type": "int"}]});
+        document(json!([op]), json!([]))
+    };
+    for language in ["js", "javascript", "groovy", "python", "wdl"] {
+        let document = expr(language);
+        assert!(accepted(&document), "{language}");
+        assert_eq!(written(&document), document);
+    }
+    assert!(!accepted(&expr("perl")));
+    let mut plain = expr("js");
+    plain["graphs"][0]["ops"][0]["values"] = json!("wir");
+    let stored = &written(&plain)["graphs"][0]["ops"][0];
+    assert!(
+        stored.get("values").is_none(),
+        "wir is the default: {stored}"
+    );
 }

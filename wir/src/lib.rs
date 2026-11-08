@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod closure;
 mod document;
 mod flow;
 mod op;
@@ -10,6 +11,7 @@ mod types;
 mod value;
 mod verify;
 
+pub use closure::{Binding, Body, Closure, ExprLanguage, Scope, ValueRules};
 pub use document::{
     Document, Edge, Endpoint, Graph, Language, ParseError, Port, SCHEMA, Source, VERSION, parse,
 };

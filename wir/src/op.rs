@@ -2,8 +2,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
+use crate::closure::{Binding, ExprLanguage, Scope, ValueRules};
 use crate::document::{Language, Port};
 use crate::reserved;
 
@@ -30,6 +33,9 @@ pub struct Op {
     pub attributes: Attributes,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    /// The rules the op compares, orders and adds values by.
+    #[serde(default, skip_serializing_if = "ValueRules::is_wir")]
+    pub values: ValueRules,
 }
 
 /// What an op does, with the fields of its kind. `task`, `call`, `native`, `map`, `expr`,
@@ -136,17 +142,21 @@ pub enum CaptureRule {
     Stderr,
 }
 
-/// A pure CWL expression over the op's inputs, which binds its one output.
-/// Languages other than `js` stay reserved.
+/// A pure expression over the op's inputs, which binds its one output. `js` and `javascript`
+/// are CWL expressions; the other languages use their own evaluator.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Expr {
-    pub language: String,
-    /// Text with `$(...)` parts, or a `${...}` function body, as a CWL expression.
+    pub language: ExprLanguage,
+    /// For CWL, text with `$(...)` parts or a `${...}` function body.
     pub code: String,
     /// Code that runs before it, like CWL `expressionLib`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Scope>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub captures: BTreeMap<String, Binding>,
 }
 
 /// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the

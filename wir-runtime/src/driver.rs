@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Document, Effect, Kind, Language as Dialect, Native, Status};
+use wir::{Document, Effect, ExprLanguage, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
     CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
     Launch, Note, Outcome, Reuse, Task, TaskId,
@@ -252,8 +252,8 @@ impl WirDriver {
             Kind::Expr(spec) => {
                 let node = self.progress.node(at);
                 let path = node.path.clone();
-                if spec.language != "js" {
-                    let message = format!("op {path}: the language {} is reserved", spec.language);
+                if !matches!(spec.language, ExprLanguage::Js | ExprLanguage::Javascript) {
+                    let message = format!("op {path}: uwe does not run this language here yet");
                     return Err(DriverError::unsupported(message));
                 }
                 let output = node.op.outputs[0].clone();

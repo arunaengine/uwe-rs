@@ -465,6 +465,19 @@ fn task_outputs_captured() {
         ("main/head".into(), Problem::CaptureType("out".into()))
     );
     let mut document = base();
+    document["graphs"][0]["ops"][1]["kind"]["task"]["captures"][0]["load_contents"] = json!(true);
+    assert!(
+        problems(document.clone()).is_empty(),
+        "a File loads contents"
+    );
+    document["graphs"][0]["ops"][1]["kind"]["task"]["captures"][0]["from"] = json!({"glob": "d"});
+    document["graphs"][0]["ops"][1]["outputs"][0]["type"] = json!("directory");
+    document["graphs"][0]["outputs"][0]["type"] = json!("directory");
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::CaptureType("out".into()))
+    );
+    let mut document = base();
     document["graphs"][0]["ops"][1]["kind"]["task"]["command"] = json!([{"input": "other"}]);
     assert_eq!(
         only(document),

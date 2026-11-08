@@ -123,6 +123,10 @@ pub enum Argument {
 pub struct Capture {
     pub output: String,
     pub from: CaptureRule,
+    /// Whether each File it reads holds its text as `contents`, as CWL `loadContents`; a
+    /// file over 64 KiB fails the task.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub load_contents: bool,
 }
 
 /// Where a captured output comes from.

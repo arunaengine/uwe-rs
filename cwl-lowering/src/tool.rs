@@ -165,6 +165,7 @@ pub fn lower(
             task.captures.push(Capture {
                 output: name.clone(),
                 from: rule,
+                load_contents: loads(output),
             });
             outputs.push(port(r#type));
         }
@@ -295,8 +296,8 @@ fn capture(
     let Some(binding) = &output.binding else {
         return Err("no glob".into());
     };
-    if binding.load_contents == Some(true) || binding.load_listing.is_some() {
-        return Err("loadContents or loadListing".into());
+    if binding.load_listing.is_some() {
+        return Err("loadListing".into());
     }
     if let Some(code) = &binding.output_eval {
         if format.is_some() {
@@ -340,6 +341,11 @@ fn capture(
         true => Ok(Read::Direct(rule(&pattern, task), r#type)),
         false => Err("a type that a glob does not fill".into()),
     }
+}
+
+/// Whether an output loads the contents of the files of its glob.
+fn loads(output: &cwl_parser::model::OutputParameter) -> bool {
+    (output.binding.as_ref()).is_some_and(|binding| binding.load_contents == Some(true))
 }
 
 /// The pattern of a glob without code that stays inside the working folder.

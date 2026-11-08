@@ -60,7 +60,8 @@ impl<'d> Checker<'d> {
                 self.report(at, Problem::Capture(output.name.clone()));
                 continue;
             };
-            if !capture_fits(&capture.from, &output.r#type, self.defs) {
+            let loads = !capture.load_contents || holds_file(&output.r#type, self.defs);
+            if !loads || !capture_fits(&capture.from, &output.r#type, self.defs) {
                 self.report(at, Problem::CaptureType(output.name.clone()));
             }
         }
@@ -364,6 +365,16 @@ fn array_of(items: Type) -> Type {
 /// Whether a path is relative and stays inside the working folder.
 fn inside(path: &str) -> bool {
     !path.is_empty() && !path.starts_with('/') && !path.split('/').any(|part| part == "..")
+}
+
+/// Whether a type is a File, also inside an optional or an array, so contents can be loaded.
+fn holds_file(r#type: &Type, defs: &[TypeDef]) -> bool {
+    match resolve(r#type, defs) {
+        Some(Type::File(_)) => true,
+        Some(Type::Optional(inner)) => holds_file(inner, defs),
+        Some(Type::Array(array)) => holds_file(&array.items, defs),
+        _ => false,
+    }
 }
 
 /// Glob captures fill File, Directory or arrays of them; stdout and stderr fill a File.

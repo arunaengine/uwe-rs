@@ -19,12 +19,12 @@ use workflow_graph::{
 const RECORDED: Counts = Counts {
     workflows: 890,
     native: 633,
-    full: 616,
-    partly: 49,
-    failed: 224,
-    compiled: 594,
-    ends: 616,
-    same: 594,
+    full: 666,
+    partly: 3,
+    failed: 220,
+    compiled: 632,
+    ends: 666,
+    same: 632,
     equal: 594,
 };
 

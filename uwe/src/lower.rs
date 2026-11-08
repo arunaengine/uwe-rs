@@ -94,23 +94,35 @@ fn wdl(
     Ok(lowering)
 }
 
-/// The inputs file of the entry graph from the WDL input file of a run, below `folder`.
+/// The inputs file of the entry graph from the WDL input file and the parameters of a run,
+/// below `folder`.
 fn converted(
     lowering: &wdl_lowering::Lowering,
     arguments: &Arguments,
     folder: &Path,
 ) -> Result<Option<PathBuf>, Failure> {
-    let Some(file) = &arguments.inputs else {
-        return Ok(None);
+    let mut values = match &arguments.inputs {
+        None if arguments.params.is_empty() => return Ok(None),
+        None => serde_json::Value::Object(Default::default()),
+        Some(file) => {
+            let shown = file.display();
+            let text = std::fs::read_to_string(file)
+                .map_err(|error| failure(format!("uwe: cannot read {shown}: {error}")))?;
+            let json = serde_json::from_str(&text)
+                .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
+            let absolute = std::path::absolute(file).unwrap_or(file.clone());
+            (lowering.inputs(&json, absolute.parent().unwrap_or(Path::new("/"))))
+                .map_err(|error| failure(format!("uwe: {shown}: {error}")))?
+        }
     };
-    let shown = file.display();
-    let text = std::fs::read_to_string(file)
-        .map_err(|error| failure(format!("uwe: cannot read {shown}: {error}")))?;
-    let json =
-        serde_json::from_str(&text).map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
-    let absolute = std::path::absolute(file).unwrap_or(file.clone());
-    let values = (lowering.inputs(&json, absolute.parent().unwrap_or(Path::new("/"))))
-        .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
+    let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
+    let given = (lowering.parameters(&arguments.params, &base))
+        .map_err(|error| failure(format!("uwe: {error}")))?;
+    if let (serde_json::Value::Object(values), serde_json::Value::Object(given)) =
+        (&mut values, given)
+    {
+        values.extend(given);
+    }
     let text = values.to_string();
     let digest = task_model::Digest::sha256(text.as_bytes());
     let path = folder.join(format!("{}.inputs.json", digest.hex()));

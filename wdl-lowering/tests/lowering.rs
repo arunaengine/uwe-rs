@@ -591,6 +591,43 @@ task lines {
 }
 
 #[test]
+fn parameters_convert() {
+    let text = r#"version 1.1
+workflow pairs {
+  input {
+    String name
+    Pair[Int, String] pair
+    Array[File] files
+  }
+  output {
+    String text = "~{name} ~{pair.left}~{pair.right} ~{length(files)}"
+  }
+}
+"#;
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let target = folder.path().join("main.wdl");
+    std::fs::write(&target, text).expect("writes the document");
+    let lowering = wdl_lowering::lower(&target, None, folder.path()).expect("the document lowers");
+    let params: Vec<(String, String)> = [
+        ("pairs.name", "12"),
+        ("pair", r#"{"left": 1, "right": "a"}"#),
+        ("files", "a.txt"),
+        ("files", "/b.txt"),
+    ]
+    .iter()
+    .map(|(name, text)| (name.to_string(), text.to_string()))
+    .collect();
+    let values = lowering.parameters(&params, Path::new("/work"));
+    let file = |location: &str| json!({"class": "File", "location": location});
+    let expected = json!({
+        "name": "12",
+        "pair": [1, "a"],
+        "files": [file("/work/a.txt"), file("/b.txt")],
+    });
+    assert_eq!(values, Ok(expected));
+}
+
+#[test]
 fn objects_stay_unlowered() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let target = folder.path().join("main.wdl");

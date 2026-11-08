@@ -30,6 +30,45 @@ impl Lowering {
         }
         Ok(Json::Object(values))
     }
+
+    /// The input values of the entry graph from command-line parameters like `--hello.name x`,
+    /// read as uwe's WDL driver reads them: repeated values make an array, a String, File or
+    /// Directory is the text, and other values are JSON. Relative paths start at `base`.
+    pub fn parameters(&self, params: &[(String, String)], base: &Path) -> Result<Json, String> {
+        let prefix = format!("{}.", self.name);
+        let mut texts: Vec<(&str, Vec<&str>)> = Vec::new();
+        for (name, text) in params {
+            let name = name.strip_prefix(&prefix).unwrap_or(name);
+            match texts.iter_mut().find(|(known, _)| *known == name) {
+                Some((_, list)) => list.push(text),
+                None => texts.push((name, vec![text])),
+            }
+        }
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        let ports = entry.map_or(&[][..], |graph| &graph.inputs);
+        let mut values = Map::new();
+        for (name, list) in texts {
+            let found = ports.iter().find(|port| port.name == name);
+            let port = found.ok_or_else(|| format!("{} has no input {name}", self.name))?;
+            values.insert(name.to_owned(), parameter(&port.r#type, &list));
+        }
+        self.inputs(&Json::Object(values), base)
+    }
+}
+
+/// The WDL input JSON of a parameter given one or more times.
+fn parameter(r#type: &Type, texts: &[&str]) -> Json {
+    let text = texts.last().copied().unwrap_or_default();
+    match r#type {
+        Type::Optional(inner) => parameter(inner, texts),
+        Type::Array(array) => Json::Array(
+            (texts.iter())
+                .map(|text| parameter(&array.items, &[text]))
+                .collect(),
+        ),
+        Type::String | Type::File(_) | Type::Directory => Json::String(text.to_owned()),
+        _ => serde_json::from_str(text).unwrap_or_else(|_| Json::String(text.to_owned())),
+    }
 }
 
 /// A value of WDL input JSON as a wir value of a type.

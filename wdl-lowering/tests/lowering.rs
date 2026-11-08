@@ -152,3 +152,49 @@ task greet {
     assert_eq!(lowered["logs"], json!(["simulated.log"]));
     assert_eq!(lowered["named"], json!("simulated"));
 }
+
+#[test]
+fn runtime_sets_task() {
+    let text = r#"version 1.1
+task count {
+  input {
+    String text
+  }
+  command <<<
+    echo ~{text} | wc -c
+  >>>
+  runtime {
+    docker: "ubuntu:24.04"
+    cpu: 2
+    memory: "1 GiB"
+    returnCodes: [0, 1]
+  }
+  output {
+    File size = stdout()
+  }
+}
+"#;
+    let runs = runs(text, json!({"text": "four"}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    let graph = (runs.lowering.document.graphs.iter()).find(|item| item.name == "task.count");
+    let op = graph.and_then(|graph| graph.ops.iter().find(|op| op.path == "count"));
+    let op = op.expect("the task op of count");
+    let Kind::Task(task) = &op.kind else {
+        panic!("count is a task op");
+    };
+    assert_eq!(task.image.as_deref(), Some("ubuntu:24.04"));
+    assert_eq!(task.success_codes, [0, 1]);
+    let resources = op.attributes.resources.clone().unwrap_or_default();
+    assert_eq!((resources.cpus, resources.memory), (Some(2), Some(1 << 30)));
+    assert_eq!(runs.native, runs.lowered);
+    let picked = text.replace("docker: \"ubuntu:24.04\"", "docker: text");
+    let runs = self::runs(&picked, json!({"text": "four"}));
+    let kept: Vec<(&str, &str)> = (runs.lowering.kept.iter())
+        .map(|kept| (kept.path.as_str(), kept.reason.as_str()))
+        .collect();
+    assert_eq!(
+        kept,
+        [("count", "the runtime value docker depends on inputs")]
+    );
+    assert_eq!(runs.native, runs.lowered);
+}

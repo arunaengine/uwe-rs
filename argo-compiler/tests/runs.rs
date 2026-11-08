@@ -231,7 +231,10 @@ fn reads_templates_of_configs() {
     let root = folder.path();
     // The config sits outside the folder of the workflow, whose templates Argo reads anyway.
     std::fs::create_dir_all(root.join("flow")).unwrap();
-    let file = workflow(&root.join("flow"), "  workflowTemplateRef: {name: library}\n");
+    let file = workflow(
+        &root.join("flow"),
+        "  workflowTemplateRef: {name: library}\n",
+    );
     let configs = root.join("library.yaml");
     std::fs::write(&configs, LIBRARY).unwrap();
     let (one, other) = both(root, &file, &[configs], Writer::new);

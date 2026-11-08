@@ -5,12 +5,194 @@
 
 use std::collections::BTreeMap;
 
-use argo_parser::model::Template;
+use argo_parser::model::{ContinueOn, Sequence, Template, TemplateRef, WorkflowStep};
+use argo_parser::{Node, decode};
 use serde_json::json;
-use wir::{Binding, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type};
+use wir::{Binding, Edge, Endpoint, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type};
 
-use crate::graphs::Place;
-use crate::{SOURCE, artifact, op, path_type, port, text};
+use crate::graphs::{Built, Compiler, Place, Scope, Target, kept};
+use crate::tags::{Tag, read_tags};
+use crate::{Kept, SOURCE, artifact, edge, end, op, origin, path_type, port, text};
+
+/// A step or DAG task as the compiler reads it.
+pub(crate) struct Site {
+    /// `[1].name` for a step of group 1, `.name` for a DAG task.
+    pub call: String,
+    pub name: String,
+    pub raw: Node,
+    pub template: String,
+    pub template_ref: Option<TemplateRef>,
+    pub inline: bool,
+    pub when: String,
+    pub with_items: Vec<Node>,
+    pub with_param: String,
+    pub with_sequence: Option<Sequence>,
+    pub continue_on: ContinueOn,
+    /// Whether it has lifecycle hooks or an exit handler.
+    pub hooks: bool,
+}
+
+impl Site {
+    pub fn of_step(group: usize, raw: &Node) -> Result<Site, String> {
+        let (step, _) = decode::<WorkflowStep>(raw).map_err(|error| error.to_string())?;
+        Ok(Site {
+            call: format!("[{group}].{}", step.name),
+            name: step.name,
+            raw: raw.clone(),
+            template: step.template,
+            template_ref: step.template_ref,
+            inline: step.inline.is_some(),
+            when: step.when,
+            with_items: step.with_items,
+            with_param: step.with_param,
+            with_sequence: step.with_sequence,
+            continue_on: step.continue_on.unwrap_or_default(),
+            hooks: !step.hooks.is_empty() || !step.on_exit.is_empty(),
+        })
+    }
+}
+
+/// A value that the op of a site reads: its port, where it comes from in the graph of the
+/// site, and its native selector when a dialect task reads it.
+struct Need {
+    port: Port,
+    from: Endpoint,
+    native: String,
+}
+
+/// The ops of a site before they go into the graph of the site or into the body of a map;
+/// `None` endpoints name the needs, which are graph inputs in a body.
+struct Piece {
+    ops: Vec<Op>,
+    edges: Vec<Edge>,
+    main: String,
+    outputs: Vec<Port>,
+}
+
+impl Compiler {
+    /// Compiles a site of the template at `holding` into `graph`.
+    pub fn site(
+        &mut self,
+        holding: &Place,
+        graph: &mut Graph,
+        scope: &Scope,
+        site: &Site,
+    ) -> Result<Built, Kept> {
+        let at = format!("{}/{}", graph.name, site.name);
+        let fail = |reason: &str| Err(kept(&at, reason));
+        if site.inline {
+            return fail("an inline template");
+        }
+        if site.hooks {
+            return fail("lifecycle hooks and exit handlers of steps need their status as a value");
+        }
+        let place = match &site.template_ref {
+            Some(reference) => Place {
+                name: reference.template.clone(),
+                reference: Some((reference.name.clone(), reference.cluster_scope)),
+            },
+            None => Place {
+                name: site.template.clone(),
+                reference: holding.reference.clone(),
+            },
+        };
+        let target = self.target(&place, &at)?;
+        let tags = read_tags(&site.raw).map_err(|reason| kept(&at, &reason))?;
+        let mut needs = vec![Need {
+            port: port("node.path", path_type()),
+            from: end(None, "node.path"),
+            native: "parameter/node.path".into(),
+        }];
+        for tag in &tags {
+            if *tag == Tag::Item {
+                continue;
+            }
+            let Some((from, r#type)) = source(scope, tag) else {
+                continue;
+            };
+            let name = tag.name();
+            let kind = match name.contains(".artifacts.") {
+                true => "artifact",
+                false => "parameter",
+            };
+            needs.push(Need {
+                port: port(name.clone(), r#type),
+                from,
+                native: format!("{kind}/{name}"),
+            });
+        }
+        let piece = match target {
+            Target::Leaf(template) => dialect(site, holding, &template, &needs, false),
+            Target::Graph(..) if !site.when.is_empty() => {
+                return fail(
+                    "a when of a call of a steps or DAG template needs an Argo expression op",
+                );
+            }
+            Target::Graph(..) => {
+                return fail("calls of steps and DAG templates do not compile yet");
+            }
+        };
+        let loops = !site.with_items.is_empty() || !site.with_param.is_empty();
+        if loops || site.with_sequence.is_some() {
+            return fail("loops do not compile yet");
+        }
+        for need in &needs {
+            for wire in &piece.edges {
+                if wire.from.op.is_none() && wire.from.port == need.port.name {
+                    graph.edges.push(edge(need.from.clone(), wire.to.clone()));
+                }
+            }
+        }
+        graph.edges.extend(
+            piece
+                .edges
+                .into_iter()
+                .filter(|wire| wire.from.op.is_some()),
+        );
+        graph.ops.extend(piece.ops);
+        Ok(Built {
+            op: piece.main,
+            outputs: piece.outputs,
+        })
+    }
+}
+
+/// Where the value of a tag comes from in a graph, and its type.
+fn source(scope: &Scope, tag: &Tag) -> Option<(Endpoint, Type)> {
+    match tag {
+        Tag::Input(name) | Tag::Status(name) => (scope.inputs.iter())
+            .find(|input| &input.name == name)
+            .map(|input| (end(None, name), input.r#type.clone())),
+        Tag::Made(prefix, rest) => {
+            let (op, outputs) = scope.made.get(prefix)?;
+            let found = outputs.iter().find(|output| &output.name == rest)?;
+            Some((end(Some(op), rest), found.r#type.clone()))
+        }
+        Tag::Item => None,
+    }
+}
+
+/// The dialect task of a site whose template is a leaf.
+fn dialect(site: &Site, holding: &Place, template: &Template, needs: &[Need], item: bool) -> Piece {
+    let mut inputs: Vec<(Port, String)> = needs
+        .iter()
+        .map(|need| (need.port.clone(), need.native.clone()))
+        .collect();
+    if item {
+        inputs.push((port("item", Type::Dynamic), "parameter/item".into()));
+    }
+    let mut task = task_op(&site.name, holding, &site.call, template, inputs);
+    task.origin = origin(&site.raw);
+    let edges = (task.inputs.iter())
+        .map(|input| edge(end(None, &input.name), end(Some(&site.name), &input.name)))
+        .collect();
+    Piece {
+        main: site.name.clone(),
+        outputs: task.outputs.clone(),
+        ops: vec![task],
+        edges,
+    }
+}
 
 /// The dialect task that calls the entrypoint, a leaf, for the workflow itself, and its outputs.
 pub(crate) fn entry_task(

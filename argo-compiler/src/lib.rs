@@ -15,8 +15,8 @@ use argo_parser::decode;
 use argo_parser::model::Template;
 use argo_runtime::adapter::Adapter;
 use wir::{
-    ArrayType, Attributes, Document, Edge, Endpoint, FileType, Flow, Kind, Language, Op, Port,
-    Source, Subscription, Type, ValueRules,
+    ArrayType, Attributes, Document, Edge, Endpoint, FileType, Flow, Kind, Language, Op, Origin,
+    Port, Source, Subscription, Type, ValueRules,
 };
 use workflow_graph::Launch;
 
@@ -157,6 +157,13 @@ fn op(path: impl Into<String>, kind: Kind) -> Op {
         origin: None,
         values: ValueRules::default(),
     }
+}
+
+fn origin(node: &argo_parser::Node) -> Option<Origin> {
+    Some(Origin {
+        source: SOURCE.into(),
+        at: Some(node.position.to_string()),
+    })
 }
 
 fn end(op: Option<&str>, port: &str) -> Endpoint {

@@ -49,6 +49,30 @@ impl Compiler {
         let main = "main";
         let ports = match self.target(&entry, ENTRY)? {
             Target::Leaf(template) => crate::sites::entry_task(&mut graph, main, &entry, &template),
+            Target::Graph(called, takes, gives) => {
+                let mut call = op(main, Kind::Call(wir::Call { graph: called }));
+                for input in takes {
+                    let name = input.name.clone();
+                    if name == "node.path" {
+                        call.inputs
+                            .push(crate::with_default(input, serde_json::json!([])));
+                        continue;
+                    }
+                    let given = name.strip_prefix("inputs.parameters.");
+                    if let Some(given) = given.filter(|n| graph.inputs.iter().any(|p| p.name == *n))
+                    {
+                        graph
+                            .edges
+                            .push(edge(end(None, given), end(Some(main), &name)));
+                    } else if input.default.is_none() && name.starts_with("inputs.artifacts.") {
+                        return at("the entrypoint takes artifacts");
+                    }
+                    call.inputs.push(input);
+                }
+                call.outputs = gives.clone();
+                graph.ops.push(call);
+                gives
+            }
         };
         for output in ports {
             let name = (output.name.strip_prefix("outputs.parameters."))

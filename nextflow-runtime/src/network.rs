@@ -701,6 +701,7 @@ mod tests {
                 output,
                 close: true,
                 failure: None,
+                call: None,
             }),
         );
         let count = Rc::new(std::cell::Cell::new(0));

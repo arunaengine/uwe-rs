@@ -726,6 +726,7 @@ impl Builder<'_> {
             output,
             close,
             failure: None,
+            call: None,
         };
         self.network.add(name, &[], Box::new(factory));
         Value::Channel(output)
@@ -739,6 +740,7 @@ impl Builder<'_> {
             output,
             close: true,
             failure: Some(failure),
+            call: None,
         };
         self.network.add(name, &[], Box::new(factory));
         Value::Channel(output)

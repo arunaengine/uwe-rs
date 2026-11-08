@@ -9,6 +9,7 @@ mod build;
 mod calls;
 pub mod channel;
 mod cleanup;
+mod describe;
 pub mod driver;
 mod emits;
 pub mod export;

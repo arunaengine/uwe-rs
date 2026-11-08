@@ -39,6 +39,11 @@ pub(crate) struct Publish {
 }
 
 impl Behaviour for Publish {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        let name = self.name.to_string();
+        Ok(crate::export::Kind::Publish { name })
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             match message {
@@ -385,6 +390,7 @@ mod tests {
                 output,
                 close: true,
                 failure: None,
+                call: None,
             }),
         );
         network.add(

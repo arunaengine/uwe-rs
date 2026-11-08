@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use nextflow_evaluator::split::Splitter;
+use nextflow_evaluator::value::{Closure, Value};
 use serde_json::Value as Json;
 
 use crate::adapter::Call;
@@ -232,4 +233,56 @@ pub enum Kind {
     },
     /// A node that has no lowering, with the reason.
     Opaque(String),
+}
+
+impl Callback {
+    /// The code and captured values of a closure; it fails for a capture that has no JSON
+    /// form, like a channel or another closure.
+    pub(crate) fn of(closure: &Closure) -> Result<Callback, String> {
+        let span = closure.code.span;
+        let module = &closure.module;
+        let source = module.source.borrow();
+        let script = module
+            .path
+            .borrow()
+            .as_deref()
+            .unwrap_or_default()
+            .to_owned();
+        let code = (source.as_deref())
+            .and_then(|text| text.get(span.start as usize..span.end as usize))
+            .ok_or_else(|| format!("the code of a closure in {script}"))?;
+        let captures = (closure.captured.iter())
+            .map(|value| crate::bridge::to_json(&value.borrow()))
+            .collect::<Result<_, _>>()
+            .map_err(|message| format!("a closure captures {message}"))?;
+        Ok(Callback {
+            script,
+            start: span.start,
+            end: span.end,
+            code: code.to_owned(),
+            parameters: closure.code.parameters.len(),
+            captures,
+        })
+    }
+}
+
+/// The callback of an optional closure.
+pub(crate) fn callback(closure: &Option<std::rc::Rc<Closure>>) -> Result<Option<Callback>, String> {
+    closure.as_deref().map(Callback::of).transpose()
+}
+
+impl Criteria {
+    pub(crate) fn of(value: &Value) -> Result<Criteria, String> {
+        Ok(match value {
+            Value::Closure(closure) => Criteria::Callback(Callback::of(closure)?),
+            Value::Pattern(pattern) => Criteria::Pattern(pattern.source.clone()),
+            Value::Class(class) => Criteria::Class(class.to_string()),
+            other => Criteria::Value(crate::bridge::to_json(other)?),
+        })
+    }
+}
+
+/// A plain value of a node as JSON, with the reason when it has none.
+pub(crate) fn value(value: &Value) -> Result<Json, String> {
+    crate::bridge::to_json(value)
 }

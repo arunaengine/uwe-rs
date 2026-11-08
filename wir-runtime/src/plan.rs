@@ -136,6 +136,13 @@ fn supported(kind: &Kind) -> bool {
             | Kind::Reduce(_)
             | Kind::Buffer(_)
             | Kind::Window(_)
+            | Kind::Take(_)
+            | Kind::First(_)
+            | Kind::Last(_)
+            | Kind::Unique(_)
+            | Kind::Distinct(_)
+            | Kind::Until(_)
+            | Kind::IfEmpty(_)
     )
 }
 

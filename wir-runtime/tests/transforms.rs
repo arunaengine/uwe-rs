@@ -225,3 +225,22 @@ fn flatten_depth() {
         "only a null source item drops"
     );
 }
+
+#[test]
+fn empty_values_filled() {
+    let port = |name: &str| json!({"name": name, "type": "int"});
+    let keep = json!({"path": "keep", "kind": {"filter": {"body": groovy("{ it > 5 }")}},
+        "inputs": [port("source")], "outputs": [port("out")]});
+    let fill = json!({"path": "fill", "kind": {"if_empty": {"value": {"value": -1}}},
+        "inputs": [port("source")], "outputs": [port("out")]});
+    let chain = json!([{"name": "chain", "inputs": [port("source")], "outputs": [port("out")], "ops": [keep, fill],
+        "edges": [edge((None, "source"), (Some("keep"), "source")), edge((Some("keep"), "out"), (Some("fill"), "source")),
+            edge((Some("fill"), "out"), (None, "out"))]}]);
+    let call = json!({"call": {"graph": "chain"}});
+    let filled = run(call.clone(), "value", ints(), chain.clone(), json!(3));
+    assert_eq!(filled.unwrap(), Some(json!(-1)), "an empty value is filled");
+    assert_eq!(
+        run(call, "value", ints(), chain, json!(9)).unwrap(),
+        Some(json!(9))
+    );
+}

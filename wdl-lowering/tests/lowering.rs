@@ -637,6 +637,38 @@ workflow nested {
 }
 
 #[test]
+fn private_structs_coerced() {
+    let text = r#"version 1.1
+struct Name {
+  String first
+  String? last
+}
+
+struct Person {
+  Name name
+  String? greeting
+}
+
+task hello {
+  input {
+    String first
+  }
+  Person person = Person { name: Name { first: first } }
+  command <<<
+    echo ~{select_first([person.greeting, "hi"])}
+  >>>
+  output {
+    String text = select_first([person.greeting, person.name.last, person.name.first])
+  }
+}
+"#;
+    let runs = runs(text, json!({"first": "ada"}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(runs.native, runs.lowered);
+    assert_eq!(runs.lowered.1["text"], json!("ada"));
+}
+
+#[test]
 fn nested_conditional_lowers() {
     let workflow = r#"version 1.1
 workflow nested {

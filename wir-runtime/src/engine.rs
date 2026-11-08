@@ -110,6 +110,7 @@ pub fn begin(
                 ExprLanguage::Wdl => {
                     crate::wdl_expr::evaluate(context.document, &node.op, &spec, bound)
                 }
+                ExprLanguage::Argo => return Ok(false),
             };
             value.and_then(|value| {
                 let value = widen(value, &output.r#type, defs);

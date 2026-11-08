@@ -291,3 +291,28 @@ fn reads_defaults_of_skipped_steps() {
     assert_eq!(one.1, ["runs[1].use"]);
     assert_eq!(other, one);
 }
+
+const CONTINUES: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: breaks, template: say, continueOn: {error: true}}
+    - - {name: after, template: say}
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+
+#[test]
+fn continues_on_errors() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, CONTINUES);
+    let breaking = |folder| Writer {
+        breaks: "breaks",
+        ..Writer::new(folder)
+    };
+    let (one, other) = both(root, &file, &[], breaking);
+    one.0.as_ref().unwrap();
+    assert_eq!(one.1, ["runs[0].breaks", "runs[1].after"]);
+    assert_eq!(other, one);
+}

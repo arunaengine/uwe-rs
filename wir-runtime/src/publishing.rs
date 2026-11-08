@@ -77,8 +77,7 @@ pub fn folder(
         return Ok((own, None));
     };
     if directory.starts_with('/') || directory.contains("://") {
-        let named = |effect: &Effect| matches!(effect, Effect::Publish(target) if covers(target, directory));
-        return match effects.iter().any(named) {
+        return match effects.iter().any(|effect| effect.publishes(directory)) {
             true => Ok((own, Some(directory.trim_end_matches('/').to_owned()))),
             false => Err(turn.failed(format!(
                 "the folder {directory} needs a publish effect that names it"
@@ -89,16 +88,6 @@ pub fn folder(
         return Err(turn.failed(format!("the folder {directory} leaves the file area")));
     }
     Ok((own.join(directory), None))
-}
-
-/// Whether a publish target is the folder `directory` or a folder that holds it.
-fn covers(target: &str, directory: &str) -> bool {
-    let (target, directory) = (
-        target.trim_end_matches('/'),
-        directory.trim_end_matches('/'),
-    );
-    let inside = |rest: &str| rest.is_empty() || rest.starts_with('/');
-    !target.is_empty() && directory.strip_prefix(target).is_some_and(inside)
 }
 
 /// The deliveries of the files of an op, which it gives once the host acknowledged them.
@@ -143,21 +132,5 @@ impl Publication {
     /// Whether the files can be given: the host acknowledged their deliveries.
     pub fn delivered(&self, context: &Context<'_>) -> bool {
         self.0.is_empty() || context.provider.is_none() || context.deliveries.settled(&self.0)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::covers;
-
-    #[test]
-    fn publish_covers() {
-        assert!(covers("/data/out/", "/data/out"));
-        assert!(covers("s3://bucket", "s3://bucket/a"));
-        assert!(
-            !covers("/data/out", "/data/outside"),
-            "a folder, not a prefix"
-        );
-        assert!(!covers("", "/data"));
     }
 }

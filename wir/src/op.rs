@@ -508,6 +508,22 @@ pub enum Effect {
     WriteFiles,
 }
 
+impl Effect {
+    /// Whether this publishes to the folder `directory`: its target is that folder or one that
+    /// holds it.
+    pub fn publishes(&self, directory: &str) -> bool {
+        let Effect::Publish(target) = self else {
+            return false;
+        };
+        let (target, directory) = (
+            target.trim_end_matches('/'),
+            directory.trim_end_matches('/'),
+        );
+        let inside = |rest: &str| rest.is_empty() || rest.starts_with('/');
+        !target.is_empty() && directory.strip_prefix(target).is_some_and(inside)
+    }
+}
+
 /// Run settings that never enter a task cache key. A binding file per run may set them by
 /// op path without changing the document.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

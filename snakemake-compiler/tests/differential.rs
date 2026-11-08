@@ -109,6 +109,8 @@ struct Runner {
     /// The call that waits for commands, and the outcomes of jobs that came meanwhile.
     held: Option<Call>,
     parked: VecDeque<Outcome>,
+    /// The tasks of jobs that start once no command waits, as the native run hands them out.
+    ready: Vec<Task>,
 }
 
 impl Runner {
@@ -196,6 +198,7 @@ impl Runner {
             owners: HashMap::new(),
             held: None,
             parked: VecDeque::new(),
+            ready: Vec::new(),
         })
     }
 
@@ -203,7 +206,11 @@ impl Runner {
     /// the document, and takes the outcomes that came while commands ran.
     fn answered(&mut self, call: Call, answer: Answer) -> Result<Vec<Task>, DriverError> {
         let mut tasks = self.taken(call, answer)?;
-        while self.held.is_none() {
+        loop {
+            if self.held.is_some() {
+                return Ok(tasks);
+            }
+            self.ready.append(&mut tasks);
             if let Some(index) = self.queue.pop() {
                 let op = &self.ops[index];
                 let staged = (op.inputs.iter())
@@ -219,10 +226,9 @@ impl Runner {
                 let answer = self.adapter.take_job(outcome)?;
                 tasks.extend(self.taken(Call::Take(index), answer)?);
             } else {
-                break;
+                return Ok(std::mem::take(&mut self.ready));
             }
         }
-        Ok(tasks)
     }
 
     /// The tasks of one answer of the adapter to `call`.

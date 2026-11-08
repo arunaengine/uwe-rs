@@ -6,8 +6,8 @@ use std::cmp::Ordering;
 use std::path::Path;
 
 use cwl_parser::model::{
-    Argument as CwlArgument, CommandLineBinding, CommandLineTool, Dynamic, Expression, Part,
-    Process, Type as Cwl, short_name,
+    Argument as CwlArgument, CommandLineBinding, CommandLineTool, Dynamic, Expression, LoadListing,
+    Part, Process, RequirementClass, Type as Cwl, short_name,
 };
 use wir::{Argument, Attributes, Capture, CaptureRule, FileType, Port, Task, Type};
 
@@ -27,6 +27,22 @@ pub struct Lowered {
     pub attributes: Attributes,
     /// The inputs whose words come from the `valueFrom` of their binding, with its code.
     pub values: Vec<(String, Expression)>,
+    /// The outputs that `outputEval` computes, from the files of the task output of that name.
+    pub evaluated: Vec<Evaluated>,
+}
+
+/// An output of a tool that an expr computes from the files that its glob found, if any.
+pub struct Evaluated {
+    pub output: Port,
+    pub code: Expression,
+    /// Whether the task has an output of this name with the files.
+    pub captured: bool,
+}
+
+/// How the task gives an output: captured as it is, or as files for an `outputEval`.
+enum Read {
+    Direct(CaptureRule, Type),
+    Evaluated(Option<(CaptureRule, Type)>, Expression),
 }
 
 /// The task of a tool, or the first thing it uses that a task cannot say the same way. File
@@ -110,21 +126,48 @@ pub fn lower(
     }
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();
+    // Expressions see no listings, which CWL loads into Directory inputs.
+    let listed = scope.find(|class| match class {
+        RequirementClass::LoadListing { load_listing } => Some(*load_listing),
+        _ => None,
+    });
+    let listed = listed
+        .flatten()
+        .is_some_and(|listing| listing != LoadListing::NoListing)
+        || process
+            .inputs
+            .iter()
+            .any(|input| input.load_listing.is_some());
     let mut outputs = Vec::new();
+    let mut evaluated = Vec::new();
     for output in &process.outputs {
         let name = short_name(&output.id).to_owned();
-        let (rule, r#type) =
-            capture(output, &task).map_err(|why| format!("output {name}: {why}"))?;
-        task.captures.push(Capture {
-            output: name.clone(),
-            from: rule,
-        });
-        outputs.push(Port {
-            name,
+        let port = |r#type| Port {
+            name: name.clone(),
             r#type,
             flow: wir::Flow::Value,
             default: None,
-        });
+        };
+        let (files, code) = match capture(output, &task, listed) {
+            Ok(Read::Direct(rule, r#type)) => (Some((rule, r#type)), None),
+            Ok(Read::Evaluated(files, code)) => (files, Some(code)),
+            Err(why) => return Err(format!("output {name}: {why}")),
+        };
+        if let Some(code) = code {
+            let r#type = convert(&output.value_type)?;
+            evaluated.push(Evaluated {
+                output: port(r#type),
+                code,
+                captured: files.is_some(),
+            });
+        }
+        if let Some((rule, r#type)) = files {
+            task.captures.push(Capture {
+                output: name.clone(),
+                from: rule,
+            });
+            outputs.push(port(r#type));
+        }
     }
     Ok(Lowered {
         task,
@@ -132,6 +175,7 @@ pub fn lower(
         outputs,
         attributes,
         values,
+        evaluated,
     })
 }
 
@@ -227,7 +271,8 @@ fn literal(expression: Option<&Expression>, what: &str) -> Result<Option<String>
 fn capture(
     output: &cwl_parser::model::OutputParameter,
     task: &Task,
-) -> Result<(CaptureRule, Type), String> {
+    listed: bool,
+) -> Result<Read, String> {
     let file = |format: Option<String>| {
         Type::File(FileType {
             format,
@@ -239,23 +284,51 @@ fn capture(
     }
     let format = literal(output.format.as_ref(), "the format")?;
     match &output.value_type {
-        Cwl::Stdout if output.binding.is_none() => return Ok((CaptureRule::Stdout, file(format))),
-        Cwl::Stderr if output.binding.is_none() => return Ok((CaptureRule::Stderr, file(format))),
+        Cwl::Stdout if output.binding.is_none() => {
+            return Ok(Read::Direct(CaptureRule::Stdout, file(format)));
+        }
+        Cwl::Stderr if output.binding.is_none() => {
+            return Ok(Read::Direct(CaptureRule::Stderr, file(format)));
+        }
         _ => {}
     }
     let Some(binding) = &output.binding else {
         return Err("no glob".into());
     };
-    if binding.output_eval.is_some() || binding.load_contents == Some(true) {
-        return Err("outputEval or loadContents".into());
+    if binding.load_contents == Some(true) || binding.load_listing.is_some() {
+        return Err("loadContents or loadListing".into());
+    }
+    if let Some(code) = &binding.output_eval {
+        if format.is_some() {
+            return Err("the format of an evaluated output".into());
+        }
+        if placed(code) || (listed && code.text.contains("listing")) {
+            return Err("an outputEval that reads runtime, a path or a listing".into());
+        }
+        let files = match binding.glob.as_slice() {
+            [] => None,
+            [glob] => {
+                let pattern = pattern(glob)?;
+                let items = match holds(&output.value_type, &Cwl::Directory)
+                    && !holds(&output.value_type, &Cwl::File)
+                {
+                    true => Type::Directory,
+                    false => file(None),
+                };
+                let found = Type::Array(wir::ArrayType {
+                    items: Box::new(items),
+                    nonempty: false,
+                });
+                Some((CaptureRule::Glob(pattern), found))
+            }
+            _ => return Err("not one glob".into()),
+        };
+        return Ok(Read::Evaluated(files, code.clone()));
     }
     let [glob] = binding.glob.as_slice() else {
         return Err("not one glob".into());
     };
-    let pattern = literal(Some(glob), "a glob")?.unwrap_or_default();
-    if pattern.is_empty() || pattern.starts_with('/') || pattern == "." || pattern.contains("..") {
-        return Err(format!("the glob {pattern:?}"));
-    }
+    let pattern = pattern(glob)?;
     let r#type = convert(&output.value_type)?;
     let r#type = with_format(r#type, format);
     let fits = match &r#type {
@@ -264,10 +337,41 @@ fn capture(
         other => matches!(other, Type::File(_) | Type::Directory),
     };
     match fits {
-        // A stream file is also a file in the working folder, which a glob may match.
-        true if task.stdout.as_deref() == Some(&pattern) => Ok((CaptureRule::Stdout, r#type)),
-        true => Ok((CaptureRule::Glob(pattern), r#type)),
+        true => Ok(Read::Direct(rule(&pattern, task), r#type)),
         false => Err("a type that a glob does not fill".into()),
+    }
+}
+
+/// The pattern of a glob without code that stays inside the working folder.
+fn pattern(glob: &Expression) -> Result<String, String> {
+    let pattern = literal(Some(glob), "a glob")?.unwrap_or_default();
+    if pattern.is_empty() || pattern.starts_with('/') || pattern == "." || pattern.contains("..") {
+        return Err(format!("the glob {pattern:?}"));
+    }
+    Ok(pattern)
+}
+
+/// The capture of a glob; a stream file is also a file in the working folder, which a glob
+/// may match.
+fn rule(pattern: &str, task: &Task) -> CaptureRule {
+    match task.stdout.as_deref() == Some(pattern) {
+        true => CaptureRule::Stdout,
+        false => CaptureRule::Glob(pattern.to_owned()),
+    }
+}
+
+/// Whether code reads `runtime` or where files are, which an expr sees otherwise than a tool.
+fn placed(code: &Expression) -> bool {
+    let words = ["runtime", ".path", "dirname", "location"];
+    words.iter().any(|word| code.text.contains(word))
+}
+
+/// Whether a CWL type is `kind`, or holds it in a union or an array.
+fn holds(r#type: &Cwl, kind: &Cwl) -> bool {
+    match r#type {
+        Cwl::Union(members) => members.iter().any(|member| holds(member, kind)),
+        Cwl::Array(array) => holds(&array.items, kind),
+        other => other == kind,
     }
 }
 

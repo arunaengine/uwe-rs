@@ -420,7 +420,7 @@ fn skipped_reference(scope: &Scope, source: &str, assume_inputs: bool) -> Option
 }
 
 /// A value that is JSON as the JSON value, or else as text, as Argo aggregates loop outputs.
-fn json_or_text(text: &str) -> Value {
+pub(crate) fn json_or_text(text: &str) -> Value {
     Value::parse_json(text).unwrap_or_else(|_| Value::string(text))
 }
 

@@ -114,6 +114,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "argo-compiler"
+version = "0.1.0"
+dependencies = [
+ "argo-parser",
+ "argo-runtime",
+ "regex",
+ "serde_json",
+ "task-model",
+ "task-runner",
+ "tempfile",
+ "wir",
+ "wir-runtime",
+ "workflow-graph",
+]
+
+[[package]]
 name = "argo-parser"
 version = "0.1.0"
 dependencies = [
@@ -130,9 +146,12 @@ dependencies = [
  "input-schema",
  "jiff",
  "regex",
+ "run-database",
  "serde",
  "serde_json",
  "tar",
+ "task-model",
+ "task-runner",
  "tempfile",
  "workflow-graph",
  "zip",
@@ -8799,6 +8818,7 @@ dependencies = [
 name = "uwe"
 version = "0.1.0"
 dependencies = [
+ "argo-compiler",
  "argo-runtime",
  "aws-batch-executor",
  "azure-batch-executor",

@@ -51,6 +51,9 @@ const PULL_PAUSE: Duration = Duration::from_secs(20);
 /// How often the job that pulls an image is tried before the tasks of the image fail.
 const PULL_TRIES: u32 = 3;
 
+/// How often a run asks for the lock of an image that another run pulls.
+const LOCK_PAUSE: Duration = Duration::from_secs(1);
+
 /// The image archive of a pull job, in its folder.
 const ARCHIVE: &str = "image.tar";
 
@@ -867,6 +870,7 @@ impl SlurmBackend {
         let path = self.images.join(file);
         let cell = self.made.cell(reference).await;
         let made = cell.get_or_try_init(|| async {
+            let _lock = self.lock(&path, cancel).await?;
             if lasting && tokio::fs::try_exists(&path).await.unwrap_or(false) {
                 return Ok(Ok(path.clone()));
             }
@@ -902,6 +906,43 @@ impl SlurmBackend {
                 image: reference.to_owned(),
                 reason: reason.clone(),
             }),
+        }
+    }
+
+    /// Waits for the lock of the SIF file at `path`, which other runs that share the folder of
+    /// images take while they pull it. `None` when the file system cannot lock files.
+    async fn lock(
+        &self,
+        path: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<Option<File>, ExecutorError> {
+        tokio::fs::create_dir_all(&self.images).await?;
+        let mut name = path.as_os_str().to_owned();
+        name.push(".lock");
+        let unlocked = |error: std::io::Error| {
+            tracing::warn!(%error, lock = %Path::new(&name).display(),
+                "cannot lock the image, so runs that share its folder may pull it at once");
+            Ok(None)
+        };
+        let opened = File::options()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&name);
+        let file = match opened {
+            Ok(file) => file,
+            Err(error) => return unlocked(error),
+        };
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Some(file)),
+                Err(TryLockError::WouldBlock) => {}
+                Err(TryLockError::Error(error)) => return unlocked(error),
+            }
+            tokio::select! {
+                () = tokio::time::sleep(LOCK_PAUSE) => {}
+                () = cancel.cancelled() => return Err(ExecutorError::Cancelled),
+            }
         }
     }
 

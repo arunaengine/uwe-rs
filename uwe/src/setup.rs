@@ -128,6 +128,8 @@ pub struct Executors {
     /// `[executor.slurm] staging_secret_file`: the storage providers of the staging root for
     /// `staging_access = "credentials"`, in a file that only its owner may read.
     pub slurm_secret_file: Option<PathBuf>,
+    /// `[executor.slurm] image_folder`: the shared folder of the SIF files of the images.
+    pub slurm_images: Option<PathBuf>,
     /// `[executor.kubernetes] kubeconfig`, like `-kubeconfig`.
     pub kubeconfig: Option<PathBuf>,
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
@@ -307,6 +309,7 @@ impl Executors {
                 "node_folder",
                 "query_seconds",
                 "memory_per_cpu_gb",
+                "image_folder",
             ];
             keys.push("staging_secret_file");
             keys.extend(["helper_path", "helper_url", "helper_sha256", "helper_file"]);
@@ -333,6 +336,12 @@ impl Executors {
                 settings.slurm_cpu_memory = Some(gb);
             }
             settings.slurm_options = slurm.texts("options")?;
+            if let Some(folder) = slurm.text("image_folder")?.map(PathBuf::from) {
+                if !folder.is_absolute() {
+                    return Err(slurm.invalid("image_folder", "must be an absolute path"));
+                }
+                settings.slurm_images = Some(folder);
+            }
             if let Some(pull) = slurm.table("pull")? {
                 settings.slurm_pull = pull_resources(&pull)?;
             }
@@ -1111,6 +1120,12 @@ mod tests {
         assert_eq!(settings.kubernetes_start_grace, Some(300));
         assert!(read("[executor.kubernetes]\nstart_grace_seconds = 5\n").is_err());
         assert!(read("[executor.kubernetes]\nstart_grace_seconds = 3601\n").is_err());
+        let settings = read("[executor.slurm]\nimage_folder = '/shared/sif'\n").expect("settings");
+        assert_eq!(
+            settings.slurm_images.as_deref(),
+            Some(Path::new("/shared/sif"))
+        );
+        assert!(read("[executor.slurm]\nimage_folder = 'sif'\n").is_err());
         let settings = read("[executor.slurm]\nquery_seconds = 120\n").expect("settings");
         assert_eq!(settings.slurm_query, Some(120));
         assert!(read("[executor.slurm]\nquery_seconds = 0\n").is_err());

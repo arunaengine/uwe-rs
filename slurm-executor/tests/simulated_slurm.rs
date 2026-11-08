@@ -522,6 +522,57 @@ async fn pulls_tagged_once() {
 }
 
 #[tokio::test]
+async fn shares_image_folder() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), APPTAINER);
+    let images = root.path().join("shared-images");
+    // Two runs with folders of their own share one folder of images.
+    let run = |name: &str| {
+        let apptainer = Container::Apptainer(text(&bin.join("apptainer")));
+        let mut backend = backend(&root.path().join(name), &bin, apptainer);
+        backend.images = images.clone();
+        backend
+    };
+    let (first_run, second_run) = (run("first"), run("second"));
+    let mut spec = spec("echo shared > out.txt");
+    spec.image = Some(Image {
+        reference: "debian@sha256:ab12".into(),
+        platform: None,
+    });
+    let (staging, placement) = (Staging::default(), placement());
+    let job = |name| Job {
+        name,
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let cancel = CancellationToken::new();
+    let (first, second) = tokio::join!(
+        first_run.run(job("first-P-1-1"), &cancel),
+        second_run.run(job("second-P-1-1"), &cancel)
+    );
+    for finished in [first, second] {
+        assert_eq!(finished.expect("the job ends").exit_code, Some(0));
+    }
+    let pulls = std::fs::read_to_string(bin.join("state/pulls")).expect("a pull");
+    assert_eq!(pulls, "docker://debian@sha256:ab12\n");
+    assert!(images.join("sha256-ab12.sif").exists());
+    let names: Vec<String> = (std::fs::read_dir(&images).expect("the images"))
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert!(
+        !names.iter().any(|name| name.contains(".part")),
+        "{names:?}"
+    );
+}
+
+#[tokio::test]
 async fn clears_submission_environment() {
     let root = tempfile::tempdir().expect("a folder");
     let bin = cluster(root.path(), APPTAINER);
@@ -2074,6 +2125,7 @@ async fn runs_image_archives() {
     let images = std::fs::read_dir(root.path().join("scratch/images")).expect("the images");
     let names: Vec<String> = (images.flatten())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.ends_with(".lock"))
         .collect();
     assert!(
         matches!(&names[..], [name] if name.starts_with("archive-") && name.ends_with(".sif")),

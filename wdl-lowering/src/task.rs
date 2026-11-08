@@ -17,6 +17,7 @@ use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text};
 
 /// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
 /// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
+/// A missing path fails with code `$3` unless its output starts with `?`, as optional ones do.
 pub(crate) const RUNNER: &str = r#"mkdir -p .wdl
 printf '%s' "$1" > .wdl/command.sh
 bash .wdl/command.sh > .wdl/stdout 2> .wdl/stderr
@@ -28,11 +29,17 @@ line=0
 printf '%s\n' "$2" | while IFS="$tab" read -r name path; do
   line=$((line + 1))
   path=${path%/}
-  if [ -n "$name" ] && [ -e "$path" ]; then
-    folder=.wdl/out/$name/$(printf '%06d' "$line")
-    mkdir -p "$folder" && cp -R "$path" "$folder/"
+  required=true
+  case $name in '?'*) name=${name#?}; required=false;; esac
+  [ -n "$name" ] || continue
+  if [ ! -e "$path" ]; then
+    $required || continue
+    echo "the task did not make $path" >&2
+    exit 1
   fi
-done
+  folder=.wdl/out/$name/$(printf '%06d' "$line")
+  mkdir -p "$folder" && cp -R "$path" "$folder/" || exit 1
+done || [ "$status" -ne 0 ] || status=${3:-1}
 exit $status
 "#;
 
@@ -142,6 +149,10 @@ impl Lowerer {
         if placed.is_empty() {
             task.task.command.push(Argument::Text(String::new()));
         } else {
+            task.task.command.push(Argument::Input {
+                input: PATHS.into(),
+            });
+            task.task.command.push(Argument::Text(failure(&task.task)));
             let mut lines = library.clone();
             lines.extend(
                 outputs
@@ -152,9 +163,6 @@ impl Lowerer {
             graph
                 .ops
                 .push(expr(PATHS, listing(&placed), lines, Type::String));
-            task.task.command.push(Argument::Input {
-                input: PATHS.into(),
-            });
             ports.push(port(PATHS, Type::String));
             graph
                 .edges
@@ -243,6 +251,12 @@ fn produced(task: &str, output: &Output) -> wir::Endpoint {
 struct Built {
     task: wir::Task,
     resources: Option<wir::Resources>,
+}
+
+/// The exit code of a run whose required outputs are missing: one that is not a success.
+fn failure(task: &wir::Task) -> String {
+    let code = (1..).find(|code| !task.success_codes.contains(code));
+    code.unwrap_or(1).to_string()
 }
 
 /// The task op of the `runtime` or `requirements` section, whose values must not depend on
@@ -338,7 +352,7 @@ mod tests {
         let work = folder.path();
         let command =
             "mkdir -p d && echo x > d/a.txt && echo y > 'b c.txt' && echo shown && exit 3";
-        let paths = "first\td/a.txt\nlist\tb c.txt\nlist\tmissing.txt\nlist\td/\n";
+        let paths = "first\td/a.txt\nlist\tb c.txt\n?list\tmissing.txt\nlist\td/\n";
         let status = Command::new("bash")
             .args(["-c", RUNNER, "wdl", command, paths])
             .current_dir(work)
@@ -351,11 +365,28 @@ mod tests {
         assert_eq!(read(".wdl/out/list/000002/b c.txt").as_deref(), Some("y\n"));
         assert!(
             !work.join(".wdl/out/list/000003").exists(),
-            "a missing path is left out"
+            "a missing optional path is left out"
         );
         assert!(
             work.join(".wdl/out/list/000004/d/a.txt").is_file(),
             "a folder is copied"
         );
+    }
+
+    #[test]
+    fn missing_files_fail() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let run = |command: &str| {
+            let paths = "files\ta.txt\nfiles\tb.txt\n";
+            let status = Command::new("bash")
+                .args(["-c", RUNNER, "wdl", command, paths, "7"])
+                .current_dir(folder.path())
+                .status()
+                .expect("bash runs");
+            status.code()
+        };
+        assert_eq!(run("touch a.txt"), Some(7), "a required file is missing");
+        assert_eq!(run("exit 3"), Some(3), "the code of a failed command");
+        assert_eq!(run("touch a.txt b.txt"), Some(0));
     }
 }

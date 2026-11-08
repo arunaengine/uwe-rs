@@ -136,7 +136,8 @@ fn placeable(r#type: &Type) -> bool {
     }
 }
 
-/// A command section that writes `<output>\t<path>` for each file of the placed outputs.
+/// A command section that writes `<output>\t<path>` for each file of the placed outputs, with
+/// `?` before an optional output, whose files may be missing.
 pub(crate) fn listing(placed: &[&Output]) -> String {
     let mut code = "command <<<\n".to_owned();
     for output in placed {
@@ -144,8 +145,12 @@ pub(crate) fn listing(placed: &[&Output]) -> String {
             Type::Array(_) => output.name.clone(),
             _ => format!("[{}]", output.name),
         };
+        let mark = match output.r#type {
+            Type::Optional(_) => "?",
+            _ => "",
+        };
         let line = format!(
-            "~{{sep=\"\\n\" prefix(\"{}\\t\", select_all({items}))}}\n",
+            "~{{sep=\"\\n\" prefix(\"{mark}{}\\t\", select_all({items}))}}\n",
             output.name
         );
         code.push_str(&line);

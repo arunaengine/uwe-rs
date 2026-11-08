@@ -1546,12 +1546,34 @@ impl Session {
         outcome: Outcome,
     ) -> Result<Vec<Task>, DriverError> {
         let identity = (outcome.id, outcome.attempt);
+        let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
+        match self.take_group(members, outcome)? {
+            Taken::Retry(task) => Ok(vec![*task]),
+            Taken::Failed(message) => self.failed(message),
+            Taken::Accepted => {
+                let next = self.next_tasks(&jobs);
+                if next.is_ok() {
+                    self.accept(identity);
+                }
+                next
+            }
+        }
+    }
+
+    /// Takes the outcome of the task of a group as Snakemake does: a failed attempt runs again
+    /// while a rule of the group allows, else the group fails; each job takes its outputs.
+    fn take_group(
+        &mut self,
+        members: Vec<(usize, Vec<String>)>,
+        outcome: Outcome,
+    ) -> Result<Taken, DriverError> {
         self.outstanding = self.outstanding.saturating_sub(1);
         self.gate.release(outcome.id);
         *self.files.last_output_read.borrow_mut() = None;
+        let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
         if outcome.exit_code != 0 {
             if let Some(task) = self.retry_group(&members, outcome.id)? {
-                return Ok(vec![task]);
+                return Ok(Taken::Retry(Box::new(task)));
             }
             let rules: Vec<String> = (members.iter())
                 .map(|(job, _)| self.rule_name(*job))
@@ -1561,11 +1583,9 @@ impl Session {
                 rules.join(", "),
                 outcome.exit_code
             );
-            let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
             self.remove_failed(&jobs)?;
-            return self.failed(message);
+            return Ok(Taken::Failed(message));
         }
-        let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
         let mut outcomes = Vec::new();
         for (job, declared) in &members {
             let mut own = outcome.clone();
@@ -1585,11 +1605,10 @@ impl Session {
                 && let Err(error) = self.check_outputs(*job, &mut own)
             {
                 if let Some(task) = self.retry_group(&members, outcome.id)? {
-                    return Ok(vec![task]);
+                    return Ok(Taken::Retry(Box::new(task)));
                 }
-                let jobs: Vec<usize> = members.iter().map(|(job, _)| *job).collect();
                 self.remove_failed(&jobs)?;
-                return self.failed(error.message);
+                return Ok(Taken::Failed(error.message));
             }
             outcomes.push((*job, own));
         }
@@ -1601,16 +1620,12 @@ impl Session {
             .len();
         for (job, own) in outcomes {
             if let Some(message) = self.take_outcome(job, own)? {
-                return self.failed(message);
+                return Ok(Taken::Failed(message));
             }
         }
         self.queue_signatures(&jobs, delivery_start)?;
         self.release_temporary(&jobs)?;
-        let next = self.next_tasks(&jobs);
-        if next.is_ok() {
-            self.accept(identity);
-        }
-        next
+        Ok(Taken::Accepted)
     }
 
     /// Readies the task of `jobs` for the shared working directory when jobs run there: each

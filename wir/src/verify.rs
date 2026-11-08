@@ -91,6 +91,8 @@ pub enum Problem {
     Default(String),
     #[error("{0} needs exactly one input and one output")]
     Unary(String),
+    #[error("{0:?} is not an absolute path without '..'")]
+    Absolute(String),
     #[error("callback {0}: {1}")]
     Callback(String, String),
     #[error("closure: {0}")]

@@ -215,6 +215,22 @@ task count {
     assert_eq!(runs.native, runs.lowered);
 }
 
+#[test]
+fn default_image_used() {
+    let text = "version 1.1\ntask hello {\n  command <<<\n    echo hi\n  >>>\n}\n";
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let target = folder.path().join("main.wdl");
+    std::fs::write(&target, text).expect("writes a document");
+    let lowering = wdl_lowering::lower_with(&target, None, folder.path(), "lab/tools:1")
+        .expect("the document lowers");
+    let graph = (lowering.document.graphs.iter()).find(|item| item.name == "task.hello");
+    let op = graph.and_then(|graph| graph.ops.iter().find(|op| op.path == "hello"));
+    let Some(Kind::Task(task)) = op.map(|op| &op.kind) else {
+        panic!("hello is a task op");
+    };
+    assert_eq!(task.image.as_deref(), Some("lab/tools:1"));
+}
+
 const SAY: &str = r#"
 task say {
   input {

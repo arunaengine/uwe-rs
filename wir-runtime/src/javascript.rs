@@ -41,7 +41,7 @@ pub fn call(
         flow: Default::default(),
         default: None,
     };
-    crate::expr::evaluate(&spec, &bound, &out, &[], settings)
+    crate::expr::evaluate(&spec, &bound, &out, &[], (settings, false))
 }
 
 /// Whether a name is a JavaScript identifier of ASCII letters, digits, `_` and `$`.

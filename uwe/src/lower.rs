@@ -1,4 +1,5 @@
-//! `uwe lower` prints the wir of a CWL or WDL document, and `-lowered` runs one through it.
+//! `uwe lower` prints the wir of a CWL, WDL or Argo document or a Snakemake workflow, and
+//! `-lowered` runs one through it.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,15 +8,18 @@ use std::path::{Path, PathBuf};
 use workflow_graph::Language;
 
 use crate::arguments::Arguments;
+use crate::setup::Setup;
 use crate::{Failure, cache_directory, failure};
 
-/// `uwe lower`: prints the wir document of a CWL or WDL file, with source locations from the
+/// `uwe lower`: prints the wir document of a CWL, WDL or Argo file, with source locations from the
 /// current folder, and names on standard error the ops that stay native ops.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let (target, language) = crate::target_and_language(arguments)?;
     let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
     let document = match language {
         Language::Wdl => wdl(&target, arguments, &base)?.document,
+        Language::Snakemake => snakemake(&target, arguments, &base)?.document,
+        Language::Argo => argo(&target, arguments, &base)?.document,
         _ => lowered(&target, language, &base)?.document,
     };
     let text = serde_json::to_string_pretty(&document)
@@ -39,6 +43,8 @@ pub fn document(
             let inputs = converted(&lowering, arguments, &folder)?;
             (lowering.document, inputs)
         }
+        Language::Snakemake => (snakemake(target, arguments, &folder)?.document, None),
+        Language::Argo => (argo(target, arguments, &folder)?.document, None),
         _ => (lowered(target, language, &folder)?.document, None),
     };
     let text = serde_json::to_string_pretty(&document)
@@ -58,7 +64,7 @@ fn lowered(
 ) -> Result<cwl_lowering::Lowering, Failure> {
     if language != Language::Cwl {
         return Err(Failure::usage(
-            "uwe: only CWL and WDL documents lower into wir yet",
+            "uwe: only CWL, WDL and Argo documents and Snakemake workflows compile into wir yet",
         ));
     }
     let shown = target.display();
@@ -75,6 +81,31 @@ fn lowered(
     Ok(lowering)
 }
 
+/// The wir document that a Snakemake workflow compiles into, planned for the targets, config
+/// and profiles of the command line as a run plans it; it names on standard error what keeps
+/// the workflow one native op.
+fn snakemake(
+    target: &Path,
+    arguments: &Arguments,
+    base: &Path,
+) -> Result<snakemake_compiler::Compiled, Failure> {
+    let setup = Setup::load(arguments)?;
+    let _registry = setup.registry.enter().map_err(Failure::setup)?;
+    let launch = crate::launch(arguments, target.to_owned());
+    let cancel = workflow_graph::CancellationToken::default();
+    let settings = crate::run::driver::snakemake(arguments, &setup, &cancel);
+    let run = crate::run::driver::snakemake_options(arguments, &setup, "lower");
+    let compiled = snakemake_compiler::compile(&launch, settings, run, base)
+        .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
+    for kept in &compiled.kept {
+        eprintln!(
+            "uwe: op {} stays a native Snakemake op: {}",
+            kept.path, kept.reason
+        );
+    }
+    Ok(compiled)
+}
+
 /// The lowering of the WDL workflow or task that `-entry` names, else the one a run picks.
 fn wdl(
     target: &Path,
@@ -82,7 +113,8 @@ fn wdl(
     base: &Path,
 ) -> Result<wdl_lowering::Lowering, Failure> {
     let entry = arguments.targets.first().map(String::as_str);
-    let lowering = wdl_lowering::lower(target, entry, base)
+    let image = (arguments.default_image.as_deref()).unwrap_or(wdl_lowering::DEFAULT_IMAGE);
+    let lowering = wdl_lowering::lower_with(target, entry, base, image)
         .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
     for kept in &lowering.kept {
         eprintln!(
@@ -91,6 +123,23 @@ fn wdl(
         );
     }
     Ok(lowering)
+}
+
+/// The wir document that an Argo workflow compiles into, with the template files of `-c`.
+fn argo(
+    target: &Path,
+    arguments: &Arguments,
+    base: &Path,
+) -> Result<argo_compiler::Compiled, Failure> {
+    let compiled = argo_compiler::compile(target, &arguments.configs, base)
+        .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
+    for kept in &compiled.kept {
+        eprintln!(
+            "uwe: op {} stays a native Argo op: {}",
+            kept.path, kept.reason
+        );
+    }
+    Ok(compiled)
 }
 
 /// The inputs file of the entry graph from the WDL input file of a run, below `folder`.

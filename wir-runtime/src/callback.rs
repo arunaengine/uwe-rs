@@ -157,6 +157,7 @@ mod tests {
             scopes: &scopes,
             files: Path::new("/nonexistent"),
             printer: &crate::driver::Printer::default(),
+            simulated: false,
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("next".into());

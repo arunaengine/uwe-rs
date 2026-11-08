@@ -881,7 +881,7 @@ impl Run {
     }
 
     /// Finds the template a holder names, and where its own references resolve.
-    fn resolve(
+    pub(crate) fn resolve(
         &mut self,
         holder: &Holder,
         context: &Rc<Context>,
@@ -1276,6 +1276,13 @@ impl Run {
 
     /// Takes the outcome of a task.
     pub fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>> {
+        self.record(outcome)?;
+        self.operate()
+    }
+
+    /// Takes the outcome of a task into its node, which ends when all its tasks ended, and
+    /// marks an attempt that the node accepts.
+    pub(crate) fn record(&mut self, outcome: Outcome) -> Result<()> {
         if !self.options.assume_inputs {
             self.clock = std::time::Instant::now();
         }
@@ -1294,7 +1301,7 @@ impl Run {
                 {
                     self.acceptance.insert(identity);
                 }
-                return self.operate();
+                return Ok(());
             }
             return Err(Failure::error(format!(
                 "the outcome of task {} arrived, which this run did not ask for",
@@ -1336,7 +1343,7 @@ impl Run {
                 self.acceptance.insert(identity);
             }
         }
-        self.operate()
+        Ok(())
     }
 
     pub fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {

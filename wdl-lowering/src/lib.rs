@@ -50,10 +50,21 @@ impl Lowering {
 /// locations are relative to `base`, the folder the wir document is meant for, when they lie
 /// below it. It fails only when not even a native op can hold the document.
 pub fn lower(path: &Path, entry: Option<&str>, base: &Path) -> Result<Lowering, String> {
+    lower_with(path, entry, base, DEFAULT_IMAGE)
+}
+
+/// [`lower`], with `image` for the tasks without a container, like `-default-image`.
+pub fn lower_with(
+    path: &Path,
+    entry: Option<&str>,
+    base: &Path,
+    image: &str,
+) -> Result<Lowering, String> {
     let document = wdl_runtime::document::load(path).map_err(|error| error.message)?;
     let unit = wdl_runtime::document::entry(&document, entry).map_err(|error| error.message)?;
     let mut lowerer = Lowerer {
         base: base.to_owned(),
+        image: image.to_owned(),
         sources: Vec::new(),
         kept: Vec::new(),
         graphs: Vec::new(),
@@ -122,6 +133,8 @@ fn single(unit: &Unit, op: Op) -> Result<Graph, String> {
 
 struct Lowerer {
     base: PathBuf,
+    /// The image of tasks without a container.
+    image: String,
     sources: Vec<Source>,
     kept: Vec<Kept>,
     /// The graphs that call ops run, apart from the entry graph.

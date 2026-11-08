@@ -512,6 +512,11 @@ argo-test-workflows:
 argo-test-workflows-test:
 	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
 
+# Compiles every Argo test workflow into wir, runs it natively and compiled on the simulator,
+# and compares the counts with the recorded ones; `ARGO_TEST=1` prints each outcome.
+argo-compiler-test:
+	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-compiler --test conformance -- --ignored --nocapture
+
 # Runs Funnel (a GA4GH TES server) from ~/.cache/uwe/tools/funnel in the foreground, at
 # http://localhost:18000, with the config of the TES tests: tasks get a memory limit and no
 # network, and images are never pulled. It may read and write /tmp and the cache of uwe.

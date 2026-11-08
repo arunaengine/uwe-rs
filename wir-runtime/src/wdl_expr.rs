@@ -242,11 +242,16 @@ fn to_wdl(
                     .map_or(Type::Dynamic, |field| field.r#type.clone()),
                 _ => Type::Dynamic,
             };
-            Value::Object(
-                (object.iter())
-                    .map(|(key, json)| (key.clone(), to_wdl(json, &field(key), defs, None, files)))
-                    .collect(),
-            )
+            let mut members: IndexMap<String, Value> = (object.iter())
+                .map(|(key, json)| (key.clone(), to_wdl(json, &field(key), defs, None, files)))
+                .collect();
+            // A struct has every member that it declares, as WDL coerces one.
+            if let Type::Record(fields) = resolved {
+                for field in fields {
+                    members.entry(field.name.clone()).or_insert(Value::None);
+                }
+            }
+            Value::Object(members)
         }
         (_, Json::Bool(flag)) => Value::Boolean(*flag),
         (Type::Float, Json::Number(number)) => Value::Float(number.as_f64().unwrap_or_default()),
@@ -523,6 +528,18 @@ mod tests {
         let output = json!({"record": fields});
         let made = run("object { a: 1 }", &[], json!({}), output);
         assert_eq!(made, Ok(json!({"a": 1, "b": null})));
+    }
+
+    #[test]
+    fn records_fill_members() {
+        let fields = json!([
+            {"name": "name", "type": "string"},
+            {"name": "greeting", "type": {"optional": "string"}},
+        ]);
+        let inputs = json!({"person": {"type": {"record": fields}, "value": {"name": "Ada"}}});
+        let code = "select_first([person.greeting, \"hello\"]) + \" \" + person.name";
+        let text = run(code, &[], inputs, json!("string"));
+        assert_eq!(text, Ok(json!("hello Ada")));
     }
 
     #[test]

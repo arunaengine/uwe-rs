@@ -155,6 +155,13 @@ struct SignaturePublication {
     records: Vec<(String, serde_json::Value)>,
 }
 
+/// How the outcome of the task of one job was taken.
+enum Taken {
+    Accepted,
+    Retry(Box<Task>),
+    Failed(String),
+}
+
 impl Session {
     pub fn new(launch: &Launch, storage: &Storage) -> Result<Session, DriverError> {
         Session::within(launch, storage, None, None)
@@ -936,52 +943,8 @@ impl Session {
                     continue;
                 }
             }
-            let planner = self
-                .planner
-                .as_ref()
-                .ok_or_else(|| DriverError::new("No Snakemake plan"))?;
-            let entry = &planner.jobs[job];
-            let prepared = self.prepared.remove(&job);
-            let id = prepared.as_ref().map_or_else(
-                || {
-                    let id = TaskId(self.next_task.get());
-                    self.next_task.set(id.0 + 1);
-                    id
-                },
-                |task| task.id,
-            );
-            let rule = planner.rules[entry.rule].clone();
-            let entry = entry.clone();
-            let task = if let Some(task) = prepared {
-                task
-            } else {
-                let crate::task::Built {
-                    task,
-                    signature,
-                    usage,
-                    cwl,
-                    priority,
-                } = {
-                    let state = self.state.borrow();
-                    let setting = crate::task::TaskSetting {
-                        state: &state,
-                        files: &self.files,
-                        workdir: &self.workdir,
-                        embedded: &self.embedded,
-                        sources: &self.sources,
-                    };
-                    crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
-                }
-                .map_err(|error| self.error(&error))?;
-                self.signatures.insert(job, signature);
-                self.usages.insert(job, usage);
-                self.priorities.insert(job, priority);
-                if let Some(cwl) = cwl {
-                    self.cwl_jobs.insert(job, cwl);
-                }
-                task
-            };
-            built.push((job, task, rule, entry, id));
+            let task = self.prepare_job(job)?;
+            built.push((job, task));
         }
         // Snakemake's scheduler picks the ready jobs of the highest priority first: those of
         // `prioritize` and the jobs they wait for, then by the `priority` of their rules.
@@ -990,7 +953,8 @@ impl Session {
             false => self.priorities.get(job).copied().unwrap_or(0.0),
         };
         built.sort_by(|(one, ..), (other, ..)| rank(other).total_cmp(&rank(one)));
-        for (job, task, rule, entry, id) in built {
+        for (job, task) in built {
+            let id = task.id;
             let usage = self.tallied(self.usages.get(&job).cloned().unwrap_or_default());
             let limits = crate::scheduling::limits(&self.state.borrow().global_resources);
             if !self.gate.fits(&usage, &limits) || self.updates_read(job) {
@@ -1002,52 +966,101 @@ impl Session {
             }
             self.held.retain(|held| *held != job);
             self.usages.remove(&job);
-            let task = match self.share(&[job], vec![task], |members| Ok(members.remove(0)))? {
-                Some(task) => task,
-                None => continue,
+            let Some(task) = self.start_job(job, task)? else {
+                continue;
             };
             self.gate.take(id, usage);
-            if rule.checkpoint {
-                let reason = format!(
-                    "rule `{}` is a checkpoint: Snakemake plans the workflow again after it",
-                    rule.name
-                );
-                let marker = Marker::new(MarkerKind::Checkpoint, reason);
-                self.notes.push(Note::Mark(id, marker));
-            }
-            let mut task = task;
-            if self.forced.contains(&job) {
-                task.reuse = workflow_graph::Reuse::Denied;
-            }
-            // A job whose input function looked into a checkpoint's outputs runs after it,
-            // even when it reads none of its files.
-            let planner = self.planner.as_ref().ok_or_else(|| {
-                DriverError::new("the Snakemake session has not planned its jobs")
-            })?;
-            for file in &entry.checkpoints {
-                for (other, other_task) in &self.tasks {
-                    if planner.jobs[*other].output_files().contains(file)
-                        && !task.after.contains(other_task)
-                    {
-                        task.after.push(*other_task);
-                    }
-                }
-            }
-            self.planner
-                .as_mut()
-                .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?
-                .fixed
-                .insert(job);
-            self.tasks.insert(job, id);
-            self.attempts.insert(job, 1);
-            self.jobs_of_tasks.insert(id, job);
-            self.outstanding += 1;
             match self.cwl_jobs.remove(&job) {
                 Some(cwl) => tasks.extend(self.start_cwl(job, id, cwl)?),
                 None => tasks.push(task),
             }
         }
         Ok(tasks)
+    }
+
+    /// The first task of a job, which planning may have built already; records what it
+    /// takes of the resources, its priority, its signature and its CWL run.
+    fn prepare_job(&mut self, job: usize) -> Result<Task, DriverError> {
+        if let Some(task) = self.prepared.remove(&job) {
+            return Ok(task);
+        }
+        let planner = self
+            .planner
+            .as_ref()
+            .ok_or_else(|| DriverError::new("No Snakemake plan"))?;
+        let id = TaskId(self.next_task.get());
+        self.next_task.set(id.0 + 1);
+        let entry = &planner.jobs[job];
+        let rule = planner.rules[entry.rule].clone();
+        let entry = entry.clone();
+        let crate::task::Built {
+            task,
+            signature,
+            usage,
+            cwl,
+            priority,
+        } = {
+            let state = self.state.borrow();
+            let setting = crate::task::TaskSetting {
+                state: &state,
+                files: &self.files,
+                workdir: &self.workdir,
+                embedded: &self.embedded,
+                sources: &self.sources,
+            };
+            crate::task::build(&mut self.interpreter, &setting, &rule, &entry, id, 1)
+        }
+        .map_err(|error| self.error(&error))?;
+        self.signatures.insert(job, signature);
+        self.usages.insert(job, usage);
+        self.priorities.insert(job, priority);
+        if let Some(cwl) = cwl {
+            self.cwl_jobs.insert(job, cwl);
+        }
+        Ok(task)
+    }
+
+    /// Starts the prepared task of a job: places it in the shared directory, notes a
+    /// checkpoint and records the job as running. `None` when its inputs are missing there.
+    fn start_job(&mut self, job: usize, task: Task) -> Result<Option<Task>, DriverError> {
+        let Some(mut task) = self.share(&[job], vec![task], |members| Ok(members.remove(0)))?
+        else {
+            return Ok(None);
+        };
+        let id = task.id;
+        let planner = self
+            .planner
+            .as_mut()
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
+        let rule = &planner.rules[planner.jobs[job].rule];
+        if rule.checkpoint {
+            let reason = format!(
+                "rule `{}` is a checkpoint: Snakemake plans the workflow again after it",
+                rule.name
+            );
+            let marker = Marker::new(MarkerKind::Checkpoint, reason);
+            self.notes.push(Note::Mark(id, marker));
+        }
+        if self.forced.contains(&job) {
+            task.reuse = workflow_graph::Reuse::Denied;
+        }
+        // A job whose input function looked into a checkpoint's outputs runs after it,
+        // even when it reads none of its files.
+        for file in &planner.jobs[job].checkpoints {
+            for (other, other_task) in &self.tasks {
+                if planner.jobs[*other].output_files().contains(file)
+                    && !task.after.contains(other_task)
+                {
+                    task.after.push(*other_task);
+                }
+            }
+        }
+        planner.fixed.insert(job);
+        self.tasks.insert(job, id);
+        self.attempts.insert(job, 1);
+        self.jobs_of_tasks.insert(id, job);
+        self.outstanding += 1;
+        Ok(Some(task))
     }
 
     /// Starts the CWL run of a `cwl:` job, whose task `id` ends once the run did. Snakemake
@@ -1444,6 +1457,22 @@ impl Session {
         let Some(job) = self.jobs_of_tasks.get(&outcome.id).copied() else {
             return Err(DriverError::new(format!("unknown task {}", outcome.id)));
         };
+        match self.take_job(job, outcome)? {
+            Taken::Retry(task) => Ok(vec![*task]),
+            Taken::Failed(message) => self.failed(message),
+            Taken::Accepted => {
+                let next = self.next_tasks(&[job]);
+                if next.is_ok() {
+                    self.accept(identity);
+                }
+                next
+            }
+        }
+    }
+
+    /// Takes the outcome of the task of one job as Snakemake does: a failed attempt runs
+    /// again while the rule allows, else the job fails; outputs are checked and delivered.
+    fn take_job(&mut self, job: usize, mut outcome: Outcome) -> Result<Taken, DriverError> {
         self.outstanding = self.outstanding.saturating_sub(1);
         // A retry keeps what the job took of the global resources.
         let freed = self.gate.release(outcome.id).unwrap_or_default();
@@ -1453,7 +1482,7 @@ impl Session {
             && let Some(task) = self.retry(job, outcome.id)?
         {
             self.gate.take(task.id, freed);
-            return Ok(vec![task]);
+            return Ok(Taken::Retry(Box::new(task)));
         }
         if outcome.exit_code != 0 {
             let message = format!(
@@ -1462,17 +1491,17 @@ impl Session {
                 outcome.exit_code
             );
             self.remove_failed(&[job])?;
-            return self.failed(message);
+            return Ok(Taken::Failed(message));
         }
         if !self.launch.simulated
             && let Err(error) = self.check_outputs(job, &mut outcome)
         {
             if let Some(task) = self.retry(job, outcome.id)? {
                 self.gate.take(task.id, freed);
-                return Ok(vec![task]);
+                return Ok(Taken::Retry(Box::new(task)));
             }
             self.remove_failed(&[job])?;
-            return self.failed(error.message);
+            return Ok(Taken::Failed(error.message));
         }
         self.drop_backups(&[job])?;
         let delivery_start = self
@@ -1481,15 +1510,11 @@ impl Session {
             .unwrap_or_else(PoisonError::into_inner)
             .len();
         if let Some(message) = self.take_outcome(job, outcome)? {
-            return self.failed(message);
+            return Ok(Taken::Failed(message));
         }
         self.queue_signatures(&[job], delivery_start)?;
         self.release_temporary(&[job])?;
-        let next = self.next_tasks(&[job]);
-        if next.is_ok() {
-            self.accept(identity);
-        }
-        next
+        Ok(Taken::Accepted)
     }
 
     /// Takes the outcome of a group of a service job and the jobs that use it: each job gets

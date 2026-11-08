@@ -1,6 +1,5 @@
-//! The ops that the engine runs at once, for the run and for callback graphs: calls and
-//! branches start their graph, maps add their rounds, and expr, select, merge and flatten
-//! bind their value.
+//! The ops that the engine runs at once, for the run and for callback graphs: calls, branches
+//! and maps start their graphs or rounds; expr, select, merge and flatten bind their value.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -108,7 +107,7 @@ pub fn begin(
                 ),
                 ExprLanguage::Groovy | ExprLanguage::Python => language_expr(&spec, bound, context),
                 ExprLanguage::Wdl => {
-                    crate::wdl_expr::evaluate(context.document, &node.op, &spec, bound)
+                    crate::wdl::expr::evaluate(context.document, &node.op, &spec, bound)
                 }
                 ExprLanguage::Argo => return Ok(false),
             };

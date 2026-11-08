@@ -21,6 +21,7 @@ mod groovy;
 mod grouping;
 mod inputs;
 mod javascript;
+mod looping;
 mod mixing;
 pub mod nextflow;
 #[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
@@ -31,6 +32,7 @@ mod processes;
 mod publishing;
 mod python;
 mod reducing;
+mod regions;
 mod routing;
 mod selecting;
 pub mod snakemake;
@@ -43,8 +45,6 @@ mod task;
 mod transforms;
 mod values;
 mod wdl;
-mod wdl_closure;
-mod wdl_expr;
 mod writing;
 
 pub use child::{Block, Child};

@@ -144,6 +144,7 @@ impl Tasks {
                 return Changes {
                     tasks: vec![(call, *task)],
                     ended: Vec::new(),
+                    ready: Vec::new(),
                 };
             }
             Completed::Accepted {
@@ -156,7 +157,10 @@ impl Tasks {
                     let value = outputs.get(index).cloned().flatten()?;
                     Some((port, value))
                 });
-                Ending::Succeeded(given.collect())
+                Ending::Succeeded {
+                    values: given.collect(),
+                    empty: Vec::new(),
+                }
             }
             Completed::Ignored(message) => Ending::Ignored(message),
             Completed::Failed(message) => Ending::Failed(message),
@@ -165,6 +169,7 @@ impl Tasks {
         Changes {
             tasks: Vec::new(),
             ended: vec![(call, ending)],
+            ready: Vec::new(),
         }
     }
 }
@@ -206,12 +211,14 @@ impl TaskAdapter for Tasks {
             Prepared::Run(task) => Changes {
                 tasks: vec![(call.call, *task)],
                 ended: Vec::new(),
+                ready: Vec::new(),
             },
             Prepared::Skipped => {
                 self.calls.remove(&id);
                 Changes {
                     tasks: Vec::new(),
-                    ended: vec![(call.call, Ending::Skipped)],
+                    ended: vec![(call.call, Ending::Skipped(serde_json::Map::new()))],
+                    ready: Vec::new(),
                 }
             }
             Prepared::Done(completed) => self.judged(id, 0, completed),
@@ -240,8 +247,8 @@ impl TaskAdapter for Tasks {
         self.adapter.delivered(delivery)
     }
 
-    fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
-        self.adapter.end(failure).map(drop)
+    fn end(&mut self, failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        self.adapter.end(failure)
     }
 
     /// Tasks keep the names of the native run, like `NFCORE_DEMO:DEMO:FASTQC (sample1)`.

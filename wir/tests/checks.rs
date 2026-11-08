@@ -698,8 +698,26 @@ fn split_options() {
         source.clone(),
         typed("out", json!("dynamic"), "stream"),
     );
-    published["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": "chunks"}]);
-    assert_eq!(problems(&published), Vec::<String>::new());
+    let targets = [
+        ("/data/chunks", true),
+        ("/data/", true),
+        ("chunks", false),
+        ("/data/chunk", false),
+        ("/data/chunks/inner", false),
+        ("", false),
+    ];
+    for (target, names) in targets {
+        published["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": target}]);
+        let wanted = match names {
+            true => Vec::new(),
+            false => needs("a publish effect to write to /data/chunks"),
+        };
+        assert_eq!(
+            problems(&published),
+            wanted,
+            "the publish target {target:?}"
+        );
+    }
     let escaping = json!({"format": {"text": {}}, "files": {"directory": "../up", "name": "a/b"}});
     let found = split(escaping);
     assert!(
@@ -739,11 +757,18 @@ fn effect_declarations() {
         collected,
         ["main/op: op kind collect_file needs the effect \"write_files\""]
     );
+    let bucket = checked(
+        json!({"collect_file": {"directory": "s3://bucket/out"}}),
+        &ints,
+        file_out.clone(),
+        json!(["write_files", {"publish": "s3://bucket"}]),
+    );
+    assert_eq!(bucket, Vec::<String>::new(), "a folder that holds it");
     let outside = checked(
         json!({"collect_file": {"directory": "s3://bucket/out"}}),
         &ints,
         file_out,
-        json!(["write_files"]),
+        json!(["write_files", {"publish": "s3://other"}]),
     );
     assert_eq!(
         outside,

@@ -189,6 +189,28 @@ pub(crate) struct Asked {
     pub stored: Option<Vec<(String, PathValue)>>,
 }
 
+/// How a finished attempt ended, by its outputs.
+pub(crate) enum Collected {
+    /// The task failed, with the error of its outcome when it ran well but did not finish.
+    Failed(Option<Error>),
+    /// An output did not find its files or values.
+    Missing(Error),
+    /// The value of each output in declaration order, `None` for a missing optional one, and
+    /// the files that the outputs took.
+    Values {
+        values: Vec<Option<Value>>,
+        files: Vec<(String, PathValue)>,
+    },
+}
+
+/// What the error strategy of a failed attempt decides, with the failure.
+pub(crate) struct Decision {
+    pub strategy: Strategy,
+    pub retries: u32,
+    pub message: String,
+    pub error: Error,
+}
+
 /// One round's `each` choices, with the first input varying fastest.
 pub(crate) struct EachRound {
     values: Vec<Value>,
@@ -217,6 +239,30 @@ pub(crate) struct InFlight {
     task: Value,
     publish: Vec<publish::Rule>,
     store: Option<PathValue>,
+}
+
+impl InFlight {
+    /// Typed outputs compute their values from their parts in the frame of the task.
+    pub(crate) fn typed_values(
+        &mut self,
+        interpreter: &mut Interpreter,
+        values: &mut [Option<Value>],
+    ) -> Result<(), Error> {
+        for (output, value) in self.outputs.iter().zip(values.iter_mut()) {
+            if let (Some(typed), Some(Value::List(parts))) = (&output.typed, value.as_ref()) {
+                let parts = parts.borrow().items.clone();
+                let computed = interpreter.typed_output(&mut self.frame, typed, parts)?;
+                // Nextflow gives a tuple that a typed output makes as a plain list.
+                *value = Some(match &computed {
+                    Value::List(list) if list.borrow().kind == ListKind::Tuple => {
+                        Value::list(list.borrow().items.clone())
+                    }
+                    _ => computed,
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Behaviour for ProcessNode {
@@ -283,76 +329,27 @@ impl Behaviour for ProcessNode {
             return Ok(State::Running);
         };
         context.accept(outcome.id, false);
-        if outcome.failure.is_none()
-            && let Some(structured) =
-                (self.binding.process.agent.as_ref()).and_then(|a| a.structured.as_ref())
-        {
-            let simulated = context.interpreter.host().simulated();
-            let staged = &flight.frame.staged;
-            let name = &self.binding.name;
-            match crate::agent::bind(structured, &outcome.stdout, staged, name, simulated) {
-                Ok(value) => flight.outputs[0].parts = vec![RenderedPart::Value(value)],
-                Err(error) => outcome.failure = Some(error),
-            }
-        }
-        if outcome.exit_status != 0 || outcome.failure.is_some() {
-            let failure = if outcome.exit_status == 0 {
-                outcome.failure.take()
-            } else {
-                None
-            };
-            return self.failed(context, flight, &outcome, failure);
-        }
-        if !context.interpreter.host().simulated()
-            && let Some(directory) = &flight.store
-        {
-            crate::store::save(&mut outcome.files, directory, context.interpreter.host())?;
-        }
-        context.remember_task_files(&outcome.files);
-        let (task, outputs) = (&flight.name, &flight.outputs);
-        // All outputs of a task bind together, in declaration order.
-        // `eval` results come in the order of the `eval` parts over all outputs.
-        let mut values = Vec::new();
-        let mut eval_index = 0;
-        let staged: Vec<&str> = (flight.frame.staged.iter())
-            .map(|(_, name)| name.as_str())
-            .collect();
-        let mut bound = Bound {
-            staged,
-            files: Vec::new(),
-            simulated: context.interpreter.host().simulated(),
-        };
-        for output in outputs {
-            match ProcessNode::output_value(output, &outcome, task, &mut eval_index, &mut bound) {
-                Ok(value) => values.push(value),
-                Err(error) => return self.failed(context, flight, &outcome, Some(error)),
-            }
-        }
         let interpreter = &mut *context.interpreter;
-        let deliveries = publish::deliveries(
-            interpreter,
-            &flight.frame,
-            &flight.task,
-            &flight.publish,
-            &bound.files,
-        )?;
-        context.deliver(deliveries);
-        // Typed outputs compute their values from their parts in the frame of the task.
-        for (output, value) in flight.outputs.iter().zip(values.iter_mut()) {
-            if let (Some(typed), Some(Value::List(parts))) = (&output.typed, value.as_ref()) {
-                let parts = parts.borrow().items.clone();
-                let computed = context
-                    .interpreter
-                    .typed_output(&mut flight.frame, typed, parts)?;
-                // Nextflow gives a tuple that a typed output makes as a plain list.
-                *value = Some(match &computed {
-                    Value::List(list) if list.borrow().kind == ListKind::Tuple => {
-                        Value::list(list.borrow().items.clone())
-                    }
-                    _ => computed,
-                });
+        let mut values = match self
+            .binding
+            .collect(interpreter, &mut flight, &mut outcome)?
+        {
+            Collected::Failed(failure) => return self.failed(context, flight, &outcome, failure),
+            Collected::Missing(error) => {
+                context.remember_task_files(&outcome.files);
+                return self.failed(context, flight, &outcome, Some(error));
             }
-        }
+            Collected::Values { values, files } => {
+                context.remember_task_files(&outcome.files);
+                let (frame, task) = (&flight.frame, &flight.task);
+                let interpreter = &mut *context.interpreter;
+                let deliveries =
+                    publish::deliveries(interpreter, frame, task, &flight.publish, &files)?;
+                context.deliver(deliveries);
+                values
+            }
+        };
+        flight.typed_values(context.interpreter, &mut values)?;
         context.accept(outcome.id, true);
         *context.succeeded += 1;
         if !self.limits.fair {
@@ -753,7 +750,7 @@ impl Binding {
         };
         let mut eval_index = 0;
         outputs.iter().all(|output| {
-            ProcessNode::output_value(output, &outcome, name, &mut eval_index, &mut bound).is_ok()
+            Self::output_value(output, &outcome, name, &mut eval_index, &mut bound).is_ok()
         })
     }
 
@@ -775,6 +772,89 @@ impl Binding {
         })?;
         Ok(work_dir)
     }
+
+    /// Checks a finished attempt: its exit status, the answer of an agent, and the values of
+    /// its outputs, after it saved them to its `storeDir`.
+    pub(crate) fn collect(
+        &self,
+        interpreter: &mut Interpreter,
+        flight: &mut InFlight,
+        outcome: &mut TaskOutcome,
+    ) -> Result<Collected, Error> {
+        let simulated = interpreter.host().simulated();
+        if outcome.failure.is_none()
+            && let Some(structured) =
+                (self.process.agent.as_ref()).and_then(|a| a.structured.as_ref())
+        {
+            let staged = &flight.frame.staged;
+            match crate::agent::bind(structured, &outcome.stdout, staged, &self.name, simulated) {
+                Ok(value) => flight.outputs[0].parts = vec![RenderedPart::Value(value)],
+                Err(error) => outcome.failure = Some(error),
+            }
+        }
+        if outcome.exit_status != 0 || outcome.failure.is_some() {
+            let failure = if outcome.exit_status == 0 {
+                outcome.failure.take()
+            } else {
+                None
+            };
+            return Ok(Collected::Failed(failure));
+        }
+        if !simulated && let Some(directory) = &flight.store {
+            crate::store::save(&mut outcome.files, directory, interpreter.host())?;
+        }
+        let (task, outputs) = (&flight.name, &flight.outputs);
+        // All outputs of a task bind together, in declaration order.
+        // `eval` results come in the order of the `eval` parts over all outputs.
+        let mut values = Vec::new();
+        let mut eval_index = 0;
+        let staged: Vec<&str> = (flight.frame.staged.iter())
+            .map(|(_, name)| name.as_str())
+            .collect();
+        let mut bound = Bound {
+            staged,
+            files: Vec::new(),
+            simulated,
+        };
+        for output in outputs {
+            match Self::output_value(output, outcome, task, &mut eval_index, &mut bound) {
+                Ok(value) => values.push(value),
+                Err(error) => return Ok(Collected::Missing(error)),
+            }
+        }
+        let files = bound.files;
+        Ok(Collected::Values { values, files })
+    }
+
+    /// The error strategy of a failed attempt, which is evaluated now, with the exit status of
+    /// the task, and the message and error of the failure.
+    pub(crate) fn decide(
+        &self,
+        interpreter: &mut Interpreter,
+        flight: &mut InFlight,
+        outcome: &TaskOutcome,
+        failure: Option<Error>,
+    ) -> Result<Decision, Error> {
+        let (name, index, attempt) = (&flight.name, flight.index, flight.attempt);
+        let ext = ext_map(&self.settings)?;
+        let status = Some(outcome.exit_status);
+        let base = task_object(&self.name, index, attempt, status, &[], &ext);
+        let directives = self.directives(interpreter, &mut flight.frame, &base)?;
+        let (strategy, retries) = strategy::of(&directives);
+        let message = format!(
+            "Process `{name}` terminated with an error exit status ({})",
+            outcome.exit_status
+        );
+        let message = failure.as_ref().map_or(message, Error::to_string);
+        let error = failure
+            .unwrap_or_else(|| thrown(Exception::new("ProcessFailedException", message.clone())));
+        Ok(Decision {
+            strategy,
+            retries,
+            message,
+            error,
+        })
+    }
 }
 
 impl ProcessNode {
@@ -784,33 +864,25 @@ impl ProcessNode {
     fn failed(
         &mut self,
         context: &mut Context,
-        flight: InFlight,
+        mut flight: InFlight,
         outcome: &TaskOutcome,
         failure: Option<Error>,
     ) -> Result<State, Error> {
+        let interpreter = &mut *context.interpreter;
+        let decision = (self.binding).decide(interpreter, &mut flight, outcome, failure)?;
+        let Decision {
+            strategy,
+            retries,
+            message: failure,
+            error,
+        } = decision;
         let InFlight {
             name,
             values,
             index,
             attempt,
-            mut frame,
             ..
         } = flight;
-        let interpreter = &mut *context.interpreter;
-        let binding = &self.binding;
-        let ext = ext_map(&binding.settings)?;
-        let status = Some(outcome.exit_status);
-        let base = task_object(&binding.name, index, attempt, status, &[], &ext);
-        let directives = binding.directives(interpreter, &mut frame, &base)?;
-        let (strategy, retries) = strategy::of(&directives);
-        let message = format!(
-            "Process `{name}` terminated with an error exit status ({})",
-            outcome.exit_status
-        );
-        let message = failure.as_ref().map_or(message, Error::to_string);
-        let error = failure
-            .unwrap_or_else(|| thrown(Exception::new("ProcessFailedException", message.clone())));
-        let failure = message;
         if strategy != Strategy::Ignore && !(strategy == Strategy::Retry && attempt <= retries) {
             context.failed_task.get_or_insert_with(|| {
                 Value::map([
@@ -853,7 +925,9 @@ impl ProcessNode {
             Strategy::Terminate | Strategy::Retry => Err(error),
         }
     }
+}
 
+impl Binding {
     /// The value one output binds for a task; `None` when an optional output is missing.
     fn output_value(
         output: &RenderedOutput,
@@ -969,7 +1043,9 @@ impl ProcessNode {
         };
         Ok(if missing { None } else { Some(value) })
     }
+}
 
+impl ProcessNode {
     /// Closes the outputs once no round can start and no task is in flight.
     /// Binds the values of the outputs of one task.
     fn emit(&self, context: &mut Context, values: Vec<Option<Value>>) {

@@ -1,7 +1,9 @@
 //! Verifier checks of the ops that select or cut the items of a stream: buffer, window,
-//! take, unique, distinct, until and if_empty.
+//! take, unique, distinct, until, if_empty and split.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::collections::BTreeSet;
 
 use super::callbacks::Arity;
 use super::kinds::array_of;
@@ -9,8 +11,10 @@ use super::{Checker, Problem};
 use crate::closure::Body;
 use crate::document::Port;
 use crate::flow::Flow;
-use crate::op::Op;
-use crate::reserved::{Buffer, BufferRule, IfEmpty, Window};
+use crate::op::{Effect, Op};
+use crate::reserved::{
+    Buffer, BufferRule, ChunkFiles, IfEmpty, Pair, SequenceField, Split, SplitFormat, Window,
+};
 use crate::types::Type;
 
 impl<'d> Checker<'d> {
@@ -95,4 +99,125 @@ impl<'d> Checker<'d> {
         self.value_captures(at, op, what, &["source"]);
         ends
     }
+}
+
+impl<'d> Checker<'d> {
+    pub(super) fn split(&mut self, at: &str, op: &Op, split: &Split) {
+        let Some((source, _)) = self.streamed(at, op, "a split") else {
+            return;
+        };
+        let mut wrong = Vec::new();
+        if split.size == 0 {
+            wrong.push("a positive size".to_owned());
+        }
+        let (fields, fastq) = match &split.format {
+            SplitFormat::Fasta(sequence) => (&sequence.fields[..], false),
+            SplitFormat::Fastq(sequence) => (&sequence.fields[..], true),
+            _ => (&[][..], false),
+        };
+        match (&split.pair, split.elem) {
+            (Some(_), _) if !fastq => wrong.push("a pair only for fastq".into()),
+            (Some(_), Some(_)) => wrong.push("a pair or an elem, not both".into()),
+            (Some(Pair::At([first, second])), None) if first == second => {
+                wrong.push("two different pair elements".into());
+            }
+            _ => {}
+        }
+        let mut names = BTreeSet::new();
+        for field in fields {
+            if field.field != SequenceField::Text && field.field.in_fasta() == fastq {
+                wrong.push(format!("fields of its format, not {:?}", field.field));
+            }
+            if !names.insert(&field.name) {
+                wrong.push(format!("one field named {}", field.name));
+            }
+        }
+        let structured = matches!(split.format, SplitFormat::Csv(_) | SplitFormat::Json(_));
+        if split.files.is_some() && (structured || !fields.is_empty()) {
+            wrong.push("text chunks to write files".into());
+        }
+        if let SplitFormat::Json(json) = &split.format
+            && !json_path(&json.path)
+        {
+            wrong.push(format!(
+                "a JSON path of names and indices, not {:?}",
+                json.path
+            ));
+        }
+        if !CHARSETS.contains(&split.charset.to_ascii_lowercase().as_str()) {
+            wrong.push(format!("a known charset, not {}", split.charset));
+        }
+        if let Some(files) = &split.files {
+            wrong.extend(self.chunk_places(op, files));
+        }
+        for why in wrong {
+            self.report(at, Problem::Shape("a split".into(), why));
+        }
+        if let Some(body) = &split.body {
+            self.body(at, op, body, (Arity::Unary, &[&source.r#type]), None);
+        }
+    }
+
+    /// A chunk name is a file name, and a folder outside the run needs a publish effect.
+    fn chunk_places(&self, op: &Op, files: &ChunkFiles) -> Vec<String> {
+        let mut wrong = Vec::new();
+        if let Some(name) = &files.name
+            && (name.is_empty() || name.contains('/') || name == "..")
+        {
+            wrong.push(format!("a file name, not {name:?}"));
+        }
+        let Some(directory) = &files.directory else {
+            return wrong;
+        };
+        let outside = directory.starts_with('/') || directory.contains("://");
+        let published = op
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, Effect::Publish(_)));
+        if outside && !published {
+            wrong.push(format!("a publish effect to write to {directory}"));
+        }
+        if !outside && directory.split('/').any(|part| part == "..") {
+            wrong.push(format!("a folder inside the run, not {directory}"));
+        }
+        wrong
+    }
+}
+
+/// The charsets a split reads.
+const CHARSETS: [&str; 7] = [
+    "utf-8",
+    "utf8",
+    "us-ascii",
+    "ascii",
+    "iso-8859-1",
+    "latin-1",
+    "latin1",
+];
+
+/// Whether a JSON path is dot-separated member names, each with optional bracket indices,
+/// like `samples[0].files`; the empty path is the document.
+fn json_path(path: &str) -> bool {
+    if path.is_empty() {
+        return true;
+    }
+    path.split('.').enumerate().all(|(at, part)| {
+        let (name, mut rest) = part.split_at(part.find('[').unwrap_or(part.len()));
+        if name.contains(']') || (name.is_empty() && (at > 0 || rest.is_empty())) {
+            return false;
+        }
+        while !rest.is_empty() {
+            let Some((index, after)) = rest
+                .strip_prefix('[')
+                .and_then(|inner| inner.split_once(']'))
+            else {
+                return false;
+            };
+            if index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
+                return false;
+            }
+            rest = after;
+        }
+        true
+    })
 }

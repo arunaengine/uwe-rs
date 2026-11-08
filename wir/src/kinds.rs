@@ -56,6 +56,7 @@ impl<'d> Checker<'d> {
             Kind::Distinct(distinct) => self.selects(at, op, "a distinct", distinct.key.as_ref()),
             Kind::Until(until) => self.until(at, op, &until.predicate),
             Kind::IfEmpty(fallback) => self.if_empty(at, op, fallback),
+            Kind::Split(split) => self.split(at, op, split),
             Kind::Route(route) => self.route(at, op, route),
             Kind::MultiMap(multi) => self.multi_map(at, op, multi),
             Kind::Flatten(flatten) if streams(op) => self.flatten_stream(at, op, flatten.depth),

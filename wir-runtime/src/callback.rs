@@ -155,6 +155,7 @@ mod tests {
             base: Path::new("/"),
             javascript: &settings,
             scopes: &scopes,
+            files: Path::new("/nonexistent"),
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("next".into());

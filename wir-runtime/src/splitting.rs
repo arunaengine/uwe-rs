@@ -3,12 +3,12 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::rc::Rc;
+use std::path::PathBuf;
 
 use nextflow_evaluator::split::{Format, Splitter};
-use nextflow_evaluator::value::{PathValue, Value};
+use nextflow_evaluator::value::Value;
 use serde_json::Value as Json;
-use wir::reserved::{Header, Pair, SequenceField, Split, SplitFormat};
+use wir::reserved::{ChunkFiles, Decompress, Header, Pair, SequenceField, Split, SplitFormat};
 
 use crate::callback::Callbacks;
 use crate::engine::Context;
@@ -20,6 +20,8 @@ use crate::streams::Failure;
 pub struct Splitting {
     pub spec: Split,
     pub callbacks: Callbacks,
+    /// The number of source items split so far.
+    pub sources: u64,
 }
 
 impl Splitting {
@@ -27,6 +29,7 @@ impl Splitting {
         Splitting {
             spec,
             callbacks: Callbacks::default(),
+            sources: 0,
         }
     }
 
@@ -52,7 +55,9 @@ impl Splitting {
             },
             SplitFormat::Fasta(sequence) => Format::Fasta(record(&sequence.fields)),
             SplitFormat::Fastq(sequence) => Format::Fastq(record(&sequence.fields)),
-            SplitFormat::Json(_) => Format::Text { keep_header: false },
+            SplitFormat::Json(json) => Format::Json {
+                path: json.path.clone(),
+            },
         };
         // One record a chunk is the record itself, more are an array or a joined text.
         let by = (self.spec.size > 1).then_some(self.spec.size as usize);
@@ -81,10 +86,22 @@ impl Splitting {
                 }
                 let bytes = std::fs::read(path)
                     .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?;
-                let gzip = bytes.starts_with(&[0x1f, 0x8b]) || path.ends_with(".gz");
-                if gzip && self.spec.decompress != wir::reserved::Decompress::Never {
-                    return Err(turn.failed(format!("uwe does not decompress {path} yet")));
-                }
+                let gzip = match self.spec.decompress {
+                    Decompress::Always => true,
+                    Decompress::Never => false,
+                    Decompress::Auto => bytes.starts_with(&[0x1f, 0x8b]) || path.ends_with(".gz"),
+                };
+                let bytes = match gzip {
+                    true => {
+                        let mut plain = Vec::new();
+                        let mut reader = flate2::read::MultiGzDecoder::new(bytes.as_slice());
+                        std::io::Read::read_to_end(&mut reader, &mut plain).map_err(|error| {
+                            turn.failed(format!("cannot decompress {path}: {error}"))
+                        })?;
+                        plain
+                    }
+                    false => bytes,
+                };
                 decode(&bytes, &self.spec.charset)
                     .map(|text| text.replace("\r\n", "\n"))
                     .map_err(|why| turn.failed(format!("{path}: {why}")))
@@ -95,9 +112,14 @@ impl Splitting {
 
     /// The chunks of one source item, with the item rebuilt around each of them; paired
     /// FASTQ files give aligned chunks of both.
-    fn chunks(&self, turn: &Turn<'_>, item: &Json) -> Result<Vec<Json>, Failure> {
+    fn chunks(
+        &self,
+        turn: &Turn<'_>,
+        context: &Context<'_>,
+        item: &Json,
+    ) -> Result<Vec<Json>, Failure> {
         let Json::Array(fields) = item else {
-            return self.pieces(turn, item);
+            return self.pieces(turn, context, item);
         };
         let files: Vec<usize> = (fields.iter().enumerate())
             .filter(|(_, field)| field.get("class").and_then(Json::as_str) == Some("File"))
@@ -120,7 +142,7 @@ impl Splitting {
             let source = fields
                 .get(*place)
                 .ok_or_else(|| turn.failed(format!("the item has no element {place}")))?;
-            columns.push(self.pieces(turn, source)?);
+            columns.push(self.pieces(turn, context, source)?);
         }
         if columns
             .iter()
@@ -140,8 +162,20 @@ impl Splitting {
     }
 
     /// The chunks of one text or File.
-    fn pieces(&self, turn: &Turn<'_>, source: &Json) -> Result<Vec<Json>, Failure> {
+    fn pieces(
+        &self,
+        turn: &Turn<'_>,
+        context: &Context<'_>,
+        source: &Json,
+    ) -> Result<Vec<Json>, Failure> {
         let mut text = self.text(turn, source)?;
+        if let SplitFormat::Json(json) = &self.spec.format {
+            let document: Json = serde_json::from_str(&text)
+                .map_err(|error| turn.failed(format!("the JSON does not parse: {error}")))?;
+            if !json.path.is_empty() && reach(&document, &json.path).is_none() {
+                return Err(turn.failed(format!("the JSON path {} is missing", json.path)));
+            }
+        }
         // Text records end with a newline, also the last one.
         let lines = !matches!(self.spec.format, SplitFormat::Csv(_) | SplitFormat::Json(_));
         if lines && !text.is_empty() && !text.ends_with('\n') {
@@ -168,7 +202,71 @@ impl Splitting {
                 (_, value) => value,
             });
         }
-        Ok(pieces)
+        match &self.spec.files {
+            Some(files) => self.written(turn, context, files, source, pieces),
+            None => Ok(pieces),
+        }
+    }
+
+    /// The text chunks of a source written as files of the op in the file area of the run,
+    /// all before any is given: `<name or stem>.<source>.<chunk>` with the format extension.
+    fn written(
+        &self,
+        turn: &Turn<'_>,
+        context: &Context<'_>,
+        files: &ChunkFiles,
+        source: &Json,
+        pieces: Vec<Json>,
+    ) -> Result<Vec<Json>, Failure> {
+        let mut folder = context.files.join(&turn.path);
+        match files.directory.as_deref() {
+            Some(directory) if directory.contains("://") => {
+                return Err(turn.failed(format!(
+                    "uwe writes chunk files only to local folders yet, not {directory}"
+                )));
+            }
+            Some(directory) if directory.starts_with('/') => folder = PathBuf::from(directory),
+            Some(directory) => folder = folder.join(directory),
+            None => {}
+        }
+        std::fs::create_dir_all(&folder)
+            .map_err(|error| turn.failed(format!("cannot make {}: {error}", folder.display())))?;
+        let basename = source
+            .get("basename")
+            .and_then(Json::as_str)
+            .unwrap_or("chunk");
+        let stem = basename.trim_end_matches(".gz");
+        let stem = stem.rsplit_once('.').map_or(stem, |(stem, _)| stem);
+        let stem = files.name.as_deref().unwrap_or(stem);
+        let extension = match self.spec.format {
+            SplitFormat::Fasta(_) => "fa",
+            SplitFormat::Fastq(_) => "fq",
+            _ => "txt",
+        };
+        let mut written = Vec::new();
+        for (chunk, piece) in pieces.into_iter().enumerate() {
+            let Json::String(text) = piece else {
+                return Err(turn.failed("only text chunks are written as files"));
+            };
+            let gzip = if files.compress { ".gz" } else { "" };
+            let name = format!("{stem}.{}.{chunk}.{extension}{gzip}", self.sources);
+            let path = folder.join(&name);
+            let bytes = match files.compress {
+                true => {
+                    let mut encoder = flate2::GzBuilder::new()
+                        .mtime(0)
+                        .write(Vec::new(), flate2::Compression::default());
+                    std::io::Write::write_all(&mut encoder, text.as_bytes())
+                        .and_then(|()| encoder.finish())
+                }
+                false => Ok(text.into_bytes()),
+            };
+            let size = (bytes
+                .and_then(|bytes| std::fs::write(&path, &bytes).map(|()| bytes.len())))
+            .map_err(|error| turn.failed(format!("cannot write {}: {error}", path.display())))?;
+            written.push(serde_json::json!({"class": "File", "location": path.to_string_lossy(), "basename": name, "size": size}));
+        }
+        Ok(written)
     }
 
     /// A sequence record, or an array of them, with the field names of the op.
@@ -219,7 +317,9 @@ impl Operator for Splitting {
             Pull::Pending => return Ok(Step::Idle),
             Pull::Closed => return Ok(Step::Done),
         };
-        for chunk in self.chunks(turn, &item)? {
+        let chunks = self.chunks(turn, context, &item)?;
+        self.sources += 1;
+        for chunk in chunks {
             let value = match &self.spec.body {
                 Some(body) => {
                     let body = body.clone();
@@ -234,6 +334,21 @@ impl Operator for Splitting {
         }
         Ok(Step::Moved)
     }
+}
+
+/// The value at a JSON path of member names and bracket indices, if there is one.
+fn reach<'v>(document: &'v Json, path: &str) -> Option<&'v Json> {
+    let mut value = document;
+    for part in path.split('.') {
+        let (name, rest) = part.split_at(part.find('[').unwrap_or(part.len()));
+        if !name.is_empty() {
+            value = value.get(name)?;
+        }
+        for index in rest.split(['[', ']']).filter(|index| !index.is_empty()) {
+            value = value.get(index.parse::<usize>().ok()?)?;
+        }
+    }
+    Some(value)
 }
 
 /// The native names of the fields of sequence records, or none for their text.
@@ -261,12 +376,6 @@ fn decode(bytes: &[u8], charset: &str) -> Result<String, String> {
         }
         other => Err(format!("uwe does not read the charset {other}")),
     }
-}
-
-/// A path value of a location, for the splitter of files.
-#[allow(dead_code, reason = "the file splitters of the next commits use it")]
-pub fn path_of(location: &str) -> Rc<PathValue> {
-    Rc::new(PathValue::parse(location, "/"))
 }
 
 #[cfg(test)]
@@ -456,6 +565,140 @@ mod sequences {
             unequal
                 .unwrap_err()
                 .contains("different numbers of records")
+        );
+    }
+}
+
+#[cfg(test)]
+mod files {
+    use std::io::Write;
+
+    use serde_json::{Value as Json, json};
+
+    use super::tests::split;
+
+    #[test]
+    fn split_json() {
+        let document = json!("{\"b\": 1, \"a\": [null, {\"x\": 2}]}");
+        let entries = split(
+            json!({"format": {"json": {}}}),
+            std::slice::from_ref(&document),
+        );
+        assert_eq!(
+            entries,
+            Ok(vec![
+                json!({"key": "b", "value": 1}),
+                json!({"key": "a", "value": [null, {"x": 2}]})
+            ]),
+            "entries in document order"
+        );
+        let items = split(
+            json!({"format": {"json": {"path": "a"}}}),
+            std::slice::from_ref(&document),
+        );
+        assert_eq!(
+            items,
+            Ok(vec![Json::Null, json!({"x": 2})]),
+            "null elements stay"
+        );
+        let missing = split(json!({"format": {"json": {"path": "a[3]"}}}), &[document]);
+        assert!(
+            missing
+                .unwrap_err()
+                .contains("the JSON path a[3] is missing")
+        );
+    }
+
+    #[test]
+    fn split_gzip() {
+        let folder = tempfile::tempdir().unwrap();
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(b"a\nb\n").unwrap();
+        let bytes = encoder.finish().unwrap();
+        let file = |name: &str| {
+            let path = folder.path().join(name);
+            std::fs::write(&path, &bytes).unwrap();
+            json!({"class": "File", "location": path.to_string_lossy(), "basename": name})
+        };
+        let (named, plain) = (file("in.txt.gz"), file("in.bin"));
+        let lines = Ok(vec![json!("a\n"), json!("b\n")]);
+        assert_eq!(
+            split(
+                json!({"format": {"text": {}}}),
+                std::slice::from_ref(&named)
+            ),
+            lines,
+            "by name"
+        );
+        assert_eq!(
+            split(
+                json!({"format": {"text": {}}}),
+                std::slice::from_ref(&plain)
+            ),
+            lines,
+            "by content"
+        );
+        assert_eq!(
+            split(
+                json!({"format": {"text": {}}, "decompress": "always"}),
+                std::slice::from_ref(&plain)
+            ),
+            lines
+        );
+        assert!(
+            split(
+                json!({"format": {"text": {}}, "decompress": "never"}),
+                &[plain]
+            )
+            .unwrap_err()
+            .contains("no UTF-8")
+        );
+    }
+
+    #[test]
+    fn split_files() {
+        let folder = tempfile::tempdir().unwrap();
+        let source = folder.path().join("reads.fq");
+        std::fs::write(&source, "@r1\nA\n+\nI\n@r2\nC\n+\nI\n@r3\nG\n+\nI\n").unwrap();
+        let file =
+            json!({"class": "File", "location": source.to_string_lossy(), "basename": "reads.fq"});
+        let out = folder.path().join("chunks");
+        let fields = |compress: bool| json!({"format": {"fastq": {}}, "size": 2, "files": {"directory": out.to_string_lossy(), "compress": compress}});
+        let chunks = split(fields(false), &[file.clone(), file.clone()]).unwrap();
+        let names: Vec<&str> = chunks
+            .iter()
+            .map(|chunk| chunk["basename"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "reads.0.0.fq",
+                "reads.0.1.fq",
+                "reads.1.0.fq",
+                "reads.1.1.fq"
+            ],
+            "stable names by source and chunk"
+        );
+        assert_eq!(
+            std::fs::read_to_string(out.join("reads.0.1.fq")).unwrap(),
+            "@r3\nG\n+\nI\n"
+        );
+        let first = split(fields(true), std::slice::from_ref(&file)).unwrap();
+        let again = split(fields(true), &[file]).unwrap();
+        let read = |chunk: &Json| std::fs::read(chunk["location"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            read(&first[0]),
+            read(&again[0]),
+            "gzip output does not depend on the time"
+        );
+        let blocked = folder.path().join("blocked");
+        std::fs::write(&blocked, "").unwrap();
+        let fields = json!({"format": {"text": {}}, "files": {"directory": blocked.join("x").to_string_lossy()}});
+        assert!(
+            split(fields, &[json!("a\n")])
+                .unwrap_err()
+                .contains("cannot make"),
+            "a failed write fails the op"
         );
     }
 }

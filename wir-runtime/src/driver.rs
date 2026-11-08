@@ -147,6 +147,8 @@ pub struct WirDriver {
     stepping: bool,
     /// The text of each source that a scope names, by source id.
     scopes: HashMap<String, String>,
+    /// The file area of the run, made when an op of the document writes files.
+    file_area: PathBuf,
 }
 
 impl WirDriver {
@@ -195,12 +197,18 @@ impl WirDriver {
             operators: operator::Running::new(),
             stepping: false,
             scopes: HashMap::new(),
+            file_area: PathBuf::new(),
         }
         .checked()
     }
 
     fn checked(mut self) -> Result<Self, DriverError> {
         self.scopes = self.read_scopes()?;
+        let ops = self.document.graphs.iter().flat_map(|graph| &graph.ops);
+        let writes = |op: &wir::Op| matches!(&op.kind, Kind::Split(split) if split.files.is_some());
+        if ops.into_iter().any(writes) {
+            self.file_area = self.job_folder()?.join("files");
+        }
         Ok(self)
     }
 
@@ -235,6 +243,7 @@ impl WirDriver {
                 base: &self.base,
                 javascript: &self.settings.cwl.javascript,
                 scopes: &self.scopes,
+                files: &self.file_area,
             };
             if !operator::step_all(&mut self.progress, &mut self.operators, &context) {
                 break;
@@ -254,6 +263,7 @@ impl WirDriver {
             base: &self.base,
             javascript: &self.settings.cwl.javascript,
             scopes: &self.scopes,
+            files: &self.file_area,
         };
         if engine::begin(&mut self.progress, at, &bound, &context)? {
             return Ok(Vec::new());

@@ -23,6 +23,8 @@ pub struct Context<'a> {
     pub javascript: &'a JavaScriptSettings,
     /// The text of each source that a scope names, by source id.
     pub scopes: &'a HashMap<String, String>,
+    /// The file area of the run, where ops that write files keep a folder each.
+    pub files: &'a Path,
 }
 
 /// Runs a node of an op that the engine runs at once; whether it was such an op.

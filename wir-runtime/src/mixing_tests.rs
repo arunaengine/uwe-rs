@@ -89,6 +89,7 @@ pub fn steps(
         base: Path::new("/"),
         javascript: &javascript,
         scopes: &scopes,
+        files: Path::new("/nonexistent"),
     };
     let (mut emitted, mut bound) = (Vec::new(), None);
     loop {

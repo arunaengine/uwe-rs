@@ -521,6 +521,29 @@ task maybe {
 }
 
 #[test]
+fn optional_arrays_stay() {
+    let text = r#"version 1.1
+task maybe {
+  input {
+    Boolean make
+  }
+  command <<< >>>
+  output {
+    Array[File]? files = if make then [] else None
+  }
+}
+"#;
+    for make in [false, true] {
+        let runs = runs(text, json!({"make": make}));
+        let kept: Vec<&str> = (runs.lowering.kept.iter())
+            .map(|kept| kept.reason.as_str())
+            .collect();
+        assert_eq!(kept, ["output files: files inside this type"]);
+        assert_eq!(runs.native, runs.lowered);
+    }
+}
+
+#[test]
 fn commands_write_files() {
     let text = r#"version 1.1
 task lines {

@@ -43,6 +43,9 @@ pub struct PlannedJob {
     pub checkpoint: bool,
     /// Whether a target of the run names the job, like the first rule without targets.
     pub target: bool,
+    /// The other jobs that run in its task, as a group job or a pipe; the inputs are then the
+    /// files that no job of the group makes, and the outputs those of each job in order.
+    pub group: Vec<JobKey>,
     /// Why one task of its own cannot run the job, like a group job; `None` when one can.
     pub native: Option<String>,
 }
@@ -175,74 +178,105 @@ impl Session {
         }
         let planner = (self.planner.as_ref())
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
-        let position: HashMap<usize, usize> = (self.order.iter().enumerate())
-            .map(|(position, job)| (*job, position))
-            .collect();
+        // Each planned job with the jobs of its task, and where each job and its files are.
+        let mut planned: Vec<Vec<usize>> = Vec::new();
+        let mut position: HashMap<usize, (usize, usize)> = HashMap::new();
+        for job in &self.order {
+            if position.contains_key(job) {
+                continue;
+            }
+            let members = self.members(*job);
+            let mut offset = 0;
+            for member in &members {
+                position.insert(*member, (planned.len(), offset));
+                offset += planner.jobs[*member].output_files().len();
+            }
+            planned.push(members);
+        }
         self.keys.clear();
         let mut jobs = Vec::new();
-        for job in &self.order {
-            let entry = &planner.jobs[*job];
-            let rule = &planner.rules[entry.rule];
-            let key = job_key(planner, *job);
+        for members in &planned {
+            let job = members[0];
+            let key = job_key(planner, job);
             let named = JobKey {
                 outputs: Vec::new(),
                 ..key.clone()
             };
-            self.keys.insert(named, *job);
-            let inputs = entry.input_files();
+            self.keys.insert(named, job);
+            let inputs = group_inputs(planner, members);
             let mut producers = Vec::new();
-            for (file, producer) in &entry.dependencies {
-                let made = planner.jobs[*producer].output_files();
-                let (Some(input), Some(output), Some(job)) = (
-                    inputs.iter().position(|input| input == file),
-                    made.iter().position(|output| output == file),
-                    position.get(producer),
-                ) else {
-                    continue;
-                };
-                let producer = Producer {
-                    input,
-                    job: *job,
-                    output,
-                };
-                if !producers.contains(&producer) {
-                    producers.push(producer);
+            let mut after = Vec::new();
+            for entry in members.iter().map(|member| &planner.jobs[*member]) {
+                for (file, producer) in &entry.dependencies {
+                    let made = planner.jobs[*producer].output_files();
+                    let (Some(input), Some(output), Some((job, offset))) = (
+                        inputs.iter().position(|input| input == file),
+                        made.iter().position(|output| output == file),
+                        position.get(producer),
+                    ) else {
+                        continue;
+                    };
+                    let producer = Producer {
+                        input,
+                        job: *job,
+                        output: offset + output,
+                    };
+                    if !members.contains(&producer.job) && !producers.contains(&producer) {
+                        producers.push(producer);
+                    }
                 }
-            }
-            let after = (entry.checkpoints.iter())
-                .filter_map(|file| {
+                after.extend((entry.checkpoints.iter()).filter_map(|file| {
                     let maker = self
                         .order
                         .iter()
                         .find(|other| planner.jobs[**other].output_files().contains(file))?;
-                    position.get(maker).copied()
-                })
-                .collect();
-            let grouped = self.components.get(job).is_some_and(|jobs| jobs.len() > 1);
-            let native = if entry.incomplete {
-                Some("it waits for a checkpoint".to_owned())
-            } else if grouped {
-                Some("it runs in one task with other jobs, as a group, pipe or service".into())
-            } else if !crate::services::service_files(entry).is_empty() {
-                Some("it has service outputs".to_owned())
-            } else if matches!(rule.action, Action::Cwl(_)) {
-                Some("it runs a CWL document".to_owned())
-            } else {
-                None
-            };
+                    position.get(maker).map(|(job, _)| *job)
+                }));
+            }
+            let native = members.iter().find_map(|member| {
+                let entry = &planner.jobs[*member];
+                if entry.incomplete {
+                    Some("it waits for a checkpoint".to_owned())
+                } else if members.len() == 1 && !crate::services::service_files(entry).is_empty() {
+                    Some("it has service outputs".to_owned())
+                } else if matches!(planner.rules[entry.rule].action, Action::Cwl(_)) {
+                    Some("it runs a CWL document".to_owned())
+                } else {
+                    None
+                }
+            });
+            let needed = |member: &usize| self.needrun.get(member).copied().unwrap_or(false);
             jobs.push(PlannedJob {
                 key,
-                needed: self.needrun.get(job).copied().unwrap_or(false),
+                needed: members.iter().any(needed),
                 inputs,
-                outputs: job_files(entry),
+                outputs: (members.iter())
+                    .flat_map(|member| job_files(&planner.jobs[*member]))
+                    .collect(),
                 producers,
                 after,
-                checkpoint: rule.checkpoint,
-                target: self.roots.contains(job),
+                checkpoint: (members.iter())
+                    .any(|member| planner.rules[planner.jobs[*member].rule].checkpoint),
+                target: members.iter().any(|member| self.roots.contains(member)),
+                group: (members[1..].iter())
+                    .map(|member| JobKey {
+                        outputs: Vec::new(),
+                        ..job_key(planner, *member)
+                    })
+                    .collect(),
                 native,
             });
         }
         Ok(jobs)
+    }
+
+    /// The jobs that run in one task with `job`, it first: a group job or a pipe of the
+    /// run, else `job` alone.
+    fn members(&self, job: usize) -> Vec<usize> {
+        match self.components.get(&job) {
+            Some(members) if members.len() > 1 => members.to_vec(),
+            _ => vec![job],
+        }
     }
 
     fn prepare_key(
@@ -251,10 +285,12 @@ impl Session {
         staged: &[(String, Json)],
     ) -> Result<Prepared, DriverError> {
         let job = self.job_of(key)?;
-        if !self.needrun.get(&job).copied().unwrap_or(false) {
-            return Ok(Prepared::Skipped(self.made_files(job)));
+        let members = self.members(job);
+        let needed = |member: &usize| self.needrun.get(member).copied().unwrap_or(false);
+        if !members.iter().any(needed) {
+            return Ok(Prepared::Skipped(self.group_files(&members)));
         }
-        if self.tasks.contains_key(&job) {
+        if members.iter().any(|member| self.tasks.contains_key(member)) {
             return Err(DriverError::new(format!(
                 "the job of rule {} has started already",
                 key.rule
@@ -262,7 +298,7 @@ impl Session {
         }
         let planner = (self.planner.as_ref())
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
-        let inputs = planner.jobs[job].input_files();
+        let inputs = group_inputs(planner, &members);
         for (selector, value) in staged {
             let file = (selector.strip_prefix("input/"))
                 .and_then(|index| index.parse::<usize>().ok())
@@ -279,6 +315,14 @@ impl Session {
                 directory: value["class"] == "Directory",
             };
             self.files.add_output(&path, produced);
+        }
+        if members.len() > 1 {
+            return Ok(match self.rule_group(&members, None)? {
+                Some(task) => Prepared::Run(Box::new(task)),
+                None => Prepared::Failed(self.failures.last().cloned().unwrap_or_else(|| {
+                    format!("the group of rule {} did not run in one task", key.rule)
+                })),
+            });
         }
         let task = self.prepare_job(job)?;
         if self.cwl_jobs.remove(&job).is_some() {
@@ -300,7 +344,14 @@ impl Session {
         let Some(job) = self.jobs_of_tasks.get(&outcome.id).copied() else {
             return Err(DriverError::new(format!("unknown task {}", outcome.id)));
         };
-        Ok(match self.take_job(job, outcome)? {
+        let (members, taken) = match self.groups.remove(&outcome.id) {
+            Some(members) => {
+                let jobs = members.iter().map(|(member, _)| *member).collect();
+                (jobs, self.take_group(members, outcome)?)
+            }
+            None => (vec![job], self.take_job(job, outcome)?),
+        };
+        Ok(match taken {
             Taken::Retry(task) => JobResult::Retry(task),
             Taken::Failed(message) => {
                 self.failures.push(message.clone());
@@ -308,7 +359,7 @@ impl Session {
             }
             Taken::Accepted => {
                 self.accept(identity);
-                JobResult::Accepted(self.made_files(job))
+                JobResult::Accepted(self.group_files(&members))
             }
         })
     }
@@ -329,6 +380,13 @@ impl Session {
                 key.rule
             ))
         })
+    }
+
+    /// The files of the jobs of a task, each job's files in turn.
+    fn group_files(&self, members: &[usize]) -> Vec<Json> {
+        (members.iter())
+            .flat_map(|member| self.made_files(*member))
+            .collect()
     }
 
     /// The files of a job as wir values, by output index: where its task left them, else
@@ -353,6 +411,23 @@ impl Session {
             })
             .collect()
     }
+}
+
+/// The input files of the jobs of a task that none of them makes, each once.
+fn group_inputs(planner: &crate::plan::Planner, members: &[usize]) -> Vec<String> {
+    let made: Vec<String> = (members.iter())
+        .flat_map(|member| planner.jobs[*member].output_files())
+        .collect();
+    let mut inputs: Vec<String> = Vec::new();
+    for file in members
+        .iter()
+        .flat_map(|member| planner.jobs[*member].input_files())
+    {
+        if !made.contains(&file) && !inputs.contains(&file) {
+            inputs.push(file);
+        }
+    }
+    inputs
 }
 
 /// The identity of a planned job.

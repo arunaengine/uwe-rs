@@ -129,14 +129,21 @@ fn keeps_checkpoints() {
 }
 
 #[test]
-fn keeps_groups() {
+fn compiles_groups() {
     let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n";
-    let (_folder, compiled, _) = compiled(snakefile);
-    let reason = compiled.kept.first().map(|kept| kept.reason.as_str());
-    assert!(
-        reason.is_some_and(|reason| reason.contains("as a group")),
-        "{reason:?}"
+    let (_folder, compiled, document) = compiled(snakefile);
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let group = op(&document, "a");
+    let builder = &group["kind"]["task"]["builder"]["snakemake_job"];
+    assert_eq!(
+        builder["group"],
+        json!([{"source": "snakefile", "rule": "b"}])
     );
+    assert!(group.get("inputs").is_none(), "{group}");
+    assert_eq!(group["outputs"].as_array().map(Vec::len), Some(2));
+    let edge =
+        json!({"from": {"op": "a", "port": "output_1"}, "to": {"op": "all", "port": "input_0"}});
+    assert_eq!(document["graphs"][0]["edges"], json!([edge]));
 }
 
 #[test]

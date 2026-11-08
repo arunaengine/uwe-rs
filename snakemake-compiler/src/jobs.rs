@@ -69,6 +69,12 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> 
         if !job.key.wildcards.is_empty() {
             builder["wildcards"] = json!(job.key.wildcards);
         }
+        if !job.group.is_empty() {
+            let members = (job.group.iter()).map(|member| {
+                json!({"source": SOURCE, "rule": member.rule, "wildcards": member.wildcards})
+            });
+            builder["group"] = members.collect();
+        }
         for (field, value) in &plan {
             builder[*field] = value.clone();
         }

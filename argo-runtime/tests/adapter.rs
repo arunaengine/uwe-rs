@@ -194,6 +194,60 @@ fn native_task_keys() {
 }
 
 #[test]
+fn native_acceptance() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let launch = launch(root, STEPS);
+    let mut native = load_driver(&launch, Services::default()).unwrap();
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let made = [("/tmp/text", "hello\n"), ("/tmp/data/", "")];
+    let task = native.start().unwrap().remove(0);
+    let (make, _) = adapter
+        .start(&instance("[0].make", "make", &[("word", json!("hello"))]))
+        .unwrap();
+    let failed = outcome(root, &task, 1, 1, &[]);
+    let retry = native.complete(failed.clone()).unwrap().remove(0);
+    adapter.complete(failed).unwrap();
+    assert!(!native.take_acceptance(task.id, 1));
+    assert!(!adapter.take_acceptance(task.id, 1), "a failed attempt");
+    let done = outcome(root, &retry, 1, 0, &made);
+    let used = native.complete(done.clone()).unwrap().remove(0);
+    adapter.complete(done).unwrap();
+    assert!(native.take_acceptance(retry.id, 1));
+    assert!(
+        adapter.take_acceptance(retry.id, 1),
+        "the attempt that made the outputs"
+    );
+    let ending = adapter.ending(make).unwrap();
+    assert_eq!(ending.outputs["parameter/text"], json!("hello"));
+    assert_eq!(ending.outputs["result"], json!("printed"));
+    assert_eq!(ending.outputs["exitCode"], json!("0"));
+    assert_eq!(ending.outputs["artifact/data"]["class"], json!("Directory"));
+    let given = [
+        ("text", ending.outputs["parameter/text"].clone()),
+        ("data", ending.outputs["artifact/data"].clone()),
+    ];
+    let (used_call, tasks) = adapter.start(&instance("[1].use", "use", &given)).unwrap();
+    let out = [("/tmp/out", "hello parity-use-1\n")];
+    let last = outcome(root, &tasks[0], 1, 0, &out);
+    assert!(
+        native
+            .complete(outcome(root, &used, 1, 0, &out))
+            .unwrap()
+            .is_empty()
+    );
+    adapter.complete(last).unwrap();
+    let ending = adapter.ending(used_call).unwrap();
+    let exported = native.exported().unwrap();
+    assert_eq!(ending.outputs["parameter/text"], exported["text"]);
+    let mut again = Adapter::load(&launch, Services::default()).unwrap();
+    let (call, tasks) = again.start(&instance("[1].use", "use", &given)).unwrap();
+    again.complete(outcome(root, &tasks[0], 1, 0, &[])).unwrap();
+    let ending = again.ending(call).unwrap();
+    assert!(ending.facts.errored, "an output parameter without its file");
+}
+
+#[test]
 fn daemon_control() {
     let folder = tempfile::tempdir().unwrap();
     let launch = launch(folder.path(), DAEMON);

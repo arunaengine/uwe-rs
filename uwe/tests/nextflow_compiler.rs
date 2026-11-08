@@ -30,11 +30,8 @@ const COMPILED: &[&str] = &[
     "viralrecon",
 ];
 
-/// How many pipelines compile into documents that the wir verifier accepts, run natively, run
-/// compiled, give equal tasks (descriptions and resume fingerprints) in both orders, and
-/// publish the same files. A simulated compiled run delivers no files of stream ops, like the
-/// `pipeline_info` files that a native run writes, and demo's MULTIQC stages the two files
-/// that `mix` merges from independent ops in the other order.
+/// How many pipelines verify, run natively and compiled, give equal tasks in both orders, and
+/// publish the same files; compiled runs simulate no delivery, and demo's `mix` order differs.
 const RECORDED: Counts = Counts {
     verified: 2,
     native: 2,

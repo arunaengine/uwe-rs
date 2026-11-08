@@ -6,10 +6,13 @@
 use serde_json::{Map, Value as Json, json};
 use wir::{Argument, CaptureRule, Op, Port, Type, TypeDef, resolve};
 use workflow_graph::simulator::glob_matches;
-use workflow_graph::{Input, Network, Outcome, OutputFile, Resources, Reuse, Task, TaskId};
+use workflow_graph::{Files, Input, Network, Outcome, OutputFile, Resources, Reuse, Task, TaskId};
 
 /// Where a task runs in its container: its fresh working folder.
 pub const WORKDIR: &str = "/work";
+
+/// The most bytes of a file that a capture loads as its contents, as in CWL.
+const CONTENTS_LIMIT: usize = 64 * 1024;
 
 /// The task of a task op with its input values. Inputs are staged below `inputs/<port>`,
 /// and the attributes only set what no cache key covers.
@@ -102,7 +105,7 @@ pub fn build(
 pub fn capture(
     spec: &wir::Task,
     ports: &[Port],
-    outcome: &Outcome,
+    (outcome, files): (&Outcome, Option<&dyn Files>),
     defs: &[TypeDef],
 ) -> Result<Map<String, Json>, String> {
     let codes: &[i32] = match spec.success_codes.is_empty() {
@@ -137,14 +140,40 @@ pub fn capture(
                     .collect()
             }
         };
-        let value = fill(&port.r#type, &found, defs)
+        let mut value = fill(&port.r#type, &found, defs)
             .map_err(|problem| format!("output {}: {problem}", port.name))?;
+        if capture.load_contents {
+            load(&mut value, files)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+        }
         if !wir::fits(&value, &port.r#type, defs) {
             return Err(format!("output {} does not fit its type", port.name));
         }
         values.insert(port.name.clone(), value);
     }
     Ok(values)
+}
+
+/// Reads the text of each File of a value into its `contents`, up to the 64 KiB of CWL.
+fn load(value: &mut Json, files: Option<&dyn Files>) -> Result<(), String> {
+    match value {
+        Json::Array(items) => items.iter_mut().try_for_each(|item| load(item, files)),
+        Json::Object(file) if file.get("class") == Some(&json!("File")) => {
+            let location = file
+                .get("location")
+                .and_then(Json::as_str)
+                .unwrap_or_default();
+            let bytes = workflow_graph::files::read(files, location)
+                .map_err(|error| format!("cannot read {location}: {error}"))?;
+            if bytes.len() > CONTENTS_LIMIT {
+                return Err(format!("{location} is larger than {CONTENTS_LIMIT} bytes"));
+            }
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            file.insert("contents".into(), Json::String(text));
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// The value of an output of `r#type` from the files its capture found.

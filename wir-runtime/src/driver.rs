@@ -330,7 +330,8 @@ impl WirDriver {
         let Kind::Task(spec) = &node.op.kind else {
             return Vec::new();
         };
-        match task::capture(spec, &node.op.outputs, outcome, &self.document.types) {
+        let read = (outcome, self.files.as_deref());
+        match task::capture(spec, &node.op.outputs, read, &self.document.types) {
             Ok(values) => {
                 self.accepted.insert((outcome.id, outcome.attempt));
                 self.progress.end(at, Status::Succeeded, values, None);

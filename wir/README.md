@@ -88,6 +88,8 @@ No op of this version reads or writes streams; `merge` and `flatten` are defined
 - `{"glob": pattern}`: paths in the working folder that match, sorted by path. One match fills a File or Directory output, all matches fill an array output. No match fills an optional output with null and fails the task otherwise; several matches fail a non-array output; an empty match fails a nonempty array.
 - `"stdout"` and `"stderr"`: a File with what the command wrote there.
 
+A capture with `load_contents` puts the text of each File it reads into `contents`, like CWL `loadContents`; a file over 64 KiB fails the task. The output must hold Files.
+
 `stdout` and `stderr` name the files in the working folder that standard output and standard error go to, like CWL `stdout` and `stderr`; a stream capture reads that file, and a glob capture may match it too. Without a name, a stream capture writes to a file that the runner names.
 
 The task succeeds when its exit code is in `success_codes` (only 0 when empty) and every capture worked. Then all outputs are bound at once; otherwise it ends `failed` and binds none. A task that could not run at all, such as a missing image or a lost node, ends `errored`. The command runs without network unless the task sets `network: true`; this is part of the task and enters its cache key, so a task without network can share its results between runs. The attributes never enter its cache key.

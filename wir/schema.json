@@ -414,7 +414,8 @@
                     "properties": { "glob": { "type": "string" } }
                   }
                 ]
-              }
+              },
+              "load_contents": { "type": "boolean" }
             }
           }
         },

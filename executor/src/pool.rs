@@ -113,6 +113,15 @@ impl Pool {
         self.held.cancel();
     }
 
+    /// A pool that takes its shares from this one, for another run of a host: the runs share
+    /// what is free, but a run that starts no more tasks holds only its own pool.
+    pub fn for_run(&self) -> Pool {
+        Pool {
+            held: CancellationToken::new(),
+            ..self.clone()
+        }
+    }
+
     /// Ends when the pool is held.
     pub async fn held(&self) {
         self.held.cancelled().await

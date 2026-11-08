@@ -66,6 +66,9 @@ pub struct Setup {
     pub registry: executor::credentials::Registry,
     /// The settings of the executors.
     pub executors: Executors,
+    /// The CPUs and memory that local tasks take their shares from. A host gives the same pool
+    /// to all its runs, so that they share it; `None` gives the run its own pool.
+    pub local_pool: Option<executor::Pool>,
     /// Where the traces of runs go, from `[telemetry]`.
     pub telemetry: Option<Telemetry>,
     /// Which tasks get the network, from `[network]`.

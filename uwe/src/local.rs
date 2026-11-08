@@ -31,12 +31,7 @@ pub fn executor(
             "cannot reach a Docker or Podman engine: {error}; use `-executor simulator` for a run without containers, or `uwe check-machine` to check the setup"
         )
     })?.with_journal_root(crate::cache_directory().join("containers"));
-    let capacity = Pool::of_this_machine();
-    let pool = Pool::new(
-        setup.executors.local_cpus.unwrap_or(capacity.cpus()),
-        setup.executors.local_memory.unwrap_or(capacity.memory()),
-    );
-    let backend = LocalContainer::new(engine, scratch.to_owned(), pool);
+    let backend = LocalContainer::new(engine, scratch.to_owned(), pool(setup));
     let backend = crate::conda_backend::Local {
         backend,
         store: store.clone(),
@@ -50,4 +45,51 @@ pub fn executor(
     let mut runner = Runner::new(store, backend, run, crate::runner_settings(storage, false));
     runner.references(setup.references.clone());
     Ok(RunnerExecutor::new(runner, default_image))
+}
+
+/// The pool of the run: the share of the host's pool when it gives one, else a pool of
+/// `local_cpus` and `local_memory`, or of all of this machine.
+fn pool(setup: &crate::setup::Setup) -> Pool {
+    if let Some(pool) = &setup.local_pool {
+        return pool.for_run();
+    }
+    let capacity = Pool::of_this_machine();
+    Pool::new(
+        setup.executors.local_cpus.unwrap_or(capacity.cpus()),
+        setup.executors.local_memory.unwrap_or(capacity.memory()),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::pin::pin;
+    use std::task::{Context, Poll, Waker};
+
+    use super::*;
+
+    /// Whether a future is ready at once, without waiting for it.
+    fn ready(future: impl Future) -> bool {
+        let mut context = Context::from_waker(Waker::noop());
+        matches!(pin!(future).poll(&mut context), Poll::Ready(_))
+    }
+
+    /// Two runs of a host that need four CPUs at once share its two: the second waits until
+    /// the first gives its CPUs back, and a run that stops after a failure stops only itself.
+    #[tokio::test]
+    async fn shares_host_pool() {
+        let setup = crate::setup::Setup {
+            local_pool: Some(Pool::new(2, 1 << 30)),
+            ..Default::default()
+        };
+        let (first, second) = (pool(&setup), pool(&setup));
+        let taken = first.share(2, None, 0).await;
+        assert!(!ready(second.share(2, None, 0)));
+        drop(taken);
+        assert!(ready(second.share(2, None, 0)));
+        first.hold();
+        assert!(ready(first.held()));
+        assert!(!ready(second.held()));
+        let own = pool(&crate::setup::Setup::default());
+        assert_eq!(own.cpus(), Pool::of_this_machine().cpus());
+    }
 }

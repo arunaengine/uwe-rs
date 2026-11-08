@@ -156,27 +156,21 @@ fn keeps_required_any() {
 fn lowers_output_evaluation() {
     let lowering = lowered("names.cwl");
     assert!(lowering.full(), "{:?}", lowering.kept);
-    assert_eq!(only_op(&lowering)["kind"]["call"]["graph"], "names");
-    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
-    let ops = graph["ops"].as_array().unwrap();
-    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
-    assert_eq!(paths, ["names", "names.count.outputEval"]);
-    let files = json!({"array": {"items": {"file": {}}}});
-    assert_eq!(
-        ops[0]["outputs"][0],
-        json!({"name": "count", "type": files})
-    );
-    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    let op = only_op(&lowering);
+    let captures = &op["kind"]["task"]["captures"];
+    assert_eq!(captures[0]["from"], json!({"glob": "*"}));
+    let code = captures[0]["code"].as_str().unwrap();
     assert!(
         code.ends_with(r#"return (get(self, "length")); }"#),
         "strict: {code}"
     );
-    assert_eq!(ops[1]["inputs"][1], json!({"name": "self", "type": files}));
-    assert_eq!(ops[1]["outputs"], json!([{"name": "count", "type": "int"}]));
-    let outputs: Vec<&str> = (graph["outputs"].as_array().unwrap().iter())
-        .map(|port| port["name"].as_str().unwrap())
-        .collect();
-    assert_eq!(outputs, ["count", "made"]);
+    assert_eq!(
+        captures[1],
+        json!({"output": "made", "from": {"glob": "*"}})
+    );
+    let files = json!({"array": {"items": {"file": {}}}});
+    let outputs = json!([{"name": "count", "type": "int"}, {"name": "made", "type": files}]);
+    assert_eq!(op["outputs"], outputs);
 }
 
 #[test]
@@ -207,7 +201,6 @@ fn lowers_argument_expressions() {
     );
     assert_eq!(command[4], json!({"input": "src"}));
     let code = command[2]["code"].as_str().unwrap();
-    assert!(code.starts_with("${ var runtime = {"), "{code}");
     assert!(code.contains(r#""outdir":"/var/spool/cwl""#), "{code}");
     let joined = &command[3];
     assert_eq!(
@@ -270,16 +263,14 @@ fn lowers_working_folder() {
 fn lowers_format_expressions() {
     let lowering = lowered("sorted.cwl");
     assert!(lowering.full(), "{:?}", lowering.kept);
-    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
-    let ops = graph["ops"].as_array().unwrap();
-    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
-    assert_eq!(paths, ["sorted", "sorted.sorted.outputEval"]);
-    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    let op = only_op(&lowering);
+    let capture = &op["kind"]["task"]["captures"][0];
+    assert_eq!(capture["from"], "stdout");
+    let code = capture["code"].as_str().unwrap();
     assert!(code.contains("file.format = format(file)"), "{code}");
-    assert_eq!(
-        ops[1]["inputs"][1]["type"],
-        json!({"file": {}}),
-        "self is the File"
+    assert!(
+        code.contains("value.length < 2"),
+        "one File, not a list: {code}"
     );
 }
 

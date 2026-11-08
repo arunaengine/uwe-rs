@@ -41,8 +41,9 @@ pub struct PlannedJob {
     /// Jobs that end before it besides its producers: checkpoints its input functions read.
     pub after: Vec<usize>,
     pub checkpoint: bool,
-    /// Whether a target of the run names the job, like the first rule without targets.
-    pub target: bool,
+    /// The rule of its job or group job that a target of the run names, like the first rule
+    /// without targets.
+    pub target: Option<String>,
     /// The other jobs that run in its task, as a group job or a pipe; the inputs are then the
     /// files that no job of the group makes, and the outputs those of each job in order.
     pub group: Vec<JobKey>,
@@ -257,7 +258,9 @@ impl Session {
                 after,
                 checkpoint: (members.iter())
                     .any(|member| planner.rules[planner.jobs[*member].rule].checkpoint),
-                target: members.iter().any(|member| self.roots.contains(member)),
+                target: (members.iter())
+                    .find(|member| self.roots.contains(member))
+                    .map(|member| planner.rules[planner.jobs[*member].rule].name.clone()),
                 group: (members[1..].iter())
                     .map(|member| JobKey {
                         outputs: Vec::new(),

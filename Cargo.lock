@@ -8839,6 +8839,7 @@ dependencies = [
  "tool-record",
  "tracing",
  "tracing-subscriber",
+ "wdl-lowering",
  "wdl-runtime",
  "wir-runtime",
  "workflow-graph",
@@ -9085,6 +9086,20 @@ dependencies = [
  "logos",
  "rowan",
  "strum",
+]
+
+[[package]]
+name = "wdl-lowering"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "wdl-analysis",
+ "wdl-ast",
+ "wdl-runtime",
+ "wir",
+ "wir-runtime",
+ "workflow-graph",
 ]
 
 [[package]]
@@ -9379,6 +9394,7 @@ dependencies = [
  "argo-runtime",
  "cwl-parser",
  "cwl-runtime",
+ "indexmap 2.14.2",
  "input-schema",
  "nextflow-evaluator",
  "nextflow-runtime",
@@ -9387,6 +9403,8 @@ dependencies = [
  "storage",
  "tempfile",
  "tracing",
+ "wdl-analysis",
+ "wdl-ast",
  "wdl-runtime",
  "wir",
  "workflow-graph",

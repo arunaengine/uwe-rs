@@ -160,9 +160,12 @@ struct Limits {
     natives: HashMap<String, nextflow_runtime::Call>,
     running: HashMap<String, usize>,
     held: HashMap<String, VecDeque<(CallId, Task)>>,
-    /// Per call: the index of the next ending to give, and the endings that wait for it.
-    waiting: HashMap<String, (u32, BTreeMap<u32, (CallId, Ending)>)>,
+    /// The endings of `fair` calls that wait for earlier ones, by call.
+    waiting: HashMap<String, Waiting>,
 }
+
+/// The index of the next ending of a `fair` call to give, and the endings that wait for it.
+type Waiting = (u32, BTreeMap<u32, (CallId, Ending)>);
 
 impl Tasks {
     /// The `maxForks` and `fair` of the call of an op instance.

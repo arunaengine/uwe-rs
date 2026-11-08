@@ -35,6 +35,8 @@ pub struct Lowered {
     pub values: Vec<Computed>,
     /// The outputs that `outputEval` computes, from the files of the task output of that name.
     pub evaluated: Vec<Evaluated>,
+    /// The inputs whose files CWL reads before the tool runs.
+    pub loads: Vec<(Port, wir::Load)>,
 }
 
 /// A task input that an expr fills, with the code, the task input it sees as `self`, and
@@ -106,9 +108,6 @@ pub fn lower(
             .iter()
             .any(|input| input.load_listing.is_some());
     let runtime_of = |code: &Expression| {
-        if listed && code.text.contains("listing") {
-            return Err("an expression that reads a listing that CWL loads".to_owned());
-        }
         // Without JavaScript, CWL refuses a reference to an input that the tool lacks.
         if !javascript && undeclared(code, &names) {
             return Err("a reference to an input that the tool does not declare".to_owned());
@@ -283,12 +282,10 @@ pub fn lower(
         words.push((key, quoted(binding, words_of)));
     }
     let mut inputs = Vec::new();
+    let mut loaded = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
-        // CWL reads the contents and refuses files over 64 KiB, which a task does not.
-        if input.load_contents == Some(true) {
-            return Err(format!("loadContents of input {name}"));
-        }
+        let load = crate::loads::of(input, scope, &named)?;
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
             let resolved = crate::types::resolve(&input.value_type, &named);
@@ -330,6 +327,9 @@ pub fn lower(
         if let Some(default) = &input.default {
             defaults::set(&mut port, default, base)
                 .map_err(|why| format!("input {}: {why}", port.name))?;
+        }
+        if let Some(load) = load {
+            loaded.push((port.clone(), load));
         }
         inputs.push(port);
     }
@@ -404,6 +404,7 @@ pub fn lower(
         attributes,
         values,
         evaluated,
+        loads: loaded,
     })
 }
 

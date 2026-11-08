@@ -3,9 +3,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::path::Path;
+
 use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
-use workflow_graph::{Attempt, Executor, Launch, Running, execute};
+use workflow_graph::{Attempt, Driver, Executor, Launch, Running, execute};
 
 /// Runs no task: the runs here hold one expr.
 struct Idle;
@@ -16,9 +18,8 @@ impl Executor for Idle {
     }
 }
 
-/// Runs the Groovy expr `code` over the input `n` with `hooks`; why the run failed, if it did.
-fn run(code: &str, hooks: Json) -> Result<(), String> {
-    let folder = tempfile::tempdir().unwrap();
+/// The launch of a run of the Groovy expr `code` over the input `n` with `hooks`, in `root`.
+fn launch(root: &Path, code: &str, hooks: Json) -> Launch {
     let int = |name: &str| json!({"name": name, "type": "int"});
     let edge = |from: (Option<&str>, &str), to: (Option<&str>, &str)| json!({"from": {"op": from.0, "port": from.1}, "to": {"op": to.0, "port": to.1}});
     let op = json!({"path": "inc", "kind": {"expr": {"language": "groovy", "code": code}},
@@ -26,19 +27,21 @@ fn run(code: &str, hooks: Json) -> Result<(), String> {
     let main = json!({"name": "main", "inputs": [int("n")], "outputs": [int("out")], "ops": [op],
         "edges": [edge((None, "n"), (Some("inc"), "n")), edge((Some("inc"), "out"), (None, "out"))]});
     let document = json!({"wir_version": "0.1", "graphs": [main], "entry": "main", "hooks": hooks});
-    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
-    std::fs::write(
-        folder.path().join("inputs.json"),
-        json!({"n": 1}).to_string(),
-    )
-    .unwrap();
-    let launch = Launch {
-        target: folder.path().join("run.wir.json"),
-        inputs: Some(folder.path().join("inputs.json")),
-        scratch: folder.path().join("scratch"),
-        output_dir: Some(folder.path().join("out")),
+    std::fs::write(root.join("run.wir.json"), document.to_string()).unwrap();
+    std::fs::write(root.join("inputs.json"), json!({"n": 1}).to_string()).unwrap();
+    Launch {
+        target: root.join("run.wir.json"),
+        inputs: Some(root.join("inputs.json")),
+        scratch: root.join("scratch"),
+        output_dir: Some(root.join("out")),
         ..Launch::default()
-    };
+    }
+}
+
+/// Runs the Groovy expr `code` over the input `n` with `hooks`; why the run failed, if it did.
+fn run(code: &str, hooks: Json) -> Result<(), String> {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = launch(folder.path(), code, hooks);
     let settings = Settings {
         print: false,
         ..Settings::default()
@@ -85,5 +88,32 @@ fn run_hooks() {
     assert!(
         heard.contains("and 1 more"),
         "the error hook hears why the run failed: {heard}"
+    );
+}
+
+/// A driver of the run of [`launch`] that started, which runs no task.
+fn started(root: &Path, hooks: Json) -> WirDriver {
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch(root, "inputs.n + 1", hooks), settings).unwrap();
+    assert!(driver.start().unwrap().is_empty());
+    driver
+}
+
+#[test]
+fn hook_results() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut driver = started(
+        folder.path(),
+        json!([{"complete": hook("{ it.nothing() }")}]),
+    );
+    let error = driver.finish().unwrap_err().message;
+    assert!(error.contains("hook 0:"), "{error}");
+    assert_eq!(
+        driver.results().unwrap()["out"],
+        json!(2),
+        "a failing hook keeps the results"
     );
 }

@@ -1336,9 +1336,11 @@ impl Driver for WirDriver {
                 self.end_child(index);
             }
         }
-        let failure = self.progress.failures.first().cloned();
-        let problems = self.run_hooks(failure.as_deref());
-        self.progress.failures.extend(problems);
+        // A run whose ops failed runs its hooks now; one that succeeded once its results stay.
+        if let Some(failure) = self.progress.failures.first().cloned() {
+            let problems = self.run_hooks(Some(&failure));
+            self.progress.failures.extend(problems);
+        }
         let failures = &self.progress.failures;
         if let Some(first) = failures.first() {
             return Err(DriverError::new(match failures.len() {
@@ -1387,7 +1389,11 @@ impl Driver for WirDriver {
             }
             self.results = Some(results);
         }
-        Ok(())
+        let problems = self.run_hooks(None);
+        match problems.is_empty() {
+            true => Ok(()),
+            false => Err(DriverError::new(problems.join("; "))),
+        }
     }
 
     fn failed(&mut self, error: &ExecuteError) -> Result<(), DriverError> {

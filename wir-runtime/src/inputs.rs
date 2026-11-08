@@ -57,7 +57,10 @@ pub fn read(
             given => given,
         };
         let value = match given {
-            Some(value) => widen(value, &port.r#type, defs),
+            Some(mut value) => {
+                discover(&mut value, &port.r#type, (defs, launch.simulated));
+                widen(value, &port.r#type, defs)
+            }
             None if port.r#type.is_optional(defs) => Json::Null,
             None => {
                 let message = format!("the input {} has no value", port.name);
@@ -77,6 +80,46 @@ pub fn read(
         return Err(DriverError::new(format!("the graph has no input {name}")));
     }
     Ok(values)
+}
+
+/// Adds to each local File that lists no secondary files those beside it that its type asks
+/// for, as CWL finds the secondary files of a job. A simulated run takes required ones as
+/// present, as its files are made up.
+fn discover(value: &mut Json, r#type: &Type, (defs, simulated): (&[TypeDef], bool)) {
+    let inner = (defs, simulated);
+    match (value, resolve(r#type, defs)) {
+        (Json::Array(items), Some(Type::Array(array))) => {
+            (items.iter_mut()).for_each(|item| discover(item, &array.items, inner));
+        }
+        (value, Some(Type::Optional(inner_type))) => discover(value, inner_type, inner),
+        (Json::Object(file), Some(Type::File(wanted))) if !file.contains_key("secondary_files") => {
+            let location = file
+                .get("location")
+                .and_then(Json::as_str)
+                .unwrap_or_default();
+            if location.contains("://") || wanted.secondary_files.is_empty() {
+                return;
+            }
+            let primary = Path::new(location);
+            let (Some(folder), Some(name)) = (primary.parent(), primary.file_name()) else {
+                return;
+            };
+            let mut found = Vec::new();
+            for item in &wanted.secondary_files {
+                let path = folder.join(wir::secondary_name(&name.to_string_lossy(), &item.pattern));
+                let class = match std::fs::metadata(&path) {
+                    Ok(metadata) if metadata.is_dir() => "Directory",
+                    Ok(_) => "File",
+                    Err(_) if simulated && item.required => "File",
+                    Err(_) => continue,
+                };
+                let location = path.to_string_lossy().into_owned();
+                found.push(serde_json::json!({"class": class, "location": location}));
+            }
+            file.insert("secondary_files".into(), Json::Array(found));
+        }
+        _ => {}
+    }
 }
 
 /// Makes the relative `location` or `path` of Files and Directories absolute, as a

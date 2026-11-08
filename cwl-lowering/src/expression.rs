@@ -32,7 +32,8 @@ impl Lowerer {
             _ => return Err("an expression that is not one $(...) or ${...}".into()),
         };
         let library = scope.library();
-        let (mut inputs, outputs) = boundary(process)?;
+        let (mut inputs, outputs) = boundary(process, scope)?;
+        let named = types::named(scope);
         for (port, input) in inputs.iter_mut().zip(&process.inputs) {
             let name = &port.name;
             // An expr reads no files, so it cannot load contents or listings.
@@ -50,7 +51,7 @@ impl Lowerer {
                 return Err(format!("the secondary files or format of input {name}"));
             }
             if let Some(default) = &input.default {
-                port.r#type = types::convert(&input.value_type)?;
+                port.r#type = types::convert(&input.value_type, &named)?;
                 defaults::set(port, default, &self.base)
                     .map_err(|why| format!("input {}: {why}", port.name))?;
             }

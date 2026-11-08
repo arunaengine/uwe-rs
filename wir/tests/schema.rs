@@ -19,6 +19,21 @@ fn validator() -> Validator {
 fn schema_matches_parser() {
     let kinds = [
         json!({"task": {"command": ["true"], "success_codes": [0, 1]}}),
+        json!({"task": {"command": ["ls", {"raw": "| wc"}, {"input": "a", "quote": false}],
+            "shell": true}}),
+        json!({"task": {"command": ["cat"], "environment": {"HOME": "/tmp", "A": {"input": "a"}},
+            "stdin": {"input": "text"}}}),
+        json!({"task": {"command": ["ls"], "workdir": "/var/spool/cwl",
+            "staging": "/var/lib/cwl/inputs", "files": [
+            {"value": {"input": "a"}, "writable": true},
+            {"value": "x=1", "path": {"input": "name"}}
+        ]}}),
+        json!({"task": {"command": ["ls"], "stdout": {"input": "name"}, "stderr": "err.txt",
+            "captures": [{"output": "o", "from": {"patterns": "globs"}}]}}),
+        json!({"task": {"command": ["ls", {"input": "a", "prefix": "-a", "separate": false,
+            "separator": ","}], "captures": [
+            {"output": "o", "from": {"glob": "*.txt"}, "load_contents": true}
+        ]}}),
         json!({"call": {"graph": "g"}}),
         json!({"native": {"source": "s", "language": "argo"}}),
         json!({"native": {"source": "s", "language": "nextflow", "entry": "w",

@@ -77,9 +77,9 @@ fn prints_lowered_documents() {
         document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"],
         "out.txt"
     );
-    let (code, _, errors) = uwe(root, &cache, &["lower", "environment.cwl"]);
+    let (code, _, errors) = uwe(root, &cache, &["lower", "update.cwl"]);
     assert_eq!(code, 0, "{errors}");
-    let kept = "uwe: op environment stays a native CWL op: the requirement EnvVarRequirement\n";
+    let kept = "uwe: op update stays a native CWL op: the requirement InplaceUpdateRequirement\n";
     assert_eq!(errors, kept);
 }
 
@@ -110,13 +110,22 @@ fn matches_native_steps() {
         for ((one, _, _), (other, _, _)) in alone.iter().zip(&through) {
             assert_eq!(one.step, other.step, "{document}: the same steps");
             assert_eq!(one.image, other.image, "{document}: the same image");
-            // The keys differ by the folders and variables of the CWL wrapper, see docs/wir.md.
-            assert_ne!(key(one), key(other), "{document}: {}", one.step);
+            // A compiled tool builds the task of the CWL driver, see docs/wir.md.
+            assert_eq!(one.command, other.command, "{document}: {}", one.step);
+            let paths = |task: &Task| -> Vec<String> {
+                task.inputs.iter().map(|input| input.path.clone()).collect()
+            };
+            assert_eq!(paths(one), paths(other), "{document}: {}", one.step);
+            assert_eq!(key(one), key(other), "{document}: {}", one.step);
             assert_eq!(one.workdir.as_deref(), Some("/var/spool/cwl"));
-            assert_eq!(other.workdir.as_deref(), Some("/work"));
+            assert_eq!(one.workdir, other.workdir, "{document}: {}", other.step);
             let variables: Vec<&String> = one.environment.keys().collect();
             assert_eq!(variables, ["HOME", "TMPDIR"]);
-            assert!(other.environment.is_empty(), "{document}: {}", other.step);
+            assert_eq!(
+                one.environment, other.environment,
+                "{document}: {}",
+                other.step
+            );
         }
         let resumed: Vec<&str> = lowered.iter().copied().chain(["-resume"]).collect();
         let (code, _, errors) = uwe(root, &cache, &resumed);
@@ -152,6 +161,12 @@ fn matches_scatter_steps() {
         assert_eq!(code, 0, "{document}: {errors}");
         let (_, through) = latest(&cache);
         assert_eq!((alone.len(), through.len()), (count, count), "{document}");
+        let keys = |tasks: &[(Task, String, Option<String>)]| {
+            let mut keys: Vec<String> = tasks.iter().map(|(task, _, _)| key(task)).collect();
+            keys.sort();
+            keys
+        };
+        assert_eq!(keys(&alone), keys(&through), "{document}: the same tasks");
         let mut names: Vec<(&str, &str)> = (alone.iter().zip(&through))
             .map(|((one, _, _), (other, _, _))| (one.step.as_str(), other.step.as_str()))
             .collect();
@@ -223,9 +238,7 @@ fn matches_native_outputs() {
     let read = |path: &str| std::fs::read_to_string(root.join(path)).expect("reads an output");
     assert_eq!(read("native/out.txt"), "hello");
     assert_eq!(read("lowered/out.txt"), read("native/out.txt"));
-    // wc prints the path of its input, where the CWL wrapper and a wir task stage it.
-    let count = |path: &str| read(path).split_whitespace().next().map(str::to_owned);
-    assert_eq!(count("lowered/count.txt"), count("native/count.txt"));
+    // wc prints the path of its input, which both stage in the same place.
     assert!(read("native/count.txt").contains("/var/lib/cwl/inputs/0/out.txt"));
-    assert!(read("lowered/count.txt").contains("inputs/text/out.txt"));
+    assert_eq!(read("lowered/count.txt"), read("native/count.txt"));
 }

@@ -685,6 +685,17 @@
       "required": ["value"],
       "properties": { "value": true }
     },
+    "file_name": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input"],
+          "properties": { "input": { "$ref": "#/$defs/name" } }
+        }
+      ]
+    },
     "empty_rule": {
       "oneOf": [{ "enum": ["default", "close", "null", "error"] }, { "$ref": "#/$defs/literal" }]
     },
@@ -932,7 +943,19 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["input"],
-                "properties": { "input": { "$ref": "#/$defs/name" } }
+                "properties": {
+                  "input": { "$ref": "#/$defs/name" },
+                  "prefix": { "type": "string" },
+                  "separate": { "type": "boolean" },
+                  "separator": { "type": "string" },
+                  "quote": { "type": "boolean" }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["raw"],
+                "properties": { "raw": { "type": "string" } }
               }
             ]
           }
@@ -960,16 +983,44 @@
                     "additionalProperties": false,
                     "required": ["glob"],
                     "properties": { "glob": { "type": "string" } }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["patterns"],
+                    "properties": { "patterns": { "$ref": "#/$defs/name" } }
                   }
                 ]
-              }
+              },
+              "load_contents": { "type": "boolean" }
             }
           }
         },
         "success_codes": { "type": "array", "items": { "type": "integer" } },
         "network": { "type": "boolean" },
-        "stdout": { "type": "string" },
-        "stderr": { "type": "string" },
+        "shell": { "type": "boolean" },
+        "stdout": { "$ref": "#/$defs/file_name" },
+        "stderr": { "$ref": "#/$defs/file_name" },
+        "workdir": { "type": "string" },
+        "staging": { "type": "string" },
+        "environment": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/file_name" }
+        },
+        "stdin": { "$ref": "#/$defs/file_name" },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": {
+              "value": { "$ref": "#/$defs/file_name" },
+              "path": { "$ref": "#/$defs/file_name" },
+              "writable": { "type": "boolean" }
+            }
+          }
+        },
         "accept": { "$ref": "#/$defs/closure" },
         "retry": {
           "type": "object",

@@ -18,6 +18,8 @@ pub struct Network {
     pub scopes: Vec<Scope>,
     /// What the entry workflow emits, by emit name.
     pub emits: Vec<(String, usize)>,
+    /// The params of the run, with those that the scripts set.
+    pub params: Json,
 }
 
 #[derive(Debug)]
@@ -94,6 +96,9 @@ pub enum Kind {
         call: Call,
         /// The input declarations that are `each` inputs.
         each: Vec<usize>,
+        /// The bytes of the process definition in its script.
+        start: u32,
+        end: u32,
         outputs: Vec<Output>,
     },
     /// A factory with the values that the build gave it.

@@ -417,10 +417,12 @@ pub fn export(
             .collect(),
         _ => Vec::new(),
     };
-    network.export(emits).map_err(|message| Error::Unsupported {
-        message,
-        span: Default::default(),
-    })
+    network
+        .export(emits, &params)
+        .map_err(|message| Error::Unsupported {
+            message,
+            span: Default::default(),
+        })
 }
 
 /// Runs a script whose workflow runs no tasks.

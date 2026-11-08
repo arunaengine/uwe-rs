@@ -299,6 +299,8 @@ impl Behaviour for ProcessNode {
         Ok(crate::export::Kind::Process {
             call,
             each,
+            start: process.span.start,
+            end: process.span.end,
             outputs,
         })
     }

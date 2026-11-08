@@ -1,5 +1,5 @@
-//! Lowers a WDL workflow into a wir graph: an expr op per declaration and a call or native op
-//! per call; scatters and conditionals have no lowering yet.
+//! Lowers a WDL workflow into a wir graph: an expr op per declaration, a call or native op per
+//! call, a map op per scatter and a branch op per conditional, each with a body graph.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -13,7 +13,8 @@ use wdl_runtime::document::{self, Callable, Unit, declared};
 use wdl_runtime::expression::names;
 use wir::{Dependency, Edge, Endpoint, Graph, Kind, Op, Origin, Status, Type};
 
-use crate::types::{convert, optional, port};
+use crate::bodies::{inner, selected};
+use crate::types::{array, convert, optional, port};
 use crate::{Lowerer, blank, boundary, constant, edge, end, origin, reads, text};
 
 /// A value where an op can read it, with its type.
@@ -37,20 +38,26 @@ pub(crate) enum Shape {
     Call(Vec<(String, Type)>),
 }
 
-/// The ops of one graph and the names they read.
-pub(crate) struct Frame {
+/// The ops of one graph and the names they read: its own, and those it takes from the graph
+/// around it as inputs.
+pub(crate) struct Frame<'o> {
     pub local: BTreeMap<String, Bound>,
-    /// The op of this graph that runs each call.
+    pub outer: &'o BTreeMap<String, Bound>,
+    /// The outer names this graph takes, as the graph around it binds them.
+    pub taken: BTreeMap<String, Bound>,
+    /// The op of this graph that runs each call, also inside a scatter or an `if`.
     pub owners: BTreeMap<String, String>,
     pub ops: Vec<Op>,
     pub edges: Vec<Edge>,
     pub origin: Option<Origin>,
 }
 
-impl Frame {
-    pub(crate) fn new(origin: Option<Origin>) -> Self {
+impl<'o> Frame<'o> {
+    pub(crate) fn new(outer: &'o BTreeMap<String, Bound>, origin: Option<Origin>) -> Self {
         Frame {
             local: BTreeMap::new(),
+            outer,
+            taken: BTreeMap::new(),
             owners: BTreeMap::new(),
             ops: Vec::new(),
             edges: Vec::new(),
@@ -58,9 +65,35 @@ impl Frame {
         }
     }
 
-    /// What a name stands for here.
+    /// What a name stands for here; an outer name becomes an input of this graph.
     pub(crate) fn get(&mut self, name: &str) -> Option<Bound> {
-        self.local.get(name).cloned()
+        if let Some(bound) = self.local.get(name) {
+            return Some(bound.clone());
+        }
+        let outer = self.outer.get(name)?.clone();
+        self.taken.insert(name.to_owned(), outer.clone());
+        let inside = |port: &str, held: &Held| Held {
+            end: end(None, port),
+            r#type: held.r#type.clone(),
+        };
+        Some(match &outer {
+            Bound::Value(held) => Bound::Value(inside(name, held)),
+            Bound::Call(outputs) => Bound::Call(
+                (outputs.iter())
+                    .map(|(output, held)| {
+                        let port = format!("{name}.{output}");
+                        (output.clone(), inside(&port, held))
+                    })
+                    .collect(),
+            ),
+        })
+    }
+
+    /// Every name that a body graph inside this one can read.
+    pub(crate) fn visible(&self) -> BTreeMap<String, Bound> {
+        let mut names = self.outer.clone();
+        names.extend(self.local.clone());
+        names
     }
 }
 
@@ -120,7 +153,8 @@ impl Lowerer {
         };
         let document = &unit.document;
         let source = self.source(document);
-        let mut frame = Frame::new(origin(&source, &unit.name()));
+        let empty = BTreeMap::new();
+        let mut frame = Frame::new(&empty, origin(&source, &unit.name()));
         let mut inputs = Vec::new();
         let mut defaults = Vec::new();
         for decl in workflow
@@ -244,10 +278,17 @@ impl Lowerer {
                     let ty = declared(document, &decl.ty())?;
                     let r#type = convert(&ty).map_err(|why| format!("{name}: {why}"))?;
                     let expr = decl.expr();
-                    evaluated(frame, path, text(&expr), &expr, names(&expr), r#type)?;
+                    if !selected(frame, &expr, path, &r#type) {
+                        evaluated(frame, path, text(&expr), &expr, names(&expr), r#type)?;
+                    }
                 }
                 WorkflowStatement::Call(call) => self.called(document, call, frame)?,
-                _ => return Err("a scatter or a conditional".into()),
+                WorkflowStatement::Scatter(scatter) => {
+                    self.scatter(document, scatter, path, frame)?
+                }
+                WorkflowStatement::Conditional(conditional) => {
+                    self.conditional(document, conditional, path, frame)?
+                }
             }
         }
         Ok(())
@@ -331,7 +372,23 @@ pub(crate) fn place(document: &Analyzed, statement: &WorkflowStatement) -> Resul
                 .collect();
             (name.clone(), vec![(name, Shape::Call(outputs))])
         }
-        _ => return Err("a scatter or a conditional".into()),
+        WorkflowStatement::Scatter(scatter) => {
+            let body: Vec<WorkflowStatement> = scatter.statements().collect();
+            let defined = inner(document, &body, &array)?;
+            let first = defined.first().map(|(name, _)| name.clone());
+            let name = first.unwrap_or_else(|| scatter.variable().text().to_owned());
+            (format!("scatter.{name}"), defined)
+        }
+        WorkflowStatement::Conditional(conditional) => {
+            if conditional.clauses().count() > 1 {
+                return Err("an else clause".into());
+            }
+            let body: Vec<WorkflowStatement> = conditional.if_clause().statements().collect();
+            let defined = inner(document, &body, &optional)?;
+            let first = defined.first().map(|(name, _)| name.clone());
+            let name = first.unwrap_or_else(|| "empty".into());
+            (format!("if.{name}"), defined)
+        }
     })
 }
 

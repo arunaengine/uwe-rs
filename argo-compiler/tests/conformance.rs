@@ -16,12 +16,12 @@ use workflow_graph::{Driver, Launch, Simulator, Task, execute};
 /// Workflows that compile fully, stay native or do not; runs that end as natively, of them
 /// those with equal tasks and cache keys, and those with equal outputs.
 const RECORDED: Counts = Counts {
-    full: 545,
-    native: 277,
+    full: 664,
+    native: 158,
     failed: 138,
-    same: 301,
-    keys: 261,
-    equal: 253,
+    same: 184,
+    keys: 144,
+    equal: 138,
 };
 
 #[derive(Debug, Default, PartialEq)]

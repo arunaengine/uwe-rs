@@ -270,13 +270,29 @@ impl Session {
         Ok(jobs)
     }
 
-    /// The jobs that run in one task with `job`, it first: a group job or a pipe of the
-    /// run, else `job` alone.
+    /// The jobs that run in one task with `job`, it first: a service job with the jobs that
+    /// use it, a group job or a pipe of the run, else `job` alone.
     fn members(&self, job: usize) -> Vec<usize> {
+        if let Some(services) = self.served(job)
+            && let Ok((users, _)) = self.service_users(job, &services)
+            && !users.is_empty()
+        {
+            return std::iter::once(job).chain(users).collect();
+        }
         match self.components.get(&job) {
             Some(members) if members.len() > 1 => members.to_vec(),
             _ => vec![job],
         }
+    }
+
+    /// The service outputs of a job that runs with its users, as a run starts it, outside a
+    /// pipe.
+    fn served(&self, job: usize) -> Option<Vec<String>> {
+        let planner = self.planner.as_ref()?;
+        let services = crate::services::service_files(&planner.jobs[job]);
+        let piped = (self.components.get(&job))
+            .is_some_and(|jobs| !crate::pipes::files(planner, jobs).is_empty());
+        (!services.is_empty() && !piped).then_some(services)
     }
 
     fn prepare_key(
@@ -317,7 +333,11 @@ impl Session {
             self.files.add_output(&path, produced);
         }
         if members.len() > 1 {
-            return Ok(match self.rule_group(&members, None)? {
+            let task = match self.served(job) {
+                Some(services) => self.service_group(job, &services, None)?,
+                None => self.rule_group(&members, None)?,
+            };
+            return Ok(match task {
                 Some(task) => Prepared::Run(Box::new(task)),
                 None => Prepared::Failed(self.failures.last().cloned().unwrap_or_else(|| {
                     format!("the group of rule {} did not run in one task", key.rule)

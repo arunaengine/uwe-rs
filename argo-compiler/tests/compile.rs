@@ -526,3 +526,45 @@ fn compiles_exit_hooks() {
     let (_, kept) = compiled(folder.path(), &status);
     assert!(kept[0].reason.contains("workflow.status"), "{kept:?}");
 }
+
+/// The names of the tasks of a run on the simulator, sorted.
+fn ran_tasks(driver: &mut dyn workflow_graph::Driver, folder: &Path) -> Vec<String> {
+    let mut simulator = workflow_graph::Simulator::new(folder);
+    let execution = workflow_graph::execute("compiled", driver, &mut simulator);
+    let graph = execution.into_result().unwrap();
+    let mut names: Vec<String> = graph.nodes.into_iter().map(|node| node.task.name).collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn runs_compiled_texts() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let looped = TEXTS.replace(
+        "withParam: \"{{steps.gen.outputs.result}}\"",
+        "withItems: [{x: 1}, {x: 2}]",
+    );
+    let (document, kept) = compiled(root, &looped);
+    assert!(kept.is_empty(), "{kept:?}");
+    let target = root.join("compiled.wir.json");
+    std::fs::write(&target, document.to_string()).unwrap();
+    let launch = |target: &Path| workflow_graph::Launch {
+        target: target.to_owned(),
+        scratch: root.join("scratch"),
+        simulated: true,
+        ..Default::default()
+    };
+    let services = argo_runtime::Services::default();
+    let mut native =
+        argo_runtime::load_driver(&launch(&root.join("workflow.yaml")), services).unwrap();
+    let expected = ran_tasks(&mut native, &root.join("native"));
+    let settings = wir_runtime::Settings {
+        print: false,
+        adapters: wir_runtime::argo::register(Default::default(), Default::default()),
+        ..Default::default()
+    };
+    let mut wir = wir_runtime::WirDriver::new(&launch(&target), settings).unwrap();
+    assert_eq!(ran_tasks(&mut wir, &root.join("wir")), expected);
+    assert_eq!(expected.len(), 2, "{expected:?}");
+}

@@ -112,6 +112,7 @@ fn refuse(document: &Document, adapters: &Adapters) -> Result<(), DriverError> {
                 Kind::Branch(branch) => Some(branch.body.as_str()),
                 Kind::Map(map) => Some(map.body.as_str()),
                 Kind::Process(process) => Some(process.body.as_str()),
+                Kind::Loop(looped) => Some(looped.body.as_str()),
                 _ => None,
             };
             if let Some(body) = body.filter(|body| !reached.contains(body)) {
@@ -185,6 +186,7 @@ fn supported(kind: &Kind) -> bool {
             | Kind::CollectFile(_)
             | Kind::StatusGroup(_)
             | Kind::Process(_)
+            | Kind::Loop(_)
     )
 }
 

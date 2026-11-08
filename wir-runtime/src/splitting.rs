@@ -391,6 +391,10 @@ impl Operator for Splitting {
         }
         Ok(Step::Moved)
     }
+
+    fn waits_for(&self) -> Option<String> {
+        self.waiting.as_ref()?.0.awaited()
+    }
 }
 
 /// The value at a JSON path of member names and bracket indices, if there is one.

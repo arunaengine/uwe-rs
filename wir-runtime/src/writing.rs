@@ -245,6 +245,10 @@ impl Operator for Collecting {
         }
         Ok(if moved { Step::Moved } else { Step::Idle })
     }
+
+    fn waits_for(&self) -> Option<String> {
+        self.waiting.as_ref()?.0.awaited()
+    }
 }
 
 #[cfg(test)]

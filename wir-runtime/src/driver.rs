@@ -318,7 +318,8 @@ impl WirDriver {
             self.processes.insert(at, rounding);
             return Ok(Vec::new());
         }
-        if let Some(stepped) = operator::make(self.progress.node(at)) {
+        let defs = &self.document.types;
+        if let Some(stepped) = operator::make_typed(self.progress.node(at), defs) {
             self.operators.insert(at, stepped);
             return Ok(Vec::new());
         }

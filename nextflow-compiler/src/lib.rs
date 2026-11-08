@@ -81,6 +81,10 @@ pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compi
 /// It fails only when the compiler makes no wir document, which is a bug of the compiler.
 pub fn compile_network(network: &Network, context: &Context) -> Result<Compilation, String> {
     let mut sources = Sources::new(&network.script, &context.base);
+    for config in &network.configs {
+        sources.script(config);
+    }
+    sources.run(&network.params, &network.config);
     let opaque = network.nodes.iter().filter_map(|node| match &node.kind {
         Kind::Opaque(reason) => Some(Kept {
             path: node.name.clone(),

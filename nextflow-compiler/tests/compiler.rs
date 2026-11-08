@@ -118,7 +118,21 @@ fn compiles_process_calls() {
         digest.starts_with("sha256:") && digest.len() == 71,
         "{digest}"
     );
-    assert_eq!(document["sources"].as_array().unwrap().len(), 1);
+    let sources = document["sources"].as_array().unwrap();
+    let ids: Vec<&Json> = sources.iter().map(|source| &source["id"]).collect();
+    assert_eq!(
+        ids,
+        [&json!("main"), &json!("nextflow.config"), &json!("run")]
+    );
+    let run = sources[2]["location"].as_str().unwrap();
+    assert!(
+        run.starts_with("data:application/json,%7B%22params%22%3A%22sha256%3A"),
+        "{run}"
+    );
+    assert!(
+        run.contains("%22config%22%3A%22sha256%3A"),
+        "pins the config: {run}"
+    );
     let main = graph(&document, "main");
     let values = op(main, "of.0");
     assert_eq!(values["inputs"][0]["default"], json!(["a", "b"]));

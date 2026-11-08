@@ -381,7 +381,7 @@ impl Network {
         &mut self,
         emits: Vec<(String, usize)>,
         params: &Value,
-        script: String,
+        (script, configs, config): (String, Vec<String>, String),
     ) -> Result<crate::export::Network, String> {
         let params =
             crate::bridge::to_json(params).map_err(|error| format!("the params: {error}"))?;
@@ -441,6 +441,8 @@ impl Network {
             emits,
             params,
             script,
+            configs,
+            config,
         })
     }
 

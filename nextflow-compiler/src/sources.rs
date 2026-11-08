@@ -56,6 +56,26 @@ impl Sources {
         id
     }
 
+    /// The source `run`, which pins the params and the resolved config of the run that the
+    /// document was compiled for by their digests; it holds no value of either.
+    pub fn run(&mut self, params: &Json, config: &str) {
+        let params = serde_json::to_string(params).unwrap_or_default();
+        let record =
+            json!({"params": sha256(params.as_bytes()), "config": sha256(config.as_bytes())});
+        let text = record.to_string();
+        let encoded: String = (text.bytes())
+            .map(|byte| match byte {
+                b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                    char::from(byte).to_string()
+                }
+                other => format!("%{other:02X}"),
+            })
+            .collect();
+        let location = format!("data:application/json,{encoded}");
+        self.files
+            .push(("run".into(), location, Some(sha256(text.as_bytes()))));
+    }
+
     /// The id of a config file of the launch.
     pub fn config(&mut self, path: &Path) -> String {
         self.script(&path.to_string_lossy())
@@ -99,10 +119,13 @@ impl Sources {
 /// The SHA-256 digest of a file, which pins the source that a dialect task loads; a folder,
 /// like a project folder, has none.
 fn digest(path: &Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    let hex: String = Sha256::digest(&bytes)
+    std::fs::read(path).ok().map(|bytes| sha256(&bytes))
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    let hex: String = Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    Some(format!("sha256:{hex}"))
+    format!("sha256:{hex}")
 }

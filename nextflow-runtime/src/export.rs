@@ -22,6 +22,11 @@ pub struct Network {
     pub params: Json,
     /// The main script.
     pub script: String,
+    /// The config files of the run, in the order read, without the files they include.
+    pub configs: Vec<String>,
+    /// The resolved config in the flat form of `nextflow config -flat`, which the compiler
+    /// pins by its digest. It may hold secret values, so it must not be written anywhere.
+    pub config: String,
 }
 
 #[derive(Debug)]

@@ -3,13 +3,13 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use python_evaluator::Value;
 use serde_json::{Value as Json, json};
-use workflow_graph::{DriverError, Outcome, Task};
+use workflow_graph::{DriverError, Outcome, Task, TaskId};
 
 use super::{Session, SnakemakeDriver, Taken};
 use crate::commands::{Reply, Request};
@@ -195,9 +195,18 @@ impl Session {
             }
             planned.push(members);
         }
+        // A compiler learns which groups a run splits since their jobs run in several images.
+        let split: Vec<bool> = match start {
+            true => vec![false; planned.len()],
+            false => (planned.iter())
+                .map(|members| members.len() > 1 && self.split_images(members))
+                .collect(),
+        };
+        let planner = (self.planner.as_ref())
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         self.keys.clear();
         let mut jobs = Vec::new();
-        for members in &planned {
+        for (members, split) in planned.iter().zip(split) {
             let job = members[0];
             let key = job_key(planner, job);
             let named = JobKey {
@@ -253,17 +262,23 @@ impl Session {
             }
             after.sort_unstable();
             after.dedup();
-            let native = members.iter().find_map(|member| {
-                let entry = &planner.jobs[*member];
-                if entry.incomplete {
-                    Some("it waits for a checkpoint".to_owned())
-                } else if members.len() == 1 && !crate::services::service_files(entry).is_empty() {
-                    Some("it has service outputs".to_owned())
-                } else if matches!(planner.rules[entry.rule].action, Action::Cwl(_)) {
-                    Some("it runs a CWL document".to_owned())
-                } else {
-                    None
-                }
+            let split =
+                split.then_some("its group runs jobs of several images, which a run splits");
+            let native = split.map(str::to_owned).or_else(|| {
+                members.iter().find_map(|member| {
+                    let entry = &planner.jobs[*member];
+                    if entry.incomplete {
+                        Some("it waits for a checkpoint".to_owned())
+                    } else if members.len() == 1
+                        && !crate::services::service_files(entry).is_empty()
+                    {
+                        Some("it has service outputs".to_owned())
+                    } else if matches!(planner.rules[entry.rule].action, Action::Cwl(_)) {
+                        Some("it runs a CWL document".to_owned())
+                    } else {
+                        None
+                    }
+                })
             });
             let needed = |member: &usize| self.needrun.get(member).copied().unwrap_or(false);
             jobs.push(PlannedJob {
@@ -290,6 +305,32 @@ impl Session {
             });
         }
         Ok(jobs)
+    }
+
+    /// Whether the jobs of a group build tasks of several images, which a run splits into
+    /// separate tasks; also when a task cannot be built while the jobs are planned.
+    fn split_images(&mut self, members: &[usize]) -> bool {
+        let mut images = HashSet::new();
+        for member in members {
+            let Some(planner) = self.planner.as_ref() else {
+                return true;
+            };
+            let entry = &planner.jobs[*member];
+            let state = self.state.borrow();
+            let setting = crate::task::TaskSetting {
+                state: &state,
+                files: &self.files,
+                workdir: &self.workdir,
+                embedded: &self.embedded,
+                sources: &self.sources,
+            };
+            let rule = &planner.rules[entry.rule];
+            match crate::task::build(&mut self.interpreter, &setting, rule, entry, TaskId(0), 1) {
+                Ok(built) => images.insert(built.task.image),
+                Err(_) => return true,
+            };
+        }
+        images.len() > 1
     }
 
     /// The jobs that run in one task with `job`, it first: a service job with the jobs that

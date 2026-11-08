@@ -48,6 +48,13 @@ use nextflow_evaluator::value::{PathValue, Value};
 pub use adapter::{Adapter, Call, Completed, Prepared};
 pub use driver::driver;
 pub use hash::key as hash_key;
+
+/// The text of the script of a plugin that a location like `plugin/nf-core-utils.nf` names,
+/// which ports functions of the plugin.
+pub fn plugin_script(location: &str) -> Option<&'static str> {
+    let plugin = location.strip_prefix("plugin/")?.strip_suffix(".nf")?;
+    nextflow_plugins::script(plugin)
+}
 pub use loader::{LoadError, Loader};
 pub use network::Network;
 pub use process::{TaskId, TaskOutcome, TaskRequest};

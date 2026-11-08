@@ -28,7 +28,10 @@ pub fn evaluate(
     let version = version(document, op);
     let defs = &document.types;
     let command = spec.code.trim_start().starts_with("command");
-    let mut scope = Scope::default();
+    let mut scope = Scope {
+        written: command.then(Vec::new),
+        ..Scope::default()
+    };
     for port in &op.inputs {
         let json = bound.get(&port.name).unwrap_or(&Json::Null);
         // A command runs in a task op, which stages the files of input `p` below `inputs/p`.
@@ -56,7 +59,8 @@ pub fn evaluate(
     let value = match command {
         true => {
             let section = section(&spec.code, version)?;
-            Value::String(expression::command(&section, &mut scope).map_err(|e| e.to_string())?)
+            let text = expression::command(&section, &mut scope).map_err(|e| e.to_string())?;
+            Value::String(prelude(scope.written.as_deref().unwrap_or_default()) + &text)
         }
         false => {
             let decl = declaration(&format!("String value = {}", spec.code), version)?;
@@ -88,9 +92,36 @@ fn version<'d>(document: &'d Document, op: &Op) -> &'d str {
 struct Scope {
     names: BTreeMap<String, Value>,
     files: HashMap<String, Json>,
+    /// In a command section, the files that the write functions gave, by path.
+    written: Option<Vec<(String, String)>>,
+}
+
+/// The lines that make the written files of a command before it runs, at the paths where
+/// uwe's WDL driver stages them.
+fn prelude(written: &[(String, String)]) -> String {
+    let mut lines = match written.is_empty() {
+        true => return String::new(),
+        false => "mkdir -p .wdl/written\n".to_owned(),
+    };
+    for (path, content) in written {
+        let quoted = content.replace('\'', r"'\''");
+        lines.push_str(&format!("printf '%s' '{quoted}' > {path}\n"));
+    }
+    lines
 }
 
 impl Environment for Scope {
+    /// A file in `.wdl/written/` with the content, which the command makes before it runs.
+    fn write(&mut self, content: String) -> Result<Value, expression::Error> {
+        let Some(written) = &mut self.written else {
+            let message = "the write functions are only available in a command";
+            return Err(expression::Error::failed(message));
+        };
+        let path = format!(".wdl/written/{}", written.len());
+        written.push((path.clone(), content));
+        Ok(Value::File(path))
+    }
+
     /// A name, or an object of the inputs `name.<member>`, as WDL sees the outputs of a call.
     fn lookup(&self, name: &str) -> Option<Value> {
         if let Some(value) = self.names.get(name) {
@@ -483,6 +514,16 @@ mod tests {
         let output = json!({"record": fields});
         let made = run("object { a: 1 }", &[], json!({}), output);
         assert_eq!(made, Ok(json!({"a": 1, "b": null})));
+    }
+
+    #[test]
+    fn commands_write_files() {
+        let inputs =
+            json!({"names": {"type": {"array": {"items": "string"}}, "value": ["a", "it's"]}});
+        let code = "command <<<\n  cat ~{write_lines(names)}\n>>>";
+        let text = run(code, &[], inputs, json!("string"));
+        let made = "mkdir -p .wdl/written\nprintf '%s' 'a\nit'\\''s\n' > .wdl/written/0\n";
+        assert_eq!(text, Ok(json!(format!("{made}cat .wdl/written/0"))));
     }
 
     #[test]

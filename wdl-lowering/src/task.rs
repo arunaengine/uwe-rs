@@ -13,7 +13,7 @@ use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 use crate::library::{Inputs, Line, check, ordered, ports};
 use crate::outputs::{Output, Read, listing, outputs};
 use crate::types::{has_files, port};
-use crate::{DEFAULT_IMAGE, Lowerer, blank, constant, edge, end, origin, reads, text};
+use crate::{DEFAULT_IMAGE, Lowerer, READS, blank, called, constant, edge, end, origin, text};
 
 /// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
 /// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
@@ -85,7 +85,7 @@ impl Lowerer {
         let library = ordered(library)?;
         let command = match definition.command() {
             Some(section) => {
-                if let Some(function) = reads(&section) {
+                if let Some(function) = called(&section, &READS) {
                     return Err(format!("{function} in the command"));
                 }
                 if section

@@ -291,8 +291,9 @@ fn constant(expr: &Expr) -> Option<wdl_runtime::Value> {
     expression::evaluate(expr, &mut Empty).ok()
 }
 
-/// The standard functions that read or write files, which an `expr` op must not call.
-const FILES: [&str; 20] = [
+/// The standard functions that read files, which an `expr` op must not call, and those that
+/// write files, which only its command section may call.
+const READS: [&str; 14] = [
     "read_string",
     "read_int",
     "read_float",
@@ -303,23 +304,30 @@ const FILES: [&str; 20] = [
     "read_json",
     "read_object",
     "read_objects",
+    "size",
+    "glob",
+    "stdout",
+    "stderr",
+];
+const WRITES: [&str; 6] = [
     "write_lines",
     "write_tsv",
     "write_map",
     "write_json",
     "write_object",
     "write_objects",
-    "size",
-    "glob",
-    "stdout",
-    "stderr",
 ];
 
 /// The first function in a node that reads or writes files.
 fn reads<N: AstNode<wdl_ast::SyntaxNode>>(node: &N) -> Option<String> {
+    called(node, &READS).or_else(|| called(node, &WRITES))
+}
+
+/// The first function of `names` that a node calls.
+fn called<N: AstNode<wdl_ast::SyntaxNode>>(node: &N, names: &[&str]) -> Option<String> {
     (node.descendants::<wdl_ast::v1::CallExpr>())
         .map(|call| call.target().text().to_owned())
-        .find(|name| FILES.contains(&name.as_str()))
+        .find(|name| names.contains(&name.as_str()))
 }
 
 /// The source text of a node.

@@ -503,3 +503,23 @@ task maybe {
     assert_eq!(kept, ["output files: files inside this type"]);
     assert_eq!(runs.native, runs.lowered);
 }
+
+#[test]
+fn commands_write_files() {
+    let text = r#"version 1.1
+task lines {
+  input {
+    Array[String] names
+  }
+  command <<<
+    sort ~{write_lines(names)} > sorted.txt
+  >>>
+  output {
+    File sorted = "sorted.txt"
+  }
+}
+"#;
+    let runs = runs(text, json!({"names": ["b", "a"]}));
+    assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
+    assert_eq!(runs.native, runs.lowered);
+}

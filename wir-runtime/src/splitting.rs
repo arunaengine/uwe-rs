@@ -226,15 +226,25 @@ impl Splitting {
                 )));
             }
             Some(directory) if directory.starts_with('/') => folder = PathBuf::from(directory),
+            Some(directory) if directory.split('/').any(|part| part == "..") => {
+                return Err(turn.failed(format!("the folder {directory} leaves the file area")));
+            }
             Some(directory) => folder = folder.join(directory),
             None => {}
         }
-        std::fs::create_dir_all(&folder)
-            .map_err(|error| turn.failed(format!("cannot make {}: {error}", folder.display())))?;
         let basename = source
             .get("basename")
             .and_then(Json::as_str)
             .unwrap_or("chunk");
+        if let Some(name) = [Some(basename), files.name.as_deref()]
+            .into_iter()
+            .flatten()
+            .find(|name| !plain(name))
+        {
+            return Err(turn.failed(format!("the file name {name:?} leaves its folder")));
+        }
+        std::fs::create_dir_all(&folder)
+            .map_err(|error| turn.failed(format!("cannot make {}: {error}", folder.display())))?;
         let stem = basename.trim_end_matches(".gz");
         let stem = stem.rsplit_once('.').map_or(stem, |(stem, _)| stem);
         let stem = files.name.as_deref().unwrap_or(stem);
@@ -251,6 +261,9 @@ impl Splitting {
             let gzip = if files.compress { ".gz" } else { "" };
             let name = format!("{stem}.{}.{chunk}.{extension}{gzip}", self.sources);
             let path = folder.join(&name);
+            if path.parent() != Some(folder.as_path()) {
+                return Err(turn.failed(format!("the chunk {name:?} leaves its folder")));
+            }
             let bytes = match files.compress {
                 true => {
                     let mut encoder = flate2::GzBuilder::new()
@@ -349,6 +362,11 @@ fn reach<'v>(document: &'v Json, path: &str) -> Option<&'v Json> {
         }
     }
     Some(value)
+}
+
+/// Whether a file name names a file in its folder: not empty, no folder and no `..`.
+fn plain(name: &str) -> bool {
+    !name.is_empty() && !name.contains('/') && name != "." && name != ".."
 }
 
 /// The native names of the fields of sequence records, or none for their text.
@@ -692,6 +710,19 @@ mod files {
             "gzip output does not depend on the time"
         );
         let blocked = folder.path().join("blocked");
+        let escaping = |basename: &str| {
+            let file = json!({"class": "File", "location": source.to_string_lossy(), "basename": basename});
+            split(fields(false), &[file])
+        };
+        let outside = folder.path().join("x.fq");
+        for basename in ["../x.fq", &*outside.to_string_lossy()] {
+            let failed = escaping(basename).unwrap_err();
+            assert!(failed.contains("leaves its folder"), "{failed}");
+        }
+        assert!(
+            !folder.path().join("x.0.0.fq").exists() && !outside.with_extension("0.0.fq").exists(),
+            "no chunk outside its folder"
+        );
         std::fs::write(&blocked, "").unwrap();
         let fields = json!({"format": {"text": {}}, "files": {"directory": blocked.join("x").to_string_lossy()}});
         assert!(

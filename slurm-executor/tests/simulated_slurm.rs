@@ -241,6 +241,10 @@ exec sh "$wrapper"
 /// An Apptainer that cannot get the image.
 const BROKEN_APPTAINER: &str = "#!/bin/bash\necho 'FATAL: while making image from oci registry: no such image' >&2\nexit 255\n";
 
+/// An Apptainer that cannot reach the registry and names its web proxy in the error.
+const PROXY_APPTAINER: &str =
+    "#!/bin/bash\necho \"FATAL: no answer through $HTTPS_PROXY\" >&2\nexit 255\n";
+
 /// The commands of the simulated SLURM in a folder of `root`.
 fn cluster(root: &Path, apptainer: &str) -> PathBuf {
     let bin = root.join("bin");
@@ -648,6 +652,34 @@ async fn pulls_through_proxy() {
     let proxies = std::fs::read_to_string(bin.join("state/proxies")).expect("a proxy");
     let proxy = "http://proxy.example.org:3128";
     assert_eq!(proxies, format!("{proxy} {proxy}\n"));
+}
+
+#[tokio::test]
+async fn hides_proxy_password() {
+    let root = tempfile::tempdir().expect("a folder");
+    let bin = cluster(root.path(), PROXY_APPTAINER);
+    let mut backend = backend(
+        root.path(),
+        &bin,
+        Container::Apptainer(text(&bin.join("apptainer"))),
+    );
+    backend.proxy = Some("http://user:secret-word@proxy.example.org:3128".into());
+    backend.pull_pause = Duration::from_millis(100);
+    let spec = spec("true");
+    let (staging, placement) = (Staging::default(), placement());
+    let job = Job {
+        name: "run-P-7-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).expect_err("a failure");
+    let text = error.to_string();
+    assert!(
+        text.contains("no answer through http://user:***@proxy.example.org:3128"),
+        "{text}"
+    );
+    assert!(!text.contains("secret-word"), "{text}");
 }
 
 #[tokio::test]

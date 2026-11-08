@@ -172,3 +172,23 @@ fn capability_fence() {
         "nothing of the run starts"
     );
 }
+
+/// `main` maps its int stream `xs` with `code` into the stream `ys` of `to`.
+fn mapping(code: &str, to: Json) -> Json {
+    let op = json!({"path": "map", "kind": {"transform": {"body": {"language": "groovy", "code": code}}},
+        "inputs": [stream("source")], "outputs": [{"name": "out", "type": to, "flow": "stream"}]});
+    let output = json!({"name": "ys", "type": to, "flow": "stream"});
+    json!([{"name": "main", "inputs": [stream("xs")], "outputs": [output], "ops": [op],
+        "edges": [edge((None, "xs"), (Some("map"), "source")), edge((Some("map"), "out"), (None, "ys"))]}])
+}
+
+#[test]
+fn typed_items() {
+    let error = run(mapping("{ 'x' }", json!("int")), json!({"xs": [1]})).unwrap_err();
+    assert!(error.contains("does not fit output out"), "{error}");
+    assert_eq!(
+        run(mapping("{ it }", json!("float")), json!({"xs": [1, 2]})).unwrap()["ys"],
+        json!([1.0, 2.0]),
+        "items widen to their output type"
+    );
+}

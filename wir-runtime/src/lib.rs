@@ -15,6 +15,7 @@ mod flows;
 mod groovy;
 mod inputs;
 mod javascript;
+mod mixing;
 pub mod nextflow;
 #[allow(dead_code, reason = "the stream ops of the next commits use the rest")]
 mod operator;

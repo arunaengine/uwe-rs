@@ -277,6 +277,12 @@ impl Streams {
         Ok(())
     }
 
+    /// How the stream of a reader ended, if it did, wherever the reader is.
+    pub fn terminal_of(&self, reader: &ReaderId) -> Option<&Terminal> {
+        let stream = self.reading.get(reader)?;
+        self.channels.get(stream)?.terminal.as_ref()
+    }
+
     /// Stops a reader; its stream and the other readers go on.
     pub fn detach(&mut self, reader: &ReaderId) {
         let Some(stream) = self.reading.get(reader) else {

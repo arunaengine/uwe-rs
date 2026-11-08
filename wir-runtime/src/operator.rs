@@ -10,6 +10,7 @@ use wir::{Kind, Status};
 
 use crate::engine::Context;
 use crate::flows::output_stream;
+use crate::mixing::{Mixing, RoundRule, Rounds};
 use crate::plan::Node;
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
 use crate::transforms::{Mapping, Rule};
@@ -112,6 +113,41 @@ impl<'s> Turn<'s> {
         }
     }
 
+    /// The event of the next item of an input, for an arrival order across inputs.
+    pub fn next_event(&self, input: &str) -> Result<Option<u64>, Failure> {
+        let reader = self.reader(input)?;
+        match self
+            .streams
+            .peek(&reader)
+            .map_err(|error| self.failed(error.message))?
+        {
+            Read::Item(item) => Ok(Some(item.event)),
+            _ => Ok(None),
+        }
+    }
+
+    /// The failure that an input ended with, also before its reader reached the end.
+    pub fn input_failure(&self, input: &str) -> Option<Failure> {
+        let reader = self.readers.get(input)?;
+        match &self.streams.terminal_of(reader)?.end {
+            StreamEnd::Error(failure) => Some(Failure {
+                source: self.path.clone(),
+                ..failure.clone()
+            }),
+            _ => None,
+        }
+    }
+
+    /// The next items of all `inputs` at once, or none while one of them has no item.
+    pub fn take(&mut self, inputs: &[String]) -> Result<Option<Vec<Json>>, Failure> {
+        let readers = (inputs.iter())
+            .map(|input| self.reader(input))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.streams
+            .consume(&readers)
+            .map_err(|error| self.failed(error.message))
+    }
+
     /// Stops reading an input; the producer and the other readers go on.
     pub fn detach(&mut self, input: &str) {
         if let Some(reader) = self.readers.get(input) {
@@ -170,12 +206,54 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
         Kind::Filter(spec) => mapping(Rule::Filter(spec.body.clone())),
         Kind::FlatMap(spec) => mapping(Rule::FlatMap(spec.body.clone())),
         Kind::Flatten(spec) if stream => mapping(Rule::Flatten(spec.depth, spec.drop_null)),
+        Kind::Mix(_) | Kind::Concat(_) => {
+            let inputs = node
+                .op
+                .inputs
+                .iter()
+                .map(|port| port.name.clone())
+                .collect();
+            let current = matches!(node.op.kind, Kind::Concat(_)).then_some(0);
+            Some(Box::new(Mixing { inputs, current }))
+        }
+        Kind::Merge(merge) if merge.takes_rounds(streams(node)) => {
+            rounds(node, RoundRule::Merge(merge.body.clone()))
+        }
+        Kind::Zip(zip) => rounds(
+            node,
+            RoundRule::Zip {
+                remainder: zip.remainder,
+            },
+        ),
         Kind::Emit(emit) => Some(Box::new(Emitting {
             each: emit.each,
             next: 0,
         })),
         _ => None,
     }
+}
+
+/// Whether a node has a stream port.
+fn streams(node: &Node) -> bool {
+    (node.op.inputs.iter().chain(&node.op.outputs)).any(|port| !port.flow.is_value())
+}
+
+/// The op that takes rounds of the inputs of a node.
+fn rounds(node: &Node, rule: RoundRule) -> Option<Box<dyn Operator>> {
+    let inputs = (node.op.inputs.iter())
+        .map(|port| (port.name.clone(), !port.flow.is_value()))
+        .collect();
+    let single = node
+        .op
+        .outputs
+        .first()
+        .is_some_and(|port| port.flow.is_value());
+    Some(Box::new(Rounds {
+        inputs,
+        rule,
+        single,
+        callbacks: Default::default(),
+    }))
 }
 
 /// Gives its value input `source` as one item, or each of its items.

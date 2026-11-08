@@ -12,11 +12,11 @@ use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
-    pipelines: 13,
-    full: 13,
-    native: 13,
-    compiled: 13,
-    same: 13,
+    pipelines: 15,
+    full: 15,
+    native: 15,
+    compiled: 15,
+    same: 15,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -101,6 +101,14 @@ const PIPELINES: &[(&str, &str)] = &[
     (
         "modules",
         "include { P as PA } from './modules/a/main.nf'\ninclude { P as PB } from './modules/b/main.nf'\nworkflow {\n    PA(channel.of(1))\n    PB(channel.of(1))\n}",
+    ),
+    (
+        "forks",
+        "process F {\n    maxForks 1\n    input:\n    val x\n    output:\n    val x\n    script:\n    'true'\n}\nworkflow {\n    F(channel.of('a', 'b', 'c'))\n    GREET(F.out.collect().map { [[id: it.join('-')], 'x'] })\n}",
+    ),
+    (
+        "fair",
+        "process F {\n    fair true\n    input:\n    val x\n    output:\n    val x\n    script:\n    'true'\n}\nworkflow {\n    F(channel.of('a', 'b', 'c'))\n    GREET(F.out.collect().map { [[id: it.join('-')], 'x'] })\n}",
     ),
     (
         "closures",

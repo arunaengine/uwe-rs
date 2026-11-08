@@ -32,8 +32,16 @@ impl nextflow_evaluator::interpreter::Host for Quiet {
 
 /// Compiles a script with the profile `test`.
 fn compile(script: &str) -> Compilation {
+    compile_with(script, &[])
+}
+
+/// Compiles a script with the profile `test` and more files in its project folder.
+fn compile_with(script: &str, files: &[(&str, &str)]) -> Compilation {
     let directory = tempfile::tempdir().unwrap();
     std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    for (name, text) in files {
+        std::fs::write(directory.path().join(name), text).unwrap();
+    }
     let config = "profiles {\n    test {\n        params.greeting = 'hi'\n    }\n}\n";
     std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
     let launch = Launch {
@@ -100,8 +108,8 @@ fn keeps_unbound_values() {
     );
     let document = full("workflow {\n}\n");
     let main = graph(&document, "main");
-    let params = json!({"name": "params", "type": "dynamic", "default": {"greeting": "hi"}});
-    assert_eq!(main["inputs"], json!([params]));
+    let param = json!({"name": "greeting", "type": "dynamic", "default": "hi"});
+    assert_eq!(main["inputs"], json!([param]), "a port for each param");
 }
 
 #[test]
@@ -247,4 +255,39 @@ fn keeps_data_reads() {
     let document = json(&compiled);
     let source = &document["sources"][0];
     assert_eq!(source["location"], ".", "the project folder");
+}
+
+#[test]
+fn types_entry_ports() {
+    let schema = r#"{"$defs": {"options": {"properties": {
+        "sheet": {"type": "string", "format": "file-path"},
+        "greeting": {"type": "string"},
+        "count": {"type": "integer"}
+    }}}}"#;
+    let script = "params.sheet = 'sheet.csv'\nparams.count = 2\nworkflow {\n}\n";
+    let compiled = compile_with(script, &[("nextflow_schema.json", schema)]);
+    let document = json(&compiled);
+    let inputs = &graph(&document, "main")["inputs"];
+    let by = |name: &str| {
+        inputs
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|port| port["name"] == name)
+            .unwrap()
+    };
+    assert_eq!(by("sheet")["type"], json!({"file": {}}));
+    let location = by("sheet")["default"]["location"].as_str().unwrap();
+    assert!(
+        location.ends_with("/sheet.csv") && location.starts_with('/'),
+        "{location}"
+    );
+    assert_eq!(
+        (&by("greeting")["type"], &by("count")["type"]),
+        (&json!("string"), &json!("int"))
+    );
+    assert!(
+        wir::verify(&compiled.document).is_ok(),
+        "the defaults fit their types"
+    );
 }

@@ -93,10 +93,8 @@ fn compiles_nextflow_pipelines() {
     assert_eq!((code, errors.as_str()), (0, ""), "{printed}");
     let document: Json = serde_json::from_str(&printed).expect("prints JSON");
     let main = &document["graphs"][0];
-    assert_eq!(
-        main["inputs"][0]["default"]["mark"], "!",
-        "the params of the command line"
-    );
+    let mark = json!({"name": "mark", "type": "dynamic", "default": "!"});
+    assert_eq!(main["inputs"][0], mark, "the params of the command line");
     let ops = main["ops"].as_array().expect("ops");
     let process = ops
         .iter()

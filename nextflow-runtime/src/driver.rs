@@ -142,6 +142,13 @@ pub struct Nextflow {
     calls: Calls,
 }
 
+/// A finished attempt, with its request and the outcome that the observers hear.
+pub(crate) struct Ended {
+    pub request: TaskRequest,
+    pub outcome: TaskOutcome,
+    pub heard: Option<Outcome>,
+}
+
 /// What a run needs before it starts, which [`Driver::inputs`] loads too.
 pub(crate) struct Loaded {
     /// The project directory, where the main script and `nextflow.config` are.
@@ -512,6 +519,54 @@ impl Nextflow {
         Ok(loaded)
     }
 
+    /// A finished attempt as its process reads it: the files, the standard output and the
+    /// `env` and `eval` values, or the files that an `exec:` section made.
+    pub(crate) fn ended(&mut self, outcome: Outcome) -> Result<Ended, DriverError> {
+        let id = TaskId(outcome.id.0);
+        let request = self.requests.remove(&id).ok_or_else(|| {
+            DriverError::new(format!("the task {} was not asked for", outcome.id))
+        })?;
+        let mut outcome = outcome;
+        // The observers hear how the attempt ended once its outputs were checked, with whole
+        // streams from the store: the outcome of a failed task keeps only their end.
+        let heard = self.reports.as_ref().map(|reports| {
+            let mut heard = outcome.clone();
+            let whole = |log: &Option<workflow_graph::Stream>| {
+                (log.as_ref()).and_then(|log| stdout_text(self.files.as_deref(), log).ok())
+            };
+            if reports.observed() {
+                heard.stderr = whole(&heard.stderr_log).unwrap_or(heard.stderr);
+                heard.stdout = whole(&heard.stdout_log).unwrap_or(heard.stdout);
+            }
+            heard
+        });
+        let outcome = match &request.made {
+            _ if request.agent.is_some() => self.calls.outcome(&request),
+            // An `exec:` section ran when the task was asked for; its files are its outputs.
+            Some(made) if outcome.exit_code == 0 => TaskOutcome {
+                id: request.id,
+                files: made.clone(),
+                ..TaskOutcome::default()
+            },
+            _ => {
+                if self.launch.simulated {
+                    drop_simulated_outputs(&request, &mut outcome);
+                }
+                task_outcome_as(
+                    &request,
+                    outcome,
+                    self.files.as_deref(),
+                    self.launch.simulated,
+                )?
+            }
+        };
+        Ok(Ended {
+            request,
+            outcome,
+            heard,
+        })
+    }
+
     /// Writes report artifacts for either successful or failed runs.
     fn write_reports(&mut self) -> Result<(), DriverError> {
         if let Some(reports) = &self.reports {
@@ -579,44 +634,11 @@ impl Driver for Nextflow {
 
     fn complete(&mut self, outcome: Outcome) -> Result<Vec<Task>, DriverError> {
         let identity = (outcome.id, outcome.attempt);
-        let id = TaskId(outcome.id.0);
-        let request = self.requests.remove(&id).ok_or_else(|| {
-            DriverError::new(format!("the task {} was not asked for", outcome.id))
-        })?;
-        let mut outcome = outcome;
-        // The observers hear how the attempt ended once its outputs were checked, with whole
-        // streams from the store: the outcome of a failed task keeps only their end.
-        let heard = self.reports.as_ref().map(|reports| {
-            let mut heard = outcome.clone();
-            let whole = |log: &Option<workflow_graph::Stream>| {
-                (log.as_ref()).and_then(|log| stdout_text(self.files.as_deref(), log).ok())
-            };
-            if reports.observed() {
-                heard.stderr = whole(&heard.stderr_log).unwrap_or(heard.stderr);
-                heard.stdout = whole(&heard.stdout_log).unwrap_or(heard.stdout);
-            }
-            heard
-        });
-        let outcome = match &request.made {
-            _ if request.agent.is_some() => self.calls.outcome(&request),
-            // An `exec:` section ran when the task was asked for; its files are its outputs.
-            Some(made) if outcome.exit_code == 0 => TaskOutcome {
-                id: request.id,
-                files: made.clone(),
-                ..TaskOutcome::default()
-            },
-            _ => {
-                if self.launch.simulated {
-                    drop_simulated_outputs(&request, &mut outcome);
-                }
-                task_outcome_as(
-                    &request,
-                    outcome,
-                    self.files.as_deref(),
-                    self.launch.simulated,
-                )?
-            }
-        };
+        let Ended {
+            request,
+            outcome,
+            heard,
+        } = self.ended(outcome)?;
         let run = self.run.as_mut().ok_or_else(not_started)?;
         let mut host = Noting {
             host: self.settings.host.as_mut(),

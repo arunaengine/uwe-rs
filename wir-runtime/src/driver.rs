@@ -225,7 +225,8 @@ impl WirDriver {
                 self.last += 1;
                 let node = self.progress.node(at);
                 let names = (node.path.as_str(), node.step.as_str());
-                let task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
+                let mut task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
+                task.site = node.op.attributes.place.clone();
                 self.tasks.insert(task.id, (at, task.clone()));
                 Ok(vec![task])
             }
@@ -340,9 +341,12 @@ impl WirDriver {
                 vec![task.clone()]
             }
             Err(why) => {
-                let status = match outcome.error {
-                    Some(_) => Status::Errored,
-                    None => Status::Failed,
+                // A task that could not run says why in the last line of its error output.
+                let said = outcome.stderr.trim().lines().last();
+                let (status, why) = match (&outcome.error, said) {
+                    (Some(_), Some(said)) => (Status::Errored, said.to_owned()),
+                    (Some(_), None) => (Status::Errored, why),
+                    (None, _) => (Status::Failed, why),
                 };
                 let message = format!("op {}: {why}", node.path);
                 self.progress.end(at, status, Map::new(), Some(message));
@@ -452,6 +456,9 @@ impl WirDriver {
             // A cache rule only makes reuse stricter, never overriding the block's own veto.
             if node.op.attributes.cache == Some(wir::Cache::Never) {
                 task.reuse = Reuse::Disabled;
+            }
+            if let Some(place) = &node.op.attributes.place {
+                task.site = Some(place.clone());
             }
         }
         if !child.busy() && !child.finished() {

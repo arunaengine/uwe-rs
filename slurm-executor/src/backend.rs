@@ -1157,27 +1157,15 @@ impl SlurmBackend {
         journal_at(root, &journal)?;
         let mut sbatch = Command::new(self.command("sbatch"));
         sbatch.env_clear();
-        let mut exported = Vec::new();
         for (name, value) in self.passed() {
             sbatch.env(&name, value);
-            exported.push(name);
         }
         if let Some(secret) = secret {
             sbatch.env(executor::helper::STORAGE, secret);
-            exported.push(executor::helper::STORAGE.to_owned());
         }
-        // Names only: `--export` splits at commas, which values may hold. It comes after the
-        // options, so that it wins over an `--export` there.
-        exported.sort();
-        exported.dedup();
-        let export = match exported.is_empty() {
-            true => "NONE".to_owned(),
-            false => exported.join(","),
-        };
-        sbatch
-            .args(options)
-            .arg(format!("--export={export}"))
-            .arg(&script);
+        // The environment of sbatch holds only these variables. A list of names without `ALL`
+        // would imply `--get-user-env`. It comes after the options, so that it wins there.
+        sbatch.args(options).arg("--export=ALL").arg(&script);
         let output = tokio::select! {
             output = crate::queue::output(&mut sbatch, self.submit_grace) => output.map_err(|error| unresolved(root, error))?,
             () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),

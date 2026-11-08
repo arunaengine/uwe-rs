@@ -433,7 +433,16 @@ impl Adapter {
         for (name, value) in values {
             tags.extend(tag_values(name, value)?);
         }
-        let text = crate::tags::replace(text, &Variables::new(tags), true)?;
+        let variables = Variables::new(tags);
+        let listed = matches!(form, Form::Items | Form::Labels);
+        let text = match serde_json::from_str::<Json>(text) {
+            // The list of `withItems` or the object of `withSequence` takes its values as they
+            // are, as the native run substitutes the step before it reads its loop.
+            Ok(value @ (Json::Array(_) | Json::Object(_))) if listed => {
+                substituted(value, &variables)?.to_string()
+            }
+            _ => crate::tags::replace(text, &variables, true)?,
+        };
         let site = format!("{}{site}", self.run.workflow_name);
         if form == Form::Condition {
             return self.run.decide_when(&text, &site).map(Json::Bool);
@@ -561,6 +570,23 @@ fn tag_values(name: &str, value: &Json) -> Result<Vec<(String, String)>, String>
             vec![(name.to_owned(), Value::Array(items).to_json())]
         }
         other => vec![(name.to_owned(), text(other))],
+    })
+}
+
+/// A JSON value with the tags of each of its texts substituted.
+fn substituted(value: Json, variables: &Variables) -> Result<Json, String> {
+    Ok(match value {
+        Json::String(text) => Json::String(crate::tags::replace(&text, variables, true)?),
+        Json::Array(items) => {
+            let items = items.into_iter().map(|item| substituted(item, variables));
+            Json::Array(items.collect::<Result<_, _>>()?)
+        }
+        Json::Object(entries) => {
+            let entries =
+                (entries.into_iter()).map(|(key, item)| Ok((key, substituted(item, variables)?)));
+            Json::Object(entries.collect::<Result<_, String>>()?)
+        }
+        other => other,
     })
 }
 

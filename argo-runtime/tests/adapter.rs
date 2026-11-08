@@ -542,3 +542,19 @@ fn list_items() {
     let listed = adapter.evaluate("{{steps.make.outputs.result}}", form, "[1].use", &outputs);
     assert_eq!(listed.unwrap(), json!("[1,2]"));
 }
+
+#[test]
+fn quoted_items() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = launch(folder.path(), STEPS);
+    let mut adapter = Adapter::load(&launch, Services::default()).unwrap();
+    let values = serde_json::Map::from_iter([("inputs.parameters.p".to_owned(), json!("a\"b"))]);
+    let form = argo_runtime::adapter::Form::Items;
+    let items = adapter.evaluate(
+        r#"["{{inputs.parameters.p}}", "c"]"#,
+        form,
+        "[0].make",
+        &values,
+    );
+    assert_eq!(items.unwrap(), json!(["a\"b", "c"]));
+}

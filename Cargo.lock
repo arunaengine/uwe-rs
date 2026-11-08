@@ -118,8 +118,13 @@ name = "argo-compiler"
 version = "0.1.0"
 dependencies = [
  "argo-parser",
+ "argo-runtime",
  "regex",
+ "serde_json",
+ "task-model",
+ "tempfile",
  "wir",
+ "workflow-graph",
 ]
 
 [[package]]

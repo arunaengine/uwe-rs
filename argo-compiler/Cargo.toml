@@ -13,5 +13,12 @@ publish.workspace = true
 
 [dependencies]
 argo-parser.workspace = true
+argo-runtime.workspace = true
 regex.workspace = true
+serde_json.workspace = true
+task-model.workspace = true
 wir.workspace = true
+workflow-graph.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -77,6 +77,9 @@ pub fn folder(
         return Ok((own, None));
     };
     if directory.starts_with('/') || directory.contains("://") {
+        if !wir::plain_folder(directory) {
+            return Err(turn.failed(format!("the folder {directory} has an empty, . or .. part")));
+        }
         return match effects.iter().any(|effect| effect.publishes(directory)) {
             true => Ok((own, Some(directory.trim_end_matches('/').to_owned()))),
             false => Err(turn.failed(format!(

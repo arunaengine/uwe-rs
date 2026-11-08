@@ -34,6 +34,10 @@ pub(crate) struct CollectFile {
 }
 
 impl Behaviour for CollectFile {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::collect_file(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {

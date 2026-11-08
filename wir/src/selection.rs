@@ -11,7 +11,7 @@ use super::{Checker, Problem};
 use crate::closure::Body;
 use crate::document::Port;
 use crate::flow::Flow;
-use crate::op::{Effect, Op};
+use crate::op::{Op, plain_folder};
 use crate::reserved::{
     Buffer, BufferRule, IfEmpty, Pair, SequenceField, Split, SplitFormat, Window,
 };
@@ -180,8 +180,12 @@ pub(super) fn places(op: &Op, name: Option<&str>, directory: Option<&str>) -> Ve
         return wrong;
     };
     let outside = directory.starts_with('/') || directory.contains("://");
-    let published = (op.effects.iter()).any(|effect| matches!(effect, Effect::Publish(_)));
-    if outside && !published {
+    let published = (op.effects.iter()).any(|effect| effect.publishes(directory));
+    if outside && !plain_folder(directory) {
+        wrong.push(format!(
+            "a folder without empty, . or .. parts, not {directory}"
+        ));
+    } else if outside && !published {
         wrong.push(format!("a publish effect to write to {directory}"));
     }
     if !outside && directory.split('/').any(|part| part == "..") {

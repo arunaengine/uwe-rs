@@ -23,6 +23,10 @@ pub(crate) struct Route {
 }
 
 impl Behaviour for Route {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::route(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
@@ -65,6 +69,10 @@ pub(crate) struct Concat {
 }
 
 impl Behaviour for Concat {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Ok(crate::export::Kind::Concat)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while self.current < context.input_count() {
             match context.read(self.current) {
@@ -86,6 +94,10 @@ pub(crate) struct Merge {
 }
 
 impl Behaviour for Merge {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::merge(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         loop {
             if (0..context.input_count())

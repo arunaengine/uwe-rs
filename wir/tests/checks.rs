@@ -698,8 +698,52 @@ fn split_options() {
         source.clone(),
         typed("out", json!("dynamic"), "stream"),
     );
-    published["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": "chunks"}]);
-    assert_eq!(problems(&published), Vec::<String>::new());
+    let targets = [
+        ("/data/chunks", true),
+        ("/data/", true),
+        ("chunks", false),
+        ("/data/chunk", false),
+        ("/data/chunks/inner", false),
+        ("/data/../data", false),
+        ("", false),
+    ];
+    for (target, names) in targets {
+        published["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": target}]);
+        let wanted = match names {
+            true => Vec::new(),
+            false => needs("a publish effect to write to /data/chunks"),
+        };
+        assert_eq!(
+            problems(&published),
+            wanted,
+            "the publish target {target:?}"
+        );
+    }
+    let folders = [
+        ("/data/chunks/../other", "/data/chunks", false),
+        ("/data/./chunks", "/data", false),
+        ("/data//chunks", "/data", false),
+        ("s3://bucket/../other", "s3://bucket", false),
+        ("/data/allowed/../other://out", "/data/allowed", false),
+        ("file:///data/allowed/out", "file:///data/allowed", true),
+        ("s3://bucket/out/", "s3://bucket", true),
+    ];
+    for (directory, target, plain) in folders {
+        let split = json!({"format": {"text": {}}, "files": {"directory": directory}});
+        let mut document = many(
+            json!({"split": split}),
+            source.clone(),
+            typed("out", json!("dynamic"), "stream"),
+        );
+        document["graphs"][0]["ops"][0]["effects"] = json!(["write_files", {"publish": target}]);
+        let wanted = match plain {
+            true => Vec::new(),
+            false => needs(&format!(
+                "a folder without empty, . or .. parts, not {directory}"
+            )),
+        };
+        assert_eq!(problems(&document), wanted, "the folder {directory}");
+    }
     let escaping = json!({"format": {"text": {}}, "files": {"directory": "../up", "name": "a/b"}});
     let found = split(escaping);
     assert!(
@@ -739,11 +783,18 @@ fn effect_declarations() {
         collected,
         ["main/op: op kind collect_file needs the effect \"write_files\""]
     );
+    let bucket = checked(
+        json!({"collect_file": {"directory": "s3://bucket/out"}}),
+        &ints,
+        file_out.clone(),
+        json!(["write_files", {"publish": "s3://bucket"}]),
+    );
+    assert_eq!(bucket, Vec::<String>::new(), "a folder that holds it");
     let outside = checked(
         json!({"collect_file": {"directory": "s3://bucket/out"}}),
         &ints,
         file_out,
-        json!(["write_files"]),
+        json!(["write_files", {"publish": "s3://other"}]),
     );
     assert_eq!(
         outside,
@@ -1028,6 +1079,36 @@ fn dialect_tasks() {
     assert_eq!(found, ["main/t: a dialect task needs a map of output bam"]);
 }
 
+#[test]
+fn snakemake_plans() {
+    let job = |extra: Json| {
+        let mut rule = json!({"task": {"source": "s", "entry": "all", "call": "map",
+            "inputs": [{"port": "reads", "native": "input/0"}],
+            "outputs": [{"port": "bam", "native": "output/0"}]}, "wildcards": {"n": "1"}});
+        rule.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().cloned().unwrap());
+        dialect("snakemake", json!({"snakemake_job": rule}), json!({}))
+    };
+    let good = job(
+        json!({"targets": ["all", "b.txt"], "config_values": "s", "forcerun": ["map"],
+        "group": [{"source": "s", "rule": "sort", "wildcards": {"n": "1"}}]}),
+    );
+    assert_eq!(good, Vec::<String>::new());
+    let found = job(json!({"targets": ["b.txt", ""], "config_values": "loose",
+        "group": [{"source": "t", "rule": "map", "wildcards": {"n": "1"}}]}));
+    assert_eq!(
+        found,
+        [
+            "main/t: a dialect task needs a digest that pins source loose",
+            "main/t: a Snakemake job needs targets that start with its entry",
+            "main/t: a Snakemake job needs targets that are not empty",
+            "main/t: a Snakemake job needs a rule of source s in its group",
+            "main/t: a Snakemake job needs job map once in its group",
+        ]
+    );
+}
+
 /// A graph `main` with a loop `op` over the body `count`, which adds one to `n` and says
 /// `again` while it is below three.
 fn looping(looped: Json, inputs: Json, outputs: Json) -> Json {
@@ -1129,4 +1210,44 @@ fn dynamic_boundary() {
     );
     let planner = json!({"planner": {"snakemake": {"source": "smk"}}});
     assert_eq!(region(planner, &plans), ["main/op: no source named smk"]);
+}
+
+/// A graph `main` whose expr op `when` reads `a` and gives `out` of type `out`.
+fn texted(expr: Json, out: &str) -> Json {
+    let op = json!({"path": "when", "kind": {"expr": expr},
+        "inputs": [port("a", "string")], "outputs": [port("out", out)]});
+    let main = json!({"name": "main", "inputs": [port("a", "string")],
+        "outputs": [port("out", out)], "ops": [op],
+        "edges": [edge((None, "a"), (Some("when"), "a")), edge((Some("when"), "out"), (None, "out"))]});
+    json!({"wir_version": wir::VERSION, "graphs": [main], "entry": "main"})
+}
+
+#[test]
+fn argo_forms() {
+    let argo = |form: &str| json!({"language": "argo", "code": "{{a}} == x", "form": form});
+    assert_eq!(
+        problems(&texted(argo("condition"), "bool")),
+        Vec::<String>::new()
+    );
+    let text = json!({"language": "argo", "code": "{{a}}-b"});
+    assert_eq!(problems(&texted(text, "string")), Vec::<String>::new());
+    reports(
+        &texted(argo("condition"), "string"),
+        "main/when: output out gets \"bool\" but accepts \"string\"",
+    );
+    let labels = json!({"array": {"items": "string"}});
+    let mut listed = texted(argo("labels"), "string");
+    listed["graphs"][0]["ops"][0]["outputs"][0]["type"] = labels.clone();
+    listed["graphs"][0]["outputs"][0]["type"] = labels;
+    assert_eq!(problems(&listed), Vec::<String>::new());
+    let js = json!({"language": "js", "code": "$(inputs.a)", "form": "text"});
+    reports(
+        &texted(js, "string"),
+        "main/when: a form needs an argo expr",
+    );
+    let library = json!({"language": "argo", "code": "{{a}}", "library": ["x"]});
+    reports(
+        &texted(library, "string"),
+        "main/when: an argo expr needs no library and no captures",
+    );
 }

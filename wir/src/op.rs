@@ -402,6 +402,20 @@ pub struct Expr {
     pub scope: Option<Scope>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub captures: BTreeMap<String, Binding>,
+    /// What an Argo text gives once its tags are substituted; the text when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form: Option<ExprForm>,
+}
+
+/// What an `argo` expr gives: its text, whether it holds as a `when`, the items of a loop, or
+/// the labels that those items give the node names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExprForm {
+    Text,
+    Condition,
+    Items,
+    Labels,
 }
 
 /// Runs the `body` graph, like a call, when the bool input `condition` is true; otherwise the
@@ -432,10 +446,9 @@ pub enum Listing {
     Deep,
 }
 
-/// Runs the `body` graph once per round: each round takes items of the array inputs in `over`
-/// and the other inputs as they are. Each output is the array of what the rounds gave, in
-/// round order. `parallelism` limits the rounds that run at once, and `min_success` lets the
-/// map succeed with failed rounds, which give null.
+/// Runs the `body` graph once per round over items of the array inputs in `over`; other inputs
+/// stay as they are. Outputs are arrays of the round results, in round order. `parallelism`
+/// limits rounds at once; `min_success` lets the map succeed with failed rounds, which give null.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Map {
@@ -536,7 +549,7 @@ pub struct Dependency {
 }
 
 /// How an op ended, like the Argo task statuses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Succeeded,
@@ -569,6 +582,42 @@ pub enum Effect {
     ReadFiles,
     /// Writes files in the file area of the run.
     WriteFiles,
+}
+
+impl Effect {
+    /// Whether this publishes to the folder `directory`: its target is that folder or one that
+    /// holds it.
+    pub fn publishes(&self, directory: &str) -> bool {
+        let Effect::Publish(target) = self else {
+            return false;
+        };
+        let (target, directory) = (
+            target.trim_end_matches('/'),
+            directory.trim_end_matches('/'),
+        );
+        let inside = |rest: &str| rest.is_empty() || rest.starts_with('/');
+        (plain_folder(target) && plain_folder(directory))
+            && directory.strip_prefix(target).is_some_and(inside)
+    }
+}
+
+/// Whether a folder outside the run names its place plainly: a path or an address whose
+/// parts are not empty, `.` or `..`.
+pub fn plain_folder(folder: &str) -> bool {
+    let folder = folder.trim_end_matches('/');
+    let scheme = |name: &str| {
+        name.starts_with(|c: char| c.is_ascii_alphabetic())
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+    };
+    let rest = match folder.split_once("://") {
+        Some((name, rest)) if scheme(name) => rest,
+        _ => folder,
+    };
+    let rest = rest.strip_prefix('/').unwrap_or(rest);
+    let plain = |part: &str| !part.is_empty() && part != "." && part != "..";
+    !rest.is_empty() && rest.split('/').all(plain)
 }
 
 /// Run settings that never enter a task cache key. A binding file per run may set them by

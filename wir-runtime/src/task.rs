@@ -15,6 +15,9 @@ use workflow_graph::{
     Files, Input, Network, Outcome, OutputFile, Resources, Reuse, Task, TaskId, Writable,
 };
 
+use crate::callback::Callbacks;
+use crate::engine::Context;
+
 /// Where a task runs in its container: its fresh working folder.
 pub const WORKDIR: &str = "/work";
 
@@ -277,14 +280,14 @@ pub struct Ended<'a> {
     pub access: &'a Access,
 }
 
-/// The output values that the captures of a task read from an outcome, or why the attempt
-/// is not accepted: an exit code outside the success codes, or a capture that failed.
+/// The output values that the captures of a task read from an outcome, with the optional
+/// outputs that matched nothing and stay empty, or why the attempt is not accepted.
 pub fn capture(
     spec: &wir::Task,
     ports: &[Port],
     ended: Ended<'_>,
     defs: &[TypeDef],
-) -> Result<Map<String, Json>, String> {
+) -> Result<(Map<String, Json>, Vec<String>), String> {
     let Ended {
         outcome,
         files,
@@ -309,7 +312,7 @@ pub fn capture(
         Some(name) => self::results(name, outcome, files, simulated)?,
         None => None,
     };
-    let mut values = Map::new();
+    let (mut values, mut empty) = (Map::new(), Vec::new());
     for port in ports {
         let Some(capture) = spec.captures.iter().find(|item| item.output == port.name) else {
             return Err(format!("output {} has no capture", port.name));
@@ -355,6 +358,21 @@ pub fn capture(
                     .collect()
             }
         };
+        // Arity counts the matched paths before they become the output value.
+        if let Some(arity) = &capture.arity {
+            let count = found.len() as u64;
+            if count < arity.min || arity.max.is_some_and(|max| count > max) {
+                let most = arity.max.map_or("any".to_owned(), |max| max.to_string());
+                return Err(format!(
+                    "output {}: {count} paths matched, not {} to {most}",
+                    port.name, arity.min
+                ));
+            }
+        }
+        if capture.optional && found.is_empty() {
+            empty.push(port.name.clone());
+            continue;
+        }
         if let Some(code) = &capture.code {
             let value = match evaluated((code, capture), &found, spec, ended) {
                 // A simulated run makes files up, so code over them may fail.
@@ -398,7 +416,70 @@ pub fn capture(
         }
         values.insert(port.name.clone(), value);
     }
-    Ok(values)
+    Ok((values, empty))
+}
+
+/// The object that the retry callbacks of a task take for an attempt: the inputs, the round
+/// index, the attempt from 1, and how the attempt before it was rejected, or null.
+pub fn attempt_context(
+    inputs: &Map<String, Json>,
+    index: u64,
+    attempt: u32,
+    previous: Json,
+) -> Json {
+    json!({"inputs": inputs, "index": index, "attempt": attempt, "previous": previous})
+}
+
+/// What a retry callback gives for the attempt object `argument`.
+pub fn callback(
+    callbacks: &mut Callbacks,
+    context: &Context<'_>,
+    closure: &wir::Closure,
+    argument: Json,
+    inputs: &Map<String, Json>,
+) -> Result<Json, String> {
+    let body = wir::Body::Closure(closure.clone());
+    callbacks.call(context, &body, (&["attempt"], &[argument]), inputs)
+}
+
+/// A task op as one attempt runs it: the base settings with the patch of that attempt.
+pub fn patched(spec: &wir::Task, op: &Op, patch: &wir::TaskPatch) -> (wir::Task, Op) {
+    let (mut spec, mut op) = (spec.clone(), op.clone());
+    let wir::TaskPatch {
+        image,
+        command,
+        resources,
+        time,
+        place,
+        success_codes,
+    } = patch.clone();
+    spec.image = image.or(spec.image);
+    spec.command = command.unwrap_or(spec.command);
+    spec.success_codes = success_codes.unwrap_or(spec.success_codes);
+    let attributes = &mut op.attributes;
+    attributes.resources = resources.or(attributes.resources.take());
+    attributes.time = time.or(attributes.time);
+    attributes.place = place.or(attributes.place.take());
+    (spec, op)
+}
+
+/// Whether the `accept` callback of a task holds for an attempt: it takes one object of the
+/// inputs, the outputs, the round index, the attempt and the exit code, and gives a bool.
+pub fn accepts(
+    callbacks: &mut Callbacks,
+    context: &Context<'_>,
+    accept: &wir::Closure,
+    attempt: (&Map<String, Json>, &Map<String, Json>, u64),
+    outcome: &Outcome,
+) -> Result<bool, String> {
+    let (inputs, outputs, index) = attempt;
+    let argument = json!({"inputs": inputs, "outputs": outputs, "index": index,
+        "attempt": outcome.attempt, "exit_code": outcome.exit_code});
+    let body = wir::Body::Closure(accept.clone());
+    match callbacks.call(context, &body, (&["attempt"], &[argument]), inputs)? {
+        Json::Bool(holds) => Ok(holds),
+        other => Err(format!("the acceptance check gave {other}, not a bool")),
+    }
 }
 
 /// The value of code for an output of one File or Directory: a list of no or one item is
@@ -1181,7 +1262,7 @@ mod tests {
             settings: &JavaScriptSettings::default(),
             access: &Access::default(),
         };
-        let values = capture(&spec, &ports, ended, &[]).unwrap();
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
         assert_eq!(
             values["made"]["location"], "/out/a.txt",
             "the file the task made"
@@ -1237,7 +1318,7 @@ mod tests {
             settings: &settings,
             access: &access,
         };
-        let values = capture(&spec, &ports, ended(true), &[]).unwrap();
+        let (values, _) = capture(&spec, &ports, ended(true), &[]).unwrap();
         assert_eq!(
             values["reads"]["basename"], "r.fastq",
             "the first made-up file"

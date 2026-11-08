@@ -166,6 +166,7 @@ impl<'d> Checker<'d> {
         let mut why = Vec::new();
         match (closure.language, closure.parameters.len()) {
             (ExprLanguage::Js, _) => why.push("js is no closure language; use javascript".into()),
+            (ExprLanguage::Argo, _) => why.push("argo is no closure language".into()),
             (ExprLanguage::Wdl, count) if count != arity.names().len() => {
                 why.push(format!(
                     "a wdl closure names {} parameters",
@@ -221,6 +222,7 @@ impl<'d> Checker<'d> {
             ExprLanguage::Groovy => Language::Nextflow,
             ExprLanguage::Python => Language::Snakemake,
             ExprLanguage::Wdl => Language::Wdl,
+            ExprLanguage::Argo => Language::Argo,
             ExprLanguage::Js | ExprLanguage::Javascript => Language::Cwl,
         };
         if source.language != want {

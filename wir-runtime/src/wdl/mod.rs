@@ -3,6 +3,9 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+pub(crate) mod closure;
+pub(crate) mod expr;
+
 use serde_json::{Map, Value as Json, json};
 use wdl_runtime::{Options, WdlDriver};
 use wir::{Port, Type, TypeDef, resolve};
@@ -24,6 +27,34 @@ impl Block for WdlDriver {
     fn exported(&self) -> Result<Option<Json>, DriverError> {
         Ok(WdlDriver::exported(self))
     }
+}
+
+/// The WDL input file of a native op: the inputs that are not None, and None for an input
+/// whose flag `given.<input>` or `<call>.given.<input>` is set, as it was given `None`.
+pub(crate) fn job(mut values: Map<String, Json>) -> Json {
+    let flags: Vec<(String, String)> = (values.keys())
+        .filter_map(|key| Some((key.clone(), flagged(key)?)))
+        .collect();
+    let mut given = Vec::new();
+    for (flag, name) in flags {
+        if values.remove(&flag) == Some(Json::Bool(true)) {
+            given.push(name);
+        }
+    }
+    let mut job = crate::nextflow::params(&values);
+    if let Json::Object(job) = &mut job {
+        for name in given {
+            job.entry(name).or_insert(Json::Null);
+        }
+    }
+    job
+}
+
+/// The input that a flag `given.<input>` or `<call>.given.<input>` is about.
+fn flagged(key: &str) -> Option<String> {
+    let (head, input) = key.rsplit_once('.')?;
+    let call = head.strip_suffix("given")?;
+    (call.is_empty() || call.ends_with('.')).then(|| format!("{call}{input}"))
 }
 
 /// The op inputs with each tuple of two as a WDL pair, an object with `left` and `right`, as

@@ -84,6 +84,7 @@ impl Lowerer {
                 library: library.clone(),
                 scope: None,
                 captures: Default::default(),
+                form: None,
             });
             let mut op = blank(&output.name, kind, None);
             // The graph applies the defaults before its exprs see the inputs.

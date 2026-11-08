@@ -323,6 +323,49 @@ fn compiled_commands_match() {
     assert_eq!(compared.shown, "same: 7 tasks");
 }
 
+/// Compiles `snakefile` in a folder with the config file `config`, writes `changed` there,
+/// and runs the compiled document; its tasks, or why it failed.
+fn rerun(snakefile: &str, config: &str, changed: &[(&str, &str)]) -> Result<Ran, String> {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let root = folder.path().join("work");
+    std::fs::create_dir(&root).expect("makes the working folder");
+    std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    std::fs::write(root.join("config.yaml"), config).expect("writes the config");
+    let launch = Launch {
+        target: root.join("Snakefile"),
+        configs: vec![root.join("config.yaml")],
+        scratch: folder.path().join("compile"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let run = RunSettings {
+        workdir: Some(root.clone()),
+        ..RunSettings::default()
+    };
+    let scratch = folder.path().join("scratch");
+    let compiled =
+        snakemake_compiler::compile(&launch, Settings::default(), run.clone(), &scratch)?;
+    for (name, text) in changed {
+        std::fs::write(root.join(name), text).expect("writes a file");
+    }
+    let mut driver = run_compiled(&compiled.document, run, &scratch.join("compiled"))?;
+    simulate(&mut *driver, &[&root], &scratch.join("simulator"))
+}
+
+/// A run whose plan reads the inputs of a job in another order refuses the job.
+#[test]
+fn refuses_other_layouts() {
+    let snakefile = "rule c:\n    input: expand(\"{n}.txt\", n=config[\"order\"])\n    output: \"c.txt\"\n    shell: \"cat {input} > {output}\"\n\nrule make:\n    output: \"{n}.txt\"\n    wildcard_constraints: n=\"[xy]\"\n    shell: \"echo {wildcards.n} > {output}\"\n";
+    let swapped = [("config.yaml", "order: [y, x]\n")];
+    let ran = rerun(snakefile, "order: [x, y]\n", &swapped);
+    let error = ran.expect_err("refuses the job");
+    assert!(
+        error.contains("plans no job of rule c as compiled"),
+        "{error}"
+    );
+    assert!(rerun(snakefile, "order: [x, y]\n", &[]).is_ok());
+}
+
 /// How a test workflow is launched: its working folder and Snakefile, config files, targets
 /// and profiles, from the launches of the test-workflows test of snakemake-runtime.
 fn launch_of(name: &str, folder: &Path, scratch: &Path) -> (Launch, PathBuf) {

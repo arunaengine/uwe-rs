@@ -65,7 +65,7 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> 
         if !setting.configs.is_empty() {
             task["configs"] = json!(setting.configs);
         }
-        let mut builder = json!({"task": task});
+        let mut builder = json!({"task": task, "layout": crate::launch::layout(jobs, index)});
         if !job.key.wildcards.is_empty() {
             builder["wildcards"] = json!(job.key.wildcards);
         }

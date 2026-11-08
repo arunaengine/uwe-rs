@@ -82,6 +82,13 @@ impl<'d> Checker<'d> {
         if named.into_iter().flatten().any(String::is_empty) {
             why.push("targets that are not empty".to_owned());
         }
+        if rule
+            .layout
+            .as_ref()
+            .is_some_and(|layout| !layout.starts_with("sha256:"))
+        {
+            why.push("a layout that is a sha256 digest".to_owned());
+        }
         let mut seen = BTreeSet::from([(&reference.call, &rule.wildcards)]);
         for member in &rule.group {
             if member.source != reference.source || member.rule.is_empty() {

@@ -22,7 +22,7 @@ fn schema_matches_parser() {
         json!({"task": {"builder": {"snakemake_job": {"task": {"source": "s", "entry": "a", "call": "r"},
             "group": [{"source": "s", "rule": "q", "wildcards": {"n": "1"}}], "targets": ["a", "b"],
             "config_values": "v", "until": ["r"], "omit_from": ["q"], "forcerun": ["r"],
-            "forceall": true}}}}),
+            "forceall": true, "layout": "sha256:ab"}}}}),
         json!({"task": {"command": ["ls", {"raw": "| wc"}, {"input": "a", "quote": false}],
             "shell": true}}),
         json!({"task": {"command": ["cat"], "environment": {"HOME": "/tmp", "A": {"input": "a"}},

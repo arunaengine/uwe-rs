@@ -1044,14 +1044,17 @@ fn snakemake_plans() {
         "group": [{"source": "s", "rule": "sort", "wildcards": {"n": "1"}}]}),
     );
     assert_eq!(good, Vec::<String>::new());
-    let found = job(json!({"targets": ["b.txt", ""], "config_values": "loose",
-        "group": [{"source": "t", "rule": "map", "wildcards": {"n": "1"}}]}));
+    let found = job(
+        json!({"targets": ["b.txt", ""], "config_values": "loose", "layout": "ab",
+        "group": [{"source": "t", "rule": "map", "wildcards": {"n": "1"}}]}),
+    );
     assert_eq!(
         found,
         [
             "main/t: a dialect task needs a digest that pins source loose",
             "main/t: a Snakemake job needs targets that start with its entry",
             "main/t: a Snakemake job needs targets that are not empty",
+            "main/t: a Snakemake job needs a layout that is a sha256 digest",
             "main/t: a Snakemake job needs a rule of source s in its group",
             "main/t: a Snakemake job needs job map once in its group",
         ]

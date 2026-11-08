@@ -270,6 +270,39 @@ impl Behaviour for ProcessNode {
         Ok(State::Running)
     }
 
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        let binding = &self.binding;
+        let process = &binding.process;
+        let each = (process.inputs.iter().enumerate())
+            .filter(|(_, input)| matches!(input, Input::Each(_)))
+            .map(|(index, _)| index)
+            .collect();
+        let outputs = (process.outputs.iter())
+            .map(|output| crate::export::Output {
+                emit: output.emit.as_deref().map(str::to_owned),
+                topic: output.topic.as_deref().map(str::to_owned),
+                hidden: output.hidden,
+            })
+            .collect();
+        let call = crate::adapter::Call {
+            script: binding
+                .module
+                .path
+                .borrow()
+                .as_deref()
+                .unwrap_or_default()
+                .to_owned(),
+            process: process.name.to_string(),
+            name: binding.name.to_string(),
+            singleton: binding.singleton,
+        };
+        Ok(crate::export::Kind::Process {
+            call,
+            each,
+            outputs,
+        })
+    }
+
     fn definition(&self) -> Option<Definition> {
         Some(Definition {
             name: self.binding.process.name.clone(),

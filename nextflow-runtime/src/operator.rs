@@ -22,9 +22,16 @@ pub(crate) struct Factory {
     /// Why the factory cannot give its values, like a missing file of `fromPath` with
     /// `checkIfExists`, which Nextflow reports when the factory starts, not when it is made.
     pub failure: Option<Error>,
+    /// The call of a factory that reads its values when the run starts, which the lowering
+    /// keeps instead of the values that the build read.
+    pub call: Option<(Rc<str>, Vec<Value>)>,
 }
 
 impl Behaviour for Factory {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::factory(self)
+    }
+
     fn ignite(&mut self, context: &mut Context) -> Result<State, Error> {
         if let Some(failure) = self.failure.take() {
             return Err(failure);
@@ -88,6 +95,10 @@ pub(crate) struct Single {
 }
 
 impl Behaviour for Single {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::single(self)
+    }
+
     fn ignite(&mut self, context: &mut Context) -> Result<State, Error> {
         if let Each::Take(0) = self.kind {
             context.close(self.output);
@@ -324,6 +335,10 @@ pub(crate) struct Gathering {
 }
 
 impl Behaviour for Gathering {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::gathering(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
@@ -653,6 +668,10 @@ pub(crate) struct Collate {
 }
 
 impl Behaviour for Collate {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Ok(crate::describe::collate(self))
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
@@ -762,6 +781,10 @@ fn matches(context: &mut Context, criteria: &Value, value: &Value) -> Result<boo
 }
 
 impl Behaviour for Buffer {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::buffer(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         while let Some(message) = context.read(0) {
             let Message::Value(value) = message else {
@@ -793,6 +816,10 @@ pub(crate) struct Mix {
 }
 
 impl Behaviour for Mix {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        Ok(crate::export::Kind::Mix)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         for input in 0..context.input_count() {
             while !self.closed[input] {
@@ -877,6 +904,10 @@ pub(crate) struct Invoke {
 }
 
 impl Behaviour for Invoke {
+    fn export(&self) -> Result<crate::export::Kind, String> {
+        crate::describe::invoke(self)
+    }
+
     fn run(&mut self, context: &mut Context) -> Result<State, Error> {
         let mut values = Vec::new();
         for input in 0..context.input_count() {

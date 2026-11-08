@@ -266,6 +266,8 @@ pub struct Remote<B> {
     backend: B,
     config: Option<Config>,
     engine: String,
+    /// The journal folder of the containers of the engine, from the cache folder of the run.
+    journals: std::path::PathBuf,
     store: Store,
     scratch: std::path::PathBuf,
     holder: Holder,
@@ -285,6 +287,7 @@ impl<B> Remote<B> {
             backend,
             config: setup.conda.clone(),
             engine: setup.engine(),
+            journals: crate::cache_directory().join("containers"),
             store,
             scratch: scratch.to_owned(),
             holder: Holder::new(run, "Conda image publication"),
@@ -313,7 +316,8 @@ impl<B: Backend> Backend for Remote<B> {
                     ExecutorError::Unsupported(format!(
                         "Conda publication needs a local container engine: {error}"
                     ))
-                })?;
+                })?
+                .with_journal_root(self.journals.clone());
                 Ok::<_, ExecutorError>(Local {
                     backend: LocalContainer::new(
                         engine,

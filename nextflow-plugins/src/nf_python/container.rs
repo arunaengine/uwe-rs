@@ -86,6 +86,7 @@ pub(crate) fn run(call: &Call) -> Result<Ended, String> {
         environment,
         memory: None,
         show_stderr: false,
+        journals: None,
     };
     run_with_limit(&spec, &CancellationToken::new(), LIMIT).map_err(|error| error.to_string())?;
     let status = std::fs::read_to_string(&call.status)

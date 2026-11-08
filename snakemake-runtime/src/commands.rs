@@ -76,6 +76,8 @@ pub struct CommandRunner {
     pub state: Rc<RefCell<State>>,
     pub settings: crate::driver::RunSettings,
     pub engine: String,
+    /// Where the engine keeps the journal of hook containers, as for the Python containers.
+    pub journals: Option<PathBuf>,
     pub scratch: PathBuf,
     pub simulated: bool,
     pub cancel: executor::CancellationToken,
@@ -213,6 +215,7 @@ impl CommandRunner {
         let outcome = crate::hooks::run(
             &task,
             &self.engine,
+            self.journals.as_deref(),
             &self.scratch,
             self.settings.offline,
             &cancel,

@@ -284,6 +284,7 @@ fn orders_live_consumers() {
         environment: Vec::new(),
         memory: None,
         show_stderr: true,
+        journals: None,
     };
     executor::process::run_to_end(&spec).unwrap();
     assert_eq!(

@@ -39,6 +39,7 @@ fn settings() -> Settings {
             image: None,
             cache: root.join("python-cache"),
             show_output: false,
+            journals: None,
         }),
         ..Settings::default()
     }

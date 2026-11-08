@@ -26,6 +26,7 @@ pub mod nextflow;
 mod operator;
 mod pairing;
 mod plan;
+mod processes;
 mod python;
 mod reducing;
 mod routing;

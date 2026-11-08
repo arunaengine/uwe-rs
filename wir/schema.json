@@ -989,7 +989,7 @@
               },
               "from": {
                 "oneOf": [
-                  { "enum": ["stdout", "stderr"] },
+                  { "enum": ["stdout", "stderr", "results"] },
                   {
                     "type": "object",
                     "additionalProperties": false,
@@ -1021,6 +1021,7 @@
         },
         "stdin": { "$ref": "#/$defs/file_name" },
         "library": { "type": "array", "items": { "type": "string" } },
+        "results": { "type": "string" },
         "files": {
           "type": "array",
           "items": {

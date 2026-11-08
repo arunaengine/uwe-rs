@@ -128,6 +128,9 @@ The stream log is not a replacement for the task cache or resume database. This 
 - `{"glob": pattern}`: paths in the working folder that match, sorted by path. One match fills a File or Directory output, all matches fill an array output. No match fills an optional output with null and fails the task otherwise; several matches fail a non-array output; an empty match fails a nonempty array.
 - `{"patterns": input}`: paths that match any pattern that the task input holds, a string or an array of strings, like a glob per pattern, in the order of the patterns; each pattern stays inside the working folder.
 - `"stdout"` and `"stderr"`: a File with what the command wrote there.
+- `"results"`: the field of the output in the object of the `results` file; null when the command writes no such file.
+
+`results` names a file in the working folder, like CWL `cwl.output.json`. When the command writes it, its JSON object gives every output in place of the captures: the field of its name, null when it has none. A File or Directory there with a `path`, or else a `location`, names a place in the container, absolute or from the working folder, and becomes the file that the task made or the input staged there. A runner lists the file among the outputs of the task and as its output manifest.
 
 A capture with `load_contents` puts the text of each File it reads into `contents`, like CWL `loadContents`; a file over 64 KiB fails the task. The output must hold Files.
 

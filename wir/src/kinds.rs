@@ -95,9 +95,17 @@ impl<'d> Checker<'d> {
             }
         }
         for capture in &task.captures {
-            if let CaptureRule::Patterns(input) = &capture.from {
-                used.push(input);
+            match &capture.from {
+                CaptureRule::Patterns(input) => used.push(input),
+                CaptureRule::Results if task.results.is_none() => {
+                    let why = "the results file of the task".into();
+                    self.report(at, Problem::Shape("a results capture".into(), why));
+                }
+                _ => {}
             }
+        }
+        if let Some(name) = task.results.as_ref().filter(|name| !inside(name)) {
+            self.report(at, Problem::Outside(name.clone()));
         }
         let given = task.environment.values().chain(&task.stdin);
         for content in given {
@@ -572,6 +580,7 @@ fn capture_fits(rule: &CaptureRule, r#type: &Type, defs: &[TypeDef]) -> bool {
         return false;
     };
     match (rule, r#type) {
+        (CaptureRule::Results, _) => true,
         (_, Type::Optional(inner)) => capture_fits(rule, inner, defs),
         (_, Type::File(_) | Type::Dynamic) => true,
         (CaptureRule::Glob(_) | CaptureRule::Patterns(_), Type::Directory) => true,

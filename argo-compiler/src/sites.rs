@@ -7,12 +7,13 @@ use std::collections::BTreeMap;
 
 use argo_parser::model::{ContinueOn, DagTask, Sequence, Template, TemplateRef, WorkflowStep};
 use argo_parser::{Node, decode};
-use serde_json::json;
+use argo_runtime::adapter::Form;
+use serde_json::{Value as Json, json};
 use wir::{Binding, Edge, Endpoint, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type};
 
 use crate::graphs::{Built, Compiler, Place, Scope, Target, kept};
-use crate::tags::{Tag, read_tags};
-use crate::{Kept, SOURCE, artifact, edge, end, op, origin, path_type, port, text};
+use crate::tags::{Tag, has_tag, read_tags};
+use crate::{Kept, SOURCE, array, artifact, edge, end, op, origin, path_type, port, text};
 
 /// A step or DAG task as the compiler reads it.
 pub(crate) struct Site {
@@ -70,6 +71,9 @@ impl Site {
     }
 }
 
+/// The items of a loop and the labels that they give the node names.
+type Rounds = (Vec<Json>, Vec<Json>);
+
 /// A value that the op of a site reads: its port, where it comes from in the graph of the
 /// site, and its native selector when a dialect task reads it.
 struct Need {
@@ -116,6 +120,7 @@ impl Compiler {
         };
         let target = self.target(&place, &at)?;
         let tags = read_tags(&site.raw).map_err(|reason| kept(&at, &reason))?;
+        let rounds = self.rounds(site, &at)?;
         let mut needs = vec![Need {
             port: port("node.path", path_type()),
             from: end(None, "node.path"),
@@ -139,8 +144,9 @@ impl Compiler {
                 native: format!("{kind}/{name}"),
             });
         }
+        let looping = rounds.is_some();
         let piece = match target {
-            Target::Leaf(template) => dialect(site, holding, &template, &needs, false),
+            Target::Leaf(template) => dialect(site, holding, &template, &needs, looping),
             Target::Graph(..) if !site.when.is_empty() => {
                 return fail(
                     "a when of a call of a steps or DAG template needs an Argo expression op",
@@ -150,28 +156,132 @@ impl Compiler {
                 return fail("calls of steps and DAG templates do not compile yet");
             }
         };
-        let loops = !site.with_items.is_empty() || !site.with_param.is_empty();
-        if loops || site.with_sequence.is_some() {
-            return fail("loops do not compile yet");
-        }
-        for need in &needs {
-            for wire in &piece.edges {
-                if wire.from.op.is_none() && wire.from.port == need.port.name {
-                    graph.edges.push(edge(need.from.clone(), wire.to.clone()));
+        let Some((items, labels)) = rounds else {
+            for need in &needs {
+                for wire in &piece.edges {
+                    if wire.from.op.is_none() && wire.from.port == need.port.name {
+                        graph.edges.push(edge(need.from.clone(), wire.to.clone()));
+                    }
                 }
             }
+            graph.edges.extend(
+                piece
+                    .edges
+                    .into_iter()
+                    .filter(|wire| wire.from.op.is_some()),
+            );
+            graph.ops.extend(piece.ops);
+            return Ok(Built {
+                op: piece.main,
+                outputs: piece.outputs,
+            });
+        };
+        let body = format!("{}.{}", graph.name, crate::safe(&site.name));
+        let mut inputs: Vec<Port> = needs.iter().map(|need| need.port.clone()).collect();
+        inputs.push(port("item", Type::Dynamic));
+        let calls_graph = piece.ops.iter().any(|op| matches!(op.kind, Kind::Call(_)));
+        if calls_graph {
+            inputs.push(port("label", text()));
         }
-        graph.edges.extend(
-            piece
-                .edges
-                .into_iter()
-                .filter(|wire| wire.from.op.is_some()),
+        let mut edges: Vec<Edge> = piece.edges;
+        let mut outputs = Vec::new();
+        for output in &piece.outputs {
+            outputs.push(output.clone());
+            edges.push(edge(
+                end(Some(&piece.main), &output.name),
+                end(None, &output.name),
+            ));
+        }
+        let mut map = op(
+            site.name.clone(),
+            Kind::Map(wir::Map {
+                body: body.clone(),
+                over: match calls_graph {
+                    true => vec!["item".into(), "label".into()],
+                    false => vec!["item".into()],
+                },
+                mode: wir::Scatter::default(),
+                parallelism: None,
+                min_success: None,
+            }),
         );
-        graph.ops.extend(piece.ops);
-        Ok(Built {
-            op: piece.main,
-            outputs: piece.outputs,
-        })
+        map.origin = origin(&site.raw);
+        for need in &needs {
+            map.inputs.push(need.port.clone());
+            graph.edges.push(edge(
+                need.from.clone(),
+                end(Some(&site.name), &need.port.name),
+            ));
+        }
+        map.inputs.push(crate::with_default(
+            port("item", array(Type::Dynamic)),
+            Json::Array(items),
+        ));
+        if calls_graph {
+            map.inputs.push(crate::with_default(
+                port("label", array(text())),
+                Json::Array(labels),
+            ));
+        }
+        map.outputs = (outputs.iter())
+            .map(|output| port(output.name.clone(), array(output.r#type.clone())))
+            .collect();
+        let built = Built {
+            op: site.name.clone(),
+            outputs: map.outputs.clone(),
+        };
+        self.graphs.push(Graph {
+            name: body,
+            inputs,
+            outputs,
+            ops: piece.ops,
+            edges,
+        });
+        graph.ops.push(map);
+        Ok(built)
+    }
+
+    /// The items and node name labels of a loop whose list is known before the run.
+    fn rounds(&mut self, site: &Site, at: &str) -> Result<Option<Rounds>, Kept> {
+        if !site.with_param.is_empty() {
+            return Err(kept(
+                at,
+                "withParam needs an Argo expression op to read its list",
+            ));
+        }
+        let text = if !site.with_items.is_empty() {
+            Json::Array(site.with_items.iter().map(crate::json_of).collect()).to_string()
+        } else if let Some(sequence) = &site.with_sequence {
+            let mut object = serde_json::Map::new();
+            for (key, bound) in [
+                ("count", &sequence.count),
+                ("start", &sequence.start),
+                ("end", &sequence.end),
+            ] {
+                if let Some(bound) = bound {
+                    object.insert(key.into(), bound.0.clone().into());
+                }
+            }
+            object.insert("format".into(), sequence.format.clone().into());
+            Json::Object(object).to_string()
+        } else {
+            return Ok(None);
+        };
+        if has_tag(&text) {
+            return Err(kept(at, "loop items with tags need an Argo expression op"));
+        }
+        let empty = serde_json::Map::new();
+        let mut evaluate = |form| {
+            let value = (self.adapter.evaluate(&text, form, &site.call, &empty))
+                .map_err(|reason| kept(at, &reason))?;
+            match value {
+                Json::Array(items) => Ok(items),
+                _ => Err(kept(at, "the items of a loop are no list")),
+            }
+        };
+        let items = evaluate(Form::Items)?;
+        let labels = evaluate(Form::Labels)?;
+        Ok(Some((items, labels)))
     }
 }
 

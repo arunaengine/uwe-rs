@@ -181,6 +181,25 @@ fn edge(from: Endpoint, to: Endpoint) -> Edge {
     }
 }
 
+/// The JSON value of a YAML node, as Argo reads it after loading YAML.
+fn json_of(node: &argo_parser::Node) -> serde_json::Value {
+    use argo_parser::Value as Yaml;
+    match &node.value {
+        Yaml::Null => serde_json::Value::Null,
+        Yaml::Bool(flag) => (*flag).into(),
+        Yaml::Integer(number) => (*number).into(),
+        Yaml::Unsigned(number) => (*number).into(),
+        Yaml::Float(number) => serde_json::Number::from_f64(*number)
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
+        Yaml::String(text) => text.clone().into(),
+        Yaml::Sequence(items) => items.iter().map(json_of).collect(),
+        Yaml::Mapping(entries) => (entries.iter())
+            .map(|entry| (entry.key.clone(), json_of(&entry.value)))
+            .collect::<serde_json::Map<_, _>>()
+            .into(),
+    }
+}
+
 /// Names that a graph or op takes from a template, made safe for wir.
 fn safe(name: &str) -> String {
     (name.chars())

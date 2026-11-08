@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::closure::Closure;
 use crate::flow::{Flow, Subscription};
 use crate::op::Op;
 use crate::types::{Type, TypeDef};
@@ -31,6 +32,42 @@ pub struct Document {
     pub graphs: Vec<Graph>,
     /// The name of the graph that a run starts.
     pub entry: String,
+    /// What runs once the run ends, and the observers that hear of its processes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<Hook>,
+}
+
+/// A run hook: code that runs at the end of every run, or of a failed run, with one object
+/// `{success, error}`, or the processes that the observers of a source hear of.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum Hook {
+    Complete(Closure),
+    Error(Closure),
+    Observe(Observers),
+}
+
+/// The processes of a run as the observers of a source, like Nextflow plugins, know them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Observers {
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub processes: Vec<ObservedProcess>,
+}
+
+/// A process as observers know it: its id, its names, and the ids of those it feeds.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedProcess {
+    pub id: u32,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub definition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub feeds: Vec<u32>,
 }
 
 /// A source document in a workflow language.

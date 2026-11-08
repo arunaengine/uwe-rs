@@ -367,7 +367,7 @@ fn execute_with(
                 };
                 let admission = application::validate_json(
                     Description {
-                        language: source.as_ref().map_or(language, |(_, source)| *source),
+                        language,
                         inputs,
                         outputs: None,
                     },

@@ -194,6 +194,7 @@ impl Arguments {
         crate::run::Settings {
             target: self.target.clone().unwrap_or_default(),
             language: self.language,
+            lowered: self.lowered,
             profiles: self.profiles.clone().unwrap_or_default(),
             configs: self.configs.clone(),
             config_file: self.config_file.clone(),

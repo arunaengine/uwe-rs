@@ -359,3 +359,32 @@ fn recurses_in_rounds() {
     assert_eq!(one.1.len(), 4, "three flips and heads: {one:?}");
     assert_eq!(other, one);
 }
+
+const CONSUMER: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: producer, template: make, when: "1 == 2"}
+      - name: consumer
+        template: say
+        depends: "producer.Succeeded || producer.Skipped"
+        arguments: {parameters: [{name: text, value: "{{tasks.producer.outputs.parameters.out}}"}]}
+  - name: make
+    container: {image: alpine:3.20, command: [sh, -c, "echo made > /tmp/out"]}
+    outputs: {parameters: [{name: out, valueFrom: {path: /tmp/out}}]}
+  - name: say
+    inputs: {parameters: [{name: text, default: fallback}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn falls_back_after_skipped_steps() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, CONSUMER);
+    let (one, other) = both(root, &file, &[], Writer::new);
+    one.0.as_ref().unwrap();
+    assert_eq!(one.1, ["runs.consumer"]);
+    assert_eq!(other, one);
+}

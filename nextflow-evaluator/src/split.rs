@@ -2,10 +2,14 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::io::{BufRead, BufReader, Read};
+
 use crate::csv::{self, CsvOptions};
 use crate::exception::Exception;
+use crate::lines::Lines;
 use crate::value::{Key, PathValue, Value};
 
+#[derive(Clone)]
 pub enum Format {
     Csv {
         separator: char,
@@ -33,6 +37,7 @@ const FASTA_FIELDS: &[&str] = &["id", "desc", "header", "text", "seqString", "se
 const FASTQ_FIELDS: &[&str] = &["readHeader", "readString", "qualityHeader", "qualityString"];
 
 /// How to split a text: its format, the records of each chunk and the most records to read.
+#[derive(Clone)]
 pub struct Splitter {
     pub format: Format,
     /// Records per chunk.
@@ -103,48 +108,34 @@ impl Splitter {
         }
     }
 
-    /// The chunks of one text: single records, or lists of `by` records for CSV and record
-    /// maps, or the joined text of `by` records for the other formats.
+    /// The chunks of a file, read as they are needed. A `.gz` file is decompressed on the
+    /// way when `decompress` is set.
+    pub fn file(
+        &self,
+        reader: Box<dyn Read>,
+        path: &PathValue,
+        decompress: bool,
+    ) -> Result<Chunks, Exception> {
+        let compressed = decompress && path.name().ends_with(".gz");
+        let reader: Box<dyn BufRead> = match compressed {
+            true => Box::new(BufReader::new(flate2::read::MultiGzDecoder::new(reader))),
+            false => Box::new(BufReader::new(reader)),
+        };
+        let origin = Origin {
+            uri: path.uri(),
+            compressed,
+        };
+        self.read(Lines::new(reader), Some(origin))
+    }
+
+    /// The chunks of a text in memory.
+    pub fn text(&self, text: String) -> Result<Chunks, Exception> {
+        self.read(Lines::text(text), None)
+    }
+
+    /// The chunks of one text, read at once.
     pub fn chunks(&self, text: &str) -> Result<Vec<Value>, Exception> {
-        let mut records = match &self.format {
-            Format::Csv { .. } => self.csv(text)?,
-            Format::Text { .. } => text.split_inclusive('\n').map(Value::string).collect(),
-            Format::Fasta(_) => records(text, |line, _| line.starts_with('>')),
-            Format::Fastq(_) => records(text, |_, index| index % 4 == 0),
-            Format::Json { path } => json_records(text, path)?,
-        };
-        if let Format::Fasta(Some(fields)) | Format::Fastq(Some(fields)) = &self.format {
-            let fastq = matches!(self.format, Format::Fastq(_));
-            records = records
-                .iter()
-                .map(|record| record_map(&record.to_string(), fields, fastq))
-                .collect();
-        }
-        if let Some(limit) = self.limit {
-            records.truncate(limit);
-        }
-        let header = match &self.format {
-            Format::Text { keep_header: true } => {
-                text.split_inclusive('\n').next().map(str::to_owned)
-            }
-            _ => None,
-        };
-        let Some(by) = self.by.filter(|by| *by > 0) else {
-            return Ok(records);
-        };
-        Ok(records
-            .chunks(by)
-            .map(|chunk| match self.format {
-                Format::Csv { .. } | Format::Fasta(Some(_)) | Format::Fastq(Some(_)) => {
-                    Value::list(chunk.to_vec())
-                }
-                _ => {
-                    let mut text = header.clone().unwrap_or_default();
-                    text.extend(chunk.iter().map(Value::to_string));
-                    Value::string(text)
-                }
-            })
-            .collect())
+        self.text(text.to_owned())?.collect()
     }
 
     /// Whether the records of a text go one by one: CSV records, each a chunk of its own,
@@ -179,25 +170,208 @@ impl Splitter {
         Some(csv::Records::new(text, &options))
     }
 
-    fn csv(&self, text: &str) -> Result<Vec<Value>, Exception> {
-        let Format::Csv {
-            separator,
-            quote,
-            header,
-            skip,
-            strip,
-        } = &self.format
-        else {
-            return Ok(Vec::new());
+    fn read(&self, mut lines: Lines, origin: Option<Origin>) -> Result<Chunks, Exception> {
+        let failed = |error: std::io::Error| read_error(origin.as_ref(), &error);
+        let source = match &self.format {
+            Format::Csv {
+                separator,
+                quote,
+                header,
+                skip,
+                strip,
+            } => {
+                let options = CsvOptions {
+                    separator: *separator,
+                    quote: *quote,
+                    header: header.clone(),
+                    skip: *skip,
+                    strip: *strip,
+                };
+                let mut records = csv::Records::read(lines, &options);
+                if let Some(error) = records.error() {
+                    return Err(failed(error));
+                }
+                if records.missing_header() && !self.simulated {
+                    return Err(csv::missing_header());
+                }
+                Source::Csv(records)
+            }
+            // A JSON document is parsed as a whole.
+            Format::Json { path } => {
+                let mut text = String::new();
+                while let Some(line) = lines.next_line().map_err(failed)? {
+                    text.push_str(&line);
+                }
+                Source::Json(json_records(&text, path)?.into_iter())
+            }
+            _ => Source::Lines(lines),
         };
-        let options = CsvOptions {
-            separator: *separator,
-            quote: *quote,
-            header: header.clone(),
-            skip: *skip,
-            strip: *strip,
+        Ok(Chunks {
+            splitter: self.clone(),
+            source,
+            header: None,
+            ahead: None,
+            line: 0,
+            taken: 0,
+            origin,
+            ended: false,
+        })
+    }
+}
+
+/// The chunks of a text, read a record at a time: single records, or lists of `by` records
+/// for CSV and record maps, or the joined text of `by` records for the other formats.
+pub struct Chunks {
+    splitter: Splitter,
+    source: Source,
+    /// The first line of the text, which `keepHeader` puts before each chunk.
+    header: Option<String>,
+    /// The line that starts the next FASTA or FASTQ record, read ahead of that record.
+    ahead: Option<String>,
+    /// The lines read so far; a FASTQ record starts at every fourth line.
+    line: usize,
+    /// The records given so far, which `limit` bounds.
+    taken: usize,
+    origin: Option<Origin>,
+    /// Whether the chunks ended, at the end of the text or at an error.
+    ended: bool,
+}
+
+enum Source {
+    Lines(Lines),
+    Csv(csv::Records),
+    Json(std::vec::IntoIter<Value>),
+}
+
+/// The file that a text comes from, which names it in read errors.
+struct Origin {
+    uri: String,
+    compressed: bool,
+}
+
+impl Iterator for Chunks {
+    type Item = Result<Value, Exception>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.ended {
+            return None;
+        }
+        let chunk = self.chunk();
+        self.ended = !matches!(chunk, Ok(Some(_)));
+        chunk.transpose()
+    }
+}
+
+impl Chunks {
+    /// The records read so far.
+    pub fn records(&self) -> usize {
+        self.taken
+    }
+
+    fn chunk(&mut self) -> Result<Option<Value>, Exception> {
+        let Some(by) = self.splitter.by.filter(|by| *by > 0) else {
+            return self.record();
         };
-        csv::records(text, &options, self.simulated)
+        let mut records = Vec::new();
+        while records.len() < by {
+            match self.record()? {
+                Some(record) => records.push(record),
+                None => break,
+            }
+        }
+        if records.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(match self.splitter.format {
+            Format::Csv { .. } | Format::Fasta(Some(_)) | Format::Fastq(Some(_)) => {
+                Value::list(records)
+            }
+            _ => {
+                let mut text = self.header.clone().unwrap_or_default();
+                text.extend(records.iter().map(Value::to_string));
+                Value::string(text)
+            }
+        }))
+    }
+
+    /// The next record, up to `limit`.
+    fn record(&mut self) -> Result<Option<Value>, Exception> {
+        if self.splitter.limit.is_some_and(|limit| self.taken >= limit) {
+            return Ok(None);
+        }
+        let record = match &mut self.source {
+            Source::Csv(records) => match records.next() {
+                Some(record) => Some(record),
+                None => match records.error() {
+                    Some(error) => return Err(read_error(self.origin.as_ref(), &error)),
+                    None => None,
+                },
+            },
+            Source::Json(items) => items.next(),
+            Source::Lines(_) => self.text_record()?.map(|text| match &self.splitter.format {
+                Format::Fasta(Some(fields)) => record_map(&text, fields, false),
+                Format::Fastq(Some(fields)) => record_map(&text, fields, true),
+                _ => Value::string(text),
+            }),
+        };
+        self.taken += usize::from(record.is_some());
+        Ok(record)
+    }
+
+    /// The text of the next record: a line, or the lines of a FASTA or FASTQ record.
+    fn text_record(&mut self) -> Result<Option<String>, Exception> {
+        let mut record = match self.ahead.take() {
+            Some(line) => line,
+            None => match self.next_line()? {
+                Some((_, line)) => line,
+                None => return Ok(None),
+            },
+        };
+        let fasta = match self.splitter.format {
+            Format::Fasta(_) => true,
+            Format::Fastq(_) => false,
+            _ => return Ok(Some(record)),
+        };
+        while let Some((index, line)) = self.next_line()? {
+            if (fasta && line.starts_with('>')) || (!fasta && index % 4 == 0) {
+                self.ahead = Some(line);
+                break;
+            }
+            record.push_str(&line);
+        }
+        Ok(Some(record))
+    }
+
+    /// The next line with its index, keeping the first line for `keepHeader`.
+    fn next_line(&mut self) -> Result<Option<(usize, String)>, Exception> {
+        let Source::Lines(lines) = &mut self.source else {
+            return Ok(None);
+        };
+        let line = (lines.next_line()).map_err(|error| read_error(self.origin.as_ref(), &error))?;
+        let index = self.line;
+        if let Some(text) = &line {
+            self.line += 1;
+            if index == 0 && matches!(self.splitter.format, Format::Text { keep_header: true }) {
+                self.header = Some(text.clone());
+            }
+        }
+        Ok(line.map(|text| (index, text)))
+    }
+}
+
+/// The exception of a failed read: Nextflow's for a gzip file it cannot decompress, else
+/// that of the file.
+fn read_error(origin: Option<&Origin>, error: &std::io::Error) -> Exception {
+    match origin {
+        Some(origin) if origin.compressed => Exception::new(
+            "ZipException",
+            format!("Cannot decompress {}: {error}", origin.uri),
+        ),
+        Some(origin) if error.kind() == std::io::ErrorKind::NotFound => {
+            Exception::new("NoSuchFileException", origin.uri.clone())
+        }
+        Some(origin) => Exception::new("IOException", origin.uri.clone()),
+        None => Exception::new("IOException", error.to_string()),
     }
 }
 
@@ -330,16 +504,4 @@ fn json_node(node: &Value, current: &str, wanted: &str) -> Option<Value> {
         }),
         _ => None,
     }
-}
-
-/// The records of a text: a record starts at each line that `starts` accepts.
-fn records(text: &str, starts: impl Fn(&str, usize) -> bool) -> Vec<Value> {
-    let mut records: Vec<String> = Vec::new();
-    for (index, line) in text.split_inclusive('\n').enumerate() {
-        match records.last_mut() {
-            Some(record) if !starts(line, index) => record.push_str(line),
-            _ => records.push(line.to_owned()),
-        }
-    }
-    records.into_iter().map(Value::string).collect()
 }

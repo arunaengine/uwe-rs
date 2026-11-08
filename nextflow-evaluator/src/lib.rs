@@ -6,6 +6,7 @@ pub mod csv;
 pub mod date;
 pub mod exception;
 pub mod interpreter;
+pub mod lines;
 pub mod lower;
 pub mod lowered;
 pub mod number;

@@ -76,7 +76,8 @@ impl<'d> Checker<'d> {
             }
         }
         self.inputs(at, op, used);
-        if let Some(folder) = task.workdir.as_ref().filter(|folder| !absolute(folder)) {
+        let folders = [&task.workdir, &task.staging].into_iter().flatten();
+        for folder in folders.filter(|folder| !absolute(folder)) {
             self.report(at, Problem::Absolute(folder.clone()));
         }
         let used = task.command.iter().filter_map(|argument| match argument {

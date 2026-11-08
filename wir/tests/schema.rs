@@ -23,7 +23,8 @@ fn schema_matches_parser() {
             "shell": true}}),
         json!({"task": {"command": ["cat"], "environment": {"HOME": "/tmp", "A": {"input": "a"}},
             "stdin": {"input": "text"}}}),
-        json!({"task": {"command": ["ls"], "workdir": "/var/spool/cwl", "files": [
+        json!({"task": {"command": ["ls"], "workdir": "/var/spool/cwl",
+            "staging": "/var/lib/cwl/inputs", "files": [
             {"value": {"input": "a"}, "writable": true},
             {"value": "x=1", "path": {"input": "name"}}
         ]}}),

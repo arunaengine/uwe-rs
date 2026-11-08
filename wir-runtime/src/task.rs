@@ -29,6 +29,11 @@ pub fn build(
 ) -> Task {
     let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
     let mut staging = Staging::default();
+    if let Some(folder) = &spec.staging {
+        for port in &op.inputs {
+            staging.job(bound.get(&port.name).unwrap_or(&Json::Null), folder);
+        }
+    }
     for staged in &spec.files {
         let value = match &staged.value {
             Content::Text(text) => Json::String(text.clone()),
@@ -367,6 +372,8 @@ fn bind(
 struct Staging {
     inputs: Vec<Input>,
     placed: HashMap<String, String>,
+    /// How many numbered folders the staging folder has.
+    folders: usize,
 }
 
 impl Staging {
@@ -413,6 +420,23 @@ impl Staging {
             self.stage(item, folder);
         }
         Some(path)
+    }
+
+    /// Stages each File and Directory with a location of an input value in a numbered folder
+    /// of its own below `folder`, as uwe's CWL driver stages a job.
+    fn job(&mut self, value: &Json, folder: &str) {
+        match value {
+            Json::Array(items) => items.iter().for_each(|item| self.job(item, folder)),
+            Json::Object(object) if matches!(class(object), Some("File" | "Directory")) => {
+                let location = object.get("location").and_then(Json::as_str);
+                if location.is_some_and(|location| !self.placed.contains_key(location)) {
+                    self.stage(value, &format!("{folder}/{}", self.folders));
+                    self.folders += 1;
+                }
+            }
+            Json::Object(object) => object.values().for_each(|item| self.job(item, folder)),
+            _ => {}
+        }
     }
 
     /// Places the value of an entry of the working folder at `path`, else by basename.

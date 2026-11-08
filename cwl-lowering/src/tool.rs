@@ -78,6 +78,7 @@ pub fn lower(
         stdout: None,
         stderr: None,
         workdir: Some(runtime::OUTDIR.into()),
+        staging: Some(runtime::STAGING.into()),
         files: Vec::new(),
         environment: Default::default(),
         stdin: None,

@@ -163,6 +163,9 @@ pub struct WirDriver {
     owners: HashMap<TaskId, usize>,
     /// The adapters of dialect tasks that started, with their tasks.
     dialects: adapter::Dialects,
+    /// Counts the calls of the engine, so that a planner hears of an instance after the call
+    /// it ended in, once its files were delivered.
+    turn: u64,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
     /// The tasks of task ops, by id, with the node of each.
@@ -236,6 +239,7 @@ impl WirDriver {
             children: Vec::new(),
             owners: HashMap::new(),
             dialects: adapter::Dialects::default(),
+            turn: 0,
             launched: HashMap::new(),
             tasks: HashMap::new(),
             accepted: HashSet::new(),
@@ -286,6 +290,7 @@ impl WirDriver {
     /// Steps of stream ops run in passes; after this many, the driver wakes again later.
     fn advance(&mut self) -> Result<Vec<Task>, DriverError> {
         const PASSES: usize = 64;
+        self.turn += 1;
         let mut tasks = Vec::new();
         let mut passes = 0;
         self.stepping = false;
@@ -321,6 +326,11 @@ impl WirDriver {
                 break;
             }
         }
+        // A planner hears of ended instances on a later wake.
+        let progress = &self.progress;
+        let unheard =
+            |region: &regions::Region| region.spec.planner.is_some() && region.unheard(progress);
+        self.stepping |= self.regions.values().any(unheard);
         Ok(tasks)
     }
 
@@ -900,10 +910,43 @@ impl WirDriver {
     }
 
     fn step_region(&mut self, at: usize) -> Result<bool, String> {
-        let Some(region) = self.regions.get_mut(&at) else {
+        let Some(mut region) = self.regions.remove(&at) else {
             return Ok(false);
         };
-        let updates = region.given(&mut self.progress, at)?;
+        let stepped = self.plan_region(&mut region, at);
+        self.regions.insert(at, region);
+        stepped
+    }
+
+    /// Adopts the plans of a region: those of its plan input, or those its planner gives
+    /// first and after each instance ended, once no delivery of the run waits.
+    fn plan_region(&mut self, region: &mut regions::Region, at: usize) -> Result<bool, String> {
+        let mut updates = region.given(&mut self.progress, at)?;
+        if let Some(planner) = region.spec.planner.clone() {
+            let builder = adapter::planner_builder(&planner);
+            let index = self.open_dialect(&builder).map_err(|error| error.message)?;
+            let to_json = |update| serde_json::to_value(update).unwrap_or_default();
+            if !std::mem::replace(&mut region.planned, true) {
+                let call = adapter::RegionCall {
+                    call: adapter::CallId(at),
+                    frame: adapter::frame(&self.progress, at),
+                    planner: &planner,
+                    inputs: &region.bound,
+                };
+                let update = self.dialects.plan(index, &call);
+                updates.push(to_json(update.map_err(|error| error.message)?));
+            }
+            let delivering = !self.delivering.is_empty() || self.dialects.delivering();
+            for ended in region.ended(&self.progress, self.turn) {
+                if delivering {
+                    break;
+                }
+                let replanned =
+                    self.dialects
+                        .replan(index, adapter::CallId(at), (&ended.0, ended.1));
+                updates.extend(replanned.map_err(|error| error.message)?.map(to_json));
+            }
+        }
         let moved = !updates.is_empty();
         let checks = (&self.document, &self.settings.adapters);
         for update in updates {

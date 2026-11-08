@@ -99,10 +99,10 @@ pub struct Task {
     /// The file in the working folder that standard output goes to, like CWL `stdout`; a
     /// `stdout` capture then reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stdout: Option<String>,
+    pub stdout: Option<FileName>,
     /// The file that standard error goes to, like CWL `stderr`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stderr: Option<String>,
+    pub stderr: Option<FileName>,
     /// The absolute path of the working folder in the container, like the output folder of
     /// CWL; without it the runner picks one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -128,6 +128,15 @@ pub enum Argument {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         separator: Option<String>,
     },
+}
+
+/// The name of a file in the working folder: text, or the string value of a task input, where
+/// null or an empty string names none.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum FileName {
+    Text(String),
+    Input { input: String },
 }
 
 fn separate() -> bool {
@@ -165,6 +174,9 @@ pub enum CaptureRule {
     /// Paths in the working folder that match the pattern, sorted by path. No match binds null
     /// to an optional output and fails the task otherwise; several need an array output.
     Glob(String),
+    /// Paths that match any pattern that a task input holds, a string or an array of strings,
+    /// in the order of the patterns and sorted by path for each.
+    Patterns(String),
     Stdout,
     Stderr,
 }

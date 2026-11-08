@@ -376,6 +376,17 @@
       "required": ["body"],
       "properties": { "body": { "$ref": "#/$defs/name" } }
     },
+    "file_name": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input"],
+          "properties": { "input": { "$ref": "#/$defs/name" } }
+        }
+      ]
+    },
     "task": {
       "type": "object",
       "additionalProperties": false,
@@ -417,6 +428,12 @@
                     "additionalProperties": false,
                     "required": ["glob"],
                     "properties": { "glob": { "type": "string" } }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["patterns"],
+                    "properties": { "patterns": { "$ref": "#/$defs/name" } }
                   }
                 ]
               },
@@ -426,8 +443,8 @@
         },
         "success_codes": { "type": "array", "items": { "type": "integer" } },
         "network": { "type": "boolean" },
-        "stdout": { "type": "string" },
-        "stderr": { "type": "string" },
+        "stdout": { "$ref": "#/$defs/file_name" },
+        "stderr": { "$ref": "#/$defs/file_name" },
         "workdir": { "type": "string" }
       }
     }

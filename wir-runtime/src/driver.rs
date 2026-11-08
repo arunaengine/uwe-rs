@@ -125,7 +125,7 @@ pub struct WirDriver {
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
     /// The tasks of task ops, by id, with the node of each.
-    tasks: HashMap<TaskId, (usize, Task)>,
+    tasks: HashMap<TaskId, (usize, Task, Map<String, Json>)>,
     /// The attempts of task ops that their captures accepted.
     accepted: HashSet<(TaskId, u32)>,
     last: u64,
@@ -226,7 +226,7 @@ impl WirDriver {
                 let node = self.progress.node(at);
                 let names = (node.path.as_str(), node.step.as_str());
                 let task = task::build(TaskId(self.last), names, &node.op, &spec, &bound);
-                self.tasks.insert(task.id, (at, task.clone()));
+                self.tasks.insert(task.id, (at, task.clone(), bound));
                 Ok(vec![task])
             }
             Kind::Call(_) => Ok(Vec::new()),
@@ -325,13 +325,18 @@ impl WirDriver {
     /// again while the op's `retry` allows it; then the op fails, or errors when the task
     /// could not run.
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
-        let (at, task) = &self.tasks[&outcome.id];
+        let (at, task, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
         let Kind::Task(spec) = &node.op.kind else {
             return Vec::new();
         };
-        let read = (outcome, self.files.as_deref());
-        match task::capture(spec, &node.op.outputs, read, &self.document.types) {
+        let files = self.files.as_deref();
+        let ended = task::Ended {
+            outcome,
+            files,
+            bound,
+        };
+        match task::capture(spec, &node.op.outputs, ended, &self.document.types) {
             Ok(values) => {
                 self.accepted.insert((outcome.id, outcome.attempt));
                 self.progress.end(at, Status::Succeeded, values, None);

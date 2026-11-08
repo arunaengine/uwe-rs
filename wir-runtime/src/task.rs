@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use serde_json::{Map, Value as Json, json};
-use wir::{Argument, CaptureRule, Op, Port, Type, TypeDef, resolve};
+use wir::{Argument, CaptureRule, FileName, Op, Port, Type, TypeDef, resolve};
 use workflow_graph::simulator::glob_matches;
 use workflow_graph::{Files, Input, Network, Outcome, OutputFile, Resources, Reuse, Task, TaskId};
 
@@ -41,22 +41,31 @@ pub fn build(
             }
         }
     }
+    let names = streams(spec, bound);
     let stream = |rule: CaptureRule| {
         let named = match rule {
-            CaptureRule::Stderr => &spec.stderr,
-            _ => &spec.stdout,
+            CaptureRule::Stderr => &names.1,
+            _ => &names.0,
         };
         let captured = (spec.captures.iter()).find(|capture| capture.from == rule);
         (named.clone())
-            .or_else(|| captured.map(|capture| stream_name(spec, &capture.output, &rule)))
+            .or_else(|| captured.map(|capture| stream_name(&names, &capture.output, &rule)))
     };
     let (stdout, stderr) = (stream(CaptureRule::Stdout), stream(CaptureRule::Stderr));
     let mut outputs: Vec<String> = stdout.iter().chain(&stderr).cloned().collect();
+    let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
     for capture in &spec.captures {
-        if let CaptureRule::Glob(pattern) = &capture.from
-            && !outputs.contains(pattern)
-        {
-            outputs.push(pattern.clone());
+        // A pattern of a Directory output ends with `/`, so executors know what to make.
+        let port = op.outputs.iter().find(|port| port.name == capture.output);
+        let folders = port.is_some_and(|port| directories(&port.r#type));
+        for pattern in patterns(&capture.from, bound, workdir) {
+            let pattern = match folders {
+                true => format!("{pattern}/"),
+                false => pattern,
+            };
+            if !outputs.contains(&pattern) {
+                outputs.push(pattern);
+            }
         }
     }
     let redirections: Vec<String> = [(">", &stdout), ("2>", &stderr)]
@@ -107,14 +116,28 @@ pub fn build(
     }
 }
 
+/// What a task gave back: its outcome, how to read its files, and its input values.
+pub struct Ended<'a> {
+    pub outcome: &'a Outcome,
+    pub files: Option<&'a dyn Files>,
+    pub bound: &'a Map<String, Json>,
+}
+
 /// The output values that the captures of a task read from an outcome, or why the attempt
 /// is not accepted: an exit code outside the success codes, or a capture that failed.
 pub fn capture(
     spec: &wir::Task,
     ports: &[Port],
-    (outcome, files): (&Outcome, Option<&dyn Files>),
+    ended: Ended<'_>,
     defs: &[TypeDef],
 ) -> Result<Map<String, Json>, String> {
+    let Ended {
+        outcome,
+        files,
+        bound,
+    } = ended;
+    let names = streams(spec, bound);
+    let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
     let codes: &[i32] = match spec.success_codes.is_empty() {
         true => &[0],
         false => &spec.success_codes,
@@ -131,15 +154,23 @@ pub fn capture(
             return Err(format!("output {} has no capture", port.name));
         };
         let found: Vec<&OutputFile> = match &capture.from {
-            CaptureRule::Glob(pattern) => {
-                let mut found: Vec<&OutputFile> = (outcome.files.iter())
-                    .filter(|file| glob_matches(pattern, &file.path))
-                    .collect();
-                found.sort_by(|a, b| a.path.cmp(&b.path));
+            rule @ (CaptureRule::Glob(_) | CaptureRule::Patterns(_)) => {
+                let mut found: Vec<&OutputFile> = Vec::new();
+                for pattern in patterns(rule, bound, workdir) {
+                    if !inside(&pattern) {
+                        return Err(format!("output {}: the pattern {pattern:?}", port.name));
+                    }
+                    let mut matched: Vec<&OutputFile> = (outcome.files.iter())
+                        .filter(|file| glob_matches(&pattern, &file.path))
+                        .filter(|file| !found.iter().any(|known| known.path == file.path))
+                        .collect();
+                    matched.sort_by(|a, b| a.path.cmp(&b.path));
+                    found.extend(matched);
+                }
                 found
             }
             rule => {
-                let name = stream_name(spec, &port.name, rule);
+                let name = stream_name(&names, &port.name, rule);
                 outcome
                     .files
                     .iter()
@@ -313,10 +344,65 @@ fn stage(value: &Json, folder: &str, inputs: &mut Vec<Input>) -> Option<String> 
     Some(path)
 }
 
+/// The names of the stdout and stderr files that a task names, from its input values.
+fn streams(spec: &wir::Task, bound: &Map<String, Json>) -> (Option<String>, Option<String>) {
+    let name = |named: &Option<FileName>| match named.as_ref()? {
+        FileName::Text(text) => Some(text.clone()),
+        FileName::Input { input } => match bound.get(input) {
+            Some(Json::String(text)) if !text.is_empty() => Some(text.clone()),
+            _ => None,
+        },
+    };
+    (name(&spec.stdout), name(&spec.stderr))
+}
+
+/// The patterns of a glob capture, also from the value of a task input, relative to the
+/// working folder, which a pattern may name, as in CWL.
+fn patterns(rule: &CaptureRule, bound: &Map<String, Json>, workdir: &str) -> Vec<String> {
+    let texts = match rule {
+        CaptureRule::Glob(pattern) => vec![pattern.clone()],
+        CaptureRule::Patterns(input) => match bound.get(input) {
+            Some(Json::String(text)) => vec![text.clone()],
+            Some(Json::Array(items)) => (items.iter())
+                .filter_map(|item| item.as_str().map(str::to_owned))
+                .collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    let inner = format!("{}/", workdir.trim_end_matches('/'));
+    (texts.into_iter())
+        .filter(|text| !text.is_empty())
+        .map(|text| match text.strip_prefix(&inner) {
+            Some(rest) => rest.to_owned(),
+            None => text.strip_prefix("./").map_or(text.clone(), str::to_owned),
+        })
+        .collect()
+}
+
+/// Whether a type is a Directory, also inside an optional or an array.
+fn directories(r#type: &Type) -> bool {
+    match r#type {
+        Type::Directory => true,
+        Type::Optional(inner) => directories(inner),
+        Type::Array(array) => directories(&array.items),
+        _ => false,
+    }
+}
+
+/// Whether a pattern is relative and stays inside the working folder.
+fn inside(pattern: &str) -> bool {
+    !pattern.is_empty() && !pattern.starts_with('/') && !pattern.split('/').any(|part| part == "..")
+}
+
 /// The file that a stream capture of an output reads: the one the task names, else one
 /// named after the output.
-fn stream_name(spec: &wir::Task, output: &str, rule: &CaptureRule) -> String {
-    match (rule, &spec.stdout, &spec.stderr) {
+fn stream_name(
+    names: &(Option<String>, Option<String>),
+    output: &str,
+    rule: &CaptureRule,
+) -> String {
+    match (rule, &names.0, &names.1) {
         (CaptureRule::Stderr, _, Some(name)) => name.clone(),
         (CaptureRule::Stderr, _, None) => format!("{output}.stderr"),
         (_, Some(name), _) => name.clone(),

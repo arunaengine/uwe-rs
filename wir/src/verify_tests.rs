@@ -312,6 +312,10 @@ fn stream_files_checked() {
     assert_eq!(only(document.clone()), ("main/head".into(), outside));
     document["graphs"][0]["ops"][1]["kind"]["task"]["stderr"] = json!("err.txt");
     assert!(problems(document.clone()).is_empty());
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"] = json!({"input": "name"});
+    let missing = Problem::NoPort("input name".into());
+    assert_eq!(only(document.clone()), ("main/head".into(), missing));
+    document["graphs"][0]["ops"][1]["kind"]["task"]["stdout"] = json!({"input": "input"});
     document["graphs"][0]["ops"][1]["kind"]["task"]["workdir"] = json!("work");
     let relative = Problem::Absolute("work".into());
     assert_eq!(only(document), ("main/head".into(), relative));
@@ -479,6 +483,13 @@ fn task_outputs_captured() {
     assert_eq!(
         only(document),
         ("main/head".into(), Problem::CaptureType("out".into()))
+    );
+    let mut document = base();
+    let patterns = json!({"patterns": "globs"});
+    document["graphs"][0]["ops"][1]["kind"]["task"]["captures"][0]["from"] = patterns;
+    assert_eq!(
+        only(document),
+        ("main/head".into(), Problem::NoPort("input globs".into()))
     );
     let mut document = base();
     document["graphs"][0]["ops"][1]["kind"]["task"]["command"] = json!([{"input": "other"}]);

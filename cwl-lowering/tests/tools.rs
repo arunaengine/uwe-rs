@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use cwl_lowering::{Kept, Lowering, lower};
+use cwl_lowering::{Lowering, lower};
 use serde_json::{Value as Json, json};
 
 fn fixtures() -> PathBuf {
@@ -69,23 +69,19 @@ fn captures_stream_files() {
 }
 
 #[test]
-fn keeps_expressions_native() {
+fn lowers_glob_expressions() {
     let lowering = lowered("split.cwl");
-    let reason = "output parts: an expression in a glob";
-    assert_eq!(
-        lowering.kept,
-        [Kept {
-            path: "split".into(),
-            reason: reason.into()
-        }]
-    );
-    let op = only_op(&lowering);
-    let native = json!({"source": "split", "language": "cwl"});
-    assert_eq!(op["kind"]["native"], native);
-    assert_eq!(
-        op["outputs"][0]["type"],
-        json!({"array": {"items": {"file": {}}}})
-    );
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let paths: Vec<&str> = ops.iter().map(|op| op.path.as_str()).collect();
+    assert_eq!(paths, ["split.glob.parts", "split"]);
+    let task = serde_json::to_value(&ops[1].kind).unwrap();
+    let capture = json!({"output": "parts", "from": {"patterns": "glob.parts"}});
+    assert_eq!(task["task"]["captures"], json!([capture]));
+    let wir::Kind::Expr(expr) = &ops[0].kind else {
+        panic!("an expr: {:?}", ops[0].kind);
+    };
+    assert_eq!(expr.code, "$(inputs.prefix)*");
 }
 
 #[test]

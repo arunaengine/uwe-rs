@@ -9,7 +9,7 @@ use cwl_parser::model::{
     Argument as CwlArgument, CommandLineBinding, CommandLineTool, Dynamic, Expression, LoadListing,
     Part, Process, RequirementClass, Type as Cwl, short_name,
 };
-use wir::{Argument, Attributes, Capture, CaptureRule, FileType, Port, Task, Type};
+use wir::{Argument, Attributes, Capture, CaptureRule, FileName, FileType, Port, Task, Type};
 
 use crate::Scope;
 use crate::defaults;
@@ -47,6 +47,9 @@ pub struct Evaluated {
     pub captured: bool,
 }
 
+/// Makes the capture rule of the globs of an output, by its name.
+type Globs<'a> = dyn FnMut(&str, &[Expression]) -> Result<CaptureRule, String> + 'a;
+
 /// How the task gives an output: captured as it is, or as files for an `outputEval`.
 enum Read {
     Direct(CaptureRule, Type),
@@ -67,25 +70,11 @@ pub fn lower(
         captures: Vec::new(),
         success_codes: Vec::new(),
         network: false,
-        stdout: literal(tool.stdout.as_ref(), "stdout")?,
-        stderr: literal(tool.stderr.as_ref(), "stderr")?,
+        stdout: None,
+        stderr: None,
         workdir: Some(runtime::OUTDIR.into()),
     };
     let attributes = requirements::apply(scope, &mut task)?;
-    let streams = [
-        (&mut task.stdout, Cwl::Stdout),
-        (&mut task.stderr, Cwl::Stderr),
-    ];
-    for (name, kind) in streams {
-        if name.is_none()
-            && process
-                .outputs
-                .iter()
-                .any(|output| output.value_type == kind)
-        {
-            *name = Some(stream_name(&process.id, &kind));
-        }
-    }
     let named = crate::types::named(scope);
     let runtime = runtime::object(scope, process.version);
     let javascript = (scope.requirements.iter().chain(&scope.hints))
@@ -105,6 +94,37 @@ pub fn lower(
         }
     };
     let mut values = Vec::new();
+    let mut stream = |field: Option<&Expression>, port: &str| match field {
+        None => Ok(None),
+        Some(text) if !code(text) => Ok(literal(Some(text), port)?.map(FileName::Text)),
+        Some(text) if paths(text) => Err(format!("an expression in {port} that reads a path")),
+        Some(text) => {
+            values.push(Computed {
+                port: port.to_owned(),
+                code: runtime_of(text)?,
+                this: None,
+            });
+            Ok(Some(FileName::Input {
+                input: port.to_owned(),
+            }))
+        }
+    };
+    task.stdout = stream(tool.stdout.as_ref(), "stdout.name")?;
+    task.stderr = stream(tool.stderr.as_ref(), "stderr.name")?;
+    let streams = [
+        (&mut task.stdout, Cwl::Stdout),
+        (&mut task.stderr, Cwl::Stderr),
+    ];
+    for (name, kind) in streams {
+        if name.is_none()
+            && process
+                .outputs
+                .iter()
+                .any(|output| output.value_type == kind)
+        {
+            *name = Some(FileName::Text(stream_name(&process.id, &kind)));
+        }
+    }
     if tool.stdin.is_some() {
         return Err("stdin".into());
     }
@@ -207,6 +227,30 @@ pub fn lower(
             .any(|input| input.load_listing.is_some());
     let mut outputs = Vec::new();
     let mut evaluated = Vec::new();
+    let mut glob = |name: &str, globs: &[Expression]| match globs {
+        [one] if !code(one) => Ok(CaptureRule::Glob(pattern(one)?)),
+        _ if globs.iter().any(paths) => Err("an expression in a glob that reads a path".into()),
+        // The output folder itself is the Directory `.`, which a capture does not fill.
+        [one] if one.text.trim() == "$(runtime.outdir)" => {
+            Err("the glob of the output folder".into())
+        }
+        _ => {
+            for literal in globs.iter().filter(|item| !code(item)) {
+                pattern(literal)?;
+            }
+            let code = match globs {
+                [one] => runtime_of(one)?,
+                many => runtime_of(&Expression::parse(&runtime::list(many), false)?)?,
+            };
+            let port = format!("glob.{name}");
+            values.push(Computed {
+                port: port.clone(),
+                code,
+                this: None,
+            });
+            Ok(CaptureRule::Patterns(port))
+        }
+    };
     for output in &process.outputs {
         let name = short_name(&output.id).to_owned();
         let port = |r#type| Port {
@@ -215,7 +259,7 @@ pub fn lower(
             flow: wir::Flow::Value,
             default: None,
         };
-        let (files, code) = match capture(output, &task, (listed, &named)) {
+        let (files, code) = match capture(output, &task, (listed, &named), &mut glob) {
             Ok(Read::Direct(rule, r#type)) => (Some((rule, r#type)), None),
             Ok(Read::Evaluated(files, code)) => (files, Some(code)),
             Err(why) => return Err(format!("output {name}: {why}")),
@@ -343,7 +387,9 @@ fn capture(
     output: &cwl_parser::model::OutputParameter,
     task: &Task,
     (listed, named): (bool, &[Cwl]),
+    glob: &mut Globs<'_>,
 ) -> Result<Read, String> {
+    let name = short_name(&output.id);
     let file = |format: Option<String>| {
         Type::File(FileType {
             format,
@@ -379,8 +425,8 @@ fn capture(
         }
         let files = match binding.glob.as_slice() {
             [] => None,
-            [glob] => {
-                let pattern = pattern(glob)?;
+            globs => {
+                let rule = glob(name, globs)?;
                 let items = match holds(&output.value_type, &Cwl::Directory)
                     && !holds(&output.value_type, &Cwl::File)
                 {
@@ -391,16 +437,18 @@ fn capture(
                     items: Box::new(items),
                     nonempty: false,
                 });
-                Some((CaptureRule::Glob(pattern), found))
+                Some((rule, found))
             }
-            _ => return Err("not one glob".into()),
         };
         return Ok(Read::Evaluated(files, code.clone()));
     }
-    let [glob] = binding.glob.as_slice() else {
-        return Err("not one glob".into());
+    if binding.glob.is_empty() {
+        return Err("no glob".into());
+    }
+    let rule = match glob(name, &binding.glob)? {
+        CaptureRule::Glob(pattern) => self::rule(&pattern, task),
+        other => other,
     };
-    let pattern = pattern(glob)?;
     let r#type = convert(&output.value_type, named)?;
     let r#type = with_format(r#type, format);
     let fits = match &r#type {
@@ -409,7 +457,7 @@ fn capture(
         other => matches!(other, Type::File(_) | Type::Directory),
     };
     match fits {
-        true => Ok(Read::Direct(rule(&pattern, task), r#type)),
+        true => Ok(Read::Direct(rule, r#type)),
         false => Err("a type that a glob does not fill".into()),
     }
 }
@@ -431,7 +479,7 @@ fn pattern(glob: &Expression) -> Result<String, String> {
 /// The capture of a glob; a stream file is also a file in the working folder, which a glob
 /// may match.
 fn rule(pattern: &str, task: &Task) -> CaptureRule {
-    match task.stdout.as_deref() == Some(pattern) {
+    match task.stdout == Some(FileName::Text(pattern.to_owned())) {
         true => CaptureRule::Stdout,
         false => CaptureRule::Glob(pattern.to_owned()),
     }

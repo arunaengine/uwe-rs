@@ -283,6 +283,7 @@ fn snakemake(
     setup: &Setup,
     cancel: &CancellationToken,
 ) -> snakemake_runtime::Settings {
+    let isolation = isolation(arguments, setup);
     snakemake_runtime::Settings {
         python: Some(snakemake_runtime::PythonContainers {
             engine: setup.engine(),
@@ -295,12 +296,15 @@ fn snakemake(
         cancel: cancel.clone(),
         git: Some(snakemake_git(setup)),
         environment: Some(arguments.secrets.environment()),
-        roots: isolation(arguments, setup).map(|isolation| {
+        roots: isolation.clone().map(|isolation| {
             let mut roots = isolation.roots;
             roots.extend(isolation.launch);
             roots
         }),
         read_only: shared_folders(arguments, setup),
+        readable: isolation
+            .map(|isolation| isolation.read_only)
+            .unwrap_or_default(),
     }
 }
 

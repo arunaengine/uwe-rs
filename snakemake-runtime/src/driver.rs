@@ -3058,6 +3058,8 @@ pub struct Settings {
     /// Shared folders of an isolated run, like the cache and the store, whose files workflow
     /// code may read by their paths but not list or change. The scratch folder is one too.
     pub read_only: Vec<PathBuf>,
+    /// Folders of an isolated run whose files workflow code may read and list but not change.
+    pub readable: Vec<PathBuf>,
 }
 
 /// Runtime options supplied by the CLI in addition to workflow profile defaults.
@@ -3144,7 +3146,8 @@ pub fn spawn_driver(
                         .chain([&launch.scratch])
                         .cloned();
                     let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
-                    session.files.confine(roots);
+                    let readable = settings.readable.iter().cloned();
+                    session.files.confine(roots.with_readable(readable));
                 }
                 *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();
                 session.rerun_triggers = options.rerun_triggers.clone();

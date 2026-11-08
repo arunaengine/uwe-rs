@@ -177,6 +177,93 @@ fn protects_shared_files() {
     }
 }
 
+/// Lists and reads each folder of `params.folders`, then tries to delete and overwrite its
+/// `input.txt` and to make a file and a folder in it.
+const NEXTFLOW_READ_ONLY: &str = "workflow {\n  def seen = []\n  \
+    params.folders.each { folder ->\n    def input = file(\"${folder}/input.txt\")\n    \
+    seen << file(folder).listFiles().collect { it.name }.sort().join(',')\n    \
+    seen << input.text\n    \
+    try { input.delete(); seen << 'deleted' } catch (e) { seen << 'refused delete' }\n    \
+    try { input.text = 'changed'; seen << 'written' } catch (e) { seen << 'refused write' }\n    \
+    try { file(\"${folder}/new.txt\").text = 'new'; seen << 'created' } \
+    catch (e) { seen << 'refused create' }\n    \
+    seen << (file(\"${folder}/made\").mkdirs() ? 'made' : 'refused mkdir')\n  }\n  \
+    file(params.report).text = seen.join('\\n')\n}\n";
+
+/// The same at the top level of a Snakefile, which also tries to rename `input.txt`.
+const SNAKEFILE_READ_ONLY: &str = "import os\nseen = []\n\
+    def tried(done, refused, change):\n    try:\n        change()\n        seen.append(done)\n    \
+    except OSError:\n        seen.append(refused)\n\
+    for folder in config['folders']:\n    input = os.path.join(folder, 'input.txt')\n    \
+    seen.append(','.join(sorted(os.listdir(folder))))\n    seen.append(open(input).read())\n    \
+    tried('deleted', 'refused delete', lambda: os.remove(input))\n    \
+    tried('written', 'refused write', lambda: open(input, 'w').write('changed'))\n    \
+    tried('created', 'refused create', \
+    lambda: open(os.path.join(folder, 'new.txt'), 'w').write('new'))\n    \
+    tried('made', 'refused mkdir', lambda: os.mkdir(os.path.join(folder, 'made')))\n    \
+    tried('renamed', 'refused rename', \
+    lambda: os.rename(input, os.path.join(folder, 'moved.txt')))\n\
+    with open(config['report'], 'w') as written:\n    written.write('\\n'.join(seen))\n\n\
+    rule all:\n    input: []\n";
+
+/// Workflow code of an isolated run lists and reads the read-only folders of the host, but
+/// cannot change, remove or add anything in them.
+#[test]
+fn protects_read_only() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("protects_read_only", None);
+    }
+    let root = tempfile::tempdir().unwrap();
+    let refused = "refused delete\nrefused write\nrefused create\nrefused mkdir";
+    for (name, seen) in [
+        ("main.nf", format!("input.txt\ninput\n{refused}")),
+        (
+            "Snakefile",
+            format!("input.txt\ninput\n{refused}\nrefused rename"),
+        ),
+    ] {
+        let script = match name {
+            "main.nf" => NEXTFLOW_READ_ONLY,
+            _ => SNAKEFILE_READ_ONLY,
+        };
+        let folder = root.path().join(name);
+        let data = folder.join("data");
+        let shared = folder.join("shared");
+        let workflow = folder.join("workflow").join(name);
+        for created in [&data, &shared, &workflow.parent().unwrap().to_owned()] {
+            std::fs::create_dir_all(created).unwrap();
+        }
+        std::fs::write(&workflow, script).unwrap();
+        std::fs::write(shared.join("input.txt"), "input").unwrap();
+        let mut settings = settings(&folder, &workflow);
+        let path = |path: &Path| json!(path.to_string_lossy());
+        (settings.params).insert("folders".into(), json!([path(&shared)]));
+        (settings.params).insert("report".into(), path(&data.join("report.txt")));
+        settings.isolation = Some(Isolation {
+            roots: vec![data.clone()],
+            read_only: vec![shared.clone()],
+            launch: Some(folder.join("launch")),
+            ..Isolation::default()
+        });
+        let mut request = RunRequest::new(settings);
+        request.policy = uwe::application::Policy::Relaxed;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let ran = runtime.block_on(request.run());
+        let ran = ran.unwrap_or_else(|failure| panic!("{name}: {}", failure.message));
+        assert!(
+            ran.execution.error.is_none(),
+            "{name}: {:?}",
+            ran.execution.error
+        );
+        let report = std::fs::read_to_string(data.join("report.txt")).unwrap();
+        assert_eq!(report, seen, "{name}");
+        let names = std::fs::read_dir(&shared).unwrap().count();
+        assert_eq!(names, 1, "{name}");
+        let input = std::fs::read_to_string(shared.join("input.txt")).unwrap();
+        assert_eq!(input, "input", "{name}");
+    }
+}
+
 /// An isolated Nextflow run without a launch folder of the host launches in one of its own.
 #[test]
 fn launches_isolated_run() {

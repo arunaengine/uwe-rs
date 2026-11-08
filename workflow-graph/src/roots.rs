@@ -11,6 +11,8 @@ pub struct Roots {
     folders: Vec<PathBuf>,
     /// Shared folders, like the cache of all runs, whose files workflow code only reads.
     read_only: Vec<PathBuf>,
+    /// Folders that workflow code may read and list but not change, like input data.
+    readable: Vec<PathBuf>,
 }
 
 impl Roots {
@@ -19,8 +21,16 @@ impl Roots {
         let folders = folders.into_iter().filter_map(|folder| resolve(&folder));
         Roots {
             folders: folders.collect(),
-            read_only: Vec::new(),
+            ..Roots::default()
         }
+    }
+
+    /// Adds folders whose files workflow code may read and list, but not change. A folder of
+    /// [`Roots::new`] inside one of them stays writable.
+    pub fn with_readable(mut self, folders: impl IntoIterator<Item = PathBuf>) -> Roots {
+        let folders = folders.into_iter().filter_map(|folder| resolve(&folder));
+        self.readable.extend(folders);
+        self
     }
 
     /// Adds folders whose files workflow code may read by their paths, but not list or change.
@@ -32,28 +42,46 @@ impl Roots {
 
     /// Refuses a path that leads outside the folders, also through a link.
     pub fn check(&self, path: &Path) -> io::Result<()> {
-        if resolve(path).is_some_and(|real| self.folders.iter().any(|root| real.starts_with(root)))
+        let real = resolve(path);
+        if real
+            .as_ref()
+            .is_some_and(|real| inside(real, &self.folders))
         {
             return Ok(());
         }
+        let reason = match real.is_some_and(|real| inside(&real, &self.readable)) {
+            true => "it is in a read-only folder of the run",
+            false => "it is outside the folders of the run",
+        };
         Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            format!(
-                "workflow code may not reach {}: it is outside the folders of the run",
-                path.display()
-            ),
+            format!("workflow code may not reach {}: {reason}", path.display()),
         ))
     }
 
     /// Like [`Roots::check`], but also lets a path in a read-only folder through, to read it.
     pub fn check_read(&self, path: &Path) -> io::Result<()> {
         if resolve(path)
-            .is_some_and(|real| self.read_only.iter().any(|root| real.starts_with(root)))
+            .is_some_and(|real| inside(&real, &self.read_only) || inside(&real, &self.readable))
         {
             return Ok(());
         }
         self.check(path)
     }
+
+    /// Like [`Roots::check`], but also lets a folder of [`Roots::with_readable`] through, to
+    /// list it.
+    pub fn check_list(&self, path: &Path) -> io::Result<()> {
+        if resolve(path).is_some_and(|real| inside(&real, &self.readable)) {
+            return Ok(());
+        }
+        self.check(path)
+    }
+}
+
+/// Whether a resolved path lies in one of the folders.
+fn inside(real: &Path, folders: &[PathBuf]) -> bool {
+    folders.iter().any(|root| real.starts_with(root))
 }
 
 /// Where a path leads: its existing part with links resolved, then the rest. `None` when the
@@ -126,5 +154,28 @@ mod tests {
         assert!(roots.check(&shared.join("store/file.txt")).is_err());
         assert!(roots.check(&shared).is_err());
         assert!(roots.check_read(&folder.path().join("other.txt")).is_err());
+    }
+
+    #[test]
+    fn lists_readable_folders() {
+        let folder = tempfile::tempdir().unwrap();
+        let data = folder.path().join("data");
+        let run = data.join("run");
+        let shared = folder.path().join("cache");
+        std::fs::create_dir_all(&run).unwrap();
+        let roots = Roots::new([run.clone()])
+            .with_read_only([shared.clone()])
+            .with_readable([data.clone()]);
+        assert!(roots.check_list(&data).is_ok());
+        assert!(roots.check_read(&data.join("input.txt")).is_ok());
+        let error = roots.check(&data.join("input.txt")).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("in a read-only folder of the run")
+        );
+        assert!(roots.check(&run.join("output.txt")).is_ok());
+        assert!(roots.check_list(&shared).is_err());
+        assert!(roots.check_list(&folder.path().join("other")).is_err());
     }
 }

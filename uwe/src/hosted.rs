@@ -130,6 +130,9 @@ pub struct Isolation {
     /// The folders that workflow code may read and write besides those of the run, like the
     /// input and output folders of the host.
     pub roots: Vec<PathBuf>,
+    /// The folders that workflow code may read and list but never change, like shared input
+    /// data of the host. A folder of `roots` inside one stays writable.
+    pub read_only: Vec<PathBuf>,
     /// The folder that the run starts in, which relative paths start from and workflow code
     /// may reach; `None` keeps the working directory of the process, which it may not. An
     /// embedded Nextflow run then starts in a folder of its own instead.

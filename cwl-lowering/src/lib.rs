@@ -57,7 +57,12 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
         prefix: String::new(),
     };
     let process = &document.process;
-    let scope = Scope::default().with(&process.requirements, &process.hints);
+    // With an ontology, or prefixes that a job may use, formats match beyond equal text.
+    let outer = Scope {
+        ontology: !document.schemas.is_empty() || !document.namespaces.is_empty(),
+        ..Scope::default()
+    };
+    let scope = outer.with(&process.requirements, &process.hints);
     let name = process_name(&process.id);
     let main = match &process.class {
         Class::Workflow(workflow) => match lowerer.workflow(process, workflow, &scope, "main") {
@@ -68,7 +73,7 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
             }
         },
         _ => {
-            let op = lowerer.op(process, &Scope::default(), &name)?;
+            let op = lowerer.op(process, &outer, &name)?;
             single(process, op, &scope)?
         }
     };
@@ -125,6 +130,9 @@ fn one(op: Op) -> Group {
 pub(crate) struct Scope {
     pub requirements: Vec<Requirement>,
     pub hints: Vec<Requirement>,
+    /// Whether the document has `$schemas` or `$namespaces`, so formats may match otherwise
+    /// than by equal text.
+    pub ontology: bool,
 }
 
 impl Scope {
@@ -302,6 +310,7 @@ fn boundary(process: &Process, scope: &Scope) -> Result<(Vec<Port>, Vec<Port>), 
     let mut inputs = Vec::new();
     for input in &process.inputs {
         let r#type = types::convert(&input.value_type, &named)
+            .and_then(|r#type| types::formatted(r#type, &input.format, &named))
             .map_err(|why| format!("input {}: {why}", short_name(&input.id)))?;
         let r#type = match input.default {
             Some(_) => types::optional(r#type),

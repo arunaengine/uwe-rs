@@ -212,3 +212,15 @@ fn lowers_argument_expressions() {
     );
     assert!(expr.code.contains(r#""cores":2"#), "{}", expr.code);
 }
+
+#[test]
+fn lowers_input_formats() {
+    let lowering = lowered("formats.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let file = |format: &str| json!({"file": {"format": format}});
+    let formats = json!({"union": [
+        file("http://edamontology.org/format_1929"),
+        file("http://edamontology.org/format_1930")
+    ]});
+    assert_eq!(only_op(&lowering)["inputs"][0]["type"], formats);
+}

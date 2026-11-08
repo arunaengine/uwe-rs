@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use nextflow_runtime::export::{Callback, Kind, Node};
+use nextflow_runtime::export::{Callback, Kind, Node, Process};
 use serde_json::{Value as Json, json};
 
 use crate::groovy::{closure, test, written};
@@ -35,6 +35,8 @@ pub(crate) struct Place<'a> {
     pub values_in: Vec<bool>,
     pub values_out: Vec<bool>,
     pub context: &'a Context,
+    /// The process of a process node as observers see it.
+    pub observer: Option<&'a Process>,
 }
 
 /// The ops of a node; an error says why the node has no compiled.

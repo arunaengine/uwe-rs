@@ -160,6 +160,11 @@ fn compiles_process_calls() {
         json!([{"port": "input.0", "native": "input/0"}])
     );
     assert_eq!(task["captures"]["singleton"], json!({"value": false}));
+    let observer = json!({"value": {"id": 1, "feeds": []}});
+    assert_eq!(
+        task["captures"]["observer"], observer,
+        "the process as observers see it"
+    );
     assert!(scoped(&script, &task["scope"]).starts_with("process GREET {"));
 }
 

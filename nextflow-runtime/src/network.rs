@@ -444,6 +444,7 @@ impl Network {
             config: String::new(),
             schema: None,
             launch: String::new(),
+            processes: self.processes(),
         })
     }
 

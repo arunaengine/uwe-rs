@@ -334,6 +334,8 @@ pub fn lower(
         }
         inputs.push(port);
     }
+    // Only the inputs of the tool are its job, which CWL stages first.
+    task.staged = Some(names.iter().map(|name| (*name).to_owned()).collect());
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();
     if (task.command.iter()).any(|word| matches!(word, Argument::Code { .. })) {

@@ -10,7 +10,7 @@ use argo_parser::model::{
 };
 use argo_parser::{Entry, Node, Position, Value as Yaml, decode};
 use serde_json::{Map, Value as Json};
-use workflow_graph::{DriverError, Files, Launch, Outcome, Task, TaskId};
+use workflow_graph::{Delivery, DriverError, Files, Launch, Outcome, Task, TaskId};
 
 use crate::dag::task_entry;
 use crate::items::{item_variables, items, loops, substitute_item, unknown_item};
@@ -388,6 +388,27 @@ impl Adapter {
     /// The tasks that the calls stopped, like those past their deadline.
     pub fn cancellations(&mut self) -> Vec<TaskId> {
         self.run.cancellations()
+    }
+
+    /// The files the calls deliver: their uploads, like artifacts to S3, and the output artifacts
+    /// that [`Adapter::finish`] gave the results folder.
+    pub fn take_deliveries(&mut self) -> Vec<Delivery> {
+        self.run.take_deliveries()
+    }
+
+    /// Delivers the output artifacts of every step to `results`, at `<node>/<artifact>`, as the
+    /// native run does once it ends.
+    pub fn finish(&mut self, results: &std::path::Path) {
+        let artifacts: Vec<(String, String)> = (self.run.output_artifacts().into_iter())
+            .map(|(step, artifact, location)| {
+                let target = results.join(step).join(artifact);
+                let target = target.to_string_lossy().into_owned();
+                (target, location.to_string_lossy().into_owned())
+            })
+            .collect();
+        for (target, location) in artifacts {
+            self.run.artifact_delivery(target, location);
+        }
     }
 
     pub fn warnings(&self) -> &[String] {

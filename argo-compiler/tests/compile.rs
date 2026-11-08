@@ -72,3 +72,72 @@ fn compiles_leaf_entry() {
     let whole = &op(graph(&document, "workflow"), "workflow")["kind"]["native"];
     assert_eq!(whole["language"], "argo");
 }
+const SEQUENCE: &str = r#"  entrypoint: main
+  arguments: {parameters: [{name: word, value: hello}]}
+  templates:
+  - name: main
+    inputs: {parameters: [{name: word}]}
+    steps:
+    - - {name: make, template: make, arguments: {parameters: [{name: word, value: "{{inputs.parameters.word}}"}]}}
+    - - name: use
+        template: use
+        continueOn: {failed: true}
+        arguments:
+          parameters: [{name: text, value: "{{steps.make.outputs.parameters.text}}"}]
+          artifacts: [{name: data, from: "{{steps.make.outputs.artifacts.data}}"}]
+    outputs:
+      parameters: [{name: text, valueFrom: {parameter: "{{steps.use.outputs.parameters.text}}"}}]
+  - name: make
+    inputs: {parameters: [{name: word}]}
+    retryStrategy: {limit: 2}
+    script: {image: alpine:3.20, command: [sh], source: "echo {{inputs.parameters.word}} > /tmp/text"}
+    outputs:
+      parameters: [{name: text, valueFrom: {path: /tmp/text}}]
+      artifacts: [{name: data, path: /tmp/data}]
+  - name: use
+    inputs:
+      parameters: [{name: text}]
+      artifacts: [{name: data, path: /in/data, optional: true}]
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+    outputs:
+      parameters: [{name: text, valueFrom: {path: /tmp/out}}]
+"#;
+
+#[test]
+fn compiles_step_groups() {
+    let folder = tempfile::tempdir().unwrap();
+    let (document, kept) = compiled(folder.path(), SEQUENCE);
+    assert!(kept.is_empty(), "{kept:?}");
+    let entry = graph(&document, "workflow");
+    assert_eq!(op(entry, "main")["kind"]["call"]["graph"], "template.main");
+    assert_eq!(entry["outputs"][0]["name"], "text");
+    let main = graph(&document, "template.main");
+    let make = &op(main, "make")["kind"]["task"]["builder"]["argo_task"];
+    assert_eq!(make["entry"], "main");
+    assert_eq!(make["call"], "[0].make");
+    let natives: Vec<&Json> = (make["inputs"].as_array().unwrap().iter())
+        .map(|map| &map["native"])
+        .collect();
+    let expected = [
+        json!("parameter/node.path"),
+        json!("parameter/inputs.parameters.word"),
+    ];
+    assert_eq!(natives, expected.iter().collect::<Vec<_>>());
+    let used = op(main, "use");
+    assert_eq!(
+        used["after"],
+        json!([{"op": "make", "on": ["succeeded", "skipped"]}])
+    );
+    let ports: Vec<&Json> = (used["inputs"].as_array().unwrap().iter())
+        .map(|port| &port["name"])
+        .collect();
+    assert!(ports.contains(&&json!("steps.make.outputs.artifacts.data")));
+    let handler = op(main, "use.continue");
+    assert_eq!(handler["handles"], json!([{"op": "use", "on": ["failed"]}]));
+    let output = (main["edges"].as_array().unwrap().iter())
+        .find(|edge| edge["to"]["port"] == "outputs.parameters.text");
+    assert_eq!(
+        output.unwrap()["from"],
+        json!({"op": "use", "port": "outputs.parameters.text"})
+    );
+}

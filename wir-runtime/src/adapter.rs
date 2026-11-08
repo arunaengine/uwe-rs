@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{Map, Value as Json};
-use wir::{Kind, Op, TaskBuilder};
+use wir::reserved::{Identity, PlanUpdate, Planner};
+use wir::{Kind, Op, Status, TaskBuilder};
 use workflow_graph::{
     CancellationToken, Delivery, DriverError, ExecuteError, Files, Launch, Note, Outcome, Task,
     TaskId,
@@ -38,6 +39,14 @@ pub struct TaskCall<'a> {
     pub frame: Frame,
     pub builder: &'a TaskBuilder,
     pub op: &'a Op,
+    pub inputs: &'a Map<String, Json>,
+}
+
+/// A dynamic region whose planner is an adapter, with the values of its inputs by port.
+pub struct RegionCall<'a> {
+    pub call: CallId,
+    pub frame: Frame,
+    pub planner: &'a Planner,
     pub inputs: &'a Map<String, Json>,
 }
 
@@ -119,6 +128,22 @@ pub trait TaskAdapter {
         Vec::new()
     }
 
+    /// The first plan of a region that it plans, like the jobs of a Snakefile.
+    fn plan(&mut self, _region: &RegionCall) -> Result<PlanUpdate, DriverError> {
+        Err(DriverError::unsupported("this adapter plans no regions"))
+    }
+
+    /// Hears that an instance of a region ended, after its acceptance and the delivery of
+    /// its files; a new plan when it plans the region again, like after a checkpoint.
+    fn replan(
+        &mut self,
+        _region: CallId,
+        _instance: &Identity,
+        _status: Status,
+    ) -> Result<Option<PlanUpdate>, DriverError> {
+        Ok(None)
+    }
+
     /// Ends the source context once the run ends, with why the run failed, if it did.
     fn end(&mut self, _failure: Option<&str>) -> Result<(), DriverError> {
         Ok(())
@@ -191,6 +216,32 @@ pub fn builder_name(builder: &TaskBuilder) -> &'static str {
         TaskBuilder::ArgoTask(_) => "argo_task",
         TaskBuilder::WdlTask(_) => "wdl_task",
     }
+}
+
+/// The builder whose adapter plans a region: the job adapter of the planner's source context.
+pub(crate) fn planner_builder(planner: &Planner) -> TaskBuilder {
+    let Planner::Snakemake(reference) = planner;
+    TaskBuilder::SnakemakeJob(wir::RuleTask {
+        task: wir::TaskRef {
+            source: reference.source.clone(),
+            entry: reference.targets.first().cloned().unwrap_or_default(),
+            call: String::new(),
+            scope: None,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            profiles: reference.profiles.clone(),
+            configs: reference.configs.clone(),
+            captures: BTreeMap::new(),
+        },
+        wildcards: BTreeMap::new(),
+        group: Vec::new(),
+        targets: reference.targets.clone(),
+        config_values: None,
+        until: Vec::new(),
+        omit_from: Vec::new(),
+        forcerun: Vec::new(),
+        forceall: false,
+    })
 }
 
 /// The frame of a node: its paths and the round numbers of the rounds around it.
@@ -396,6 +447,26 @@ impl Dialects {
             );
         }
         notes
+    }
+
+    pub fn plan(&mut self, index: usize, region: &RegionCall) -> Result<PlanUpdate, DriverError> {
+        self.opened[index].adapter.plan(region)
+    }
+
+    pub fn replan(
+        &mut self,
+        index: usize,
+        region: CallId,
+        ended: (&Identity, Status),
+    ) -> Result<Option<PlanUpdate>, DriverError> {
+        self.opened[index].adapter.replan(region, ended.0, ended.1)
+    }
+
+    /// Whether a delivery that an adapter gave waits for its acknowledgement.
+    pub fn delivering(&self) -> bool {
+        self.opened
+            .iter()
+            .any(|opened| !opened.delivering.is_empty())
     }
 
     /// Acknowledges a delivery to the adapter that gave it; `None` when none gave it.

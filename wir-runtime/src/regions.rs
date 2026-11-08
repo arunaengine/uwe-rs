@@ -20,14 +20,15 @@ struct Instance {
     identity: Identity,
     definition: String,
     retired: bool,
-    /// Whether the planner heard that it ended.
+    /// The driver call in which it was seen to end, and whether the planner heard of it.
+    seen: Option<u64>,
     heard: bool,
 }
 
 /// A region that runs, with the instances of its plans by canonical identity.
 pub struct Region {
     pub spec: Dynamic,
-    bound: Map<String, Json>,
+    pub bound: Map<String, Json>,
     revision: Option<u64>,
     last: Option<PlanUpdate>,
     pub final_plan: bool,
@@ -181,6 +182,7 @@ impl Region {
                 identity,
                 definition,
                 retired: false,
+                seen: None,
                 heard: false,
             };
             self.instances.insert(key, instance);
@@ -191,18 +193,29 @@ impl Region {
         Ok(())
     }
 
-    /// The instances that ended since the last call, with their identity and status.
-    pub fn ended(&mut self, progress: &Progress) -> Vec<(Identity, Status)> {
+    /// The instances that ended before the driver call `call`, with their identity and
+    /// status, once each: the files of an instance are delivered after the call it ended in.
+    pub fn ended(&mut self, progress: &Progress, call: u64) -> Vec<(Identity, Status)> {
         let mut ended = Vec::new();
         for instance in self.instances.values_mut() {
-            if let State::Ended(status, _) = &progress.states[instance.node]
-                && !instance.retired
-                && !std::mem::replace(&mut instance.heard, true)
-            {
+            let State::Ended(status, _) = &progress.states[instance.node] else {
+                continue;
+            };
+            let seen = *instance.seen.get_or_insert(call);
+            if !instance.retired && seen < call && !std::mem::replace(&mut instance.heard, true) {
                 ended.push((instance.identity.clone(), *status));
             }
         }
         ended
+    }
+
+    /// Whether an instance ended that the planner has not heard of yet.
+    pub fn unheard(&self, progress: &Progress) -> bool {
+        (self.instances.values()).any(|instance| {
+            !instance.heard
+                && !instance.retired
+                && matches!(progress.states[instance.node], State::Ended(..))
+        })
     }
 
     /// The nodes of instances that run.
@@ -274,7 +287,9 @@ pub fn settle(progress: &mut Progress, regions: &mut Regions) -> bool {
             regions.remove(&at);
             continue;
         }
-        if region.final_plan && region.running(progress).is_empty() && progress.end_call(at) {
+        let settled = region.final_plan && region.running(progress).is_empty();
+        let heard = region.spec.planner.is_none() || !region.unheard(progress);
+        if settled && heard && progress.end_call(at) {
             regions.remove(&at);
             moved = true;
         }

@@ -208,7 +208,9 @@ impl Session {
             let mut producers = Vec::new();
             let mut after = Vec::new();
             for entry in members.iter().map(|member| &planner.jobs[*member]) {
-                for (file, producer) in &entry.dependencies {
+                // Jobs of the group make files for each other, not for the group.
+                let outside = (entry.dependencies.iter()).filter(|(_, job)| !members.contains(job));
+                for (file, producer) in outside {
                     let made = planner.jobs[*producer].output_files();
                     let (Some(input), Some(output), Some((job, offset))) = (
                         inputs.iter().position(|input| input == file),
@@ -222,7 +224,7 @@ impl Session {
                         job: *job,
                         output: offset + output,
                     };
-                    if !members.contains(&producer.job) && !producers.contains(&producer) {
+                    if !producers.contains(&producer) {
                         producers.push(producer);
                     }
                 }

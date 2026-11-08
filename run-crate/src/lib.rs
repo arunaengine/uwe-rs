@@ -70,6 +70,10 @@ pub struct Options {
     /// Folders of the server, like those of the run and its data: the crate names a path in
     /// one relative to it.
     pub folders: Vec<PathBuf>,
+    /// Describes the files of the run where they are instead of copying them into `data/`:
+    /// each keeps its name, size, SHA-256 and `file://` location as `contentUrl`, under an id
+    /// `#data/<hex>`. See "RO-Crates without the data" in `docs/embedding.md`.
+    pub describe_data: bool,
 }
 
 /// Writes the crate of a run into a directory, creating it when needed.
@@ -113,6 +117,12 @@ pub fn export(
     let mut placed = HashMap::new();
     for task in &tasks {
         for file in task.inputs.iter().chain(&task.outputs) {
+            if !file.location.is_empty() && options.describe_data {
+                let digest = file.digest.as_deref();
+                let described = data.describe(&file.location, file.directory, digest, file.size)?;
+                placed.insert(files::file_key(file), described);
+                continue;
+            }
             if !file.location.is_empty() {
                 let mut copy = data::Placed::Absent;
                 if let Some(kept) = file.digest.as_ref().and_then(|digest| {
@@ -195,7 +205,14 @@ pub fn export(
     std::fs::write(
         directory.join(metadata::README),
         run_database::redact_public_text(&hidden::text(
-            &readme(&record, &workflow, tasks.len(), inputs.is_some(), &pinned),
+            &readme(
+                &record,
+                &workflow,
+                tasks.len(),
+                inputs.is_some(),
+                &pinned,
+                options,
+            ),
             options,
         )),
     )?;
@@ -235,7 +252,14 @@ fn main_file(
 }
 
 /// A short text for people who open the crate folder.
-fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool, pinned: &Pinned) -> String {
+fn readme(
+    run: &Run,
+    workflow: &str,
+    tasks: usize,
+    inputs: bool,
+    pinned: &Pinned,
+    options: &Options,
+) -> String {
     let kind = if run.simulated {
         "Simulated run"
     } else {
@@ -252,9 +276,7 @@ fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool, pinned: &Pinned
          uwe {}.\n\n\
          - `ro-crate-metadata.json` describes the run: the workflow, its steps, and one action per \
          task with its command, container image, inputs, outputs, start and end.\n\
-         - `{workflow}` is the workflow that ran.\n{}\
-         - `data/` holds each file of the run once, named by its SHA-256 digest; the metadata \
-         gives each file its name in the run.\n\n\
+         - `{workflow}` is the workflow that ran.\n{}{}\n\
          The run {}: started {}, ended {ended}, {tasks} tasks.\n",
         env!("CARGO_PKG_VERSION"),
         [
@@ -274,6 +296,12 @@ fn readme(run: &Run, workflow: &str, tasks: usize, inputs: bool, pinned: &Pinned
         .into_iter()
         .filter_map(|(shown, line)| shown.then_some(line))
         .collect::<String>(),
+        match options.describe_data {
+            true => "- The files of the run are not in this folder: the metadata gives each its \
+                     name, size, SHA-256 digest and where the run left it.\n",
+            false => "- `data/` holds each file of the run once, named by its SHA-256 digest; the \
+                      metadata gives each file its name in the run.\n",
+        },
         run.state,
         ids::time(run.started),
     ));

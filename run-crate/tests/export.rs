@@ -547,6 +547,114 @@ fn hides_private_values() {
     assert!(directory.join("main.nf").is_file());
 }
 
+#[test]
+fn describes_data_files() {
+    let root = tempfile::tempdir().expect("a directory");
+    let folder = root.path().join("server/run");
+    let work = folder.join("work");
+    std::fs::create_dir_all(&work).expect("makes the work folder");
+    let workflow = folder.join("main.nf");
+    std::fs::write(&workflow, WORKFLOW).expect("writes the workflow");
+    // A large input whose digest the database lacks, and an output whose digest it holds.
+    let large: Vec<u8> = (0..8u32 << 20).map(|at| (at % 251) as u8).collect();
+    let reads = folder.join("reads.fq");
+    std::fs::write(&reads, &large).expect("writes the input");
+    let upper = work.join("upper.txt");
+    std::fs::write(&upper, "HELLO\n").expect("writes an output");
+    let named = folder.join("extra.config");
+    std::fs::write(&named, CONFIG).expect("writes the config");
+    let secret = "sentinel-secret-value";
+    let text = |path: &Path| path.to_string_lossy().into_owned();
+    let start = RunStart {
+        id: "large-run".into(),
+        resumes: None,
+        workflow: text(&workflow),
+        language: Language::Nextflow,
+        revision: None,
+        arguments: vec!["run".into(), text(&workflow), "-c".into(), text(&named)],
+        parameters: vec![],
+        executor: "local".into(),
+        simulated: false,
+        store: None,
+        program: Some("uwe 0.1.0".into()),
+        launch: Some(text(&folder)),
+        workflow_folder: Some(text(&folder)),
+        repeats: None,
+    };
+    let path = root.path().join("runs.sqlite");
+    let mut recorder = (Database::open(&path).expect("opens"))
+        .record(&start)
+        .expect("starts");
+    let digest = |bytes: &[u8]| task_model::Digest::sha256(bytes);
+    recorder.sources(&[Source {
+        kind: SourceKind::Named,
+        path: text(&named),
+        digest: digest(CONFIG.as_bytes()).to_string(),
+        size: CONFIG.len() as u64,
+        executable: false,
+    }]);
+    let mut first = task(1, "UPPER", vec![input("reads.fq", &reads)], "upper.txt");
+    first.environment.insert("TOKEN".into(), secret.into());
+    recorder.requested(&first, &[]);
+    recorder.started(TaskId(1), 1);
+    let mut outcome = finished(1, "upper.txt", upper);
+    outcome.files[0].digest = Some(digest(b"HELLO\n").to_string());
+    outcome.files[0].size = Some(6);
+    recorder.finished(&outcome, 1, false);
+    recorder.ended(None);
+    recorder.close().expect("closes");
+    let database = Database::open(&path).expect("opens again");
+    let directory = root.path().join("crate");
+    let options = Options {
+        workflow,
+        secrets: vec![secret.into()],
+        folders: vec![folder.clone()],
+        describe_data: true,
+        ..Options::default()
+    };
+    let summary = export(&database, "large-run", &directory, &options).expect("exports");
+    assert_eq!((summary.files, summary.bytes), (0, 0));
+    assert!(!directory.join("data").exists(), "the crate copied data");
+    let used: u64 = (files_below(&directory).iter())
+        .map(|file| std::fs::metadata(file).expect("reads a size").len())
+        .sum();
+    assert!(used < 1 << 20, "the crate uses {used} bytes");
+    let metadata: Value =
+        serde_json::from_slice(&std::fs::read(directory.join(METADATA)).expect("reads metadata"))
+            .expect("parses metadata");
+    let reads_id = format!("#data/{}", digest(&large).hex());
+    let described = entity(&metadata, &reads_id);
+    assert_eq!(described["@type"], "File");
+    assert_eq!(described["sha256"], digest(&large).hex());
+    assert_eq!(described["contentSize"], large.len().to_string());
+    assert_eq!(described["contentUrl"], "reads.fq");
+    let upper_id = format!("#data/{}", digest(b"HELLO\n").hex());
+    let output = entity(&metadata, &upper_id);
+    assert_eq!(
+        (&output["sha256"], &output["contentSize"]),
+        (&Value::from(digest(b"HELLO\n").hex()), &Value::from("6"))
+    );
+    assert_eq!(output["contentUrl"], "work/upper.txt");
+    let config_id = format!("#data/{}", digest(CONFIG.as_bytes()).hex());
+    assert_eq!(entity(&metadata, &config_id)["contentUrl"], "extra.config");
+    let action = entity(&metadata, "#task/1");
+    assert_eq!(action["object"]["@id"], reads_id.as_str());
+    assert_eq!(action["result"]["@id"], upper_id.as_str());
+    let objects = entity(&metadata, "#run/large-run")["object"].clone();
+    assert!(
+        (objects.as_array().expect("objects").iter()).any(|object| object["@id"] == config_id),
+        "{objects}"
+    );
+    let parts = entity(&metadata, "./")["hasPart"].to_string();
+    assert!(!parts.contains("#data/"), "{parts}");
+    let server = text(&folder);
+    for entry in files_below(&directory) {
+        let content = std::fs::read_to_string(&entry).expect("reads a file of the crate");
+        assert!(!content.contains(secret), "{}", entry.display());
+        assert!(!content.contains(&server), "{}", entry.display());
+    }
+}
+
 /// The files below a folder.
 fn files_below(folder: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();

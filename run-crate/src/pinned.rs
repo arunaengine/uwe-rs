@@ -93,6 +93,14 @@ pub(crate) fn gather(
                 if crate::hidden::holds_secret(&from, options).unwrap_or(false) {
                     continue;
                 }
+                if options.describe_data {
+                    let size = Some(source.size);
+                    let placed = data.describe(&source.path, false, Some(&source.digest), size)?;
+                    if matches!(placed, Placed::Described { .. }) {
+                        pinned.named.push((placed, source));
+                    }
+                    continue;
+                }
                 match data.place_checked(&from.to_string_lossy(), Some(&source.digest))? {
                     Placed::Copied { digest, .. } if digest.to_string() != source.digest => {}
                     placed @ Placed::Copied { .. } => pinned.named.push((placed, source)),
@@ -161,11 +169,11 @@ impl Pinned {
             }));
         }
         for (placed, source) in &self.named {
-            let Placed::Copied { id, .. } = placed else {
+            let (Placed::Copied { id, .. } | Placed::Described { id, .. }) = placed else {
                 continue;
             };
             let name = Path::new(&source.path).file_name().unwrap_or_default();
-            entities.push(json!({
+            let mut entity = json!({
                 "@id": id,
                 "@type": "File",
                 "name": name.to_string_lossy(),
@@ -173,7 +181,14 @@ impl Pinned {
                 "description": "A file that the command line of the run named.",
                 "sha256": hex(&source.digest),
                 "contentSize": source.size.to_string()
-            }));
+            });
+            if let Placed::Described {
+                url, digest, size, ..
+            } = placed
+            {
+                crate::files::described(&mut entity, url, digest, *size, &source.path);
+            }
+            entities.push(entity);
         }
         for file in self
             .remote
@@ -233,14 +248,17 @@ impl Pinned {
         if self.output_schema.is_some() {
             parts.push(OUTPUT_SCHEMA.to_owned());
         }
-        parts.extend(self.named_ids());
+        parts.extend(self.named.iter().filter_map(|(placed, _)| match placed {
+            Placed::Copied { id, .. } => Some(id.clone()),
+            _ => None,
+        }));
         parts
     }
 
-    /// The ids of the named files in `data/`.
+    /// The ids of the named files, in `data/` or described where the run left them.
     pub(crate) fn named_ids(&self) -> impl Iterator<Item = String> + '_ {
         self.named.iter().filter_map(|(placed, _)| match placed {
-            Placed::Copied { id, .. } => Some(id.clone()),
+            Placed::Copied { id, .. } | Placed::Described { id, .. } => Some(id.clone()),
             _ => None,
         })
     }

@@ -46,6 +46,9 @@ impl Record<'_> {
                     entity["sha256"] = json!(digest.hex());
                     entity["contentSize"] = json!(size.to_string());
                 }
+                Some(Placed::Described {
+                    url, digest, size, ..
+                }) => described(&mut entity, url, digest, *size, &file.location),
                 Some(Placed::Remote { url }) => {
                     if run_database::public_resource_id(url) != *url {
                         entity["url"] = json!(url);
@@ -86,7 +89,7 @@ impl Record<'_> {
     /// The reference to the entity of a file.
     pub(crate) fn file_id(&self, file: &FileRow) -> Option<Value> {
         let id = match self.placed_file(file)? {
-            Placed::Copied { id, .. } => id.clone(),
+            Placed::Copied { id, .. } | Placed::Described { id, .. } => id.clone(),
             Placed::Remote { url } => url.clone(),
             Placed::Absent => {
                 let prefix = if file.directory {
@@ -141,6 +144,31 @@ impl Record<'_> {
     pub(crate) fn outputs(&self) -> impl Iterator<Item = &FileRow> {
         self.tasks.iter().flat_map(|task| &task.outputs)
     }
+}
+
+/// Adds the digest, size and location of a file that the crate describes but does not hold. A
+/// `Dataset` has no `contentUrl` in schema.org, so a directory gives its location as `url`.
+pub(crate) fn described(
+    entity: &mut Value,
+    url: &str,
+    digest: &task_model::Digest,
+    size: u64,
+    location: &str,
+) {
+    entity["sha256"] = json!(digest.hex());
+    entity["contentSize"] = json!(size.to_string());
+    let key = if entity["@type"] == "Dataset" {
+        "url"
+    } else {
+        "contentUrl"
+    };
+    entity[key] = json!(url);
+    let note =
+        format!("Not in this crate: the content stays at {location}, where the run left it.");
+    entity["description"] = json!(match entity["description"].as_str() {
+        Some(text) => format!("{text} {note}"),
+        None => note,
+    });
 }
 
 pub(crate) fn file_key(file: &FileRow) -> String {

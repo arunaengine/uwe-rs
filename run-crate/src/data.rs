@@ -22,6 +22,14 @@ pub(crate) enum Placed {
         size: u64,
         directory: bool,
     },
+    /// Described where the run left it, without a copy: `id` is `#data/<hex>` for a file,
+    /// `#data/<hex>/` for a directory, and `url` the `file://` URL of its location.
+    Described {
+        id: String,
+        url: String,
+        digest: Digest,
+        size: u64,
+    },
     /// A file on the web or in a bucket, which stays where it is.
     Remote { url: String },
     /// Not at its location: deleted since the run, or never made, like an input that a
@@ -97,6 +105,53 @@ impl Data {
         Ok(placed)
     }
 
+    /// Describes the file or directory at a local location without copying it, once per
+    /// location. It reads the content only for a digest or size that the run database lacks.
+    pub(crate) fn describe(
+        &mut self,
+        location: &str,
+        directory: bool,
+        digest: Option<&str>,
+        size: Option<u64>,
+    ) -> Result<Placed, CrateError> {
+        if location.contains("://") {
+            return Ok(Placed::Remote {
+                url: location.to_owned(),
+            });
+        }
+        let key = format!(
+            "described:{directory}:{}:{location}",
+            digest.unwrap_or_default()
+        );
+        if let Some(placed) = self.placed.get(&key) {
+            return Ok(placed.clone());
+        }
+        let path = Path::new(location);
+        if (directory && !path.is_dir()) || (!directory && !path.is_file()) {
+            return Ok(Placed::Absent);
+        }
+        let recorded = digest.and_then(|digest| digest.parse::<Digest>().ok());
+        let (digest, size) = match (recorded, size) {
+            (Some(digest), Some(size)) => (digest, size),
+            (recorded, size) => {
+                let (computed, bytes) = match directory {
+                    true => Self::walk_tree(path, None)?,
+                    false => hash_into(&mut File::open(path)?, &mut std::io::sink())?,
+                };
+                (recorded.unwrap_or(computed), size.unwrap_or(bytes))
+            }
+        };
+        let slash = if directory { "/" } else { "" };
+        let placed = Placed::Described {
+            id: format!("#data/{}{slash}", digest.hex()),
+            url: format!("file://{}", crate::ids::encode(location)),
+            digest,
+            size,
+        };
+        self.placed.insert(key, placed.clone());
+        Ok(placed)
+    }
+
     /// Places a file that the workflow wrote itself, like a CWL `InitialWorkDir` entry.
     pub(crate) fn place_content(&mut self, content: &str) -> Result<Placed, CrateError> {
         let (id, digest, size) = self
@@ -145,6 +200,32 @@ impl Data {
         expected: Option<&str>,
     ) -> Result<Placed, CrateError> {
         let part = self.part();
+        let (digest, size) = Self::walk_tree(source, Some(&part))?;
+        if expected.is_some_and(|expected| digest.to_string() != expected) {
+            std::fs::remove_dir_all(&part)?;
+            return Ok(Placed::Absent);
+        }
+        let name = if self.directory.join(digest.hex()).is_file() {
+            format!("{}-directory", digest.hex())
+        } else {
+            digest.hex().to_owned()
+        };
+        let target = self.directory.join(&name);
+        if target.exists() {
+            std::fs::remove_dir_all(&target)?;
+        }
+        std::fs::rename(&part, &target)?;
+        Ok(Placed::Copied {
+            id: format!("data/{name}/"),
+            digest,
+            size,
+            directory: true,
+        })
+    }
+
+    /// The digest of the manifest of a directory, as the store computes it, and the size of its
+    /// files; copies the directory to `copy` on the way when given.
+    fn walk_tree(source: &Path, copy: Option<&Path>) -> Result<(Digest, u64), CrateError> {
         let mut entries = Vec::new();
         let mut size = 0;
         let mut pending = vec![(source.to_owned(), String::new())];
@@ -189,25 +270,32 @@ impl Data {
                             "unsupported directory link in historical export",
                         )
                     })?;
-                    let copy = part.join(&relative);
-                    std::fs::create_dir_all(
-                        copy.parent().expect("a directory entry has a parent"),
-                    )?;
-                    std::os::unix::fs::symlink(&link, &copy)?;
+                    if let Some(copy) = copy.map(|copy| copy.join(&relative)) {
+                        std::fs::create_dir_all(
+                            copy.parent().expect("a directory entry has a parent"),
+                        )?;
+                        std::os::unix::fs::symlink(&link, &copy)?;
+                    }
                     entries.push(TreeEntry::Symlink {
                         path: relative,
                         target: target.to_owned(),
                     });
                 } else if entry.path().is_file() {
-                    let target = part.join(&relative);
-                    if let Some(parent) = target.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    let (digest, bytes) = copy_hashed(&mut File::open(entry.path())?, &target)?;
-                    std::fs::set_permissions(
-                        &target,
-                        std::fs::metadata(entry.path())?.permissions(),
-                    )?;
+                    let mut file = File::open(entry.path())?;
+                    let (digest, bytes) = match copy.map(|copy| copy.join(&relative)) {
+                        Some(target) => {
+                            if let Some(parent) = target.parent() {
+                                std::fs::create_dir_all(parent)?;
+                            }
+                            let copied = copy_hashed(&mut file, &target)?;
+                            std::fs::set_permissions(
+                                &target,
+                                std::fs::metadata(entry.path())?.permissions(),
+                            )?;
+                            copied
+                        }
+                        None => hash_into(&mut file, &mut std::io::sink())?,
+                    };
                     size += bytes;
                     entries.push(TreeEntry::File {
                         path: relative,
@@ -218,32 +306,17 @@ impl Data {
                 }
             }
             if empty && !prefix.is_empty() {
-                std::fs::create_dir_all(part.join(&prefix))?;
+                if let Some(copy) = copy {
+                    std::fs::create_dir_all(copy.join(&prefix))?;
+                }
                 entries.push(TreeEntry::EmptyDirectory { path: prefix });
             }
         }
-        std::fs::create_dir_all(&part)?;
+        if let Some(copy) = copy {
+            std::fs::create_dir_all(copy)?;
+        }
         let digest = Tree { entries }.digest().map_err(CrateError::Tree)?;
-        if expected.is_some_and(|expected| digest.to_string() != expected) {
-            std::fs::remove_dir_all(&part)?;
-            return Ok(Placed::Absent);
-        }
-        let name = if self.directory.join(digest.hex()).is_file() {
-            format!("{}-directory", digest.hex())
-        } else {
-            digest.hex().to_owned()
-        };
-        let target = self.directory.join(&name);
-        if target.exists() {
-            std::fs::remove_dir_all(&target)?;
-        }
-        std::fs::rename(&part, &target)?;
-        Ok(Placed::Copied {
-            id: format!("data/{name}/"),
-            digest,
-            size,
-            directory: true,
-        })
+        Ok((digest, size))
     }
 
     /// A new temporary name inside `data/`.
@@ -258,7 +331,11 @@ pub(crate) fn copy_hashed(
     source: &mut dyn Read,
     target: &Path,
 ) -> Result<(Digest, u64), CrateError> {
-    let mut output = File::create(target)?;
+    hash_into(source, &mut File::create(target)?)
+}
+
+/// Writes bytes to `output` and returns their digest and size.
+fn hash_into(source: &mut dyn Read, output: &mut dyn Write) -> Result<(Digest, u64), CrateError> {
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; 1 << 20];
     let mut size = 0;
@@ -403,6 +480,41 @@ mod tests {
                 .expect("checks historical bytes"),
             Placed::Copied { .. }
         ));
+    }
+
+    #[test]
+    fn describes_without_copy() {
+        let root = tempfile::tempdir().expect("a directory");
+        let source = root.path().join("source");
+        std::fs::create_dir_all(source.join("inner/empty")).expect("makes folders");
+        std::fs::write(source.join("inner/a.txt"), "abc").expect("writes");
+        std::os::unix::fs::symlink("a.txt", source.join("inner/link")).expect("links");
+        let location = source.to_string_lossy();
+        let Placed::Copied { digest, size, .. } = Data::new(&root.path().join("copy"))
+            .place(&location)
+            .expect("copies")
+        else {
+            panic!("the directory is copied");
+        };
+        let crate_root = root.path().join("crate");
+        let mut data = Data::new(&crate_root);
+        let described = data
+            .describe(&location, true, None, None)
+            .expect("describes");
+        let expected = Placed::Described {
+            id: format!("#data/{}/", digest.hex()),
+            url: format!("file://{location}"),
+            digest,
+            size,
+        };
+        assert_eq!(described, expected);
+        assert!(!crate_root.exists());
+        assert_eq!(
+            data.describe(&location, false, None, None)
+                .expect("describes"),
+            Placed::Absent
+        );
+        assert_eq!(data.totals(), (0, 0));
     }
 
     #[test]

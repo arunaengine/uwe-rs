@@ -12,11 +12,11 @@ use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
-    pipelines: 8,
-    full: 8,
-    native: 8,
-    compiled: 8,
-    same: 8,
+    pipelines: 9,
+    full: 9,
+    native: 9,
+    compiled: 9,
+    same: 9,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -85,6 +85,10 @@ const PIPELINES: &[(&str, &str)] = &[
     (
         "combine",
         "workflow {\n    GREET(channel.of('a', 'b').combine(channel.of(1, 2)).map { n, i -> [[id: \"${n}${i}\"], n] })\n    COUNT(GREET.out.text.map { it[1] }.toSortedList(), 'combined')\n}",
+    ),
+    (
+        "closures",
+        "def shout(word) { word.toUpperCase() }\nworkflow {\n    def keep = { w -> w != 'b' }\n    GREET(channel.of('a', 'b', 'c').map { [it] }.map { it.findAll(keep) }.filter { it }.map { [[id: shout(it[0]) + params.greeting], it[0]] })\n}",
     ),
 ];
 

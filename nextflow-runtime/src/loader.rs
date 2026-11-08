@@ -70,6 +70,36 @@ impl Loader {
         }
     }
 
+    /// Loads the main script, then the script at `scope` again with `extra` code after its
+    /// text, which sees the functions and includes of that script.
+    pub fn load_extended(
+        &mut self,
+        main: &Path,
+        scope: &Path,
+        extra: &str,
+    ) -> Result<Rc<Module>, LoadError> {
+        self.load(main)?;
+        let path = std::path::absolute(scope).unwrap_or_else(|_| scope.to_owned());
+        let text = std::fs::read_to_string(&path).map_err(|error| LoadError {
+            messages: vec![format!("{}: {error}", path.display())],
+        })?;
+        let module = self.lower(&format!("{text}\n{extra}"), &path);
+        let module = Rc::new(module.ok_or_else(|| LoadError {
+            messages: std::mem::take(&mut self.errors),
+        })?);
+        if let Some(directory) = path.parent() {
+            *module.directory.borrow_mut() = Some(directory.to_string_lossy().into());
+        }
+        self.add_classes(&module);
+        self.link(&module, &path);
+        match self.errors.is_empty() {
+            true => Ok(module),
+            false => Err(LoadError {
+                messages: std::mem::take(&mut self.errors),
+            }),
+        }
+    }
+
     fn load_file(&mut self, path: &Path) -> Option<Rc<Module>> {
         let path = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
         if let Some(module) = self.modules.get(&path) {

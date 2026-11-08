@@ -34,7 +34,8 @@ fn lowers_plain_tools() {
         "command": ["echo", "-n", {"input": "message"}, {"input": "words"}],
         "captures": [{"output": "out", "from": "stdout"}],
         "stdout": "out.txt",
-        "workdir": "/var/spool/cwl"
+        "workdir": "/var/spool/cwl",
+        "environment": {"HOME": "/var/spool/cwl", "TMPDIR": "/tmp"}
     });
     assert_eq!(op["path"], "echo");
     assert_eq!(op["kind"]["task"], task);
@@ -86,8 +87,8 @@ fn lowers_glob_expressions() {
 
 #[test]
 fn keeps_requirements_native() {
-    let lowering = lowered("environment.cwl");
-    let reason = "the requirement EnvVarRequirement";
+    let lowering = lowered("update.cwl");
+    let reason = "the requirement InplaceUpdateRequirement";
     assert_eq!(lowering.kept[0].reason, reason);
     assert!(wir::verify(&lowering.document).is_ok());
 }
@@ -271,5 +272,21 @@ fn lowers_format_expressions() {
     assert_eq!(paths, ["sorted", "sorted.sorted.outputEval"]);
     let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
     assert!(code.contains("file.format = format(file)"), "{code}");
-    assert_eq!(ops[1]["inputs"][1]["type"], json!({"file": {}}), "self is the File");
+    assert_eq!(
+        ops[1]["inputs"][1]["type"],
+        json!({"file": {}}),
+        "self is the File"
+    );
+}
+
+#[test]
+fn lowers_environment_variables() {
+    let lowering = lowered("environment.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let task = serde_json::to_value(&ops.last().unwrap().kind).unwrap();
+    let environment = json!({"GREETING": "hello", "HOME": "/var/spool/cwl",
+        "NAME": {"input": "environment.NAME"}, "TMPDIR": "/tmp"});
+    assert_eq!(task["task"]["environment"], environment);
+    assert_eq!(ops[0].path, "environment.environment.NAME");
 }

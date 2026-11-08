@@ -88,7 +88,28 @@ pub fn build(
             }
         }
     }
-    let redirections: Vec<String> = [(">", &stdout), ("2>", &stderr)]
+    let stdin = match &spec.stdin {
+        Some(Content::Text(path)) => Some(path.clone()),
+        Some(Content::Input { input }) => {
+            let value = bound.get(input).unwrap_or(&Json::Null);
+            staging.texts(value, &format!("inputs/{input}")).pop()
+        }
+        None => None,
+    };
+    let mut environment = std::collections::BTreeMap::new();
+    for (name, content) in &spec.environment {
+        let value = match content {
+            Content::Text(text) => Json::String(text.clone()),
+            Content::Input { input } => bound.get(input).cloned().unwrap_or(Json::Null),
+        };
+        match value {
+            Json::Null => {}
+            Json::String(text) => drop(environment.insert(name.clone(), text)),
+            other => drop(environment.insert(name.clone(), other.to_string())),
+        }
+    }
+    let streams = [(">", &stdout), ("2>", &stderr), ("<", &stdin)];
+    let redirections: Vec<String> = streams
         .into_iter()
         .filter_map(|(sign, name)| name.as_ref().map(|name| format!("{sign} {}", quote(name))))
         .collect();
@@ -123,6 +144,7 @@ pub fn build(
             gpus: wanted.gpus,
             ..Resources::default()
         },
+        environment,
         reuse: match attributes.cache {
             Some(wir::Cache::Never) => Reuse::Disabled,
             _ => Reuse::Allowed,

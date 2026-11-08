@@ -111,6 +111,7 @@ pub fn known(class: &RequirementClass) -> bool {
             | RequirementClass::StepInputExpression
             | RequirementClass::SchemaDef { .. }
             | RequirementClass::InitialWorkDir { .. }
+            | RequirementClass::EnvVar { .. }
     )
 }
 
@@ -142,6 +143,8 @@ mod tests {
             stderr: None,
             workdir: None,
             files: Vec::new(),
+            environment: Default::default(),
+            stdin: None,
         };
         (apply(&scope, &mut task), task)
     }
@@ -163,8 +166,11 @@ mod tests {
     }
 
     #[test]
-    fn refuses_environment_variables() {
-        let (attributes, _) = applied("environment.cwl");
-        assert_eq!(attributes.unwrap_err(), "the requirement EnvVarRequirement");
+    fn refuses_unknown_requirements() {
+        let (attributes, _) = applied("update.cwl");
+        assert_eq!(
+            attributes.unwrap_err(),
+            "the requirement InplaceUpdateRequirement"
+        );
     }
 }

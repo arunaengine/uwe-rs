@@ -12,7 +12,7 @@ use crate::Scope;
 pub const OUTDIR: &str = "/var/spool/cwl";
 
 /// The temporary folder of a CWL tool in its container.
-const TMPDIR: &str = "/tmp";
+pub const TMPDIR: &str = "/tmp";
 
 /// The `runtime` object of a tool as JSON, as uwe's CWL driver makes it, or why it is not
 /// known before the tool runs.

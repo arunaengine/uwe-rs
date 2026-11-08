@@ -219,8 +219,9 @@ struct Opened {
 pub(crate) struct Dialects {
     opened: Vec<Opened>,
     keys: HashMap<SourceKey, usize>,
-    /// The adapter of each task, by run id.
+    /// The adapter and the call of each task, by run id.
     owners: HashMap<TaskId, usize>,
+    calls_of: HashMap<TaskId, CallId>,
     /// The calls that have not ended, with their adapter.
     calls: BTreeMap<CallId, usize>,
     ended: bool,
@@ -262,6 +263,11 @@ impl Dialects {
             self.calls.remove(&call.call);
         }
         self.number(index, changes?, next)
+    }
+
+    /// Each task by run id, with the node of its call.
+    pub fn tasks(&self) -> impl Iterator<Item = (TaskId, usize)> + '_ {
+        self.calls_of.iter().map(|(task, call)| (*task, call.0))
     }
 
     pub fn owns(&self, task: TaskId) -> bool {
@@ -410,6 +416,7 @@ impl Dialects {
             }
             task.id = id;
             self.owners.insert(id, index);
+            self.calls_of.insert(id, call);
             tasks.push((call, task));
         }
         for (call, _) in &changes.ended {

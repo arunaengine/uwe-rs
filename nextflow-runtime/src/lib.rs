@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod agent;
+pub mod bridge;
 mod build;
 mod calls;
 pub mod channel;

@@ -242,3 +242,25 @@ fn reads_templates_of_configs() {
     assert_eq!(one.1.len(), 1, "{one:?}");
     assert_eq!(other, one);
 }
+
+const EMPTY: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - {name: none, template: say, withItems: [], arguments: {parameters: [{name: text, value: "{{item}}"}]}}
+    - - {name: after, template: say}
+  - name: say
+    inputs: {parameters: [{name: text, value: x}]}
+    container: {image: alpine:3.20, command: [echo, "{{inputs.parameters.text}}"]}
+"#;
+
+#[test]
+fn loops_over_no_items() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, EMPTY);
+    let (one, other) = both(root, &file, &[], Writer::new);
+    one.0.as_ref().unwrap();
+    assert_eq!(one.1, ["runs[1].after"]);
+    assert_eq!(other, one);
+}

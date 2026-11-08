@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use argo_parser::model::{AnyString, Parameter, Sequence, TemplateRef};
+use argo_parser::model::{AnyString, Parameter, Sequence, TemplateRef, WorkflowSpec};
 use argo_parser::{Entry, Node, Position, Value as Yaml};
 use serde_json::{Map, Value as Json};
 use workflow_graph::{DriverError, Files, Launch, Outcome, Task, TaskId};
@@ -88,6 +88,40 @@ impl Adapter {
     /// The name of the workflow, which the node names of the calls start with.
     pub fn workflow_name(&self) -> &str {
         &self.run.workflow_name
+    }
+
+    /// The spec of the workflow, joined with the WorkflowTemplate it references.
+    pub fn spec(&self) -> &WorkflowSpec {
+        &self.run.spec
+    }
+
+    /// The template that a run starts with.
+    pub fn entrypoint(&self) -> &str {
+        &self.run.entrypoint
+    }
+
+    /// A template of the workflow, or of the WorkflowTemplate `reference` names, with the
+    /// template defaults of the workflow, as a call sees it.
+    pub fn template(
+        &mut self,
+        name: &str,
+        reference: Option<&(String, bool)>,
+    ) -> Result<Node, String> {
+        let holder = Holder {
+            template: name.to_owned(),
+            template_ref: reference.map(|(document, cluster_scope)| TemplateRef {
+                name: document.clone(),
+                template: name.to_owned(),
+                cluster_scope: *cluster_scope,
+            }),
+            inline: None,
+        };
+        let context = Rc::clone(&self.run.root_context);
+        let (_, template) = self.run.resolve(&holder, &context)?;
+        Ok(match &self.run.defaults {
+            Some(defaults) => crate::merge::with_defaults(&template, defaults),
+            None => template,
+        })
     }
 
     pub fn use_files(&mut self, files: std::sync::Arc<dyn Files>) {

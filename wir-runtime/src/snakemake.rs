@@ -81,6 +81,8 @@ struct Jobs {
     /// The job of the source context, which a region plans with, and its last revision.
     rule: RuleTask,
     revision: Option<u64>,
+    /// The jobs of the region that ended, as its planner hears of them.
+    ended: HashSet<String>,
     /// Whether the run is simulated, which delivers no files.
     simulated: bool,
 }
@@ -128,6 +130,7 @@ impl Jobs {
             ports: HashMap::new(),
             rule: rule.clone(),
             revision: None,
+            ended: HashSet::new(),
             simulated: opening.launch.simulated,
         })
     }
@@ -147,11 +150,22 @@ impl Jobs {
         Ok(self.planned.clone().unwrap_or_default())
     }
 
-    /// The next plan update of a region with the jobs `jobs`.
+    /// The next plan update of a region with the jobs `jobs`; final once each needed
+    /// checkpoint ended, after which the native run plans no more and runs no waiting job.
     fn update(&mut self, jobs: &[PlannedJob]) -> Result<PlanUpdate, DriverError> {
         let revision = self.revision.map_or(0, |revision| revision + 1);
         self.revision = Some(revision);
-        snakemake_compiler::region_plan(jobs, &self.rule, revision).map_err(DriverError::new)
+        let mut update = snakemake_compiler::region_plan(jobs, &self.rule, revision)
+            .map_err(DriverError::new)?;
+        let pending = (jobs.iter())
+            .filter(|job| job.checkpoint && job.needed)
+            .any(|job| {
+                !self
+                    .ended
+                    .contains(&job_name(&job.key.rule, &job.key.wildcards))
+            });
+        update.final_plan = !pending;
+        Ok(update)
     }
 
     /// Runs the steps that wait while no command holds them up.
@@ -302,9 +316,12 @@ impl TaskAdapter for Jobs {
     fn replan(
         &mut self,
         _region: CallId,
-        _instance: &Identity,
+        instance: &Identity,
         _status: Status,
     ) -> Result<Option<PlanUpdate>, DriverError> {
+        if let Identity::Rule(key) = instance {
+            self.ended.insert(job_name(&key.rule, &key.wildcards));
+        }
         match self.driver.replan_jobs()? {
             Answer::Replanned(Some(jobs)) => {
                 self.planned = Some(jobs.clone());
@@ -317,4 +334,9 @@ impl TaskAdapter for Jobs {
             }
         }
     }
+}
+
+/// The name of a job by its rule and wildcards, as the planner of a region hears of it.
+fn job_name(rule: &str, wildcards: &std::collections::BTreeMap<String, String>) -> String {
+    format!("{rule} {wildcards:?}")
 }

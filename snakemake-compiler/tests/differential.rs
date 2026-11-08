@@ -391,6 +391,19 @@ fn checkpoints_match() {
     assert!(compared.same, "{}", compared.shown);
 }
 
+/// The native run plans again after each checkpoint, also one that no input function reads,
+/// and a checkpoint whose files are there runs no task and plans no more.
+#[test]
+fn replanned_checkpoints_match() {
+    let plain = "rule all:\n    input: \"d.txt\"\n\ncheckpoint c:\n    output: \"c.txt\"\n    shell: \"touch {output}\"\n\nrule d:\n    input: \"c.txt\"\n    output: \"d.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let current = "rule all:\n    input: \"t.txt\"\n\ncheckpoint c:\n    output: \"c.txt\"\n    shell: \"touch {output}\"\n\ndef made(wildcards):\n    return checkpoints.c.get().output[0]\n\nrule p:\n    input: made\n    output: \"p.txt\"\n    shell: \"cp {input} {output}\"\n\nrule t:\n    input: \"p.txt\"\n    output: \"t.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let made = [("c.txt", "c\n"), ("p.txt", "c\n")];
+    for (snakefile, files) in [(plain, &[][..]), (current, &made[..])] {
+        let compared = compared_with(snakefile, &[], files);
+        assert!(compared.full && compared.same, "{}", compared.shown);
+    }
+}
+
 /// A `cwl:` job runs the tasks of its CWL run, as natively.
 #[test]
 fn cwl_jobs_match() {

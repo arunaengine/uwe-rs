@@ -20,7 +20,8 @@ pub fn region_plan(
     rule: &RuleTask,
     revision: u64,
 ) -> Result<PlanUpdate, String> {
-    // A job waits when a checkpoint decides its inputs, or when it reads a waiting job.
+    // A job waits when a checkpoint decides its inputs, or when it reads a waiting job that
+    // runs; one that does not run leaves its files where they are.
     let mut waiting = vec![false; jobs.len()];
     let mut moved = true;
     while moved {
@@ -29,7 +30,9 @@ pub fn region_plan(
             let feeding = (job.producers.iter().map(|producer| producer.job))
                 .chain(job.after.iter().copied());
             let waits = job.native.as_deref() == Some(snakemake_runtime::WAITING)
-                || feeding.into_iter().any(|other| waiting[other]);
+                || feeding
+                    .into_iter()
+                    .any(|other| waiting[other] && jobs[other].needed);
             if waits && !waiting[index] {
                 waiting[index] = true;
                 moved = true;
@@ -43,10 +46,14 @@ pub fn region_plan(
     let planned: Vec<PlannedJob> = (kept.iter())
         .map(|index| {
             let mut job = jobs[*index].clone();
+            job.producers
+                .retain(|producer| position.contains_key(&producer.job));
             for producer in &mut job.producers {
                 producer.job = position[&producer.job];
             }
-            job.after = job.after.iter().map(|after| position[after]).collect();
+            job.after = (job.after.iter())
+                .filter_map(|after| position.get(after).copied())
+                .collect();
             job
         })
         .collect();
@@ -60,6 +67,12 @@ pub fn region_plan(
     let launch = crate::plan_launch(rule, Vec::new(), Launch::default());
     let mut graph = jobs::graph(&planned, &setting, &launch, &Json::Null);
     graph["name"] = json!("plan");
+    // A run checks the layout of each job against the whole plan.
+    let ops = graph["ops"].as_array_mut().into_iter().flatten();
+    for (op, index) in ops.zip(&kept) {
+        let builder = &mut op["kind"]["task"]["builder"]["snakemake_job"];
+        builder["layout"] = json!(crate::launch::layout(jobs, *index));
+    }
     let keys: Vec<Json> = (graph["ops"].as_array().into_iter().flatten())
         .zip(&planned)
         .map(|(op, job)| {

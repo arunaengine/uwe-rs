@@ -232,9 +232,12 @@ impl Lowerer {
             inputs,
             outputs,
             after: Vec::new(),
+            depends: None,
+            handles: Vec::new(),
             effects: Vec::new(),
             attributes: Default::default(),
             origin,
+            values: Default::default(),
         })
     }
 
@@ -325,9 +328,12 @@ fn blank(path: &str, kind: Kind, origin: Option<Origin>) -> Op {
         inputs: Vec::new(),
         outputs: Vec::new(),
         after: Vec::new(),
+        depends: None,
+        handles: Vec::new(),
         effects: Vec::new(),
         attributes: Default::default(),
         origin,
+        values: Default::default(),
     }
 }
 
@@ -339,6 +345,7 @@ fn edge(from: (Option<&str>, &str), to: (Option<&str>, &str)) -> Edge {
     Edge {
         from: end(from),
         to: end(to),
+        read: Default::default(),
     }
 }
 

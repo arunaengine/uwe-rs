@@ -86,6 +86,9 @@ pub fn build(
         },
         reuse: match attributes.cache {
             Some(wir::Cache::Never) => Reuse::Disabled,
+            Some(wir::Cache::Resume) => Reuse::Lineage,
+            // The outputs or the effect of an op with effects may differ from another run's.
+            _ if !op.effects.is_empty() => Reuse::Lineage,
             _ => Reuse::Allowed,
         },
         // Without network, runs may share the results of the task.

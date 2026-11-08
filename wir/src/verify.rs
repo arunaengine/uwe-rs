@@ -4,8 +4,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::closure::Body;
 use crate::document::{Document, Endpoint, Graph, KNOWN, Port, Source, VERSION};
+use crate::flow::Subscription;
 use crate::op::{Kind, Op};
+use crate::reserved::{BufferRule, Sort};
 use crate::types::{Type, TypeDef};
 
 /// One problem and where it is: `document`, `sources/<id>`, `types/<name>`, `<graph>` or
@@ -56,6 +59,12 @@ pub enum Problem {
     },
     #[error("{0} joins a value port and a stream port")]
     FlowMismatch(String),
+    #[error("{0} reads a value, which has no live reader")]
+    LiveValue(String),
+    #[error("{0} is a stream and takes no default")]
+    StreamDefault(String),
+    #[error("{0} is a stream input without a producer")]
+    StreamUnbound(String),
     #[error("ops form a cycle through {0}")]
     Cycle(String),
     #[error("native {0} needs a type without dynamic")]
@@ -82,6 +91,12 @@ pub enum Problem {
     Default(String),
     #[error("{0} needs exactly one input and one output")]
     Unary(String),
+    #[error("callback {0}: {1}")]
+    Callback(String, String),
+    #[error("closure: {0}")]
+    Closure(String),
+    #[error("{0} needs {1}")]
+    Shape(String, String),
 }
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.
@@ -200,6 +215,9 @@ impl<'d> Checker<'d> {
             if from.flow != to.flow {
                 self.report(&at, Problem::FlowMismatch(name.clone()));
             }
+            if edge.read == Subscription::Live && from.flow.is_value() {
+                self.report(&at, Problem::LiveValue(name.clone()));
+            }
             if !to.takes().accepts(&from.r#type, self.defs) {
                 let (found, want) = (show(&from.r#type), show(&to.r#type));
                 self.report(
@@ -220,6 +238,11 @@ impl<'d> Checker<'d> {
         for op in &graph.ops {
             for input in &op.inputs {
                 let set = bound.contains(&(Some(op.path.as_str()), input.name.as_str()));
+                if !set && !input.flow.is_value() {
+                    let at = format!("{}/{}", graph.name, op.path);
+                    self.report(&at, Problem::StreamUnbound(format!("input {}", input.name)));
+                    continue;
+                }
                 if !set && input.default.is_none() && !input.r#type.is_optional(self.defs) {
                     let at = format!("{}/{}", graph.name, op.path);
                     self.report(&at, Problem::Unbound(format!("input {}", input.name)));
@@ -253,8 +276,9 @@ impl<'d> Checker<'d> {
             }
         }
         for (to, op) in graph.ops.iter().enumerate() {
-            for dependency in &op.after {
-                if let Some(&from) = index.get(dependency.op.as_str()) {
+            let control = controls::waits_for(op).into_iter();
+            for name in op.after.iter().map(|item| item.op.as_str()).chain(control) {
+                if let Some(&from) = index.get(name) {
                     next[from].push(to);
                 }
             }
@@ -286,6 +310,7 @@ impl<'d> Checker<'d> {
         if let Some(origin) = &op.origin {
             self.source(&at, &origin.source);
         }
+        self.control(&at, graph, op);
         for name in called_by(&op.kind) {
             if self.graph(name).is_none() {
                 self.report(&at, Problem::NoGraph(name.to_owned()));
@@ -302,7 +327,9 @@ impl<'d> Checker<'d> {
                 continue;
             };
             let named = format!("{side} {}", port.name);
-            if side.ends_with("output") {
+            if !port.flow.is_value() {
+                self.report(at, Problem::StreamDefault(named));
+            } else if side.ends_with("output") {
                 self.report(at, Problem::Default(named));
             } else if !crate::fits(value, &port.r#type, self.defs) {
                 self.report(at, Problem::Unfit(named));
@@ -417,10 +444,76 @@ fn called_by(kind: &Kind) -> Vec<&str> {
     match kind {
         Kind::Call(call) => vec![&call.graph],
         Kind::Map(map) => vec![&map.body],
-        Kind::Filter(filter) => vec![&filter.body],
+        Kind::Process(process) => vec![&process.body],
+        Kind::Filter(filter) => filter.body.graph().into_iter().collect(),
+        Kind::Transform(transform) => transform.body.graph().into_iter().collect(),
+        Kind::FlatMap(flat) => flat.body.iter().filter_map(Body::graph).collect(),
+        Kind::Merge(merge) => merge.body.iter().filter_map(Body::graph).collect(),
+        Kind::Group(group) | Kind::GroupTuple(group) => {
+            let sort = sorted(&group.sort).into_iter();
+            group
+                .size_body
+                .iter()
+                .chain(sort)
+                .filter_map(Body::graph)
+                .collect()
+        }
+        Kind::Join(join) => join.body.iter().filter_map(Body::graph).collect(),
+        Kind::Combine(combine) => combine.body.iter().filter_map(Body::graph).collect(),
+        Kind::Cross(cross) => cross.key.iter().filter_map(Body::graph).collect(),
+        Kind::Collect(collect) => {
+            let sort = sorted(&collect.sort).into_iter();
+            collect
+                .body
+                .iter()
+                .chain(sort)
+                .filter_map(Body::graph)
+                .collect()
+        }
+        Kind::Reduce(reduce) => (reduce.body.iter().chain(&reduce.compare))
+            .filter_map(Body::graph)
+            .collect(),
+        Kind::First(first) => first.predicate.iter().filter_map(Body::graph).collect(),
+        Kind::Last(last) => last.predicate.iter().filter_map(Body::graph).collect(),
+        Kind::Buffer(buffer) => match &buffer.rule {
+            BufferRule::Match(rule) => (rule.open.iter().chain([&rule.close]))
+                .filter_map(Body::graph)
+                .collect(),
+            BufferRule::Size(_) => Vec::new(),
+        },
+        Kind::Unique(unique) => unique.key.iter().filter_map(Body::graph).collect(),
+        Kind::Distinct(distinct) => distinct.key.iter().filter_map(Body::graph).collect(),
+        Kind::Until(until) => until.predicate.graph().into_iter().collect(),
+        Kind::IfEmpty(fallback) => fallback.body.iter().filter_map(Body::graph).collect(),
+        Kind::Split(split) => split.body.iter().filter_map(Body::graph).collect(),
+        Kind::CollectFile(collect) => {
+            let sort = sorted(&collect.sort).into_iter();
+            collect
+                .body
+                .iter()
+                .chain(sort)
+                .filter_map(Body::graph)
+                .collect()
+        }
+        Kind::View(view) => view.body.iter().filter_map(Body::graph).collect(),
+        Kind::Route(route) => (route.cases.iter())
+            .flat_map(|case| std::iter::once(&case.condition).chain(&case.body))
+            .filter_map(Body::graph)
+            .collect(),
+        Kind::MultiMap(multi) => (multi.outputs.iter())
+            .filter_map(|output| output.body.graph())
+            .collect(),
         Kind::Branch(branch) => vec![&branch.body],
         Kind::Loop(body) => vec![&body.body],
         _ => Vec::new(),
+    }
+}
+
+/// The body of a sort rule.
+pub(crate) fn sorted(sort: &Sort) -> Option<&Body> {
+    match sort {
+        Sort::Key(body) | Sort::Compare(body) => Some(body),
+        _ => None,
     }
 }
 
@@ -513,8 +606,26 @@ fn show(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
+#[path = "builders.rs"]
+mod builders;
+#[path = "callbacks.rs"]
+mod callbacks;
+#[path = "controls.rs"]
+mod controls;
+#[path = "effects.rs"]
+mod effects;
+#[path = "keyed.rs"]
+mod keyed;
 #[path = "kinds.rs"]
 mod kinds;
+#[path = "operators.rs"]
+mod operators;
+#[path = "reductions.rs"]
+mod reductions;
+#[path = "regions.rs"]
+mod regions;
+#[path = "selection.rs"]
+mod selection;
 
 #[cfg(test)]
 #[path = "verify_tests.rs"]

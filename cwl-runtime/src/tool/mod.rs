@@ -558,6 +558,7 @@ pub fn task(
         defer_logs: true,
         output_manifest: (tool.is_some() && !options.simulated).then(|| OUTPUT_JSON.to_owned()),
         run_as: None,
+        site: None,
         id,
         name: name.to_owned(),
         step: step.to_owned(),

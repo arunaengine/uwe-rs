@@ -59,13 +59,14 @@ fn merged(path: &str, sources: &[(Endpoint, Type)], mode: LinkMerge) -> (Link, T
     let same = sources.iter().all(|(_, r#type)| Some(r#type) == first);
     let items = first.filter(|_| same).cloned().unwrap_or(Type::Dynamic);
     let at = format!("{path}.merge");
-    let mut op = blank(&at, Kind::Merge(Merge {}), None);
+    let mut op = blank(&at, Kind::Merge(Merge::default()), None);
     let mut link = start(end(Some(&at), "out"));
     for (index, (from, r#type)) in sources.iter().enumerate() {
         op.inputs.push(port(&index.to_string(), r#type.clone()));
         link.edges.push(Edge {
             from: from.clone(),
             to: end(Some(&at), &index.to_string()),
+            read: Default::default(),
         });
     }
     op.outputs.push(port("out", array(items.clone())));
@@ -77,7 +78,7 @@ fn merged(path: &str, sources: &[(Endpoint, Type)], mode: LinkMerge) -> (Link, T
         Type::Array(inner) => (*inner.items).clone(),
         other => other.clone(),
     };
-    let kind = Kind::Flatten(Flatten {});
+    let kind = Kind::Flatten(Flatten::default());
     then(
         &mut link,
         &format!("{path}.flatten"),
@@ -96,6 +97,7 @@ fn then(link: &mut Link, at: &str, kind: Kind, input: Type, output: Type) {
     link.edges.push(Edge {
         from: link.from.clone(),
         to: end(Some(at), "in"),
+        read: Default::default(),
     });
     link.from = end(Some(at), "out");
     link.ops.push(op);

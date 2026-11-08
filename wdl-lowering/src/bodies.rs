@@ -249,7 +249,7 @@ pub(crate) fn selected(frame: &mut Frame, expr: &Expr, path: &str, output: &Type
         return false;
     }
     let merged = format!("{path}.items");
-    let mut merge = blank(&merged, Kind::Merge(Merge {}), frame.origin.clone());
+    let mut merge = blank(&merged, Kind::Merge(Merge::default()), frame.origin.clone());
     for (index, found) in held.into_iter().enumerate() {
         let name = index.to_string();
         merge.inputs.push(port(&name, found.r#type));

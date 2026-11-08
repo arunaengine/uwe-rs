@@ -45,6 +45,7 @@ pub fn lower(
         network: false,
         stdout: literal(tool.stdout.as_ref(), "stdout")?,
         stderr: literal(tool.stderr.as_ref(), "stderr")?,
+        ..Task::default()
     };
     let attributes = requirements::apply(scope, &mut task)?;
     if tool.stdin.is_some() {
@@ -118,6 +119,8 @@ pub fn lower(
         task.captures.push(Capture {
             output: name.clone(),
             from: rule,
+            optional: false,
+            arity: None,
         });
         outputs.push(Port {
             name,

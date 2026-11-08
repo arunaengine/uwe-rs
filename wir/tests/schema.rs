@@ -32,7 +32,7 @@ fn schema_matches_parser() {
         json!({"zip": {"remainder": true}}),
         json!({"cross": {}}),
         json!({"group": {"by": [0], "size": 2}}),
-        json!({"join": {"by": [0], "fail_on_mismatch": true}}),
+        json!({"join": {"by": [0], "mismatch_error": true}}),
         json!({"branch": {"body": "g", "condition": "c"}}),
         json!({"select": {"rule": "only"}}),
         json!({"loop": {"body": "g", "condition": "c", "carry": [{"output": "o", "input": "i"}]}}),

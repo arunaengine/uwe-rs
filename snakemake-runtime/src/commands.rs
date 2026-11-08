@@ -115,6 +115,7 @@ impl CommandRunner {
         Task {
             output_manifest: None,
             run_as: None,
+            site: None,
             id,
             name: format!("command {shown}"),
             step: "command".into(),

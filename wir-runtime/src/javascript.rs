@@ -60,6 +60,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "needs the CWL JavaScript helper image, which `just test` builds"]
     fn javascript_callbacks() {
         let settings = JavaScriptSettings::default();
         let captures = Map::from_iter([("factor".into(), json!(3))]);

@@ -124,6 +124,8 @@ fn supported(kind: &Kind) -> bool {
             | Kind::Concat(_)
             | Kind::Merge(_)
             | Kind::Zip(_)
+            | Kind::Route(_)
+            | Kind::MultiMap(_)
     )
 }
 

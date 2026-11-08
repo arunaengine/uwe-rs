@@ -12,6 +12,7 @@ use crate::engine::Context;
 use crate::flows::output_stream;
 use crate::mixing::{Mixing, RoundRule, Rounds};
 use crate::plan::Node;
+use crate::routing::Routing;
 use crate::streams::{Failure, Read, ReaderId, StreamBatch, StreamEnd, Streams};
 use crate::transforms::{Mapping, Rule};
 
@@ -225,6 +226,14 @@ pub fn make(node: &Node) -> Option<Box<dyn Operator>> {
                 remainder: zip.remainder,
             },
         ),
+        Kind::Route(route) => Some(Box::new(Routing::Route(
+            route.cases.clone(),
+            Default::default(),
+        ))),
+        Kind::MultiMap(multi) => Some(Box::new(Routing::Multi(
+            multi.outputs.clone(),
+            Default::default(),
+        ))),
         Kind::Emit(emit) => Some(Box::new(Emitting {
             each: emit.each,
             next: 0,
@@ -314,11 +323,13 @@ pub fn step_all(
             path,
             ..
         } = turn;
+        // What an op gave before it failed is a prefix of its outputs, before their error.
+        let committed = progress
+            .streams
+            .commit(batch)
+            .map_err(|error| format!("op {path}: {}", error.message));
         let step = match step {
-            Some(Ok(step)) => match progress.streams.commit(batch) {
-                Ok(()) => Ok(step),
-                Err(error) => Err(format!("op {path}: {}", error.message)),
-            },
+            Some(Ok(step)) => committed.map(|()| step),
             Some(Err(failure)) => Err(failure.message),
             None => continue,
         };

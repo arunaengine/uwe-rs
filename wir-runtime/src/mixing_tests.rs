@@ -14,7 +14,8 @@ use crate::operator::{Operator, Step, Turn, make};
 use crate::plan::Node;
 use crate::streams::{Failure, ReaderId, StreamBatch, StreamEnd, StreamId, Streams};
 
-/// A node `op` of `kind` with the stream inputs `streams` and value inputs `values`.
+/// A node `op` of `kind` with the stream inputs `streams`, value inputs `values` and the
+/// output `out` of that flow.
 pub fn node(kind: Json, streams: &[&str], values: &[&str], out: &str) -> Node {
     let port = |name: &&str, flow: &str| json!({"name": name, "type": "dynamic", "flow": flow});
     let mut inputs: Vec<Json> = streams.iter().map(|name| port(name, "stream")).collect();
@@ -37,7 +38,9 @@ pub fn node(kind: Json, streams: &[&str], values: &[&str], out: &str) -> Node {
 /// The streams of the inputs of `node`, each with its reader.
 pub fn wired(node: &Node) -> Streams {
     let mut streams = Streams::default();
-    streams.open(output_stream("op", "out"), "op");
+    for port in &node.op.outputs {
+        streams.open(output_stream("op", &port.name), "op");
+    }
     for port in node.op.inputs.iter().filter(|port| !port.flow.is_value()) {
         let stream = StreamId(port.name.clone());
         streams.open(stream.clone(), "up");

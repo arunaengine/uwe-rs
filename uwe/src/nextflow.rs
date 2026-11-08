@@ -578,7 +578,10 @@ pub fn cloud_cache(
     arguments: &Arguments,
     setup: &Setup,
 ) -> Result<Option<String>, String> {
-    let mut console = console(true, setup, &arguments.secrets);
+    let mut console = Console {
+        sink: arguments.print_sink.clone(),
+        ..console(true, setup, &arguments.secrets)
+    };
     let Ok(config) = nextflow_runtime::driver::config(&launch.target, launch, &mut console) else {
         return Ok(None);
     };
@@ -641,7 +644,10 @@ pub fn pipeline_executor(
     if language != Language::Nextflow {
         return Ok(None);
     }
-    let mut console = console(true, setup, &arguments.secrets);
+    let mut console = Console {
+        sink: arguments.print_sink.clone(),
+        ..console(true, setup, &arguments.secrets)
+    };
     // A config that does not load fails the run in the driver, with its own message.
     let Ok(config) = nextflow_runtime::driver::config(&launch.target, launch, &mut console) else {
         return Ok(None);

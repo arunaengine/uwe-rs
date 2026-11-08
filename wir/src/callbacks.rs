@@ -16,12 +16,15 @@ use crate::types::Type;
 pub(super) enum Arity {
     /// `item`.
     Unary,
+    /// The inputs of the op by name, an item of each stream input and each value input.
+    Ports,
 }
 
 impl Arity {
     fn names(self) -> &'static [&'static str] {
         match self {
             Arity::Unary => &["item"],
+            Arity::Ports => &[],
         }
     }
 }
@@ -99,8 +102,9 @@ impl<'d> Checker<'d> {
             .filter(|port| !arity.names().contains(&port.name.as_str()))
         {
             let captured = op.inputs.iter().find(|item| item.name == port.name);
+            let ports = arity == Arity::Ports;
             match captured {
-                Some(item) if item.flow.is_value() => {
+                Some(item) if item.flow.is_value() || ports => {
                     if !port.takes().accepts(&item.r#type, self.defs) {
                         why.push(format!(
                             "capture {} does not take input {}",

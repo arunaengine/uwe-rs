@@ -472,6 +472,7 @@ fn call_sites() {
     let first = native.start().unwrap();
     let whole = Instance {
         template: "say".into(),
+        call: "entrypoint".into(),
         ..Instance::default()
     };
     let (_, adapted) = adapter.start(&whole).unwrap();

@@ -38,7 +38,8 @@ pub struct Instance {
     pub template: String,
     /// The WorkflowTemplate that holds that template, and whether it is cluster scoped.
     pub reference: Option<(String, bool)>,
-    /// The step `[1].use` or the DAG task `.use`; empty for the call of the entrypoint.
+    /// The step `[1].use` or the DAG task `.use`; anything else, like `entrypoint`, calls the
+    /// entrypoint.
     pub call: String,
     /// The node name of the holding template after the workflow name, in parts.
     pub path: Vec<String>,
@@ -134,7 +135,7 @@ impl Adapter {
     /// Starts a call, and gives the tasks it asks for first.
     pub fn start(&mut self, instance: &Instance) -> Result<(CallId, Vec<Task>), DriverError> {
         let base = format!("{}{}", self.run.workflow_name, instance.path.concat());
-        let index = match instance.call.is_empty() {
+        let index = match !instance.call.starts_with(['[', '.']) {
             true => {
                 let holder = Holder::named(&instance.template);
                 let context = Rc::clone(&self.run.root_context);
@@ -145,10 +146,8 @@ impl Adapter {
         }
         .map_err(driver_error)?;
         if self.calls.contains(&index) {
-            return Err(DriverError::new(format!(
-                "node {base}{} has started already",
-                instance.call
-            )));
+            let name = &self.run.nodes[index].name;
+            return Err(DriverError::new(format!("node {name} has started already")));
         }
         self.calls.push(index);
         Ok((CallId(index), self.settle()?))

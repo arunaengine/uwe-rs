@@ -8800,6 +8800,7 @@ dependencies = [
 name = "uwe"
 version = "0.1.0"
 dependencies = [
+ "argo-compiler",
  "argo-runtime",
  "aws-batch-executor",
  "azure-batch-executor",

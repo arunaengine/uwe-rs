@@ -32,7 +32,7 @@ fn block(path: &str, outputs: Json) -> Json {
 /// A wir document of `ops` and `edges` with the graph ports `ports`.
 fn document(root: &Path, ops: Json, edges: Vec<Json>, ports: (Json, Json)) -> PathBuf {
     let document = json!({
-        "wir_version": "0.3",
+        "wir_version": "0.1",
         "sources": [
             {"id": "scatter", "language": "wdl", "location": workflow()},
             {"id": "other", "language": "wdl", "location": workflow()}

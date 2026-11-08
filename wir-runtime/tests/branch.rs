@@ -1,5 +1,4 @@
-//! Runs branch ops: a skipped round of a map gives null at its place, and documents older than
-//! wir 0.4 keep these op kinds reserved.
+//! Runs branch ops: a skipped round of a map gives null at its place.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -147,13 +146,4 @@ fn skips_false_rounds() {
         names,
         [json!("t0.txt.out"), Json::Null, json!("t2.txt.out")]
     );
-}
-
-#[test]
-fn keeps_older_reserved() {
-    let folder = tempfile::tempdir().unwrap();
-    let launch = launch(folder.path(), "0.3", &[true]);
-    let error = WirDriver::new(&launch, Settings::default()).err().unwrap();
-    assert!(error.unsupported, "{}", error.message);
-    assert_eq!(error.message, "op each: uwe does not run this op kind yet");
 }

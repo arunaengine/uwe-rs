@@ -375,7 +375,7 @@ fn greetings(root: &Path, names: &[&str]) -> (String, String) {
         .collect();
     let native = json!({"source": "block", "language": "nextflow", "entry": "greetings"});
     let document = json!({
-        "wir_version": "0.2",
+        "wir_version": "0.1",
         "sources": [{"id": "block", "language": "nextflow", "location": "greetings.nf"}],
         "graphs": [{
             "name": "main", "inputs": taken, "outputs": given,
@@ -501,7 +501,7 @@ fn snakefile(root: &Path, names: &[&str]) -> (String, String) {
         .collect();
     let native = json!({"source": "block", "language": "snakemake"});
     let document = json!({
-        "wir_version": "0.2",
+        "wir_version": "0.1",
         "sources": [{"id": "block", "language": "snakemake", "location": "greetings.smk"}],
         "graphs": [{
             "name": "main", "inputs": taken, "outputs": given,
@@ -641,7 +641,7 @@ fn shout(root: &Path, name: &str) -> (String, String) {
         .collect();
     let native = json!({"source": "block", "language": "argo"});
     let document = json!({
-        "wir_version": "0.3",
+        "wir_version": "0.1",
         "sources": [{"id": "block", "language": "argo", "location": "shout.yaml"}],
         "graphs": [{
             "name": "main", "inputs": taken, "outputs": given,
@@ -774,7 +774,7 @@ fn scatter_names(root: &Path, names: &[&str]) -> (String, String) {
         .collect();
     let native = json!({"source": "block", "language": "wdl"});
     let document = json!({
-        "wir_version": "0.3",
+        "wir_version": "0.1",
         "sources": [{"id": "block", "language": "wdl", "location": "scatter.wdl"}],
         "graphs": [{
             "name": "main", "inputs": taken, "outputs": given,

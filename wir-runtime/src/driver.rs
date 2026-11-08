@@ -171,7 +171,7 @@ impl WirDriver {
             inputs::absolute(default, &base);
         }
         let progress = Progress::new(plan(&document)?, document.types.clone());
-        Ok(WirDriver {
+        WirDriver {
             launch: launch.clone(),
             settings,
             base,
@@ -191,7 +191,13 @@ impl WirDriver {
             ended: false,
             operators: operator::Running::new(),
             stepping: false,
-        })
+        }
+        .checked()
+    }
+
+    fn checked(self) -> Result<Self, DriverError> {
+        self.check_scopes()?;
+        Ok(self)
     }
 
     /// The values of the outputs of the entry graph once the run ended, also of a simulated
@@ -275,6 +281,28 @@ impl WirDriver {
                 }
                 Ok(Vec::new())
             }
+            Kind::Expr(spec) if spec.language == ExprLanguage::Groovy => {
+                let node = self.progress.node(at);
+                let (path, output) = (node.path.clone(), node.op.outputs[0].clone());
+                let evaluated = self.groovy_expr(&spec, &bound).and_then(|value| {
+                    let value = widen(value, &output.r#type, &self.document.types);
+                    match wir::fits(&value, &output.r#type, &self.document.types) {
+                        true => Ok(value),
+                        false => Err(format!("output {} does not fit its type", output.name)),
+                    }
+                });
+                match evaluated {
+                    Ok(value) => {
+                        let values = Map::from_iter([(output.name, value)]);
+                        self.progress.end(at, Status::Succeeded, values, None);
+                    }
+                    Err(why) => {
+                        let message = Some(format!("op {path}: {why}"));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
+            }
             Kind::Expr(spec) => {
                 let node = self.progress.node(at);
                 let path = node.path.clone();
@@ -342,6 +370,57 @@ impl WirDriver {
                 )))
             }
         }
+    }
+
+    /// The value of a Groovy expression over the inputs of its op as `inputs` and its
+    /// captures by name, in the source of its scope.
+    fn groovy_expr(&self, spec: &wir::Expr, bound: &Map<String, Json>) -> Result<Json, String> {
+        let mut values = Map::from_iter([("inputs".to_owned(), Json::Object(bound.clone()))]);
+        for (name, binding) in &spec.captures {
+            let value = match binding {
+                wir::Binding::Input(input) => bound.get(input).cloned().unwrap_or_default(),
+                wir::Binding::Value(value) => value.clone(),
+            };
+            values.insert(name.clone(), value);
+        }
+        let scope = match &spec.scope {
+            Some(scope) => Some(self.scope_text(scope).map_err(|error| error.message)?),
+            None => None,
+        };
+        let names = values.keys().cloned().collect();
+        let compiled = crate::groovy::compile(&spec.code, &spec.library, scope.as_deref(), names)?;
+        compiled.value(&values, &self.base)
+    }
+
+    /// The text of the source of a scope, once its byte range is checked against it.
+    fn scope_text(&self, scope: &wir::Scope) -> Result<String, DriverError> {
+        let path = self.locate(&scope.source)?;
+        let text = std::fs::read_to_string(&path).map_err(|error| {
+            DriverError::new(format!("cannot read {}: {error}", path.display()))
+        })?;
+        let (start, end) = (scope.start as usize, scope.end as usize);
+        if end > text.len() || !text.is_char_boundary(start) || !text.is_char_boundary(end) {
+            let message = format!(
+                "the scope {start}..{end} is no range of characters of {}",
+                scope.source
+            );
+            return Err(DriverError::unsupported(message));
+        }
+        Ok(text)
+    }
+
+    /// Checks the scope of every expression against its source before anything runs.
+    fn check_scopes(&self) -> Result<(), DriverError> {
+        let ops = self.document.graphs.iter().flat_map(|graph| &graph.ops);
+        for op in ops {
+            if let Kind::Expr(wir::Expr {
+                scope: Some(scope), ..
+            }) = &op.kind
+            {
+                self.scope_text(scope)?;
+            }
+        }
+        Ok(())
     }
 
     /// Reads the outputs of a task op from its outcome. An attempt that is not accepted runs

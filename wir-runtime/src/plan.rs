@@ -129,7 +129,10 @@ fn unrun(op: &Op) -> Option<&'static str> {
         return Some("uwe compares values only by the wir rules yet");
     }
     match &op.kind {
-        Kind::Expr(expr) if expr.scope.is_some() || !expr.captures.is_empty() => {
+        Kind::Expr(expr)
+            if expr.language != wir::ExprLanguage::Groovy
+                && (expr.scope.is_some() || !expr.captures.is_empty()) =>
+        {
             Some("uwe does not run expressions with a scope or captures yet")
         }
         Kind::Task(task) if task.builder.is_some() => Some("uwe does not run dialect tasks yet"),

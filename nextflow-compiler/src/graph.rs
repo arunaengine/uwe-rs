@@ -114,12 +114,11 @@ impl<'a> Compiler<'a> {
         compiler
     }
 
-    /// The deepest workflow call that holds the writers and the readers of a node, where the
+    /// The deepest workflow call that holds the readers of a node, else its writers, where the
     /// mix of a topic belongs, so that no call both feeds the mix and reads it.
     fn common(&self, node: usize) -> usize {
         let record = &self.network.nodes[node];
-        let writers = (record.inputs.iter()).filter_map(|channel| self.producer[*channel]);
-        let mut scopes: Vec<usize> = writers.map(|(writer, _)| self.scopes[writer]).collect();
+        let mut scopes = Vec::new();
         for (index, other) in self.network.nodes.iter().enumerate() {
             if other
                 .inputs
@@ -136,6 +135,10 @@ impl<'a> Compiler<'a> {
             .any(|(_, channel)| record.outputs.contains(channel))
         {
             scopes.push(0);
+        }
+        if scopes.is_empty() {
+            let writers = (record.inputs.iter()).filter_map(|channel| self.producer[*channel]);
+            scopes = writers.map(|(writer, _)| self.scopes[writer]).collect();
         }
         let Some(first) = scopes.first().copied() else {
             return record.scope;

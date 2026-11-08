@@ -63,6 +63,10 @@ settings.no_cache_steps = vec!["FASTQC".into()];
 let run = uwe::RunRequest::new(settings).run().await?;
 ```
 
+## Launch folder of Nextflow runs
+
+An embedded Nextflow run launches in a folder of its own, `scratch/launch/<run>` in the cache folder. Relative paths of the workflow start there, like `launchDir`, a `publishDir` of `results` and `file('data.csv')`. So runs at the same time never write the same relative path. uwe keeps the folder after the run, since it can hold published files, and the host removes it once it took them. A workflow publishes elsewhere with absolute paths, like an `outdir` parameter that the host sets. On the command line a run launches in the working directory, as in Nextflow, and the Nextflow blocks of a wir run launch in the folder of their block.
+
 ## Standard output
 
 An embedded run writes nothing to the standard output of the host. What a Nextflow workflow prints, its banner too, goes to standard error. The CWL output object is not printed. Log messages still go through `tracing`.

@@ -31,8 +31,8 @@ struct Console {
     /// Where operators like `collectFile` keep their files: the folder of the run, which the
     /// driver removes. `None` keeps them in the system temporary folder.
     operators: Option<PathBuf>,
-    /// The launch folder of a native block of a wir run; `None` launches in the working
-    /// directory of the process.
+    /// The launch folder of an embedded run or of a native block of a wir run; `None`
+    /// launches in the working directory of the process.
     launch: Option<PathBuf>,
 }
 
@@ -368,9 +368,14 @@ pub fn driver(
     arguments: &Arguments,
     setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
+    // Embedded runs at the same time must not meet in relative paths, like `publishDir`.
+    let own = arguments
+        .embedded
+        .then(|| launch.scratch.join("launch").join(run));
     let console = Console {
         operators: Some(run_folder(&launch.scratch, run)),
         print: !arguments.no_print,
+        launch: own,
         ..console(quiet, setup, &arguments.secrets)
     };
     let settings = Settings {

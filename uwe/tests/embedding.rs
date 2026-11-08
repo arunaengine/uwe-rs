@@ -615,3 +615,55 @@ async fn reruns_uncached_steps() {
         && edge.to == used.task.id
         && matches!(edge.kind, workflow_graph::EdgeKind::File { .. })));
 }
+
+/// Two embedded Nextflow runs at the same time write the same relative path, each into a
+/// launch folder of its own, never into the working directory of the host. The runs go in a
+/// child process whose working directory is a temporary folder.
+#[test]
+fn launches_own_folder() {
+    if std::env::var_os("UWE_EMBEDDED_LAUNCH").is_none() {
+        let folder = tempfile::tempdir().unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "launches_own_folder", "--nocapture"])
+            .env("UWE_EMBEDDED_LAUNCH", "1")
+            .current_dir(folder.path())
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&[output.stdout, output.stderr].concat()).into_owned();
+        assert!(output.status.success(), "the child failed:\n{text}");
+        assert!(text.contains("1 passed"), "the child ran no test:\n{text}");
+        assert!(!folder.path().join("marker.txt").exists());
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("main.nf"),
+        "workflow {\n  file('marker.txt').text = params.word\n}\n",
+    )
+    .unwrap();
+    let request = |word: &str| {
+        let mut settings = Settings::new(root.path().join("main.nf"));
+        settings.executor = Some("simulator".into());
+        settings.database = Some(root.path().join(format!("{word}.sqlite")));
+        settings.cache = false;
+        settings.cache_folder = Some(root.path().join("cache"));
+        settings.setup = Some(Setup::default());
+        settings.params.insert("word".into(), json!(word));
+        let mut request = RunRequest::new(settings);
+        request.policy = uwe::application::Policy::Relaxed;
+        request
+    };
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let (first, second) =
+        runtime.block_on(async { tokio::join!(request("a").run(), request("b").run()) });
+    for (run, word) in [(first.unwrap(), "a"), (second.unwrap(), "b")] {
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        let marker = root
+            .path()
+            .join("cache/scratch/launch")
+            .join(&run.id)
+            .join("marker.txt");
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), word);
+    }
+    assert!(!std::env::current_dir().unwrap().join("marker.txt").exists());
+}

@@ -173,6 +173,8 @@ pub struct Arguments {
     pub no_grouping: bool,
     /// The secret values of an embedded run; the command line reads the environment.
     pub secrets: config_file::SecretValues,
+    /// Whether a host runs this through the Rust API, not the command line.
+    pub embedded: bool,
 }
 
 /// Which run `-resume` continues.

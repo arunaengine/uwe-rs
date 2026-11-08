@@ -167,3 +167,32 @@ fn defers_data_sources() {
     assert!(kinds.iter().any(|kind| matches!(kind, Kind::View { .. })));
     assert!(!kinds.iter().any(|kind| matches!(kind, Kind::Opaque(_))));
 }
+
+#[test]
+fn refuses_data_reads() {
+    let directory = tempfile::tempdir().unwrap();
+    let script = "include { samplesheetToList } from 'plugin/nf-schema'\n\nworkflow {\n    \
+                  def rows = samplesheetToList('sheet.csv', 'schema.json')\n    \
+                  channel.fromList(rows).view()\n    \
+                  def ids = samplesheetToList('sheet.csv', 'schema.json').collect { it[0] }\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::write(
+        directory.path().join("nextflow.config"),
+        "plugins {\n    id 'nf-schema@2.5.1'\n}\n",
+    )
+    .unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Silent(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let mut driver = Nextflow::new(&launch, settings).unwrap();
+    let error = driver.export().unwrap_err();
+    assert!(error.unsupported, "{}", error.message);
+    let reason = "code that reads the data of `samplesheetToList` while the workflow is built";
+    assert!(error.message.contains(reason), "{}", error.message);
+}

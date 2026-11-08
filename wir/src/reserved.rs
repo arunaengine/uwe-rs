@@ -341,6 +341,109 @@ impl LeftRule {
     }
 }
 
+/// Gives arrays of items: of `size` items after skipping `skip`, or from an item that
+/// opens to one that closes. A partial buffer is given at the close with `remainder`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Buffer {
+    pub rule: BufferRule,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub remainder: bool,
+}
+
+/// How a buffer cuts its stream.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum BufferRule {
+    Size(BufferSize),
+    Match(Box<BufferMatch>),
+}
+
+/// Buffers of `size` items, each after skipping `skip` items.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BufferSize {
+    pub size: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub skip: u32,
+}
+
+/// Buffers from an item that `open` holds for, or from the start, to one that `close`
+/// holds for, both included.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BufferMatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open: Option<Body>,
+    pub close: Body,
+}
+
+/// Windows of `size` items, one opening every `step` items, by default `size`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Window {
+    pub size: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<u32>,
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub remainder: bool,
+}
+
+/// Gives the first `count` items, then stops reading; a negative count gives all.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Take {
+    pub count: i64,
+}
+
+/// Keeps the first item of each key.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Unique {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<Body>,
+}
+
+/// Drops an item whose key equals the key of the item before it; `initial` is the key
+/// before the first item, if there is one.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Distinct {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<Body>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub initial: Option<Literal>,
+}
+
+/// Gives the items before the first one the predicate holds for, which `inclusive` gives
+/// too, then stops reading.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Until {
+    pub predicate: Body,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub inclusive: bool,
+}
+
+/// Forwards its input, and gives `value` or the result of `body` when the input closes
+/// empty; exactly one of the two is set.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IfEmpty {
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub value: Option<Literal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+}
+
 /// Sends each item to the output of the first case whose condition holds, through the body
 /// of that case; an item that no case takes is dropped.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -435,6 +538,10 @@ where
     T: Deserialize<'de>,
 {
     T::deserialize(deserializer).map(Some)
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 fn yes() -> bool {

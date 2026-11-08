@@ -584,3 +584,47 @@ fn reduction_options() {
     ));
     assert_eq!(streamed, ["main/op: a to_list needs a value output"]);
 }
+
+#[test]
+fn selection_shapes() {
+    let source = json!([typed("source", json!("int"), "stream")]);
+    let shaped = |kind: Json, out: Json| problems(&many(kind, source.clone(), out));
+    let lists = typed("out", json!({"array": {"items": "int"}}), "stream");
+    let ints = typed("out", json!("int"), "stream");
+    assert_eq!(
+        shaped(
+            json!({"buffer": {"rule": {"size": {"size": 2}}}}),
+            lists.clone()
+        ),
+        Vec::<String>::new()
+    );
+    let empty = shaped(
+        json!({"buffer": {"rule": {"size": {"size": 0}}}}),
+        lists.clone(),
+    );
+    assert_eq!(empty, ["main/op: a buffer needs a positive size"]);
+    let stepped = shaped(json!({"window": {"size": 2, "step": 0}}), lists);
+    assert_eq!(
+        stepped,
+        ["main/op: a window needs a positive size and step"]
+    );
+    assert_eq!(
+        shaped(json!({"take": {"count": 2}}), ints.clone()),
+        Vec::<String>::new()
+    );
+    let neither = shaped(json!({"if_empty": {}}), ints.clone());
+    assert_eq!(
+        neither,
+        ["main/op: an if_empty needs a value or a body, exactly one"]
+    );
+    let unfit = shaped(
+        json!({"if_empty": {"value": {"value": "none"}}}),
+        ints.clone(),
+    );
+    assert_eq!(
+        unfit,
+        ["main/op: the default of fallback value of output out does not fit its type"]
+    );
+    let fallback = json!({"if_empty": {"body": {"language": "groovy", "code": "{ -> 0 }"}}});
+    assert_eq!(shaped(fallback, ints), Vec::<String>::new());
+}

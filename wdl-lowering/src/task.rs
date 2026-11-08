@@ -13,7 +13,7 @@ use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 use crate::library::{Inputs, Line, check, ordered, ports};
 use crate::outputs::{Output, Read, listing, outputs};
 use crate::types::{has_files, port};
-use crate::{DEFAULT_IMAGE, Lowerer, READS, blank, called, constant, edge, end, origin, text};
+use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text};
 
 /// Runs the command as uwe's WDL driver does, with its streams in `.wdl/stdout` and
 /// `.wdl/stderr`, then copies each `<output>\t<path>` line of `$2` below `.wdl/out/<output>/`.
@@ -98,7 +98,7 @@ impl Lowerer {
             }
             None => "command <<<\n>>>".into(),
         };
-        let mut task = runtime(definition)?;
+        let mut task = runtime(definition, &self.image)?;
         let outputs = outputs(unit, definition)?;
         let name = self.graph_name(&format!("task.{}", unit.name()));
         let held = fallbacks
@@ -247,7 +247,7 @@ struct Built {
 
 /// The task op of the `runtime` or `requirements` section, whose values must not depend on
 /// inputs, without its inputs and captures.
-fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
+fn runtime(definition: &TaskDefinition, image: &str) -> Result<Built, String> {
     let items: Vec<(String, Expr)> = match (definition.requirements(), definition.runtime()) {
         (Some(section), _) => (section.items())
             .map(|item| (item.name().text().to_owned(), item.expr()))
@@ -257,7 +257,7 @@ fn runtime(definition: &TaskDefinition) -> Result<Built, String> {
             .collect(),
         (None, None) => Vec::new(),
     };
-    let mut image = DEFAULT_IMAGE.to_owned();
+    let mut image = image.to_owned();
     let mut resources = wir::Resources::default();
     let mut codes = Vec::new();
     for (key, expr) in items {

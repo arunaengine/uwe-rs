@@ -160,4 +160,4 @@ These op kinds parse and verify (their body graphs and the op inputs they name m
 - the stream files of a task are relative paths that stay inside the working folder;
 - a default sits on an input port and fits its type;
 
-Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering`. The runner is the crate `wir-runtime`.
+Not yet: the readable text form, and lowering passes other than the CWL lowering of the crate `cwl-lowering` and the WDL lowering of the crate `wdl-lowering`. The runner is the crate `wir-runtime`.

@@ -23,7 +23,7 @@ fn runs(text: &str, inputs: Json) -> Runs {
     documents(&[("main.wdl", text)], inputs)
 }
 
-/// The runs of the first of several documents, which may import the others.
+/// The runs of the first of several files, which may import or read the others.
 fn documents(files: &[(&str, &str)], inputs: Json) -> Runs {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path();
@@ -37,9 +37,12 @@ fn documents(files: &[(&str, &str)], inputs: Json) -> Runs {
     std::fs::write(&wir, document).expect("writes the wir document");
     let job = root.join("inputs.json");
     std::fs::write(&job, inputs.to_string()).expect("writes the inputs");
-    let launch = |target: PathBuf| Launch {
+    let converted = lowering.inputs(&inputs, root).expect("the inputs convert");
+    let values = root.join("values.json");
+    std::fs::write(&values, converted.to_string()).expect("writes the wir inputs");
+    let launch = |target: PathBuf, inputs: &Path| Launch {
         target,
-        inputs: Some(job.clone()),
+        inputs: Some(inputs.to_owned()),
         scratch: root.join("scratch"),
         simulated: true,
         ..Launch::default()
@@ -48,14 +51,15 @@ fn documents(files: &[(&str, &str)], inputs: Json) -> Runs {
         print: false,
         ..Default::default()
     };
-    let mut native = wdl_runtime::WdlDriver::new(&launch(target), options).expect("a WDL driver");
+    let mut native =
+        wdl_runtime::WdlDriver::new(&launch(target, &job), options).expect("a WDL driver");
     let count = run(&mut native, "native", root);
     let native = (count, shown(native.exported().unwrap_or_default()));
     let settings = Settings {
         print: false,
         ..Settings::default()
     };
-    let mut wired = WirDriver::new(&launch(wir), settings).expect("a wir driver");
+    let mut wired = WirDriver::new(&launch(wir, &values), settings).expect("a wir driver");
     let count = run(&mut wired, "lowered", root);
     let lowered = (count, shown(wired.outputs().unwrap_or_default()));
     Runs {
@@ -119,9 +123,12 @@ task greet {
   input {
     String name
     Int count = 2
+    File? greeting
+    Array[File] extra = []
   }
   String file = "~{name}.txt"
   command <<<
+    cat ~{greeting} ~{sep=" " extra} > /dev/null
     echo hello ~{name} > ~{file}
     touch a.log b.log
     echo done > done.txt
@@ -136,7 +143,9 @@ task greet {
   }
 }
 "#;
-    let runs = runs(text, json!({"name": "ada"}));
+    let inputs = json!({"greet.name": "ada", "greet.greeting": "hello.txt", "extra": ["a.txt"]});
+    let files = [("main.wdl", text), ("hello.txt", "hi\n"), ("a.txt", "a\n")];
+    let runs = documents(&files, inputs);
     assert!(runs.lowering.full(), "kept {:?}", runs.lowering.kept);
     let ops = [
         ("command", "expr"),

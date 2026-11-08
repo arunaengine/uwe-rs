@@ -8839,6 +8839,7 @@ dependencies = [
  "tool-record",
  "tracing",
  "tracing-subscriber",
+ "wdl-lowering",
  "wdl-runtime",
  "wir-runtime",
  "workflow-graph",

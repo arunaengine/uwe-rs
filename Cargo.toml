@@ -100,6 +100,7 @@ task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
 tes-executor = { path = "tes-executor" }
 tool-record = { path = "tool-record" }
+wdl-lowering = { path = "wdl-lowering" }
 wdl-runtime = { path = "wdl-runtime" }
 wir = { path = "wir" }
 wir-runtime = { path = "wir-runtime" }

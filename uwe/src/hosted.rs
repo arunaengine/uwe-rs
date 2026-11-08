@@ -127,6 +127,12 @@ impl Hosted {
 /// many users in one process. `Default` reaches nothing of the service user.
 #[derive(Clone, Debug, Default)]
 pub struct Isolation {
+    /// The folders that workflow code may read and write besides those of the run, like the
+    /// input and output folders of the host.
+    pub roots: Vec<PathBuf>,
+    /// The folder that the run starts in, which relative paths start from and workflow code
+    /// may reach; `None` keeps the working directory of the process, which it may not.
+    pub launch: Option<PathBuf>,
     /// The variables of the process environment that a run may read besides its secret
     /// values, like `PATH`.
     pub variables: BTreeSet<String>,

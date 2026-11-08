@@ -7,13 +7,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use nextflow_evaluator::exception::Exception;
-use nextflow_evaluator::interpreter::{Error, FileMetadata, Host};
+use nextflow_evaluator::interpreter::{self, Error, FileMetadata, Host};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{Nextflow, Settings, run_folder};
 use storage::{Blocking, StorageError};
 use workflow_graph::{Driver, DriverError, Language, Launch};
 
 use crate::arguments::Arguments;
+use crate::run::driver::isolation;
 use crate::setup::Setup;
 
 /// Prints what the workflow prints, and downloads remote files into a cache.
@@ -36,6 +37,46 @@ struct Console {
     /// The launch folder of a native block of a wir run; `None` launches in the working
     /// directory of the process.
     launch: Option<PathBuf>,
+    /// The folders that workflow code may reach in an isolated run; `None` reaches all.
+    roots: Option<workflow_graph::Roots>,
+}
+
+impl Console {
+    /// Refuses a local path outside the folders of an isolated run.
+    fn reach(&self, path: &PathValue) -> Result<(), Error> {
+        match (&self.roots, &path.prefix) {
+            (Some(roots), None) => (roots.check(std::path::Path::new(&path.path)))
+                .map_err(|error| io_error(error.to_string())),
+            _ => Ok(()),
+        }
+    }
+
+    /// The same host, limited to the folders of the launch and of the isolation of the run.
+    fn confined(
+        mut self,
+        launch: &Launch,
+        folder: Option<&std::path::Path>,
+        isolation: Option<&crate::hosted::Isolation>,
+    ) -> Self {
+        let Some(isolation) = isolation else {
+            return self;
+        };
+        self.launch = folder
+            .map(std::path::Path::to_owned)
+            .or(isolation.launch.clone());
+        let mut folders = isolation.roots.clone();
+        let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
+        folders.extend(match target.is_dir() {
+            true => Some(target),
+            false => target.parent().map(std::path::Path::to_owned),
+        });
+        folders.push(launch.scratch.clone());
+        folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
+        folders.extend(self.operators.clone());
+        folders.extend(self.launch.clone());
+        self.roots = Some(workflow_graph::Roots::new(folders));
+        self
+    }
 }
 
 impl Host for Console {
@@ -103,6 +144,24 @@ impl Host for Console {
         Ok(PathValue::parse(&directory.keep().to_string_lossy(), "/"))
     }
 
+    fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
+        self.reach(path)?;
+        let local = match path.prefix {
+            Some(_) => self.download(path)?,
+            None => PathBuf::from(&path.path),
+        };
+        std::fs::read(local).map_err(|error| interpreter::file_error(path, &error))
+    }
+
+    fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        self.reach(path)?;
+        match std::fs::remove_file(interpreter::local_path(path)?) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(interpreter::file_error(path, &error)),
+        }
+    }
+
     fn download(&mut self, path: &PathValue) -> Result<PathBuf, Error> {
         let uri = path.uri();
         (self.storage.fetch(&uri, &self.downloads)).map_err(|error| storage_error(&uri, error))
@@ -111,6 +170,7 @@ impl Host for Console {
     /// Local directories, and directories of storage providers that can list them, like
     /// buckets.
     fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+        self.reach(directory)?;
         if directory.prefix.is_none() {
             return nextflow_evaluator::interpreter::list_local(directory);
         }
@@ -126,6 +186,7 @@ impl Host for Console {
     }
 
     fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        self.reach(path)?;
         if path.prefix.is_none() {
             return match std::fs::metadata(&path.path) {
                 Ok(metadata) => Ok(Some(FileMetadata::of(&metadata))),
@@ -153,6 +214,7 @@ impl Host for Console {
     }
 
     fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        self.reach(path)?;
         if path.prefix.is_none() {
             if let Some(parent) = std::path::Path::new(&path.path).parent() {
                 std::fs::create_dir_all(parent).map_err(|error| io_error(error.to_string()))?;
@@ -167,6 +229,8 @@ impl Host for Console {
     }
 
     fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        self.reach(source)?;
+        self.reach(target)?;
         let local = match source.prefix {
             Some(_) => self.download(source)?,
             None => PathBuf::from(&source.path),
@@ -188,6 +252,7 @@ impl Host for Console {
     }
 
     fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
+        self.reach(path)?;
         if path.prefix.is_none() {
             std::fs::create_dir_all(&path.path).map_err(|error| io_error(error.to_string()))?;
         }
@@ -343,6 +408,7 @@ fn console(quiet: bool, setup: &Setup, variables: &config_file::SecretValues) ->
         variables: variables.clone(),
         operators: None,
         launch: None,
+        roots: None,
     }
 }
 
@@ -364,12 +430,14 @@ pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::n
     );
     let resume = arguments.resume.is_some();
     let run = run.to_owned();
+    let isolation = isolation(arguments, setup);
     wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
         let console = Console {
             operators: Some(run_folder(&launch.scratch, &run)),
             launch: Some(folder.to_owned()),
             ..console.clone()
-        };
+        }
+        .confined(launch, Some(folder), isolation.as_ref());
         Settings {
             host: Box::new(console),
             container_engine: Some(engine.clone()),
@@ -395,7 +463,8 @@ pub fn driver(
         operators: Some(run_folder(&launch.scratch, run)),
         print: !arguments.no_print,
         ..console(quiet, setup, &arguments.secrets)
-    };
+    }
+    .confined(launch, None, isolation(arguments, setup).as_ref());
     let settings = Settings {
         host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),

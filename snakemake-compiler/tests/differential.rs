@@ -560,10 +560,13 @@ fn compiled_groups_match() {
     let snakefile = snakefile.replace("    retries: 1", "    retries: 1\n    group: \"g\"");
     let piped = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: pipe(\"a.pipe\")\n    shell: \"echo a > {output}\"\n\nrule b:\n    input: \"a.pipe\"\n    output: \"b.txt\"\n    shell: \"cat {input} > {output}\"\n";
     let served = "rule all:\n    input: \"b.txt\", \"c.txt\"\n\nrule a:\n    output: service(\"a.socket\")\n    shell: \"sleep 100 > {output}\"\n\nrule b:\n    input: \"a.socket\"\n    output: \"b.txt\"\n    shell: \"head -n1 {input} > {output}\"\n\nrule c:\n    input: \"a.socket\"\n    output: \"c.txt\"\n    shell: \"head -n1 {input} > {output}\"\n";
+    // The default target `all` is in a group whose task another rule names.
+    let grouped_all = "rule all:\n    group: \"g\"\n    input: \"a.txt\", \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n";
     let cases = [
         (snakefile.as_str(), "same: 4 tasks"),
         (piped, "same: 2 tasks"),
         (served, "same: 2 tasks"),
+        (grouped_all, "same: 1 tasks"),
     ];
     for (snakefile, shown) in cases {
         let compared = compared(snakefile, &[]);

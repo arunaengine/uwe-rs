@@ -79,8 +79,7 @@ pub fn compile(
         return Ok(native(sources, &setting, launch, reason));
     }
     let setting = Setting {
-        entry: (setting.entry.clone())
-            .or_else(|| (jobs.iter().find(|job| job.target)).map(|job| job.key.rule.clone())),
+        entry: (setting.entry.clone()).or_else(|| jobs.iter().find_map(|job| job.target.clone())),
         ..setting
     };
     let graph = jobs::graph(&jobs, &setting, launch);

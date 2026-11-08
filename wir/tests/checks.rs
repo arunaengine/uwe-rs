@@ -1185,3 +1185,43 @@ fn dynamic_boundary() {
     let planner = json!({"planner": {"snakemake": {"source": "smk"}}});
     assert_eq!(region(planner, &plans), ["main/op: no source named smk"]);
 }
+
+/// A graph `main` whose expr op `when` reads `a` and gives `out` of type `out`.
+fn texted(expr: Json, out: &str) -> Json {
+    let op = json!({"path": "when", "kind": {"expr": expr},
+        "inputs": [port("a", "string")], "outputs": [port("out", out)]});
+    let main = json!({"name": "main", "inputs": [port("a", "string")],
+        "outputs": [port("out", out)], "ops": [op],
+        "edges": [edge((None, "a"), (Some("when"), "a")), edge((Some("when"), "out"), (None, "out"))]});
+    json!({"wir_version": wir::VERSION, "graphs": [main], "entry": "main"})
+}
+
+#[test]
+fn argo_forms() {
+    let argo = |form: &str| json!({"language": "argo", "code": "{{a}} == x", "form": form});
+    assert_eq!(
+        problems(&texted(argo("condition"), "bool")),
+        Vec::<String>::new()
+    );
+    let text = json!({"language": "argo", "code": "{{a}}-b"});
+    assert_eq!(problems(&texted(text, "string")), Vec::<String>::new());
+    reports(
+        &texted(argo("condition"), "string"),
+        "main/when: output out gets \"bool\" but accepts \"string\"",
+    );
+    let labels = json!({"array": {"items": "string"}});
+    let mut listed = texted(argo("labels"), "string");
+    listed["graphs"][0]["ops"][0]["outputs"][0]["type"] = labels.clone();
+    listed["graphs"][0]["outputs"][0]["type"] = labels;
+    assert_eq!(problems(&listed), Vec::<String>::new());
+    let js = json!({"language": "js", "code": "$(inputs.a)", "form": "text"});
+    reports(
+        &texted(js, "string"),
+        "main/when: a form needs an argo expr",
+    );
+    let library = json!({"language": "argo", "code": "{{a}}", "library": ["x"]});
+    reports(
+        &texted(library, "string"),
+        "main/when: an argo expr needs no library and no captures",
+    );
+}

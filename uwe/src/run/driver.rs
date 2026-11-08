@@ -132,6 +132,11 @@ pub(crate) fn driver(
                 },
                 wdl: wdl_options(arguments),
                 print: !arguments.no_print,
+                print_sink: match arguments.print_sink.clone() {
+                    Some(sink) => wir_runtime::Printer::new(move |text| sink.print(text)),
+                    None => wir_runtime::Printer::default(),
+                },
+                adapters: wir_runtime::adapter::Adapters::default(),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();

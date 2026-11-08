@@ -547,6 +547,61 @@ fn hides_private_values() {
     assert!(directory.join("main.nf").is_file());
 }
 
+/// A main workflow file that holds a secret value of the run is not exported at all.
+#[test]
+fn refuses_secret_workflow() {
+    let root = tempfile::tempdir().expect("a directory");
+    let folder = root.path().join("server/run");
+    std::fs::create_dir_all(&folder).expect("makes the run folder");
+    let secret = "sentinel-secret-value";
+    let workflow = folder.join("main.nf");
+    let text = format!("params.token = '{secret}'\n{WORKFLOW}");
+    std::fs::write(&workflow, &text).expect("writes the workflow");
+    let path = |path: &Path| path.to_string_lossy().into_owned();
+    let start = RunStart {
+        id: "secret-main".into(),
+        resumes: None,
+        workflow: path(&workflow),
+        language: Language::Nextflow,
+        revision: None,
+        arguments: vec!["run".into(), path(&workflow)],
+        parameters: vec![],
+        executor: "local".into(),
+        simulated: false,
+        store: None,
+        program: Some("uwe 0.1.0".into()),
+        launch: Some(path(&folder)),
+        workflow_folder: Some(path(&folder)),
+        repeats: None,
+    };
+    let database_path = root.path().join("runs.sqlite");
+    let mut recorder = (Database::open(&database_path).expect("opens"))
+        .record(&start)
+        .expect("starts");
+    recorder.sources(&[Source {
+        kind: SourceKind::Workflow,
+        path: "main.nf".into(),
+        digest: task_model::Digest::sha256(text.as_bytes()).to_string(),
+        size: text.len() as u64,
+        executable: false,
+    }]);
+    recorder.ended(None);
+    recorder.close().expect("closes");
+    let database = Database::open(&database_path).expect("opens again");
+    let directory = root.path().join("crate");
+    let options = Options {
+        workflow: workflow.clone(),
+        secrets: vec![secret.into()],
+        ..Options::default()
+    };
+    let error = export(&database, "secret-main", &directory, &options).expect_err("refuses");
+    let message = error.to_string();
+    assert!(message.contains(&path(&workflow)), "{message}");
+    assert!(!message.contains(secret), "{message}");
+    // The check comes before the crate folder is made, so nothing holds the secret.
+    assert!(!directory.exists());
+}
+
 #[test]
 fn describes_data_files() {
     let root = tempfile::tempdir().expect("a directory");

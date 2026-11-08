@@ -20,11 +20,15 @@ pub struct Mixing {
 
 impl Operator for Mixing {
     fn step(&mut self, turn: &mut Turn<'_>, _context: &Context<'_>) -> Result<Step, Failure> {
-        // An error of any input fails the op, also of one that it reads later.
-        if let Some(failure) = self
-            .inputs
-            .iter()
-            .find_map(|input| turn.input_failure(input))
+        // An error of any input fails concat, also of one that it reads later; mix reads the
+        // items before an error first.
+        if let Some(failure) = (self.current.is_some())
+            .then(|| {
+                self.inputs
+                    .iter()
+                    .find_map(|input| turn.input_failure(input))
+            })
+            .flatten()
         {
             return Err(failure);
         }

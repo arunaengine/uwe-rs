@@ -28,6 +28,7 @@ mod operator;
 mod pairing;
 mod plan;
 mod processes;
+mod publishing;
 mod python;
 mod reducing;
 mod routing;

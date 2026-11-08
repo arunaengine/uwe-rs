@@ -12,14 +12,14 @@ use wdl_runtime::document::{Callable, Unit, declared};
 use wdl_runtime::expression::names;
 use wir::{Argument, Capture, CaptureRule, Expr as Code, Graph, Kind, Op, Type};
 
-use crate::library::{Inputs, Line, check, ordered, ports, staged};
+use crate::library::{Inputs, Line, check, ordered, ports, staged, structs};
 use crate::outputs::{Output, Read, listing, outputs, patterns};
 use crate::types::{convert, has_files, port};
 use crate::{Lowerer, READS, blank, called, constant, edge, end, origin, text, unclaimed};
 
 /// Runs the command as uwe's WDL driver does, then copies below `.wdl/out/<output>/` the files
-/// that match each `<output>\t<regex>` line of `$4`, then each `<output>\t<path>` line of `$2`.
-/// A missing path fails with code `$3`, unless its output starts with `?` as optional ones do.
+/// of each `<output>\t<regex>` line of `$4`, then each `<output>\t<path>` line of `$2`. A missing
+/// required path turns a success code of `$3` (failure code, success codes) into its first.
 pub(crate) const RUNNER: &str = r#"mkdir -p .wdl
 printf '%s' "$1" > .wdl/command.sh
 bash .wdl/command.sh > .wdl/stdout 2> .wdl/stderr
@@ -27,6 +27,7 @@ status=$?
 cat .wdl/stdout
 cat .wdl/stderr >&2
 tab=$(printf '\t')
+fail() { case " $1 " in *" $status "*) status=${1%% *};; esac; }
 place() {
   folder=.wdl/out/$1/$(printf '%06d' "$2")
   mkdir -p "$folder" && cp -R "$3" "$folder/"
@@ -38,7 +39,7 @@ printf '%s\n' "$4" | while IFS="$tab" read -r name pattern; do
       count=$((count + 1))
       place "$name" "$count" "$path" || exit 1
     done; } || exit 1
-done || [ "$status" -ne 0 ] || status=${3:-1}
+done || fail "$3"
 line=0
 printf '%s\n' "$2" | while IFS="$tab" read -r name path; do
   line=$((line + 1))
@@ -52,7 +53,7 @@ printf '%s\n' "$2" | while IFS="$tab" read -r name path; do
     exit 1
   fi
   place "$name" "$line" "$path" || exit 1
-done || [ "$status" -ne 0 ] || status=${3:-1}
+done || fail "$3"
 exit $status
 "#;
 
@@ -120,7 +121,7 @@ impl Lowerer {
         for decl in computed.chain(definition.declarations()) {
             staged(&decl, &types)?;
         }
-        let library = ordered(library)?;
+        let library = [structs(unit, definition)?, ordered(library)?].concat();
         let command = match definition.command() {
             Some(section) => {
                 if let Some(function) = called(&section, &READS) {
@@ -278,10 +279,16 @@ struct Built {
     resources: Option<wir::Resources>,
 }
 
-/// The exit code of a run whose required outputs are missing: one that is not a success.
+/// The exit code of a run whose required outputs are missing, one that is not a success,
+/// then the success codes.
 fn failure(task: &wir::Task) -> String {
-    let code = (1..).find(|code| !task.success_codes.contains(code));
-    code.unwrap_or(1).to_string()
+    let codes = match task.success_codes.is_empty() {
+        true => vec![0],
+        false => task.success_codes.clone(),
+    };
+    let code = (1..).find(|code| !codes.contains(code)).unwrap_or(1);
+    let codes = codes.iter().map(|code| format!(" {code}"));
+    format!("{code}{}", codes.collect::<String>())
 }
 
 /// The task op of the `runtime` or `requirements` section, whose values must not depend on
@@ -375,7 +382,7 @@ mod tests {
             "mkdir -p d && echo x > d/a.txt && echo y > 'b c.txt' && echo shown && exit 3";
         let paths = "first\td/a.txt\nlist\tb c.txt\n?list\tmissing.txt\nlist\td/\n";
         let status = Command::new("bash")
-            .args(["-c", RUNNER, "wdl", command, paths, "1", ""])
+            .args(["-c", RUNNER, "wdl", command, paths, "1 0", ""])
             .current_dir(work)
             .status()
             .expect("bash runs");
@@ -400,14 +407,20 @@ mod tests {
         let run = |command: &str| {
             let paths = "files\ta.txt\nfiles\tb.txt\n";
             let status = Command::new("bash")
-                .args(["-c", RUNNER, "wdl", command, paths, "7", ""])
+                .args(["-c", RUNNER, "wdl", command, paths, "7 0 3", ""])
                 .current_dir(folder.path())
                 .status()
                 .expect("bash runs");
             status.code()
         };
         assert_eq!(run("touch a.txt"), Some(7), "a required file is missing");
-        assert_eq!(run("exit 3"), Some(3), "the code of a failed command");
+        assert_eq!(
+            run("touch a.txt; exit 3"),
+            Some(7),
+            "after an accepted code"
+        );
+        assert_eq!(run("exit 5"), Some(5), "the code of a failed command");
+        assert_eq!(run("touch a.txt b.txt; exit 3"), Some(3));
         assert_eq!(run("touch a.txt b.txt"), Some(0));
     }
 
@@ -424,7 +437,7 @@ mod tests {
                 "wdl",
                 command,
                 "copy\tout/a.txt\n",
-                "1",
+                "1 0",
                 globs,
             ])
             .current_dir(work)

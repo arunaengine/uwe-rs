@@ -19,6 +19,10 @@ fn validator() -> Validator {
 fn schema_matches_parser() {
     let kinds = [
         json!({"task": {"command": ["true"], "success_codes": [0, 1]}}),
+        json!({"task": {"builder": {"snakemake_job": {"task": {"source": "s", "entry": "a", "call": "r"},
+            "group": [{"source": "s", "rule": "q", "wildcards": {"n": "1"}}], "targets": ["a", "b"],
+            "config_values": "v", "until": ["r"], "omit_from": ["q"], "forcerun": ["r"],
+            "forceall": true}}}}),
         json!({"task": {"command": ["ls", {"raw": "| wc"}, {"input": "a", "quote": false}],
             "shell": true}}),
         json!({"task": {"command": ["cat"], "environment": {"HOME": "/tmp", "A": {"input": "a"}},

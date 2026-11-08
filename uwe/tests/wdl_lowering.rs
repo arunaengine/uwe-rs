@@ -151,3 +151,47 @@ fn parameters_convert() {
         "a task per name"
     );
 }
+
+#[test]
+fn nested_inputs_missing() {
+    let workflow = r#"version 1.2
+workflow nested {
+  hints {
+    allow_nested_inputs: true
+  }
+  input {
+    Boolean go
+  }
+  if (go) {
+    call greet as maybe
+  }
+  output {
+    String? text = maybe.text
+  }
+}
+
+task greet {
+  input {
+    String name
+  }
+  command <<< >>>
+  output {
+    String text = "hi ~{name}"
+  }
+}
+"#;
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("nested.wdl"), workflow).expect("writes the document");
+    for (go, failed) in [("false", false), ("true", true)] {
+        let native = ["run", "-executor", "simulator", "nested.wdl", "--go", go];
+        let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
+        for arguments in [&native[..], &lowered] {
+            let (code, _, errors) = uwe(root, &cache, arguments);
+            assert_eq!(code != 0, failed, "{arguments:?}: {errors}");
+            if failed {
+                assert!(errors.contains("has no value"), "{errors}");
+            }
+        }
+    }
+}

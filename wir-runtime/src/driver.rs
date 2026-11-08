@@ -188,6 +188,8 @@ pub struct WirDriver {
     scopes: HashMap<String, String>,
     /// The file area of the run, made when an op of the document writes files.
     file_area: PathBuf,
+    /// The deliveries of the file effects of stream ops.
+    published: crate::publishing::Deliveries,
 }
 
 impl WirDriver {
@@ -240,6 +242,7 @@ impl WirDriver {
             processes: processes::Processes::new(),
             scopes: HashMap::new(),
             file_area: PathBuf::new(),
+            published: Default::default(),
         }
         .checked()
     }
@@ -292,6 +295,8 @@ impl WirDriver {
                 files: &self.file_area,
                 printer: &self.settings.print_sink,
                 simulated: self.launch.simulated,
+                provider: self.files.as_deref(),
+                deliveries: &self.published,
             };
             let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
             let rounds =
@@ -322,6 +327,8 @@ impl WirDriver {
             files: &self.file_area,
             printer: &self.settings.print_sink,
             simulated: self.launch.simulated,
+            provider: self.files.as_deref(),
+            deliveries: &self.published,
         };
         if engine::begin(&mut self.progress, at, &bound, &context)? {
             return Ok(Vec::new());
@@ -1005,10 +1012,16 @@ impl Driver for WirDriver {
         let mut deliveries = std::mem::take(&mut self.delivering);
         deliveries.extend((self.children.iter_mut()).flat_map(|(_, child)| child.deliveries()));
         deliveries.extend(self.dialects.deliveries());
+        deliveries.extend(self.published.take());
         deliveries
     }
 
     fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
+        // The stream op that waits for this delivery steps on the next wake.
+        if self.published.acknowledge(delivery) {
+            self.stepping = true;
+            return Ok(());
+        }
         if let Some(result) = self.dialects.delivered(delivery) {
             return result;
         }

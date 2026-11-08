@@ -1028,6 +1028,36 @@ fn dialect_tasks() {
     assert_eq!(found, ["main/t: a dialect task needs a map of output bam"]);
 }
 
+#[test]
+fn snakemake_plans() {
+    let job = |extra: Json| {
+        let mut rule = json!({"task": {"source": "s", "entry": "all", "call": "map",
+            "inputs": [{"port": "reads", "native": "input/0"}],
+            "outputs": [{"port": "bam", "native": "output/0"}]}, "wildcards": {"n": "1"}});
+        rule.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().cloned().unwrap());
+        dialect("snakemake", json!({"snakemake_job": rule}), json!({}))
+    };
+    let good = job(
+        json!({"targets": ["all", "b.txt"], "config_values": "s", "forcerun": ["map"],
+        "group": [{"source": "s", "rule": "sort", "wildcards": {"n": "1"}}]}),
+    );
+    assert_eq!(good, Vec::<String>::new());
+    let found = job(json!({"targets": ["b.txt", ""], "config_values": "loose",
+        "group": [{"source": "t", "rule": "map", "wildcards": {"n": "1"}}]}));
+    assert_eq!(
+        found,
+        [
+            "main/t: a dialect task needs a digest that pins source loose",
+            "main/t: a Snakemake job needs targets that start with its entry",
+            "main/t: a Snakemake job needs targets that are not empty",
+            "main/t: a Snakemake job needs a rule of source s in its group",
+            "main/t: a Snakemake job needs job map once in its group",
+        ]
+    );
+}
+
 /// A graph `main` with a loop `op` over the body `count`, which adds one to `n` and says
 /// `again` while it is below three.
 fn looping(looped: Json, inputs: Json, outputs: Json) -> Json {

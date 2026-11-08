@@ -7,6 +7,7 @@ mod document;
 mod flow;
 mod op;
 pub mod reserved;
+mod splits;
 mod types;
 mod value;
 mod verify;

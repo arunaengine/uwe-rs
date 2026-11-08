@@ -474,6 +474,7 @@
           "additionalProperties": false,
           "properties": { "value": { "$ref": "#/$defs/literal" }, "body": { "$ref": "#/$defs/callback" } }
         },
+        "split": { "$ref": "#/$defs/split" },
         "route": {
           "type": "object",
           "additionalProperties": false,
@@ -569,6 +570,104 @@
     },
     "empty_rule": {
       "oneOf": [{ "enum": ["default", "close", "null", "error"] }, { "$ref": "#/$defs/literal" }]
+    },
+    "split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format"],
+      "properties": {
+        "format": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "keep_header": { "type": "boolean" } }
+            },
+            "csv": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "separator": { "$ref": "#/$defs/character" },
+                "quote": { "oneOf": [{ "$ref": "#/$defs/character" }, { "type": "null" }] },
+                "header": {
+                  "oneOf": [
+                    { "enum": ["none", "read"] },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["names"],
+                      "properties": { "names": { "$ref": "#/$defs/texts" } }
+                    }
+                  ]
+                },
+                "skip": { "$ref": "#/$defs/count" },
+                "strip": { "type": "boolean" }
+              }
+            },
+            "fasta": { "$ref": "#/$defs/sequence_split" },
+            "fastq": { "$ref": "#/$defs/sequence_split" },
+            "json": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "path": { "type": "string" } }
+            }
+          }
+        },
+        "size": { "$ref": "#/$defs/count" },
+        "limit": { "$ref": "#/$defs/count" },
+        "elem": { "$ref": "#/$defs/count" },
+        "pair": {
+          "oneOf": [
+            { "const": "auto" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["at"],
+              "properties": {
+                "at": { "type": "array", "items": { "$ref": "#/$defs/count" }, "minItems": 2, "maxItems": 2 }
+              }
+            }
+          ]
+        },
+        "decompress": { "enum": ["auto", "always", "never"] },
+        "charset": { "type": "string" },
+        "files": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "directory": { "type": "string" },
+            "compress": { "type": "boolean" }
+          }
+        },
+        "body": { "$ref": "#/$defs/callback" }
+      }
+    },
+    "character": { "type": "string", "minLength": 1, "maxLength": 1 },
+    "sequence_split": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "field"],
+            "properties": {
+              "name": { "type": "string" },
+              "field": {
+                "enum": ["id", "header", "desc", "text", "sequence", "seq_string", "read_header",
+                  "read_string", "quality_header", "quality_string"]
+              }
+            }
+          }
+        }
+      }
     },
     "keyed": {
       "type": "object",

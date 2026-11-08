@@ -1025,6 +1025,7 @@
         "stderr": { "$ref": "#/$defs/file_name" },
         "workdir": { "type": "string" },
         "staging": { "type": "string" },
+        "staged": { "$ref": "#/$defs/names" },
         "environment": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/file_name" }

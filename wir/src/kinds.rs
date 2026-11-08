@@ -112,6 +112,7 @@ impl<'d> Checker<'d> {
             self.report(at, Problem::Outside(name.clone()));
         }
         used.extend(&task.limits);
+        used.extend(task.staged.iter().flatten());
         let given = task.environment.values().chain(&task.stdin);
         for content in given {
             if let Content::Input { input } = content {

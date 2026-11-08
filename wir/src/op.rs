@@ -161,6 +161,9 @@ pub struct Task {
     /// the input folder of CWL; without it, each goes below `inputs/<port>` when used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staging: Option<String>,
+    /// The task inputs that go to `staging`, in this order; without it every input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged: Option<Vec<String>>,
     /// What the working folder holds before the command starts, like CWL
     /// `InitialWorkDirRequirement`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

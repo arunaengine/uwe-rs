@@ -1331,6 +1331,12 @@ impl Driver for WirDriver {
                 let place = cwl_parser::iri::file_path(target).unwrap_or(PathBuf::from(target));
                 places.insert(place.clone(), place);
             }
+            // The files that adapters deliver at their end take their places first.
+            for delivery in self.dialects.held() {
+                let target = &delivery.target;
+                let place = cwl_parser::iri::file_path(target).unwrap_or(PathBuf::from(target));
+                places.insert(place, PathBuf::from(&delivery.location));
+            }
             let sources = &self.document.sources;
             let wdl = !sources.is_empty() && sources.iter().all(|s| s.language == Dialect::Wdl);
             match (wdl, &mut results) {

@@ -470,6 +470,11 @@ impl Dialects {
         self.opened[index].adapter.replan(region, ended.0, ended.1)
     }
 
+    /// The deliveries that adapters gave at their end, which the run has not handed out yet.
+    pub fn held(&self) -> impl Iterator<Item = &Delivery> + '_ {
+        self.opened.iter().flat_map(|opened| &opened.held)
+    }
+
     /// Whether a delivery that an adapter gave waits for its acknowledgement.
     pub fn delivering(&self) -> bool {
         self.opened

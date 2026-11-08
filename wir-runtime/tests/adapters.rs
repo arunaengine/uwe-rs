@@ -522,3 +522,89 @@ fn adapter_notes() {
     let targets: Vec<&str> = delivered.iter().map(|item| item.target.as_str()).collect();
     assert_eq!(targets, ["out/report.html"]);
 }
+
+/// Ends each op at once with the File `work/report.html` as its output `a`, and delivers
+/// another `report.html` to the output folder at its end.
+struct Reporting {
+    root: PathBuf,
+}
+
+impl TaskAdapter for Reporting {
+    fn start(&mut self, call: &TaskCall) -> Result<Changes, DriverError> {
+        let made = self.root.join("work/report.html");
+        let file = json!({"class": "File", "location": made, "basename": "report.html"});
+        let ending = Ending::Succeeded {
+            values: Map::from_iter([("a".to_owned(), file)]),
+            empty: Vec::new(),
+        };
+        Ok(Changes {
+            ended: vec![(call.call, ending)],
+            ..Changes::default()
+        })
+    }
+
+    fn complete(&mut self, _: Outcome) -> Result<Changes, DriverError> {
+        Ok(Changes::default())
+    }
+
+    fn end(&mut self, _: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
+        let report = Delivery {
+            location: self
+                .root
+                .join("reports/report.html")
+                .to_string_lossy()
+                .into_owned(),
+            target: self
+                .root
+                .join("out/report.html")
+                .to_string_lossy()
+                .into_owned(),
+            mode: DeliveryMode::Copy,
+            overwrite: true,
+        };
+        Ok(vec![report])
+    }
+}
+
+#[test]
+fn report_places() {
+    let folder = tempfile::tempdir().unwrap();
+    let maps = json!([{"port": "a", "native": "output/0"}]);
+    let builder = json!({"nextflow_process": {"source": "nf", "entry": "main", "call": "P", "outputs": maps}});
+    let ports = json!([{"name": "a", "type": {"file": {}}}]);
+    let document = json!({
+        "wir_version": wir::VERSION,
+        "sources": [{"id": "nf", "language": "nextflow", "location": "main.nf", "digest": "sha256:ab"}],
+        "graphs": [{"name": "main", "outputs": ports,
+            "ops": [{"path": "p", "kind": {"task": {"builder": builder}}, "outputs": ports}],
+            "edges": [{"from": {"op": "p", "port": "a"}, "to": {"port": "a"}}]}],
+        "entry": "main"
+    });
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let mut settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let root = folder.path().to_owned();
+    settings.adapters.register("nextflow_process", move |_| {
+        Ok(Box::new(Reporting { root: root.clone() }))
+    });
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    workflow_graph::Driver::start(&mut driver).unwrap();
+    workflow_graph::Driver::finish(&mut driver).unwrap();
+    let delivered = workflow_graph::Driver::deliveries(&mut driver);
+    let mut targets: Vec<String> = delivered.iter().map(|item| item.target.clone()).collect();
+    targets.sort();
+    targets.dedup();
+    assert_eq!(
+        targets.len(),
+        2,
+        "the graph output takes another place: {targets:?}"
+    );
+}

@@ -311,6 +311,11 @@ fn boundary(process: &Process, scope: &Scope) -> Result<(Vec<Port>, Vec<Port>), 
     for input in &process.inputs {
         let r#type = types::convert(&input.value_type, &named)
             .and_then(|r#type| types::formatted(r#type, &input.format, &named))
+            .map(|r#type| {
+                // A native op finds secondary files itself, also by expressions.
+                let found = types::secondary(r#type.clone(), &input.secondary_files, true);
+                found.unwrap_or(r#type)
+            })
             .map_err(|why| format!("input {}: {why}", short_name(&input.id)))?;
         let r#type = match input.default {
             Some(_) => types::optional(r#type),

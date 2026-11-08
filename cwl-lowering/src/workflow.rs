@@ -79,7 +79,8 @@ impl Lowerer {
         for (port, input) in inputs.iter_mut().zip(&process.inputs) {
             if let Some(default) = &input.default {
                 let r#type = types::convert(&input.value_type, &named)?;
-                port.r#type = types::formatted(r#type, &input.format, &named)?;
+                let r#type = types::formatted(r#type, &input.format, &named)?;
+                port.r#type = types::secondary(r#type, &input.secondary_files, true)?;
                 defaults::set(port, default, &self.base)
                     .map_err(|why| format!("input {}: {why}", port.name))?;
             }

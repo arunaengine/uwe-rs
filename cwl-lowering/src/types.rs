@@ -2,7 +2,9 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use cwl_parser::model::{Expression, Part, RequirementClass, Type as Cwl, short_name};
+use cwl_parser::model::{
+    Dynamic, Expression, Part, RequirementClass, SecondaryFile, Type as Cwl, short_name,
+};
 use wir::{ArrayType, Field, FileType, Type};
 
 use crate::Scope;
@@ -169,6 +171,57 @@ fn with_formats(r#type: Type, formats: &[String]) -> Type {
         Type::Union(members) => Type::Union(
             (members.into_iter())
                 .map(|member| with_formats(member, formats))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// The type with the secondary files of a parameter on its Files, also inside an optional, an
+/// array or a union. A pattern ending in `?` is optional; otherwise those of inputs are
+/// required unless they say not, those of outputs optional unless they say so.
+pub fn secondary(r#type: Type, files: &[SecondaryFile], input: bool) -> Result<Type, String> {
+    if files.is_empty() {
+        return Ok(r#type);
+    }
+    let mut patterns = Vec::new();
+    for file in files {
+        let [Part::Text(text)] = file.pattern.parts.as_slice() else {
+            return Err("a secondary file named by an expression".into());
+        };
+        let (pattern, optional) = match text.strip_suffix('?') {
+            Some(pattern) => (pattern, true),
+            None => (text.as_str(), false),
+        };
+        let required = match &file.required {
+            None => input && !optional,
+            Some(Dynamic::Value(required)) => *required && !optional,
+            Some(Dynamic::Expression(_)) => {
+                return Err("a secondary file required by an expression".into());
+            }
+        };
+        patterns.push(wir::SecondaryFile {
+            pattern: pattern.to_owned(),
+            required,
+        });
+    }
+    Ok(with_secondary(r#type, &patterns))
+}
+
+fn with_secondary(r#type: Type, patterns: &[wir::SecondaryFile]) -> Type {
+    match r#type {
+        Type::File(mut file) => {
+            file.secondary_files = patterns.to_vec();
+            Type::File(file)
+        }
+        Type::Optional(inner) => Type::Optional(Box::new(with_secondary(*inner, patterns))),
+        Type::Array(mut array) => {
+            array.items = Box::new(with_secondary(*array.items, patterns));
+            Type::Array(array)
+        }
+        Type::Union(members) => Type::Union(
+            (members.into_iter())
+                .map(|member| with_secondary(member, patterns))
                 .collect(),
         ),
         other => other,

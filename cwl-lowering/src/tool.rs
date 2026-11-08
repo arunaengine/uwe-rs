@@ -178,9 +178,6 @@ pub fn lower(
     let mut inputs = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
-        if !input.secondary_files.is_empty() {
-            return Err(format!("the secondary files or format of input {name}"));
-        }
         // CWL reads the contents and refuses files over 64 KiB, which a task does not.
         if input.load_contents == Some(true) {
             return Err(format!("loadContents of input {name}"));
@@ -199,6 +196,7 @@ pub fn lower(
         }
         let r#type = convert(&input.value_type, &named)
             .and_then(|r#type| crate::types::formatted(r#type, &input.format, &named))
+            .and_then(|r#type| crate::types::secondary(r#type, &input.secondary_files, true))
             .map_err(|why| format!("input {name}: {why}"))?;
         let mut port = Port {
             name,
@@ -397,11 +395,10 @@ fn capture(
             secondary_files: Vec::new(),
         })
     };
-    if !output.secondary_files.is_empty() {
-        return Err("secondary files".into());
-    }
     let format = literal(output.format.as_ref(), "the format")?;
+    let secondary = !output.secondary_files.is_empty();
     match &output.value_type {
+        Cwl::Stdout | Cwl::Stderr if secondary => return Err("secondary files of a stream".into()),
         Cwl::Stdout if output.binding.is_none() => {
             return Ok(Read::Direct(CaptureRule::Stdout, file(format)));
         }
@@ -417,8 +414,8 @@ fn capture(
         return Err("loadListing".into());
     }
     if let Some(code) = &binding.output_eval {
-        if format.is_some() {
-            return Err("the format of an evaluated output".into());
+        if format.is_some() || secondary {
+            return Err("the format or secondary files of an evaluated output".into());
         }
         let reads = paths(code) || code.text.contains("exitCode");
         if reads || (listed && code.text.contains("listing")) {
@@ -452,6 +449,7 @@ fn capture(
     };
     let r#type = convert(&output.value_type, named)?;
     let r#type = with_format(r#type, format);
+    let r#type = crate::types::secondary(r#type, &output.secondary_files, false)?;
     let fits = match &r#type {
         Type::Optional(inner) => matches!(**inner, Type::File(_) | Type::Directory),
         Type::Array(array) => matches!(*array.items, Type::File(_) | Type::Directory),

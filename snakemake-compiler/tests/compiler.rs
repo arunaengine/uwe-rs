@@ -94,8 +94,26 @@ fn compiles_jobs() {
     sorted.sort();
     assert_eq!(
         sorted,
-        ["all", "count/a", "count/b_c", "make/a", "make/b_c"]
+        [
+            "all",
+            "count/a",
+            "count/b_c",
+            "make/a",
+            "make/b_c",
+            "result.targets"
+        ]
     );
+    // The entry graph gives the target files as the native run names them.
+    let files = json!({"array": {"items": {"file": {}}}});
+    let outputs = &document["graphs"][0]["outputs"];
+    assert_eq!(*outputs, json!([{"name": "targets", "type": files}]));
+    let result = op(&document, "result.targets");
+    let code = result["kind"]["expr"]["code"].as_str().unwrap_or_default();
+    assert!(code.contains("/counts/a.txt\""), "{code}");
+    let after: Vec<&str> = (result["after"].as_array().expect("after").iter())
+        .filter_map(|before| before["op"].as_str())
+        .collect();
+    assert_eq!(after, ["count/a", "count/b_c"]);
     let count = op(&document, "count/b_c");
     let builder = &count["kind"]["task"]["builder"]["snakemake_job"];
     assert_eq!(builder["wildcards"], json!({"s": "b/c"}));
@@ -155,7 +173,7 @@ fn compiles_groups() {
     assert_eq!(group["outputs"].as_array().map(Vec::len), Some(2));
     let edge =
         json!({"from": {"op": "a", "port": "output_1"}, "to": {"op": "all", "port": "input_0"}});
-    assert_eq!(document["graphs"][0]["edges"], json!([edge]));
+    assert_eq!(document["graphs"][0]["edges"][0], edge);
 }
 
 /// A job outside a group that makes an input of the group feeds it, whatever its position.

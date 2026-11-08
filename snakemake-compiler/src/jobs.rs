@@ -15,7 +15,12 @@ use crate::{SOURCE, Setting};
 const UNDELIVERED: [&str; 3] = ["temp", "pipe", "service"];
 
 /// The entry graph `main` of the jobs, in the order of the plan.
-pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> Json {
+pub(crate) fn graph(
+    jobs: &[PlannedJob],
+    setting: &Setting,
+    launch: &Launch,
+    targets: &Json,
+) -> Json {
     let paths = paths(jobs);
     let plan = plan(setting, launch);
     let mut ops = Vec::new();
@@ -98,7 +103,79 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> 
         }
         ops.push(op);
     }
-    json!({"name": "main", "ops": ops, "edges": edges})
+    let mut outputs = Vec::new();
+    for (name, value) in targets.as_object().into_iter().flatten() {
+        let Some((op, edge, port)) = result(jobs, &paths, name, value) else {
+            continue;
+        };
+        ops.push(op);
+        edges.push(edge);
+        outputs.push(port);
+    }
+    json!({"name": "main", "outputs": outputs, "ops": ops, "edges": edges})
+}
+
+/// The output `name` of the entry graph with the target files of `value`, as a native run
+/// names them: an expr op that gives them once the ops that make them have ended.
+fn result(
+    jobs: &[PlannedJob],
+    paths: &[String],
+    name: &str,
+    value: &Json,
+) -> Option<(Json, Json, Json)> {
+    let files: Vec<&Json> = match value {
+        Json::Array(items) => items.iter().collect(),
+        file => vec![file],
+    };
+    let mut locations = Vec::new();
+    let mut after = Vec::new();
+    for file in &files {
+        let location = file["location"].as_str()?;
+        // The text of a WDL string takes placeholders, which a path rarely holds.
+        if location.contains("~{") || location.contains("${") {
+            return None;
+        }
+        locations.push(serde_json::to_string(location).ok()?);
+        let made = (jobs.iter().enumerate())
+            .flat_map(|(index, job)| {
+                job.outputs
+                    .iter()
+                    .map(move |made| (index, made.path.trim_end_matches('/')))
+            })
+            .filter(|(_, path)| location == *path || location.ends_with(&format!("/{path}")))
+            .max_by_key(|(_, path)| path.len());
+        if let Some((index, _)) = made
+            && !after
+                .iter()
+                .any(|before: &Json| before["op"] == paths[index])
+        {
+            after.push(json!({"op": paths[index], "on": ["succeeded"]}));
+        }
+    }
+    let class = |file: &Json| match file["class"] == "Directory" {
+        true => json!("directory"),
+        false => json!({"file": {}}),
+    };
+    let (code, kind) = match value {
+        Json::Array(_) => {
+            let items = files
+                .first()
+                .map_or(json!({"file": {}}), |file| class(file));
+            (
+                format!("[{}]", locations.join(", ")),
+                json!({"array": {"items": items}}),
+            )
+        }
+        file => (locations.join(""), class(file)),
+    };
+    let path = format!("result.{name}");
+    let mut op = json!({"path": path, "kind": {"expr": {"language": "wdl", "code": code}},
+        "outputs": [{"name": "value", "type": kind}]});
+    if !after.is_empty() {
+        op["after"] = json!(after);
+    }
+    let edge = json!({"from": {"op": path, "port": "value"}, "to": {"port": name}});
+    Some((op, edge, json!({"name": name, "type": kind})))
 }
 
 /// The fields of the plan settings of a launch that are set, as every job carries them.

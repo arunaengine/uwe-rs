@@ -76,6 +76,7 @@ pub fn compile(
         }
         Err(error) => return Err(error.message),
     };
+    let targets = driver.plan_targets().map_err(|error| error.message)?;
     drop(driver);
     if let Some(reason) = jobs.iter().find_map(kept_job) {
         return native(place(sources)?, &setting, launch, reason);
@@ -84,7 +85,7 @@ pub fn compile(
         entry: (setting.entry.clone()).or_else(|| jobs.iter().find_map(|job| job.target.clone())),
         ..setting
     };
-    let graph = jobs::graph(&jobs, &setting, launch);
+    let graph = jobs::graph(&jobs, &setting, launch, &targets);
     let document = json!({
         "wir_version": wir::VERSION,
         "sources": sources,

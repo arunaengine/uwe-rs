@@ -2910,7 +2910,7 @@ impl Session {
 
     /// The files of the targets, as [`Session::outputs`] names them: the items of the target
     /// jobs, their inputs where they have no outputs, like those of `all`, and target files.
-    fn target_files(&self) -> serde_json::Value {
+    pub(crate) fn target_files(&self) -> serde_json::Value {
         let Some(planner) = &self.planner else {
             return serde_json::Value::Object(serde_json::Map::new());
         };
@@ -3312,7 +3312,10 @@ pub fn spawn_driver(
                     }
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
-                    request @ (Request::Jobs(_) | Request::Prepare(_) | Request::Take(_)) => {
+                    request @ (Request::Jobs(_)
+                    | Request::Prepare(_)
+                    | Request::Take(_)
+                    | Request::Targets) => {
                         channel
                             .planning
                             .set(matches!(request, Request::Jobs(false)));

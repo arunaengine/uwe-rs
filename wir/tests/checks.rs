@@ -774,3 +774,59 @@ fn effect_declarations() {
         ["main/op: closure: js is no closure language; use javascript"]
     );
 }
+
+/// A graph `main` whose op `op` runs the process body `body` over `inputs`, giving `outs`;
+/// the body adds its inputs `n` and `k` through an expr.
+fn processing(process: Json, inputs: Json, outs: Json) -> Json {
+    let mut document = many(json!({"process": process}), inputs, outs);
+    let add = json!({"path": "add", "kind": {"expr": {"language": "js", "code": "$(inputs.n + inputs.k)"}},
+        "inputs": [port("n", "int"), port("k", "int")], "outputs": [port("out", "int")]});
+    let body = json!({"name": "body", "inputs": [port("n", "int"), port("k", "int")], "outputs": [port("out", "int")],
+        "ops": [add], "edges": [edge((None, "n"), (Some("add"), "n")), edge((None, "k"), (Some("add"), "k")),
+            edge((Some("add"), "out"), (None, "out"))]});
+    document["graphs"].as_array_mut().unwrap().push(body);
+    document
+}
+
+#[test]
+fn process_ports() {
+    let ints = json!({"array": {"items": "int"}});
+    let streamed = json!([
+        typed("n", json!("int"), "stream"),
+        typed("k", json!("int"), "value")
+    ]);
+    let out = typed("out", json!("int"), "stream");
+    let good = processing(json!({"body": "body"}), streamed.clone(), out.clone());
+    assert_eq!(problems(&good), Vec::<String>::new());
+    let single = json!([
+        typed("n", json!("int"), "value"),
+        typed("k", json!("int"), "value")
+    ]);
+    let once = processing(
+        json!({"body": "body"}),
+        single.clone(),
+        typed("out", json!("int"), "value"),
+    );
+    assert_eq!(
+        problems(&once),
+        Vec::<String>::new(),
+        "only values give values"
+    );
+    let wrong = processing(json!({"body": "body"}), single.clone(), out.clone());
+    reports(&wrong, "main/op: output out does not match graph body");
+    let each = json!([typed("n", json!("int"), "value"), typed("k", ints, "value")]);
+    let choices = processing(json!({"body": "body", "each": ["k"]}), each, out.clone());
+    assert_eq!(
+        problems(&choices),
+        Vec::<String>::new(),
+        "each takes the elements of an array"
+    );
+    let missing = processing(
+        json!({"body": "body", "each": ["m"]}),
+        streamed.clone(),
+        out.clone(),
+    );
+    reports(&missing, "main/op: no input m");
+    let zero = processing(json!({"body": "body", "parallelism": 0}), streamed, out);
+    reports(&zero, "main/op: a process needs a positive parallelism");
+}

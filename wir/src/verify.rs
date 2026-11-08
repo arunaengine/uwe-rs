@@ -442,6 +442,7 @@ fn called_by(kind: &Kind) -> Vec<&str> {
     match kind {
         Kind::Call(call) => vec![&call.graph],
         Kind::Map(map) => vec![&map.body],
+        Kind::Process(process) => vec![&process.body],
         Kind::Filter(filter) => filter.body.graph().into_iter().collect(),
         Kind::Transform(transform) => transform.body.graph().into_iter().collect(),
         Kind::FlatMap(flat) => flat.body.iter().filter_map(Body::graph).collect(),

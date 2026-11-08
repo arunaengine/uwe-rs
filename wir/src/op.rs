@@ -83,6 +83,7 @@ pub enum Kind {
     Route(reserved::Route),
     MultiMap(reserved::MultiMap),
     Branch(Branch),
+    Process(Process),
     Select(reserved::Select),
     Loop(reserved::Loop),
     Dynamic(reserved::Dynamic),
@@ -208,6 +209,37 @@ pub struct Map {
     pub parallelism: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_success: Option<u32>,
+}
+
+/// Runs the `body` graph once per round: each base round takes an item of every stream input
+/// and every value input as it is, and each choice of the `each` inputs makes a child round.
+/// With a stream input or an `each` input, every output is a stream of the rounds' values.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Process {
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub each: Vec<String>,
+    #[serde(default, skip_serializing_if = "Emission::is_completion")]
+    pub order: Emission,
+    /// The most child rounds that run at once, retries included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallelism: Option<u32>,
+}
+
+/// The order in which rounds give their outputs: as they end, or in round order.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Emission {
+    #[default]
+    Completion,
+    Fair,
+}
+
+impl Emission {
+    pub fn is_completion(&self) -> bool {
+        *self == Emission::Completion
+    }
 }
 
 /// How a `map` makes rounds of several inputs, as CWL `scatterMethod`.

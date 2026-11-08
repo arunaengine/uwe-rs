@@ -18,8 +18,8 @@ pub use document::{
 };
 pub use flow::{Flow, Subscription};
 pub use op::{
-    Argument, Attributes, Branch, Cache, Call, Capture, CaptureRule, Dependency, Effect, Expr,
-    Kind, Map, Native, Op, Origin, Resources, Scatter, Status, Task,
+    Argument, Attributes, Branch, Cache, Call, Capture, CaptureRule, Dependency, Effect, Emission,
+    Expr, Kind, Map, Native, Op, Origin, Process, Resources, Scatter, Status, Task,
 };
 pub use types::{
     ArrayType, Field, FileType, KeyType, MapType, SecondaryFile, Type, TypeDef, resolve,

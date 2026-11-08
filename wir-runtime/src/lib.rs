@@ -13,6 +13,8 @@ mod inputs;
 pub mod nextflow;
 mod plan;
 pub mod snakemake;
+#[allow(dead_code, reason = "the stream ops of the next commits use it")]
+mod spill;
 mod state;
 #[allow(dead_code, reason = "the stream ops of the next commits use it")]
 mod streams;

@@ -219,11 +219,11 @@ impl TaskAdapter for ArgoTasks {
         self.adapter.take_deliveries()
     }
 
-    fn end(&mut self, _failure: Option<&str>) -> Result<(), DriverError> {
+    fn end(&mut self, _failure: Option<&str>) -> Result<Vec<Delivery>, DriverError> {
         if let Some(results) = &self.results {
             self.adapter.finish(results);
         }
-        Ok(())
+        Ok(self.adapter.take_deliveries())
     }
 
     /// Argo names its tasks by their node names, as the native run does.

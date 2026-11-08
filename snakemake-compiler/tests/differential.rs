@@ -536,7 +536,7 @@ fn compiled_runs_match() {
     assert!(compared.equal);
 }
 
-/// A group job and a pipe each run as one task.
+/// A group job, a pipe and a service with its users each run as one task.
 #[test]
 fn compiled_groups_match() {
     let snakefile = SNAKEFILE.replace(
@@ -545,10 +545,13 @@ fn compiled_groups_match() {
     );
     let snakefile = snakefile.replace("    retries: 1", "    retries: 1\n    group: \"g\"");
     let piped = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: pipe(\"a.pipe\")\n    shell: \"echo a > {output}\"\n\nrule b:\n    input: \"a.pipe\"\n    output: \"b.txt\"\n    shell: \"cat {input} > {output}\"\n";
-    for (snakefile, shown) in [
+    let served = "rule all:\n    input: \"b.txt\", \"c.txt\"\n\nrule a:\n    output: service(\"a.socket\")\n    shell: \"sleep 100 > {output}\"\n\nrule b:\n    input: \"a.socket\"\n    output: \"b.txt\"\n    shell: \"head -n1 {input} > {output}\"\n\nrule c:\n    input: \"a.socket\"\n    output: \"c.txt\"\n    shell: \"head -n1 {input} > {output}\"\n";
+    let cases = [
         (snakefile.as_str(), "same: 4 tasks"),
         (piped, "same: 2 tasks"),
-    ] {
+        (served, "same: 2 tasks"),
+    ];
+    for (snakefile, shown) in cases {
         let compared = compared(snakefile, &[]);
         assert_eq!(compared.shown, shown);
         assert!(compared.equal);

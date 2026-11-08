@@ -28,6 +28,16 @@ pub struct Context<'a> {
     /// Where `view` prints.
     pub printer: &'a crate::driver::Printer,
     pub simulated: bool,
+    /// The files provider of the executor, which gives local paths of task outputs.
+    pub provider: Option<&'a dyn workflow_graph::Files>,
+}
+
+impl Context<'_> {
+    /// The bytes of the file at a location, through the files provider when there is one.
+    pub fn read(&self, location: &str) -> std::io::Result<Vec<u8>> {
+        let location = location.strip_prefix("file://").unwrap_or(location);
+        workflow_graph::files::read(self.provider, location)
+    }
 }
 
 /// Runs a node of an op that the engine runs at once; whether it was such an op.

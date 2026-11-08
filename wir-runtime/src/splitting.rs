@@ -80,7 +80,7 @@ impl Splitting {
     }
 
     /// The text of a text item, or of the local file of a File item.
-    fn text(&self, turn: &Turn<'_>, item: &Json) -> Result<String, Failure> {
+    fn text(&self, turn: &Turn<'_>, context: &Context<'_>, item: &Json) -> Result<String, Failure> {
         match item {
             Json::String(text) => Ok(text.replace("\r\n", "\n")),
             Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("File") => {
@@ -89,12 +89,12 @@ impl Splitting {
                     .and_then(Json::as_str)
                     .unwrap_or_default();
                 let path = location.strip_prefix("file://").unwrap_or(location);
-                if path.contains("://") {
+                if path.contains("://") && context.provider.is_none() {
                     return Err(
                         turn.failed(format!("uwe splits only local files yet, not {location}"))
                     );
                 }
-                let bytes = std::fs::read(path)
+                let bytes = (context.read(location))
                     .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?;
                 let gzip = match self.spec.decompress {
                     Decompress::Always => true,
@@ -180,7 +180,7 @@ impl Splitting {
         source: &Json,
         mate: Option<usize>,
     ) -> Result<(Vec<Json>, usize), Failure> {
-        let mut text = self.text(turn, source)?;
+        let mut text = self.text(turn, context, source)?;
         if let SplitFormat::Json(json) = &self.spec.format {
             let document: Json = serde_json::from_str(&text)
                 .map_err(|error| turn.failed(format!("the JSON does not parse: {error}")))?;
@@ -433,17 +433,29 @@ fn decode(bytes: &[u8], charset: &str) -> Result<String, String> {
 pub(crate) mod tests {
     use serde_json::{Map, Value as Json, json};
 
-    use crate::mixing::tests::{commit, node, steps, wired};
+    use crate::mixing::tests::{Fixture, Store, commit, node, steps_in, wired};
     use crate::operator::{Step, make};
 
     /// What a split with `fields` gives for the items of a closed stream, or why it failed.
     pub fn split(fields: Json, items: &[Json]) -> Result<Vec<Json>, String> {
+        split_in(fields, items, &Fixture::default())
+    }
+
+    /// What [`split`] gives with the file area and files provider of `fixture`.
+    pub fn split_in(fields: Json, items: &[Json], fixture: &Fixture) -> Result<Vec<Json>, String> {
         let node = node(json!({"split": fields}), &["source"], &[], "stream");
         let mut streams = wired(&node);
         let mut operator = make(&node).unwrap();
         let items: Vec<(&str, Json)> = items.iter().map(|item| ("source", item.clone())).collect();
         commit(&mut streams, &items, &["source"]);
-        let (emitted, _, step) = steps(operator.as_mut(), &node, &mut streams, &Map::new());
+        let context = fixture.context();
+        let (emitted, _, step) = steps_in(
+            operator.as_mut(),
+            &node,
+            &mut streams,
+            &Map::new(),
+            &context,
+        );
         match step {
             Ok(Step::Done) => Ok(emitted),
             Ok(other) => panic!("the split did not end: {other:?}"),
@@ -498,6 +510,17 @@ pub(crate) mod tests {
             split(json!({"format": {"text": {}}}), &[file])
                 .unwrap_err()
                 .contains("no UTF-8")
+        );
+        let fixture = Fixture {
+            provider: Some(std::sync::Arc::new(Store(folder.path().to_owned()))),
+            ..Fixture::default()
+        };
+        std::fs::write(folder.path().join("stored.txt"), "s\n").unwrap();
+        let stored = json!({"class": "File", "location": "store://stored.txt"});
+        assert_eq!(
+            split_in(json!({"format": {"text": {}}}), &[stored], &fixture),
+            Ok(vec![json!("s\n")]),
+            "through the files provider of the run"
         );
     }
 

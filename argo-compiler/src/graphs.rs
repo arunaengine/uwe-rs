@@ -50,6 +50,8 @@ pub(crate) struct Compiler {
     /// The graphs that run as loop bodies: the site that calls the template again, and the
     /// body outputs that it gives the next round.
     pub loops: BTreeMap<String, (String, Vec<Carry>)>,
+    /// Whether the workflow reads `workflow.status` or `workflow.failures` anywhere.
+    pub reads_status: bool,
 }
 
 impl Compiler {
@@ -60,6 +62,7 @@ impl Compiler {
             done: BTreeMap::new(),
             active: Vec::new(),
             loops: BTreeMap::new(),
+            reads_status: false,
         }
     }
 
@@ -232,7 +235,7 @@ impl Compiler {
         node: &Node,
         limit: Option<i64>,
     ) -> Result<(), Kept> {
-        let mut before: Vec<(String, ContinueOn)> = Vec::new();
+        let mut before: Vec<(String, Vec<Status>)> = Vec::new();
         let limit = limit.filter(|limit| *limit > 0);
         let rounds = limit.map(|limit| u32::try_from(limit).unwrap_or(u32::MAX));
         for (position, group) in sequence(node.get("steps")).iter().enumerate() {
@@ -252,15 +255,18 @@ impl Compiler {
                     map.parallelism = rounds.or(map.parallelism);
                 }
                 if let Some(op) = graph.ops.iter_mut().find(|op| op.path == built.op) {
-                    for (earlier, continues) in &before {
+                    for (earlier, on) in &before {
                         op.after.push(Dependency {
                             op: earlier.clone(),
-                            on: statuses(continues),
+                            on: on.clone(),
                         });
                     }
                 }
                 handle_continue(graph, &built.op, site.continue_on);
-                current.push((built.op.clone(), site.continue_on));
+                current.push((built.op.clone(), statuses(&site.continue_on)));
+                if let Some(hook) = &built.hook {
+                    current.push((hook.clone(), ended()));
+                }
                 made.push((format!("steps.{}", site.name), built));
             }
             for (prefix, built) in made {
@@ -331,6 +337,7 @@ impl Compiler {
             }
             ancestors.insert(name.clone(), all);
         }
+        let mut hooks: BTreeMap<String, String> = BTreeMap::new();
         let declared = (dag.tasks.iter()).filter(|task| order.contains(&task.name));
         for task in declared.collect::<Vec<_>>() {
             let raw = (raw.iter())
@@ -359,6 +366,16 @@ impl Compiler {
             {
                 op.handles = crate::depends::handled(&tree);
                 op.depends = Some(tree);
+                for hook in names.iter().filter_map(|name| hooks.get(name)) {
+                    let on = ended();
+                    op.after.push(Dependency {
+                        op: hook.clone(),
+                        on,
+                    });
+                }
+            }
+            if let Some(hook) = &built.hook {
+                hooks.insert(task.name.clone(), hook.clone());
             }
             handle_continue(graph, &built.op, site.continue_on);
             let recursive = self.loops.get(&graph.name).map(|(site, _)| site);
@@ -378,6 +395,8 @@ impl Compiler {
 pub(crate) struct Built {
     pub op: String,
     pub outputs: Vec<Port>,
+    /// The op of its exit hook.
+    pub hook: Option<String>,
 }
 
 /// The statuses of a step that let the next group start.
@@ -392,9 +411,20 @@ fn statuses(continues: &ContinueOn) -> Vec<Status> {
     on
 }
 
+/// Every way an op ends, which an exit hook waits for.
+fn ended() -> Vec<Status> {
+    vec![
+        Status::Succeeded,
+        Status::Failed,
+        Status::Errored,
+        Status::Skipped,
+        Status::Omitted,
+    ]
+}
+
 /// A status group that handles the failures a step or task continues on, so that they do not
 /// fail the graph, as `continueOn` lets the template go on.
-fn handle_continue(graph: &mut Graph, path: &str, continues: ContinueOn) {
+pub(crate) fn handle_continue(graph: &mut Graph, path: &str, continues: ContinueOn) {
     let mut allow = Vec::new();
     if continues.failed {
         allow.push(Status::Failed);

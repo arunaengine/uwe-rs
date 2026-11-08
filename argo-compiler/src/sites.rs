@@ -6,14 +6,15 @@
 use std::collections::BTreeMap;
 
 use argo_parser::model::{
-    Arguments, ContinueOn, DagTask, Sequence, Template, TemplateRef, WorkflowStep,
+    Arguments, ContinueOn, DagTask, LifecycleHook, Sequence, Template, TemplateRef, WorkflowStep,
 };
 use argo_parser::{Node, decode};
 use argo_runtime::adapter::Form;
 use serde_json::{Value as Json, json};
 use wir::reserved::{Carry, Flatten, Merge};
 use wir::{
-    Binding, Edge, Endpoint, ExprForm, Graph, Kind, Op, Port, PortMap, TaskBuilder, TaskRef, Type,
+    Binding, Edge, Endpoint, ExprForm, Graph, Kind, Op, Port, PortMap, Status, TaskBuilder,
+    TaskRef, Type,
 };
 
 use crate::graphs::{Built, Compiler, Place, Scope, Target, kept};
@@ -36,8 +37,10 @@ pub(crate) struct Site {
     pub with_sequence: Option<Sequence>,
     pub arguments: Arguments,
     pub continue_on: ContinueOn,
-    /// Whether it has lifecycle hooks or an exit handler.
-    pub hooks: bool,
+    /// Whether it has lifecycle hooks other than its exit hook.
+    pub lifecycle: bool,
+    /// Its exit hook: the hook `exit`, or a node with the `onExit` template.
+    pub exit: Option<Node>,
 }
 
 impl Site {
@@ -56,7 +59,8 @@ impl Site {
             with_sequence: step.with_sequence,
             arguments: step.arguments,
             continue_on: step.continue_on.unwrap_or_default(),
-            hooks: !step.hooks.is_empty() || !step.on_exit.is_empty(),
+            lifecycle: step.hooks.keys().any(|name| name != "exit"),
+            exit: exit_node(raw, &step.on_exit),
         })
     }
 
@@ -75,9 +79,44 @@ impl Site {
             with_sequence: task.with_sequence,
             arguments: task.arguments,
             continue_on: task.continue_on.unwrap_or_default(),
-            hooks: !task.hooks.is_empty() || !task.on_exit.is_empty(),
+            lifecycle: task.hooks.keys().any(|name| name != "exit"),
+            exit: exit_node(raw, &task.on_exit),
         })
     }
+
+    /// The site of an exit hook: the call `call`, its texts in `raw`.
+    pub fn of_hook(call: String, name: String, hook: LifecycleHook, raw: Node) -> Site {
+        Site {
+            call,
+            name,
+            raw,
+            template: hook.template,
+            template_ref: hook.template_ref,
+            inline: false,
+            when: String::new(),
+            with_items: Vec::new(),
+            with_param: String::new(),
+            with_sequence: None,
+            arguments: hook.arguments,
+            continue_on: ContinueOn::default(),
+            lifecycle: false,
+            exit: None,
+        }
+    }
+}
+
+/// The exit hook of a step or task: its hook `exit`, or a node with its `onExit` template.
+fn exit_node(raw: &Node, on_exit: &str) -> Option<Node> {
+    if let Some(hook) = raw.get("hooks").and_then(|hooks| hooks.get("exit")) {
+        return Some(hook.clone());
+    }
+    let at = argo_parser::Position::default();
+    let entry = argo_parser::Entry {
+        key: "template".into(),
+        position: at,
+        value: text_node(on_exit),
+    };
+    (!on_exit.is_empty()).then(|| Node::new(argo_parser::Value::Mapping(vec![entry]), at))
 }
 
 /// The items of a loop: known before the run, with the labels that they give the node names,
@@ -105,8 +144,56 @@ pub(crate) struct Piece {
 }
 
 impl Compiler {
-    /// Compiles a site of the template at `holding` into `graph`.
+    /// Compiles a site of the template at `holding` into `graph`, and its exit hook, which runs
+    /// once the site ended and whose failures do not count.
     pub fn site(
+        &mut self,
+        holding: &Place,
+        graph: &mut Graph,
+        scope: &Scope,
+        site: &Site,
+    ) -> Result<Built, Kept> {
+        let at = format!("{}/{}", graph.name, site.name);
+        if site.lifecycle {
+            let reason = "lifecycle hooks of steps hold on status expressions";
+            return Err(kept(&at, reason));
+        }
+        let built = self.site_ops(holding, graph, scope, site)?;
+        let Some(raw) = &site.exit else {
+            return Ok(built);
+        };
+        let looping = !site.with_items.is_empty() || !site.with_param.is_empty();
+        if looping || site.with_sequence.is_some() {
+            return Err(kept(&at, "exit hooks of the rounds of a loop"));
+        }
+        let (hook, _) = decode::<LifecycleHook>(raw).map_err(|e| kept(&at, &e.to_string()))?;
+        if !hook.expression.is_empty() {
+            return Err(kept(&at, "an exit hook with an expression"));
+        }
+        let call = format!("{}.onExit", site.call);
+        let hook = Site::of_hook(call, format!("{}.onExit", site.name), hook, raw.clone());
+        let mut seen = scope.clone();
+        let prefix = match site.call.starts_with('[') {
+            true => "steps",
+            false => "tasks",
+        };
+        let made = (built.op.clone(), built.outputs.clone());
+        seen.made.insert(format!("{prefix}.{}", site.name), made);
+        let exit = self.site_ops(holding, graph, &seen, &hook)?;
+        after_end(graph, &exit.op, &built.op);
+        let continues = ContinueOn {
+            failed: true,
+            error: true,
+        };
+        crate::graphs::handle_continue(graph, &exit.op, continues);
+        Ok(Built {
+            hook: Some(exit.op),
+            ..built
+        })
+    }
+
+    /// Compiles a site of the template at `holding` into `graph`, without its exit hook.
+    fn site_ops(
         &mut self,
         holding: &Place,
         graph: &mut Graph,
@@ -117,9 +204,6 @@ impl Compiler {
         let fail = |reason: &str| Err(kept(&at, reason));
         if site.inline {
             return fail("an inline template");
-        }
-        if site.hooks {
-            return fail("lifecycle hooks and exit handlers of steps need their status as a value");
         }
         let place = match &site.template_ref {
             Some(reference) => Place {
@@ -208,6 +292,7 @@ impl Compiler {
             return Ok(Built {
                 op: piece.main,
                 outputs: piece.outputs,
+                hook: None,
             });
         };
         let body = format!("{}.{}", graph.name, crate::safe(&site.name));
@@ -286,6 +371,7 @@ impl Compiler {
         let built = Built {
             op: site.name.clone(),
             outputs: map.outputs.clone(),
+            hook: None,
         };
         self.graphs.push(Graph {
             name: body,
@@ -408,6 +494,16 @@ impl Compiler {
             edges: wires,
             main,
         })
+    }
+}
+
+/// Lets the op `path` start once the op `ended` ended in a way that let it run.
+pub(crate) fn after_end(graph: &mut Graph, path: &str, ended: &str) {
+    if let Some(op) = graph.ops.iter_mut().find(|op| op.path == path) {
+        op.after.push(wir::Dependency {
+            op: ended.to_owned(),
+            on: vec![Status::Succeeded, Status::Failed, Status::Errored],
+        });
     }
 }
 

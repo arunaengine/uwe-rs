@@ -6,6 +6,7 @@
 use serde_json::json;
 
 use super::*;
+use crate::adapter::Adapters;
 use crate::plan::plan;
 
 /// A graph where `first` feeds `second` and `cleanup` runs only after `first` failed. Each
@@ -35,7 +36,7 @@ fn progress() -> Progress {
         "graphs": [main, leaf], "entry": "main"});
     let document = wir::parse(&document.to_string()).unwrap();
     wir::verify(&document).unwrap();
-    let mut progress = Progress::new(plan(&document).unwrap(), Vec::new());
+    let mut progress = Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new());
     progress.inputs.insert("x".into(), json!(2));
     progress
 }
@@ -178,7 +179,10 @@ fn dynamic_progress() -> (Progress, Vec<wir::Port>) {
     let document = wir::parse(&document.to_string()).unwrap();
     wir::verify(&document).unwrap();
     let ports = document.graphs[0].outputs.clone();
-    (Progress::new(plan(&document).unwrap(), Vec::new()), ports)
+    (
+        Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new()),
+        ports,
+    )
 }
 
 #[test]
@@ -282,7 +286,7 @@ fn fenced() -> Progress {
         "graphs": [main, pass], "entry": "main"});
     let document = wir::parse(&document.to_string()).unwrap();
     wir::verify(&document).unwrap();
-    let mut progress = Progress::new(plan(&document).unwrap(), Vec::new());
+    let mut progress = Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new());
     let values = Map::from_iter([("xs".into(), json!([1, 2]))]);
     progress.feed(&values, &["xs".into()]).unwrap();
     progress.activate(None).unwrap();
@@ -357,7 +361,7 @@ fn controlled(changes: Json, extra: Json) -> Progress {
         "graphs": [{"name": "main", "ops": ops}], "entry": "main"});
     let document = wir::parse(&document.to_string()).unwrap();
     wir::verify(&document).unwrap();
-    Progress::new(plan(&document).unwrap(), Vec::new())
+    Progress::new(plan(&document, &Adapters::default()).unwrap(), Vec::new())
 }
 
 /// Starts the node `path`, which must be next, and ends it with `status`.

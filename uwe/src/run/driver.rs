@@ -136,6 +136,7 @@ pub(crate) fn driver(
                     Some(sink) => wir_runtime::Printer::new(move |text| sink.print(text)),
                     None => wir_runtime::Printer::default(),
                 },
+                adapters: wir_runtime::adapter::Adapters::default(),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();

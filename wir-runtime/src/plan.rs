@@ -9,6 +9,8 @@ use serde_json::{Map, Value as Json};
 use wir::{Call, Document, Endpoint, Graph, Kind, Op, Scatter, Status};
 use workflow_graph::DriverError;
 
+use crate::adapter::Adapters;
+
 /// One op instance. Inside a call its path starts with the path of the call, like
 /// `align/sort` for the op `sort` of the graph that the op `align` calls.
 pub struct Node {
@@ -83,9 +85,9 @@ pub struct Plan {
 }
 
 /// Plans a verified document. Reserved op kinds parse and verify, but no runner of this
-/// version runs them.
-pub fn plan(document: &Document) -> Result<Plan, DriverError> {
-    refuse(document)?;
+/// version runs them; dialect tasks run when `adapters` has their builder.
+pub fn plan(document: &Document, adapters: &Adapters) -> Result<Plan, DriverError> {
+    refuse(document, adapters)?;
     let mut nodes = Vec::new();
     let entry = graph(document, &document.entry)?;
     let outputs = instantiate(document, entry, ("", ""), None, &mut nodes)?;
@@ -94,14 +96,14 @@ pub fn plan(document: &Document) -> Result<Plan, DriverError> {
 
 /// Refuses the settings that this runner cannot honour, in every graph that a run of the
 /// entry graph can reach, so that none of them is dropped silently.
-fn refuse(document: &Document) -> Result<(), DriverError> {
+fn refuse(document: &Document, adapters: &Adapters) -> Result<(), DriverError> {
     let mut reached = vec![document.entry.as_str()];
     let mut next = 0;
     while let Some(name) = reached.get(next).copied() {
         next += 1;
         let graph = graph(document, name)?;
         for op in &graph.ops {
-            if let Some(why) = refusal(op) {
+            if let Some(why) = refusal(op, adapters) {
                 let message = format!("op {name}/{}: {why}", op.path);
                 return Err(DriverError::unsupported(message));
             }
@@ -109,6 +111,7 @@ fn refuse(document: &Document) -> Result<(), DriverError> {
                 Kind::Call(call) => Some(call.graph.as_str()),
                 Kind::Branch(branch) => Some(branch.body.as_str()),
                 Kind::Map(map) => Some(map.body.as_str()),
+                Kind::Process(process) => Some(process.body.as_str()),
                 _ => None,
             };
             if let Some(body) = body.filter(|body| !reached.contains(body)) {
@@ -120,7 +123,7 @@ fn refuse(document: &Document) -> Result<(), DriverError> {
 }
 
 /// Why this runner cannot run an op with its settings, if it cannot.
-fn refusal(op: &Op) -> Option<&'static str> {
+fn refusal(op: &Op, adapters: &Adapters) -> Option<&'static str> {
     let runs = matches!(op.kind, Kind::Task(_) | Kind::Native(_));
     if op.attributes.place.is_some() && !runs {
         return Some("only task and native ops run at a place");
@@ -141,7 +144,7 @@ fn refusal(op: &Op) -> Option<&'static str> {
     if matches!(op.kind, Kind::Native(_)) && (sized || op.attributes.retry.is_some()) {
         return Some("a native block sets the resources, time and retry of its tasks itself");
     }
-    unrun(op)
+    unrun(op, adapters)
 }
 
 /// Whether this runner runs a stream or control op kind.
@@ -186,7 +189,7 @@ fn supported(kind: &Kind) -> bool {
 }
 
 /// Why this runner cannot run a field of the format that it does not run yet, if it cannot.
-fn unrun(op: &Op) -> Option<&'static str> {
+fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
     let streams = (op.inputs.iter().chain(&op.outputs)).any(|port| !port.flow.is_value());
     if streams && !matches!(op.kind, Kind::Call(_)) && !supported(&op.kind) {
         return Some("uwe does not run stream ports yet");
@@ -206,7 +209,14 @@ fn unrun(op: &Op) -> Option<&'static str> {
         {
             Some("uwe does not run expressions with a scope or captures yet")
         }
-        Kind::Task(task) if task.builder.is_some() => Some("uwe does not run dialect tasks yet"),
+        Kind::Task(task)
+            if task
+                .builder
+                .as_ref()
+                .is_some_and(|built| !adapters.knows(built)) =>
+        {
+            Some("uwe does not run dialect tasks yet")
+        }
         Kind::Task(task) if task.accept.is_some() || task.retry.is_some() => {
             Some("uwe does not run task acceptance and retry rules yet")
         }

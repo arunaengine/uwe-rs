@@ -38,13 +38,14 @@ impl Observer for Targets {
     }
 }
 
-/// The delivery targets of a simulated run of the compiled pipeline `script`, below `folder`.
-fn delivered(folder: &Path, script: &str) -> Vec<String> {
+/// The delivery targets of a run of the compiled pipeline `script` on the simulator, below
+/// `folder`, simulated or not.
+fn delivered(folder: &Path, script: &str, simulated: bool) -> Vec<String> {
     std::fs::write(folder.join("main.nf"), script).unwrap();
     let launch = |target: &Path| Launch {
         target: target.to_owned(),
         scratch: folder.join("scratch"),
-        simulated: true,
+        simulated,
         ..Launch::default()
     };
     let compiled = nextflow_compiler::compile(&launch(folder), settings(folder), folder).unwrap();
@@ -84,9 +85,25 @@ fn keeps_task_folders() {
                   workflow {\n    main:\n    P(channel.of('a', 'b'))\n    publish:\n    texts = P.out\n}\n\n\
                   output {\n    texts {\n        path 'res'\n    }\n}\n";
     let directory = tempfile::tempdir().unwrap();
-    let found = delivered(directory.path(), script);
+    let found = delivered(directory.path(), script, true);
     assert_eq!(
         found,
         ["/results/res/a/result.txt", "/results/res/b/result.txt"]
     );
+}
+
+#[test]
+fn delivers_reports() {
+    let script = "process P {\n    input:\n    val name\n    output:\n    path(\"${name}.txt\")\n    \
+                  script:\n    \"touch ${name}.txt\"\n}\n\nworkflow {\n    P(channel.of('a'))\n}\n";
+    let directory = tempfile::tempdir().unwrap();
+    let reports = ["trace", "report", "timeline", "dag"]
+        .map(|kind| format!("{kind}.enabled = true\n{kind}.file = 'info/{kind}.txt'\n"))
+        .concat();
+    std::fs::write(directory.path().join("nextflow.config"), reports).unwrap();
+    let found = delivered(directory.path(), script, false);
+    for kind in ["trace", "report", "timeline", "dag"] {
+        let target = format!("/info/{kind}.txt");
+        assert!(found.contains(&target), "{target} in {found:?}");
+    }
 }

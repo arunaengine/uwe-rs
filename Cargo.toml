@@ -36,6 +36,7 @@ members = [
     "run-page",
     "run-telemetry",
     "slurm-executor",
+    "snakemake-compiler",
     "snakemake-parser",
     "snakemake-runtime",
     "snowflake-executor",

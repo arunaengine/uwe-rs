@@ -260,3 +260,16 @@ fn lowers_working_folder() {
         expr.code
     );
 }
+
+#[test]
+fn lowers_format_expressions() {
+    let lowering = lowered("sorted.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let graph = serde_json::to_value(&lowering.document.graphs[1]).unwrap();
+    let ops = graph["ops"].as_array().unwrap();
+    let paths: Vec<&str> = ops.iter().map(|op| op["path"].as_str().unwrap()).collect();
+    assert_eq!(paths, ["sorted", "sorted.sorted.outputEval"]);
+    let code = ops[1]["kind"]["expr"]["code"].as_str().unwrap();
+    assert!(code.contains("file.format = format(file)"), "{code}");
+    assert_eq!(ops[1]["inputs"][1]["type"], json!({"file": {}}), "self is the File");
+}

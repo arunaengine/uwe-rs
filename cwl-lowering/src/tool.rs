@@ -412,16 +412,27 @@ fn capture(
             secondary_files: Vec::new(),
         })
     };
-    let format = literal(output.format.as_ref(), "the format")?;
+    // A format that code computes is set on each File by an expr after the task.
+    let computed = output.format.as_ref().filter(|format| code(format));
+    if computed.is_some_and(paths) {
+        return Err("an expression in the format that reads a path".into());
+    }
+    let read = |rule: CaptureRule, r#type: Type| match computed {
+        Some(format) => Ok(Read::Evaluated(
+            Some((rule, r#type)),
+            Expression::parse(&runtime::formats(format), false)?,
+        )),
+        None => Ok(Read::Direct(rule, r#type)),
+    };
+    let format = match computed {
+        Some(_) => None,
+        None => literal(output.format.as_ref(), "the format")?,
+    };
     let secondary = !output.secondary_files.is_empty();
     match &output.value_type {
         Cwl::Stdout | Cwl::Stderr if secondary => return Err("secondary files of a stream".into()),
-        Cwl::Stdout if output.binding.is_none() => {
-            return Ok(Read::Direct(CaptureRule::Stdout, file(format)));
-        }
-        Cwl::Stderr if output.binding.is_none() => {
-            return Ok(Read::Direct(CaptureRule::Stderr, file(format)));
-        }
+        Cwl::Stdout if output.binding.is_none() => return read(CaptureRule::Stdout, file(format)),
+        Cwl::Stderr if output.binding.is_none() => return read(CaptureRule::Stderr, file(format)),
         _ => {}
     }
     let Some(binding) = &output.binding else {
@@ -431,7 +442,7 @@ fn capture(
         return Err("loadListing".into());
     }
     if let Some(code) = &binding.output_eval {
-        if format.is_some() || secondary {
+        if output.format.is_some() || secondary {
             return Err("the format or secondary files of an evaluated output".into());
         }
         let reads = paths(code) || code.text.contains("exitCode");
@@ -473,7 +484,7 @@ fn capture(
         other => matches!(other, Type::File(_) | Type::Directory),
     };
     match fits {
-        true => Ok(Read::Direct(rule, r#type)),
+        true => read(rule, r#type),
         false => Err("a type that a glob does not fill".into()),
     }
 }

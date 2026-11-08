@@ -32,12 +32,14 @@ const COMPILED: &[&str] = &[
 
 /// How many pipelines compile into documents that the wir verifier accepts, run natively, run
 /// compiled, give equal tasks (descriptions and resume fingerprints) in both orders, and
-/// publish the same files.
+/// publish the same files. A simulated compiled run delivers no files of stream ops, like the
+/// `pipeline_info` files that a native run writes, and demo's MULTIQC stages the two files
+/// that `mix` merges from independent ops in the other order.
 const RECORDED: Counts = Counts {
     verified: 2,
     native: 2,
-    compiled: 0,
-    tasks: 0,
+    compiled: 2,
+    tasks: 1,
     published: 0,
 };
 
@@ -65,16 +67,14 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     let output = folder.join(format!("{name}-out"));
     let mut command = common::isolated(Command::new("timeout"));
     command.args(["600", common::BINARY, "run", "-executor", "simulator"]);
-    command.arg(project).args(["-profile", "test", "-stub-run"]);
-    command.args(["-max-pending", "8", "-order", order]);
-    command
-        .arg("-graph")
-        .arg(&graph)
-        .arg("--outdir")
-        .arg(&output);
-    if compiled {
-        command.arg("-lowered");
-    }
+    match compiled {
+        true => command.arg(checked(project, folder, &output, &name)?),
+        false => (command.arg(project))
+            .args(["-profile", "test", "--outdir"])
+            .arg(&output),
+    };
+    command.args(["-stub-run", "-max-pending", "8", "-order", order]);
+    command.arg("-graph").arg(&graph);
     let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
         .current_dir(project)
         .output()
@@ -87,11 +87,16 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     let graph: ExecutionGraph = serde_json::from_str(&text).map_err(|error| error.to_string())?;
     let mut tasks: Vec<(String, Json)> = (graph.nodes.iter())
         .map(|node| {
-            let task = Task {
+            let mut task = Task {
                 id: TaskId(0),
                 after: Vec::new(),
                 ..node.task.clone()
             };
+            // The files of each run lie in folders of their own; the staged names stay.
+            for input in &mut task.inputs {
+                let name = input.source.rsplit('/').next().unwrap_or_default();
+                input.source = name.to_owned();
+            }
             let fingerprint = run_database::fingerprint(&task, &[]);
             (fingerprint, serde_json::to_value(&task).unwrap_or_default())
         })
@@ -101,7 +106,52 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     Ok(Ran { tasks, files })
 }
 
-/// The files below a folder, by their paths in it, sorted.
+/// The document that `uwe lower` gives for a run with `-profile test`, without the check of
+/// the params at its start, which the wir runtime does not run yet, and with absolute sources.
+fn checked(project: &Path, folder: &Path, output: &Path, name: &str) -> Result<PathBuf, String> {
+    let mut command = common::isolated(Command::new("timeout"));
+    command.args(["600", common::BINARY, "lower"]).arg(project);
+    command.args(["-profile", "test", "--outdir"]).arg(output);
+    let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
+        .current_dir(project)
+        .output()
+        .expect("runs uwe");
+    let mut document: Json = serde_json::from_slice(&ran.stdout).map_err(|e| e.to_string())?;
+    for graph in document["graphs"].as_array_mut().into_iter().flatten() {
+        let Some(ops) = graph.get_mut("ops").and_then(Json::as_array_mut) else {
+            continue;
+        };
+        let check = |op: &Json| {
+            op["kind"]["expr"]["code"]
+                .as_str()
+                .is_some_and(|code| code.starts_with("validateParameters"))
+        };
+        let dropped: Vec<Json> = ops
+            .iter()
+            .filter(|op| check(op))
+            .map(|op| op["path"].clone())
+            .collect();
+        ops.retain(|op| !check(op));
+        for op in ops.iter_mut() {
+            if let Some(after) = op.get_mut("after").and_then(Json::as_array_mut) {
+                after.retain(|dependency| !dropped.contains(&dependency["op"]));
+            }
+        }
+    }
+    for source in document["sources"].as_array_mut().into_iter().flatten() {
+        let location = source["location"].as_str().unwrap_or_default().to_owned();
+        if !location.contains(':') && !location.starts_with('/') && !location.starts_with("plugin/")
+        {
+            source["location"] = Json::from(project.join(location).to_string_lossy().into_owned());
+        }
+    }
+    let path = folder.join(format!("{name}.wir.json"));
+    std::fs::write(&path, document.to_string()).map_err(|error| error.to_string())?;
+    Ok(path)
+}
+
+/// The files below a folder, by their paths in it with digits as `0`, so that the times in
+/// names like `params_<time>.json` match, sorted.
 fn published(folder: &Path) -> Vec<String> {
     let mut files = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
@@ -111,10 +161,14 @@ fn published(folder: &Path) -> Vec<String> {
             match path.is_dir() {
                 true => pending.push(path),
                 false => files.push(
-                    path.strip_prefix(folder)
+                    (path
+                        .strip_prefix(folder)
                         .unwrap_or(&path)
                         .display()
-                        .to_string(),
+                        .to_string())
+                    .chars()
+                    .map(|letter| if letter.is_ascii_digit() { '0' } else { letter })
+                    .collect(),
                 ),
             }
         }

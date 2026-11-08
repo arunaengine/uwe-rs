@@ -127,6 +127,20 @@ pub(crate) struct NodeStatus {
     pub written: Vec<Written>,
 }
 
+/// The results of a node that control dependencies test, as Argo's `depends` names them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Facts {
+    pub succeeded: bool,
+    pub failed: bool,
+    pub errored: bool,
+    pub skipped: bool,
+    pub omitted: bool,
+    /// It runs as a daemon, which counts once its node started.
+    pub daemoned: bool,
+    pub any_succeeded: bool,
+    pub all_failed: bool,
+}
+
 /// The call that a retry node makes again for each attempt.
 #[derive(Debug)]
 pub(crate) struct RetryCall {

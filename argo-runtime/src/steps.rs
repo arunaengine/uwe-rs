@@ -490,7 +490,12 @@ impl Expanded {
 }
 
 /// The entry of one item of a looping step.
-fn step_entry(name: String, node: Node, template: &str, artifacts: Vec<ArtifactValue>) -> Expanded {
+pub(crate) fn step_entry(
+    name: String,
+    node: Node,
+    template: &str,
+    artifacts: Vec<ArtifactValue>,
+) -> Expanded {
     match decode::<WorkflowStep>(&node) {
         Ok((mut step, _)) => {
             step.template = template.to_owned();

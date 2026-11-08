@@ -23,3 +23,9 @@ tar.workspace = true
 tempfile.workspace = true
 workflow-graph.workspace = true
 zip.workspace = true
+
+[dev-dependencies]
+# The task cache key and the resume fingerprint, which the parity tests of the adapter compare.
+run-database.workspace = true
+task-model.workspace = true
+task-runner.workspace = true

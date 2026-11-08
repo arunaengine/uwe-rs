@@ -7,11 +7,127 @@ use serde::{Deserialize, Serialize};
 
 use crate::closure::Body;
 
-/// Turns a stream into one array value once the stream closes. Open: order and what an
-/// error inside the stream does.
+/// Binds the array of the items of a stream once it closes: through the optional body,
+/// flattened one level unless `flat` is false, and sorted. An empty result closes empty.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Collect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub flat: bool,
+    #[serde(default, skip_serializing_if = "Sort::is_none")]
+    pub sort: Sort,
+}
+
+impl Default for Collect {
+    fn default() -> Self {
+        Collect {
+            body: None,
+            flat: true,
+            sort: Sort::None,
+        }
+    }
+}
+
+/// Binds the array of the items of a stream as they are once it closes; empty gives `[]`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Collect {}
+pub struct ToList {}
+
+/// A fixed value, so that a null value differs from no value.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Literal {
+    pub value: serde_json::Value,
+}
+
+/// Reduces a stream to one value at its close: a count, a sum, the least or greatest item,
+/// or a fold of the body over the items.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Reduce {
+    pub rule: Reduction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<Body>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compare: Option<Body>,
+    /// A null here is no seed form; a null seed is `{"value": null}`.
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub seed: Option<Literal>,
+    #[serde(default, skip_serializing_if = "EmptyRule::is_default")]
+    pub empty: EmptyRule,
+    #[serde(default, skip_serializing_if = "FoldNull::is_keep")]
+    pub nulls: FoldNull,
+}
+
+/// The rules of a reduce.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Reduction {
+    Count,
+    Sum,
+    Min,
+    Max,
+    Fold,
+}
+
+/// What an op binds when its stream closes empty; `default` is the rule of the op.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum EmptyRule {
+    #[default]
+    Default,
+    Close,
+    Null,
+    Error,
+    Value(serde_json::Value),
+}
+
+impl EmptyRule {
+    pub fn is_default(&self) -> bool {
+        *self == EmptyRule::Default
+    }
+}
+
+/// What a fold does with a null result of its body: keep it as the state, or keep the state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FoldNull {
+    #[default]
+    Keep,
+    KeepState,
+}
+
+impl FoldNull {
+    pub fn is_keep(&self) -> bool {
+        *self == FoldNull::Keep
+    }
+}
+
+/// Binds the first item for which the predicate holds, then stops reading.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct First {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicate: Option<Body>,
+    #[serde(default, skip_serializing_if = "EmptyRule::is_default")]
+    pub empty: EmptyRule,
+}
+
+/// Binds the last item for which the predicate holds, at the close.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Last {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicate: Option<Body>,
+    #[serde(default, skip_serializing_if = "EmptyRule::is_default")]
+    pub empty: EmptyRule,
+}
 
 /// Turns a value into a stream: the value as one item, or with `each` the items of an array.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -310,6 +426,23 @@ pub struct Dynamic {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+/// Reads a field that is there, so that a JSON null is no `None`.
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 fn first_position() -> Vec<u32> {

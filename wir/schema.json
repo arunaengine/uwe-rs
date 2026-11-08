@@ -320,7 +320,31 @@
           "additionalProperties": false,
           "properties": { "body": { "$ref": "#/$defs/callback" } }
         },
-        "collect": { "$ref": "#/$defs/empty" },
+        "collect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body": { "$ref": "#/$defs/callback" },
+            "flat": { "type": "boolean" },
+            "sort": { "$ref": "#/$defs/sort" }
+          }
+        },
+        "to_list": { "$ref": "#/$defs/empty" },
+        "reduce": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule"],
+          "properties": {
+            "rule": { "enum": ["count", "sum", "min", "max", "fold"] },
+            "body": { "$ref": "#/$defs/callback" },
+            "compare": { "$ref": "#/$defs/callback" },
+            "seed": { "$ref": "#/$defs/literal" },
+            "empty": { "$ref": "#/$defs/empty_rule" },
+            "nulls": { "enum": ["keep", "keep_state"] }
+          }
+        },
+        "first": { "$ref": "#/$defs/pick" },
+        "last": { "$ref": "#/$defs/pick" },
         "filter": {
           "type": "object",
           "additionalProperties": false,
@@ -463,6 +487,23 @@
     "empty": { "type": "object", "additionalProperties": false },
     "texts": { "type": "array", "items": { "type": "string" } },
     "null_rule": { "enum": ["drop", "keep"] },
+    "literal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": { "value": true }
+    },
+    "empty_rule": {
+      "oneOf": [{ "enum": ["default", "close", "null", "error"] }, { "$ref": "#/$defs/literal" }]
+    },
+    "pick": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "predicate": { "$ref": "#/$defs/callback" },
+        "empty": { "$ref": "#/$defs/empty_rule" }
+      }
+    },
     "positions": { "type": "array", "items": { "$ref": "#/$defs/count" } },
     "sort": {
       "oneOf": [

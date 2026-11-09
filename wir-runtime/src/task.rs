@@ -661,8 +661,9 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
     let Some(path) = normalized(&path) else {
         return Err(format!("the results name {place}, which leaves the root"));
     };
-    let made = (outcome.files.iter())
-        .find(|file| absolute(file.path.trim_end_matches('/'), workdir) == path);
+    let made = (outcome.files.iter()).find(|file| {
+        normalized(&absolute(file.path.trim_end_matches('/'), workdir)).as_ref() == Some(&path)
+    });
     let mut found = match made {
         Some(file) => entry(file, None),
         None => {
@@ -687,8 +688,15 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
                 (file.location.trim_end_matches('/').strip_suffix(made))
                     .map(|folder| folder.trim_end_matches('/').to_owned())
             });
-            let location = match (staged, relative(&path, workdir), folder) {
+            // A path that names the working folder itself is `.` in it.
+            let inner = match path == workdir.trim_end_matches('/') {
+                true => Some(".".to_owned()),
+                false => relative(&path, workdir),
+            };
+            let location = match (staged, inner.clone(), folder) {
                 (Some(location), _, _) => location,
+                // The working folder itself is the folder of the outputs, as uwe's CWL driver.
+                (None, Some(inner), Some(folder)) if inner == "." => folder,
                 (None, Some(inner), Some(folder)) => join(&folder, &inner),
                 // A simulated run that made no files takes them as present.
                 (None, Some(inner), None) if simulated => format!("_:{inner}"),
@@ -698,7 +706,12 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
                     ));
                 }
             };
-            let name = path.rsplit('/').next().unwrap_or_default();
+            // Its basename comes from the place the results name, like `.`, as natively.
+            let named = place.trim_end_matches('/').rsplit('/').next();
+            let name = match inner.as_deref() {
+                Some(".") => named.unwrap_or("."),
+                _ => path.rsplit('/').next().unwrap_or_default(),
+            };
             json!({"class": class(&object), "location": location, "basename": name})
         }
     };
@@ -1476,6 +1489,64 @@ mod tests {
             error.contains("did not make"),
             "no file beside the staged folder: {error}"
         );
+    }
+
+    #[test]
+    fn maps_working_folder() {
+        let folder = tempfile::tempdir().unwrap();
+        let written = folder.path().join("cwl.output.json");
+        let object = json!({"out": {"class": "Directory", "path": "."}});
+        std::fs::write(&written, object.to_string()).unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "cwl.output.json".into(),
+                location: written.to_string_lossy().into_owned(),
+                directory: false,
+                size: None,
+                digest: None,
+            }],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "out".into(),
+            from: CaptureRule::Results,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/var/spool/cwl".into()),
+            results: Some("cwl.output.json".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "out".into(),
+            r#type: Type::Directory,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        let out = &values["out"];
+        assert_eq!(
+            out["location"],
+            folder.path().to_string_lossy().as_ref(),
+            "{out}"
+        );
+        assert_eq!(out["basename"], ".", "as uwe's CWL driver names it");
     }
 
     #[test]

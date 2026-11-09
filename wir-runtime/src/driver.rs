@@ -171,6 +171,9 @@ pub struct WirDriver {
     turn: u64,
     /// Whether the `complete` hooks, and the `error` hooks, of the document ran.
     hooked: (bool, bool),
+    /// When the run started, in milliseconds since the epoch, and how many tasks succeeded.
+    started: Option<i64>,
+    succeeded: u64,
     texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
@@ -243,7 +246,13 @@ impl WirDriver {
             inputs::absolute(default, &base);
             inputs::filled(default, launch.simulated);
         }
-        let progress = Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
+        let mut progress =
+            Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
+        if !document.formats.is_empty() {
+            let remote = settings.cwl.remote.clone();
+            let check = crate::formats::FormatCheck::new(&document.formats, &base, remote);
+            progress.formats = Some(Arc::new(check));
+        }
         let scope_run = crate::nextflow_scope::ScopeRun::new(settings.nextflow.clone());
         WirDriver {
             launch: launch.clone(),
@@ -256,6 +265,8 @@ impl WirDriver {
             dialects: adapter::Dialects::default(),
             turn: 0,
             hooked: (false, false),
+            started: None,
+            succeeded: 0,
             texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
@@ -540,7 +551,7 @@ impl WirDriver {
         };
         let (spec, op) = task::patched(spec, &node.op, &patch);
         let script = (&self.settings.cwl.javascript, self.launch.simulated);
-        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound, script)?;
+        let mut task = task::build(id, (&node.name, &node.step), &op, &spec, bound, script)?;
         task.site = op.attributes.place.clone();
         self.patches.insert(id, patch);
         Ok(task)
@@ -1125,7 +1136,11 @@ impl WirDriver {
             inputs: &self.given,
             nextflow: &self.scope_run,
         };
-        let argument = json!({"success": failure.is_none(), "error": failure});
+        let failed = (self.dialects.failed_task())
+            .map(|(task, shown)| json!({"task": task.0, "shown": shown}));
+        let argument = json!({"success": failure.is_none(), "error": failure,
+            "start": self.started, "succeeded": self.succeeded + self.dialects.settled(),
+            "failed": failed});
         // Hooks print, like a Nextflow `onComplete` that tells how the run ended.
         let mut hooks = Callbacks::printing();
         let mut problems = Vec::new();
@@ -1135,7 +1150,18 @@ impl WirDriver {
                 wir::Hook::Error(closure) if error => closure,
                 _ => continue,
             };
-            let body = wir::Body::Closure(closure.clone());
+            let mut closure = closure.clone();
+            // A captured output of an op, also inside a call, takes the value it ended with.
+            for binding in closure.captures.values_mut() {
+                let wir::Binding::Output(end) = binding else {
+                    continue;
+                };
+                let mut nodes = self.progress.plan.nodes.iter();
+                let node = nodes.position(|node| end.op.as_deref() == Some(node.path.as_str()));
+                let value = node.map(|at| self.progress.bound_output(at, &end.port));
+                *binding = wir::Binding::Value(value.unwrap_or_default());
+            }
+            let body = wir::Body::Closure(closure);
             let arguments = (&["run"][..], std::slice::from_ref(&argument));
             let called = hooks.call(&context, &body, arguments, &self.progress.inputs);
             if let Err(why) = called {
@@ -1200,6 +1226,8 @@ impl Driver for WirDriver {
     }
 
     fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+        self.started = now.ok().and_then(|now| i64::try_from(now.as_millis()).ok());
         let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
         let ports = entry
             .map(|graph| graph.inputs.as_slice())
@@ -1219,8 +1247,16 @@ impl Driver for WirDriver {
             })
             .collect();
         let remote = &self.settings.cwl.remote;
-        let secret = &self.settings.secret_inputs;
-        let mut values = inputs::read(&self.launch, secret, &given, &self.document.types, remote)?;
+        let formats = self.progress.formats.clone();
+        let (secret, types) = (&self.settings.secret_inputs, &self.document.types);
+        let mut values = inputs::read(
+            &self.launch,
+            secret,
+            &given,
+            types,
+            remote,
+            formats.as_deref(),
+        )?;
         let streams: Vec<String> = (ports.iter())
             .filter(|port| !port.flow.is_value())
             .map(|port| port.name.clone())
@@ -1354,16 +1390,19 @@ impl Driver for WirDriver {
     }
 
     fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
-        if self.tasks.contains_key(&task) {
-            return self.accepted.remove(&(task, attempt));
-        }
-        if self.dialects.owns(task) {
-            return self.dialects.take_acceptance(task, attempt);
-        }
-        match self.owner(task) {
-            Ok(index) => self.children[index].1.take_acceptance(task, attempt),
-            Err(_) => false,
-        }
+        let accepted = if self.tasks.contains_key(&task) {
+            self.accepted.remove(&(task, attempt))
+        } else if self.dialects.owns(task) {
+            self.dialects.take_acceptance(task, attempt)
+        } else {
+            match self.owner(task) {
+                Ok(index) => self.children[index].1.take_acceptance(task, attempt),
+                Err(_) => false,
+            }
+        };
+        // The run hooks hear how many tasks succeeded, like Nextflow's `workflow.stats`.
+        self.succeeded += u64::from(accepted);
+        accepted
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {
@@ -1548,7 +1587,7 @@ impl Driver for WirDriver {
     }
 }
 
-/// Names a task under its op path when `prefixed`, and gives it the cache rule and place of
+/// Names a task under the name of its op when `prefixed`, and gives it the cache rule and place of
 /// its op. A cache rule only makes reuse stricter, never overriding the native veto.
 fn mark(task: &mut Task, node: &Node, prefixed: bool) {
     // A native task publishes as its language does, also for the tasks it reuses.
@@ -1558,10 +1597,11 @@ fn mark(task: &mut Task, node: &Node, prefixed: bool) {
             .iter()
             .any(|effect| !matches!(effect, Effect::Publish(_)));
     if prefixed {
-        task.name = format!("{}: {}", node.path, task.name);
+        task.name = format!("{}: {}", node.name, task.name);
     }
     match node.op.attributes.cache {
         Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
+        Some(wir::Cache::Rerun) if task.reuse != Reuse::Disabled => task.reuse = Reuse::Denied,
         _ if lineage && task.reuse == Reuse::Allowed => task.reuse = Reuse::Lineage,
         _ => {}
     }

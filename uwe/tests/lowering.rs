@@ -214,24 +214,22 @@ fn matches_scatter_steps() {
             keys
         };
         assert_eq!(keys(&alone), keys(&through), "{document}: the same tasks");
-        let mut names: Vec<(&str, &str)> = (alone.iter().zip(&through))
-            .map(|((one, _, _), (other, _, _))| (one.step.as_str(), other.step.as_str()))
-            .collect();
-        names.dedup();
-        // The task of a round keeps the path of the map and of the op of its body.
-        assert_eq!(names, [("say", "say/say")], "{document}");
-        let mut rounds: Vec<&str> = through
-            .iter()
-            .map(|(task, _, _)| task.name.as_str())
-            .collect();
-        rounds.sort();
-        assert_eq!(rounds[0], "say/0/say", "{document}");
+        // The task of a round has the name and step that the CWL driver gives it.
+        let names = |tasks: &[(Task, String, Option<String>)]| {
+            let mut names: Vec<(String, String)> = (tasks.iter())
+                .map(|(task, _, _)| (task.name.clone(), task.step.clone()))
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(names(&through), names(&alone), "{document}");
+        assert_eq!(names(&through)[0].1, "say", "{document}");
     }
 }
 
 #[test]
 fn matches_when_steps() {
-    for (job, steps) in [("open.json", vec!["say/say"]), ("shut.json", vec![])] {
+    for (job, steps) in [("open.json", vec!["say"]), ("shut.json", vec![])] {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let (root, cache) = (folder.path(), folder.path().join("cache"));
         fixtures(root);
@@ -247,17 +245,18 @@ fn matches_when_steps() {
         let (code, _, errors) = uwe(root, &cache, &compiled);
         assert_eq!(code, 0, "{job}: {errors}");
         let (_, through) = latest(&cache);
-        let alone: Vec<&str> = alone
-            .iter()
-            .map(|(task, _, _)| task.step.as_str())
-            .collect();
-        let through: Vec<&str> = through
-            .iter()
-            .map(|(task, _, _)| task.step.as_str())
-            .collect();
-        // The task of a branch has the path of the branch and of the op of its body.
-        let native: Vec<&str> = steps.iter().map(|_| "say").collect();
-        assert_eq!((alone, through), (native, steps), "{job}");
+        let names = |tasks: &[(Task, String, Option<String>)]| {
+            (tasks.iter())
+                .map(|(task, _, _)| format!("{} {}", task.name, task.step))
+                .collect::<Vec<String>>()
+        };
+        // The task of a branch has the name and step of the CWL step.
+        let native: Vec<String> = steps.iter().map(|step| format!("{step} {step}")).collect();
+        assert_eq!(
+            (names(&alone), names(&through)),
+            (native.clone(), native),
+            "{job}"
+        );
     }
 }
 

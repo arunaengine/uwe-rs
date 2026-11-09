@@ -18,8 +18,8 @@ pub use closure::{Binding, Body, Closure, ExprLanguage, Scope, ValueRules};
 pub use control::{Control, ResultKind, StatusGroup, StatusTest};
 pub use dialect::{PortMap, RuleTask, TaskBuilder, TaskRef};
 pub use document::{
-    Document, Edge, Endpoint, Graph, Hook, Language, ObservedProcess, Observers, ParseError, Port,
-    SCHEMA, Source, VERSION, parse,
+    Document, Edge, Endpoint, Formats, Graph, Hook, Language, ObservedProcess, Observers,
+    ParseError, Port, SCHEMA, Source, VERSION, parse,
 };
 pub use flow::{Flow, Subscription};
 pub use op::{
@@ -30,5 +30,5 @@ pub use op::{
 pub use types::{
     ArrayType, Field, FileType, KeyType, MapType, SecondaryFile, Type, TypeDef, resolve,
 };
-pub use value::{DirectoryValue, Entry, FileValue, fits, secondary_name};
+pub use value::{DirectoryValue, Entry, FileValue, FormatTest, fits, fits_with, secondary_name};
 pub use verify::{Problem, VerifyError, verify};

@@ -17,6 +17,7 @@ mod effects;
 mod engine;
 mod expr;
 mod flows;
+mod formats;
 mod groovy;
 mod grouping;
 mod inputs;

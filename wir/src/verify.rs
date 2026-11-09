@@ -103,6 +103,13 @@ pub enum Problem {
 
 /// Checks a document. It returns every problem found, or nothing when the document is valid.
 pub fn verify(document: &Document) -> Result<(), Vec<VerifyError>> {
+    // An ontology may let different formats match, which only a run can tell.
+    if !document.formats.ontologies.is_empty() {
+        let mut plain = document.clone();
+        plain.formats.ontologies.clear();
+        unformat(&mut plain);
+        return verify(&plain);
+    }
     let mut check = Checker {
         document,
         defs: &document.types,
@@ -121,6 +128,23 @@ pub fn verify(document: &Document) -> Result<(), Vec<VerifyError>> {
         Ok(())
     } else {
         Err(check.errors)
+    }
+}
+
+/// Removes the formats of the File types of a document.
+fn unformat(document: &mut Document) {
+    let defs = document.types.iter_mut().map(|def| &mut def.r#type);
+    let ports = (document.graphs.iter_mut()).flat_map(|graph| {
+        let ops = graph.ops.iter_mut();
+        let inner = ops.flat_map(|op| op.inputs.iter_mut().chain(op.outputs.iter_mut()));
+        graph
+            .inputs
+            .iter_mut()
+            .chain(graph.outputs.iter_mut())
+            .chain(inner)
+    });
+    for r#type in defs.chain(ports.map(|port| &mut port.r#type)) {
+        r#type.unformat();
     }
 }
 

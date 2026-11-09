@@ -1,5 +1,5 @@
-//! Runs nf-core pipelines with `-profile test` on the simulator, natively and through their
-//! compiled wir documents in both completion orders, and compares tasks and published files.
+//! Runs nf-core pipelines with `-profile test` on the simulator, as one native op and compiled
+//! into wir, in both completion orders, and compares tasks and published files.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -64,11 +64,11 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     let output = folder.join(format!("{name}-out"));
     let mut command = common::isolated(Command::new("timeout"));
     command.args(["600", common::BINARY, "run", "-executor", "simulator"]);
-    command.arg(project).args(["-profile", "test", "--outdir"]);
-    command.arg(&output);
-    if compiled {
-        command.arg("-lowered");
-    }
+    match compiled {
+        true => command.arg(project).args(["-profile", "test"]),
+        false => command.arg(wrapped(project, folder)?),
+    };
+    command.arg("--outdir").arg(&output);
     command.args(["-stub-run", "-max-pending", "8", "-order", order]);
     command.arg("-graph").arg(&graph);
     let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
@@ -101,6 +101,29 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
     let database = folder.join("cache/uwe").join(run_database::FILE_NAME);
     let files = published(&output, &database);
     Ok(Ran { tasks, files })
+}
+
+/// The pipeline with `-profile test` as one native op of a wir document in `folder`, the
+/// native baseline of its compiled run.
+fn wrapped(project: &Path, folder: &Path) -> Result<PathBuf, String> {
+    let mut command = common::isolated(Command::new("timeout"));
+    command.args(["600", common::BINARY, "lower"]).arg(project);
+    command
+        .args(["-profile", "test", "--outdir"])
+        .arg(folder.join("out"));
+    let ran = (command.env("XDG_CACHE_HOME", folder.join("cache")))
+        .current_dir(project)
+        .output()
+        .expect("runs uwe");
+    let compiled: Json = serde_json::from_slice(&ran.stdout).map_err(|_| error_head(&ran))?;
+    let script = project.join("main.nf").to_string_lossy().into_owned();
+    let source = serde_json::json!({
+        "id": "workflow", "language": "nextflow", "location": script, "profiles": ["test"],
+    });
+    let document = folder.join("native.wir.json");
+    let text = common::native_document(&compiled, source).to_string();
+    std::fs::write(&document, text).map_err(|error| error.to_string())?;
+    Ok(document)
 }
 
 /// The files that a run published below a folder, by their paths in it with digits as `0`,

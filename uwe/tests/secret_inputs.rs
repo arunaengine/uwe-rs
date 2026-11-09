@@ -55,7 +55,6 @@ fn run(folder: &Path, file: &str, text: &str) {
     secrets.insert("HOST_INPUT_SECRET", SECRET).unwrap();
     secrets.allow_environment(false);
     settings.secrets = secrets;
-    settings.lowered = true;
     // The value files of a run live as long as it does.
     let (seen, held) = (
         Arc::new(AtomicBool::new(false)),

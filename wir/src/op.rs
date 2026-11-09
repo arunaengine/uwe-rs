@@ -656,6 +656,8 @@ pub enum Cache {
     Never,
     /// Reuse only results of the run that is resumed.
     Resume,
+    /// Run again every time, also on resume, as a CWL tool with `enableReuse: false` does.
+    Rerun,
 }
 
 /// What one attempt needs. Memory and disk are in bytes.

@@ -62,7 +62,8 @@ fn schema_matches_parser() {
     let validator = validator();
     for kind in kinds {
         let op = json!({"path": "a/b", "kind": kind, "after": [{"op": "c", "on": ["failed"]}],
-            "effects": ["nondeterministic", {"publish": "results"}]});
+            "effects": ["nondeterministic", {"publish": "results"}],
+            "attributes": {"cache": "rerun", "name": ""}});
         let document = json!({"wir_version": wir::VERSION, "graphs": [{"name": "g", "ops": [op]}], "entry": "g"});
         assert!(validator.is_valid(&document), "schema rejects {kind}");
         assert!(

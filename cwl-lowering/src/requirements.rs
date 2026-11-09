@@ -52,12 +52,12 @@ pub fn apply(scope: &Scope, task: &mut Task) -> Result<Attributes, String> {
     }) {
         task.network = value(network)?;
     }
-    if let Some(reuse) = scope.find(|class| match class {
+    // An `enableReuse` that an expression sets goes to the limits of the task.
+    if let Some(Dynamic::Value(false)) = scope.find(|class| match class {
         RequirementClass::WorkReuse { enable_reuse } => Some(enable_reuse),
         _ => None,
-    }) && !value(reuse)?
-    {
-        attributes.cache = Some(Cache::Never);
+    }) {
+        attributes.cache = Some(Cache::Rerun);
     }
     if let Some(limit) = scope.find(|class| match class {
         RequirementClass::ToolTimeLimit { timelimit } => Some(timelimit),

@@ -14,6 +14,8 @@ use workflow_graph::{Driver, Launch, Simulator, execute};
 #[derive(Debug, PartialEq)]
 struct Ran {
     tasks: Vec<(String, String, Vec<String>)>,
+    /// The reuse rule of each task, in the order of `tasks`.
+    reuses: Vec<workflow_graph::Reuse>,
     outputs: Json,
 }
 
@@ -21,15 +23,29 @@ fn run(driver: &mut dyn Driver, root: &Path, name: &str) -> Ran {
     let mut simulator = Simulator::new(root.join(format!("simulator-{name}")));
     let execution = execute(name, driver, &mut simulator);
     let graph = execution.into_result().expect("the run succeeds");
-    let mut tasks: Vec<(String, String, Vec<String>)> = (graph.nodes.iter())
+    let mut tasks: Vec<(String, String, Vec<String>, workflow_graph::Reuse)> = (graph.nodes)
+        .iter()
         .map(|node| {
             let task = &node.task;
-            (task.name.clone(), task.step.clone(), words(task))
+            (
+                task.name.clone(),
+                task.step.clone(),
+                words(task),
+                task.reuse,
+            )
         })
         .collect();
-    tasks.sort();
+    tasks.sort_by(|one, other| (&one.0, &one.1, &one.2).cmp(&(&other.0, &other.1, &other.2)));
+    let reuses = tasks.iter().map(|task| task.3).collect();
+    let tasks = (tasks.into_iter())
+        .map(|(name, step, words, _)| (name, step, words))
+        .collect();
     let outputs = shown(driver.results().expect("a real run has results"));
-    Ran { tasks, outputs }
+    Ran {
+        tasks,
+        reuses,
+        outputs,
+    }
 }
 
 /// The words of a command without the shell around it, with paths as their last segment, as
@@ -120,6 +136,13 @@ fn crosses_match_native() {
     let (native, lowered) = both("cross.cwl", job);
     let names: Vec<&str> = (native.tasks.iter()).map(|task| task.0.as_str()).collect();
     assert_eq!(names, ["say[0,0]", "say[0,1]", "say[1,0]", "say[1,1]"]);
+    assert_eq!(lowered, native);
+}
+
+#[test]
+fn reruns_match_native() {
+    let (native, lowered) = both("rerun.cwl", json!({"message": "hi"}));
+    assert_eq!(native.reuses, [workflow_graph::Reuse::Denied]);
     assert_eq!(lowered, native);
 }
 

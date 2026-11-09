@@ -83,7 +83,7 @@ pub const VALUES: &str = "runtime.values";
 pub const LIMITS: &str = "runtime.limits";
 
 /// The code of the `runtime` object and of the task limits, by the inputs, when expressions
-/// set the resources or the time limit, as uwe's CWL driver computes them.
+/// set the resources, the time limit or `enableReuse`, as uwe's CWL driver computes them.
 pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
     let resource = scope.find(|class| match class {
         RequirementClass::Resource(resource) => Some(resource),
@@ -93,6 +93,14 @@ pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
         RequirementClass::ToolTimeLimit { timelimit } => Some(timelimit),
         _ => None,
     });
+    let reuse = scope.find(|class| match class {
+        RequirementClass::WorkReuse { enable_reuse } => Some(enable_reuse),
+        _ => None,
+    });
+    let reuse = match reuse {
+        Some(Dynamic::Expression(code)) => Some(code),
+        _ => None,
+    };
     let amount = |setting: &Option<Dynamic<f64>>| match setting {
         Some(Dynamic::Value(value)) => value.to_string(),
         Some(Dynamic::Expression(code)) => value(code),
@@ -113,7 +121,7 @@ pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
         .any(|(min, max)| dynamic(min) || dynamic(max));
     // Cores that are not whole fit no task attribute.
     let whole = resources(scope, version).is_some();
-    if whole && !set && !matches!(time, Some(Dynamic::Expression(_))) {
+    if whole && !set && !matches!(time, Some(Dynamic::Expression(_))) && reuse.is_none() {
         return None;
     }
     let ram = match version {
@@ -148,9 +156,20 @@ pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
          \"cores\": Math.ceil(cores), \"ram\": Math.ceil(ram), \
          \"outdirSize\": Math.ceil(outdir), \"tmpdirSize\": Math.ceil(tmpdir)}}; }}"
     );
+    // A task that may not reuse results runs again, as `cache: rerun` makes it.
+    let cache = match reuse {
+        Some(code) => format!(
+            "var reuse = {}; if (typeof reuse !== \"boolean\") \
+             {{ throw new Error(\"enableReuse must give a boolean\"); }} \
+             var cache = reuse ? null : \"rerun\";",
+            value(code)
+        ),
+        None => "var cache = null;".into(),
+    };
     let limits = format!(
-        "${{ {base} return {{\"cpus\": cores, \"memory\": mib(ram), \
-         \"disk\": mib(tmpdir) + mib(outdir), \"time\": time > 0 ? time : null}}; }}"
+        "${{ {base} {cache} return {{\"cpus\": cores, \"memory\": mib(ram), \
+         \"disk\": mib(tmpdir) + mib(outdir), \"time\": time > 0 ? time : null, \
+         \"cache\": cache}}; }}"
     );
     Some((values, limits))
 }

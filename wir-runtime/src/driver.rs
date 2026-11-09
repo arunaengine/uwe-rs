@@ -1556,6 +1556,7 @@ fn mark(task: &mut Task, node: &Node, prefixed: bool) {
     }
     match node.op.attributes.cache {
         Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,
+        Some(wir::Cache::Rerun) if task.reuse != Reuse::Disabled => task.reuse = Reuse::Denied,
         _ if lineage && task.reuse == Reuse::Allowed => task.reuse = Reuse::Lineage,
         _ => {}
     }

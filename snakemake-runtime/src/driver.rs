@@ -3199,14 +3199,18 @@ fn staged(
     folder: Option<&Path>,
     simulated: bool,
 ) -> Result<PathBuf, DriverError> {
-    let inside = (directory.components()).all(|part| matches!(part, Component::Normal(_)));
-    let source = target.join(directory);
-    if !inside || !source.is_dir() {
-        return Err(DriverError::new(format!(
+    let outside = || {
+        DriverError::new(format!(
             "the working folder {} is no folder inside {}",
             directory.display(),
             target.display()
-        )));
+        ))
+    };
+    let inside = (directory.components()).all(|part| matches!(part, Component::Normal(_)));
+    let project = std::fs::canonicalize(target).map_err(|_| outside())?;
+    let source = std::fs::canonicalize(target.join(directory)).map_err(|_| outside())?;
+    if !inside || !source.starts_with(&project) || !source.is_dir() {
+        return Err(outside());
     }
     if simulated {
         return Ok(source);
@@ -3215,24 +3219,69 @@ fn staged(
         Some(folder) => folder.to_owned(),
         None => std::env::current_dir().map_err(|error| DriverError::new(error.to_string()))?,
     };
-    copy_missing(&source, &workdir)
+    std::fs::create_dir_all(&workdir).map_err(|error| DriverError::new(error.to_string()))?;
+    let mut copying = Vec::new();
+    copy_missing(&source, &workdir, &project, &mut copying)
         .map_err(|error| DriverError::new(format!("cannot copy {}: {error}", source.display())))?;
     Ok(workdir)
 }
 
-/// Copies the files of `from` into `to` that `to` does not have, so that a resume keeps the
-/// files that its run made.
-fn copy_missing(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
+/// Copies the files of the folder `from` of `project` into `to` that `to` does not have, so
+/// that a resume keeps the files that its run made. Links of the project must stay in it, and
+/// a link in `to` is refused, so the copy neither reads nor writes outside; `copying` holds the
+/// folders being copied, which a link back to one of them would copy forever.
+fn copy_missing(
+    from: &Path,
+    to: &Path,
+    project: &Path,
+    copying: &mut Vec<PathBuf>,
+) -> std::io::Result<()> {
+    let refused = |text: String| std::io::Error::other(text);
+    if copying.iter().any(|folder| folder == from) {
+        return Err(refused(format!("{} is a link loop", from.display())));
+    }
+    copying.push(from.to_owned());
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
+        let source = std::fs::canonicalize(entry.path())?;
+        if !source.starts_with(project) {
+            let shown = entry.path().display().to_string();
+            return Err(refused(format!("{shown} leads outside the project")));
+        }
         let target = to.join(entry.file_name());
-        if std::fs::metadata(entry.path())?.is_dir() {
-            copy_missing(&entry.path(), &target)?;
-        } else if !target.exists() {
-            std::fs::copy(entry.path(), &target)?;
+        let found = match std::fs::symlink_metadata(&target) {
+            Ok(found) => Some(found),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        if found
+            .as_ref()
+            .is_some_and(|found| found.file_type().is_symlink())
+        {
+            let shown = target.display().to_string();
+            return Err(refused(format!(
+                "{shown} is a link, which the copy does not follow"
+            )));
+        }
+        match (source.is_dir(), found) {
+            (true, Some(found)) if !found.is_dir() => continue,
+            (true, found) => {
+                if found.is_none() {
+                    std::fs::create_dir(&target)?;
+                }
+                copy_missing(&source, &target, project, copying)?;
+            }
+            (false, Some(_)) => continue,
+            (false, None) => {
+                let mut written = std::fs::File::options()
+                    .write(true)
+                    .create_new(true)
+                    .open(&target)?;
+                std::io::copy(&mut std::fs::File::open(&source)?, &mut written)?;
+            }
         }
     }
+    copying.pop();
     Ok(())
 }
 

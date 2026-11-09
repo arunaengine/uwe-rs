@@ -88,6 +88,9 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
                 after: Vec::new(),
                 ..node.task.clone()
             };
+            // The tasks of a native op have the path of the op before their names.
+            let name = task.name.strip_prefix("native: ").map(str::to_owned);
+            task.name = name.unwrap_or(task.name);
             // The files of each run lie in folders of their own; the staged names stay.
             for input in &mut task.inputs {
                 let name = input.source.rsplit('/').next().unwrap_or_default();

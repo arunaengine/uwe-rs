@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::closure::Closure;
@@ -35,6 +37,28 @@ pub struct Document {
     /// What runs once the run ends, and the observers that hear of its processes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<Hook>,
+    /// How the formats of Files match, like the `$namespaces` and `$schemas` of CWL.
+    #[serde(default, skip_serializing_if = "Formats::is_empty")]
+    pub formats: Formats,
+}
+
+/// The prefixes of the formats of input values, and the ontologies of the formats, whose
+/// subclass and equivalent class links let a File of one format fit a wanted other one.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Formats {
+    /// A format `<prefix>:<rest>` of an input value is `<IRI><rest>`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prefixes: BTreeMap<String, String>,
+    /// RDF/XML or Turtle files, by location from the folder of the document or as a URL.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ontologies: Vec<String>,
+}
+
+impl Formats {
+    pub fn is_empty(&self) -> bool {
+        self.prefixes.is_empty() && self.ontologies.is_empty()
+    }
 }
 
 /// A run hook: code that runs at the end of every run, or of a failed run, with one object

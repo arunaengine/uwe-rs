@@ -62,7 +62,8 @@ fn schema_matches_parser() {
     let validator = validator();
     for kind in kinds {
         let op = json!({"path": "a/b", "kind": kind, "after": [{"op": "c", "on": ["failed"]}],
-            "effects": ["nondeterministic", {"publish": "results"}]});
+            "effects": ["nondeterministic", {"publish": "results"}],
+            "attributes": {"cache": "rerun", "name": ""}});
         let document = json!({"wir_version": wir::VERSION, "graphs": [{"name": "g", "ops": [op]}], "entry": "g"});
         assert!(validator.is_valid(&document), "schema rejects {kind}");
         assert!(
@@ -70,7 +71,8 @@ fn schema_matches_parser() {
             "parser rejects {kind}"
         );
     }
-    let closure = json!({"language": "groovy", "code": "{ println it.success }"});
+    let closure = json!({"language": "groovy", "code": "{ println it.success }",
+        "captures": {"report": {"output": {"op": "a/b", "port": "out"}}}});
     let observe = json!({"source": "nf", "processes": [{"id": 1, "name": "A:B", "definition": "B",
         "script": "main.nf", "feeds": [2]}, {"id": 2, "name": "C"}]});
     let hooked = json!({"wir_version": wir::VERSION, "graphs": [{"name": "g"}], "entry": "g",

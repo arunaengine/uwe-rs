@@ -30,12 +30,14 @@ pub struct Scope {
     pub end: u64,
 }
 
-/// A captured value: the value of an input of the op, or a fixed value.
+/// A captured value: the value of an input of the op, or a fixed value. A run hook may also
+/// capture the value of an output of an op of the entry graph once the run ended.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Binding {
     Input(String),
     Value(serde_json::Value),
+    Output(crate::document::Endpoint),
 }
 
 /// A closure of a source language. Groovy, Python and JavaScript code yields a callable and

@@ -9,7 +9,7 @@ pub mod files;
 mod image;
 mod inputs;
 mod javascript;
-mod ontology;
+pub mod ontology;
 mod placeholder;
 mod results;
 mod run;

@@ -195,8 +195,14 @@ impl<'d> Checker<'d> {
     /// The captures name value inputs of the op.
     pub(super) fn captures(&mut self, at: &str, op: &Op, captures: &BTreeMap<String, Binding>) {
         for (name, binding) in captures {
-            let Binding::Input(input) = binding else {
-                continue;
+            let input = match binding {
+                Binding::Input(input) => input,
+                Binding::Output(_) => {
+                    let why = format!("capture {name} names an op output, which only hooks do");
+                    self.report(at, Problem::Closure(why));
+                    continue;
+                }
+                Binding::Value(_) => continue,
             };
             let found = op.inputs.iter().find(|port| port.name == *input);
             if !found.is_some_and(|port| port.flow.is_value()) {

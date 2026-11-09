@@ -448,6 +448,7 @@ impl Network {
             reads: Vec::new(),
             scripts: Vec::new(),
             handlers: Vec::new(),
+            plugin_end: false,
         })
     }
 

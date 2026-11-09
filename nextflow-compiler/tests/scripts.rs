@@ -33,8 +33,8 @@ fn settings(folder: &Path) -> Settings {
     }
 }
 
-/// Compiles `script` and runs it simulated, with the error of the run, if any.
-fn run(script: &str) -> Result<(), String> {
+/// Compiles `script` and runs it simulated: the scripts of its tasks, or the error of the run.
+fn run(script: &str) -> Result<Vec<String>, String> {
     let directory = tempfile::tempdir().unwrap();
     let folder = directory.path();
     std::fs::write(folder.join("main.nf"), script).unwrap();
@@ -62,10 +62,10 @@ fn run(script: &str) -> Result<(), String> {
         wir_runtime::WirDriver::new(&launch(&document), wir).map_err(|error| error.message)?;
     let mut simulator = Simulator::new(folder.join("simulator"));
     let execution = execute("scripts", &mut driver, &mut simulator);
-    execution
-        .into_result()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    let graph = execution.into_result().map_err(|error| error.to_string())?;
+    let scripts = (graph.nodes.iter()).flat_map(|node| &node.task.inputs);
+    let scripts = scripts.filter(|input| input.path == ".command.sh");
+    Ok(scripts.filter_map(|input| input.content.clone()).collect())
 }
 
 /// As nf-core viralrecon, the cases of a `branch` write into a map of the script.
@@ -106,4 +106,19 @@ fn keeps_environment_values() {
     let compiled = nextflow_compiler::compile(&launch, settings(folder), folder).unwrap();
     let text = serde_json::to_string(&compiled.document).unwrap();
     assert!(!text.contains(TOKEN));
+}
+
+/// The callbacks of a run share the variables of their script, as native code does: a map
+/// that one item fills is there for the next.
+#[test]
+fn shares_script_variables() {
+    let script = "def seen = [:]\nprocess SAY {\n    input:\n    val n\n    script:\n    \
+                  \"echo $n\"\n}\nworkflow {\n    \
+                  SAY(channel.of('a', 'b').map { x -> seen[x] = true; seen.size() })\n}\n";
+    let mut said: Vec<String> = (run(script).unwrap().iter())
+        .filter_map(|script| script.lines().find(|line| line.starts_with("echo")))
+        .map(str::to_owned)
+        .collect();
+    said.sort();
+    assert_eq!(said, ["echo 1", "echo 2"]);
 }

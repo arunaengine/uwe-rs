@@ -331,7 +331,10 @@ impl Callback {
                     Callback::nested(inner, depth + 1, handler).map(form).ok()
                 }
                 Value::Closure(_) | Value::Channel(_) | Value::ChannelOut(_) => None,
-                other => crate::bridge::to_json(other).ok(),
+                // The variable itself, which all callbacks of a run share, as native code does.
+                other => (crate::bridge::to_json(other).ok()).map(|value| {
+                    json!({"class": "Script", "script": script, "name": name.as_ref(), "value": value})
+                }),
             };
             let taken = captures.iter().any(|(captured, _)| **captured == **name);
             if let Some(value) = value.filter(|_| !taken) {

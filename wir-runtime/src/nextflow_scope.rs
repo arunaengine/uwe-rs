@@ -31,6 +31,9 @@ struct RunState {
     options: crate::nextflow::Options,
     adapters: RefCell<HashMap<String, Rc<RefCell<Adapter>>>>,
     modules: RefCell<HashMap<(PathBuf, String), Rc<Module>>>,
+    /// The variables of the scripts that callbacks read, by source and name, which all
+    /// callbacks of the run share, as the code of a native run does.
+    variables: RefCell<HashMap<(String, String), Value>>,
     /// The published values of each output op, with their files at their new places.
     indexes: RefCell<HashMap<String, Vec<Json>>>,
     /// The scratch folder of the interpreters, which goes with the run.
@@ -319,6 +322,17 @@ fn rebuilt(
                 given.push(rebuilt(value, base, launching, interpreter)?);
             }
             interpreter.call_function(&module, ENTRY, given)
+        }
+        Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("Script") => {
+            let text = |key| object.get(key).and_then(Json::as_str).unwrap_or_default();
+            let key = (text("source").to_owned(), text("name").to_owned());
+            if let Some(shared) = launching.run.0.variables.borrow().get(&key) {
+                return Ok(shared.clone());
+            }
+            let value = object.get("value").unwrap_or(&Json::Null);
+            let value = rebuilt(value, base, launching, interpreter)?;
+            (launching.run.0.variables.borrow_mut()).insert(key, value.clone());
+            Ok(value)
         }
         Json::Object(object) if object.get("class").is_none() => {
             let mut entries = Vec::new();

@@ -244,6 +244,8 @@ pub fn to_value(json: &Json, base: &Path) -> Value {
         Json::String(text) => Value::string(text.as_str()),
         Json::Array(items) => Value::list(items.iter().map(|item| to_value(item, base)).collect()),
         Json::Object(object) => match object.get("class").and_then(Json::as_str) {
+            // A variable of a script, which only a Nextflow scope shares between callbacks.
+            Some("Script") => to_value(object.get("value").unwrap_or(&Json::Null), base),
             Some("File" | "Directory") => {
                 let location = object
                     .get("location")

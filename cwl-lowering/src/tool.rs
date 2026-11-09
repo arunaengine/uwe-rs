@@ -59,15 +59,15 @@ enum Read {
 }
 
 /// The task of a tool, or the first thing it uses that a task cannot say the same way. File
-/// defaults are relative to `base`.
+/// defaults are relative to `base`; a tool without a container gets `image`.
 pub fn lower(
     process: &Process,
     tool: &CommandLineTool,
     scope: &Scope,
-    base: &Path,
+    (base, image): (&Path, &str),
 ) -> Result<Lowered, String> {
     let mut task = Task {
-        image: Some(DEFAULT_IMAGE.to_owned()),
+        image: Some(image.to_owned()),
         command: Vec::new(),
         shell: false,
         captures: Vec::new(),

@@ -50,8 +50,18 @@ impl Lowering {
 /// document is meant for, when they lie below it. It fails only when not even a native op can
 /// hold the document, such as for an `Any` input of the whole document.
 pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, String> {
+    lower_with(document, base, DEFAULT_IMAGE)
+}
+
+/// [`lower`], with `image` for the tools without a `DockerRequirement`, like `-default-image`.
+pub fn lower_with(
+    document: &cwl_parser::Document,
+    base: &Path,
+    image: &str,
+) -> Result<Lowering, String> {
     let mut lowerer = Lowerer {
         base: base.to_owned(),
+        image: image.to_owned(),
         sources: Vec::new(),
         kept: Vec::new(),
         graphs: Vec::new(),
@@ -175,6 +185,8 @@ impl Scope {
 
 struct Lowerer {
     base: PathBuf,
+    /// The image of tools without a container.
+    image: String,
     sources: Vec<Source>,
     kept: Vec<Kept>,
     /// The graphs that call ops run, apart from the entry graph.
@@ -197,7 +209,7 @@ impl Lowerer {
         });
         let lowered = match &process.class {
             Class::CommandLineTool(tool) => {
-                tool::lower(process, tool, &scope, &self.base).map(|lowered| {
+                tool::lower(process, tool, &scope, (&self.base, &self.image)).map(|lowered| {
                     let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
                     (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
                     op.attributes = lowered.attributes;

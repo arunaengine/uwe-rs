@@ -422,6 +422,20 @@ fn keeps_unlisted_documents() {
     );
 }
 
+/// A named run database that cannot be looked at keeps every document.
+#[test]
+fn keeps_unreadable_databases() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = |mode: u32| {
+        move |cache: &Path| {
+            let folder = cache.parent().expect("the root").join("first");
+            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(mode))
+                .expect("sets the mode");
+        }
+    };
+    shared_resume(&mode(0o000), &mode(0o755));
+}
+
 /// The file of the cache folder below `cache` that names its run databases.
 fn listed(cache: &Path) -> PathBuf {
     cache.join("uwe/scratch/lowered/databases")

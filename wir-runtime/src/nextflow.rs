@@ -123,7 +123,18 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
     if let Some(files) = opening.files.clone() {
         adapter.use_files(files);
     }
-    adapter.start(Vec::new());
+    // The observers of the run hear of the processes of the pipeline, as in a native run.
+    let folder = (opening.source.parent()).map_or_else(PathBuf::new, Path::to_owned);
+    let processes = (opening.observers.iter()).flat_map(|observers| &observers.processes);
+    let processes = processes.map(|process| nextflow_runtime::export::Process {
+        id: process.id,
+        name: process.name.clone(),
+        definition: process.definition.clone().unwrap_or_default(),
+        script: (process.script.as_ref())
+            .map(|script| folder.join(script).to_string_lossy().into_owned()),
+        feeds: process.feeds.clone(),
+    });
+    adapter.start(processes.collect());
     Ok(Box::new(Tasks {
         adapter,
         calls: HashMap::new(),

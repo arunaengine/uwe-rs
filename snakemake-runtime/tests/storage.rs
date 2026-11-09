@@ -322,6 +322,92 @@ fn notes_cached_copies() {
     assert_eq!(noted(&fourth), noted(&first));
 }
 
+/// A run with pins, like a repeat, reads its pinned copies elsewhere, but its tasks see the
+/// paths that other runs see: of a file next to a remote include and of a script of a local
+/// `gitfile`, so that their cache keys stay the same.
+#[test]
+fn keeps_pinned_paths() {
+    use gix::objs::tree::{Entry, EntryKind};
+    let server = Server::start();
+    let rules = "rule b:\n    input: workflow.source_path('data.txt')\n    output: 'p'\n    shell: 'cat {input} > {output}'\n";
+    {
+        let mut files = server.files.lock().unwrap();
+        files.insert("/wf/rules.smk".into(), rules.as_bytes().to_vec());
+        files.insert("/wf/data.txt".into(), b"web\n".to_vec());
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let repository = gix::init(folder.path().join("repo")).unwrap();
+    let entry = |name: &str, kind: EntryKind, oid| Entry {
+        mode: kind.into(),
+        filename: name.into(),
+        oid,
+    };
+    let script = repository.write_blob("print('s')\n").unwrap().detach();
+    let scripts = gix::objs::Tree {
+        entries: vec![entry("s.py", EntryKind::Blob, script)],
+    };
+    let scripts = repository.write_object(&scripts).unwrap().detach();
+    let top = gix::objs::Tree {
+        entries: vec![entry("scripts", EntryKind::Tree, scripts)],
+    };
+    let top = repository.write_object(&top).unwrap().detach();
+    let person = gix::actor::SignatureRef {
+        name: "test".into(),
+        email: "test@example.org".into(),
+        time: "0 +0000",
+    };
+    let parents: Vec<gix::ObjectId> = Vec::new();
+    (repository.commit_as(person, person, "refs/heads/main", "s", top, parents)).unwrap();
+    let workflow = format!(
+        "rule all:\n    input: 'o', 'p'\ninclude: '{}/wf/rules.smk'\nrule a:\n    output: 'o'\n    script: gitfile('repo', 'scripts/s.py', ref='main')\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let run = |storage: &Storage| {
+        let tasks = Session::new(&launch, storage).unwrap().start().unwrap();
+        let mut seen = Vec::new();
+        let mut sources = Vec::new();
+        for task in tasks {
+            let mut inputs = Vec::new();
+            for input in task.inputs {
+                sources.push((input.path.clone(), input.source));
+                inputs.push((input.path, input.content));
+            }
+            inputs.sort();
+            seen.push((task.step, task.command, inputs));
+        }
+        seen.sort();
+        (seen, sources)
+    };
+    let (unpinned, sources) = run(&Storage::default());
+    let data = |sources: &[(String, String)]| {
+        let found = sources
+            .iter()
+            .find(|(path, _)| path.ends_with("/wf/data.txt"));
+        found.cloned().unwrap()
+    };
+    let (path, shared) = data(&sources);
+    let copy = folder.path().join("pinned.txt");
+    std::fs::write(&copy, "pinned\n").unwrap();
+    let digest = sha2::Sha256::digest(b"pinned\n");
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let pinned = Storage::default();
+    pinned.pin(storage::Fetched {
+        address: format!("{}/wf/data.txt", server.address),
+        copy,
+        digest: format!("sha256:{hex}"),
+        size: 7,
+        time: std::time::SystemTime::UNIX_EPOCH,
+        version: None,
+    });
+    let (seen, sources) = run(&pinned);
+    assert_eq!(seen, unpinned);
+    let (pinned_path, source) = data(&sources);
+    assert_eq!(pinned_path, path);
+    assert_eq!(std::fs::read_to_string(source).unwrap(), "pinned\n");
+    assert_eq!(std::fs::read_to_string(shared).unwrap(), "web\n");
+}
+
 /// A confined run fetches the environment file of a rule only from a host that it allows.
 #[test]
 fn confines_environment_hosts() {

@@ -306,7 +306,8 @@
         },
         "retry": { "$ref": "#/$defs/count" },
         "time": { "$ref": "#/$defs/count" },
-        "name": { "type": "string" }
+        "name": { "type": "string" },
+        "step": { "type": "string" }
       }
     },
     "kind": {

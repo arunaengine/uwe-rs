@@ -38,6 +38,8 @@ pub fn node(kind: Json, streams: &[&str], values: &[&str], out: &str) -> Node {
         handles: Vec::new(),
         members: Vec::new(),
         ordinal: None,
+        inner: "op/".into(),
+        shard: Vec::new(),
     }
 }
 

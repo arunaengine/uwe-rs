@@ -15,8 +15,10 @@ use crate::adapter::Adapters;
 /// `align/sort` for the op `sort` of the graph that the op `align` calls.
 pub struct Node {
     pub path: String,
-    /// The path without the round numbers of maps, which tasks keep as their step.
+    /// The name without the round numbers of maps, which tasks keep as their step.
     pub step: String,
+    /// The name its tasks take: the path, with the `name` attributes of ops in its place.
+    pub name: String,
     pub op: Op,
     /// Where each input port gets its value.
     pub inputs: Vec<(String, Source)>,
@@ -92,7 +94,7 @@ pub fn plan(document: &Document, adapters: &Adapters) -> Result<Plan, DriverErro
     refuse(document, adapters)?;
     let mut nodes = Vec::new();
     let entry = graph(document, &document.entry)?;
-    let outputs = instantiate(document, entry, ("", ""), None, &mut nodes)?;
+    let outputs = instantiate(document, entry, ("", "", ""), None, &mut nodes)?;
     Ok(Plan { nodes, outputs })
 }
 
@@ -247,7 +249,8 @@ fn unrun(op: &Op, adapters: &Adapters) -> Option<&'static str> {
 /// Plans one graph of a document as if it were the entry, like the graph of a callback.
 pub fn graph_plan(document: &Document, name: &str) -> Result<Plan, DriverError> {
     let mut nodes = Vec::new();
-    let outputs = instantiate(document, graph(document, name)?, ("", ""), None, &mut nodes)?;
+    let prefixes = ("", "", "");
+    let outputs = instantiate(document, graph(document, name)?, prefixes, None, &mut nodes)?;
     Ok(Plan { nodes, outputs })
 }
 
@@ -263,26 +266,38 @@ pub fn rounds(
     nodes: &mut Vec<Node>,
     at: usize,
     body: &str,
-    items: Vec<Map<String, Json>>,
+    rounds: Rounds,
 ) -> Result<(), DriverError> {
-    for (index, item) in items.into_iter().enumerate() {
-        let node = round(document, nodes, (at, &index.to_string()), body, item)?;
+    let named = nodes[at].op.attributes.name.is_some();
+    for (index, item) in rounds.items.into_iter().enumerate() {
+        let place = index.to_string();
+        // A named map names its rounds by their positions, as CWL names scatter rounds.
+        let shown = (rounds.positions.get(index).filter(|_| named)).map(|positions| {
+            let positions: Vec<String> = positions.iter().map(usize::to_string).collect();
+            format!("{}[{}]", nodes[at].name, positions.join(","))
+        });
+        let node = round(document, nodes, (at, &place, shown), body, item)?;
         nodes[node].ordinal = Some(index as u64);
     }
     Ok(())
 }
 
-/// Adds one round of the node `at`, at `<path of at>/<name>`, as a call of `body` with the
-/// values of `item`, and the ops of the body below it; the node of the round.
+/// Adds one round of the node `at`, at `<path of at>/<place>`, as a call of `body` with the
+/// values of `item`, and the ops of the body below it; the node of the round. Its tasks take
+/// the name `shown`, else `<name of at>/<place>`.
 pub fn round(
     document: &Document,
     nodes: &mut Vec<Node>,
-    (at, name): (usize, &str),
+    (at, place, shown): (usize, &str, Option<String>),
     body: &str,
     item: Map<String, Json>,
 ) -> Result<usize, DriverError> {
     let graph = self::graph(document, body)?;
-    let (path, step) = (format!("{}/{name}", nodes[at].path), nodes[at].step.clone());
+    let (path, step) = (
+        format!("{}/{place}", nodes[at].path),
+        nodes[at].step.clone(),
+    );
+    let name = shown.unwrap_or_else(|| format!("{}/{place}", nodes[at].name));
     let mut op = nodes[at].op.clone();
     op.kind = Kind::Call(Call {
         graph: body.to_owned(),
@@ -297,6 +312,7 @@ pub fn round(
     nodes.push(Node {
         path: path.clone(),
         step: step.clone(),
+        name: name.clone(),
         op,
         inputs: (item.into_iter())
             .map(|(port, value)| (port, Source::Value(value)))
@@ -312,8 +328,9 @@ pub fn round(
         members: Vec::new(),
         ordinal: None,
     });
-    let (inner, steps) = (format!("{path}/"), format!("{step}/"));
-    nodes[round].exports = instantiate(document, graph, (&inner, &steps), Some(round), nodes)?;
+    let (inner, steps, names) = (format!("{path}/"), under(&step), under(&name));
+    let prefixes = (inner.as_str(), steps.as_str(), names.as_str());
+    nodes[round].exports = instantiate(document, graph, prefixes, Some(round), nodes)?;
     Ok(round)
 }
 
@@ -323,6 +340,8 @@ pub struct Rounds {
     pub items: Vec<Map<String, Json>>,
     /// The number of items of each level of the outputs.
     pub shape: Vec<usize>,
+    /// The position of each round: its index, or in a cross product that of each input.
+    pub positions: Vec<Vec<usize>>,
 }
 
 /// The rounds of a map from its input values, or why it cannot make them.
@@ -351,27 +370,29 @@ pub fn items(map: &wir::Map, bound: &Map<String, Json>) -> Result<Rounds, String
         }
         Scatter::NestedCross => (lengths.iter().product(), lengths.clone()),
     };
-    let mut rounds = Vec::new();
+    let (mut rounds, mut positions) = (Vec::new(), Vec::new());
     for round in 0..count {
         let mut item = bound.clone();
+        let mut position = vec![round; map.over.len()];
         // In a cross product the first input varies slowest.
         let mut rest = round;
         for (at, name) in map.over.iter().enumerate().rev() {
-            let index = match map.mode {
-                Scatter::Dot => round,
-                _ => {
-                    let index = rest % lengths[at];
-                    rest /= lengths[at];
-                    index
-                }
-            };
-            item.insert(name.clone(), lists[at][index].clone());
+            if map.mode != Scatter::Dot {
+                position[at] = rest % lengths[at];
+                rest /= lengths[at];
+            }
+            item.insert(name.clone(), lists[at][position[at]].clone());
+        }
+        if map.mode == Scatter::Dot {
+            position = vec![round];
         }
         rounds.push(item);
+        positions.push(position);
     }
     Ok(Rounds {
         items: rounds,
         shape,
+        positions,
     })
 }
 
@@ -380,7 +401,7 @@ pub fn items(map: &wir::Map, bound: &Map<String, Json>) -> Result<Rounds, String
 fn instantiate(
     document: &Document,
     graph: &Graph,
-    prefixes: (&str, &str),
+    prefixes: (&str, &str, &str),
     call: Option<usize>,
     nodes: &mut Vec<Node>,
 ) -> Result<Vec<(String, Source)>, DriverError> {
@@ -392,11 +413,11 @@ fn instantiate(
 pub fn extend(
     document: &Document,
     graph: &Graph,
-    prefixes: (&str, &str),
+    prefixes: (&str, &str, &str),
     (call, reuse): (Option<usize>, &HashMap<String, usize>),
     nodes: &mut Vec<Node>,
 ) -> Result<Vec<(String, Source)>, DriverError> {
-    let (prefix, steps) = prefixes;
+    let (prefix, steps, names) = prefixes;
     let mut index = HashMap::new();
     for op in &graph.ops {
         if let Some(node) = reuse.get(&op.path) {
@@ -408,9 +429,11 @@ pub fn extend(
             return Err(DriverError::unsupported(message));
         }
         index.insert(op.path.as_str(), nodes.len());
+        let named = op.attributes.name.as_deref().unwrap_or(&op.path);
         nodes.push(Node {
             path: format!("{prefix}{}", op.path),
-            step: format!("{steps}{}", op.path),
+            step: joined(steps, named),
+            name: joined(names, named),
             op: op.clone(),
             inputs: Vec::new(),
             after: Vec::new(),
@@ -475,9 +498,10 @@ pub fn extend(
             nodes[at].defaults = defaults(called);
             let inner = (
                 format!("{prefix}{}/", op.path),
-                format!("{steps}{}/", op.path),
+                under(&nodes[at].step),
+                under(&nodes[at].name),
             );
-            let inner = (inner.0.as_str(), inner.1.as_str());
+            let inner = (inner.0.as_str(), inner.1.as_str(), inner.2.as_str());
             nodes[at].exports = instantiate(document, called, inner, Some(at), nodes)?;
         }
     }
@@ -490,6 +514,22 @@ pub fn extend(
         ));
     }
     Ok(outputs)
+}
+
+/// A name below `prefix`, which ends with `/` unless it is empty; an empty `name` adds none.
+fn joined(prefix: &str, name: &str) -> String {
+    match name.is_empty() {
+        true => prefix.strip_suffix('/').unwrap_or(prefix).to_owned(),
+        false => format!("{prefix}{name}"),
+    }
+}
+
+/// The prefix of the names below `name`.
+pub fn under(name: &str) -> String {
+    match name.is_empty() {
+        true => String::new(),
+        false => format!("{name}/"),
+    }
 }
 
 /// The defaults of the inputs of a graph, by port name.

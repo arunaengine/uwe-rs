@@ -536,7 +536,7 @@ impl WirDriver {
         };
         let (spec, op) = task::patched(spec, &node.op, &patch);
         let script = (&self.settings.cwl.javascript, self.launch.simulated);
-        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound, script)?;
+        let mut task = task::build(id, (&node.name, &node.step), &op, &spec, bound, script)?;
         task.site = op.attributes.place.clone();
         self.patches.insert(id, patch);
         Ok(task)
@@ -1542,7 +1542,7 @@ impl Driver for WirDriver {
     }
 }
 
-/// Names a task under its op path when `prefixed`, and gives it the cache rule and place of
+/// Names a task under the name of its op when `prefixed`, and gives it the cache rule and place of
 /// its op. A cache rule only makes reuse stricter, never overriding the native veto.
 fn mark(task: &mut Task, node: &Node, prefixed: bool) {
     // A native task publishes as its language does, also for the tasks it reuses.
@@ -1552,7 +1552,7 @@ fn mark(task: &mut Task, node: &Node, prefixed: bool) {
             .iter()
             .any(|effect| !matches!(effect, Effect::Publish(_)));
     if prefixed {
-        task.name = format!("{}: {}", node.path, task.name);
+        task.name = format!("{}: {}", node.name, task.name);
     }
     match node.op.attributes.cache {
         Some(wir::Cache::Never) => task.reuse = Reuse::Disabled,

@@ -185,14 +185,18 @@ impl Region {
         let graph = graph.ok_or_else(|| format!("no graph {name}"))?;
         let start = progress.plan.nodes.len();
         let path = progress.node(at).path.clone();
-        let step = progress.node(at).step.clone();
+        let (step, name) = (&progress.node(at).step, &progress.node(at).name);
         // New instances live below the revision that added them, so that a replacement never
         // takes the streams of the instance it replaced.
-        let prefixes = (format!("{path}/{revision}/"), format!("{step}/"));
+        let prefixes = (
+            format!("{path}/{revision}/"),
+            plan::under(step),
+            format!("{}{revision}/", plan::under(name)),
+        );
         let exports = plan::extend(
             &checked,
             graph,
-            (&prefixes.0, &prefixes.1),
+            (&prefixes.0, &prefixes.1, &prefixes.2),
             (Some(at), &reuse),
             &mut progress.plan.nodes,
         )

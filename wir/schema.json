@@ -297,7 +297,8 @@
           }
         },
         "retry": { "$ref": "#/$defs/count" },
-        "time": { "$ref": "#/$defs/count" }
+        "time": { "$ref": "#/$defs/count" },
+        "name": { "type": "string" }
       }
     },
     "kind": {

@@ -151,7 +151,7 @@ pub trait TaskAdapter {
         Ok(Vec::new())
     }
 
-    /// Whether task names get the op path in front, as `<path>: <name>`.
+    /// Whether task names get the name of the op in front, as `<op>: <name>`.
     fn prefixed(&self) -> bool {
         true
     }

@@ -68,7 +68,7 @@ impl Looping {
         let start = progress.plan.nodes.len();
         let name = self.runs.to_string();
         let nodes = &mut progress.plan.nodes;
-        let run = plan::round(document, nodes, (at, &name), &self.spec.body, inputs)
+        let run = plan::round(document, nodes, (at, &name, None), &self.spec.body, inputs)
             .map_err(|error| error.message)?;
         progress.plan.nodes[run].ordinal = Some(self.runs);
         progress.adopt(start);

@@ -246,7 +246,7 @@ impl Rounding {
             let node = plan::round(
                 document,
                 &mut progress.plan.nodes,
-                (at, &place),
+                (at, &place, None),
                 &self.spec.body,
                 values,
             )

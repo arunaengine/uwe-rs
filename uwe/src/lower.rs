@@ -1,5 +1,5 @@
 //! `uwe lower` prints the wir of a CWL, WDL or Argo document, a Snakemake workflow or a
-//! Nextflow pipeline, and `-lowered` runs one through it.
+//! Nextflow pipeline, and compiles the workflow of every run into wir.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -35,7 +35,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The wir document of a `-lowered` run by its digest, or of the run a resume continues; the
+/// The wir document of a run by its digest, or of the run a resume continues; the
 /// WDL inputs file of its entry graph; the files of its values; the values that hold a secret,
 /// which no file holds. Old documents go, see [`pruned`].
 pub fn document(

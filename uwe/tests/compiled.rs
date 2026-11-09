@@ -65,7 +65,7 @@ const IMAGES: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    input: \"i
 
 const WORD: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
 
-/// Runs `uwe graph <arguments> -lowered -format json` on `snakefile` in a folder of its own,
+/// Runs `uwe graph <arguments> -format json` on `snakefile` in a folder of its own,
 /// with `files` beside it; the folder and the graph it printed.
 fn graph_lowered(
     snakefile: &str,
@@ -79,7 +79,7 @@ fn graph_lowered(
         std::fs::write(root.join(name), text).expect("writes a file");
     }
     let output = common::command()
-        .args(["graph", "Snakefile", "-lowered", "-format", "json"])
+        .args(["graph", "Snakefile", "-format", "json"])
         .args(arguments)
         .current_dir(root)
         .env("XDG_CACHE_HOME", root.join("cache"))
@@ -91,7 +91,7 @@ fn graph_lowered(
     (folder, graph)
 }
 
-/// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
+/// `uwe graph` runs the jobs of a compiled Snakefile through the job adapter, with
 /// the config values of the command line in the document.
 #[test]
 fn runs_compiled_snakefiles() {
@@ -181,7 +181,7 @@ fn records_no_values() {
         let (root, cache) = (folder.path(), folder.path().join("cache"));
         std::fs::write(root.join(name), text).expect("writes the workflow");
         let output = common::command()
-            .args(["run", "-executor", "simulator", name, "-lowered"])
+            .args(["run", "-executor", "simulator", name])
             .args(values)
             .current_dir(root)
             .env("XDG_CACHE_HOME", &cache)
@@ -233,8 +233,8 @@ fn records_own_document() {
         let paths: Vec<String> = sources.into_iter().map(|source| source.path).collect();
         (id, paths)
     };
-    let (_, first) = run(&["hello.wdl", "-lowered", "--name", "hush4711"]);
-    let (second, paths) = run(&["Snakefile", "-lowered", "--config", "word=hello"]);
+    let (_, first) = run(&["hello.wdl", "--name", "hush4711"]);
+    let (second, paths) = run(&["Snakefile", "--config", "word=hello"]);
     assert_eq!(paths.len(), 1, "{paths:?}");
     assert!(
         paths[0].ends_with(".wir.json") && !first.contains(&paths[0]),
@@ -280,7 +280,7 @@ fn resumes_compiled_runs() {
         std::fs::write(root.join(name), text).expect("writes the workflow");
         let run = |resume: &[&str]| {
             let output = common::command()
-                .args(["run", "-executor", "simulator", name, "-lowered"])
+                .args(["run", "-executor", "simulator", name])
                 .args(values)
                 .args(resume)
                 .current_dir(root)
@@ -339,7 +339,6 @@ fn refuses_other_values() {
                 "-executor",
                 "simulator",
                 "Snakefile",
-                "-lowered",
                 "--config",
                 value,
             ])

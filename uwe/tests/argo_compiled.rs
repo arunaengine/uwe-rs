@@ -1,4 +1,4 @@
-//! Runs Argo workflows compiled into wir with `-lowered`, from the template `-entry` chooses.
+//! Runs Argo workflows compiled into wir, from the template `-entry` chooses.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -33,7 +33,6 @@ fn runs_chosen_entry() {
     ];
     let output = common::command()
         .args(arguments)
-        .arg("-lowered")
         .current_dir(root)
         .env("XDG_CACHE_HOME", &cache)
         .output()

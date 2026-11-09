@@ -111,7 +111,6 @@ fn confines_compiled_code() {
         launch: Some(folder.join("launch")),
         ..Isolation::default()
     });
-    settings.lowered = true;
     let mut request = RunRequest::new(settings);
     request.policy = uwe::application::Policy::Relaxed;
     let runtime = tokio::runtime::Runtime::new().unwrap();

@@ -184,8 +184,6 @@ options:
   -default-image <image>              the image of tasks that name none, for real executors
   -python-image <image>               the image of the Python packages without a stand-in
   -stub                               runs the stubs of tasks
-  -lowered                            runs a CWL or WDL document, a Snakefile or a Nextflow
-                                      pipeline through the wir document compiled from it
   -keep-going                         after a task failed, runs every task that does not
                                       depend on it, then fails; without it no more tasks
                                       start, as each language's engine does

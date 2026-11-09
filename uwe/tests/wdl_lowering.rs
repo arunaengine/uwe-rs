@@ -1,12 +1,12 @@
-//! Prints the wir of WDL documents with `uwe lower`, and runs one natively and with `-lowered`
-//! on the simulator with a WDL input file.
+//! Prints the wir of WDL documents with `uwe lower`, and runs one as one native op of a wir
+//! document and compiled into wir on the simulator with a WDL input file.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
 
 use run_database::Database;
-use serde_json::Value as Json;
+use serde_json::{Value as Json, json};
 
 mod common;
 
@@ -53,6 +53,21 @@ fn uwe(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String, Stri
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
     let code = output.status.code().unwrap_or(-1);
     (code, text(&output.stdout), text(&output.stderr))
+}
+
+/// Runs the workflow `entry` of `document` with `words` in `root` as one native op of a wir
+/// document on the simulator, the native baseline; its exit code and its standard error.
+fn native(root: &Path, cache: &Path, document: &str, entry: &str, words: &[&str]) -> (i32, String) {
+    let (code, printed, errors) = uwe(root, cache, &["lower", document]);
+    assert_eq!(code, 0, "{document}: {errors}");
+    let compiled: Json = serde_json::from_str(&printed).expect("prints JSON");
+    let source = json!({"id": "workflow", "language": "wdl", "location": document, "entry": entry});
+    let wrapped = common::native_document(&compiled, source);
+    std::fs::write(root.join("native.wir.json"), wrapped.to_string()).expect("writes");
+    let mut arguments = vec!["run", "-executor", "simulator", "native.wir.json"];
+    arguments.extend(words);
+    let (code, _, errors) = uwe(root, cache, &arguments);
+    (code, errors)
 }
 
 /// The language of the latest run and the images of its tasks, by step.
@@ -102,13 +117,20 @@ fn matches_native_tasks() {
     std::fs::write(root.join("text.txt"), "hi\n").expect("writes the text");
     let inputs = r#"{"check.text": "text.txt", "check.names": ["ada", "bob"]}"#;
     std::fs::write(root.join("inputs.json"), inputs).expect("writes the inputs");
-    let native = ["run", "-executor", "simulator", "check.wdl", "inputs.json"];
-    let (code, _, errors) = uwe(root, &cache, &native);
+    let text = json!({"class": "File", "location": "text.txt"});
+    let values = json!({"text": text, "names": ["ada", "bob"]});
+    std::fs::write(root.join("values.json"), values.to_string()).expect("writes the values");
+    let (code, errors) = native(
+        root,
+        &cache,
+        "check.wdl",
+        "check",
+        &["-inputs", "values.json"],
+    );
     assert_eq!(code, 0, "{errors}");
-    let (language, alone) = latest(&cache);
-    assert_eq!(language, "wdl");
-    let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
-    let (code, _, errors) = uwe(root, &cache, &lowered);
+    let (_, alone) = latest(&cache);
+    let compiled = ["run", "-executor", "simulator", "check.wdl", "inputs.json"];
+    let (code, _, errors) = uwe(root, &cache, &compiled);
     assert_eq!(code, 0, "{errors}");
     let (language, through) = latest(&cache);
     assert_eq!(language, "wir");
@@ -137,12 +159,12 @@ fn parameters_convert() {
         "--check.names",
         "ada",
     ];
-    let lowered: Vec<&str> = ["run", "-executor", "simulator", "-lowered"]
+    let compiled: Vec<&str> = ["run", "-executor", "simulator"]
         .into_iter()
         .chain(given)
         .chain(["--names", "bob"])
         .collect();
-    let (code, _, errors) = uwe(root, &cache, &lowered);
+    let (code, _, errors) = uwe(root, &cache, &compiled);
     assert_eq!(code, 0, "{errors}");
     let (language, tasks) = latest(&cache);
     assert_eq!(
@@ -184,14 +206,14 @@ task greet {
     let (root, cache) = (folder.path(), folder.path().join("cache"));
     std::fs::write(root.join("nested.wdl"), workflow).expect("writes the document");
     for (go, failed) in [("false", false), ("true", true)] {
-        let native = ["run", "-executor", "simulator", "nested.wdl", "--go", go];
-        let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
-        for arguments in [&native[..], &lowered] {
-            let (code, _, errors) = uwe(root, &cache, arguments);
-            assert_eq!(code != 0, failed, "{arguments:?}: {errors}");
-            if failed {
-                assert!(errors.contains("has no value"), "{errors}");
-            }
+        let (code, errors) = native(root, &cache, "nested.wdl", "nested", &["--go", go]);
+        assert_eq!(code != 0, failed, "native, go {go}: {errors}");
+        let compiled = ["run", "-executor", "simulator", "nested.wdl", "--go", go];
+        let (code, _, compiled) = uwe(root, &cache, &compiled);
+        assert_eq!(code != 0, failed, "compiled, go {go}: {compiled}");
+        if failed {
+            assert!(errors.contains("has no value"), "{errors}");
+            assert!(compiled.contains("has no value"), "{compiled}");
         }
     }
 }

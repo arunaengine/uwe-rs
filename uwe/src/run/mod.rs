@@ -222,14 +222,13 @@ fn execute_with(
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();
     let (target, language) = target_and_language(arguments)?;
-    // A lowered run checks its inputs with the schema of the document it was lowered from.
-    let source = arguments
-        .lowered
-        .then(|| (launch(arguments, target.clone()), language));
+    // A run compiles its workflow into wir and checks its inputs with the schema of the
+    // workflow; a wir document runs as it is.
+    let source = (language != Language::Wir).then(|| (launch(arguments, target.clone()), language));
     let converted;
-    // The files of the values of a lowered run, removed when the run ends.
+    // The files of the values of a compiled run, removed when the run ends.
     let private;
-    let (target, language, arguments) = match arguments.lowered {
+    let (target, language, arguments) = match source.is_some() {
         true => {
             let (path, inputs, values, secret_inputs) =
                 crate::lower::document(&target, language, arguments, &setup)?;
@@ -258,26 +257,29 @@ fn execute_with(
     let private: Vec<crate::lower::Values> = private;
     let target = &target;
     let launch = launch(arguments, target.clone());
+    // The config of a Nextflow pipeline can pick the executor and the store of its run.
+    let (first, written) = match &source {
+        Some((launch, language)) => (launch, *language),
+        None => (&launch, language),
+    };
     let picked;
-    let arguments =
-        match crate::nextflow::pipeline_executor(language, &launch, arguments, &mut setup)? {
-            Some(executor) => {
-                picked = Arguments {
-                    executor: Some(executor),
-                    executor_default: false,
-                    ..arguments.clone()
-                };
-                &picked
-            }
-            None => arguments,
-        };
+    let arguments = match crate::nextflow::pipeline_executor(written, first, arguments, &mut setup)?
+    {
+        Some(executor) => {
+            picked = Arguments {
+                executor: Some(executor),
+                executor_default: false,
+                ..arguments.clone()
+            };
+            &picked
+        }
+        None => arguments,
+    };
     // nf-cloudcache puts the store where the config says, unless `-store` names one.
     let cached;
-    let arguments = match language {
+    let arguments = match written {
         Language::Nextflow if arguments.store.is_none() => {
-            match crate::nextflow::cloud_cache(&launch, arguments, &setup)
-                .map_err(Failure::setup)?
-            {
+            match crate::nextflow::cloud_cache(first, arguments, &setup).map_err(Failure::setup)? {
                 Some(location) => {
                     cached = Arguments {
                         store: Some(location),
@@ -408,7 +410,7 @@ fn execute_with(
                 if let Some(hosted) = &hosted {
                     hosted.authorize(&admission)?;
                 }
-                // A wir driver reads the values of a lowered run from its input file.
+                // A wir driver reads the values of a compiled run from its input file.
                 if let Some(inputs) = admission.inputs.as_ref().filter(|_| source.is_none()) {
                     driver.use_inputs(inputs.values.clone())?;
                 }

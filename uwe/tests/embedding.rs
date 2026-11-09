@@ -56,41 +56,31 @@ async fn forwards_cwl_image() {
 }
 
 #[tokio::test]
-async fn runs_lowered_documents() {
+async fn runs_compiled_documents() {
     let root = tempfile::tempdir().unwrap();
-    let mut tasks = Vec::new();
-    for lowered in [false, true] {
-        let mut request = request(root.path());
-        request.settings.lowered = lowered;
-        let run = request.run().await.unwrap();
-        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
-        tasks.push(run.execution.graph.nodes[0].task.clone());
-    }
+    let run = request(root.path()).run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
     // The compiled task runs as the native one does, in the output folder of CWL.
-    for task in &tasks {
-        assert_eq!(task.workdir.as_deref(), Some("/var/spool/cwl"));
-    }
-    assert_eq!(tasks[0].command, tasks[1].command);
+    let task = &run.execution.graph.nodes[0].task;
+    assert_eq!(task.workdir.as_deref(), Some("/var/spool/cwl"));
     let mut request = request(root.path());
-    request.settings.lowered = true;
     request.settings.inputs = Some(json!({"count": "three"}));
     let Err(refused) = request.run().await else {
-        panic!("a lowered run refuses an input of the wrong type");
+        panic!("a compiled run refuses an input of the wrong type");
     };
     assert!(refused.message.contains("not valid"), "{}", refused.message);
 }
 
-/// An embedded lowered Snakemake run takes its values as config, which the compiled document
-/// holds, not as inputs of its graph.
+/// An embedded Snakemake run takes its values as config, which the compiled document holds,
+/// not as inputs of its graph.
 #[tokio::test]
-async fn runs_lowered_snakefiles() {
+async fn runs_compiled_snakefiles() {
     let root = tempfile::tempdir().unwrap();
     let snakefile = "rule all:\n    input: \"a.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[sample_sheet]} > {output}\"\n";
     let target = root.path().join("Snakefile");
     std::fs::write(&target, snakefile).unwrap();
     let mut request = request(root.path());
     request.settings.target = target;
-    request.settings.lowered = true;
     request.settings.inputs = Some(json!({"sample_sheet": "samples.tsv"}));
     // A Snakemake config has an advisory schema, natively as compiled.
     request.policy = uwe::application::Policy::Relaxed;
@@ -113,7 +103,6 @@ async fn runs_lowered_snakefiles() {
 fn request_settings(run: &uwe::Run, root: &std::path::Path) -> Settings {
     let mut settings = request(root).settings;
     settings.target = root.join("Snakefile");
-    settings.lowered = true;
     settings.inputs = Some(json!({"sample_sheet": "samples.tsv"}));
     settings.resume = Some(Resume::Run(run.id.clone()));
     settings

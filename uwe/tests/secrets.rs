@@ -391,8 +391,10 @@ fn request(folder: &Path, config: &str, secrets: SecretValues) -> RunRequest {
 /// Checks that the run database and the RO-Crate of the run hold no secret value.
 fn assert_unrecorded(folder: &Path, run: &str) {
     let database = run_database::Database::open(&folder.join("runs.sqlite")).unwrap();
+    // A run records the wir document that its workflow compiled into.
+    let recorded = database.run(run).unwrap().unwrap().workflow;
     let options = run_crate::Options {
-        workflow: folder.join("flow.cwl"),
+        workflow: recorded.into(),
         ..run_crate::Options::default()
     };
     run_crate::export(&database, run, &folder.join("crate"), &options).unwrap();

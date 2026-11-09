@@ -512,9 +512,12 @@ fn recorded(arguments: &Arguments, folder: &Path) -> Result<Option<Vec<String>>,
             continue;
         }
         let other = Path::new(line);
-        // A database that is gone holds no runs to resume.
-        if other == own || !other.exists() {
-            continue;
+        // A database that is gone holds no runs to resume; one that cannot be seen may.
+        match other.try_exists() {
+            _ if other == own => continue,
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(_) => return Ok(None),
         }
         let Ok(database) = run_database::Database::open(other) else {
             return Ok(None);

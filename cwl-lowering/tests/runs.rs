@@ -147,6 +147,16 @@ fn reruns_match_native() {
 }
 
 #[test]
+fn ontologies_match_native() {
+    // The formats are a subclass and an equivalent class of the wanted one.
+    let file = |format: &str| json!({"class": "File", "location": "echo.cwl", "format": format});
+    let job = json!({"narrow": file("ex:narrow"), "same": file("ex:fa")});
+    let (native, lowered) = both("narrow.cwl", job);
+    assert_eq!(native.tasks.len(), 1, "{native:?}");
+    assert_eq!(lowered, native);
+}
+
+#[test]
 fn links_match_native() {
     let job = json!({"name": "you", "names": ["a", "b"]});
     let (native, lowered) = both("links.cwl", job);

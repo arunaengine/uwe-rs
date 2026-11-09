@@ -137,8 +137,8 @@ fn nested(cwl: &Cwl, named: &Named, depth: usize) -> Result<Type, String> {
 }
 
 /// The type with the formats of a parameter on its Files, also inside an optional or an array:
-/// one format, or a union of Files for several, none where an ontology may match others. The
-/// formats must be text without code.
+/// one format, or a union of Files for several, which a run matches by the ontologies of the
+/// document. The formats must be text without code.
 pub fn formatted(r#type: Type, formats: &[Expression], named: &Named) -> Result<Type, String> {
     if formats.is_empty() {
         return Ok(r#type);
@@ -150,10 +150,9 @@ pub fn formatted(r#type: Type, formats: &[Expression], named: &Named) -> Result<
             _ => return Err("a format set by an expression".into()),
         }
     }
-    match named.ontology {
-        true if named.unreadable => Err("formats with an ontology that cannot be read".into()),
-        // wir checks formats as text, so a tool whose ontology may match others stays native.
-        true => Err("formats that an ontology may match".into()),
+    match named.ontology && named.unreadable {
+        true => Err("formats with an ontology that cannot be read".into()),
+        // A run matches the formats by the ontologies of the document, as CWL does.
         false => Ok(with_formats(r#type, &texts)),
     }
 }

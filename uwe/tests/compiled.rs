@@ -165,11 +165,13 @@ fn keeps_values_private() {
     }
 }
 
+const HELLO: &str = "version 1.1\n\ntask hello {\n  input {\n    String name\n  }\n  command <<<\n    echo ~{name}\n  >>>\n  output {\n    File out = stdout()\n  }\n}\n";
+
 /// The files of the values of a compiled run are no source of the run: a run records the
 /// files of its workflow and keeps them, longer than the values may stay.
 #[test]
 fn records_no_values() {
-    let wdl = "version 1.1\n\ntask hello {\n  input {\n    String name\n  }\n  command <<<\n    echo ~{name}\n  >>>\n  output {\n    File out = stdout()\n  }\n}\n";
+    let wdl = HELLO;
     let runs = [
         ("Snakefile", WORD, ["--config", "word=hush4711"]),
         ("hello.wdl", wdl, ["--name", "hush4711"]),
@@ -201,4 +203,61 @@ fn records_no_values() {
             assert!(!private, "{name}: the run records {}", source.path);
         }
     }
+}
+
+/// A compiled run records its own document as its workflow, not the documents and values of
+/// other runs beside it in the cache.
+#[test]
+fn records_own_document() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("hello.wdl"), HELLO).expect("writes the WDL file");
+    std::fs::write(root.join("Snakefile"), WORD).expect("writes the Snakefile");
+    let run = |arguments: &[&str]| {
+        let output = common::command()
+            .args(["run", "-executor", "simulator"])
+            .args(arguments)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs uwe");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+            .expect("opens the run database");
+        let id = database.runs(1).expect("lists the runs")[0].id.clone();
+        let sources = database.sources(&id).expect("reads the sources");
+        let paths: Vec<String> = sources.into_iter().map(|source| source.path).collect();
+        (id, paths)
+    };
+    let (_, first) = run(&["hello.wdl", "-lowered", "--name", "hush4711"]);
+    let (second, paths) = run(&["Snakefile", "-lowered", "--config", "word=hello"]);
+    assert_eq!(paths.len(), 1, "{paths:?}");
+    assert!(
+        paths[0].ends_with(".wir.json") && !first.contains(&paths[0]),
+        "{paths:?}"
+    );
+    let output = common::command()
+        .args(["export", &second, "-output", "crate"])
+        .current_dir(root)
+        .env("XDG_CACHE_HOME", &cache)
+        .output()
+        .expect("runs uwe");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata = std::fs::read_to_string(root.join("crate/ro-crate-metadata.json"))
+        .expect("reads the crate");
+    for path in &first {
+        assert!(!metadata.contains(path.as_str()), "the crate names {path}");
+    }
+    assert!(
+        !metadata.contains("hush4711"),
+        "the crate holds a value of the first run"
+    );
 }

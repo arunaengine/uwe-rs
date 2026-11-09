@@ -174,6 +174,9 @@ pub struct Arguments {
     /// The input values of a compiled run that hold a secret value, which reach the wir driver
     /// in memory.
     pub secret_inputs: wir_runtime::SecretInputs,
+    /// The run whose launch folder a resumed compiled run starts in, so that its jobs find the
+    /// files of the document they continue.
+    pub launch_run: Option<String>,
     /// Whether a host runs this through the Rust API, not the command line.
     pub embedded: bool,
     /// Where an embedded run sends what its workflow prints, from `run::Settings.print_sink`.

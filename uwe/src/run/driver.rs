@@ -263,6 +263,7 @@ pub(crate) fn snakemake_options(
     setup: &Setup,
     run: &str,
 ) -> snakemake_runtime::RunSettings {
+    let run = arguments.launch_run.as_deref().unwrap_or(run);
     snakemake_runtime::RunSettings {
         image: arguments.default_image.clone(),
         offline: super::backend::network_rule(arguments, setup).offline(&workflow_graph::Task {
@@ -273,13 +274,18 @@ pub(crate) fn snakemake_options(
         conda: setup.conda.is_some(),
         shared_workdir: shared_workdir(arguments, setup),
         local: arguments.executor.as_deref().unwrap_or("local") == "local",
-        // An isolated run without a launch folder of the host starts in one of its own, as a
-        // Nextflow run does, so that its code never reaches the working directory of uwe.
-        workdir: (setup.isolation.as_ref()).map(|isolation| {
-            (isolation.launch.clone())
-                .unwrap_or_else(|| cache_directory().join("scratch").join("launch").join(run))
-        }),
+        // An isolated or embedded run without a launch folder of the host starts in one of its
+        // own, or that of the run it resumes, never in the working directory of the process.
+        workdir: match &setup.isolation {
+            Some(isolation) => Some(isolation.launch.clone().unwrap_or_else(|| own(run))),
+            None => arguments.embedded.then(|| own(run)),
+        },
     }
+}
+
+/// The launch folder of its own of the run `run`.
+fn own(run: &str) -> PathBuf {
+    cache_directory().join("scratch").join("launch").join(run)
 }
 
 /// Whether the executor sees the folders of this machine at their paths, so that Snakemake

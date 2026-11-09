@@ -213,7 +213,8 @@ fn resumed(
         eprintln!("uwe: no earlier run of {workflow} to resume; the run starts from the beginning");
         return Ok(None);
     };
-    if earlier.workflow != workflow {
+    // A compiled workflow may run another document when the earlier one cannot run again.
+    if earlier.workflow != workflow && !crate::lower::same_workflow(&earlier.workflow, workflow) {
         return Err(failure(format!(
             "uwe: run {} ran {}, not {workflow}; resume a run of the same workflow",
             earlier.id, earlier.workflow

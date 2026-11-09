@@ -382,6 +382,61 @@ fn launches_isolated_snakefile() {
     );
 }
 
+/// A Snakefile whose target lies below `results`, relative to the folder it starts in.
+const SNAKEFILE_TARGET: &str = "rule all:\n    input: 'results/made.txt'\n\n\
+    rule make:\n    output: 'results/made.txt'\n    shell: 'echo made > {output}'\n";
+
+/// A compiled Snakemake run starts in its launch folder: the one of the host when confined,
+/// else one of its own. It delivers its target from there and writes nothing into the working
+/// directory of the process.
+#[test]
+fn delivers_launched_targets() {
+    if std::env::var_os(CHILD).is_none() {
+        let process = tempfile::tempdir().unwrap();
+        in_child("delivers_launched_targets", Some(process.path()));
+        let left: Vec<_> = std::fs::read_dir(process.path())
+            .unwrap()
+            .flatten()
+            .collect();
+        assert!(left.is_empty(), "the runs wrote {left:?}");
+        return;
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = folder.path().join("workflow/Snakefile");
+    std::fs::create_dir_all(workflow.parent().unwrap()).unwrap();
+    std::fs::write(&workflow, SNAKEFILE_TARGET).unwrap();
+    let launch = folder.path().join("launch");
+    for confined in [true, false] {
+        let mut settings = settings(folder.path(), &workflow);
+        settings.executor = Some("simulator".into());
+        if confined {
+            settings.isolation = Some(Isolation {
+                launch: Some(launch.clone()),
+                ..Isolation::default()
+            });
+        }
+        let mut request = RunRequest::new(settings);
+        request.policy = uwe::application::Policy::Relaxed;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let ran = runtime.block_on(request.run());
+        let ran = ran.unwrap_or_else(|failure| panic!("{}", failure.message));
+        assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+        let started = match confined {
+            true => launch.clone(),
+            false => folder.path().join("cache/scratch/launch").join(&ran.id),
+        };
+        // The compiled document names the target where the run makes it.
+        let database = run_database::Database::open(&folder.path().join("runs.sqlite")).unwrap();
+        let document = database.run(&ran.id).unwrap().unwrap().workflow;
+        let text = std::fs::read_to_string(document).unwrap();
+        let target = started.join("results/made.txt");
+        assert!(
+            text.contains(target.to_str().unwrap()),
+            "confined {confined}: {text}"
+        );
+    }
+}
+
 /// A run of `workflow` with its database, store, cache and outputs in `folder`.
 fn settings(folder: &Path, workflow: &Path) -> Settings {
     let mut settings = Settings::new(workflow);

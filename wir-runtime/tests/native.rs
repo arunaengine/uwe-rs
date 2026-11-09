@@ -150,7 +150,7 @@ impl Executor for Copier {
     }
 }
 
-/// The results without where they are: a run through wir delivers to the op path.
+/// The results without where they are.
 fn placeless(value: &Json) -> Json {
     match value {
         Json::Array(items) => Json::Array(items.iter().map(placeless).collect()),
@@ -209,7 +209,13 @@ fn exports_block_outputs() {
     assert_eq!(results["copies"].as_array().unwrap().len(), 2, "{results}");
     assert_eq!(placeless(&results), placeless(&expected));
     let location = results["copies"][0]["location"].as_str().unwrap();
-    assert!(location.contains("/out/block/a.txt"), "{location}");
+    let native = expected["copies"][0]["location"].as_str().unwrap();
+    assert_eq!(
+        location,
+        native.trim_start_matches("file://"),
+        "the place of the native run"
+    );
+    assert!(location.ends_with("/out/a.txt"), "{location}");
 }
 
 #[test]
@@ -404,10 +410,10 @@ fn fetches_pinned_repositories() {
     );
 }
 
-/// A graph output that would be delivered to the folder of a block, by its basename, would
-/// replace the files that the block delivered there.
+/// A graph output named like a block goes to the output folder, where the block, as in a
+/// native run, delivered none of its own files.
 #[test]
-fn refuses_nested_places() {
+fn keeps_block_files() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path();
     std::fs::create_dir(root.join("data")).unwrap();
@@ -452,17 +458,159 @@ fn refuses_nested_places() {
     };
     let launch = launch(root, target, root.join("job.json"), false);
     let mut driver = WirDriver::new(&launch, settings).unwrap();
-    let mut copier = Copier {
+    let mut runner = Runner {
         root: root.join("work"),
     };
-    let error = execute("copy", &mut driver, &mut copier)
+    execute("copy", &mut driver, &mut runner)
         .into_result()
-        .unwrap_err()
-        .to_string();
-    let block = format!("{} and", root.join("out/block").display());
-    assert!(error.contains(&block), "{error}");
-    assert!(error.contains("/out/block/a.txt"), "{error}");
-    assert!(driver.results().is_none());
+        .unwrap();
+    let delivered = std::fs::read_to_string(root.join("out/block")).unwrap();
+    assert_eq!(
+        delivered, "two\n",
+        "the graph output, not a folder of the block"
+    );
+    assert!(
+        !root.join("out/a.txt").exists(),
+        "the copies are no output of the run"
+    );
+}
+
+/// Ends each task like a run of it: copies the files of its folder inputs and writes the files
+/// that it names.
+struct Runner {
+    root: PathBuf,
+}
+
+impl Executor for Runner {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let work = self.root.join(attempt.task.id.to_string());
+        std::fs::create_dir_all(&work).unwrap();
+        let mut names = Vec::new();
+        for input in attempt.task.inputs.iter().filter(|input| input.directory) {
+            for entry in std::fs::read_dir(&input.source).unwrap().flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                std::fs::copy(entry.path(), work.join(&name)).unwrap();
+                names.push(name);
+            }
+        }
+        let named = attempt.task.outputs.iter();
+        for name in named.filter(|name| !name.contains('*') && *name != "cwl.output.json") {
+            std::fs::write(work.join(name), "joined\n").unwrap();
+            names.push(name.clone());
+        }
+        names.sort();
+        let files = (names.into_iter())
+            .map(|name| OutputFile {
+                location: work.join(&name).to_string_lossy().into_owned(),
+                path: name,
+                ..OutputFile::default()
+            })
+            .collect();
+        let outcome = Outcome {
+            id: attempt.task.id,
+            files,
+            ..Outcome::default()
+        };
+        Running::ended(Ok(outcome))
+    }
+
+    fn files(&self) -> Option<std::sync::Arc<dyn workflow_graph::Files>> {
+        Some(std::sync::Arc::new(workflow_graph::LocalFiles))
+    }
+}
+
+/// The files below a folder, by their paths in it.
+fn files_below(folder: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(folder).unwrap().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        match entry.path().is_dir() {
+            true => found.extend(
+                files_below(&entry.path())
+                    .iter()
+                    .map(|item| format!("{name}/{item}")),
+            ),
+            false => found.push(name),
+        }
+    }
+    found.sort();
+    found
+}
+
+/// A run of two CWL blocks delivers only its output, at the top of the output folder, as a
+/// native run does; the file that the first block gives the second stays out of it.
+#[test]
+fn delivers_run_outputs() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    std::fs::create_dir(root.join("data")).unwrap();
+    std::fs::write(root.join("data/a.txt"), "one\n").unwrap();
+    let job = json!({"folder": {"class": "Directory", "location": "data"}});
+    std::fs::write(root.join("job.json"), job.to_string()).unwrap();
+    let joined = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: cat\n\
+                  inputs:\n  texts:\n    type: File[]\n    inputBinding: {position: 1}\n\
+                  outputs:\n  joined: {type: stdout}\nstdout: joined.txt\n";
+    std::fs::write(root.join("cat.cwl"), joined).unwrap();
+    let files = json!({"array": {"items": {"file": {}}}});
+    let file = json!({"file": {}});
+    let document = json!({
+        "wir_version": "0.1",
+        "sources": [
+            {"id": "copy", "language": "cwl", "location": demos().join("directory-copy.cwl")},
+            {"id": "cat", "language": "cwl", "location": root.join("cat.cwl")}
+        ],
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "folder", "type": "directory"}],
+            "outputs": [{"name": "joined", "type": file}],
+            "ops": [
+                {
+                    "path": "first", "kind": {"native": {"source": "copy", "language": "cwl"}},
+                    "inputs": [{"name": "folder", "type": "directory"}],
+                    "outputs": [{"name": "copies", "type": files}]
+                },
+                {
+                    "path": "second", "kind": {"native": {"source": "cat", "language": "cwl"}},
+                    "inputs": [{"name": "texts", "type": files}],
+                    "outputs": [{"name": "joined", "type": file}]
+                }
+            ],
+            "edges": [
+                {"from": {"port": "folder"}, "to": {"op": "first", "port": "folder"}},
+                {"from": {"op": "first", "port": "copies"}, "to": {"op": "second", "port": "texts"}},
+                {"from": {"op": "second", "port": "joined"}, "to": {"port": "joined"}}
+            ]
+        }],
+        "entry": "main"
+    });
+    let target = root.join("run.wir.json");
+    std::fs::write(&target, document.to_string()).unwrap();
+    let settings = Settings {
+        cwl: cwl_runtime::Options {
+            simulated: false,
+            print: false,
+            ..cwl_runtime::Options::default()
+        },
+        ..settings()
+    };
+    let launch = launch(root, target, root.join("job.json"), false);
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let mut runner = Runner {
+        root: root.join("work"),
+    };
+    execute("two", &mut driver, &mut runner)
+        .into_result()
+        .unwrap();
+    assert_eq!(
+        files_below(&root.join("out")),
+        ["joined.txt"],
+        "only the run output"
+    );
+    let location = driver.results().unwrap()["joined"]["location"].clone();
+    assert_eq!(
+        location,
+        root.join("out/joined.txt").to_string_lossy().as_ref()
+    );
 }
 
 #[test]

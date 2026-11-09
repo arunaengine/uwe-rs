@@ -190,6 +190,24 @@ fn reuses_resumed_results() {
 }
 
 #[test]
+fn reruns_every_time() {
+    let graph = simulate(|document| {
+        op(document, 0)["attributes"]["cache"] = json!("rerun");
+        // The limits of a task may ask for a rerun too, as a CWL expression does.
+        op(document, 1)["kind"]["task"]["limits"] = json!("limits");
+        let limits = json!({"name": "limits", "type": "dynamic", "default": {"cache": "rerun"}});
+        op(document, 1)["inputs"]
+            .as_array_mut()
+            .unwrap()
+            .push(limits);
+    });
+    let reuses: Vec<Reuse> = graph.nodes.iter().map(|node| node.task.reuse).collect();
+    assert_eq!(reuses, [Reuse::Denied, Reuse::Denied]);
+    let tasks = native(json!({"cache": "rerun"})).unwrap();
+    assert!(tasks.iter().all(|task| task.reuse == Reuse::Denied));
+}
+
+#[test]
 fn shares_no_effects() {
     let graph = simulate(|document| {
         op(document, 0)["effects"] = json!(["nondeterministic"]);

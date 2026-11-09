@@ -225,6 +225,18 @@ pub(crate) fn finish(workflow: &Value, success: bool, succeeded: i64) {
     tree::assign(&workflow.properties, &path, count).expect("a map");
 }
 
+/// Sets the start of a run, in milliseconds since the epoch, which its duration counts from.
+pub(crate) fn started(workflow: &Value, start: i64) {
+    let Value::Object(object) = workflow else {
+        return;
+    };
+    let object = object.borrow();
+    if let State::Workflow(workflow) = &object.state {
+        let start = Value::Date(start);
+        tree::assign(&workflow.properties, &["start".into()], start).expect("a map");
+    }
+}
+
 pub(crate) fn failure(workflow: &Value, message: &str, status: Value) {
     let Value::Object(object) = workflow else {
         return;

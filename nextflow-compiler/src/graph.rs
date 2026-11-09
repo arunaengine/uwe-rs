@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use nextflow_runtime::export::{Kind, Network};
@@ -17,12 +18,13 @@ enum Literal {
     Empty,
 }
 
-/// The graphs of a network, `main` first; a node that does not compile is the error.
+/// The graphs of a network, `main` first, and where the entry graph gives each value channel
+/// that a handler captures; a node that does not compile is the error.
 pub(crate) fn compile(
     network: &Network,
     context: &Context,
     sources: &mut Sources,
-) -> Result<Vec<Json>, Kept> {
+) -> Result<(Vec<Json>, Captured), Kept> {
     let mut compiler = Compiler::new(network);
     let mut bodies = Vec::new();
     let mut pieces: Vec<Option<Piece>> = Vec::new();
@@ -59,7 +61,21 @@ pub(crate) fn compile(
     }
     crate::start::ops(network, &mut graphs[0])?;
     graphs.extend(bodies);
-    Ok(graphs)
+    Ok((graphs, compiler.ends.into_inner()))
+}
+
+/// What a captured channel holds once the run ended: the output of an op of the run,
+/// or a value that the build bound, by channel.
+pub(crate) type Captured = BTreeMap<usize, Result<Json, Json>>;
+
+/// The channels that the handlers of a network capture, by their reserved `Channel` forms.
+fn captures(network: &Network) -> BTreeSet<usize> {
+    let values = (network.handlers.iter()).flat_map(|(_, callback)| &callback.captures);
+    let ids = values.filter_map(|(_, value)| match value["class"].as_str() {
+        Some("Channel") => value["channel"].as_u64(),
+        _ => None,
+    });
+    ids.map(|id| id as usize).collect()
 }
 
 struct Compiler<'a> {
@@ -70,6 +86,9 @@ struct Compiler<'a> {
     pieces: Vec<Option<Piece>>,
     /// The workflow call whose graph holds each node.
     scopes: Vec<usize>,
+    /// The value channels that handlers capture and nodes write.
+    captured: BTreeSet<usize>,
+    ends: RefCell<Captured>,
 }
 
 /// The ops and edges of one graph while it is made.
@@ -105,7 +124,12 @@ impl<'a> Compiler<'a> {
             paths,
             pieces: Vec::new(),
             scopes: network.nodes.iter().map(|node| node.scope).collect(),
+            captured: BTreeSet::new(),
+            ends: RefCell::default(),
         };
+        let written = |channel: &usize| compiler.producer[*channel].is_some();
+        let captured = captures(network).into_iter().filter(written);
+        compiler.captured = captured.collect();
         for (index, node) in network.nodes.iter().enumerate() {
             if node.name.starts_with("topic ") {
                 compiler.scopes[index] = compiler.common(index);
@@ -351,6 +375,8 @@ impl<'a> Compiler<'a> {
                 .edges
                 .push(json!({"from": endpoint(&from), "to": {"port": output}}));
         }
+        // The handlers read the value channels that they capture once the run ended.
+        self.capture(scope, &mut draft)?;
         Ok(json!({
             "name": graph_name(&network.scopes[scope].name),
             "inputs": inputs,
@@ -358,6 +384,54 @@ impl<'a> Compiler<'a> {
             "ops": draft.ops,
             "edges": draft.edges,
         }))
+    }
+
+    /// Where the run gives each captured value channel that a node of `scope` writes: that op,
+    /// by its path through the calls, so a failed call keeps its value. The entry graph takes
+    /// the values that the build bound; a captured queue channel does not compile.
+    fn capture(&self, scope: usize, draft: &mut Draft) -> Result<(), Kept> {
+        let mut ends = self.ends.borrow_mut();
+        for channel in captures(self.network) {
+            let path = format!("channel.{channel}");
+            if !self.network.channels[channel].value {
+                return Err(kept(
+                    &path,
+                    "a workflow event handler captures a queue channel",
+                ));
+            }
+            let writer = self.producer[channel].map(|(node, _)| self.scopes[node]);
+            let end = match (self.literal(channel), writer) {
+                (None, Some(found)) if self.captured.contains(&channel) => {
+                    if found != scope {
+                        continue;
+                    }
+                    let from = self.writer(scope, channel, draft)?;
+                    let op = format!("{}{}", self.prefix(scope), from.op);
+                    Ok(json!({"op": op, "port": from.port}))
+                }
+                _ if scope != 0 => continue,
+                (Some(Literal::Value(value)), _) => Err(value),
+                _ => Err(Json::Null),
+            };
+            ends.insert(channel, end);
+        }
+        Ok(())
+    }
+
+    /// The paths of the calls from the entry graph to the graph of `scope`, like `a/b/`.
+    fn prefix(&self, scope: usize) -> String {
+        let mut parts = Vec::new();
+        let mut current = scope;
+        while let Some(parent) = self.network.scopes[current].parent {
+            let qualified = &self.network.scopes[current].name;
+            parts.push(format!(
+                "{}/",
+                name(qualified.rsplit(':').next().unwrap_or_default())
+            ));
+            current = parent;
+        }
+        parts.reverse();
+        parts.concat()
     }
 
     /// Connects a reader of a channel in a graph: by an edge from its writer, through an op

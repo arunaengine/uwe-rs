@@ -562,15 +562,8 @@ fn scheduler_work() {
     };
     let items = crate::plan::items(&spec, &bound).unwrap();
     let start = progress.plan.nodes.len();
-    crate::plan::rounds(
-        &document,
-        &mut progress.plan.nodes,
-        map,
-        "body",
-        items.items,
-    )
-    .unwrap();
-    progress.plan.nodes[map].shape = items.shape;
+    crate::plan::rounds(&document, &mut progress.plan.nodes, map, "body", items).unwrap();
+    progress.plan.nodes[map].shape = vec![rounds];
     progress.adopt(start);
     while let Some((at, _)) = progress.next(false) {
         match progress.node(at).op.kind {

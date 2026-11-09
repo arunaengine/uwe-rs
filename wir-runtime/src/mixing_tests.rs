@@ -25,6 +25,7 @@ pub fn node(kind: Json, streams: &[&str], values: &[&str], out: &str) -> Node {
     Node {
         path: "op".into(),
         step: "op".into(),
+        name: "op".into(),
         op: serde_json::from_value(op).unwrap(),
         inputs: Vec::new(),
         after: Vec::new(),

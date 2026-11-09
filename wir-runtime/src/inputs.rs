@@ -33,6 +33,7 @@ pub fn read(
     ports: &[Port],
     defs: &[TypeDef],
     remote: &cwl_parser::source::Remote,
+    formats: Option<&crate::formats::FormatCheck>,
 ) -> Result<Map<String, Json>, DriverError> {
     let access = cwl_runtime::files::Access {
         assume_present: launch.simulated,
@@ -54,6 +55,9 @@ pub fn read(
         let base = std::path::absolute(path).unwrap_or_else(|_| path.clone());
         absolute(&mut json, base.parent().unwrap_or(Path::new("/")));
         filled(&mut json, launch.simulated);
+        if let Some(check) = formats {
+            check.expand(&mut json);
+        }
         let Json::Object(object) = json else {
             return Err(DriverError::new(format!("{shown} must hold an object")));
         };
@@ -94,7 +98,14 @@ pub fn read(
                 return Err(DriverError::new(message));
             }
         };
-        if !wir::fits(&value, &port.r#type, defs) {
+        let fits = match formats {
+            None => wir::fits(&value, &port.r#type, defs),
+            Some(check) => {
+                let formats = |found: &str, wanted: &str| check.matches(found, wanted);
+                wir::fits_with(&value, &port.r#type, defs, &formats)
+            }
+        };
+        if !fits {
             let message = format!("the value of the input {} does not fit its type", port.name);
             return Err(DriverError::new(message));
         }

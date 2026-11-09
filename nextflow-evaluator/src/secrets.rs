@@ -18,8 +18,12 @@ thread_local! {
 }
 
 /// Runs `work`, a compile, while noting the values that its scripts read from the environment,
-/// which [`holds_read`] then finds; nothing of one compile reaches another.
+/// which [`holds_read`] then finds; nothing of one compile reaches another. Work inside a
+/// compile notes into the set of that compile.
 pub fn noting<T>(work: impl FnOnce() -> T) -> T {
+    if READ.with(|read| read.borrow().is_some()) {
+        return work();
+    }
     let earlier = READ.with(|read| read.replace(Some(Default::default())));
     let made = work();
     READ.with(|read| read.replace(earlier));

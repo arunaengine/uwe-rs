@@ -357,8 +357,8 @@ impl Callback {
     }
 }
 
-/// Whether a captured value holds a value of the environment: in a text or a key, at any depth.
-fn read(value: &Json) -> bool {
+/// Whether a value holds a value of the environment: in a text or a key, at any depth.
+pub fn read(value: &Json) -> bool {
     match value {
         Json::String(text) => holds_read(text),
         Json::Array(items) => items.iter().any(read),

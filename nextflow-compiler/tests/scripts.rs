@@ -42,9 +42,17 @@ fn settings(folder: &Path) -> Settings {
 
 /// Compiles `script` and runs it simulated: the scripts of its tasks, or the error of the run.
 fn run(script: &str) -> Result<Vec<String>, String> {
+    run_configured(script, "")
+}
+
+/// Runs `script` as [`run`] does, with `config` as its `nextflow.config` when it is not empty.
+fn run_configured(script: &str, config: &str) -> Result<Vec<String>, String> {
     let directory = tempfile::tempdir().unwrap();
     let folder = directory.path();
     std::fs::write(folder.join("main.nf"), script).unwrap();
+    if !config.is_empty() {
+        std::fs::write(folder.join("nextflow.config"), config).unwrap();
+    }
     let launch = |target: &Path| Launch {
         target: target.to_owned(),
         scratch: folder.join("scratch"),
@@ -55,8 +63,8 @@ fn run(script: &str) -> Result<Vec<String>, String> {
     let document = folder.join("compiled.wir.json");
     let text = serde_json::to_string(&compiled.document).unwrap();
     std::fs::write(&document, text).unwrap();
-    let launched = folder.to_owned();
-    let options = wir_runtime::nextflow::Options::new(move |_, _| settings(&launched));
+    // A native op starts in its own folder below the output folder.
+    let options = wir_runtime::nextflow::Options::new(|_, at| settings(at));
     let mut adapters = wir_runtime::adapter::Adapters::default();
     wir_runtime::nextflow::register(&mut adapters, options.clone());
     let wir = wir_runtime::Settings {
@@ -65,8 +73,11 @@ fn run(script: &str) -> Result<Vec<String>, String> {
         adapters,
         ..wir_runtime::Settings::default()
     };
-    let mut driver =
-        wir_runtime::WirDriver::new(&launch(&document), wir).map_err(|error| error.message)?;
+    let running = Launch {
+        output_dir: Some(folder.join("output")),
+        ..launch(&document)
+    };
+    let mut driver = wir_runtime::WirDriver::new(&running, wir).map_err(|error| error.message)?;
     let mut simulator = Simulator::new(folder.join("simulator"));
     let execution = execute("scripts", &mut driver, &mut simulator);
     let graph = execution.into_result().map_err(|error| error.to_string())?;
@@ -132,9 +143,17 @@ fn shares_script_variables() {
 
 /// Compiles `script` in a folder of its own.
 fn compiled(script: &str) -> nextflow_compiler::Compilation {
+    configured(script, "")
+}
+
+/// Compiles `script` with `config` as its `nextflow.config` when it is not empty.
+fn configured(script: &str, config: &str) -> nextflow_compiler::Compilation {
     let directory = tempfile::tempdir().unwrap();
     let folder = directory.path();
     std::fs::write(folder.join("main.nf"), script).unwrap();
+    if !config.is_empty() {
+        std::fs::write(folder.join("nextflow.config"), config).unwrap();
+    }
     let launch = Launch {
         target: folder.to_owned(),
         scratch: folder.join("scratch"),
@@ -197,4 +216,31 @@ fn reassigns_nested_variables() {
         .collect();
     said.sort();
     assert_eq!(said, ["echo 1", "echo 2"]);
+}
+
+/// A param that the config reads from the environment has no default in the document: the
+/// pipeline stays native, and its native op reads the param at run time.
+#[test]
+fn reads_environment_params() {
+    let config = "params.token = System.getenv('API_TOKEN')\n";
+    let script = "process SAY {\n    input:\n    val n\n    script:\n    \"echo $n\"\n}\n\
+                  workflow {\n    SAY(channel.of(params.token.size()))\n}\n";
+    let compilation = configured(script, config);
+    let text = serde_json::to_string(&compilation.document).unwrap();
+    assert!(!text.contains(TOKEN));
+    assert!(!compilation.full());
+    let said = run_configured(script, config).unwrap();
+    let said: Vec<&str> = (said.iter())
+        .filter_map(|script| script.lines().find(|line| line.starts_with("echo")))
+        .collect();
+    assert_eq!(said, [format!("echo {}", TOKEN.len())]);
+}
+
+/// A value of the environment in a channel of the workflow stays out of the document too.
+#[test]
+fn keeps_channel_values() {
+    let script = "workflow {\n    channel.of(System.getenv('API_TOKEN')).view()\n}\n";
+    let compilation = compiled(script);
+    let text = serde_json::to_string(&compilation.document).unwrap();
+    assert!(!text.contains(TOKEN));
 }

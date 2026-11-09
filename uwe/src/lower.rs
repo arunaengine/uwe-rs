@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use workflow_graph::Language;
+use workflow_graph::{DriverError, Language};
 
 use wir_runtime::SecretInputs;
 
@@ -427,8 +427,14 @@ fn nextflow(
     native: Option<&str>,
 ) -> Result<wir::Document, Failure> {
     let launch = crate::launch(arguments, target.to_owned());
-    let compiled = crate::nextflow::compile(&launch, arguments, setup, base, native)
-        .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
+    // A feature that uwe does not run yet keeps its exit code, as in a run of the driver.
+    let compiled =
+        (crate::nextflow::compile(&launch, arguments, setup, base, native)).map_err(|error| {
+            DriverError {
+                message: format!("uwe: {}: {}", target.display(), error.message),
+                ..error
+            }
+        })?;
     for kept in &compiled.kept {
         eprintln!(
             "uwe: {} keeps the pipeline a native Nextflow op: {}",

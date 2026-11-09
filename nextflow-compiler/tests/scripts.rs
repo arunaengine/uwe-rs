@@ -183,3 +183,18 @@ fn reassigns_script_variables() {
     said.sort();
     assert_eq!(said, ["echo 1", "echo 2"]);
 }
+
+/// A closure of the script that a callback calls assigns the variables of the script for
+/// later callbacks too.
+#[test]
+fn reassigns_nested_variables() {
+    let script = "def count = 0\ndef increment = { count = count + 1; count }\n\
+                  process SAY {\n    input:\n    val n\n    script:\n    \"echo $n\"\n}\n\
+                  workflow {\n    SAY(channel.of('a', 'b').map { x -> increment() })\n}\n";
+    let mut said: Vec<String> = (run(script).unwrap().iter())
+        .filter_map(|script| script.lines().find(|line| line.starts_with("echo")))
+        .map(str::to_owned)
+        .collect();
+    said.sort();
+    assert_eq!(said, ["echo 1", "echo 2"]);
+}

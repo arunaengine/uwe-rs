@@ -194,7 +194,7 @@ impl Host for WorkflowFiles {
                 }
                 self.reach_read(path)?;
                 self.mirrors.fetch(path)?;
-                self.local.read(path)
+                self.local.read(&self.mirrors.copy(path))
             }
         }
     }
@@ -232,10 +232,9 @@ impl Host for WorkflowFiles {
         // A file on the web that cannot be downloaded counts as missing, as does a file that
         // workflow code may not reach.
         let _ = self.mirrors.fetch(path);
-        if let Some(stat) = self
-            .reach_read(path)
-            .ok()
-            .and_then(|()| self.local.stat(path))
+        let copy = self.mirrors.copy(path);
+        if let Some(stat) = (self.reach_read(path).ok())
+            .and_then(|()| self.local.stat(&copy).or_else(|| self.local.stat(path)))
         {
             return Some(stat);
         }

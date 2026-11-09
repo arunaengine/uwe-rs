@@ -160,7 +160,7 @@ pub fn source(
         };
         match mirrors
             .fetch(&local)
-            .and_then(|()| std::fs::read_to_string(&local))
+            .and_then(|()| std::fs::read_to_string(mirrors.copy(&local)))
         {
             Ok(text) => {
                 return Ok(Source {

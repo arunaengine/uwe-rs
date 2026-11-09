@@ -292,7 +292,24 @@ impl Storage {
                 (journal::described(target, file).await?, downloaded.version)
             }
         };
+        // A later run that finds this copy notes its version from here, the one of these bytes.
+        let noted = journal::with_suffix(file, "version");
+        let _ = match &version {
+            Some(version) => std::fs::write(&noted, version),
+            None => std::fs::remove_file(&noted),
+        };
         self.inner.journal.note(Fetched { version, ..fetched });
+        Ok(())
+    }
+
+    /// Notes the copy at `file` that an earlier [`Storage::copy_of`] made as read, as that call
+    /// notes it; a pinned copy of the address replaces it.
+    pub async fn note_copy(&self, target: &str, file: &Path) -> Result<(), StorageError> {
+        if self.inner.journal.pinned(target).is_some() {
+            return self.copy_of(target, file).await;
+        }
+        let fetched = journal::described(target, file).await?;
+        self.inner.journal.note(fetched);
         Ok(())
     }
 
@@ -305,6 +322,12 @@ impl Storage {
     /// repeat of that run does.
     pub fn pin(&self, fetched: Fetched) {
         self.inner.journal.pin(fetched);
+    }
+
+    /// A name of the pins of the process, so that copies with pinned bytes can stay apart from
+    /// the copies that other runs share; none without pins.
+    pub fn pinned_name(&self) -> Option<String> {
+        self.inner.journal.pins_name()
     }
 
     /// Whether a remote file exists, and its size. As [`Storage::fetch`] does, it asks the

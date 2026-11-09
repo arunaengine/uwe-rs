@@ -204,6 +204,35 @@ async fn verifies_bounded_builds() {
     assert!(paths[3].contains(&format!("sha256:{}", "b".repeat(64))));
 }
 
+/// Docker ends each progress line with `\r\n`. When the reader's 8 KiB buffer fills just after
+/// the image ID, that line end comes in a read of its own, which the stream reports as an error.
+#[tokio::test]
+async fn accepts_split_ends() {
+    let folder = tempfile::tempdir().unwrap();
+    let preparation = preparation();
+    let aux = format!("{{\"aux\":{{\"ID\":\"sha256:{}\"}}}}", "b".repeat(64));
+    let line = |text: &str| format!("{{\"stream\":\"{text}\\n\"}}\r\n");
+    let fill = 8192 - aux.len() - line("").len();
+    let body = format!("{}{aux}\r\n", line(&"x".repeat(fill)));
+    assert_eq!(body.find(&aux).unwrap() + aux.len(), 8192);
+    let replies = vec![
+        ("/build?".into(), body),
+        ("/json".into(), inspected(&preparation).to_string()),
+    ];
+    let (engine, server) = fixture(folder.path(), replies).await;
+    let receipt = build(
+        &engine,
+        &preparation,
+        folder.path(),
+        limits(),
+        &CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(receipt.image_id(), format!("sha256:{}", "b".repeat(64)));
+    assert_eq!(server.join().unwrap().len(), 4);
+}
+
 #[tokio::test]
 async fn rejects_wrong_provenance() {
     for field in ["labels", "platform", "id"] {

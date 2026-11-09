@@ -18,10 +18,14 @@ struct Mirror {
 /// The mirrors of a run and the files that the web does not have.
 pub struct Mirrors {
     downloads: PathBuf,
+    /// Where a run with pins keeps the files of its mirrors, at the paths below `downloads`.
+    pinned: Option<PathBuf>,
     /// The storage providers that the files come from.
     storage: Blocking,
     mirrors: RefCell<Vec<Mirror>>,
     missing: RefCell<HashSet<PathBuf>>,
+    /// The files of mirrors that this run read, so noted in its storage.
+    read: RefCell<HashSet<PathBuf>>,
     /// The Git client for the repositories on the web of `gitfile(...)`, and the ones that
     /// this run fetched already.
     pub git: RefCell<Option<crate::gitfile::GitClient>>,
@@ -50,11 +54,16 @@ impl Mirrors {
     }
 
     pub fn new(downloads: PathBuf, storage: &Storage) -> Mirrors {
+        // A repeat reads pinned bytes, which must not replace the copies that other runs read;
+        // `@` starts no host name, so no mirror of an address is in this folder.
+        let pinned = (storage.pinned_name()).map(|name| downloads.join("@pinned").join(name));
         Mirrors {
             downloads,
+            pinned,
             storage: storage.blocking(),
             mirrors: RefCell::new(Vec::new()),
             missing: RefCell::new(HashSet::new()),
+            read: RefCell::default(),
             git: RefCell::new(None),
             fetched: RefCell::default(),
         }
@@ -189,6 +198,10 @@ impl Mirrors {
     /// A text with the local copies of files on the web replaced by their addresses.
     pub fn describe(&self, text: &str) -> String {
         let mut text = text.to_owned();
+        if let Some(pinned) = &self.pinned {
+            let folder = format!("{}/", pinned.display());
+            text = text.replace(&folder, &format!("{}/", self.downloads.display()));
+        }
         for mirror in self.mirrors.borrow().iter() {
             let folder = format!("{}/", mirror.folder.display());
             text = text.replace(&folder, &format!("{}/", mirror.url));
@@ -196,36 +209,51 @@ impl Mirrors {
         text
     }
 
-    /// Downloads a file of a mirror that is not there yet. Paths outside the mirrors, files
-    /// that are there and files that the web does not have are left as they are.
+    /// Where this run reads the file of a mirror at `path`. A run with pins reads copies of its
+    /// own, while the workflow and its tasks see the same paths as other runs, and so the same
+    /// cache keys; other paths stay as they are.
+    pub fn copy(&self, path: &Path) -> PathBuf {
+        let rest = path.strip_prefix(&self.downloads).ok();
+        match (&self.pinned, rest) {
+            (Some(pinned), Some(rest)) if self.address(path).is_some() => pinned.join(rest),
+            _ => path.to_owned(),
+        }
+    }
+
+    /// Downloads the copy of a file of a mirror that is not there yet, or notes the copy that an
+    /// earlier run left there, once per run. Paths outside the mirrors, folders and files that
+    /// the web does not have are left as they are.
     pub fn fetch(&self, path: &Path) -> std::io::Result<()> {
-        if path.exists() || self.missing.borrow().contains(path) {
+        let done = self.read.borrow().contains(path) || self.missing.borrow().contains(path);
+        if done || path.is_dir() {
             return Ok(());
         }
         let Some(url) = self.address(path) else {
             return Ok(());
         };
-        let folder = path.parent().unwrap_or(Path::new("/"));
-        std::fs::create_dir_all(folder)?;
-        // Another run may download the same file: write a copy, then rename it.
-        let partial = folder.join(format!(
-            ".{}.{}.part",
-            path.file_name().unwrap_or_default().to_string_lossy(),
-            std::process::id()
-        ));
-        // The storage providers share one client per process, so that a host's address is
-        // looked up once and its connection reused.
-        match self.storage.copy_of(&url, &partial) {
-            Ok(()) => std::fs::rename(&partial, path),
+        let local = self.copy(path);
+        if local.is_dir() {
+            return Ok(());
+        }
+        // A copy from an earlier run is read by this one too, which a repeat's pin replaces.
+        let copied = if local.is_file() {
+            self.storage.note_copy(&url, &local)
+        } else {
+            std::fs::create_dir_all(local.parent().unwrap_or(Path::new("/")))?;
+            // The storage renames a private copy into place and notes that path; its providers
+            // share one client per process, so a host is looked up once and its connection reused.
+            self.storage.copy_of(&url, &local)
+        };
+        match copied {
+            Ok(()) => {
+                self.read.borrow_mut().insert(path.to_owned());
+                Ok(())
+            }
             Err(StorageError::Missing { .. }) => {
-                let _ = std::fs::remove_file(&partial);
                 self.missing.borrow_mut().insert(path.to_owned());
                 Ok(())
             }
-            Err(error) => {
-                let _ = std::fs::remove_file(&partial);
-                Err(std::io::Error::other(error.to_string()))
-            }
+            Err(error) => Err(std::io::Error::other(error.to_string())),
         }
     }
 }

@@ -65,7 +65,7 @@ A port of type `want` accepts a value of type `found` when one of these holds:
 
 Named types are resolved first and must not be defined through themselves.
 
-A secondary file pattern is a suffix added to the primary basename; each leading `^` first removes one extension, as in CWL.
+A secondary file pattern is a suffix added to the primary basename; each leading `^` first removes one extension, as in CWL. A File that a port of a type with secondary files takes or gives lists them in `secondary_files`, an empty list when it has none, as CWL lists them.
 
 ## Channel contract
 

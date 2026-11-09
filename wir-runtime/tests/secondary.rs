@@ -1,5 +1,5 @@
 //! Finds the secondary files of web inputs, as uwe's CWL driver does: a local web server has
-//! the primary file and its required index, and no optional one.
+//! the primary file and its required index, and no optional one. A File lists none as empty.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -78,4 +78,57 @@ fn finds_web_secondaries() {
     );
     let delivered = found[0]["location"].as_str().unwrap();
     assert!(delivered.ends_with("/a.bam.bai"), "{delivered}");
+}
+
+#[test]
+fn lists_no_secondaries() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let indexed = json!({"file": {"secondary_files": [{"pattern": ".fai", "required": false}]}});
+    let found = json!({"array": {"items": {"file": {}}}});
+    let document = json!({
+        "wir_version": wir::VERSION,
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "genome", "type": {"file": {}}}],
+            "outputs": [{"name": "out", "type": found}],
+            "ops": [{
+                "path": "index",
+                "kind": {"expr": {"language": "js", "code": "$(inputs.genome.secondaryFiles)"}},
+                "inputs": [{"name": "genome", "type": indexed}],
+                "outputs": [{"name": "out", "type": found}]
+            }],
+            "edges": [
+                {"from": {"port": "genome"}, "to": {"op": "index", "port": "genome"}},
+                {"from": {"op": "index", "port": "out"}, "to": {"port": "out"}}
+            ]
+        }],
+        "entry": "main"
+    });
+    std::fs::write(root.join("index.wir.json"), document.to_string()).unwrap();
+    std::fs::write(root.join("genome.fa"), ">a\nACGT\n").unwrap();
+    let inputs = json!({"genome": {"class": "File", "location": "genome.fa"}});
+    std::fs::write(root.join("inputs.json"), inputs.to_string()).unwrap();
+    let launch = Launch {
+        target: root.join("index.wir.json"),
+        inputs: Some(root.join("inputs.json")),
+        scratch: root.join("scratch"),
+        output_dir: Some(root.join("out")),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let mut simulator = Simulator::new(root.join("simulator"));
+    execute("index", &mut driver, &mut simulator)
+        .into_result()
+        .unwrap();
+    let out = &driver.results().unwrap()["out"];
+    assert_eq!(
+        out,
+        &json!([]),
+        "an op that asks for secondary files sees an empty list"
+    );
 }

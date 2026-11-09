@@ -807,7 +807,20 @@ impl WirDriver {
                 let message = format!("op {path}: Argo blocks take no profiles");
                 return Err(DriverError::unsupported(message));
             }
-            Dialect::Argo => argo::block(&launch, &self.settings.argo)?,
+            Dialect::Argo => {
+                // A block that is the whole run hears `uwe resume`, as the run does; another
+                // does not, since the requests name the steps of the run.
+                let node = self.progress.node(at);
+                let entry =
+                    (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+                let whole =
+                    node.parent.is_none() && entry.is_some_and(|graph| graph.ops.len() == 1);
+                let mut services = self.settings.argo.clone();
+                if !whole {
+                    services.resume = None;
+                }
+                argo::block(&launch, &services)?
+            }
             Dialect::Wdl if !launch.profiles.is_empty() || !launch.configs.is_empty() => {
                 let message = format!("op {path}: WDL blocks take no profiles or configs");
                 return Err(DriverError::unsupported(message));

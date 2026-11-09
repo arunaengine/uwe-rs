@@ -12,11 +12,11 @@ use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
-    pipelines: 18,
-    full: 18,
-    native: 18,
-    compiled: 18,
-    same: 18,
+    pipelines: 19,
+    full: 19,
+    native: 19,
+    compiled: 19,
+    same: 19,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -121,6 +121,10 @@ const PIPELINES: &[(&str, &str)] = &[
     (
         "fairskip",
         "process F {\n    fair true\n    input:\n    val x\n    output:\n    val x\n    when:\n    x != 1\n    script:\n    'true'\n}\nworkflow {\n    F(channel.of(1, 2, 3))\n    GREET(F.out.count().map { [[id: \"n${it}\"], 'x'] })\n}",
+    ),
+    (
+        "scannull",
+        "include { scan } from 'plugin/nf-boost'\nworkflow {\n    GREET(channel.of(1, 2, 3).scan { acc, x -> x == 2 ? null : x * 10 }.map { [[id: \"s${it}\"], \"s${it}\"] })\n}",
     ),
     (
         "closures",

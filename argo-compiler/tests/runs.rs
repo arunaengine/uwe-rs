@@ -429,3 +429,30 @@ fn reads_config_folders() {
     one.0.as_ref().unwrap();
     assert_eq!(other, one);
 }
+
+const RECOVERED: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: bad, template: say}
+      - {name: b, template: say, depends: bad.Failed}
+      - {name: c, template: say, depends: b.Failed}
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+
+#[test]
+fn targets_inherit_recoveries() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, RECOVERED);
+    let failing = |folder| Writer {
+        fails: "bad",
+        ..Writer::new(folder)
+    };
+    let (one, other) = both(root, &file, &[], failing);
+    one.0.as_ref().unwrap();
+    assert_eq!(one.1, ["runs.b", "runs.bad"]);
+    assert_eq!(other, one);
+}

@@ -163,10 +163,10 @@ fn refuses_unsafe_archives() {
     ] {
         assert!(unpack(archive(&files).as_slice(), folder.path()).is_err());
     }
-    let bytes = archive(&[(
-        "checkout/.gitmodules",
+    let bytes = modules(
         "[submodule \"module\"]\npath = module\n",
-    )]);
+        &["checkout/module/"],
+    );
     let failure = unpack(bytes.as_slice(), folder.path()).unwrap_err();
     assert_eq!(failure.code, 33);
     assert!(failure.message.contains("submodules"));
@@ -197,6 +197,45 @@ fn refuses_unsafe_archives() {
     let bytes = archive.into_inner().unwrap().finish().unwrap();
     assert!(unpack(bytes.as_slice(), folder.path()).is_err());
     assert!(!folder.path().parent().unwrap().join("outside").exists());
+}
+
+/// An archive with `.gitmodules` and the given folder and file entries, as `git archive`
+/// writes a submodule: an empty folder.
+fn modules(text: &str, entries: &[&str]) -> Vec<u8> {
+    let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut archive = tar::Builder::new(encoder);
+    let mut header = tar::Header::new_gnu();
+    header.set_size(text.len() as u64);
+    header.set_mode(0o644);
+    header.set_path("checkout/.gitmodules").unwrap();
+    header.set_cksum();
+    archive.append(&header, text.as_bytes()).unwrap();
+    for path in entries {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(0);
+        header.set_mode(0o755);
+        if path.ends_with('/') {
+            header.set_entry_type(tar::EntryType::Directory);
+        }
+        header.set_path(path).unwrap();
+        header.set_cksum();
+        archive.append(&header, std::io::empty()).unwrap();
+    }
+    archive.into_inner().unwrap().finish().unwrap()
+}
+
+/// As snakemake-rna-seq-star-deseq2, a `.gitmodules` that names a folder the tree does not
+/// have, or one with committed files, names no submodule.
+#[test]
+fn ignores_stale_submodules() {
+    let text = "[submodule \".test/data\"]\n\tpath = .test/data\n\turl = ../ngs-test-data\n";
+    for entries in [
+        &["checkout/.test/reads.fq"][..],
+        &["checkout/.test/data/", "checkout/.test/data/reads.fq"][..],
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        unpack(modules(text, entries).as_slice(), folder.path()).unwrap();
+    }
 }
 
 /// As in nf-core ampliseq, a module links to a file of the repository; a path through a link

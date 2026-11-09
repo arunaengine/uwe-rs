@@ -210,7 +210,7 @@ impl Journal {
 
 fn create_record(root: &Path, record: Record) -> Result<Pending, String> {
     make_folder(root)?;
-    let _queue = queue_lock(root)?;
+    let queue_held = queue_lock(root)?;
     let mut queue = read_queue(root)?;
     let folder = root.join(queue.next.to_string());
     queue.next = queue
@@ -228,6 +228,8 @@ fn create_record(root: &Path, record: Record) -> Result<Pending, String> {
         .open(folder.join("lock"))
         .map_err(|error| error.to_string())?;
     lock.try_lock().map_err(|error| error.to_string())?;
+    // The held lock of the slot keeps recovery away from it, so the record needs no queue lock.
+    drop(queue_held);
     let pending = Pending {
         folder,
         _lock: lock,
@@ -237,6 +239,13 @@ fn create_record(root: &Path, record: Record) -> Result<Pending, String> {
     Ok(pending)
 }
 
+/// How long a run waits for the queue of container records, which the runs of this machine hold
+/// for a few writes each; on a loaded machine with many tasks starting, that takes a while.
+const QUEUE_WAIT: Duration = Duration::from_secs(600);
+
+/// How often a run that waits for the queue says so.
+const QUEUE_NOTICE: Duration = Duration::from_secs(30);
+
 fn queue_lock(root: &Path) -> Result<File, String> {
     let lock = File::options()
         .write(true)
@@ -245,11 +254,17 @@ fn queue_lock(root: &Path) -> Result<File, String> {
         .open(root.join("queue.lock"))
         .map_err(|error| error.to_string())?;
     let started = std::time::Instant::now();
+    let mut notice = QUEUE_NOTICE;
     loop {
         match lock.try_lock() {
             Ok(()) => return Ok(lock),
-            Err(TryLockError::WouldBlock) if started.elapsed() < Duration::from_secs(5) => {
-                std::thread::sleep(Duration::from_millis(2));
+            Err(TryLockError::WouldBlock) if started.elapsed() < QUEUE_WAIT => {
+                if started.elapsed() >= notice {
+                    let waited = started.elapsed().as_secs();
+                    tracing::warn!(waited, "waiting for the container ownership queue");
+                    notice += QUEUE_NOTICE;
+                }
+                std::thread::sleep(Duration::from_millis(5));
             }
             Err(error) => {
                 return Err(format!(

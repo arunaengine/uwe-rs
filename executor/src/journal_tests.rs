@@ -268,3 +268,27 @@ async fn concurrent_engines_create() {
     assert!(super::super::remove_owned(&second, &two).await);
     server.finish();
 }
+
+/// Another run that holds the queue longer than a few seconds, as on a loaded machine with
+/// many tasks starting, delays a record and does not fail it.
+#[test]
+fn waits_for_queue() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path().join("journal");
+    make_folder(&root).unwrap();
+    let held = queue_lock(&root).unwrap();
+    let holder = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(6));
+        drop(held);
+    });
+    let record = Record {
+        socket: "socket".into(),
+        daemon: "test-engine".into(),
+        name: "task".into(),
+        owner: "owner".into(),
+        id: None,
+    };
+    let pending = create_record(&root, record).unwrap();
+    holder.join().unwrap();
+    assert!(pending.folder.join("record.json").is_file());
+}

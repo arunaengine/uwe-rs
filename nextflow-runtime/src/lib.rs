@@ -461,7 +461,7 @@ pub fn export(
     for on_error in [false, true] {
         for handler in workflow::handlers(&workflow, on_error) {
             let callback =
-                export::Callback::of(&handler).map_err(|message| Error::Unsupported {
+                export::Callback::handler(&handler).map_err(|message| Error::Unsupported {
                     message: format!("a workflow event handler: {message}"),
                     span: Default::default(),
                 })?;

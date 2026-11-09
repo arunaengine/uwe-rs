@@ -10,7 +10,7 @@ use wir::reserved::{Dynamic, Identity, PlanUpdate};
 use wir::{Document, Status};
 
 use crate::adapter::Adapters;
-use crate::plan;
+use crate::plan::{self, Source};
 use crate::state::{Progress, State};
 use crate::streams::{Read, ReaderId, StreamEnd};
 
@@ -249,13 +249,21 @@ impl Region {
             if !outputs.contains(output) {
                 continue;
             }
-            let Some(key) = edge.from.op.as_ref().and_then(|op| keys.get(op)) else {
-                return Err(format!(
-                    "output {output} comes from no instance of the plan"
-                ));
-            };
-            let node = self.instances[key].node;
             let port = edge.from.port.clone();
+            // An output comes from an instance, or straight from an input of the region.
+            let (key, node, source) = match &edge.from.op {
+                Some(op) => {
+                    let Some(key) = keys.get(op) else {
+                        return Err(format!(
+                            "output {output} comes from no instance of the plan"
+                        ));
+                    };
+                    let node = self.instances[key].node;
+                    (key.clone(), node, Source::Output(node, port.clone()))
+                }
+                None => (format!("input {port}"), at, Source::Call(at, port.clone())),
+            };
+            let key = &key;
             let same =
                 |item: &Attachment| item.output == *output && item.key == *key && item.port == port;
             let found = self.attached.iter().position(same);
@@ -267,7 +275,7 @@ impl Region {
                 owner: path.clone(),
                 input: format!("export {output} {}", self.readers),
             };
-            let stream = crate::flows::output_stream(&progress.node(node).path, &port);
+            let stream = progress.stream_of(&source).map_err(|error| error.message)?;
             let mode = wir::Subscription::All;
             (progress.streams)
                 .subscribe(&stream, reader.clone(), mode)
@@ -320,7 +328,13 @@ impl Region {
                     }
                     Read::Pending => break,
                     Read::End(terminal) => {
+                        // The prefix of an attached producer leaves before its error.
                         if let StreamEnd::Error(failure) = terminal.end {
+                            let prefix = std::mem::take(&mut batch);
+                            progress
+                                .streams
+                                .commit(prefix)
+                                .map_err(|error| error.message)?;
                             return Err(failure.message);
                         }
                         item.ended = true;

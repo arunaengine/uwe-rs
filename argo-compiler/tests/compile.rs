@@ -201,7 +201,10 @@ fn compiles_dag_control() {
     assert_eq!(op(main, "c")["depends"], expected);
     let judged = &op(main, "a.targets");
     assert_eq!(judged["kind"]["status_group"]["members"], json!(["c"]));
-    assert_eq!(judged["after"], json!([{"op": "c", "on": ["succeeded"]}]));
+    assert_eq!(
+        judged["depends"]["all"][0]["any"][0],
+        json!({"result": {"op": "c", "on": ["succeeded"]}})
+    );
     assert_eq!(
         judged["handles"],
         json!([{"op": "a", "on": ["failed", "errored"]}])
@@ -636,7 +639,10 @@ fn targets_handle_failures() {
     let main = graph(&document, "template.main");
     for failing in ["a", "b"] {
         let judged = &op(main, &format!("{failing}.targets"));
-        assert_eq!(judged["after"], json!([{"op": "c", "on": ["succeeded"]}]));
+        assert_eq!(
+            judged["depends"]["all"][0]["any"][0],
+            json!({"result": {"op": "c", "on": ["succeeded"]}})
+        );
         let handles = json!([{"op": failing, "on": ["failed", "errored"]}]);
         assert_eq!(judged["handles"], handles);
     }

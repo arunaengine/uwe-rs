@@ -103,6 +103,10 @@ pub fn build(
                     Err(why) => return Err(format!("argument {index}: {why}")),
                 };
                 let value = crate::cwl::to_wir(given.clone());
+                // As CWL binds a bool: only a prefix, and only when it is true.
+                if value.is_boolean() && prefix.is_none() {
+                    continue;
+                }
                 let texts = staging.words(&given, &value, &format!("arguments/{index}"));
                 let binding = (prefix.as_deref(), *separate, separator.as_deref());
                 let raw = spec.shell && !quote;
@@ -1370,6 +1374,47 @@ mod tests {
         );
         let error = capture(&spec, &ports, ended(false), &[]).unwrap_err();
         assert!(error.contains("2 files matched one value"), "{error}");
+    }
+
+    #[test]
+    fn binds_code_flags() {
+        let op: Op = serde_json::from_value(json!({
+            "path": "echo",
+            "kind": {"task": {}},
+            "inputs": [{"name": "flag", "type": "bool"}]
+        }))
+        .unwrap();
+        let flag = |prefix: Option<&str>| Argument::Code {
+            code: "$(inputs.flag)".into(),
+            this: None,
+            prefix: prefix.map(str::to_owned),
+            separate: true,
+            separator: None,
+            quote: true,
+        };
+        let spec = wir::Task {
+            command: vec![Argument::Text("echo".into()), flag(None), flag(Some("-v"))],
+            ..wir::Task::default()
+        };
+        let settings = JavaScriptSettings::default();
+        let command = |value: bool| {
+            let bound = Map::from_iter([("flag".to_owned(), json!(value))]);
+            let task = build(
+                TaskId(1),
+                ("echo", "echo"),
+                &op,
+                &spec,
+                &bound,
+                (&settings, false),
+            );
+            task.unwrap().command
+        };
+        assert_eq!(
+            command(true),
+            ["echo", "-v"],
+            "a bool is no word of its own"
+        );
+        assert_eq!(command(false), ["echo"]);
     }
 
     #[test]

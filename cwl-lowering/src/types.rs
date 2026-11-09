@@ -152,7 +152,8 @@ pub fn formatted(r#type: Type, formats: &[Expression], named: &Named) -> Result<
     }
     match named.ontology {
         true if named.unreadable => Err("formats with an ontology that cannot be read".into()),
-        true => Ok(r#type),
+        // wir checks formats as text, so a tool whose ontology may match others stays native.
+        true => Err("formats that an ontology may match".into()),
         false => Ok(with_formats(r#type, &texts)),
     }
 }

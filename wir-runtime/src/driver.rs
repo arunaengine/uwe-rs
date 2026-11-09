@@ -414,7 +414,7 @@ impl WirDriver {
             Kind::Load(spec) => {
                 let node = self.progress.node(at);
                 let mut access = self.settings.cwl.access();
-                access.assume_present |= self.launch.simulated;
+                access.assume_present = self.launch.simulated;
                 match crate::load::load(&spec, &node.op, &bound, &access) {
                     Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
                     Err(why) => {
@@ -586,7 +586,7 @@ impl WirDriver {
         };
         let files = self.files.as_deref();
         let mut access = self.settings.cwl.access();
-        access.assume_present |= self.launch.simulated;
+        access.assume_present = self.launch.simulated;
         let ended = task::Ended {
             outcome,
             files,
@@ -1182,7 +1182,8 @@ impl Driver for WirDriver {
                 },
             })
             .collect();
-        let mut values = inputs::read(&self.launch, &given, &self.document.types)?;
+        let remote = &self.settings.cwl.remote;
+        let mut values = inputs::read(&self.launch, &given, &self.document.types, remote)?;
         let streams: Vec<String> = (ports.iter())
             .filter(|port| !port.flow.is_value())
             .map(|port| port.name.clone())

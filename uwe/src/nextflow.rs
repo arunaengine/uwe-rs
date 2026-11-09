@@ -529,13 +529,14 @@ pub fn compile(
     arguments: &Arguments,
     setup: &Setup,
     base: &std::path::Path,
-    native: Option<&str>,
+    (run, native): (&str, Option<&str>),
 ) -> Result<nextflow_compiler::Compilation, DriverError> {
-    // Workflow code that runs while the pipeline compiles reaches what the run may reach, and
-    // prints where the run prints.
+    // Workflow code that runs while the pipeline compiles reaches what the run may reach,
+    // prints where the run prints, and starts in the folder the run starts in.
     let console = Console {
         print: !arguments.no_print,
         sink: arguments.print_sink.clone(),
+        launch: own_launch(launch, run, arguments),
         ..console(true, setup, &arguments.secrets)
     }
     .confined(
@@ -556,6 +557,12 @@ pub fn compile(
     }
 }
 
+/// The launch folder of an embedded run: runs at the same time must not meet in relative paths,
+/// like `publishDir`. The command line launches in the working directory.
+fn own_launch(launch: &Launch, run: &str, arguments: &Arguments) -> Option<PathBuf> {
+    (arguments.embedded).then(|| launch.scratch.join("launch").join(run))
+}
+
 /// The Nextflow driver of a launch. `quiet` sends what the workflow prints to standard error.
 pub fn driver(
     launch: &Launch,
@@ -564,10 +571,7 @@ pub fn driver(
     arguments: &Arguments,
     setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
-    // Embedded runs at the same time must not meet in relative paths, like `publishDir`.
-    let own = arguments
-        .embedded
-        .then(|| launch.scratch.join("launch").join(run));
+    let own = own_launch(launch, run, arguments);
     let console = Console {
         operators: Some(run_folder(&launch.scratch, run)),
         print: !arguments.no_print,

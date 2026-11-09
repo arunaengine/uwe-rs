@@ -23,7 +23,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         Language::Nextflow => {
             let setup = Setup::load(arguments)?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
-            nextflow(arguments, &setup, &target, &base, None)?
+            nextflow(arguments, &setup, &target, &base, ("lower", None))?
         }
         Language::Snakemake => {
             let setup = Setup::load(arguments)?;
@@ -112,11 +112,11 @@ pub fn document(
             (document, None)
         }
         Language::Nextflow => {
-            let mut document = nextflow(arguments, setup, target, &folder, None)?;
+            let mut document = nextflow(arguments, setup, target, &folder, (run, None))?;
             // A compiled pipeline holds the values of its run; one native op holds none.
             if holds_secret(shown(&document)?.as_bytes(), &secrets) {
                 let reason = Some("the values of the run hold a secret");
-                document = nextflow(arguments, setup, target, &folder, reason)?;
+                document = nextflow(arguments, setup, target, &folder, (run, reason))?;
                 secret = withheld(&mut document, &secrets);
             }
             (document, None)
@@ -424,16 +424,14 @@ fn nextflow(
     setup: &Setup,
     target: &Path,
     base: &Path,
-    native: Option<&str>,
+    (run, native): (&str, Option<&str>),
 ) -> Result<wir::Document, Failure> {
     let launch = crate::launch(arguments, target.to_owned());
     // A feature that uwe does not run yet keeps its exit code, as in a run of the driver.
-    let compiled =
-        (crate::nextflow::compile(&launch, arguments, setup, base, native)).map_err(|error| {
-            DriverError {
-                message: format!("uwe: {}: {}", target.display(), error.message),
-                ..error
-            }
+    let compiled = (crate::nextflow::compile(&launch, arguments, setup, base, (run, native)))
+        .map_err(|error| DriverError {
+            message: format!("uwe: {}: {}", target.display(), error.message),
+            ..error
         })?;
     for kept in &compiled.kept {
         eprintln!(

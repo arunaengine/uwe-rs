@@ -13,10 +13,23 @@ use cwl_runtime::files::Access;
 
 use crate::state::widen;
 
+/// Values of entry graph inputs that hold secrets, which the host keeps in memory, as no file
+/// may hold them. Debug shows their names only.
+#[derive(Clone, Default, PartialEq)]
+pub struct SecretInputs(pub Map<String, Json>);
+
+impl std::fmt::Debug for SecretInputs {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_set().entries(self.0.keys()).finish()
+    }
+}
+
 /// The input values of a launch by port name: the JSON or YAML inputs file, with File and Directory
-/// locations taken from its folder, then the parameters, read by the type of their port.
+/// locations taken from its folder, then the values in memory, then the parameters, read by the
+/// type of their port.
 pub fn read(
     launch: &Launch,
+    secret: &SecretInputs,
     ports: &[Port],
     defs: &[TypeDef],
     remote: &cwl_parser::source::Remote,
@@ -46,6 +59,7 @@ pub fn read(
         };
         values = object;
     }
+    values.extend(secret.0.clone());
     let mut given: Vec<(&str, Vec<&str>)> = Vec::new();
     for (name, text) in &launch.params {
         match given.iter_mut().find(|(known, _)| known == name) {

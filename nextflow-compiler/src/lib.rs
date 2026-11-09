@@ -80,6 +80,30 @@ pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compi
     }
 }
 
+/// Compiles the pipeline of a launch into one native op that runs it with the native driver,
+/// for `reason`; the params of the launch are the inputs of the op.
+pub fn compile_native(
+    launch: &Launch,
+    settings: Settings,
+    base: &Path,
+    reason: &str,
+) -> Result<Compilation, String> {
+    let context = Context {
+        profiles: launch.profiles.clone(),
+        configs: launch.configs.clone(),
+        entry: launch.targets.first().cloned(),
+        base: base.to_owned(),
+    };
+    let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
+    let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
+    let kept = vec![Kept {
+        path: "pipeline".into(),
+        reason: reason.into(),
+    }];
+    let interface = driver.interface().map_err(|error| error.message)?;
+    native(&interface, &context, &mut sources, kept)
+}
+
 /// Compiles a built network; a node that does not compile keeps the pipeline one native op.
 /// It fails only when the compiler makes no wir document, which is a bug of the compiler.
 pub fn compile_network(network: &Network, context: &Context) -> Result<Compilation, String> {

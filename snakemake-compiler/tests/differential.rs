@@ -479,6 +479,18 @@ fn skips_current_groups() {
     assert_eq!(ran, Ran::new(), "nothing needs to run, as natively");
 }
 
+/// A compiled group of which some jobs became current runs the others as the run groups
+/// them, as natively: here `a` is current and `b` runs alone.
+#[test]
+fn runs_rest_of_groups() {
+    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n";
+    let ran = rerun(snakefile, "{}\n", &[("a.txt", "a\n")]).expect("runs the rest");
+    let names: Vec<&str> = (ran.iter())
+        .filter_map(|task| task.0.split('"').nth(5))
+        .collect();
+    assert!(names.contains(&"b") && !names.contains(&"a"), "{names:?}");
+}
+
 /// How a test workflow is launched: its working folder and Snakefile, config files, targets
 /// and profiles, from the launches of the test-workflows test of snakemake-runtime.
 fn launch_of(name: &str, folder: &Path, scratch: &Path) -> (Launch, PathBuf) {

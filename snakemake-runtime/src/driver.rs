@@ -158,8 +158,10 @@ pub struct Session {
     run: String,
     /// The `priority` of each built job, by which ready jobs start, highest first.
     priorities: HashMap<usize, f64>,
-    /// The planned jobs by their identity, for jobs that run one by one.
+    /// The planned jobs by their identity, for jobs that run one by one, and the jobs of the
+    /// compiled group of each task of them, whose files it gives.
     keys: HashMap<JobKey, usize>,
+    recorded: HashMap<TaskId, Vec<usize>>,
 }
 
 struct SignaturePublication {
@@ -319,6 +321,7 @@ impl Session {
             },
             priorities: HashMap::new(),
             keys: HashMap::new(),
+            recorded: HashMap::new(),
         })
     }
 

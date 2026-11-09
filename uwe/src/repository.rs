@@ -489,6 +489,7 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
     let mut archive = tar::Archive::new(reader);
     let mut size = 0;
     let mut top = None;
+    let mut links: Vec<PathBuf> = Vec::new();
     for (count, entry) in archive.entries().map_err(local)?.enumerate() {
         let mut entry = entry.map_err(local)?;
         if count >= MOST_FILES {
@@ -525,9 +526,19 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
                 "repository archive contains reserved cache metadata",
             ));
         }
+        // Git keeps nothing below a link, so a path through one could only lead elsewhere.
+        if links.iter().any(|link| relative.starts_with(link)) {
+            return Err(failure("unsafe repository archive: a path through a link"));
+        }
         let kind = entry.header().entry_type();
-        if !kind.is_file() && !kind.is_dir() {
-            return Err(DriverError::unsupported("repository archive links are unsupported; use a local workflow with materialized files").into());
+        if kind.is_symlink() {
+            let target = entry.link_name().map_err(local)?.unwrap_or_default();
+            if !inside(&relative, &target) {
+                return Err(DriverError::unsupported("repository archive links that leave the repository are unsupported; use a local workflow with materialized files").into());
+            }
+            links.push(relative.clone());
+        } else if !kind.is_file() && !kind.is_dir() {
+            return Err(DriverError::unsupported("repository archive links other than symbolic links are unsupported; use a local workflow with materialized files").into());
         }
         size += entry.size();
         if size > MOST_BYTES {
@@ -546,6 +557,24 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
         return Err(DriverError::unsupported("repository submodules are unsupported; use a local workflow with materialized submodule files").into());
     }
     Ok(())
+}
+
+/// Whether a link at `path` in the repository whose target is `target` points into the
+/// repository, as its folder and the target's parts name it.
+fn inside(path: &Path, target: &Path) -> bool {
+    let mut depth = path.components().count().saturating_sub(1);
+    for part in target.components() {
+        depth = match part {
+            Component::Normal(_) => depth + 1,
+            Component::CurDir => depth,
+            Component::ParentDir => match depth.checked_sub(1) {
+                Some(depth) => depth,
+                None => return false,
+            },
+            Component::RootDir | Component::Prefix(_) => return false,
+        };
+    }
+    true
 }
 
 fn default_branch(folder: &Path) -> Result<Option<String>, Failure> {

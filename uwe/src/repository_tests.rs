@@ -199,6 +199,45 @@ fn refuses_unsafe_archives() {
     assert!(!folder.path().parent().unwrap().join("outside").exists());
 }
 
+/// As in nf-core ampliseq, a module links to a file of the repository; a path through a link
+/// is refused.
+#[test]
+fn keeps_inner_links() {
+    let linked = |entries: &[(&str, Option<&str>)]| {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut archive = tar::Builder::new(encoder);
+        for (path, link) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(0);
+            header.set_mode(0o644);
+            if let Some(link) = link {
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_link_name(link).unwrap();
+            }
+            header.set_path(path).unwrap();
+            header.set_cksum();
+            archive.append(&header, std::io::empty()).unwrap();
+        }
+        archive.into_inner().unwrap().finish().unwrap()
+    };
+    let folder = tempfile::tempdir().unwrap();
+    let link = "checkout/modules/local/qiime2/environment.yml";
+    let bytes = linked(&[
+        ("checkout/modules/envs/qiime2.yml", None),
+        (link, Some("../../envs/qiime2.yml")),
+    ]);
+    unpack(bytes.as_slice(), folder.path()).unwrap();
+    let unpacked = folder.path().join("modules/local/qiime2/environment.yml");
+    assert!(unpacked.is_symlink());
+    assert!(unpacked.is_file(), "the link reaches its target");
+    let folder = tempfile::tempdir().unwrap();
+    let bytes = linked(&[
+        ("checkout/up", Some("..")),
+        ("checkout/up/escape", Some("../..")),
+    ]);
+    assert!(unpack(bytes.as_slice(), folder.path()).is_err());
+}
+
 #[test]
 fn reads_manifest_branch() {
     let folder = tempfile::tempdir().unwrap();

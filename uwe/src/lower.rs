@@ -25,7 +25,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
             nextflow(arguments, &setup, &target, &base, None)?
         }
-        Language::Snakemake => snakemake(&target, arguments, &base)?.document,
+        Language::Snakemake => {
+            let setup = Setup::load(arguments)?;
+            let _registry = setup.registry.enter().map_err(Failure::setup)?;
+            snakemake(&target, arguments, &setup, "lower", &base)?.document
+        }
         Language::Argo => argo(&target, arguments, &base)?.document,
         _ => lowered(&target, language, &base)?.document,
     };
@@ -35,15 +39,15 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The wir document of a run by its digest, or of the run a resume continues; the
-/// WDL inputs file of its entry graph; the files of its values; the values that hold a secret,
-/// which no file holds. Old documents go, see [`pruned`].
+/// The wir document of the run `run` by its digest, or of the run a resume continues, with
+/// what the run needs besides it. Old documents go, see [`pruned`].
 pub fn document(
     target: &Path,
     language: Language,
     arguments: &Arguments,
     setup: &Setup,
-) -> Result<(PathBuf, Option<PathBuf>, Vec<Values>, SecretInputs), Failure> {
+    run: &str,
+) -> Result<Compiled, Failure> {
     let folder = cache_directory().join("scratch").join("lowered");
     let secrets = secret_texts(&arguments.secrets);
     let mut private = Vec::new();
@@ -92,7 +96,7 @@ pub fn document(
                 inputs,
                 ..arguments.clone()
             };
-            let mut document = snakemake(target, arguments, &folder)?.document;
+            let mut document = snakemake(target, arguments, setup, run, &folder)?.document;
             let place = |text: &str| {
                 if holds_secret(text.as_bytes(), &secrets) {
                     return Err(
@@ -134,14 +138,35 @@ pub fn document(
     ));
     pruned(&folder);
     // A resume runs the document of the run it continues, so it writes no other.
-    let ran = resumed(arguments, target, language, path.clone())?;
-    if ran != path {
-        return Ok((ran, inputs, private, secret));
+    let (ran, launch) = resumed(arguments, target, language, path.clone())?;
+    let compiled = Compiled {
+        path: ran,
+        inputs,
+        private,
+        secret,
+        launch,
+    };
+    if compiled.path != path {
+        return Ok(compiled);
     }
     std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
-    Ok((path, inputs, private, secret))
+    Ok(compiled)
+}
+
+/// What a run runs of the workflow that it compiled.
+pub struct Compiled {
+    /// The wir document.
+    pub path: PathBuf,
+    /// The WDL inputs file of the entry graph.
+    pub inputs: Option<PathBuf>,
+    /// The files of the values, removed when the run ends.
+    pub private: Vec<Values>,
+    /// The values that hold a secret, which no file holds.
+    pub secret: SecretInputs,
+    /// The run whose launch folder a resume starts in, as it runs the document of that run.
+    pub launch: Option<String>,
 }
 
 /// The text of a wir document as uwe writes it.
@@ -202,7 +227,7 @@ fn own(target: &Path, language: Language) -> String {
     format!("{}/{}-", folder.display(), &digest[..16])
 }
 
-/// The document that a resume of a compiled run runs: the one that the run it continues ran,
+/// The document that a resume of a compiled run runs, with the id of the run that ran it: the one that the run it continues ran,
 /// since compiling again may give another, like a Nextflow config that reads the time. The
 /// files of the values it names must be there, which a compile with the same values makes.
 fn resumed(
@@ -210,9 +235,9 @@ fn resumed(
     target: &Path,
     language: Language,
     compiled: PathBuf,
-) -> Result<PathBuf, Failure> {
+) -> Result<(PathBuf, Option<String>), Failure> {
     let Some(resume) = &arguments.resume else {
-        return Ok(compiled);
+        return Ok((compiled, None));
     };
     let database = crate::runs::open(arguments)?;
     let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
@@ -224,7 +249,7 @@ fn resumed(
     };
     // Without an earlier compiled run of this workflow, the run checks the resume itself.
     let Some(earlier) = earlier.filter(|earlier| earlier.workflow.starts_with(&prefix)) else {
-        return Ok(compiled);
+        return Ok((compiled, None));
     };
     let ran = PathBuf::from(&earlier.workflow);
     let text = std::fs::read_to_string(&ran).map_err(|error| {
@@ -253,9 +278,19 @@ fn resumed(
     }
     // A config file that held a secret was read where it was, and is gone with its run.
     if (locations.iter()).any(|location| location.is_absolute() && !location.exists()) {
-        return Ok(compiled);
+        return Ok((compiled, None));
     }
-    Ok(ran)
+    Ok((ran, Some(earlier.id)))
+}
+
+/// Whether two compiled documents are of the same workflow, by the start of their names.
+pub(crate) fn same_workflow(one: &str, other: &str) -> bool {
+    let folder = cache_directory().join("scratch").join("lowered");
+    let start = |path: &str| {
+        let name = Path::new(path).strip_prefix(&folder).ok()?.to_str()?;
+        name.split_once('-').map(|(start, _)| start.to_owned())
+    };
+    start(one).is_some_and(|first| start(other) == Some(first))
 }
 
 /// The file of the values of a run, which only the user reads. Runs with the same values
@@ -404,14 +439,19 @@ fn nextflow(
 fn snakemake(
     target: &Path,
     arguments: &Arguments,
+    setup: &Setup,
+    run: &str,
     base: &Path,
 ) -> Result<snakemake_compiler::Compiled, Failure> {
-    let setup = Setup::load(arguments)?;
-    let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let launch = crate::launch(arguments, target.to_owned());
     let cancel = workflow_graph::CancellationToken::default();
-    let settings = crate::run::driver::snakemake(arguments, &setup, &cancel);
-    let run = crate::run::driver::snakemake_options(arguments, &setup, "lower");
+    let settings = crate::run::driver::snakemake(arguments, setup, &cancel);
+    // The run plans its jobs in the folder that it starts in, as the run `run` does.
+    let run = crate::run::driver::snakemake_options(arguments, setup, run);
+    if let Some(folder) = &run.workdir {
+        std::fs::create_dir_all(folder)
+            .map_err(|error| failure(format!("uwe: cannot make {}: {error}", folder.display())))?;
+    }
     let compiled = snakemake_compiler::compile(&launch, settings, run, base)
         .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
     for kept in &compiled.kept {

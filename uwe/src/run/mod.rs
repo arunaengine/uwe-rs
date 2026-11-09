@@ -222,6 +222,7 @@ fn execute_with(
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();
     let (target, language) = target_and_language(arguments)?;
+    let run = chosen.unwrap_or_else(run_id);
     // A run compiles its workflow into wir and checks its inputs with the schema of the
     // workflow; a wir document runs as it is.
     let source = (language != Language::Wir).then(|| (launch(arguments, target.clone()), language));
@@ -230,8 +231,13 @@ fn execute_with(
     let private;
     let (target, language, arguments) = match source.is_some() {
         true => {
-            let (path, inputs, values, secret_inputs) =
-                crate::lower::document(&target, language, arguments, &setup)?;
+            let crate::lower::Compiled {
+                path,
+                inputs,
+                private: values,
+                secret: secret_inputs,
+                launch: launch_run,
+            } = crate::lower::document(&target, language, arguments, &setup, &run)?;
             private = values;
             // A WDL input file and parameters become one file for the entry graph, or values in
             // memory; Snakemake config files and values are in the document.
@@ -245,6 +251,7 @@ fn execute_with(
                 inputs: inputs.or(arguments.inputs.clone().filter(|_| !compiled)),
                 params,
                 secret_inputs,
+                launch_run,
                 ..arguments.clone()
             };
             (path, Language::Wir, &converted)
@@ -292,7 +299,6 @@ fn execute_with(
         }
         _ => arguments,
     };
-    let run = chosen.unwrap_or_else(run_id);
     let name = arguments.executor.as_deref().unwrap_or("local");
     if let Some(network) = network {
         setup.network = network;

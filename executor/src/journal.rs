@@ -2,11 +2,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, TryLockError};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use bollard::Docker;
@@ -75,7 +75,7 @@ impl Journal {
     }
 
     pub(crate) async fn verify(&self, client: &Docker) -> Result<(), String> {
-        verify(client, &self.daemon).await
+        verify(client, &self.socket, &self.daemon).await
     }
 
     pub(crate) async fn begin(&self, name: &str, owner: &str) -> Result<Pending, String> {
@@ -322,7 +322,10 @@ impl Pending {
     }
 
     pub(crate) async fn reconcile(mut self, client: &Docker) -> bool {
-        if verify(client, &self.record.daemon).await.is_err() {
+        if verify(client, &self.record.socket, &self.record.daemon)
+            .await
+            .is_err()
+        {
             return false;
         }
         let target = self.record.id.as_deref().unwrap_or(&self.record.name);
@@ -360,15 +363,42 @@ impl Pending {
     }
 }
 
-async fn verify(client: &Docker, daemon: &str) -> Result<(), String> {
-    let info = tokio::time::timeout(Duration::from_secs(2), client.info())
-        .await
-        .map_err(|_| "the container engine identity request timed out")?
-        .map_err(|error| error.to_string())?;
-    if daemon.is_empty() || info.id.as_deref() != Some(daemon) {
-        return Err("the container engine identity changed; reconnect before creating or deleting containers".into());
+/// The engines whose identity this process checked, by socket and daemon ID: an engine keeps
+/// its daemon ID, so checking it again would only cost a request of a busy engine.
+static VERIFIED: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
+
+/// How long one identity request may take, and how often it is made; an engine with a
+/// hundred running containers answers slowly.
+const IDENTITY_WAIT: Duration = Duration::from_secs(30);
+const IDENTITY_TRIES: u32 = 3;
+
+async fn verify(client: &Docker, socket: &str, daemon: &str) -> Result<(), String> {
+    let changed =
+        "the container engine identity changed; reconnect before creating or deleting containers";
+    if daemon.is_empty() {
+        return Err(changed.into());
     }
-    Ok(())
+    let key = (socket.to_owned(), daemon.to_owned());
+    let verified = || VERIFIED.lock().unwrap_or_else(PoisonError::into_inner);
+    if verified().contains(&key) {
+        return Ok(());
+    }
+    let mut failed = String::new();
+    for attempt in 0..IDENTITY_TRIES {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        match tokio::time::timeout(IDENTITY_WAIT, client.info()).await {
+            Ok(Ok(info)) if info.id.as_deref() == Some(daemon) => {
+                verified().insert(key);
+                return Ok(());
+            }
+            Ok(Ok(_)) => return Err(changed.into()),
+            Ok(Err(error)) => failed = error.to_string(),
+            Err(_) => failed = "the container engine identity request timed out".into(),
+        }
+    }
+    Err(failed)
 }
 
 fn save_json(folder: &Path, name: &str, value: &impl Serialize) -> Result<(), String> {

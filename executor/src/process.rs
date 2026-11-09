@@ -481,12 +481,16 @@ pub(crate) async fn create_id(
     if cancel.is_cancelled() {
         return Err(ProcessError::Cancelled);
     }
-    bounded(cancel, STOP_GRACE, engine.journal.verify(engine.client()))
-        .await?
-        .map_err(|reason| ProcessError::Start {
-            engine: engine.name.clone(),
-            reason,
-        })?;
+    bounded(
+        cancel,
+        OPERATION_LIMIT,
+        engine.journal.verify(engine.client()),
+    )
+    .await?
+    .map_err(|reason| ProcessError::Start {
+        engine: engine.name.clone(),
+        reason,
+    })?;
     bounded(cancel, STOP_GRACE, engine.journal.recover(engine.client()))
         .await?
         .map_err(|reason| ProcessError::Start {

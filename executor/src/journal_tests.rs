@@ -292,3 +292,28 @@ fn waits_for_queue() {
     holder.join().unwrap();
     assert!(pending.folder.join("record.json").is_file());
 }
+
+/// A busy engine answers its identity request later than the two seconds that a check once
+/// allowed; the process then knows the engine, and a later check asks it nothing.
+#[tokio::test]
+async fn waits_for_identity() {
+    use std::io::{BufRead, BufReader, Write};
+    let folder = tempfile::tempdir().unwrap();
+    let socket = folder.path().join("busy.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let served = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut line = String::new();
+        while reader.read_line(&mut line).unwrap() > 0 && !line.ends_with("\r\n\r\n") {}
+        std::thread::sleep(Duration::from_secs(3));
+        let body = r#"{"ID":"busy-engine"}"#;
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+    });
+    let path = socket.to_string_lossy().into_owned();
+    let client = Docker::connect_with_socket(&path, 120, bollard::API_DEFAULT_VERSION).unwrap();
+    let journal = Journal::new(folder.path(), path, "busy-engine".into());
+    journal.verify(&client).await.unwrap();
+    served.join().unwrap();
+    journal.verify(&client).await.unwrap();
+}

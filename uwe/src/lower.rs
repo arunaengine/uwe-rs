@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 use workflow_graph::Language;
 
+use wir_runtime::SecretInputs;
+
 use crate::arguments::Arguments;
 use crate::setup::Setup;
 use crate::{Failure, cache_directory, failure};
@@ -21,7 +23,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         Language::Nextflow => {
             let setup = Setup::load(arguments)?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
-            nextflow(arguments, &setup, &target, &base)?
+            nextflow(arguments, &setup, &target, &base, None)?
         }
         Language::Snakemake => snakemake(&target, arguments, &base)?.document,
         Language::Argo => argo(&target, arguments, &base)?.document,
@@ -34,22 +36,38 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
 }
 
 /// The wir document of a `-lowered` run by its digest, or of the run a resume continues; the
-/// WDL inputs file of its entry graph; the files of its values. Old documents go, see [`pruned`].
+/// WDL inputs file of its entry graph; the files of its values; the values that hold a secret,
+/// which no file holds. Old documents go, see [`pruned`].
 pub fn document(
     target: &Path,
     language: Language,
     arguments: &Arguments,
     setup: &Setup,
-) -> Result<(PathBuf, Option<PathBuf>, Vec<Values>), Failure> {
+) -> Result<(PathBuf, Option<PathBuf>, Vec<Values>, SecretInputs), Failure> {
     let folder = cache_directory().join("scratch").join("lowered");
+    let secrets = secret_texts(&arguments.secrets);
     let mut private = Vec::new();
+    let mut secret = SecretInputs::default();
     let (document, inputs) = match language {
         Language::Wdl => {
             let lowering = wdl(target, arguments, &folder)?;
-            let inputs = converted(&lowering, arguments, &folder)?;
-            let path = inputs.as_ref().map(|inputs| inputs.to_path_buf());
-            private.extend(inputs);
-            (lowering.document, path)
+            let inputs = match converted(&lowering, arguments)? {
+                // Values that hold a secret reach the driver in memory.
+                Some(serde_json::Value::Object(values))
+                    if holds_secret(&serde_json::to_vec(&values).unwrap_or_default(), &secrets) =>
+                {
+                    secret = SecretInputs(values);
+                    None
+                }
+                Some(values) => {
+                    let file = written(&folder, &values.to_string())?;
+                    let path = file.to_path_buf();
+                    private.push(file);
+                    Some(path)
+                }
+                None => None,
+            };
+            (lowering.document, inputs)
         }
         Language::Snakemake => {
             // A config file of the inputs, like the one of an embedded run, is a value too.
@@ -58,10 +76,15 @@ pub fn document(
                     let text = std::fs::read_to_string(file).map_err(|error| {
                         failure(format!("uwe: cannot read {}: {error}", file.display()))
                     })?;
-                    let kept = written(&folder, &text)?;
-                    let path = kept.to_path_buf();
-                    private.push(kept);
-                    Some(path)
+                    // A file that holds a secret is read where it is, without a copy.
+                    if holds_secret(text.as_bytes(), &secrets) {
+                        Some(std::path::absolute(file).unwrap_or_else(|_| file.clone()))
+                    } else {
+                        let kept = written(&folder, &text)?;
+                        let path = kept.to_path_buf();
+                        private.push(kept);
+                        Some(path)
+                    }
                 }
                 None => None,
             };
@@ -71,6 +94,11 @@ pub fn document(
             };
             let mut document = snakemake(target, arguments, &folder)?.document;
             let place = |text: &str| {
+                if holds_secret(text.as_bytes(), &secrets) {
+                    return Err(
+                        "uwe: a config value holds a secret value, which no file may hold".into(),
+                    );
+                }
                 let file = written(&folder, text).map_err(|error| error.message)?;
                 let location = file.to_string_lossy().into_owned();
                 private.push(file);
@@ -79,12 +107,25 @@ pub fn document(
             snakemake_compiler::place_values(&mut document, place).map_err(failure)?;
             (document, None)
         }
-        Language::Nextflow => (nextflow(arguments, setup, target, &folder)?, None),
+        Language::Nextflow => {
+            let mut document = nextflow(arguments, setup, target, &folder, None)?;
+            // A compiled pipeline holds the values of its run; one native op holds none.
+            if holds_secret(shown(&document)?.as_bytes(), &secrets) {
+                let reason = Some("the values of the run hold a secret");
+                document = nextflow(arguments, setup, target, &folder, reason)?;
+                secret = withheld(&mut document, &secrets);
+            }
+            (document, None)
+        }
         Language::Argo => (argo(target, arguments, &folder)?.document, None),
         _ => (lowered(target, language, &folder)?.document, None),
     };
-    let text = serde_json::to_string_pretty(&document)
-        .map_err(|error| failure(format!("uwe: {error}")))?;
+    let text = shown(&document)?;
+    if holds_secret(text.as_bytes(), &secrets) {
+        return Err(failure(
+            "uwe: the wir document of the workflow would hold a secret value of the run",
+        ));
+    }
     let digest = task_model::Digest::sha256(text.as_bytes());
     let path = PathBuf::from(format!(
         "{}{}.wir.json",
@@ -95,12 +136,59 @@ pub fn document(
     // A resume runs the document of the run it continues, so it writes no other.
     let ran = resumed(arguments, target, language, path.clone())?;
     if ran != path {
-        return Ok((ran, inputs, private));
+        return Ok((ran, inputs, private, secret));
     }
     std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
-    Ok((path, inputs, private))
+    Ok((path, inputs, private, secret))
+}
+
+/// The text of a wir document as uwe writes it.
+fn shown(document: &wir::Document) -> Result<String, Failure> {
+    serde_json::to_string_pretty(document).map_err(|error| failure(format!("uwe: {error}")))
+}
+
+/// The secret values that the host gave the run, also as JSON text writes them.
+pub(crate) fn secret_texts(secrets: &config_file::SecretValues) -> Vec<String> {
+    let mut texts = Vec::new();
+    for value in secrets.names().filter_map(|name| secrets.get(name)) {
+        let quoted = serde_json::Value::String(value.clone()).to_string();
+        texts.push(quoted[1..quoted.len() - 1].to_owned());
+        texts.push(value);
+    }
+    texts.dedup();
+    texts
+}
+
+/// Whether `bytes` hold one of the texts of [`secret_texts`].
+pub(crate) fn holds_secret(bytes: &[u8], secrets: &[String]) -> bool {
+    (secrets.iter().filter(|secret| !secret.is_empty()))
+        .any(|secret| (bytes.windows(secret.len())).any(|part| part == secret.as_bytes()))
+}
+
+/// Takes the defaults of the entry graph inputs that hold a secret out of `document`, as values
+/// that reach the driver in memory.
+fn withheld(document: &mut wir::Document, secrets: &[String]) -> SecretInputs {
+    let mut held = SecretInputs::default();
+    let entry = document.entry.clone();
+    let graphs = document
+        .graphs
+        .iter_mut()
+        .filter(|graph| graph.name == entry);
+    for port in graphs.flat_map(|graph| graph.inputs.iter_mut()) {
+        let text = port
+            .default
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        if holds_secret(text.as_bytes(), secrets)
+            && let Some(value) = port.default.take()
+        {
+            held.0.insert(port.name.clone(), value);
+        }
+    }
+    held
 }
 
 /// The start of the paths of the compiled documents of the workflow `target`, by a digest of
@@ -151,15 +239,21 @@ fn resumed(
         .join("scratch")
         .join("lowered")
         .join("values");
-    let missing = (document.sources.iter())
+    let locations: Vec<PathBuf> = (document.sources.iter())
         .map(|source| PathBuf::from(&source.location))
-        .find(|location| location.starts_with(&values) && !location.is_file());
+        .collect();
+    let missing =
+        (locations.iter()).find(|location| location.starts_with(&values) && !location.is_file());
     if missing.is_some() {
         return Err(failure(format!(
             "uwe: run {} ran with other values than this run gives; resume it with the same \
              values, or run without -resume",
             earlier.id
         )));
+    }
+    // A config file that held a secret was read where it was, and is gone with its run.
+    if (locations.iter()).any(|location| location.is_absolute() && !location.exists()) {
+        return Ok(compiled);
     }
     Ok(ran)
 }
@@ -283,15 +377,17 @@ fn lowered(
 }
 
 /// The wir document of a Nextflow pipeline as the command line launches it, for its params and
-/// config; it names on standard error what keeps it one native op.
+/// config, or as one native op for the reason `native`; it names on standard error what keeps
+/// it one native op.
 fn nextflow(
     arguments: &Arguments,
     setup: &Setup,
     target: &Path,
     base: &Path,
+    native: Option<&str>,
 ) -> Result<wir::Document, Failure> {
     let launch = crate::launch(arguments, target.to_owned());
-    let compiled = crate::nextflow::compile(&launch, arguments, setup, base)
+    let compiled = crate::nextflow::compile(&launch, arguments, setup, base, native)
         .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
     for kept in &compiled.kept {
         eprintln!(
@@ -365,13 +461,11 @@ fn argo(
     Ok(compiled)
 }
 
-/// The inputs file of the entry graph from the WDL input file and the parameters of a run,
-/// below `folder`, which only the user reads.
+/// The values of the entry graph from the WDL input file and the parameters of a run.
 fn converted(
     lowering: &wdl_lowering::Lowering,
     arguments: &Arguments,
-    folder: &Path,
-) -> Result<Option<Values>, Failure> {
+) -> Result<Option<serde_json::Value>, Failure> {
     let mut values = match &arguments.inputs {
         None if arguments.params.is_empty() => return Ok(None),
         None => serde_json::Value::Object(Default::default()),
@@ -394,7 +488,7 @@ fn converted(
     {
         values.extend(given);
     }
-    written(folder, &values.to_string()).map(Some)
+    Ok(Some(values))
 }
 
 #[cfg(test)]

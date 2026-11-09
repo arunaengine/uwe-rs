@@ -125,21 +125,28 @@ pub(crate) fn driver(
                     ..argo_services(run, setup)
                 },
                 cwl: cwl_options(arguments, setup, cancel),
-                nextflow: nextflow::blocks(run, arguments, setup),
+                nextflow: nextflow::blocks(run, quiet, arguments, setup),
                 snakemake: wir_runtime::snakemake::Options {
                     settings: snakemake(arguments, setup, cancel),
                     run: snakemake_options(arguments, setup, run),
                 },
                 wdl: wdl_options(arguments),
                 print: !arguments.no_print,
-                print_sink: match arguments.print_sink.clone() {
-                    Some(sink) => wir_runtime::Printer::new(move |text| sink.print(text)),
-                    None => wir_runtime::Printer::default(),
+                print_sink: {
+                    let secrets = arguments.secrets.clone();
+                    match arguments.print_sink.clone() {
+                        Some(sink) => wir_runtime::Printer::new(move |text| {
+                            sink.print(&nextflow::hidden(text, &secrets));
+                        }),
+                        None if quiet => wir_runtime::Printer::new(|text| eprint!("{text}")),
+                        None => wir_runtime::Printer::default(),
+                    }
                 },
                 adapters: wir_runtime::argo::register(
                     Default::default(),
                     argo_services(run, setup),
                 ),
+                secret_inputs: arguments.secret_inputs.clone(),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();

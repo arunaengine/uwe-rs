@@ -82,6 +82,8 @@ pub struct Progress {
     throttled: HashMap<usize, BTreeSet<usize>>,
     /// How many nodes the scheduler looked at, which bounds its work.
     pub visits: u64,
+    /// How the formats of Files match beyond equal text, when the document says.
+    pub formats: Option<std::sync::Arc<crate::formats::FormatCheck>>,
 }
 
 impl Progress {
@@ -108,9 +110,21 @@ impl Progress {
             running: HashMap::new(),
             throttled: HashMap::new(),
             visits: 0,
+            formats: None,
         };
         progress.adopt(0);
         progress
+    }
+
+    /// Whether a value fits a type, with the formats of the run.
+    fn fits(&self, value: &Json, r#type: &Type) -> bool {
+        match &self.formats {
+            None => wir::fits(value, r#type, &self.defs),
+            Some(check) => {
+                let formats = |found: &str, wanted: &str| check.matches(found, wanted);
+                wir::fits_with(value, r#type, &self.defs, &formats)
+            }
+        }
     }
 
     pub fn node(&self, at: usize) -> &Node {
@@ -435,7 +449,7 @@ impl Progress {
                 Supply::Bound(value) => {
                     let typed = ports.iter().find(|item| item.name == *port);
                     if let Some(typed) = typed.filter(|_| self.unchecked(source))
-                        && !wir::fits(&value, &typed.r#type, &self.defs)
+                        && !self.fits(&value, &typed.r#type)
                     {
                         return Err(format!("the output {port} does not fit its type"));
                     }
@@ -502,7 +516,7 @@ impl Progress {
                         (value, _) => value,
                     };
                     let value = widen(value, &item.r#type, &self.defs);
-                    if self.unchecked(source) && !wir::fits(&value, &item.r#type, &self.defs) {
+                    if self.unchecked(source) && !self.fits(&value, &item.r#type) {
                         let path = &node.path;
                         return Readiness::Refuse(format!(
                             "op {path}: input {port} does not fit its type"
@@ -580,7 +594,7 @@ impl Progress {
                     let ports = &self.node(at).op.outputs;
                     let typed = ports.iter().find(|item| item.name == *port);
                     if let Some(typed) = typed.filter(|_| self.unchecked(source))
-                        && !wir::fits(&value, &typed.r#type, &self.defs)
+                        && !self.fits(&value, &typed.r#type)
                     {
                         let path = &self.node(at).path;
                         unfit = Some(format!("op {path}: output {port} does not fit its type"));
@@ -661,7 +675,7 @@ impl Progress {
                 .map(Option::unwrap_or_default)
                 .collect();
             let value = nest(&items, &node.shape);
-            if succeeded < rounds.len() && !wir::fits(&value, &port.r#type, &self.defs) {
+            if succeeded < rounds.len() && !self.fits(&value, &port.r#type) {
                 let (path, name) = (&node.path, &port.name);
                 unfit = Some(format!(
                     "op {path}: a round failed, and output {name} takes no null"

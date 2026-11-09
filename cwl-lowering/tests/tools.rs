@@ -366,8 +366,11 @@ fn joins_computed_items() {
 }
 
 #[test]
-fn keeps_ontology_formats() {
+fn compiles_ontology_formats() {
     let lowering = lowered("ontology.cwl");
-    let reason = &lowering.kept.first().expect("the tool stays native").reason;
-    assert!(reason.contains("ontology"), "{reason}");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let prefixes = &lowering.document.formats.prefixes;
+    assert_eq!(prefixes["edam"], "http://edamontology.org/");
+    let lowering = lowered("narrow.cwl");
+    assert_eq!(lowering.document.formats.ontologies, ["narrow.ttl"]);
 }

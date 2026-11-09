@@ -11,7 +11,15 @@
     "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
     "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
     "entry": { "$ref": "#/$defs/name" },
-    "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } }
+    "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } },
+    "formats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefixes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "ontologies": { "type": "array", "items": { "type": "string" } }
+      }
+    }
   },
   "$defs": {
     "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },

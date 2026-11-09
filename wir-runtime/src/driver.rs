@@ -239,7 +239,13 @@ impl WirDriver {
             inputs::absolute(default, &base);
             inputs::filled(default, launch.simulated);
         }
-        let progress = Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
+        let mut progress =
+            Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
+        if !document.formats.is_empty() {
+            let remote = settings.cwl.remote.clone();
+            let check = crate::formats::FormatCheck::new(&document.formats, &base, remote);
+            progress.formats = Some(Arc::new(check));
+        }
         let scope_run = crate::nextflow_scope::ScopeRun::new(settings.nextflow.clone());
         WirDriver {
             launch: launch.clone(),
@@ -1215,7 +1221,9 @@ impl Driver for WirDriver {
             })
             .collect();
         let remote = &self.settings.cwl.remote;
-        let mut values = inputs::read(&self.launch, &given, &self.document.types, remote)?;
+        let formats = self.progress.formats.clone();
+        let types = &self.document.types;
+        let mut values = inputs::read(&self.launch, &given, types, remote, formats.as_deref())?;
         let streams: Vec<String> = (ports.iter())
             .filter(|port| !port.flow.is_value())
             .map(|port| port.name.clone())

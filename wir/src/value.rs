@@ -53,12 +53,19 @@ pub struct DirectoryValue {
 /// Whether a JSON value is a value of the type: the check behind `dynamic` ports. An `int`
 /// is a JSON integer in the signed 64-bit range; a `float` is any JSON number.
 pub fn fits(value: &Json, r#type: &Type, defs: &[TypeDef]) -> bool {
+    fits_with(value, r#type, defs, &|_, _| false)
+}
+
+/// Whether a value fits as [`fits`] says, where a File whose format is not the wanted one
+/// fits too when `formats(format, wanted)` holds, as an ontology of the formats says.
+pub fn fits_with(value: &Json, r#type: &Type, defs: &[TypeDef], formats: &FormatTest<'_>) -> bool {
+    let fits = |value: &Json, r#type: &Type| fits_with(value, r#type, defs, formats);
     let Some(r#type) = resolve(r#type, defs) else {
         return false;
     };
     match r#type {
         Type::Dynamic => true,
-        Type::Optional(inner) => value.is_null() || fits(value, inner, defs),
+        Type::Optional(inner) => value.is_null() || fits(value, inner),
         Type::Bool => value.is_boolean(),
         Type::Int => value.is_i64(),
         Type::Float => value.is_number(),
@@ -67,7 +74,7 @@ pub fn fits(value: &Json, r#type: &Type, defs: &[TypeDef]) -> bool {
             .as_str()
             .is_some_and(|text| symbols.iter().any(|s| s == text)),
         Type::File(want) => match Entry::deserialize(value) {
-            Ok(Entry::File(file)) => file_fits(&file, want),
+            Ok(Entry::File(file)) => file_fits(&file, want, formats),
             _ => false,
         },
         Type::Directory => match Entry::deserialize(value) {
@@ -79,35 +86,40 @@ pub fn fits(value: &Json, r#type: &Type, defs: &[TypeDef]) -> bool {
                 .keys()
                 .all(|key| fields.iter().any(|field| field.name == *key))
                 && fields.iter().all(|field| match object.get(&field.name) {
-                    Some(item) => fits(item, &field.r#type, defs),
+                    Some(item) => fits(item, &field.r#type),
                     None => field.r#type.is_optional(defs),
                 })
         }),
         Type::Array(array) => value.as_array().is_some_and(|items| {
             (!array.nonempty || !items.is_empty())
-                && items.iter().all(|item| fits(item, &array.items, defs))
+                && items.iter().all(|item| fits(item, &array.items))
         }),
         Type::Map(map) => value.as_object().is_some_and(|object| {
-            (object.iter())
-                .all(|(key, item)| key_fits(key, map.key) && fits(item, &map.value, defs))
+            (object.iter()).all(|(key, item)| key_fits(key, map.key) && fits(item, &map.value))
         }),
-        Type::Union(members) => members.iter().any(|item| fits(value, item, defs)),
+        Type::Union(members) => members.iter().any(|item| fits(value, item)),
         Type::Tuple(items) => value.as_array().is_some_and(|values| {
             values.len() == items.len()
                 && values
                     .iter()
                     .zip(items)
-                    .all(|(item, want)| fits(item, want, defs))
+                    .all(|(item, want)| fits(item, want))
         }),
         Type::Named(_) => false,
     }
 }
 
-fn file_fits(file: &FileValue, want: &FileType) -> bool {
+/// Whether a File of a format fits a wanted format other than its own.
+pub type FormatTest<'a> = dyn Fn(&str, &str) -> bool + 'a;
+
+fn file_fits(file: &FileValue, want: &FileType, formats: &FormatTest<'_>) -> bool {
     if file.location.is_none() && file.contents.is_none() {
         return false;
     }
-    if want.format.is_some() && want.format != file.format {
+    if let Some(wanted) = &want.format
+        && want.format != file.format
+        && !(file.format.as_deref()).is_some_and(|format| formats(format, wanted))
+    {
         return false;
     }
     let Some(primary) = file_name(file) else {

@@ -34,7 +34,7 @@ uwe: op align stays a native CWL op: step align: scatter
 
 A tool compiled into wir runs as a wir task that the runner builds as the CWL driver builds the task of the tool: it works in `/var/spool/cwl`, sets `HOME` and `TMPDIR`, stages each input file in `/var/lib/cwl/inputs/<n>` and quotes its shell commands the same way, so its cache key and resume fingerprint are those of the same tool run as CWL. They differ when a job lists the file inputs in another order than the tool, as the CWL driver numbers the folders in the order of the job, and in a real run, where the CWL driver also asks for `cwl.output.json`. `uwe/tests/lowering.rs` compares the tasks on the simulator and the outputs in Docker, and `cwl-lowering/tests/runs.rs` compares the commands and outputs of both runs on the simulator. Two runs of the same compiled document share cache keys and resume fingerprints.
 
-Not compiled the same way: a compiled tool ignores a `cwl.output.json` that it writes, and the formats of its inputs are checked as equal text, or not at all when the document has `$schemas` or `$namespaces`, through which CWL matches other formats.
+Not compiled the same way: a compiled tool ignores a `cwl.output.json` that it writes. The `$namespaces` and `$schemas` of a CWL document become the `formats` of the wir document, so a compiled run expands the prefixed formats of its inputs file and matches the formats of input Files by the ontologies, as the CWL run does; a tool whose local schema file is missing stays native.
 
 ### Coverage
 

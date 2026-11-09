@@ -192,6 +192,8 @@ mod tests {
             simulated: false,
             provider: None,
             deliveries: &Default::default(),
+            inputs: &Default::default(),
+            nextflow: &Default::default(),
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("next".into());
@@ -259,6 +261,8 @@ mod tests {
             simulated: false,
             provider: None,
             deliveries: &Default::default(),
+            inputs: &Default::default(),
+            nextflow: &Default::default(),
         };
         let mut callbacks = Callbacks::default();
         let body = Body::Graph("pick".into());

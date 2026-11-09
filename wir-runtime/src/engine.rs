@@ -31,6 +31,10 @@ pub struct Context<'a> {
     pub provider: Option<&'a dyn workflow_graph::Files>,
     /// The deliveries that the file effects of stream ops ask the host for.
     pub deliveries: &'a crate::publishing::Deliveries,
+    /// The input values of the run, which callbacks of Nextflow scopes see as params.
+    pub inputs: &'a Map<String, Json>,
+    /// What the Groovy callbacks of Nextflow scopes of the run share.
+    pub nextflow: &'a crate::nextflow_scope::ScopeRun,
 }
 
 impl Context<'_> {

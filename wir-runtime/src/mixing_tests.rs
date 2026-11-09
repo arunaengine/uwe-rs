@@ -101,6 +101,8 @@ pub struct Fixture {
     pub files: PathBuf,
     pub provider: Option<Arc<dyn workflow_graph::Files>>,
     pub deliveries: crate::publishing::Deliveries,
+    pub inputs: Map<String, Json>,
+    pub nextflow: crate::nextflow_scope::ScopeRun,
 }
 
 impl Default for Fixture {
@@ -115,6 +117,8 @@ impl Default for Fixture {
             files: PathBuf::from("/nonexistent"),
             provider: None,
             deliveries: Default::default(),
+            inputs: Map::new(),
+            nextflow: Default::default(),
         }
     }
 }
@@ -131,6 +135,8 @@ impl Fixture {
             simulated: false,
             provider: self.provider.as_deref(),
             deliveries: &self.deliveries,
+            inputs: &self.inputs,
+            nextflow: &self.nextflow,
         }
     }
 }

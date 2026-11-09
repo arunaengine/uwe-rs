@@ -170,3 +170,53 @@ fn walkdir(folder: &Path) -> Vec<String> {
     }
     files
 }
+
+/// The copy of a working folder neither reads nor writes outside: a link of the project that
+/// leads outside or loops, and a link in the launch folder, stop the run before it starts.
+#[test]
+fn refuses_outer_links() {
+    let snakefile = "rule all:\n    input: 'data/in.txt'\n";
+    let planned = |root: &Path| {
+        let launch = Launch {
+            target: root.join("project"),
+            scratch: root.join("scratch"),
+            ..Launch::default()
+        };
+        let options = snakemake_runtime::RunSettings {
+            workdir: Some(root.join("launch")),
+            directory: Some(".test".into()),
+            ..snakemake_runtime::RunSettings::default()
+        };
+        let settings = snakemake_runtime::Settings::default();
+        match snakemake_runtime::driver_with_options(&launch, settings, options) {
+            Ok(mut driver) => driver.start().is_ok(),
+            Err(_) => false,
+        }
+    };
+    let link = |target: &str, link: &Path| std::os::unix::fs::symlink(target, link).unwrap();
+    for case in ["folder", "inner", "launch", "loop"] {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let root = folder.path();
+        write(&root.join("project"), "workflow/Snakefile", snakefile);
+        write(root, "outside/in.txt", "private\n");
+        match case {
+            "folder" => link("../outside", &root.join("project/.test")),
+            "inner" => {
+                write(&root.join("project"), ".test/data/in.txt", "reads\n");
+                link("../../outside", &root.join("project/.test/inner"));
+            }
+            "launch" => {
+                write(&root.join("project"), ".test/data/in.txt", "reads\n");
+                std::fs::create_dir_all(root.join("launch")).unwrap();
+                link("../outside", &root.join("launch/data"));
+            }
+            _ => {
+                write(&root.join("project"), ".test/data/in.txt", "reads\n");
+                link(".", &root.join("project/.test/loop"));
+            }
+        }
+        assert!(!planned(root), "{case}");
+        let outside = std::fs::read_dir(root.join("outside")).unwrap().count();
+        assert_eq!(outside, 1, "{case}: nothing is written outside");
+    }
+}

@@ -243,6 +243,7 @@ fn execute_with(
                 inputs,
                 private: values,
                 secret: secret_inputs,
+                resumes,
                 launch: launch_run,
             } = crate::lower::document(&target, language, arguments, &setup, &run)?;
             private = values;
@@ -258,11 +259,7 @@ fn execute_with(
                 inputs: inputs.or(arguments.inputs.clone().filter(|_| !compiled)),
                 params,
                 secret_inputs,
-                // A resume continues the run whose document it runs.
-                resume: launch_run
-                    .clone()
-                    .map(Resume::Run)
-                    .or(arguments.resume.clone()),
+                resume: resumes.map(Resume::Run).or(arguments.resume.clone()),
                 launch_run,
                 ..arguments.clone()
             };

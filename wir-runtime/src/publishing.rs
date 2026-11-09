@@ -85,6 +85,17 @@ pub fn folder(
         if !wir::plain_folder(directory) {
             return Err(turn.failed(format!("the folder {directory} has an empty, . or .. part")));
         }
+        // A file address names a local folder, which the host writes like a path.
+        let local = match directory.split_once("://") {
+            None => Some(directory.to_owned()),
+            Some((scheme, rest)) if scheme.eq_ignore_ascii_case("file") => {
+                Some(storage::address::decode(rest))
+            }
+            Some(_) => None,
+        };
+        if let Some((roots, local)) = context.roots.zip(local) {
+            (roots.check(Path::new(&local))).map_err(|error| turn.failed(error.to_string()))?;
+        }
         return match effects.iter().any(|effect| effect.publishes(directory)) {
             true => Ok((own, Some(directory.trim_end_matches('/').to_owned()))),
             false => Err(turn.failed(format!(

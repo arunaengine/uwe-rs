@@ -339,6 +339,24 @@ impl Lowerer {
             Callable::Task(_) => self.task(&unit, &alias)?,
             Callable::Workflow(_) => self.subworkflow(&unit, &alias)?,
         };
+        // Tasks are named by their call, and their steps by the calls from the entry workflow,
+        // as a WDL run names them; a workflow that stays native names its own tasks.
+        let workflow = (frame.origin.as_ref()).and_then(|origin| origin.at.clone());
+        let step = match (&frame.nested, workflow) {
+            (Some(_), Some(workflow)) => format!("{workflow}.{alias}"),
+            _ => alias.clone(),
+        };
+        match (&unit.callable, &op.kind) {
+            (Callable::Task(_), _) => op.attributes.name = Some(alias.clone()),
+            (Callable::Workflow(_), Kind::Native(_)) => {}
+            (Callable::Workflow(_), _) => op.attributes.name = Some(String::new()),
+        }
+        if !matches!(
+            (&unit.callable, &op.kind),
+            (Callable::Workflow(_), Kind::Native(_))
+        ) {
+            op.attributes.step = Some(step);
+        }
         let mut given = BTreeSet::new();
         for input in call.inputs() {
             let name = input.name().text().to_owned();

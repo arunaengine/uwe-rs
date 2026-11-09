@@ -185,12 +185,12 @@ impl Region {
         let graph = graph.ok_or_else(|| format!("no graph {name}"))?;
         let start = progress.plan.nodes.len();
         let path = progress.node(at).path.clone();
-        let (step, name) = (&progress.node(at).step, &progress.node(at).name);
+        let (inner, name) = (&progress.node(at).inner, &progress.node(at).name);
         // New instances live below the revision that added them, so that a replacement never
         // takes the streams of the instance it replaced.
         let prefixes = (
             format!("{path}/{revision}/"),
-            plan::under(step),
+            inner.clone(),
             format!("{}{revision}/", plan::under(name)),
         );
         let exports = plan::extend(

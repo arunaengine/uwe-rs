@@ -38,6 +38,8 @@ pub fn node(kind: Json, streams: &[&str], values: &[&str], out: &str) -> Node {
         handles: Vec::new(),
         members: Vec::new(),
         ordinal: None,
+        inner: "op/".into(),
+        shard: Vec::new(),
     }
 }
 
@@ -135,6 +137,8 @@ impl Fixture {
             printer: &self.printer,
             simulated: false,
             provider: self.provider.as_deref(),
+            remote: None,
+            roots: None,
             deliveries: &self.deliveries,
             inputs: &self.inputs,
             nextflow: &self.nextflow,

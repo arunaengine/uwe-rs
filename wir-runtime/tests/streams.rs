@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
-use workflow_graph::{Attempt, Driver, Executor, Launch, Running, execute};
+use workflow_graph::{Attempt, Driver, Executor, Launch, Roots, Running, execute};
 
 fn edge(from: (Option<&str>, &str), to: (Option<&str>, &str)) -> Json {
     json!({"from": {"op": from.0, "port": from.1}, "to": {"op": to.0, "port": to.1}})
@@ -228,9 +228,8 @@ impl Executor for Local {
     }
 }
 
-/// The driver of a run that collects its texts `xs` into `results/all.txt` under `root`.
-fn collector(root: &Path) -> WirDriver {
-    let results = root.join("results");
+/// The driver of a run that collects its texts `xs` into `all.txt` in the folder `results`.
+fn collector(root: &Path, results: &str, roots: Option<Roots>) -> WirDriver {
     let text = json!({"name": "xs", "type": "string", "flow": "stream"});
     let file = json!({"name": "out", "type": {"file": {}}, "flow": "stream"});
     let op = json!({"path": "collect", "kind": {"collect_file": {"name": "all.txt", "directory": results}},
@@ -241,6 +240,7 @@ fn collector(root: &Path) -> WirDriver {
     let launch = launch(root, json!([main]), json!({"xs": ["a\n", "b\n"]}));
     let settings = Settings {
         print: false,
+        roots,
         ..Settings::default()
     };
     WirDriver::new(&launch, settings).unwrap()
@@ -249,7 +249,9 @@ fn collector(root: &Path) -> WirDriver {
 #[test]
 fn collect_file_delivery() {
     let folder = tempfile::tempdir().unwrap();
-    let mut driver = collector(folder.path());
+    let results = folder.path().join("results");
+    let results = results.to_string_lossy();
+    let mut driver = collector(folder.path(), &results, None);
     let run = execute("streams", &mut driver, &mut Local).into_result();
     assert!(run.is_ok(), "{run:?}");
     let place = folder.path().join("results/all.txt");
@@ -259,16 +261,30 @@ fn collect_file_delivery() {
         "delivered before the File is given"
     );
     assert_eq!(driver.results().unwrap()["ys"][0]["basename"], "all.txt");
-    let mut driver = collector(folder.path());
+    let mut driver = collector(folder.path(), &results, None);
     driver.use_files(std::sync::Arc::new(workflow_graph::LocalFiles));
     assert_eq!(driver.start().unwrap(), []);
     assert_eq!(driver.deliveries().len(), 1);
     let error = driver.finish().unwrap_err().message;
-    let results = folder.path().join("results");
-    let results = results.to_string_lossy();
     assert_eq!(
         error,
         format!("op collect: the host never acknowledged the delivery of its files to {results}"),
         "a delivery that never comes"
     );
+}
+
+/// An isolated run delivers no file to a file address outside its folders.
+#[test]
+fn confines_file_addresses() {
+    let folder = tempfile::tempdir().unwrap();
+    let inside = folder.path().join("inside");
+    std::fs::create_dir_all(&inside).unwrap();
+    let outside = folder.path().join("outside");
+    let address = format!("file://{}", outside.display());
+    let roots = Roots::new([inside]);
+    let mut driver = collector(folder.path(), &address, Some(roots));
+    let run = execute("streams", &mut driver, &mut Local).into_result();
+    let error = run.map_or_else(|error| error.to_string(), |_| String::new());
+    assert!(error.contains("outside the folders of the run"), "{error}");
+    assert!(!outside.exists());
 }

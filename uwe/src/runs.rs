@@ -943,6 +943,8 @@ mod tests {
             error: None,
             replays: None,
             replays_task: None,
+            document: None,
+            document_digest: None,
             tasks: BTreeMap::from([("failed".into(), 1), ("succeeded".into(), 4)]),
             program: None,
             launch: None,

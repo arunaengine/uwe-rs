@@ -11,9 +11,10 @@ use nextflow_evaluator::lowered::{Module, Process};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_plugins::observer;
 use serde_json::{Value as Json, json};
-use workflow_graph::{Delivery, Driver, DriverError, Launch, Outcome, Task};
+use workflow_graph::{Delivery, Driver, DriverError, Launch, Note, Outcome, Task};
 
 use crate::driver::{Ended, Nextflow, Settings, error};
+use crate::notes::Noting;
 use crate::process::{Asked, Binding, Collected, Decision, InFlight, Limits, TaskId, TaskOutcome};
 use crate::session::Session;
 use crate::strategy::Strategy;
@@ -69,6 +70,8 @@ pub struct Adapter {
     /// The `maxForks` and `fair` of each call, which its first task fixes, by call name.
     limits: HashMap<Rc<str>, Limits>,
     flights: HashMap<TaskId, (Rc<Binding>, InFlight)>,
+    /// What the code that ran noticed, like reads of task outputs, as the driver notes them.
+    notes: Vec<Note>,
     /// The first task that failed for good, with the trace that an `onError` handler gets.
     failed: Option<(workflow_graph::TaskId, Json)>,
 }
@@ -100,6 +103,7 @@ impl Adapter {
             calls: HashMap::new(),
             limits: HashMap::new(),
             flights: HashMap::new(),
+            notes: Vec::new(),
             failed: None,
         };
         let (module, params) = (adapter.module.clone(), adapter.options.config.params());
@@ -380,8 +384,12 @@ impl Adapter {
         print: &dyn Fn(&str),
         code: impl FnOnce(&mut Interpreter) -> Result<T, Error>,
     ) -> Result<T, DriverError> {
+        let mut noting = Noting {
+            host: self.driver.host(),
+            notes: &mut self.notes,
+        };
         let mut printed = Printed {
-            base: self.driver.host(),
+            base: &mut noting,
             print,
         };
         let mut session = Session {
@@ -459,12 +467,21 @@ impl Adapter {
         self.module.path.borrow().as_deref().map(str::to_owned)
     }
 
+    /// What the code that ran since the last call noticed, for the markers of the graph.
+    pub fn notes(&mut self) -> Vec<Note> {
+        std::mem::take(&mut self.notes)
+    }
+
     fn interpret<T>(
         &mut self,
         code: impl FnOnce(&mut Interpreter) -> Result<T, Error>,
     ) -> Result<T, DriverError> {
+        let mut noting = Noting {
+            host: self.driver.host(),
+            notes: &mut self.notes,
+        };
         let mut session = Session {
-            base: self.driver.host(),
+            base: &mut noting,
             options: &self.options,
             network: None,
             operator_directory: &mut self.operator_directory,

@@ -90,7 +90,8 @@ impl<'d> Checker<'d> {
                 None => self.report(at, Problem::NoPort(format!("input {plan}"))),
             },
             (None, Some(Planner::Snakemake(reference))) => {
-                for id in [&reference.source].into_iter().chain(&reference.configs) {
+                let named = [&reference.source].into_iter().chain(&reference.configs);
+                for id in named.chain(&reference.config_values) {
                     if let Some(source) = self.source(at, id)
                         && source.language != Language::Snakemake
                     {

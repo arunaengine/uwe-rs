@@ -234,7 +234,12 @@ pub fn recorded_arguments(database: &Database, run: &Run) -> Result<Arguments, F
 }
 
 fn parsed_arguments(run: &Run) -> Result<Arguments, Failure> {
-    let mut parsed = match run.arguments.split_first() {
+    // Runs asked for wir with `-lowered` before every run compiled into it.
+    let words: Vec<String> = (run.arguments.iter())
+        .filter(|word| *word != "-lowered")
+        .cloned()
+        .collect();
+    let mut parsed = match words.split_first() {
         Some((_, rest)) => arguments::parse(rest).map_err(|message| {
             failure(format!(
                 "uwe: the command line of run {} is not valid: {message}",
@@ -536,6 +541,43 @@ mod tests {
         let changes = compared(&[before], &[after], SourceKind::Workflow, "workflow");
         assert_eq!(changes.changes.len(), 1);
         assert_eq!(changes.changes[0].kind, Kind::Changed);
+    }
+
+    /// The command line of a run that asked for wir with `-lowered`, which every run does now,
+    /// still reads.
+    #[test]
+    fn reads_compiled_runs() {
+        let run = Run {
+            id: "19a8f3c2b10-1a2b".into(),
+            lineage: "19a8f3c2b10-1a2b".into(),
+            resumes: None,
+            workflow: "/work/main.nf".into(),
+            language: "wir".into(),
+            revision: None,
+            arguments: ["run", "main.nf", "-lowered", "-executor", "simulator"]
+                .map(String::from)
+                .to_vec(),
+            parameters: Vec::new(),
+            executor: "simulator".into(),
+            simulated: true,
+            store: None,
+            process: 1,
+            started: 0,
+            ended: None,
+            state: "succeeded".into(),
+            error: None,
+            replays: None,
+            replays_task: None,
+            document: None,
+            document_digest: None,
+            tasks: Default::default(),
+            program: None,
+            launch: Some("/work".into()),
+            workflow_folder: None,
+            repeats: None,
+        };
+        let parsed = parsed_arguments(&run).expect("reads the command line");
+        assert_eq!(parsed.executor.as_deref(), Some("simulator"));
     }
 
     fn source(kind: SourceKind, path: &str, digest: &str) -> Source {

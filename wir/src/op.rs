@@ -542,6 +542,20 @@ pub struct Native {
     /// read.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub configs: Vec<String>,
+    /// For Snakemake, what the run plans as on a Snakemake planner: several targets in place
+    /// of `entry`, the source of the config values of the command line, and the job options.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_values: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub until: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub omit_from: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forcerun: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forceall: bool,
 }
 
 /// The op runs only after `op` has ended with one of the statuses in `on`.
@@ -645,6 +659,9 @@ pub struct Attributes {
     /// The name of the op in the names of its tasks, in place of its path; empty adds none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The name of the op in the steps of its tasks, which the ops inside it follow with `.`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<String>,
 }
 
 /// Whether earlier results may be reused. No setting overrides a source's own veto on reuse.

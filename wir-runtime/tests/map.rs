@@ -233,6 +233,36 @@ fn limits_running_rounds() {
     );
 }
 
+/// A map with an empty name adds no level to the names of its tasks, which give the position
+/// of their round after their names, and a `step` names a task in its steps, as WDL names the
+/// shards of a scatter: `cat (1)` with the step `flow.cat`.
+#[test]
+fn names_shard_rounds() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = document(folder.path(), "dot", 2, 2);
+    change(&launch, |document| {
+        document["graphs"][0]["ops"][0]["attributes"] = json!({"name": ""});
+        document["graphs"][1]["ops"][0]["attributes"] = json!({"name": "cat", "step": "flow.cat"});
+    });
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let started = driver.start().unwrap();
+    let names: Vec<(&str, &str)> = (started.iter())
+        .map(|task| (task.name.as_str(), task.step.as_str()))
+        .collect();
+    assert_eq!(names, [("cat (0)", "flow.cat"), ("cat (1)", "flow.cat")]);
+    // The ops inside an op with a `step` follow it with `.`.
+    change(&launch, |document| {
+        document["graphs"][0]["ops"][0]["attributes"] = json!({"name": "", "step": "flow"});
+        document["graphs"][1]["ops"][0]["attributes"] = json!({"name": "cat", "step": "cat"});
+    });
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let started = driver.start().unwrap();
+    assert_eq!(
+        (started[0].name.as_str(), started[0].step.as_str()),
+        ("cat (0)", "flow.cat")
+    );
+}
+
 /// Runs a dot map of three rounds whose round `l1` fails, with `least` as its `min_success`
 /// and `items` as the item type of its outputs; the labels of the outputs.
 fn run_failing(least: u32, items: Json) -> Result<Json, String> {

@@ -3,6 +3,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::path::{Path, PathBuf};
+
 use serde_json::Value as Json;
 
 mod common;
@@ -65,7 +67,7 @@ const IMAGES: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    input: \"i
 
 const WORD: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
 
-/// Runs `uwe graph <arguments> -lowered -format json` on `snakefile` in a folder of its own,
+/// Runs `uwe graph <arguments> -format json` on `snakefile` in a folder of its own,
 /// with `files` beside it; the folder and the graph it printed.
 fn graph_lowered(
     snakefile: &str,
@@ -79,7 +81,7 @@ fn graph_lowered(
         std::fs::write(root.join(name), text).expect("writes a file");
     }
     let output = common::command()
-        .args(["graph", "Snakefile", "-lowered", "-format", "json"])
+        .args(["graph", "Snakefile", "-format", "json"])
         .args(arguments)
         .current_dir(root)
         .env("XDG_CACHE_HOME", root.join("cache"))
@@ -91,7 +93,7 @@ fn graph_lowered(
     (folder, graph)
 }
 
-/// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
+/// `uwe graph` runs the jobs of a compiled Snakefile through the job adapter, with
 /// the config values of the command line in the document.
 #[test]
 fn runs_compiled_snakefiles() {
@@ -105,6 +107,46 @@ fn runs_compiled_snakefiles() {
         nodes[0]["task"]["script"]
             .as_str()
             .is_some_and(|script| script.contains("echo hello"))
+    );
+}
+
+/// A workflow with a checkpoint, whose jobs read a config value of the command line.
+const CHECKPOINT: &str = "rule all:\n    input: \"b.txt\"\n\ncheckpoint a:\n    output: \"a.txt\"\n    shell: \"echo {config[sample]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
+
+/// The region of a checkpoint plans with the config values of the command line.
+#[test]
+fn plans_checkpoint_values() {
+    let (_folder, graph) = graph_lowered(CHECKPOINT, &[], &["--config", "sample=xyz"]);
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let scripts: Vec<&str> = (nodes.iter())
+        .filter_map(|node| node["task"]["script"].as_str())
+        .collect();
+    assert!(
+        scripts.iter().any(|script| script.contains("echo xyz")),
+        "{scripts:?}"
+    );
+}
+
+/// A Snakefile that stays one native op plans its jobs with the config values of the command
+/// line.
+#[test]
+fn plans_native_values() {
+    let snakefile = IMAGES.replace(
+        "cp {input} {output}\"\n\nrule b",
+        "echo {config[sample]}\"\n\nrule b",
+    );
+    let (_folder, graph) = graph_lowered(
+        &snakefile,
+        &[("in.txt", "raw\n")],
+        &["--config", "sample=xyz"],
+    );
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let scripts: Vec<&str> = (nodes.iter())
+        .filter_map(|node| node["task"]["script"].as_str())
+        .collect();
+    assert!(
+        scripts.iter().any(|script| script.contains("echo xyz")),
+        "{scripts:?}"
     );
 }
 
@@ -181,7 +223,7 @@ fn records_no_values() {
         let (root, cache) = (folder.path(), folder.path().join("cache"));
         std::fs::write(root.join(name), text).expect("writes the workflow");
         let output = common::command()
-            .args(["run", "-executor", "simulator", name, "-lowered"])
+            .args(["run", "-executor", "simulator", name])
             .args(values)
             .current_dir(root)
             .env("XDG_CACHE_HOME", &cache)
@@ -205,8 +247,8 @@ fn records_no_values() {
     }
 }
 
-/// A compiled run records its own document as its workflow, not the documents and values of
-/// other runs beside it in the cache.
+/// A compiled run records its own document beside its workflow, and no documents and values of
+/// other runs in the cache as files of its workflow.
 #[test]
 fn records_own_document() {
     let folder = tempfile::tempdir().expect("a temporary directory");
@@ -228,16 +270,19 @@ fn records_own_document() {
         );
         let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
             .expect("opens the run database");
-        let id = database.runs(1).expect("lists the runs")[0].id.clone();
-        let sources = database.sources(&id).expect("reads the sources");
+        let recorded = database.runs(1).expect("lists the runs").remove(0);
+        let sources = database.sources(&recorded.id).expect("reads the sources");
         let paths: Vec<String> = sources.into_iter().map(|source| source.path).collect();
-        (id, paths)
+        (recorded.id, recorded.document.unwrap_or_default(), paths)
     };
-    let (_, first) = run(&["hello.wdl", "-lowered", "--name", "hush4711"]);
-    let (second, paths) = run(&["Snakefile", "-lowered", "--config", "word=hello"]);
-    assert_eq!(paths.len(), 1, "{paths:?}");
+    let (_, first, _) = run(&["hello.wdl", "--name", "hush4711"]);
+    let (second, document, paths) = run(&["Snakefile", "--config", "word=hello"]);
     assert!(
-        paths[0].ends_with(".wir.json") && !first.contains(&paths[0]),
+        document.ends_with(".wir.json") && document != first,
+        "{document}"
+    );
+    assert!(
+        paths.iter().all(|path| !path.starts_with("cache")),
         "{paths:?}"
     );
     let output = common::command()
@@ -253,9 +298,10 @@ fn records_own_document() {
     );
     let metadata = std::fs::read_to_string(root.join("crate/ro-crate-metadata.json"))
         .expect("reads the crate");
-    for path in &first {
-        assert!(!metadata.contains(path.as_str()), "the crate names {path}");
-    }
+    assert!(
+        !metadata.contains(first.as_str()),
+        "the crate names {first}"
+    );
     assert!(
         !metadata.contains("hush4711"),
         "the crate holds a value of the first run"
@@ -280,7 +326,7 @@ fn resumes_compiled_runs() {
         std::fs::write(root.join(name), text).expect("writes the workflow");
         let run = |resume: &[&str]| {
             let output = common::command()
-                .args(["run", "-executor", "simulator", name, "-lowered"])
+                .args(["run", "-executor", "simulator", name])
                 .args(values)
                 .args(resume)
                 .current_dir(root)
@@ -326,6 +372,144 @@ fn resumes_compiled_runs() {
     }
 }
 
+/// A resume runs the document of the run it continues also when nothing wrote that document
+/// for over a week, as the run database still names it.
+#[test]
+fn keeps_recorded_documents() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("main.nf"), TIMED).expect("writes the pipeline");
+    let run = |resume: &[&str]| {
+        let output = common::command()
+            .args(["run", "-executor", "simulator", "main.nf"])
+            .args(resume)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs uwe");
+        let errors = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(output.status.success(), "{errors}");
+        let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+            .expect("opens the run database");
+        database.runs(1).expect("lists the runs").remove(0)
+    };
+    let first = run(&[]);
+    let document = first.document.clone().expect("a document");
+    let weeks = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+    let file = std::fs::File::options()
+        .write(true)
+        .open(&document)
+        .expect("opens it");
+    file.set_modified(weeks).expect("ages it");
+    let resumed = run(&["-resume", &first.id]);
+    assert_eq!(resumed.document, Some(document));
+}
+
+/// A run with another run database that shares the cache folder keeps the documents that the
+/// runs of the first database ran, also when nothing wrote them for over a week.
+#[test]
+fn keeps_shared_documents() {
+    shared_resume(&|_| {}, &|_| {});
+}
+
+/// A document that a run ran before the cache folder named its databases stays, as the run
+/// database that ran it may not be named there.
+#[test]
+fn keeps_unlisted_documents() {
+    shared_resume(
+        &|cache| std::fs::remove_file(listed(cache)).expect("removes the list"),
+        &|_| {},
+    );
+}
+
+/// A named run database that cannot be looked at keeps every document.
+#[test]
+fn keeps_unreadable_databases() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = |mode: u32| {
+        move |cache: &Path| {
+            let folder = cache.parent().expect("the root").join("first");
+            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(mode))
+                .expect("sets the mode");
+        }
+    };
+    shared_resume(&mode(0o000), &mode(0o755));
+}
+
+/// The file of the cache folder below `cache` that names its run databases.
+fn listed(cache: &Path) -> PathBuf {
+    cache.join("uwe/scratch/lowered/databases")
+}
+
+/// Runs a pipeline with a first database, ages its document, runs `before` on the cache
+/// folder, runs it with a second database, runs `after`, and resumes the first run.
+fn shared_resume(before: &dyn Fn(&Path), after: &dyn Fn(&Path)) {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("main.nf"), TIMED).expect("writes the pipeline");
+    std::fs::create_dir_all(root.join("first")).expect("makes a folder");
+    let run = |database: &str, resume: &[&str]| {
+        let database = root.join(database);
+        let output = common::command()
+            .args(["run", "-executor", "simulator", "main.nf", "-database"])
+            .arg(&database)
+            .args(resume)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs uwe");
+        let errors = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(output.status.success(), "{errors}");
+        let database = run_database::Database::open(&database).expect("opens the run database");
+        database.runs(1).expect("lists the runs").remove(0)
+    };
+    let first = run("first/a.sqlite", &[]);
+    let document = first.document.clone().expect("a document");
+    let weeks = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+    let file = std::fs::File::options()
+        .write(true)
+        .open(&document)
+        .expect("opens it");
+    file.set_modified(weeks).expect("ages it");
+    before(&cache);
+    run("b.sqlite", &[]);
+    after(&cache);
+    let resumed = run("first/a.sqlite", &["-resume", &first.id]);
+    assert_eq!(resumed.document, Some(document));
+}
+
+/// A pipeline that passes the name of its run to a task.
+const NAMED: &str = "process SAY {\n    input:\n    val name\n    output:\n    stdout\n    script:\n    \"echo ${name}\"\n}\n\nworkflow {\n    SAY(Channel.of(workflow.runName))\n}\n";
+
+/// A compiled pipeline sees the name of its run, as the native driver gives it.
+#[test]
+fn names_compiled_runs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("main.nf"), NAMED).expect("writes the pipeline");
+    let output = common::command()
+        .args(["run", "-executor", "simulator", "main.nf"])
+        .current_dir(root)
+        .env("XDG_CACHE_HOME", &cache)
+        .output()
+        .expect("runs uwe");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+        .expect("opens the run database");
+    let run = database.runs(1).expect("lists the runs").remove(0);
+    let tasks = database.tasks(&run.id).expect("reads the tasks");
+    let task = database
+        .task(&run.id, tasks[0].id)
+        .expect("reads")
+        .expect("a task");
+    let script = task.description.script.unwrap_or_default();
+    assert!(script.contains(&format!("echo {}", run.id)), "{script}");
+}
+
 /// A resume with other config values than the run it continues is refused.
 #[test]
 fn refuses_other_values() {
@@ -339,7 +523,6 @@ fn refuses_other_values() {
                 "-executor",
                 "simulator",
                 "Snakefile",
-                "-lowered",
                 "--config",
                 value,
             ])

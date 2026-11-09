@@ -16,7 +16,7 @@ pub use task_runner::NetworkRule;
 pub use workflow_graph::Language;
 
 use crate::application::{self, Description, Policy};
-use crate::arguments::Arguments;
+use crate::arguments::{Arguments, Resume};
 use crate::repeat::Pinned;
 use crate::{
     Failure, driver, executor, failure, fetched, inputs, launch, network_rule, page, progress,
@@ -221,18 +221,31 @@ fn execute_with(
     setup.variables = arguments.secrets.clone();
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();
+    // A repeat reads the remote files of the run it repeats as they were, also when the
+    // workflow compiles.
+    for file in &pinned.files {
+        setup.storage.pin(file.clone());
+    }
     let (target, language) = target_and_language(arguments)?;
-    // A lowered run checks its inputs with the schema of the document it was lowered from.
-    let source = arguments
-        .lowered
-        .then(|| (launch(arguments, target.clone()), language));
+    let run = chosen.unwrap_or_else(run_id);
+    // A run compiles its workflow into wir and checks its inputs with the schema of the
+    // workflow; a wir document runs as it is.
+    let source = (language != Language::Wir).then(|| (launch(arguments, target.clone()), language));
+    // The run records the workflow and the command line that the user gave.
+    let given = arguments;
     let converted;
-    // The files of the values of a lowered run, removed when the run ends.
+    // The files of the values of a compiled run, removed when the run ends.
     let private;
-    let (target, language, arguments) = match arguments.lowered {
+    let (target, language, arguments) = match source.is_some() {
         true => {
-            let (path, inputs, values, secret_inputs) =
-                crate::lower::document(&target, language, arguments, &setup)?;
+            let crate::lower::Compiled {
+                path,
+                inputs,
+                private: values,
+                secret: secret_inputs,
+                resumes,
+                launch: launch_run,
+            } = crate::lower::document(&target, language, arguments, &setup, &run)?;
             private = values;
             // A WDL input file and parameters become one file for the entry graph, or values in
             // memory; Snakemake config files and values are in the document.
@@ -246,6 +259,8 @@ fn execute_with(
                 inputs: inputs.or(arguments.inputs.clone().filter(|_| !compiled)),
                 params,
                 secret_inputs,
+                resume: resumes.map(Resume::Run).or(arguments.resume.clone()),
+                launch_run,
                 ..arguments.clone()
             };
             (path, Language::Wir, &converted)
@@ -258,26 +273,29 @@ fn execute_with(
     let private: Vec<crate::lower::Values> = private;
     let target = &target;
     let launch = launch(arguments, target.clone());
+    // The config of a Nextflow pipeline can pick the executor and the store of its run.
+    let (first, written) = match &source {
+        Some((launch, language)) => (launch, *language),
+        None => (&launch, language),
+    };
     let picked;
-    let arguments =
-        match crate::nextflow::pipeline_executor(language, &launch, arguments, &mut setup)? {
-            Some(executor) => {
-                picked = Arguments {
-                    executor: Some(executor),
-                    executor_default: false,
-                    ..arguments.clone()
-                };
-                &picked
-            }
-            None => arguments,
-        };
+    let arguments = match crate::nextflow::pipeline_executor(written, first, arguments, &mut setup)?
+    {
+        Some(executor) => {
+            picked = Arguments {
+                executor: Some(executor),
+                executor_default: false,
+                ..arguments.clone()
+            };
+            &picked
+        }
+        None => arguments,
+    };
     // nf-cloudcache puts the store where the config says, unless `-store` names one.
     let cached;
-    let arguments = match language {
+    let arguments = match written {
         Language::Nextflow if arguments.store.is_none() => {
-            match crate::nextflow::cloud_cache(&launch, arguments, &setup)
-                .map_err(Failure::setup)?
-            {
+            match crate::nextflow::cloud_cache(first, arguments, &setup).map_err(Failure::setup)? {
                 Some(location) => {
                     cached = Arguments {
                         store: Some(location),
@@ -290,7 +308,6 @@ fn execute_with(
         }
         _ => arguments,
     };
-    let run = chosen.unwrap_or_else(run_id);
     let name = arguments.executor.as_deref().unwrap_or("local");
     if let Some(network) = network {
         setup.network = network;
@@ -301,9 +318,6 @@ fn execute_with(
         .map(|config| config.for_network(network_rule(arguments, &setup).none_by_default))
         .transpose()
         .map_err(|error| Failure::setup(error.to_string()))?;
-    for file in &pinned.files {
-        setup.storage.pin(file.clone());
-    }
     let store = setup.store_location(arguments);
     let real = name != "simulator";
     // A real run shows its steps as it goes; in a terminal they are drawn in place, so the
@@ -311,16 +325,21 @@ fn execute_with(
     let shown = real && !quiet;
     let verbose = !quiet && !(shown && terminal::possible());
     let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
-    let mut sources = match source.is_some() {
-        true => runtime.block_on(sources::compiled(target, arguments)),
-        false => runtime.block_on(sources::collect(target, arguments)),
+    let recorded = Arguments {
+        resume: arguments.resume.clone(),
+        ..given.clone()
     };
+    let (workflow, written) = match &source {
+        Some((launch, language)) => (&launch.target, *language),
+        None => (target, language),
+    };
+    let mut sources = runtime.block_on(sources::collect(workflow, given));
     sources.leave_out(&private);
     if real && strict {
         sources.complete().map_err(Failure::setup)?;
     }
     let invocation = admission.map(|_| {
-        let mut words = record::run_arguments(arguments);
+        let mut words = record::run_arguments(&recorded);
         for (option, targets) in [
             ("-until", &arguments.until),
             ("-omit-from", &arguments.omit_from),
@@ -338,8 +357,8 @@ fn execute_with(
     });
     let started = record::Started {
         id: &run,
-        target,
-        language,
+        target: workflow,
+        language: written,
         executor: name,
         simulated: !real,
         store: real.then_some(store.as_str()),
@@ -347,13 +366,14 @@ fn execute_with(
         repeats: pinned.repeats.as_deref(),
         invocation: invocation.as_deref(),
         strict_provenance: strict,
+        document: source.is_some().then_some(target.as_path()),
     };
     // Read before this run is in the database.
     let measured = resources::measured(arguments);
     let record::Recording {
         mut recorder,
         reusable,
-    } = record::start(arguments, &started)?;
+    } = record::start(&recorded, &started)?;
     let page = match arguments.page {
         true => Some(page::start(arguments, &format!("/runs/{run}"))?),
         false => None,
@@ -388,8 +408,13 @@ fn execute_with(
             Some(policy) => {
                 let inputs = match &source {
                     Some((launch, language)) => {
+                        // It reads the inputs only, so the code of a Snakefile writes nothing.
+                        let planning = Arguments {
+                            planning: true,
+                            ..arguments.clone()
+                        };
                         let mut source = driver::driver(
-                            *language, launch, &run, quiet, arguments, &setup, &interrupt,
+                            *language, launch, &run, quiet, &planning, &setup, &interrupt,
                         )?;
                         source.inputs()?
                     }
@@ -408,7 +433,7 @@ fn execute_with(
                 if let Some(hosted) = &hosted {
                     hosted.authorize(&admission)?;
                 }
-                // A wir driver reads the values of a lowered run from its input file.
+                // A wir driver reads the values of a compiled run from its input file.
                 if let Some(inputs) = admission.inputs.as_ref().filter(|_| source.is_none()) {
                     driver.use_inputs(inputs.values.clone())?;
                 }
@@ -489,11 +514,10 @@ fn execute_with(
             Order::AsAsked
         }),
     };
-    let workflow = target.to_string_lossy();
     let progress = shown.then(|| {
         progress::Progress::start(progress::Header {
-            target,
-            language,
+            target: workflow,
+            language: written,
             executor: name,
             run: &run,
         })
@@ -528,7 +552,9 @@ fn execute_with(
         .observer(observer)
         .cancel(interrupt.clone())
         .no_cache_steps(arguments.no_cache_steps.clone())
-        .run(&workflow, driver.as_mut());
+        .run(&workflow.to_string_lossy(), driver.as_mut());
+    // The graph is that of the workflow the user ran, whatever it compiled into.
+    execution.graph.language = Some(written);
     if !real {
         execution.graph.simulate();
     }

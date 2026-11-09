@@ -59,7 +59,8 @@ fn run_configured(script: &str, config: &str) -> Result<Vec<String>, String> {
         simulated: true,
         ..Launch::default()
     };
-    let compiled = nextflow_compiler::compile(&launch(folder), settings(folder), folder)?;
+    let compiled = nextflow_compiler::compile(&launch(folder), settings(folder), folder)
+        .map_err(|error| error.message)?;
     let document = folder.join("compiled.wir.json");
     let text = serde_json::to_string(&compiled.document).unwrap();
     std::fs::write(&document, text).unwrap();

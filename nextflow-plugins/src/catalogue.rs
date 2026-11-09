@@ -82,6 +82,9 @@ pub struct Plugin {
     /// The config scopes that it reads, like `prov`.
     pub scopes: &'static [&'static str],
     pub observer: Option<Activate>,
+    /// The functions that call a service or need the run, which a compile into wir leaves to
+    /// the run.
+    pub services: &'static [&'static str],
 }
 
 impl Plugin {
@@ -99,6 +102,7 @@ impl Plugin {
             factories: &[],
             scopes: &[],
             observer: None,
+            services: &[],
         }
     }
 

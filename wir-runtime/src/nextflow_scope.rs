@@ -26,6 +26,9 @@ use crate::operator::Turn;
 #[derive(Clone, Default)]
 pub struct ScopeRun(Rc<RunState>);
 
+/// The cell of a variable of a script, which the closures of all callbacks capture.
+type Variable = Rc<RefCell<Value>>;
+
 #[derive(Default)]
 struct RunState {
     options: crate::nextflow::Options,
@@ -33,7 +36,7 @@ struct RunState {
     modules: RefCell<HashMap<(PathBuf, String), Rc<Module>>>,
     /// The variables of the scripts that callbacks read, by source and name, which all
     /// callbacks of the run share, as the code of a native run does.
-    variables: RefCell<HashMap<(String, String), Value>>,
+    variables: RefCell<HashMap<(String, String), Variable>>,
     /// The published values of each output op, with their files at their new places.
     indexes: RefCell<HashMap<String, Vec<Json>>>,
     /// The scratch folder of the interpreters, which goes with the run.
@@ -237,6 +240,7 @@ impl Scoped {
                 given.push(rebuilt(value, base, launching, interpreter)?);
             }
             let made = interpreter.call_function(&self.module, ENTRY, given)?;
+            let made = shared(made, Some(values), launching);
             let Some(arguments) = arguments else {
                 return Ok(made);
             };
@@ -247,16 +251,7 @@ impl Scoped {
             for argument in arguments {
                 items.push(rebuilt(argument, base, launching, interpreter)?);
             }
-            let made = interpreter.call_closure(&closure, items);
-            // A script variable that the callback assigned again is the one of later callbacks.
-            let captured = closure.code.capture_names.iter().zip(&closure.captured);
-            for (name, cell) in captured {
-                if let Some(key) = script_key(values.get(name.as_ref())) {
-                    let value = cell.borrow().clone();
-                    launching.run.0.variables.borrow_mut().insert(key, value);
-                }
-            }
-            made
+            interpreter.call_closure(&closure, items)
         };
         let result = match printer {
             Some(printer) if !bound.is_empty() => {
@@ -330,16 +325,22 @@ fn rebuilt(
             for (_, value) in captures {
                 given.push(rebuilt(value, base, launching, interpreter)?);
             }
-            interpreter.call_function(&module, ENTRY, given)
+            let made = interpreter.call_function(&module, ENTRY, given)?;
+            Ok(shared(
+                made,
+                object.get("captures").and_then(Json::as_object),
+                launching,
+            ))
         }
         Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("Script") => {
             let key = script_key(Some(json)).unwrap_or_default();
             if let Some(shared) = launching.run.0.variables.borrow().get(&key) {
-                return Ok(shared.clone());
+                return Ok(shared.borrow().clone());
             }
             let value = object.get("value").unwrap_or(&Json::Null);
             let value = rebuilt(value, base, launching, interpreter)?;
-            (launching.run.0.variables.borrow_mut()).insert(key, value.clone());
+            let cell = Rc::new(RefCell::new(value.clone()));
+            launching.run.0.variables.borrow_mut().insert(key, cell);
             Ok(value)
         }
         Json::Object(object) if object.get("class").is_none() => {
@@ -352,6 +353,28 @@ fn rebuilt(
         }
         other => Ok(crate::groovy::to_value(other, base)),
     }
+}
+
+/// The closure `made` with its captures of script variables, in `captures`, bound to the cells
+/// of the run, so that what it assigns is there for later callbacks, as in native code.
+fn shared(made: Value, captures: Option<&Map<String, Json>>, launching: &Launching) -> Value {
+    let Value::Closure(closure) = &made else {
+        return made;
+    };
+    let variables = launching.run.0.variables.borrow();
+    let mut captured = closure.captured.clone();
+    let names = closure.code.capture_names.iter().zip(&mut captured);
+    for (name, cell) in names {
+        let key = script_key(captures.and_then(|captures| captures.get(name.as_ref())));
+        if let Some(shared) = key.and_then(|key| variables.get(&key)) {
+            *cell = shared.clone();
+        }
+    }
+    Value::Closure(Rc::new(nextflow_evaluator::value::Closure {
+        code: closure.code.clone(),
+        module: closure.module.clone(),
+        captured,
+    }))
 }
 
 /// The source and name of a variable of a script that a capture holds in its reserved

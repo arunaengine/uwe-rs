@@ -168,6 +168,9 @@ pub struct WirDriver {
     turn: u64,
     /// Whether the `complete` hooks, and the `error` hooks, of the document ran.
     hooked: (bool, bool),
+    /// When the run started, in milliseconds since the epoch, and how many tasks succeeded.
+    started: Option<i64>,
+    succeeded: u64,
     texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
@@ -258,6 +261,8 @@ impl WirDriver {
             dialects: adapter::Dialects::default(),
             turn: 0,
             hooked: (false, false),
+            started: None,
+            succeeded: 0,
             texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
@@ -1127,7 +1132,10 @@ impl WirDriver {
             inputs: &self.given,
             nextflow: &self.scope_run,
         };
-        let argument = json!({"success": failure.is_none(), "error": failure});
+        let failed = (self.dialects.failed_task())
+            .map(|(task, shown)| json!({"task": task.0, "shown": shown}));
+        let argument = json!({"success": failure.is_none(), "error": failure,
+            "start": self.started, "succeeded": self.succeeded, "failed": failed});
         // Hooks print, like a Nextflow `onComplete` that tells how the run ended.
         let mut hooks = Callbacks::printing();
         let mut problems = Vec::new();
@@ -1137,7 +1145,19 @@ impl WirDriver {
                 wir::Hook::Error(closure) if error => closure,
                 _ => continue,
             };
-            let body = wir::Body::Closure(closure.clone());
+            let mut closure = closure.clone();
+            // A captured output of an op of the entry graph takes the value it ended with.
+            for binding in closure.captures.values_mut() {
+                let wir::Binding::Output(end) = binding else {
+                    continue;
+                };
+                let roots = self.progress.children(None);
+                let node = (roots.iter())
+                    .find(|at| end.op.as_deref() == Some(self.progress.node(**at).path.as_str()));
+                let value = node.map(|at| self.progress.bound_output(*at, &end.port));
+                *binding = wir::Binding::Value(value.unwrap_or_default());
+            }
+            let body = wir::Body::Closure(closure);
             let arguments = (&["run"][..], std::slice::from_ref(&argument));
             let called = hooks.call(&context, &body, arguments, &self.progress.inputs);
             if let Err(why) = called {
@@ -1202,6 +1222,8 @@ impl Driver for WirDriver {
     }
 
     fn start(&mut self) -> Result<Vec<Task>, DriverError> {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+        self.started = now.ok().and_then(|now| i64::try_from(now.as_millis()).ok());
         let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
         let ports = entry
             .map(|graph| graph.inputs.as_slice())
@@ -1357,16 +1379,19 @@ impl Driver for WirDriver {
     }
 
     fn take_acceptance(&mut self, task: TaskId, attempt: u32) -> bool {
-        if self.tasks.contains_key(&task) {
-            return self.accepted.remove(&(task, attempt));
-        }
-        if self.dialects.owns(task) {
-            return self.dialects.take_acceptance(task, attempt);
-        }
-        match self.owner(task) {
-            Ok(index) => self.children[index].1.take_acceptance(task, attempt),
-            Err(_) => false,
-        }
+        let accepted = if self.tasks.contains_key(&task) {
+            self.accepted.remove(&(task, attempt))
+        } else if self.dialects.owns(task) {
+            self.dialects.take_acceptance(task, attempt)
+        } else {
+            match self.owner(task) {
+                Ok(index) => self.children[index].1.take_acceptance(task, attempt),
+                Err(_) => false,
+            }
+        };
+        // The run hooks hear how many tasks succeeded, like Nextflow's `workflow.stats`.
+        self.succeeded += u64::from(accepted);
+        accepted
     }
 
     fn finish(&mut self) -> Result<(), DriverError> {

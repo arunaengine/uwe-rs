@@ -1282,6 +1282,25 @@ fn hook_rules() {
 }
 
 #[test]
+fn hook_outputs() {
+    let op = json!({"path": "count", "kind": {"expr": {"language": "groovy", "code": "1"}},
+        "outputs": [{"name": "out", "type": "int"}]});
+    let document = |end: Json| {
+        let hook =
+            json!({"language": "groovy", "code": "{ it }", "captures": {"n": {"output": end}}});
+        json!({"wir_version": wir::VERSION, "graphs": [{"name": "main", "ops": [op]}],
+            "entry": "main", "hooks": [{"complete": hook}]})
+    };
+    // A hook reads the value that an op of the entry graph ended with.
+    let good = document(json!({"op": "count", "port": "out"}));
+    assert_eq!(problems(&good), Vec::<String>::new());
+    let port = document(json!({"op": "count", "port": "other"}));
+    assert_eq!(problems(&port).len(), 1, "an output of the op");
+    let gone = document(json!({"op": "gone", "port": "out"}));
+    assert_eq!(problems(&gone).len(), 1, "an op of the entry graph");
+}
+
+#[test]
 fn reduce_steps() {
     let document = |output: &str, fields: Json| {
         let op = json!({"path": "r", "kind": {"reduce": fields}, "inputs": [stream("source")],

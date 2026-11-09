@@ -33,7 +33,8 @@ impl Checker<'_> {
         }
     }
 
-    /// A hook closure takes one object; its captures name inputs of the entry graph.
+    /// A hook closure takes one object; its captures name inputs of the entry graph, or value
+    /// outputs of its ops.
     fn hook_closure(&mut self, at: &str, closure: &Closure) {
         let wrong = match (closure.language, closure.parameters.len()) {
             (ExprLanguage::Js | ExprLanguage::Argo, _) => Some("a closure language"),
@@ -51,11 +52,22 @@ impl Checker<'_> {
             .iter()
             .find(|graph| graph.name == document.entry);
         for (name, binding) in &closure.captures {
-            let Binding::Input(input) = binding else {
-                continue;
+            let why = match binding {
+                Binding::Input(input) => (!entry
+                    .is_some_and(|graph| graph.inputs.iter().any(|port| port.name == *input)))
+                .then(|| format!("capture {name} names no input {input} of the entry graph")),
+                Binding::Output(end) => {
+                    let op = entry.and_then(|graph| {
+                        (graph.ops.iter()).find(|op| end.op.as_deref() == Some(op.path.as_str()))
+                    });
+                    let port = op.and_then(|op| op.outputs.iter().find(|p| p.name == end.port));
+                    (!port.is_some_and(|port| port.flow.is_value())).then(|| {
+                        format!("capture {name} names no value output of an op of the entry graph")
+                    })
+                }
+                Binding::Value(_) => None,
             };
-            if !entry.is_some_and(|graph| graph.inputs.iter().any(|port| port.name == *input)) {
-                let why = format!("capture {name} names no input {input} of the entry graph");
+            if let Some(why) = why {
                 self.report(at, Problem::Closure(why));
             }
         }

@@ -71,7 +71,8 @@ fn schema_matches_parser() {
             "parser rejects {kind}"
         );
     }
-    let closure = json!({"language": "groovy", "code": "{ println it.success }"});
+    let closure = json!({"language": "groovy", "code": "{ println it.success }",
+        "captures": {"report": {"output": {"op": "a/b", "port": "out"}}}});
     let observe = json!({"source": "nf", "processes": [{"id": 1, "name": "A:B", "definition": "B",
         "script": "main.nf", "feeds": [2]}, {"id": 2, "name": "C"}]});
     let hooked = json!({"wir_version": wir::VERSION, "graphs": [{"name": "g"}], "entry": "g",

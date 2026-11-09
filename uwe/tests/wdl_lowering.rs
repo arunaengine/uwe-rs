@@ -139,11 +139,10 @@ fn matches_native_tasks() {
         tasks.iter().map(|(_, image)| image.clone()).collect()
     };
     assert_eq!(images(&alone), images(&through));
+    // Compiled tasks have the steps of a WDL run, `<workflow>.<call>`.
     let steps: Vec<&str> = through.iter().map(|(step, _)| step.as_str()).collect();
-    assert_eq!(
-        steps,
-        ["scatter.greet/greet/greet", "scatter.greet/greet/greet"]
-    );
+    assert_eq!(steps, ["check.greet", "check.greet"]);
+    assert_eq!(alone, through);
 }
 
 #[test]

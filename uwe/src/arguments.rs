@@ -177,6 +177,9 @@ pub struct Arguments {
     /// The run whose launch folder a resumed compiled run starts in, so that its jobs find the
     /// files of the document they continue.
     pub launch_run: Option<String>,
+    /// Whether a driver only plans or describes the workflow, so that the code of a Snakefile
+    /// writes no files.
+    pub planning: bool,
     /// Whether a host runs this through the Rust API, not the command line.
     pub embedded: bool,
     /// Where an embedded run sends what its workflow prints, from `run::Settings.print_sink`.

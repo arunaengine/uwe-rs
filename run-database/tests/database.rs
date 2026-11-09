@@ -602,6 +602,7 @@ fn migrates_run_inputs() {
              ALTER TABLE runs DROP COLUMN process_boot; ALTER TABLE runs DROP COLUMN process_start;
              ALTER TABLE attempts DROP COLUMN accepted; DROP INDEX events_task;
              ALTER TABLE logs DROP COLUMN location;
+             ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
              PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");
@@ -733,7 +734,8 @@ fn migrates_legacy_ownership() {
         ALTER TABLE attempts DROP COLUMN accepted;
         ALTER TABLE sources DROP COLUMN executable; DROP INDEX events_task;
         ALTER TABLE logs DROP COLUMN location;
-        UPDATE runs SET process = 4294967295; PRAGMA user_version = 6;",
+        UPDATE runs SET process = 4294967295; ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             PRAGMA user_version = 6;",
         )
         .expect("old recorded row");
     drop(connection);
@@ -746,6 +748,55 @@ fn migrates_legacy_ownership() {
         database.running_runs().expect("protects legacy row").len(),
         1
     );
+}
+
+/// Runs that recorded their compiled document as their workflow get it as their document;
+/// a new run records it beside its workflow.
+#[test]
+fn migrates_compiled_documents() {
+    let root = tempfile::tempdir().expect("a directory");
+    let path = root.path().join("runs.sqlite");
+    let document = "/home/u/.cache/uwe/scratch/lowered/0123-abcd.wir.json";
+    let compiled = RunStart {
+        workflow: document.into(),
+        language: Language::Wir,
+        ..start("compiled", None)
+    };
+    for run in [compiled, start("native", None)] {
+        let database = Database::open(&path).expect("opens");
+        let recorder = database.record(&run).expect("records");
+        recorder.close().expect("closes");
+    }
+    let connection = rusqlite::Connection::open(&path).expect("opens raw");
+    connection
+        .execute_batch(
+            "ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             PRAGMA user_version = 9;",
+        )
+        .expect("makes a version nine database");
+    drop(connection);
+    let database = Database::open(&path).expect("migrates version nine");
+    assert_eq!(database.version().expect("version"), VERSION);
+    let run = |id: &str| database.run(id).expect("reads").expect("a run");
+    assert_eq!(run("compiled").document.as_deref(), Some(document));
+    assert_eq!(run("native").document, None);
+    assert_eq!(
+        database
+            .last_run_below("/home/u/.cache/uwe/scratch/lowered/0123-", false)
+            .expect("finds")
+            .map(|found| found.id),
+        Some("compiled".into())
+    );
+    drop(database);
+    let database = Database::open(&path).expect("opens");
+    let mut recorder = database.record(&start("later", None)).expect("records");
+    recorder.document("/d/1-2.wir.json", "sha256:00");
+    recorder.close().expect("closes");
+    let database = Database::open(&path).expect("opens");
+    let later = database.run("later").expect("reads").expect("a run");
+    assert_eq!(later.workflow, "/work/main.nf");
+    assert_eq!(later.document.as_deref(), Some("/d/1-2.wir.json"));
+    assert_eq!(later.document_digest.as_deref(), Some("sha256:00"));
 }
 
 #[test]
@@ -773,7 +824,8 @@ fn migrates_attempt_acceptance() {
             "ALTER TABLE attempts DROP COLUMN accepted;
             ALTER TABLE sources DROP COLUMN executable; DROP INDEX events_task;
             ALTER TABLE logs DROP COLUMN location;
-            PRAGMA user_version = 7;",
+            ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             PRAGMA user_version = 7;",
         )
         .expect("makes a version seven database");
     drop(connection);

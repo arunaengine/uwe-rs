@@ -218,6 +218,32 @@ fn reports_pinned_changes() {
     assert!(output.contains("keeps no copy"), "{output}");
 }
 
+/// Prints a remote file that the build of the pipeline reads, and runs no task.
+const READ_WORKFLOW: &str =
+    "params.sheet = null\nworkflow {\n  println(file(params.sheet).text.trim())\n}\n";
+
+/// A repeat reads the remote files of the run it repeats as they were, also while the
+/// workflow compiles.
+#[test]
+fn repeats_pinned_reads() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let (folder, cache) = (root.path().join("pipeline"), root.path().join("cache"));
+    std::fs::create_dir_all(&folder).expect("makes the folder");
+    std::fs::write(folder.join("main.nf"), READ_WORKFLOW).expect("writes");
+    let server = WebServer::start(&[("/sheet.txt", "first-sheet\n")]);
+    let sheet = format!("{}/sheet.txt", server.address);
+    let arguments = ["run", "-executor", "local", "main.nf", "--sheet", &sheet];
+    let (code, output) = uwe(&folder, &cache, &arguments);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("first-sheet"), "{output}");
+    let run = latest(&cache);
+    server.set("/sheet.txt", "second-sheet\n");
+    let (code, output) = uwe(&folder, &cache, &["repeat", &run]);
+    assert_eq!(code, 0, "{output}");
+    assert!(output.contains("first-sheet"), "{output}");
+    assert!(!output.contains("second-sheet"), "{output}");
+}
+
 #[test]
 fn identifies_order_dependence() {
     let root = tempfile::tempdir().expect("a temporary directory");

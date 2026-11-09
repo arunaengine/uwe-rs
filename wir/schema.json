@@ -306,7 +306,8 @@
         },
         "retry": { "$ref": "#/$defs/count" },
         "time": { "$ref": "#/$defs/count" },
-        "name": { "type": "string" }
+        "name": { "type": "string" },
+        "step": { "type": "string" }
       }
     },
     "kind": {
@@ -331,7 +332,13 @@
             "language": { "$ref": "#/$defs/language" },
             "entry": { "type": "string" },
             "profiles": { "type": "array", "items": { "type": "string" } },
-            "configs": { "$ref": "#/$defs/names" }
+            "configs": { "$ref": "#/$defs/names" },
+            "targets": { "$ref": "#/$defs/texts" },
+            "config_values": { "type": "string" },
+            "until": { "$ref": "#/$defs/texts" },
+            "omit_from": { "$ref": "#/$defs/texts" },
+            "forcerun": { "$ref": "#/$defs/texts" },
+            "forceall": { "type": "boolean" }
           }
         },
         "expr": {
@@ -685,7 +692,12 @@
                     "source": { "$ref": "#/$defs/name" },
                     "targets": { "$ref": "#/$defs/texts" },
                     "profiles": { "$ref": "#/$defs/texts" },
-                    "configs": { "$ref": "#/$defs/names" }
+                    "configs": { "$ref": "#/$defs/names" },
+                    "config_values": { "type": "string" },
+                    "until": { "$ref": "#/$defs/texts" },
+                    "omit_from": { "$ref": "#/$defs/texts" },
+                    "forcerun": { "$ref": "#/$defs/texts" },
+                    "forceall": { "type": "boolean" }
                   }
                 }
               }

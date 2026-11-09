@@ -43,6 +43,10 @@ pub struct Run {
     /// For a replay of one task, the run and the task that it replays.
     pub replays: Option<String>,
     pub replays_task: Option<u64>,
+    /// The wir document that the run compiled its workflow into, and ran.
+    pub document: Option<String>,
+    /// The digest of the document, like `sha256:<hex>`.
+    pub document_digest: Option<String>,
 }
 
 /// The inputs of a run (decision 24): the JSON Schema of the inputs of its workflow, and the
@@ -88,7 +92,7 @@ pub struct Owner {
 
 const RUN_COLUMNS: &str = "id, lineage, resumes, workflow, language, revision, arguments,
     parameters, executor, simulated, store, process, started, ended, state, error, program,
-    launch, workflow_folder, repeats, replays, replays_task";
+    launch, workflow_folder, repeats, replays, replays_task, document, document_digest";
 
 impl Database {
     /// Captures the owner of a running record without guessing whether a foreign host is alive.
@@ -428,6 +432,8 @@ fn run_row(row: &Row) -> rusqlite::Result<(Run, String, String)> {
         repeats: row.get(19)?,
         replays: row.get(20)?,
         replays_task: row.get(21)?,
+        document: row.get(22)?,
+        document_digest: row.get(23)?,
     };
     Ok((run, row.get(6)?, row.get(7)?))
 }

@@ -52,6 +52,8 @@ impl Lowerer {
             min_success: None,
         });
         let mut map = blank(path, kind, frame.origin.clone());
+        // A scatter adds no name: its tasks give their shard after the name of their call.
+        map.attributes.name = Some(String::new());
         map.inputs = graph.inputs.clone();
         map.inputs[0].r#type = array(items.clone());
         map.outputs = (outputs.iter())
@@ -90,6 +92,7 @@ impl Lowerer {
             condition: CONDITION.into(),
         });
         let mut branch = blank(path, kind, frame.origin.clone());
+        branch.attributes.name = Some(String::new());
         branch.inputs = graph.inputs.clone();
         branch.inputs.push(port(CONDITION, Type::Bool));
         branch.outputs = (outputs.iter())

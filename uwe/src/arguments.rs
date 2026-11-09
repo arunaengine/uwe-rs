@@ -27,9 +27,6 @@ pub struct Arguments {
     pub stub: bool,
     /// `-keep-going`: after a task failed, run every task that does not depend on it.
     pub keep_going: bool,
-    /// `-lowered`: run a CWL or WDL document or a Nextflow pipeline through the wir document
-    /// compiled from it.
-    pub lowered: bool,
     /// `-store folder|address`: where the cache store lives; a folder is made absolute.
     pub store: Option<String>,
     /// `-uwe-config file`: a config file of uwe, read after the site-wide file and
@@ -177,6 +174,12 @@ pub struct Arguments {
     /// The input values of a compiled run that hold a secret value, which reach the wir driver
     /// in memory.
     pub secret_inputs: wir_runtime::SecretInputs,
+    /// The run whose launch folder a resumed compiled run starts in, so that its jobs find the
+    /// files of the document they continue.
+    pub launch_run: Option<String>,
+    /// Whether a driver only plans or describes the workflow, so that the code of a Snakefile
+    /// writes no files.
+    pub planning: bool,
     /// Whether a host runs this through the Rust API, not the command line.
     pub embedded: bool,
     /// Where an embedded run sends what its workflow prints, from `run::Settings.print_sink`.
@@ -198,7 +201,6 @@ impl Arguments {
         crate::run::Settings {
             target: self.target.clone().unwrap_or_default(),
             language: self.language,
-            lowered: self.lowered,
             profiles: self.profiles.clone().unwrap_or_default(),
             configs: self.configs.clone(),
             config_file: self.config_file.clone(),
@@ -296,7 +298,6 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             }
             "-stub" | "-stub-run" => parsed.stub = true,
             "-keep-going" => parsed.keep_going = true,
-            "-lowered" => parsed.lowered = true,
             "-strict-provenance" => parsed.strict_provenance = true,
             "-reason" => {
                 let reason = value()?;
@@ -721,7 +722,6 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check", "check-order", "kuberun"],
     ),
     ("-keep-going", &["run", "graph", "check-order"]),
-    ("-lowered", &["run", "graph"]),
     (
         "-until <rules,files>",
         &["run", "graph", "check", "check-order"],

@@ -159,6 +159,12 @@ impl Compiler {
                 entry: Some(entrypoint.clone()).filter(|name| *name != spec.entrypoint),
                 profiles: Vec::new(),
                 configs: Vec::new(),
+                targets: Vec::new(),
+                config_values: None,
+                until: Vec::new(),
+                omit_from: Vec::new(),
+                forcerun: Vec::new(),
+                forceall: false,
             }),
         );
         let mut graph = Graph {

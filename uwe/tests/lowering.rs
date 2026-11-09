@@ -1,5 +1,5 @@
-//! Runs the CWL fixtures of cwl-lowering natively and through their lowered wir documents, and
-//! compares their steps, their tasks and their outputs.
+//! Runs the CWL fixtures of cwl-lowering as one native op of a wir document and compiled into
+//! wir, and compares their steps, their tasks and their outputs.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -46,13 +46,32 @@ fn fixtures(root: &Path) {
     }
 }
 
+/// Runs `document` with `words` in `root` as one native op of a wir document, the native
+/// baseline of its compiled run; its exit code and what it printed on standard error.
+fn native(root: &Path, cache: &Path, document: &str, words: &[&str]) -> (i32, String) {
+    let (code, printed, errors) = uwe(root, cache, &["lower", document]);
+    assert_eq!(code, 0, "{document}: {errors}");
+    let compiled: Json = serde_json::from_str(&printed).expect("prints JSON");
+    let source =
+        json!({"id": "workflow", "language": "cwl", "location": document, "version": "v1.2"});
+    let wrapped = common::native_document(&compiled, source);
+    std::fs::write(root.join("native.wir.json"), wrapped.to_string()).expect("writes");
+    let mut arguments = vec!["run", "native.wir.json"];
+    arguments.extend(words);
+    let (code, _, errors) = uwe(root, cache, &arguments);
+    (code, errors)
+}
+
 /// The language of the latest run and its tasks with their fingerprints, by step.
 fn latest(cache: &Path) -> (String, Vec<(Task, String, Option<String>)>) {
     let database = Database::open(&cache.join("uwe/runs.sqlite")).expect("opens");
     let run = database.runs(1).expect("reads").remove(0);
     let mut tasks = Vec::new();
     for row in database.tasks(&run.id).expect("reads the tasks") {
-        let detail = (database.task(&run.id, row.id).expect("reads")).expect("a task");
+        let mut detail = (database.task(&run.id, row.id).expect("reads")).expect("a task");
+        // The tasks of the native op of a baseline have its path before their names.
+        let name = &detail.description.name;
+        detail.description.name = name.strip_prefix("native: ").unwrap_or(name).to_owned();
         tasks.push((detail.description, detail.fingerprint, row.reused));
     }
     tasks.sort_by(|a, b| a.0.step.cmp(&b.0.step));
@@ -120,16 +139,19 @@ fn matches_native_steps() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let (root, cache) = (folder.path(), folder.path().join("cache"));
         fixtures(root);
-        let native = ["run", "-executor", "simulator", document, "-inputs", job];
-        let (code, _, errors) = uwe(root, &cache, &native);
+        let (code, errors) = native(
+            root,
+            &cache,
+            document,
+            &["-executor", "simulator", "-inputs", job],
+        );
         assert_eq!(code, 0, "{document}: {errors}");
-        let (language, alone) = latest(&cache);
-        assert_eq!(language, "cwl");
-        let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
-        let (code, _, errors) = uwe(root, &cache, &lowered);
+        let (_, alone) = latest(&cache);
+        let compiled = ["run", "-executor", "simulator", document, "-inputs", job];
+        let (code, _, errors) = uwe(root, &cache, &compiled);
         assert_eq!(code, 0, "{document}: {errors}");
         let (language, through) = latest(&cache);
-        assert_eq!(language, "wir", "{document} runs as wir");
+        assert_eq!(language, "cwl", "{document} records its workflow");
         assert_eq!(alone.len(), through.len(), "{document}: the same tasks");
         for ((one, _, _), (other, _, _)) in alone.iter().zip(&through) {
             assert_eq!(one.step, other.step, "{document}: the same steps");
@@ -151,7 +173,7 @@ fn matches_native_steps() {
                 other.step
             );
         }
-        let resumed: Vec<&str> = lowered.iter().copied().chain(["-resume"]).collect();
+        let resumed: Vec<&str> = compiled.iter().copied().chain(["-resume"]).collect();
         let (code, _, errors) = uwe(root, &cache, &resumed);
         assert_eq!(code, 0, "{document}: {errors}");
         let (_, again) = latest(&cache);
@@ -176,12 +198,16 @@ fn matches_scatter_steps() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let (root, cache) = (folder.path(), folder.path().join("cache"));
         fixtures(root);
-        let native = ["run", "-executor", "simulator", document, "-inputs", job];
-        let (code, _, errors) = uwe(root, &cache, &native);
+        let (code, errors) = native(
+            root,
+            &cache,
+            document,
+            &["-executor", "simulator", "-inputs", job],
+        );
         assert_eq!(code, 0, "{document}: {errors}");
         let (_, alone) = latest(&cache);
-        let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
-        let (code, _, errors) = uwe(root, &cache, &lowered);
+        let compiled = ["run", "-executor", "simulator", document, "-inputs", job];
+        let (code, _, errors) = uwe(root, &cache, &compiled);
         assert_eq!(code, 0, "{document}: {errors}");
         let (_, through) = latest(&cache);
         assert_eq!((alone.len(), through.len()), (count, count), "{document}");
@@ -210,12 +236,16 @@ fn matches_when_steps() {
         let folder = tempfile::tempdir().expect("a temporary directory");
         let (root, cache) = (folder.path(), folder.path().join("cache"));
         fixtures(root);
-        let native = ["run", "-executor", "simulator", "gate.cwl", "-inputs", job];
-        let (code, _, errors) = uwe(root, &cache, &native);
+        let (code, errors) = native(
+            root,
+            &cache,
+            "gate.cwl",
+            &["-executor", "simulator", "-inputs", job],
+        );
         assert_eq!(code, 0, "{job}: {errors}");
         let (_, alone) = latest(&cache);
-        let lowered: Vec<&str> = native.iter().copied().chain(["-lowered"]).collect();
-        let (code, _, errors) = uwe(root, &cache, &lowered);
+        let compiled = ["run", "-executor", "simulator", "gate.cwl", "-inputs", job];
+        let (code, _, errors) = uwe(root, &cache, &compiled);
         assert_eq!(code, 0, "{job}: {errors}");
         let (_, through) = latest(&cache);
         let names = |tasks: &[(Task, String, Option<String>)]| {
@@ -239,29 +269,22 @@ fn matches_native_outputs() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let (root, cache) = (folder.path(), folder.path().join("cache"));
     fixtures(root);
-    let words = [
-        "run",
-        "pipeline.cwl",
-        "-inputs",
-        "message.yml",
-        "-no-network",
-    ];
-    let native: Vec<&str> = words
-        .iter()
-        .copied()
+    let words = ["-inputs", "message.yml", "-no-network"];
+    let native_words: Vec<&str> = (words.iter().copied())
         .chain(["-output-dir", "native"])
         .collect();
-    let (code, _, errors) = uwe(root, &cache, &native);
+    let (code, errors) = native(root, &cache, "pipeline.cwl", &native_words);
     assert_eq!(code, 0, "{errors}");
-    let lowered: Vec<&str> = (words.iter().copied())
-        .chain(["-lowered", "-output-dir", "lowered"])
+    let compiled: Vec<&str> = (["run", "pipeline.cwl"].into_iter())
+        .chain(words)
+        .chain(["-output-dir", "compiled"])
         .collect();
-    let (code, _, errors) = uwe(root, &cache, &lowered);
+    let (code, _, errors) = uwe(root, &cache, &compiled);
     assert_eq!(code, 0, "{errors}");
     let read = |path: &str| std::fs::read_to_string(root.join(path)).expect("reads an output");
     assert_eq!(read("native/out.txt"), "hello");
-    assert_eq!(read("lowered/out.txt"), read("native/out.txt"));
+    assert_eq!(read("compiled/out.txt"), read("native/out.txt"));
     // wc prints the path of its input, which both stage in the same place.
     assert!(read("native/count.txt").contains("/var/lib/cwl/inputs/0/out.txt"));
-    assert_eq!(read("lowered/count.txt"), read("native/count.txt"));
+    assert_eq!(read("compiled/count.txt"), read("native/count.txt"));
 }

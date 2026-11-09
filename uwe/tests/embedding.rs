@@ -56,41 +56,31 @@ async fn forwards_cwl_image() {
 }
 
 #[tokio::test]
-async fn runs_lowered_documents() {
+async fn runs_compiled_documents() {
     let root = tempfile::tempdir().unwrap();
-    let mut tasks = Vec::new();
-    for lowered in [false, true] {
-        let mut request = request(root.path());
-        request.settings.lowered = lowered;
-        let run = request.run().await.unwrap();
-        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
-        tasks.push(run.execution.graph.nodes[0].task.clone());
-    }
+    let run = request(root.path()).run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
     // The compiled task runs as the native one does, in the output folder of CWL.
-    for task in &tasks {
-        assert_eq!(task.workdir.as_deref(), Some("/var/spool/cwl"));
-    }
-    assert_eq!(tasks[0].command, tasks[1].command);
+    let task = &run.execution.graph.nodes[0].task;
+    assert_eq!(task.workdir.as_deref(), Some("/var/spool/cwl"));
     let mut request = request(root.path());
-    request.settings.lowered = true;
     request.settings.inputs = Some(json!({"count": "three"}));
     let Err(refused) = request.run().await else {
-        panic!("a lowered run refuses an input of the wrong type");
+        panic!("a compiled run refuses an input of the wrong type");
     };
     assert!(refused.message.contains("not valid"), "{}", refused.message);
 }
 
-/// An embedded lowered Snakemake run takes its values as config, which the compiled document
-/// holds, not as inputs of its graph.
+/// An embedded Snakemake run takes its values as config, which the compiled document holds,
+/// not as inputs of its graph.
 #[tokio::test]
-async fn runs_lowered_snakefiles() {
+async fn runs_compiled_snakefiles() {
     let root = tempfile::tempdir().unwrap();
     let snakefile = "rule all:\n    input: \"a.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[sample_sheet]} > {output}\"\n";
     let target = root.path().join("Snakefile");
     std::fs::write(&target, snakefile).unwrap();
     let mut request = request(root.path());
     request.settings.target = target;
-    request.settings.lowered = true;
     request.settings.inputs = Some(json!({"sample_sheet": "samples.tsv"}));
     // A Snakemake config has an advisory schema, natively as compiled.
     request.policy = uwe::application::Policy::Relaxed;
@@ -109,11 +99,84 @@ async fn runs_lowered_snakefiles() {
     );
 }
 
+/// A resumed embedded Snakemake run starts in the launch folder of the run it continues, so
+/// its tasks are those of that run, which it takes from there.
+#[tokio::test]
+async fn resumes_launch_folder() {
+    let root = tempfile::tempdir().unwrap();
+    let request = |resume: Option<String>| resume_request(root.path(), resume);
+    let first = request(None).run().await.unwrap();
+    assert!(
+        first.execution.error.is_none(),
+        "{:?}",
+        first.execution.error
+    );
+    // A resume of a resume starts in the launch folder of the first run too.
+    let again = request(Some(first.id.clone())).run().await.unwrap();
+    let third = request(Some(again.id.clone())).run().await.unwrap();
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    let document = |id: &str| database.run(id).unwrap().unwrap().document;
+    for resumed in [&again, &third] {
+        let error = &resumed.execution.error;
+        assert!(error.is_none(), "{error:?}");
+        let nodes = &resumed.execution.graph.nodes;
+        assert!(!nodes.is_empty());
+        let fresh: Vec<&str> = (nodes.iter())
+            .filter(|node| !node.reused)
+            .map(|node| node.task.name.as_str())
+            .collect();
+        assert_eq!(fresh, Vec::<&str>::new(), "tasks that ran again");
+        // It runs the document of the first run, whose targets lie in its launch folder.
+        assert_eq!(document(&resumed.id), document(&first.id));
+    }
+    // It continues the run it resumes, in the folder of the first.
+    let resumes = database.run(&third.id).unwrap().unwrap().resumes;
+    assert_eq!(resumes, Some(again.id.clone()));
+}
+
+/// A compiled run that resumes a run without a compiled document, like a run of an older uwe,
+/// starts in its own launch folder, and so does a resume of it.
+#[tokio::test]
+async fn resumes_legacy_runs() {
+    let root = tempfile::tempdir().unwrap();
+    let request = |resume: Option<String>| resume_request(root.path(), resume);
+    let first = request(None).run().await.unwrap();
+    let database = root.path().join("runs.sqlite");
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    let forget = "UPDATE runs SET document = NULL, document_digest = NULL WHERE id = ?1";
+    connection.execute(forget, [&first.id]).unwrap();
+    drop(connection);
+    let again = request(Some(first.id.clone())).run().await.unwrap();
+    let third = request(Some(again.id.clone())).run().await.unwrap();
+    for resumed in [&again, &third] {
+        let error = &resumed.execution.error;
+        assert!(error.is_none(), "{error:?}");
+    }
+    let database = run_database::Database::open(&database).unwrap();
+    let run = |id: &str| database.run(id).unwrap().unwrap();
+    assert_eq!(run(&again.id).resumes, Some(first.id.clone()));
+    // It runs the document of the run it resumes, which started in its own folder.
+    assert_eq!(run(&third.id).document, run(&again.id).document);
+}
+
+/// A run of a Snakefile in `root` that makes `a.txt`, which resumes the run `resume`.
+fn resume_request(root: &std::path::Path, resume: Option<String>) -> RunRequest {
+    let snakefile = "rule all:\n    input: \"a.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo a > {output}\"\n";
+    let target = root.join("Snakefile");
+    std::fs::write(&target, snakefile).unwrap();
+    let mut request = request(root);
+    request.settings.target = target;
+    request.settings.inputs = None;
+    request.settings.cache = true;
+    request.settings.resume = resume.map(Resume::Run);
+    request.policy = uwe::application::Policy::Relaxed;
+    request
+}
+
 /// The settings of a resume of the compiled Snakefile run `run` in `root`.
 fn request_settings(run: &uwe::Run, root: &std::path::Path) -> Settings {
     let mut settings = request(root).settings;
     settings.target = root.join("Snakefile");
-    settings.lowered = true;
     settings.inputs = Some(json!({"sample_sheet": "samples.tsv"}));
     settings.resume = Some(Resume::Run(run.id.clone()));
     settings
@@ -737,6 +800,48 @@ async fn reruns_uncached_steps() {
         && matches!(edge.kind, workflow_graph::EdgeKind::File { .. })));
 }
 
+/// The callbacks of a compiled embedded Nextflow run start in the launch folder of the run
+/// too: a `map` that writes a relative path writes there, never into the working directory
+/// of the host. The run goes in a child process whose working directory is a temporary folder.
+#[test]
+fn confines_callback_writes() {
+    if std::env::var_os("UWE_EMBEDDED_CALLBACK").is_none() {
+        let folder = tempfile::tempdir().unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "confines_callback_writes", "--nocapture"])
+            .env("UWE_EMBEDDED_CALLBACK", "1")
+            .current_dir(folder.path())
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&[output.stdout, output.stderr].concat()).into_owned();
+        assert!(output.status.success(), "the child failed:\n{text}");
+        assert!(text.contains("1 passed"), "the child ran no test:\n{text}");
+        assert!(!folder.path().join("marker.txt").exists());
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let script =
+        "workflow {\n  channel.of('a').map { file('marker.txt').text = it; it }.view()\n}\n";
+    std::fs::write(root.path().join("main.nf"), script).unwrap();
+    let mut settings = Settings::new(root.path().join("main.nf"));
+    settings.executor = Some("simulator".into());
+    settings.database = Some(root.path().join("runs.sqlite"));
+    settings.cache = false;
+    settings.cache_folder = Some(root.path().join("cache"));
+    settings.setup = Some(Setup::default());
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let run = runtime.block_on(request.run()).unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    let launch = root.path().join("cache/scratch/launch").join(&run.id);
+    assert_eq!(
+        std::fs::read_to_string(launch.join("marker.txt")).unwrap(),
+        "a"
+    );
+    assert!(!std::env::current_dir().unwrap().join("marker.txt").exists());
+}
+
 /// Two embedded Nextflow runs at the same time write the same relative path, each into a
 /// launch folder of its own, never into the working directory of the host. The runs go in a
 /// child process whose working directory is a temporary folder.
@@ -784,7 +889,12 @@ fn launches_own_folder() {
             .join("cache/scratch/launch")
             .join(&run.id)
             .join("marker.txt");
-        assert_eq!(std::fs::read_to_string(&marker).unwrap(), word);
+        // A simulated run records what workflow code writes there and copies nothing.
+        let database = root.path().join(format!("{word}.sqlite"));
+        let database = run_database::Database::open(&database).unwrap();
+        let delivered = database.deliveries(&run.id).unwrap();
+        let targets: Vec<&str> = delivered.iter().map(|file| file.target.as_str()).collect();
+        assert_eq!(targets, [marker.to_string_lossy()]);
     }
     assert!(!std::env::current_dir().unwrap().join("marker.txt").exists());
 }

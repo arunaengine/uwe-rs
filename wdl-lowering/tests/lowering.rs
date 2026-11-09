@@ -221,7 +221,11 @@ fn default_image_used() {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let target = folder.path().join("main.wdl");
     std::fs::write(&target, text).expect("writes a document");
-    let lowering = wdl_lowering::lower_with(&target, None, folder.path(), "lab/tools:1")
+    let options = wdl_runtime::Options {
+        image: "lab/tools:1".into(),
+        ..wdl_runtime::Options::default()
+    };
+    let lowering = wdl_lowering::lower_with(&target, None, folder.path(), &options)
         .expect("the document lowers");
     let graph = (lowering.document.graphs.iter()).find(|item| item.name == "task.hello");
     let op = graph.and_then(|graph| graph.ops.iter().find(|op| op.path == "hello"));

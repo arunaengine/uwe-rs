@@ -42,6 +42,24 @@ pub struct Node {
     pub members: Vec<usize>,
     /// For a round of a map, a process or a loop: its stable ordinal among the rounds.
     pub ordinal: Option<u64>,
+    /// The start of the steps of the ops inside it.
+    pub inner: String,
+    /// The positions of the rounds of maps with an empty name around it, which its tasks give
+    /// after their names, as WDL names the shards of a scatter.
+    pub shard: Vec<usize>,
+}
+
+impl Node {
+    /// The name of its tasks: its name, with its shard positions after it.
+    pub fn task_name(&self) -> String {
+        match self.shard.is_empty() {
+            true => self.name.clone(),
+            false => {
+                let positions: Vec<String> = self.shard.iter().map(usize::to_string).collect();
+                format!("{} ({})", self.name, positions.join(", "))
+            }
+        }
+    }
 }
 
 /// A tree of status tests with the ops resolved to nodes.
@@ -268,15 +286,25 @@ pub fn rounds(
     body: &str,
     rounds: Rounds,
 ) -> Result<(), DriverError> {
-    let named = nodes[at].op.attributes.name.is_some();
+    let named = nodes[at].op.attributes.name.clone();
     for (index, item) in rounds.items.into_iter().enumerate() {
         let place = index.to_string();
-        // A named map names its rounds by their positions, as CWL names scatter rounds.
-        let shown = (rounds.positions.get(index).filter(|_| named)).map(|positions| {
-            let positions: Vec<String> = positions.iter().map(usize::to_string).collect();
-            format!("{}[{}]", nodes[at].name, positions.join(","))
-        });
-        let node = round(document, nodes, (at, &place, shown), body, item)?;
+        let positions = rounds.positions.get(index).cloned().unwrap_or_default();
+        // A named map names its rounds by their positions, as CWL names scatter rounds; one
+        // with an empty name adds none, and its tasks give them after their names, as WDL does.
+        let shown = match named.as_deref() {
+            Some("") => Some(nodes[at].name.clone()),
+            Some(_) => {
+                let shown: Vec<String> = positions.iter().map(usize::to_string).collect();
+                Some(format!("{}[{}]", nodes[at].name, shown.join(",")))
+            }
+            None => None,
+        };
+        let shard = match named.as_deref() {
+            Some("") => positions,
+            _ => Vec::new(),
+        };
+        let node = round(document, nodes, (at, &place, shown, &shard), body, item)?;
         nodes[node].ordinal = Some(index as u64);
     }
     Ok(())
@@ -284,11 +312,11 @@ pub fn rounds(
 
 /// Adds one round of the node `at`, at `<path of at>/<place>`, as a call of `body` with the
 /// values of `item`, and the ops of the body below it; the node of the round. Its tasks take
-/// the name `shown`, else `<name of at>/<place>`.
+/// the name `shown`, else `<name of at>/<place>`, and the positions `shard` after those of `at`.
 pub fn round(
     document: &Document,
     nodes: &mut Vec<Node>,
-    (at, place, shown): (usize, &str, Option<String>),
+    (at, place, shown, shard): (usize, &str, Option<String>, &[usize]),
     body: &str,
     item: Map<String, Json>,
 ) -> Result<usize, DriverError> {
@@ -298,6 +326,8 @@ pub fn round(
         nodes[at].step.clone(),
     );
     let name = shown.unwrap_or_else(|| format!("{}/{place}", nodes[at].name));
+    let inner = nodes[at].inner.clone();
+    let shard = [nodes[at].shard.as_slice(), shard].concat();
     let mut op = nodes[at].op.clone();
     op.kind = Kind::Call(Call {
         graph: body.to_owned(),
@@ -327,9 +357,11 @@ pub fn round(
         handles: Vec::new(),
         members: Vec::new(),
         ordinal: None,
+        inner: inner.clone(),
+        shard,
     });
-    let (inner, steps, names) = (format!("{path}/"), under(&step), under(&name));
-    let prefixes = (inner.as_str(), steps.as_str(), names.as_str());
+    let (path, names) = (format!("{path}/"), under(&name));
+    let prefixes = (path.as_str(), inner.as_str(), names.as_str());
     nodes[round].exports = instantiate(document, graph, prefixes, Some(round), nodes)?;
     Ok(round)
 }
@@ -430,9 +462,23 @@ pub fn extend(
         }
         index.insert(op.path.as_str(), nodes.len());
         let named = op.attributes.name.as_deref().unwrap_or(&op.path);
+        // A `step` names the op in steps, which the ops inside it follow with `.`; an op with
+        // an empty name and none adds nothing.
+        let step = match &op.attributes.step {
+            Some(step) => format!("{steps}{step}"),
+            None => joined(steps, named),
+        };
+        let inner = match (&op.attributes.step, named.is_empty()) {
+            (Some(_), _) => format!("{step}."),
+            (None, true) => steps.to_owned(),
+            (None, false) => under(&step),
+        };
+        let shard = call
+            .map(|call| nodes[call].shard.clone())
+            .unwrap_or_default();
         nodes.push(Node {
             path: format!("{prefix}{}", op.path),
-            step: joined(steps, named),
+            step,
             name: joined(names, named),
             op: op.clone(),
             inputs: Vec::new(),
@@ -446,6 +492,8 @@ pub fn extend(
             handles: Vec::new(),
             members: Vec::new(),
             ordinal: None,
+            inner,
+            shard,
         });
     }
     let source = |from: &Endpoint| match &from.op {
@@ -498,7 +546,7 @@ pub fn extend(
             nodes[at].defaults = defaults(called);
             let inner = (
                 format!("{prefix}{}/", op.path),
-                under(&nodes[at].step),
+                nodes[at].inner.clone(),
                 under(&nodes[at].name),
             );
             let inner = (inner.0.as_str(), inner.1.as_str(), inner.2.as_str());
@@ -516,10 +564,13 @@ pub fn extend(
     Ok(outputs)
 }
 
-/// A name below `prefix`, which ends with `/` unless it is empty; an empty `name` adds none.
+/// A name below `prefix`, which ends with `/` or `.` unless it is empty; an empty `name` adds
+/// none.
 fn joined(prefix: &str, name: &str) -> String {
     match name.is_empty() {
-        true => prefix.strip_suffix('/').unwrap_or(prefix).to_owned(),
+        true => (prefix.strip_suffix(['/', '.']))
+            .unwrap_or(prefix)
+            .to_owned(),
         false => format!("{prefix}{name}"),
     }
 }

@@ -223,6 +223,8 @@ impl Lowerer {
         }
         let mut run = blank(&path, Kind::Task(task.task), at.clone());
         run.attributes.resources = task.resources;
+        // The task takes the name and step of the call that runs it.
+        run.attributes.name = Some(String::new());
         (run.inputs, run.outputs) = (ports, captured);
         for output in outputs
             .iter()

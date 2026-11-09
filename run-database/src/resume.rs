@@ -37,14 +37,14 @@ impl Database {
         }
     }
 
-    /// The latest run of a workflow whose path starts with `prefix`, like the compiled
+    /// The latest run whose compiled document has a path that starts with `prefix`, like the
     /// documents of one workflow, as [`Database::last_run`] picks it.
     pub fn last_run_below(&self, prefix: &str, real: bool) -> Result<Option<Run>, DatabaseError> {
         let id: Option<String> = self
             .connection
             .query_row(
                 "SELECT id FROM runs
-                 WHERE substr(workflow, 1, length(?1)) = ?1 AND (simulated = 0 OR NOT ?2)
+                 WHERE substr(document, 1, length(?1)) = ?1 AND (simulated = 0 OR NOT ?2)
                    AND replays IS NULL
                  ORDER BY started DESC, rowid DESC LIMIT 1",
                 params![prefix, real],
@@ -55,6 +55,16 @@ impl Database {
             Some(id) => self.run(&id),
             None => Ok(None),
         }
+    }
+
+    /// The compiled documents that runs ran, which resumes of them run again.
+    pub fn documents(&self) -> Result<Vec<String>, DatabaseError> {
+        let mut statement = (self.connection)
+            .prepare("SELECT DISTINCT document FROM runs WHERE document IS NOT NULL")?;
+        let documents = statement
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(documents)
     }
 
     /// The ids of the runs of a lineage, the latest first.

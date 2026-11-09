@@ -1575,7 +1575,7 @@ mod tests {
     }
 
     #[test]
-    fn codes_see_last_places() {
+    fn codes_see_placements() {
         let rule = wir::Capture {
             output: "where".into(),
             from: CaptureRule::Empty,

@@ -104,10 +104,14 @@ impl Single {
                     .collect();
                 self.started[index] = true;
                 moved = true;
-                match prepared(self.driver.prepare_job(&job.key.clone(), staged)?) {
+                match prepared(self.driver.prepare_job(&job.key.clone(), &[], staged)?) {
                     Prepared::Run(task) => {
                         self.owners.insert(task.id, index);
                         tasks.push(*task);
+                    }
+                    Prepared::Tasks(more) => {
+                        self.owners.extend(more.iter().map(|task| (task.id, index)));
+                        tasks.extend(more);
                     }
                     Prepared::Skipped(made) => self.files[index] = Some(made),
                     Prepared::Failed(message) => return Err(DriverError::new(message)),
@@ -141,6 +145,10 @@ impl Driver for Single {
                 self.ready()
             }
             JobResult::Retry(task) => Ok(vec![*task]),
+            JobResult::Tasks(more) => {
+                self.owners.extend(more.iter().map(|task| (task.id, index)));
+                Ok(more)
+            }
             JobResult::Failed(_) => Ok(Vec::new()),
         }
     }
@@ -280,7 +288,7 @@ fn retries_match() {
                 .expect("make")
                 .key
                 .clone();
-            match prepared(driver.prepare_job(&key, Vec::new()).expect("prepares")) {
+            match prepared(driver.prepare_job(&key, &[], Vec::new()).expect("prepares")) {
                 Prepared::Run(task) => (*task, Some(key)),
                 other => panic!("the job does not run: {other:?}"),
             }
@@ -308,7 +316,7 @@ fn retries_match() {
                         seen.push(format!("accepted {}", made.len()));
                         None
                     }
-                    JobResult::Failed(message) => panic!("fails: {message}"),
+                    other => panic!("fails: {other:?}"),
                 },
                 None => {
                     let mut tasks = driver.complete(outcome).expect("completes");

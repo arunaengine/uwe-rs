@@ -77,6 +77,26 @@ async fn runs_lowered_documents() {
     assert!(refused.message.contains("not valid"), "{}", refused.message);
 }
 
+/// An embedded lowered Snakemake run takes its values as config, which the compiled document
+/// holds, not as inputs of its graph.
+#[tokio::test]
+async fn runs_lowered_snakefiles() {
+    let root = tempfile::tempdir().unwrap();
+    let snakefile = "rule all:\n    input: \"a.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[sample_sheet]} > {output}\"\n";
+    let target = root.path().join("Snakefile");
+    std::fs::write(&target, snakefile).unwrap();
+    let mut request = request(root.path());
+    request.settings.target = target;
+    request.settings.lowered = true;
+    request.settings.inputs = Some(json!({"sample_sheet": "samples.tsv"}));
+    // A Snakemake config has an advisory schema, natively as compiled.
+    request.policy = uwe::application::Policy::Relaxed;
+    let run = request.run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    let script = run.execution.graph.nodes[0].task.script.clone();
+    assert!(script.unwrap_or_default().contains("samples.tsv"));
+}
+
 #[tokio::test]
 async fn defaults_to_local() {
     let root = tempfile::tempdir().unwrap();

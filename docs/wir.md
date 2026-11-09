@@ -102,29 +102,33 @@ A run of a compiled document builds, accepts and publishes the tasks of `nextflo
 - Each job becomes a `task` op with a `snakemake_job` builder: the rule is its `call` and the target of the plan its `entry`, its wildcard values are kept as they are, and its path is the rule, then the wildcard values joined by `.`, like `count/a`, with letters that names do not take as `_`. Its `origin` names the rule.
 - Each file that one job makes and another reads is an edge with a File, or a Directory for a `directory()` output, from the output `output_<n>` of the maker to the input `input_<n>` of the reader. The ports map to the native selectors `output/<n>`, the outputs, logs and benchmark of the job in this order, and `input/<n>`, its input files. Inputs that no job makes are read where they are.
 - An output that the native run delivers to the working directory is a `publish` effect. `temp()`, `pipe()` and `service()` outputs are not.
+- The entry graph has the outputs of a native run: the files of the targets, named as `uwe outputs` names them. A WDL `expr` op `result.<name>` gives the files in the working folder once the ops that make them have ended.
 - The command, script, wrapper, notebook, `run:` block, conda and container settings, resources, retries, `touch()` and `protected()` stay as the native job builds and checks them: the builder runs the job through the job adapter of `snakemake-runtime`, which prepares its task and takes its outcome with the code of the native driver, so the task, its cache key and its acceptance are those of the native run.
 - Jobs that run together in one task, group jobs of a run that is not local, pipes, and a service with the jobs that use it, are one op: its `group` names the other jobs, its inputs are the files that no job of the group makes, and its outputs the files of each job in turn.
 - Every op carries the plan settings of the run: several targets, the options `until`, `omit-from`, `forcerun` and `forceall`, and config values of the command line, which a source with a `data:` location holds and its digest pins. The job adapter plans with them as the run would.
+- A `cwl:` job is one op whose call runs the tasks of its CWL run, as the native run does; the job ends with the outputs of that run.
 - Commands that workflow code runs while the workflow is planned run while it compiles, as hooks run, so that the plan sees their output. A run starts the adapter, which runs them again as tasks before the jobs, and also those that a job runs while it is prepared, like a `conda:` function; the run checks that it plans every compiled job with its group.
-- The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a rule is a checkpoint, when a job runs a CWL document, and when uwe cannot plan the workflow, like a storage plugin that uwe lacks. Such a native op drops the plan settings, and `uwe lower` names each one.
+- A workflow with a checkpoint is one `dynamic` region whose planner is the Snakemake planner of the job adapter. Its plans hold the jobs that wait for no checkpoint, as tasks with `snakemake_job` builders whose identities are the rule and wildcards; after each checkpoint the adapter plans again, as a native run does, and the plan is final once no needed checkpoint is pending. The region holds the targets of the launch, but not config values of the command line or the options that pick jobs, so such a workflow does not compile. The region gives no target files as outputs yet.
+- The whole workflow stays one `native` Snakemake op, and `uwe lower` names the first reason, when a group runs jobs of several container images, which a run splits into separate tasks, and when uwe cannot plan the workflow, like a storage plugin that uwe lacks. Such a native op cannot hold config values of the command line, several targets or the options that pick jobs, so a workflow with them does not compile. For a Snakefile, its source is the working folder of the launch, so that it starts there as a native run does; a Snakefile that its working folder does not find itself does not compile.
 
 The wir runtime runs the jobs of a document through one job adapter for the Snakefile, its profiles and config files, which `wir_runtime::snakemake::register` adds to a run. Job tasks keep their native names.
 
 ### Snakemake coverage
 
-`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs: their descriptions, cache keys, resume fingerprints and acceptance. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
+`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs (their descriptions, cache keys, resume fingerprints and acceptance) and the target files that the native run exports with those that the outputs of the compiled entry graph name. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
 
 | Outcome | Workflows |
 | --- | --- |
 | test workflows | 890 |
 | the native run succeeds | 633 |
-| compiles fully | 616 |
-| stays one native op | 54 |
-| does not compile: planning fails, as the native run fails | 219 |
-| the compiled run ends as the native run does: both fail, or both give the same tasks | 616 |
-| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 593 |
+| compiles fully | 666 |
+| stays one native op | 3 |
+| does not compile: planning fails as the native run fails (219), or a region cannot hold the launch (1) | 220 |
+| the compiled run ends as the native run does: both fail, or both give the same tasks | 666 |
+| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 632 |
+| both succeed with the same target files | 594 |
 
-What keeps a workflow native, by the first reason: a checkpoint (51), a CWL job (1), and features that uwe does not run yet (2). `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+The 38 runs with the same tasks and other target files are checkpoint regions, which give no target files yet. What keeps a workflow native: a group whose jobs run in several images (1), and features that uwe does not run yet (2). The one that does not compile for its launch sets config values on the command line beside a checkpoint. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
 
 ## Detection
 

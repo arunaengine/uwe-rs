@@ -989,7 +989,8 @@
                 "until": { "$ref": "#/$defs/texts" },
                 "omit_from": { "$ref": "#/$defs/texts" },
                 "forcerun": { "$ref": "#/$defs/texts" },
-                "forceall": { "type": "boolean" }
+                "forceall": { "type": "boolean" },
+                "layout": { "type": "string" }
               }
             },
             "argo_task": { "$ref": "#/$defs/task_ref" },

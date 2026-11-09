@@ -384,9 +384,13 @@ impl Session {
         images.len() > 1
     }
 
-    /// The jobs that run in one task with `job`, it first: a service job with the jobs that
-    /// use it, a group job or a pipe of the run, else `job` alone.
+    /// The jobs that run in one task with `job`, it first: a group that started, a service job
+    /// with the jobs that use it, a group job or a pipe of the run, else `job` alone.
     fn members(&self, job: usize) -> Vec<usize> {
+        // A group that started stays one, also when a later plan groups only jobs to come.
+        if let Some(members) = self.started_groups.get(&job) {
+            return members.clone();
+        }
         if let Some(services) = self.served(job)
             && let Ok((users, _)) = self.service_users(job, &services)
             && !users.is_empty()
@@ -465,6 +469,9 @@ impl Session {
             return Ok(match task {
                 Some(task) => {
                     self.recorded.insert(task.id, recorded);
+                    for member in &members {
+                        self.started_groups.insert(*member, members.clone());
+                    }
                     Prepared::Run(Box::new(task))
                 }
                 None => Prepared::Failed(self.failures.last().cloned().unwrap_or_else(|| {

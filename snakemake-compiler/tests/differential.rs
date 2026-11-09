@@ -404,6 +404,15 @@ fn replanned_checkpoints_match() {
     }
 }
 
+/// A group that ended before a checkpoint keeps its op when the region plans again, as the
+/// native run keeps its task.
+#[test]
+fn groups_before_checkpoints() {
+    let snakefile = "rule all:\n    input: \"d.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n\ncheckpoint c:\n    input: \"b.txt\"\n    output: \"c.txt\"\n    shell: \"cp {input} {output}\"\n\ndef made(wildcards):\n    return checkpoints.c.get().output[0]\n\nrule d:\n    input: made\n    output: \"d.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let compared = compared(snakefile, &[]);
+    assert!(compared.full && compared.same, "{}", compared.shown);
+}
+
 /// A `cwl:` job runs the tasks of its CWL run, as natively.
 #[test]
 fn cwl_jobs_match() {

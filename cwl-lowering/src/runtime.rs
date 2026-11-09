@@ -135,7 +135,9 @@ pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
     };
     let base = format!(
         "var runtime = {{\"outdir\": \"{OUTDIR}\", \"tmpdir\": \"{TMPDIR}\"}}; {TEXT} {PICK} \
-         var cores = {}, ram = {}, tmpdir = {}, outdir = {}; var time = {time}; \
+         var cores = {}, ram = {}, tmpdir = {}, outdir = {}; runtime.cores = Math.ceil(cores); \
+         runtime.ram = Math.ceil(ram); runtime.outdirSize = Math.ceil(outdir); \
+         runtime.tmpdirSize = Math.ceil(tmpdir); var time = {time}; \
          if (time !== null && time !== undefined && (time % 1 !== 0 || time < 0)) \
          {{ throw new Error(\"the timelimit is no whole number of 0 or more\"); }} \
          var mib = function(v) {{ return Math.ceil(v) * 1048576; }};",
@@ -242,18 +244,6 @@ pub fn inlined(
 pub fn list(codes: &[Expression]) -> String {
     let values: Vec<String> = codes.iter().map(value).collect();
     format!("${{ {TEXT} return [].concat({}); }}", values.join(", "))
-}
-
-/// The code that sets the format of each File of `self`, a File or a list, to the value of a
-/// format expression over that File as `self`, as CWL sets the format of an output.
-pub fn formats(format: &Expression) -> String {
-    format!(
-        "${{ {TEXT} var format = function(self) {{ return {}; }}; \
-         var set = function(file) {{ if (file !== null && typeof file === \"object\" \
-         && file.class === \"File\") {{ file.format = format(file); }} return file; }}; \
-         return Array.isArray(self) ? self.map(set) : set(self); }}",
-        value(format)
-    )
 }
 
 /// The function `text` that the code of text with parts uses.

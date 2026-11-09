@@ -9,6 +9,8 @@ use serde_json::{Map, Value as Json};
 use wir::{Port, Type, TypeDef, resolve};
 use workflow_graph::{DriverError, Launch};
 
+use cwl_runtime::files::Access;
+
 use crate::state::widen;
 
 /// The input values of a launch by port name: the JSON or YAML inputs file, with File and Directory
@@ -17,7 +19,12 @@ pub fn read(
     launch: &Launch,
     ports: &[Port],
     defs: &[TypeDef],
+    remote: &cwl_parser::source::Remote,
 ) -> Result<Map<String, Json>, DriverError> {
+    let access = cwl_runtime::files::Access {
+        assume_present: launch.simulated,
+        remote: remote.clone(),
+    };
     let mut values = Map::new();
     if let Some(path) = &launch.inputs {
         let shown = path.display();
@@ -59,7 +66,7 @@ pub fn read(
         };
         let value = match given {
             Some(mut value) => {
-                discover(&mut value, &port.r#type, (defs, launch.simulated));
+                discover(&mut value, &port.r#type, (defs, &access));
                 widen(value, &port.r#type, defs)
             }
             None if port.r#type.is_optional(defs) => Json::Null,
@@ -83,11 +90,12 @@ pub fn read(
     Ok(values)
 }
 
-/// Adds to each local File that lists no secondary files those beside it that its type asks
-/// for, as CWL finds the secondary files of a job. A simulated run takes required ones as
-/// present, as its files are made up.
-fn discover(value: &mut Json, r#type: &Type, (defs, simulated): (&[TypeDef], bool)) {
-    let inner = (defs, simulated);
+/// Adds to each File that lists no secondary files those beside it that its type asks for, as
+/// CWL finds the secondary files of a job: on disk, or at an address that its provider finds.
+/// A simulated run takes required ones as present, as its files are made up.
+fn discover(value: &mut Json, r#type: &Type, (defs, access): (&[TypeDef], &Access)) {
+    let inner = (defs, access);
+    let simulated = access.assume_present;
     match (value, resolve(r#type, defs)) {
         (Json::Array(items), Some(Type::Array(array))) => {
             (items.iter_mut()).for_each(|item| discover(item, &array.items, inner));
@@ -105,7 +113,19 @@ fn discover(value: &mut Json, r#type: &Type, (defs, simulated): (&[TypeDef], boo
                 .get("location")
                 .and_then(Json::as_str)
                 .unwrap_or_default();
-            if location.contains("://") || wanted.secondary_files.is_empty() {
+            if wanted.secondary_files.is_empty() {
+                return;
+            }
+            if location.contains("://") {
+                let (folder, name) = location.rsplit_once('/').unwrap_or(("", location));
+                let mut found = Vec::new();
+                for item in &wanted.secondary_files {
+                    let beside = format!("{folder}/{}", wir::secondary_name(name, &item.pattern));
+                    if access.exists_next_to(&beside, location) {
+                        found.push(serde_json::json!({"class": "File", "location": beside}));
+                    }
+                }
+                file.insert("secondary_files".into(), Json::Array(found));
                 return;
             }
             let primary = Path::new(location);

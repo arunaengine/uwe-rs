@@ -117,6 +117,24 @@ fn keeps_typed_operators() {
         op(main, "pipeline")["kind"]["native"]["profiles"],
         json!(["test"])
     );
+    let param = json!({"name": "greeting", "type": {"optional": "string"}, "default": "hi"});
+    assert_eq!(
+        main["inputs"],
+        json!([param]),
+        "the native op keeps the params"
+    );
+    let edge = json!({"from": {"port": "greeting"}, "to": {"op": "pipeline", "port": "greeting"}});
+    assert!(main["edges"].as_array().unwrap().contains(&edge));
+    if let Err(problems) = wir::verify(&compiled.document) {
+        panic!(
+            "{}",
+            problems
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
     let document = full("workflow {\n}\n");
     let main = graph(&document, "main");
     let param = json!({"name": "greeting", "type": "dynamic", "default": "hi"});
@@ -378,4 +396,138 @@ fn passes_single_topics() {
         .iter()
         .find(|op| op["path"].as_str().unwrap().starts_with("topic-"));
     assert_eq!(topic.map(|op| op["kind"]["filter"].is_object()), Some(true));
+}
+
+#[test]
+fn pins_loaded_scripts() {
+    let script =
+        "include { tag } from './helper.nf'\nworkflow {\n    channel.of(tag()).view()\n}\n";
+    let helper = "def tag() { 'one' }\n";
+    let class = "class Util {\n    static String name() { 'util' }\n}\n";
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::write(directory.path().join("helper.nf"), helper).unwrap();
+    std::fs::create_dir(directory.path().join("lib")).unwrap();
+    std::fs::write(directory.path().join("lib").join("Util.groovy"), class).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Quiet(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let compiled = nextflow_compiler::compile(&launch, settings, directory.path()).unwrap();
+    let document = json(&compiled);
+    let sources = document["sources"].as_array().unwrap();
+    for location in ["helper.nf", "lib/Util.groovy"] {
+        let source = sources.iter().find(|source| source["location"] == location);
+        let digest = source.map(|source| source["digest"].as_str().unwrap_or_default());
+        assert!(
+            digest.is_some_and(|digest| digest.starts_with("sha256:")),
+            "{location}: {sources:?}"
+        );
+    }
+}
+
+#[test]
+fn records_observed_processes() {
+    let document = full(&format!(
+        "{GREET}\nworkflow {{\n    GREET(channel.of('a'))\n}}\n"
+    ));
+    let hooks = document["hooks"].as_array().expect("run hooks");
+    let observe = &hooks[0]["observe"];
+    assert_eq!(observe["source"], "main");
+    let process = &observe["processes"][0];
+    assert_eq!(
+        (&process["name"], &process["script"]),
+        (&json!("GREET"), &json!("main.nf"))
+    );
+}
+
+/// Compiles `script` with `config` as its `nextflow.config`, without a profile.
+fn compile_config(script: &str, config: &str) -> Compilation {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Quiet(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    nextflow_compiler::compile(&launch, settings, directory.path()).unwrap()
+}
+
+#[test]
+fn types_native_params() {
+    let config = "params.extra = null\nparams.opts = [a: 1, b: 'x']\nparams.none = []\n\
+                  params.mixed = [1, 'a']\n";
+    let compiled = compile_config(
+        "workflow {\n    channel.of(['a', 1]).groupBy().view()\n}\n",
+        config,
+    );
+    assert!(
+        !compiled.full(),
+        "the typed operator keeps the pipeline native"
+    );
+    if let Err(problems) = wir::verify(&compiled.document) {
+        let shown: Vec<String> = problems.iter().map(ToString::to_string).collect();
+        panic!("the native document verifies: {}", shown.join("; "));
+    }
+    let document = json(&compiled);
+    let names: Vec<&str> = (graph(&document, "main")["inputs"]
+        .as_array()
+        .unwrap()
+        .iter())
+    .map(|port| port["name"].as_str().unwrap())
+    .collect();
+    for name in ["extra", "opts", "none", "mixed"] {
+        assert!(names.contains(&name), "{name} in {names:?}");
+    }
+}
+
+#[test]
+fn keeps_refused_params() {
+    let script = "workflow {\n    file(\"${launchDir}/old.txt\").delete()\n}\n";
+    let compiled = compile_config(script, "params.sample = 'a'\n");
+    assert!(
+        compiled.kept[0].reason.contains("deleting files"),
+        "{:?}",
+        compiled.kept
+    );
+    let document = json(&compiled);
+    let main = graph(&document, "main");
+    let param = json!({"name": "sample", "type": {"optional": "string"}, "default": "a"});
+    assert_eq!(main["inputs"], json!([param]), "the params of the config");
+    let edge = json!({"from": {"port": "sample"}, "to": {"op": "pipeline", "port": "sample"}});
+    assert!(main["edges"].as_array().unwrap().contains(&edge));
+}
+
+#[test]
+fn keeps_unbridged_params() {
+    let script = "workflow {\n    file(\"${launchDir}/old.txt\").delete()\n}\n";
+    let config = "params.sample = 'a'\nparams.max_time = 1.h\nparams.max_memory = 2.GB\n";
+    let compiled = compile_config(script, config);
+    assert!(
+        compiled.kept[0].reason.contains("deleting files"),
+        "{:?}",
+        compiled.kept
+    );
+    let document = json(&compiled);
+    let names: Vec<&str> = (graph(&document, "main")["inputs"]
+        .as_array()
+        .unwrap()
+        .iter())
+    .map(|port| port["name"].as_str().unwrap())
+    .collect();
+    assert_eq!(
+        names,
+        ["sample"],
+        "a duration and a memory keep their config defaults"
+    );
 }

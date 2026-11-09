@@ -12,11 +12,11 @@ use workflow_graph::{Driver, Launch, Order, RunOptions, Simulator, Task, execute
 /// How many pipelines compile fully, run natively, run compiled, and how many compiled runs give
 /// the native tasks in both orders: equal task descriptions and resume fingerprints.
 const RECORDED: Counts = Counts {
-    pipelines: 9,
-    full: 9,
-    native: 9,
-    compiled: 9,
-    same: 9,
+    pipelines: 19,
+    full: 19,
+    native: 19,
+    compiled: 19,
+    same: 19,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -85,6 +85,46 @@ const PIPELINES: &[(&str, &str)] = &[
     (
         "combine",
         "workflow {\n    GREET(channel.of('a', 'b').combine(channel.of(1, 2)).map { n, i -> [[id: \"${n}${i}\"], n] })\n    COUNT(GREET.out.text.map { it[1] }.toSortedList(), 'combined')\n}",
+    ),
+    (
+        "files",
+        "workflow {\n    GREET(channel.fromPath(\"${projectDir}/*.csv\").map { [[id: it.baseName], it.baseName] })\n    COUNT(channel.fromFilePairs(\"${projectDir}/*_{1,2}.fq\").map { it[1] }, 'pairs')\n}",
+    ),
+    (
+        "optional",
+        "process OPT {\n    input:\n    val x\n    output:\n    path 'a.txt', emit: a\n    path 'b.txt', optional: true, emit: b\n    script:\n    'touch a.txt'\n}\nworkflow {\n    OPT(channel.of(1, 2))\n    GREET(OPT.out.b.count().map { [[id: \"n${it}\"], \"n${it}\"] })\n}",
+    ),
+    (
+        "each",
+        "process E {\n    input:\n    val x\n    each n\n    output:\n    val \"${x}${n}\"\n    script:\n    'true'\n}\nworkflow {\n    E('s', [1, 2])\n    GREET(E.out.map { [[id: it], it] })\n}",
+    ),
+    (
+        "modules",
+        "include { P as PA } from './modules/a/main.nf'\ninclude { P as PB } from './modules/b/main.nf'\nworkflow {\n    PA(channel.of(1))\n    PB(channel.of(1))\n}",
+    ),
+    (
+        "forks",
+        "process F {\n    maxForks 1\n    input:\n    val x\n    output:\n    val x\n    script:\n    'true'\n}\nworkflow {\n    F(channel.of('a', 'b', 'c'))\n    GREET(F.out.collect().map { [[id: it.join('-')], 'x'] })\n}",
+    ),
+    (
+        "fair",
+        "process F {\n    fair true\n    input:\n    val x\n    output:\n    val x\n    script:\n    'true'\n}\nworkflow {\n    F(channel.of('a', 'b', 'c'))\n    GREET(F.out.collect().map { [[id: it.join('-')], 'x'] })\n}",
+    ),
+    (
+        "multimap",
+        "workflow {\n    split = channel.of('a', 'b').multiMap { w ->\n        word: w\n        none: null\n    }\n    GREET(split.none.toList().map { [[id: \"n${it.size()}\"], 'x'] }.mix(split.word.map { [[id: it], it] }))\n}",
+    ),
+    (
+        "scan",
+        "include { scan } from 'plugin/nf-boost'\nworkflow {\n    GREET(channel.of(1, 2, 3).scan(10) { acc, v -> acc + v }.map { [[id: \"s${it}\"], \"s${it}\"] })\n}",
+    ),
+    (
+        "fairskip",
+        "process F {\n    fair true\n    input:\n    val x\n    output:\n    val x\n    when:\n    x != 1\n    script:\n    'true'\n}\nworkflow {\n    F(channel.of(1, 2, 3))\n    GREET(F.out.count().map { [[id: \"n${it}\"], 'x'] })\n}",
+    ),
+    (
+        "scannull",
+        "include { scan } from 'plugin/nf-boost'\nworkflow {\n    GREET(channel.of(1, 2, 3).scan { acc, x -> x == 2 ? null : x * 10 }.map { [[id: \"s${it}\"], \"s${it}\"] })\n}",
     ),
     (
         "closures",
@@ -164,6 +204,16 @@ fn compare(name: &str, script: &str, counts: &mut Counts) -> String {
     let folder = directory.path();
     std::fs::write(folder.join("main.nf"), format!("{PROCESSES}\n{script}\n")).unwrap();
     std::fs::write(folder.join("nextflow.config"), "params.greeting = 'hi'\n").unwrap();
+    for name in ["a.csv", "b.csv", "s_1.fq", "s_2.fq"] {
+        std::fs::write(folder.join(name), name).unwrap();
+    }
+    // Two modules with a process of one name at the same place, which differ in their script.
+    for module in ["a", "b"] {
+        std::fs::create_dir_all(folder.join("modules").join(module)).unwrap();
+        let process =
+            format!("process P {{\n    input:\n    val x\n    script:\n    'echo {module}'\n}}\n");
+        std::fs::write(folder.join("modules").join(module).join("main.nf"), process).unwrap();
+    }
     let launch = |target: PathBuf| Launch {
         target,
         scratch: folder.join("scratch"),

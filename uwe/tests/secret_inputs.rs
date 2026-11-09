@@ -35,13 +35,32 @@ fn hides_secret_inputs() {
         ("main.nf", NEXTFLOW),
     ] {
         let folder = root.path().join(file.replace('.', "-"));
-        run(&folder, file, text);
+        run(&folder, (file, text), json!({"token": SECRET}));
     }
 }
 
-/// Runs `text` as `file` in `folder` with the secret as the input `token`, and checks where
-/// the value is while the run lives and after it ended.
-fn run(folder: &Path, file: &str, text: &str) {
+/// The params of a run with a secret input reach the config of its Nextflow block before the
+/// config loads, which includes a file by one of them.
+#[test]
+fn configures_secret_blocks() {
+    let root = tempfile::tempdir().unwrap();
+    let folder = root.path().join("configured");
+    std::fs::create_dir_all(folder.join("shared")).unwrap();
+    let config = "includeConfig \"${params.base}/custom.config\"\n";
+    std::fs::write(folder.join("nextflow.config"), config).unwrap();
+    std::fs::write(folder.join("shared/custom.config"), "process.cpus = 1\n").unwrap();
+    // The schema of the pipeline is a file, as its config does not load without the params.
+    let text = json!({"type": "string"});
+    let schema = json!({"properties": {"token": text, "base": text}});
+    std::fs::write(folder.join("nextflow_schema.json"), schema.to_string()).unwrap();
+    let base = folder.join("shared").display().to_string();
+    let inputs = json!({"token": SECRET, "base": base});
+    run(&folder, ("main.nf", NEXTFLOW), inputs);
+}
+
+/// Runs `text` as `file` in `folder` with `inputs`, whose input `token` is the secret, and
+/// checks where the value is while the run lives and after it ended.
+fn run(folder: &Path, (file, text): (&str, &str), inputs: serde_json::Value) {
     std::fs::create_dir_all(folder).unwrap();
     std::fs::write(folder.join(file), text).unwrap();
     let compiled = folder.join("cache/scratch/lowered");
@@ -51,7 +70,7 @@ fn run(folder: &Path, file: &str, text: &str) {
     settings.store = Some(folder.join("store").to_string_lossy().into_owned());
     settings.output_dir = Some(folder.join("outputs"));
     settings.cache_folder = Some(folder.join("cache"));
-    settings.inputs = Some(json!({"token": SECRET}));
+    settings.inputs = Some(inputs);
     let mut secrets = SecretValues::default();
     secrets.insert("HOST_INPUT_SECRET", SECRET).unwrap();
     secrets.allow_environment(false);

@@ -31,7 +31,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             snakemake(&target, arguments, &setup, "lower", &base)?.document
         }
         Language::Argo => argo(&target, arguments, &base)?.document,
-        _ => lowered(&target, language, &base)?.document,
+        _ => lowered(&target, language, arguments, &base)?.document,
     };
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| failure(format!("uwe: {error}")))?;
@@ -122,7 +122,10 @@ pub fn document(
             (document, None)
         }
         Language::Argo => (argo(target, arguments, &folder)?.document, None),
-        _ => (lowered(target, language, &folder)?.document, None),
+        _ => (
+            lowered(target, language, arguments, &folder)?.document,
+            None,
+        ),
     };
     let text = shown(&document)?;
     if holds_secret(text.as_bytes(), &secrets) {
@@ -389,6 +392,7 @@ fn pruned(folder: &Path) {
 fn lowered(
     target: &Path,
     language: Language,
+    arguments: &Arguments,
     base: &Path,
 ) -> Result<cwl_lowering::Lowering, Failure> {
     if language != Language::Cwl {
@@ -400,7 +404,8 @@ fn lowered(
     let shown = target.display();
     let document = cwl_parser::load_file(target, Default::default())
         .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
-    let lowering = cwl_lowering::lower(&document, base)
+    let image = (arguments.default_image.as_deref()).unwrap_or(cwl_lowering::DEFAULT_IMAGE);
+    let lowering = cwl_lowering::lower_with(&document, base, image)
         .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
     for kept in &lowering.kept {
         eprintln!(

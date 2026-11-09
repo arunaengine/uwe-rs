@@ -124,6 +124,12 @@ pub fn native_document(
         .find(|graph| graph["name"] == compiled["entry"])
         .expect("an entry graph");
     let ports = |key: &str| entry[key].as_array().cloned().unwrap_or_default();
+    // A native op takes no `dynamic` port; the workflow gives such values itself, like the
+    // params of a Nextflow config.
+    let ports = |key: &str| -> Vec<Value> {
+        let fixed = |port: &Value| !port["type"].to_string().contains("dynamic");
+        ports(key).into_iter().filter(fixed).collect()
+    };
     let (inputs, outputs) = (ports("inputs"), ports("outputs"));
     let typed = |ports: &[Value]| -> Vec<Value> {
         let typed = ports

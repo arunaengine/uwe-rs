@@ -330,6 +330,39 @@ fn resumes_compiled_runs() {
     }
 }
 
+/// A resume runs the document of the run it continues also when nothing wrote that document
+/// for over a week, as the run database still names it.
+#[test]
+fn keeps_recorded_documents() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("main.nf"), TIMED).expect("writes the pipeline");
+    let run = |resume: &[&str]| {
+        let output = common::command()
+            .args(["run", "-executor", "simulator", "main.nf"])
+            .args(resume)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs uwe");
+        let errors = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(output.status.success(), "{errors}");
+        let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+            .expect("opens the run database");
+        database.runs(1).expect("lists the runs").remove(0)
+    };
+    let first = run(&[]);
+    let document = first.document.clone().expect("a document");
+    let weeks = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+    let file = std::fs::File::options()
+        .write(true)
+        .open(&document)
+        .expect("opens it");
+    file.set_modified(weeks).expect("ages it");
+    let resumed = run(&["-resume", &first.id]);
+    assert_eq!(resumed.document, Some(document));
+}
+
 /// A resume with other config values than the run it continues is refused.
 #[test]
 fn refuses_other_values() {

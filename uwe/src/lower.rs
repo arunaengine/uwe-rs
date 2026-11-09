@@ -150,7 +150,9 @@ pub fn document(
         own(target, language),
         digest.hex()
     ));
-    pruned(&folder);
+    let recorded = crate::runs::open(arguments)?.documents();
+    let recorded = recorded.map_err(|error| failure(format!("uwe: {error}")))?;
+    pruned(&folder, &recorded);
     // A resume runs the document of the run it continues, so it writes no other.
     let (mut ran, launch) = resumed(arguments, target, language, path.clone())?;
     if ran != path && language == Language::Nextflow {
@@ -443,9 +445,9 @@ fn written(folder: &Path, text: &str) -> Result<Values, Failure> {
     }
 }
 
-/// Removes the documents below `folder` that no run wrote for a week, and value files left
-/// by runs that ended without removing them; a resume compiles a document again.
-fn pruned(folder: &Path) {
+/// Removes the documents below `folder` that no run wrote for a week and no `recorded` run
+/// ran, and value files left by runs that ended without removing them.
+fn pruned(folder: &Path, recorded: &[String]) {
     const WEEK: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
     for place in [folder.to_owned(), folder.join("values")] {
         let Ok(entries) = std::fs::read_dir(&place) else {
@@ -459,7 +461,9 @@ fn pruned(folder: &Path) {
                 .is_some_and(|age| age > WEEK);
             // A value file that a live run holds stays.
             let free = || std::fs::File::open(&path).is_ok_and(|file| file.try_lock().is_ok());
-            if old && path.is_file() && free() {
+            // A document that a run ran stays for its resumes.
+            let named = recorded.iter().any(|document| Path::new(document) == path);
+            if old && !named && path.is_file() && free() {
                 let _ = std::fs::remove_file(&path);
             }
         }

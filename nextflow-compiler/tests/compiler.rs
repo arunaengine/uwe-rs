@@ -507,3 +507,27 @@ fn keeps_refused_params() {
     let edge = json!({"from": {"port": "sample"}, "to": {"op": "pipeline", "port": "sample"}});
     assert!(main["edges"].as_array().unwrap().contains(&edge));
 }
+
+#[test]
+fn keeps_unbridged_params() {
+    let script = "workflow {\n    file(\"${launchDir}/old.txt\").delete()\n}\n";
+    let config = "params.sample = 'a'\nparams.max_time = 1.h\nparams.max_memory = 2.GB\n";
+    let compiled = compile_config(script, config);
+    assert!(
+        compiled.kept[0].reason.contains("deleting files"),
+        "{:?}",
+        compiled.kept
+    );
+    let document = json(&compiled);
+    let names: Vec<&str> = (graph(&document, "main")["inputs"]
+        .as_array()
+        .unwrap()
+        .iter())
+    .map(|port| port["name"].as_str().unwrap())
+    .collect();
+    assert_eq!(
+        names,
+        ["sample"],
+        "a duration and a memory keep their config defaults"
+    );
+}

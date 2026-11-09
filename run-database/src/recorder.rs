@@ -278,8 +278,11 @@ impl Recorder {
                     usage.write_bytes.map(clamp),
                     outcome.accepted,
                 ])?;
+            let cancelled = outcome.error == Some(workflow_graph::TaskError::Cancelled);
             let state = match (retried, outcome.exit_code, outcome.accepted) {
                 (true, _, _) => "running",
+                // A task that the stop of the run ended did not fail; the run ended first.
+                _ if cancelled => "stopped",
                 (false, _, Some(false)) => "failed",
                 (false, _, Some(true)) => "succeeded",
                 (false, 0, _) => "succeeded",

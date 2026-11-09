@@ -165,8 +165,11 @@ impl Observer for Forward<'_> {
                 attempt,
                 retried,
             } => {
+                let cancelled = outcome.error == Some(workflow_graph::TaskError::Cancelled);
                 let state = match (retried, outcome.cached) {
                     (true, _) => TaskState::Retried,
+                    // The stop of the run ended the task, which did not fail.
+                    _ if cancelled => TaskState::Stopped,
                     _ if outcome.exit_code != 0 || outcome.error.is_some() => TaskState::Failed,
                     (false, true) => TaskState::Reused,
                     (false, false) => TaskState::Finished,
@@ -228,4 +231,63 @@ pub(crate) fn milliseconds(time: SystemTime) -> i64 {
     time.duration_since(SystemTime::UNIX_EPOCH)
         .map(|elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use workflow_graph::Event as Engine;
+
+    use super::*;
+
+    struct Ignored;
+
+    impl Observer for Ignored {
+        fn event(&mut self, _: Engine<'_>) {}
+    }
+
+    /// A task that the stop of a run ended, like with Ctrl-C, is stopped rather than failed.
+    #[test]
+    fn stops_cancelled_tasks() {
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let seen = states.clone();
+        let listener: Listener = Arc::new(move |event| {
+            if let Event::Task(task) = event {
+                seen.lock().unwrap().push(task.state);
+            }
+        });
+        let mut ignored = Ignored;
+        let mut forward = Forward::new(&listener, "run", &mut ignored);
+        let task = workflow_graph::Task {
+            id: TaskId(1),
+            name: "a".into(),
+            step: "a".into(),
+            ..workflow_graph::Task::default()
+        };
+        forward.event(Engine::Requested {
+            task: &task,
+            edges: &[],
+        });
+        forward.event(Engine::Started {
+            task: TaskId(1),
+            attempt: 1,
+        });
+        let stopped = workflow_graph::Outcome {
+            id: TaskId(1),
+            exit_code: -1,
+            error: Some(workflow_graph::TaskError::Cancelled),
+            stderr: "the run was stopped".into(),
+            ..workflow_graph::Outcome::default()
+        };
+        forward.event(Engine::Finished {
+            outcome: &stopped,
+            attempt: 1,
+            retried: false,
+        });
+        forward.event(Engine::Ended { error: None });
+        let states = states.lock().unwrap().clone();
+        assert_eq!(states.last(), Some(&TaskState::Stopped), "{states:?}");
+        assert!(!states.contains(&TaskState::Failed), "{states:?}");
+    }
 }

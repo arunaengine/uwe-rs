@@ -82,7 +82,8 @@ pub fn lower_with(
             }
         },
         Callable::Task(_) => {
-            let op = lowerer.task(&unit, &name)?;
+            let mut op = lowerer.task(&unit, &name)?;
+            (op.attributes.name, op.attributes.step) = (Some(name.clone()), Some(name.clone()));
             single(&unit, op)?
         }
     };

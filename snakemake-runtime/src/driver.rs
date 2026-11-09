@@ -3226,10 +3226,9 @@ fn staged(
     Ok(workdir)
 }
 
-/// Copies the files of the folder `from` of `project` into `to` that `to` does not have, so
-/// that a resume keeps the files that its run made. Links of the project must stay in it, and
-/// a link in `to` is refused, so the copy neither reads nor writes outside; `copying` holds the
-/// folders being copied, which a link back to one of them would copy forever.
+/// Copies the files of `from` in `project` that `to` lacks, so a resume keeps what its run made.
+/// It reads only through links that stay in the project and writes through no link of `to`;
+/// `copying` holds the folders being copied, which a link back to one would copy forever.
 fn copy_missing(
     from: &Path,
     to: &Path,

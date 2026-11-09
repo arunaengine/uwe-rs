@@ -317,3 +317,33 @@ async fn waits_for_identity() {
     served.join().unwrap();
     journal.verify(&client).await.unwrap();
 }
+
+/// A daemon that takes over the socket makes a new socket file, so the identity that the
+/// process knew no longer counts, and the new daemon is asked.
+#[tokio::test]
+async fn asks_new_endpoints() {
+    use std::io::{BufRead, BufReader, Write};
+    let folder = tempfile::tempdir().unwrap();
+    let socket = folder.path().join("engine.sock");
+    let serve = |id: &'static str| {
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 0 && !line.ends_with("\r\n\r\n") {}
+            let body = format!(r#"{{"ID":"{id}"}}"#);
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        })
+    };
+    let first = serve("first-engine");
+    let path = socket.to_string_lossy().into_owned();
+    let client = Docker::connect_with_socket(&path, 120, bollard::API_DEFAULT_VERSION).unwrap();
+    let journal = Journal::new(folder.path(), path, "first-engine".into());
+    journal.verify(&client).await.unwrap();
+    first.join().unwrap();
+    std::fs::remove_file(&socket).unwrap();
+    let second = serve("second-engine");
+    assert!(journal.verify(&client).await.is_err());
+    second.join().unwrap();
+}

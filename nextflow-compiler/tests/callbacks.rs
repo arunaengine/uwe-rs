@@ -157,6 +157,12 @@ fn handlers_capture_channels() {
     );
     let mailed = printed(folder, r#"{"greeting": "mail"}"#, "mail");
     assert_eq!(mailed, "[1]\ndone\n", "the channel holds its value");
+    // A handler that names `b` before `a` gets each channel by its name.
+    let script = "workflow {\n    def a = channel.of(1).toList()\n    \
+                  def b = channel.of(2).toList()\n    \
+                  workflow.onComplete {\n        println \"${b.getVal()} ${a.getVal()}\"\n    }\n}\n";
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    assert_eq!(printed(folder, "{}", "both"), "[2] [1]\n");
 }
 
 #[test]

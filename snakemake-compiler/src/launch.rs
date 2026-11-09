@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{Value as Json, json};
@@ -104,18 +105,46 @@ pub fn plans_job(jobs: &[PlannedJob], rule: &RuleTask) -> bool {
         job.key.rule == key.rule && job.key.wildcards == key.wildcards
     };
     let (key, group) = (job_key(rule), group_keys(rule));
-    // A run plans a group whose jobs need no work as single jobs, which it skips.
-    let alone = |key: &JobKey| {
-        (jobs.iter()).any(|job| named(key, job) && job.group.is_empty() && !job.needed)
-    };
-    let current = !group.is_empty() && alone(&key) && group.iter().all(alone);
-    current
+    let digest = rule.layout.as_ref();
+    // A run groups only jobs that need work: it plans a compiled group as parts, single jobs
+    // that need no work and at most one part that does, with the same files.
+    let keys: Vec<JobKey> = std::iter::once(key.clone()).chain(group.clone()).collect();
+    let apart = parts(jobs, &keys).is_some_and(|parts| {
+        let needed = parts.iter().filter(|part| jobs[**part].needed).count();
+        let layout = digest.is_none_or(|digest| *digest == group_layout(jobs, &parts));
+        parts.len() > 1 && needed <= 1 && layout
+    });
+    apart
         || (0..jobs.len()).any(|index| {
             let job = &jobs[index];
-            let digest = rule.layout.as_ref();
             let layout = digest.is_none_or(|digest| *digest == layout(jobs, index));
             named(&key, job) && job.group == group && layout
         })
+}
+
+/// The planned jobs that hold the jobs of `keys` between them, in order: each holds a run of
+/// them in its own order, and no other job.
+fn parts(jobs: &[PlannedJob], keys: &[JobKey]) -> Option<Vec<usize>> {
+    let same = |key: &JobKey, rule: &str, wildcards: &BTreeMap<String, String>| {
+        key.rule == rule && key.wildcards == *wildcards
+    };
+    let mut parts = Vec::new();
+    let mut rest = keys;
+    while let Some(first) = rest.first() {
+        let index = (jobs.iter()).position(|job| same(first, &job.key.rule, &job.key.wildcards))?;
+        let job = &jobs[index];
+        let held = rest.get(1..=job.group.len())?;
+        let members = held.iter().zip(&job.group);
+        if !members
+            .into_iter()
+            .all(|(key, member)| same(key, &member.rule, &member.wildcards))
+        {
+            return None;
+        }
+        parts.push(index);
+        rest = &rest[1 + job.group.len()..];
+    }
+    Some(parts)
 }
 
 /// The identities of the other jobs of the group of `rule`.
@@ -134,14 +163,41 @@ pub fn group_keys(rule: &RuleTask) -> Vec<JobKey> {
 pub(crate) fn layout(jobs: &[PlannedJob], index: usize) -> String {
     let job = &jobs[index];
     let outputs: Vec<&str> = job.outputs.iter().map(|file| file.path.as_str()).collect();
-    let mut made: Vec<usize> = job
+    let made = job
         .producers
         .iter()
         .map(|producer| producer.input)
         .collect();
+    digest(&job.inputs, &outputs, made)
+}
+
+/// The layout of the planned jobs `members` as one group: the files they read that none of
+/// them makes, each once, the files of each in turn, and those inputs that others make.
+fn group_layout(jobs: &[PlannedJob], members: &[usize]) -> String {
+    let outputs: Vec<&str> = (members.iter())
+        .flat_map(|member| jobs[*member].outputs.iter().map(|file| file.path.as_str()))
+        .collect();
+    let mut inputs: Vec<String> = Vec::new();
+    for file in members.iter().flat_map(|member| &jobs[*member].inputs) {
+        if !outputs.contains(&file.as_str()) && !inputs.contains(file) {
+            inputs.push(file.clone());
+        }
+    }
+    let made = (members.iter())
+        .flat_map(|member| (jobs[*member].producers.iter()).map(move |producer| (member, producer)))
+        .filter(|(_, producer)| !members.contains(&producer.job))
+        .filter_map(|(member, producer)| {
+            let file = &jobs[*member].inputs[producer.input];
+            inputs.iter().position(|input| input == file)
+        })
+        .collect();
+    digest(&inputs, &outputs, made)
+}
+
+fn digest(inputs: &[String], outputs: &[&str], mut made: Vec<usize>) -> String {
     made.sort_unstable();
     made.dedup();
-    let text = json!([job.inputs, outputs, made]).to_string();
+    let text = json!([inputs, outputs, made]).to_string();
     let digest = Sha256::digest(text.as_bytes());
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
     format!("sha256:{hex}")

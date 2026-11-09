@@ -228,6 +228,8 @@ mod tests {
             error: None,
             replays: None,
             replays_task: None,
+            document: None,
+            document_digest: None,
             tasks: BTreeMap::new(),
             program: None,
             launch: None,

@@ -148,7 +148,7 @@ fn matches_native_steps() {
         let (code, _, errors) = uwe(root, &cache, &compiled);
         assert_eq!(code, 0, "{document}: {errors}");
         let (language, through) = latest(&cache);
-        assert_eq!(language, "wir", "{document} runs as wir");
+        assert_eq!(language, "cwl", "{document} records its workflow");
         assert_eq!(alone.len(), through.len(), "{document}: the same tasks");
         for ((one, _, _), (other, _, _)) in alone.iter().zip(&through) {
             assert_eq!(one.step, other.step, "{document}: the same steps");

@@ -176,6 +176,7 @@ fn migrates_run_pins() {
              ALTER TABLE runs DROP COLUMN process_start;
              ALTER TABLE attempts DROP COLUMN accepted; DROP INDEX events_task;
              ALTER TABLE logs DROP COLUMN location;
+             ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
              PRAGMA user_version = 3;",
         )
         .expect("goes back to version 3");
@@ -194,7 +195,8 @@ fn migrates_source_modes() {
     let raw = rusqlite::Connection::open(&path).unwrap();
     raw.execute_batch(
         "ALTER TABLE sources DROP COLUMN executable;
-        DROP INDEX events_task; ALTER TABLE logs DROP COLUMN location; PRAGMA user_version = 8;",
+        DROP INDEX events_task; ALTER TABLE logs DROP COLUMN location; ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             PRAGMA user_version = 8;",
     )
     .unwrap();
     drop(raw);

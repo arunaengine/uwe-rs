@@ -227,9 +227,8 @@ fn own(target: &Path, language: Language) -> String {
     format!("{}/{}-", folder.display(), &digest[..16])
 }
 
-/// The document that a resume of a compiled run runs, with the id of the run that ran it: the one that the run it continues ran,
-/// since compiling again may give another, like a Nextflow config that reads the time. The
-/// files of the values it names must be there, which a compile with the same values makes.
+/// The document of the run that a resume continues, and its id, as compiling again may give
+/// another, like a config that reads the time. A compile with the same values makes its files.
 fn resumed(
     arguments: &Arguments,
     target: &Path,
@@ -248,10 +247,11 @@ fn resumed(
         crate::arguments::Resume::Last => database.last_run_below(&prefix, real).map_err(broken)?,
     };
     // Without an earlier compiled run of this workflow, the run checks the resume itself.
-    let Some(earlier) = earlier.filter(|earlier| earlier.workflow.starts_with(&prefix)) else {
+    let ran = (earlier.as_ref()).and_then(|earlier| earlier.document.clone());
+    let (Some(earlier), Some(ran)) = (earlier, ran.filter(|ran| ran.starts_with(&prefix))) else {
         return Ok((compiled, None));
     };
-    let ran = PathBuf::from(&earlier.workflow);
+    let ran = PathBuf::from(ran);
     let text = std::fs::read_to_string(&ran).map_err(|error| {
         failure(format!(
             "uwe: run {} ran {}, which is gone ({error}); run the workflow without -resume",

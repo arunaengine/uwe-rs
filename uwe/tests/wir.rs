@@ -150,7 +150,7 @@ fn matches_native_runs() {
     let (code, output) = uwe(root, &cache, &native);
     assert_eq!(code, 0, "{output}");
     let (_, language, alone) = latest(&cache);
-    assert_eq!((language.as_str(), alone.len()), ("wir", 4));
+    assert_eq!((language.as_str(), alone.len()), ("cwl", 4));
     let (target, inputs) = scatter(root);
     let (target, inputs) = (target.to_string_lossy(), inputs.to_string_lossy());
     let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
@@ -413,7 +413,7 @@ fn matches_native_nextflow() {
     let (code, output) = uwe(&launch, &cache, &native);
     assert_eq!(code, 0, "{output}");
     let (_, language, alone) = latest(&cache);
-    assert_eq!((language.as_str(), alone.len()), ("wir", 2));
+    assert_eq!((language.as_str(), alone.len()), ("nextflow", 2));
     let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
     let (code, output) = uwe(root, &cache, &through);
     assert_eq!(code, 0, "{output}");
@@ -530,7 +530,7 @@ fn matches_native_snakemake() {
     let (code, output) = uwe(&launch, &cache, &native);
     assert_eq!(code, 0, "{output}");
     let (_, language, alone) = latest(&cache);
-    assert_eq!((language.as_str(), alone.len()), ("wir", 4));
+    assert_eq!((language.as_str(), alone.len()), ("snakemake", 4));
     let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
     let (code, output) = uwe(root, &cache, &through);
     assert_eq!(code, 0, "{output}");
@@ -675,7 +675,7 @@ fn matches_native_argo() {
     let (code, output) = uwe(root, &cache, &native);
     assert_eq!(code, 0, "{output}");
     let (_, language, alone) = latest(&cache);
-    assert_eq!((language.as_str(), alone.len()), ("wir", 2));
+    assert_eq!((language.as_str(), alone.len()), ("argo", 2));
     let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
     let (code, output) = uwe(root, &cache, &through);
     assert_eq!(code, 0, "{output}");
@@ -808,7 +808,7 @@ fn matches_native_wdl() {
     let (code, output) = uwe(root, &cache, &native);
     assert_eq!(code, 0, "{output}");
     let (_, language, alone) = latest(&cache);
-    assert_eq!((language.as_str(), alone.len()), ("wir", 3));
+    assert_eq!((language.as_str(), alone.len()), ("wdl", 3));
     let through = ["run", "-executor", "simulator", &target, "-inputs", &inputs];
     let (code, output) = uwe(root, &cache, &through);
     assert_eq!(code, 0, "{output}");

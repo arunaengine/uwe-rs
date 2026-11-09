@@ -101,34 +101,6 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
     }
 }
 
-/// The sources of a run of a compiled document: the document alone as its workflow, and the
-/// files of its command line. The folder of the document holds those of other runs too.
-pub async fn compiled(document: &Path, arguments: &Arguments) -> Sources {
-    let document = std::path::absolute(document).unwrap_or_else(|_| document.to_owned());
-    let folder = document.parent().unwrap_or(Path::new("/")).to_owned();
-    let (mut files, mut skipped) = (Vec::new(), None);
-    match content_store::hash_file(&document).await {
-        Ok((digest, size)) => files.push(Source {
-            kind: SourceKind::Workflow,
-            path: document
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-            digest: digest.to_string(),
-            size,
-            executable: false,
-        }),
-        Err(_) => skipped = Some(format!("cannot record {}", document.display())),
-    }
-    named(arguments, None, &mut files, &mut skipped).await;
-    Sources {
-        folder,
-        files,
-        skipped,
-    }
-}
-
 /// Adds the config and inputs files of the command line to `files`.
 async fn named(
     arguments: &Arguments,
@@ -246,7 +218,7 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
     };
     if let Some((root, _)) = repository::root(target) {
         let mut files = Vec::new();
-        let complete = walk(&root, &root, None, &mut files);
+        let complete = walk(&root, &root, &[cache()], &mut files);
         let skipped = limited(&files).or_else(|| (!complete).then(|| too_many(&root)));
         if skipped.is_some() {
             files.clear();
@@ -312,12 +284,14 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
             }
         };
     }
+    // The output folder and the cache folder of uwe hold what runs write.
     let output = arguments
         .output_dir
         .as_ref()
         .and_then(|folder| std::path::absolute(folder).ok());
+    let skipped: Vec<PathBuf> = output.into_iter().chain([cache()]).collect();
     let mut files = Vec::new();
-    let complete = walk(&own, &own, output.as_deref(), &mut files);
+    let complete = walk(&own, &own, &skipped, &mut files);
     match complete.then(|| limited(&files)).flatten() {
         None if complete => (own, files, None),
         reason => {
@@ -325,6 +299,12 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
             (own, Vec::new(), Some(reason))
         }
     }
+}
+
+/// The cache folder of uwe, as an absolute path.
+fn cache() -> PathBuf {
+    let folder = crate::cache_directory();
+    std::path::absolute(&folder).unwrap_or(folder)
 }
 
 /// Why a list of files is too large to record, when it is.
@@ -353,8 +333,8 @@ fn too_many(folder: &Path) -> String {
 }
 
 /// The files below `folder`, without hidden files and folders, the folders that runs write
-/// into, and links. False when there are more than [`MOST_FILES`].
-fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found>) -> bool {
+/// into, like `skipped`, and links. False when there are more than [`MOST_FILES`].
+fn walk(root: &Path, folder: &Path, skipped: &[PathBuf], files: &mut Vec<Found>) -> bool {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return true;
     };
@@ -370,7 +350,7 @@ fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found
             || name == repository::MARKER
             || name == ".git"
             || kind.is_symlink()
-            || Some(path.as_path()) == output
+            || skipped.contains(&path)
         {
             continue;
         }
@@ -381,7 +361,7 @@ fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found
             {
                 continue;
             }
-            if !walk(root, &path, output, files) {
+            if !walk(root, &path, skipped, files) {
                 return false;
             }
         } else if kind.is_file() {

@@ -205,8 +205,8 @@ fn records_no_values() {
     }
 }
 
-/// A compiled run records its own document as its workflow, not the documents and values of
-/// other runs beside it in the cache.
+/// A compiled run records its own document beside its workflow, and no documents and values of
+/// other runs in the cache as files of its workflow.
 #[test]
 fn records_own_document() {
     let folder = tempfile::tempdir().expect("a temporary directory");
@@ -228,16 +228,19 @@ fn records_own_document() {
         );
         let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
             .expect("opens the run database");
-        let id = database.runs(1).expect("lists the runs")[0].id.clone();
-        let sources = database.sources(&id).expect("reads the sources");
+        let recorded = database.runs(1).expect("lists the runs").remove(0);
+        let sources = database.sources(&recorded.id).expect("reads the sources");
         let paths: Vec<String> = sources.into_iter().map(|source| source.path).collect();
-        (id, paths)
+        (recorded.id, recorded.document.unwrap_or_default(), paths)
     };
-    let (_, first) = run(&["hello.wdl", "--name", "hush4711"]);
-    let (second, paths) = run(&["Snakefile", "--config", "word=hello"]);
-    assert_eq!(paths.len(), 1, "{paths:?}");
+    let (_, first, _) = run(&["hello.wdl", "--name", "hush4711"]);
+    let (second, document, paths) = run(&["Snakefile", "--config", "word=hello"]);
     assert!(
-        paths[0].ends_with(".wir.json") && !first.contains(&paths[0]),
+        document.ends_with(".wir.json") && document != first,
+        "{document}"
+    );
+    assert!(
+        paths.iter().all(|path| !path.starts_with("cache")),
         "{paths:?}"
     );
     let output = common::command()
@@ -253,9 +256,10 @@ fn records_own_document() {
     );
     let metadata = std::fs::read_to_string(root.join("crate/ro-crate-metadata.json"))
         .expect("reads the crate");
-    for path in &first {
-        assert!(!metadata.contains(path.as_str()), "the crate names {path}");
-    }
+    assert!(
+        !metadata.contains(first.as_str()),
+        "the crate names {first}"
+    );
     assert!(
         !metadata.contains("hush4711"),
         "the crate holds a value of the first run"

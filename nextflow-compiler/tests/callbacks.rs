@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use nextflow_runtime::driver::Settings;
-use workflow_graph::{Launch, Simulator, execute};
+use workflow_graph::{Attempt, Executor, Launch, Outcome, Running, Simulator, execute};
 
 /// A host in the folder of the test that prints nothing.
 struct Quiet(String);
@@ -31,6 +31,30 @@ fn settings(folder: &Path, run: &str) -> Settings {
 /// Compiles the pipeline in `folder` and runs it simulated with these inputs and this run
 /// name; what its ops printed.
 fn printed(folder: &Path, inputs: &str, run: &str) -> String {
+    let mut simulator = Simulator::new(folder.join("simulator"));
+    printed_by(folder, (inputs, run), &mut simulator)
+}
+
+/// Ends every task with the exit code `exit`, and keeps when the first one started.
+struct Exiting {
+    exit: i32,
+    first: Option<u128>,
+}
+
+impl Executor for Exiting {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+        self.first.get_or_insert(now.unwrap().as_millis());
+        Running::ended(Ok(Outcome {
+            id: attempt.task.id,
+            exit_code: self.exit,
+            ..Outcome::default()
+        }))
+    }
+}
+
+/// What the ops of the pipeline in `folder` printed in a run by `executor`.
+fn printed_by(folder: &Path, (inputs, run): (&str, &str), executor: &mut dyn Executor) -> String {
     let launch = |target: &Path| Launch {
         target: target.to_owned(),
         scratch: folder.join("scratch"),
@@ -60,9 +84,8 @@ fn printed(folder: &Path, inputs: &str, run: &str) -> String {
         ..launch(&document)
     };
     let mut driver = wir_runtime::WirDriver::new(&run, wir).unwrap();
-    let mut simulator = Simulator::new(folder.join("simulator"));
     // A failed run prints too, like its `onError` handlers.
-    let _ = execute("callbacks", &mut driver, &mut simulator).into_result();
+    let _ = execute("callbacks", &mut driver, executor).into_result();
     drop(driver);
     text.lock().unwrap().clone()
 }
@@ -132,4 +155,56 @@ fn handlers_capture_channels() {
         "done\n",
         "a handler that captures a channel"
     );
+    let mailed = printed(folder, r#"{"greeting": "mail"}"#, "mail");
+    assert_eq!(mailed, "[1]\ndone\n", "the channel holds its value");
+}
+
+#[test]
+fn handlers_see_tasks() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    let script = "process P {\n    input:\n    val x\n    script:\n    'true'\n}\n\
+                  workflow {\n    workflow.onComplete {\n        \
+                  println \"complete ${workflow.stats.succeededCount} ${workflow.start.getTime()}\"\n    }\n    \
+                  workflow.onError { trace ->\n        \
+                  println \"error ${trace.process} ${trace.exit} ${trace.status} ${workflow.exitStatus}\"\n    }\n    \
+                  P(channel.of(1, 2))\n}\n";
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    let mut good = Exiting {
+        exit: 0,
+        first: None,
+    };
+    let text = printed_by(folder, ("{}", "good"), &mut good);
+    let words: Vec<&str> = text.split_whitespace().collect();
+    assert_eq!(words[..2], ["complete", "2"], "{text}");
+    // The duration counts from the start of the run, before the first task.
+    let start: u128 = words[2].parse().unwrap();
+    assert!(start <= good.first.unwrap(), "{text}");
+    let mut bad = Exiting {
+        exit: 3,
+        first: None,
+    };
+    let text = printed_by(folder, ("{}", "bad"), &mut bad);
+    assert!(text.starts_with("complete 0 "), "{text}");
+    assert!(
+        text.ends_with("error P 3 FAILED 3\n"),
+        "the trace of the task: {text}"
+    );
+}
+
+#[test]
+fn plugins_end_runs() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    let config = "plugins {\n    id 'nf-fl86'\n}\nparams.outdir = 'out'\n";
+    std::fs::write(folder.join("nextflow.config"), config).unwrap();
+    std::fs::write(
+        folder.join("main.nf"),
+        "workflow {\n    channel.of(1).view()\n}\n",
+    )
+    .unwrap();
+    assert_eq!(printed(folder, "{}", "plugins"), "1\n");
+    // nf-fl86 writes the metadata of the run once it ended, as in a native run.
+    let written = folder.join("out/pipeline_info/workflow.json");
+    assert!(written.is_file(), "the plugin acts at the end");
 }

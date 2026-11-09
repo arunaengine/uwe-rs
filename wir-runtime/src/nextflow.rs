@@ -433,6 +433,11 @@ impl TaskAdapter for Tasks {
     fn prefixed(&self) -> bool {
         false
     }
+
+    fn failed_task(&self) -> Option<(TaskId, Json)> {
+        let (id, trace) = self.adapter.failed_task()?;
+        Some((id, trace.clone()))
+    }
 }
 
 /// A params file in `folder`, like `-params-file`, so that the config sees the params as a

@@ -45,7 +45,7 @@ use nextflow_evaluator::interpreter::{Error, Host, Interpreter};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::{PathValue, Value};
 
-pub use adapter::{Adapter, Call, Completed, Prepared};
+pub use adapter::{Adapter, Call, Completed, Prepared, RunEnd};
 pub use driver::driver;
 pub use hash::key as hash_key;
 pub use outputs::index_text;
@@ -458,6 +458,7 @@ pub fn export(
     exported.launch = launch;
     exported.reads = reads;
     exported.scripts = scripts(module, project);
+    exported.plugin_end = nextflow_plugins::finishes(&options.config);
     for on_error in [false, true] {
         for handler in workflow::handlers(&workflow, on_error) {
             let callback =

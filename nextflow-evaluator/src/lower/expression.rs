@@ -378,6 +378,7 @@ impl Lowering<'_> {
             slot_count: layout.slot_count,
             captures: layout.captures,
             capture_names: layout.capture_names,
+            module_reads: layout.module_reads,
             body,
             span,
         }))

@@ -25,6 +25,7 @@ struct Frame {
     /// The enclosing places this closure captures, in the order of `Place::Captured`.
     captures: Vec<Place>,
     capture_names: Vec<Rc<str>>,
+    module_reads: Vec<(Rc<str>, usize)>,
 }
 
 /// The frames being lowered, innermost last.
@@ -40,6 +41,7 @@ pub(super) struct FrameLayout {
     pub slot_count: usize,
     pub captures: Vec<Place>,
     pub capture_names: Vec<Rc<str>>,
+    pub module_reads: Vec<(Rc<str>, usize)>,
     /// The names declared in the outermost block, with their slots.
     pub names: Vec<(Rc<str>, Slot)>,
 }
@@ -60,6 +62,7 @@ impl Scopes {
             slot_count: 0,
             captures: Vec::new(),
             capture_names: Vec::new(),
+            module_reads: Vec::new(),
         });
     }
 
@@ -73,6 +76,7 @@ impl Scopes {
             slot_count: frame.slot_count,
             captures: frame.captures,
             capture_names: frame.capture_names,
+            module_reads: frame.module_reads,
             names,
         }
     }
@@ -148,6 +152,13 @@ impl Scopes {
                 .module
                 .iter()
                 .position(|(declared, _)| &**declared == name)?;
+            // The closures that read it note it, for a compiled run to give them its value.
+            let closures = self.frames.iter_mut().rev();
+            for frame in closures.take_while(|frame| frame.closure) {
+                if !frame.module_reads.iter().any(|(_, read)| *read == index) {
+                    frame.module_reads.push((name.into(), index));
+                }
+            }
             Some(Place::Module(index))
         })
     }

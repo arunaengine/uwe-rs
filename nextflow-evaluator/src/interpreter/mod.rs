@@ -586,8 +586,17 @@ impl<'h> Interpreter<'h> {
         if matches!(error, Error::Located { .. }) {
             return error;
         }
-        let (line, column) =
-            nextflow_parser::LineIndex::new(&source).line_column(error.span().start);
+        let mut start = error.span().start;
+        // An error in code that a compiled run appended to the script is at the closure it copies.
+        if let Some(copied) = module.copied.get()
+            && start >= copied.appended
+        {
+            let inside = start
+                .checked_sub(copied.copy)
+                .filter(|at| *at < copied.length);
+            start = copied.original + inside.unwrap_or(0);
+        }
+        let (line, column) = nextflow_parser::LineIndex::new(&source).line_column(start);
         Error::Located {
             error: Box::new(error),
             location: format!("{path}:{line}:{column}").into(),

@@ -549,7 +549,8 @@ fn evaluated(
         let location = location(item)?;
         let source = cwl_parser::iri::file_path(&location)
             .map_or(location, |path| path.to_string_lossy().into_owned());
-        let input = ended.inputs.iter().find(|input| input.source == source)?;
+        // The last place of a file is where the task sees it, as the entries come last.
+        let input = ended.inputs.iter().rfind(|input| input.source == source)?;
         Some(absolute(&input.path, workdir))
     };
     let inputs = with_paths(&Json::Object(ended.bound.clone()), &given);
@@ -1347,6 +1348,53 @@ mod tests {
         assert_eq!(values["count"], 3);
         let child = &values["child"]["location"];
         assert_eq!(child, "/other/sub/c.txt", "below the deepest staged folder");
+    }
+
+    #[test]
+    fn codes_see_last_places() {
+        let rule = wir::Capture {
+            output: "where".into(),
+            from: CaptureRule::Empty,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: Some("$(inputs.file.path)".into()),
+        };
+        let spec = wir::Task {
+            workdir: Some("/w".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "where".into(),
+            r#type: Type::String,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let staged = |path: &str| Input {
+            path: path.into(),
+            source: "/data/a.txt".into(),
+            ..Input::default()
+        };
+        let inputs = [staged("/var/lib/cwl/inputs/0/a.txt"), staged("a.txt")];
+        let file = json!({"class": "File", "location": "/data/a.txt"});
+        let bound = Map::from_iter([("file".to_owned(), file)]);
+        let (outcome, settings) = (Outcome::default(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &inputs,
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        assert_eq!(
+            values["where"], "/w/a.txt",
+            "the place of the working folder entry"
+        );
     }
 
     #[test]

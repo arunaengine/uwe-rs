@@ -94,15 +94,16 @@ pub fn build(
                 let staged = staging.adjusted(&Json::Object(bound.clone()), workdir);
                 let given = this.as_ref().and_then(|name| staged.get(name)).cloned();
                 let values = (staged, given.unwrap_or(Json::Null), json!({}));
-                let value = match crate::expr::code(code, values, (&spec.library, settings)) {
-                    Ok(value) => crate::cwl::to_wir(value),
+                let given = match crate::expr::code(code, values, (&spec.library, settings)) {
+                    Ok(value) => value,
                     // As uwe's CWL driver, a simulated run marks code over made-up contents.
                     Err(_) if simulated && code.contains("contents") => {
                         json!(cwl_runtime::tool::FAKE_ARGUMENT)
                     }
                     Err(why) => return Err(format!("argument {index}: {why}")),
                 };
-                let texts = staging.texts(&value, &format!("arguments/{index}"));
+                let value = crate::cwl::to_wir(given.clone());
+                let texts = staging.words(&given, &value, &format!("arguments/{index}"));
                 let binding = (prefix.as_deref(), *separate, separator.as_deref());
                 let raw = spec.shell && !quote;
                 let bound = bind(&value, texts, binding).into_iter();
@@ -781,6 +782,25 @@ impl Staging {
         }
     }
 
+    /// The arguments of the value of code: a File or Directory with a `path` is at that place,
+    /// as uwe's CWL driver binds it; other values as [`Staging::texts`].
+    fn words(&mut self, given: &Json, value: &Json, folder: &str) -> Vec<String> {
+        match (given, value) {
+            (Json::Array(items), Json::Array(values)) => (items.iter().zip(values).enumerate())
+                .flat_map(|(index, (item, value))| {
+                    self.words(item, value, &format!("{folder}/{index}"))
+                })
+                .collect(),
+            (Json::Object(object), _) if matches!(class(object), Some("File" | "Directory")) => {
+                match object.get("path").and_then(Json::as_str) {
+                    Some(path) => vec![path.to_owned()],
+                    None => self.texts(value, folder),
+                }
+            }
+            _ => self.texts(value, folder),
+        }
+    }
+
     /// Stages a File or Directory value and its secondary files in `folder`; its path there,
     /// or in the working folder when an entry placed it there.
     fn stage(&mut self, value: &Json, folder: &str) -> Option<String> {
@@ -1325,6 +1345,45 @@ mod tests {
         );
         let error = capture(&spec, &ports, ended(false), &[]).unwrap_err();
         assert!(error.contains("2 files matched one value"), "{error}");
+    }
+
+    #[test]
+    fn binds_staged_literals() {
+        let op: Op = serde_json::from_value(json!({
+            "path": "cat",
+            "kind": {"task": {}},
+            "inputs": [{"name": "file", "type": {"file": {}}}]
+        }))
+        .unwrap();
+        let spec = wir::Task {
+            command: vec![
+                Argument::Text("cat".into()),
+                Argument::Code {
+                    code: "$(inputs.file)".into(),
+                    this: None,
+                    prefix: None,
+                    separate: true,
+                    separator: None,
+                    quote: true,
+                },
+            ],
+            staging: Some("/var/lib/cwl/inputs".into()),
+            ..wir::Task::default()
+        };
+        let literal = json!({"class": "File", "basename": "a.txt", "contents": "x"});
+        let bound = Map::from_iter([("file".to_owned(), literal)]);
+        let settings = JavaScriptSettings::default();
+        let task = build(
+            TaskId(1),
+            ("cat", "cat"),
+            &op,
+            &spec,
+            &bound,
+            (&settings, false),
+        );
+        let task = task.unwrap();
+        assert_eq!(task.command, ["cat", "/var/lib/cwl/inputs/0/a.txt"]);
+        assert_eq!(task.inputs.len(), 1, "the literal is staged once");
     }
 
     #[test]

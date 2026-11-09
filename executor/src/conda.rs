@@ -313,15 +313,27 @@ pub async fn restore(
             None,
         );
         let mut used = 0usize;
+        let mut unread = None;
         while let Some(step) = stream.next().await {
-            let size = format!("{:?}", step?).len();
+            let step = match step {
+                Ok(step) => step,
+                // As in `build`, a read fault at the end does not decide; the inspection does.
+                Err(error @ bollard::errors::Error::IOError { .. }) => {
+                    unread = Some(error);
+                    break;
+                }
+                Err(error) => return Err(error.into()),
+            };
+            let size = format!("{step:?}").len();
             used = used
                 .checked_add(size)
                 .filter(|size| *size <= limits.progress_bytes)
                 .ok_or(CondaImageError::Limit("import progress"))?;
         }
-        inspect(engine, preparation, receipt.image_id()).await?;
-        Ok(receipt.clone())
+        match inspect(engine, preparation, receipt.image_id()).await {
+            Ok(_) => Ok(receipt.clone()),
+            Err(error) => Err(unread.map_or(error, CondaImageError::from)),
+        }
     })
     .await
 }
@@ -409,7 +421,13 @@ pub async fn build(
         let mut used = 0usize;
         let mut image_id = None;
         while let Some(step) = progress.next().await {
-            let step = step?;
+            let step = match step {
+                Ok(step) => step,
+                // bollard fails on a last line end that comes in a read of its own; the image
+                // is committed once the builder names it, and the inspection below checks it.
+                Err(bollard::errors::Error::IOError { .. }) if image_id.is_some() => break,
+                Err(error) => return Err(error.into()),
+            };
             let size = format!("{step:?}").len();
             used = used
                 .checked_add(size)

@@ -137,9 +137,15 @@ async fn named(
     skipped: &mut Option<String>,
 ) {
     let named = (arguments.configs.iter()).chain(arguments.inputs.as_ref());
+    let secrets = crate::lower::secret_texts(&arguments.secrets);
     for path in named {
         let path = std::path::absolute(path).unwrap_or_else(|_| path.clone());
         if is_secret(&path, secret) {
+            continue;
+        }
+        // A file that holds a secret value of the run stays out of the record and the store.
+        let read = std::fs::read(&path);
+        if read.is_ok_and(|bytes| crate::lower::holds_secret(&bytes, &secrets)) {
             continue;
         }
         if let Ok((digest, size)) = content_store::hash_file(&path).await {

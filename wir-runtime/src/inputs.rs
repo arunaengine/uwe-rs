@@ -84,6 +84,11 @@ pub fn read(
                 widen(value, &port.r#type, defs)
             }
             None if port.r#type.is_optional(defs) => Json::Null,
+            // A simulated run without an inputs file makes up what nothing gives, as uwe's CWL
+            // driver gives placeholders without a job file.
+            None if launch.simulated && launch.inputs.is_none() && secret.0.is_empty() => {
+                crate::expr::placeholder(&port.r#type, &port.name, defs)
+            }
             None => {
                 let message = format!("the input {} has no value", port.name);
                 return Err(DriverError::new(message));

@@ -135,6 +135,7 @@ impl Fixture {
             printer: &self.printer,
             simulated: false,
             provider: self.provider.as_deref(),
+            remote: None,
             deliveries: &self.deliveries,
             inputs: &self.inputs,
             nextflow: &self.nextflow,

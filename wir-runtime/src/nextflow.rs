@@ -28,6 +28,8 @@ pub struct Options {
     /// The files that tasks made, by location, with their names in the work folder of their
     /// task, which workflow outputs publish by.
     pub(crate) names: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    /// The folder that the code of the run starts in, else the working folder.
+    pub(crate) launch: Option<PathBuf>,
 }
 
 impl Options {
@@ -35,6 +37,22 @@ impl Options {
         Options {
             settings: Arc::new(settings),
             names: Arc::default(),
+            launch: None,
+        }
+    }
+
+    /// The same options, whose code starts in `folder`, like the own folder of an embedded run.
+    pub fn with_launch(mut self, folder: Option<PathBuf>) -> Options {
+        self.launch = folder;
+        self
+    }
+
+    /// The folder that the code of the run starts in.
+    pub(crate) fn launch_folder(&self) -> Result<PathBuf, DriverError> {
+        match &self.launch {
+            Some(folder) => Ok(folder.clone()),
+            None => std::env::current_dir()
+                .map_err(|error| DriverError::new(format!("no working folder: {error}"))),
         }
     }
 
@@ -117,8 +135,7 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
         targets: Vec::new(),
         ..opening.launch.clone()
     };
-    let folder = std::env::current_dir()
-        .map_err(|error| DriverError::new(format!("no working folder: {error}")))?;
+    let folder = options.launch_folder()?;
     let settings = (options.settings)(&launch, &folder);
     let mut adapter = Adapter::new(&launch, settings, given)?;
     if let Some(files) = opening.files.clone() {

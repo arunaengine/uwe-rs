@@ -510,27 +510,35 @@ pub fn blocks(
             | Some("jarvice" | "wr")
     );
     let resume = arguments.resume.is_some();
+    // The callbacks and process adapters of the run start in the folder the run starts in.
+    let started =
+        (isolation(arguments, setup).and_then(|isolation| isolation.launch)).or_else(|| {
+            let scratch = crate::cache_directory().join("scratch");
+            arguments.embedded.then(|| scratch.join("launch").join(run))
+        });
     let run = run.to_owned();
     let isolation = isolation(arguments, setup);
     let shared = shared_folders(arguments, setup);
-    wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
-        let console = Console {
-            operators: Some(run_folder(&launch.scratch, &run)),
-            launch: Some(folder.to_owned()),
-            ..console.clone()
-        }
-        .confined(launch, Some(folder), isolation.as_ref(), &shared);
-        Settings {
-            host: Box::new(console),
-            container_engine: Some(engine.clone()),
-            run_name: run.clone(),
-            command_line: std::env::args().collect::<Vec<_>>().join(" "),
-            secret_env: local,
-            local_options: local,
-            repository: None,
-            resume,
-        }
-    })
+    let options =
+        wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
+            let console = Console {
+                operators: Some(run_folder(&launch.scratch, &run)),
+                launch: Some(folder.to_owned()),
+                ..console.clone()
+            }
+            .confined(launch, Some(folder), isolation.as_ref(), &shared);
+            Settings {
+                host: Box::new(console),
+                container_engine: Some(engine.clone()),
+                run_name: run.clone(),
+                command_line: std::env::args().collect::<Vec<_>>().join(" "),
+                secret_env: local,
+                local_options: local,
+                repository: None,
+                resume,
+            }
+        });
+    options.with_launch(started)
 }
 
 /// The wir document compiled from a pipeline as the Nextflow driver of a launch would build it,

@@ -119,11 +119,9 @@ pub(crate) fn driver(
         Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments)),
         Language::Wir => {
             let mut settings = wir_runtime::Settings {
-                // A block runs no `uwe resume` requests: they name the steps of a whole run.
-                argo: argo_runtime::Services {
-                    resume: None,
-                    ..argo_services(run, setup)
-                },
+                // Only a block that is the whole run hears `uwe resume`, whose requests name
+                // the steps of the run.
+                argo: argo_services(run, setup),
                 cwl: cwl_options(arguments, setup, cancel),
                 nextflow: nextflow::blocks(run, quiet, arguments, setup),
                 snakemake: wir_runtime::snakemake::Options {

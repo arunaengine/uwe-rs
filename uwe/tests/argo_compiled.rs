@@ -53,3 +53,31 @@ fn runs_chosen_entry() {
         .collect();
     assert_eq!(commands, [["echo", "alternate"]]);
 }
+
+/// A workflow whose step waits for `uwe resume`, which keeps it one native op.
+const PAUSED: &str = "apiVersion: argoproj.io/v1alpha1\nkind: Workflow\nmetadata: {name: paused}\nspec:\n  entrypoint: main\n  templates:\n  - name: main\n    steps:\n    - - name: wait\n        template: pause\n  - name: pause\n    suspend: {}\n";
+
+/// A compiled Argo run hears `uwe resume` for a step that waits for it, as an Argo run does.
+#[test]
+fn hears_resume_requests() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let root = folder.path();
+    std::fs::write(root.join("workflow.yaml"), PAUSED).expect("writes the workflow");
+    let requests = root.join("cache/scratch/resume/paused-run");
+    std::fs::create_dir_all(&requests).expect("makes the folder of requests");
+    let request = r#"{"step":"wait","outputs":{}}"#;
+    std::fs::write(requests.join("1.json"), request).expect("writes the request");
+    let mut settings = uwe::run::Settings::new(root.join("workflow.yaml"));
+    settings.executor = Some("local".into());
+    settings.database = Some(root.join("runs.sqlite"));
+    settings.cache_folder = Some(root.join("cache"));
+    settings.output_dir = Some(root.join("outputs"));
+    settings.run_id = Some("paused-run".into());
+    settings.setup = Some(uwe::setup::Setup::default());
+    let mut request = uwe::RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let ran = request
+        .run_blocking()
+        .unwrap_or_else(|failure| panic!("{}", failure.message));
+    assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+}

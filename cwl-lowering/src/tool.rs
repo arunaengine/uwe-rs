@@ -447,7 +447,13 @@ fn bound(
         // CWL binds no input that is null, where an expr of its valueFrom still runs.
         return match value_type {
             Cwl::Union(_) => Err(format!("the valueFrom of input {name}")),
-            _ => Ok(vec![input(format!("{name}.{}", crate::group::VALUE), None)]),
+            _ => {
+                let separator = binding.item_separator.as_ref();
+                Ok(vec![input(
+                    format!("{name}.{}", crate::group::VALUE),
+                    separator,
+                )])
+            }
         };
     }
     let members: Vec<&Cwl> = match value_type {

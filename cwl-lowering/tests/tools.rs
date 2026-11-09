@@ -320,3 +320,16 @@ fn times_with_cores() {
         expr.code
     );
 }
+
+#[test]
+fn joins_computed_items() {
+    let lowering = lowered("joined.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let task = serde_json::to_value(&ops.last().unwrap().kind).unwrap();
+    let word = &task["task"]["command"][1];
+    assert_eq!(
+        word["separator"], ",",
+        "the valueFrom keeps its separator: {word}"
+    );
+}

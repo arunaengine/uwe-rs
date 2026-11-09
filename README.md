@@ -147,6 +147,8 @@ uwe run demo/snakemake/hello.smk -forcerun collect
 
 Targets, files or rules, follow the Snakefile. `--config name=value` sets config values. `-until`, `-omit-from`, `-forcerun` and `-forceall` work as in Snakemake. Every rule needs a `container:`, or a `-default-image` for those without one.
 
+A project folder, like a cloned repository, works in its own folder. `-workdir .test` works in a folder of the project instead, like Snakemake's `--directory .test`: the run copies that folder into its launch folder and works there, so relative paths of the config start in it and the run writes nothing into the project.
+
 ### CWL
 
 ```sh

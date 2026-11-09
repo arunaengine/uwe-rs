@@ -104,7 +104,10 @@ pub fn document(
                 inputs,
                 ..arguments.clone()
             };
-            let mut document = snakemake(target, arguments, setup, run, &folder)?.document;
+            // A resume plans in the launch folder of the run it continues.
+            let earlier = continued(arguments, target, language)?.map(|(earlier, _)| earlier.id);
+            let started = earlier.as_deref().unwrap_or(run);
+            let mut document = snakemake(target, arguments, setup, started, &folder)?.document;
             let place = |text: &str| {
                 if holds_secret(text.as_bytes(), &secrets) {
                     return Err(
@@ -292,14 +295,14 @@ fn own(target: &Path, language: Language) -> String {
 
 /// The document of the run that a resume continues, and its id, as compiling again may give
 /// another, like a config that reads the time. A compile with the same values makes its files.
-fn resumed(
+/// The earlier compiled run of the workflow that a resume continues, with its document.
+fn continued(
     arguments: &Arguments,
     target: &Path,
     language: Language,
-    compiled: PathBuf,
-) -> Result<(PathBuf, Option<String>), Failure> {
+) -> Result<Option<(run_database::Run, String)>, Failure> {
     let Some(resume) = &arguments.resume else {
-        return Ok((compiled, None));
+        return Ok(None);
     };
     let database = crate::runs::open(arguments)?;
     let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
@@ -309,9 +312,18 @@ fn resumed(
         crate::arguments::Resume::Run(id) => database.run(id).map_err(broken)?,
         crate::arguments::Resume::Last => database.last_run_below(&prefix, real).map_err(broken)?,
     };
-    // Without an earlier compiled run of this workflow, the run checks the resume itself.
     let ran = (earlier.as_ref()).and_then(|earlier| earlier.document.clone());
-    let (Some(earlier), Some(ran)) = (earlier, ran.filter(|ran| ran.starts_with(&prefix))) else {
+    Ok(earlier.zip(ran.filter(|ran| ran.starts_with(&prefix))))
+}
+
+fn resumed(
+    arguments: &Arguments,
+    target: &Path,
+    language: Language,
+    compiled: PathBuf,
+) -> Result<(PathBuf, Option<String>), Failure> {
+    // Without an earlier compiled run of this workflow, the run checks the resume itself.
+    let Some((earlier, ran)) = continued(arguments, target, language)? else {
         return Ok((compiled, None));
     };
     let ran = PathBuf::from(ran);
@@ -339,10 +351,10 @@ fn resumed(
             earlier.id
         )));
     }
-    // A Snakefile compiles into the same jobs again, with the options that pick them, like
-    // `-forcerun`, which the document of the earlier run does not have.
+    // A Snakefile compiles into the same jobs again, in the launch folder of that run, with
+    // the options that pick them, like `-forcerun`, which its document does not have.
     if language == Language::Snakemake {
-        return Ok((compiled, None));
+        return Ok((compiled, Some(earlier.id)));
     }
     // A config file that held a secret was read where it was, and is gone with its run.
     if (locations.iter()).any(|location| location.is_absolute() && !location.exists()) {

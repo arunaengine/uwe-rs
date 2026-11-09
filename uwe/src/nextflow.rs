@@ -93,22 +93,34 @@ impl Console {
             .map(std::path::Path::to_owned)
             .or(isolation.launch.clone())
             .or(own);
-        let mut folders = isolation.roots.clone();
-        let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
-        // Other runs may reuse the workflow, like a fetched pipeline, so its code only reads it.
-        let mut readable = isolation.read_only.clone();
-        readable.extend(match target.is_dir() {
-            true => Some(target),
-            false => target.parent().map(std::path::Path::to_owned),
-        });
-        folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
-        folders.extend(self.operators.clone());
-        folders.extend(self.launch.clone());
-        let shared = shared.iter().chain([&launch.scratch]).cloned();
-        let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
-        self.roots = Some(roots.with_readable(readable));
+        let own = self.operators.iter().chain(&self.launch).cloned();
+        self.roots = Some(run_roots(&launch.target, launch, (isolation, shared), own));
         self
     }
+}
+
+/// The folders that the code of an isolated run of `target` reaches: those of its isolation,
+/// its config and inputs files and `own`; the shared folders and the scratch folder to read
+/// files by path; the folder of the workflow to read and list.
+pub(crate) fn run_roots(
+    target: &std::path::Path,
+    launch: &Launch,
+    (isolation, shared): (&crate::hosted::Isolation, &[PathBuf]),
+    own: impl IntoIterator<Item = PathBuf>,
+) -> workflow_graph::Roots {
+    let mut folders = isolation.roots.clone();
+    let target = std::path::absolute(target).unwrap_or_else(|_| target.to_owned());
+    // Other runs may reuse the workflow, like a fetched pipeline, so its code only reads it.
+    let mut readable = isolation.read_only.clone();
+    readable.extend(match target.is_dir() {
+        true => Some(target),
+        false => target.parent().map(std::path::Path::to_owned),
+    });
+    folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
+    folders.extend(own);
+    let shared = shared.iter().chain([&launch.scratch]).cloned();
+    let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
+    roots.with_readable(readable)
 }
 
 impl Host for Console {
@@ -498,27 +510,35 @@ pub fn blocks(
             | Some("jarvice" | "wr")
     );
     let resume = arguments.resume.is_some();
+    // The callbacks and process adapters of the run start in the folder the run starts in.
+    let started =
+        (isolation(arguments, setup).and_then(|isolation| isolation.launch)).or_else(|| {
+            let scratch = crate::cache_directory().join("scratch");
+            arguments.embedded.then(|| scratch.join("launch").join(run))
+        });
     let run = run.to_owned();
     let isolation = isolation(arguments, setup);
     let shared = shared_folders(arguments, setup);
-    wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
-        let console = Console {
-            operators: Some(run_folder(&launch.scratch, &run)),
-            launch: Some(folder.to_owned()),
-            ..console.clone()
-        }
-        .confined(launch, Some(folder), isolation.as_ref(), &shared);
-        Settings {
-            host: Box::new(console),
-            container_engine: Some(engine.clone()),
-            run_name: run.clone(),
-            command_line: std::env::args().collect::<Vec<_>>().join(" "),
-            secret_env: local,
-            local_options: local,
-            repository: None,
-            resume,
-        }
-    })
+    let options =
+        wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
+            let console = Console {
+                operators: Some(run_folder(&launch.scratch, &run)),
+                launch: Some(folder.to_owned()),
+                ..console.clone()
+            }
+            .confined(launch, Some(folder), isolation.as_ref(), &shared);
+            Settings {
+                host: Box::new(console),
+                container_engine: Some(engine.clone()),
+                run_name: run.clone(),
+                command_line: std::env::args().collect::<Vec<_>>().join(" "),
+                secret_env: local,
+                local_options: local,
+                repository: None,
+                resume,
+            }
+        });
+    options.with_launch(started)
 }
 
 /// The wir document compiled from a pipeline as the Nextflow driver of a launch would build it,
@@ -529,13 +549,14 @@ pub fn compile(
     arguments: &Arguments,
     setup: &Setup,
     base: &std::path::Path,
-    native: Option<&str>,
-) -> Result<nextflow_compiler::Compilation, String> {
-    // Workflow code that runs while the pipeline compiles reaches what the run may reach, and
-    // prints where the run prints.
+    (run, native): (&str, Option<&str>),
+) -> Result<nextflow_compiler::Compilation, DriverError> {
+    // Workflow code that runs while the pipeline compiles reaches what the run may reach,
+    // prints where the run prints, and starts in the folder the run starts in.
     let console = Console {
         print: !arguments.no_print,
         sink: arguments.print_sink.clone(),
+        launch: own_launch(launch, run, arguments),
         ..console(true, setup, &arguments.secrets)
     }
     .confined(
@@ -544,15 +565,25 @@ pub fn compile(
         isolation(arguments, setup).as_ref(),
         &shared_folders(arguments, setup),
     );
+    // The build sees the run as the driver of the run does, like `workflow.runName`.
     let settings = Settings {
         host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),
+        run_name: run.to_owned(),
+        command_line: std::env::args().collect::<Vec<_>>().join(" "),
+        resume: arguments.resume.is_some(),
         ..Settings::default()
     };
     match native {
         Some(reason) => nextflow_compiler::compile_native(launch, settings, base, reason),
         None => nextflow_compiler::compile(launch, settings, base),
     }
+}
+
+/// The launch folder of an embedded run: runs at the same time must not meet in relative paths,
+/// like `publishDir`. The command line launches in the working directory.
+fn own_launch(launch: &Launch, run: &str, arguments: &Arguments) -> Option<PathBuf> {
+    (arguments.embedded).then(|| launch.scratch.join("launch").join(run))
 }
 
 /// The Nextflow driver of a launch. `quiet` sends what the workflow prints to standard error.
@@ -563,10 +594,7 @@ pub fn driver(
     arguments: &Arguments,
     setup: &Setup,
 ) -> Result<Box<dyn Driver>, DriverError> {
-    // Embedded runs at the same time must not meet in relative paths, like `publishDir`.
-    let own = arguments
-        .embedded
-        .then(|| launch.scratch.join("launch").join(run));
+    let own = own_launch(launch, run, arguments);
     let console = Console {
         operators: Some(run_folder(&launch.scratch, run)),
         print: !arguments.no_print,

@@ -180,7 +180,7 @@ enum Taken {
 
 impl Session {
     pub fn new(launch: &Launch, storage: &Storage) -> Result<Session, DriverError> {
-        Session::within(launch, storage, (None, None), None)
+        Session::within(launch, storage, (None, None, false), None)
     }
 
     /// A session that starts in `folder` rather than in the working directory of the process:
@@ -189,7 +189,7 @@ impl Session {
     fn within(
         launch: &Launch,
         storage: &Storage,
-        (folder, directory): (Option<&Path>, Option<&Path>),
+        (folder, directory, planning): (Option<&Path>, Option<&Path>, bool),
         environment: Option<Vec<(String, String)>>,
     ) -> Result<Session, DriverError> {
         // Config files are relative to where the run starts, as Snakemake takes them.
@@ -242,7 +242,7 @@ impl Session {
         let mut files = WorkflowFiles::new(&workdir, mirrors.clone());
         files.environment = environment;
         let files = Rc::new(files);
-        if !launch.simulated {
+        if !launch.simulated && !planning {
             files.write_to_disk();
         }
         let mut interpreter = Interpreter::new(files.clone());
@@ -3188,6 +3188,9 @@ pub struct RunSettings {
     /// A folder of a project folder target to work in, like Snakemake's `--directory .test`:
     /// the run works in a copy of it in `workdir`, so that it writes nothing into the project.
     pub directory: Option<PathBuf>,
+    /// Whether the run only plans its jobs, like a compile into wir: the code of the Snakefile
+    /// writes its files in memory then, as in a simulated run, and the run writes them.
+    pub planning: bool,
 }
 
 /// The working folder of a run of the project `target` in its `directory`: a copy in the
@@ -3345,7 +3348,7 @@ pub fn spawn_driver(
                     ));
                 }
                 let environment = settings.environment.clone();
-                let place = (folder, options.directory.as_deref());
+                let place = (folder, options.directory.as_deref(), options.planning);
                 let mut session = Session::within(&launch, &settings.storage, place, environment)?;
                 if let Some(roots) = &settings.roots {
                     let mut folders = roots.clone();
@@ -3445,6 +3448,7 @@ pub fn spawn_driver(
                     | Request::Prepare(_)
                     | Request::Take(_)
                     | Request::Targets
+                    | Request::Entry
                     | Request::Replan) => {
                         channel
                             .planning

@@ -465,6 +465,17 @@ impl Recorder {
         });
     }
 
+    /// The wir document that the run compiled its workflow into, with its digest.
+    pub fn document(&mut self, path: &str, digest: &str) {
+        self.update(|connection, run| {
+            connection.execute(
+                "UPDATE runs SET document = ?2, document_digest = ?3 WHERE id = ?1",
+                params![run, path, digest],
+            )?;
+            Ok(())
+        });
+    }
+
     /// The JSON Schema of the outputs of the workflow of the run.
     pub fn outputs(&mut self, schema: &serde_json::Value) {
         self.update(|connection, run| {

@@ -31,8 +31,6 @@ pub struct Settings {
     /// Resolves a remembered branch of a repository `target` again, like `-latest`.
     pub latest: bool,
     pub language: Option<Language>,
-    /// Runs the workflow through its lowered wir document, like `-lowered`.
-    pub lowered: bool,
     /// Typed input object. Use absolute paths for local file values.
     pub inputs: Option<Value>,
     /// Typed parameters override matching keys in `inputs`.
@@ -115,7 +113,6 @@ impl Default for Settings {
             revision: None,
             latest: false,
             language: None,
-            lowered: false,
             inputs: None,
             params: Map::new(),
             profiles: Vec::new(),
@@ -240,7 +237,6 @@ impl Settings {
         arguments.task_seconds =
             (self.default_time).map(|time| time.as_secs() + u64::from(time.subsec_nanos() > 0));
         arguments.no_print = !self.print;
-        arguments.lowered = self.lowered;
         arguments.output_dir = self.output_dir;
         arguments.workdir = self.workdir;
         arguments.database = self.database;

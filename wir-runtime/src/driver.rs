@@ -58,6 +58,8 @@ pub struct Settings {
     pub adapters: Adapters,
     /// Values of entry graph inputs that no file may hold; they win over the inputs file.
     pub secret_inputs: SecretInputs,
+    /// The folders that the file ops of an isolated run reach, as its workflow code does.
+    pub roots: Option<workflow_graph::Roots>,
 }
 
 /// A function of the host that takes printed text.
@@ -134,6 +136,7 @@ impl Default for Settings {
             print_sink: Printer::default(),
             adapters: Adapters::default(),
             secret_inputs: SecretInputs::default(),
+            roots: None,
         }
     }
 }
@@ -348,6 +351,8 @@ impl WirDriver {
                 printer: &self.settings.print_sink,
                 simulated: self.launch.simulated,
                 provider: self.files.as_deref(),
+                remote: Some(&self.settings.cwl.remote),
+                roots: self.settings.roots.as_ref(),
                 deliveries: &self.published,
                 inputs: &self.given,
                 nextflow: &self.scope_run,
@@ -400,6 +405,8 @@ impl WirDriver {
             printer: &self.settings.print_sink,
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
+            remote: Some(&self.settings.cwl.remote),
+            roots: self.settings.roots.as_ref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -538,6 +545,8 @@ impl WirDriver {
                     printer: &self.settings.print_sink,
                     simulated: self.launch.simulated,
                     provider: self.files.as_deref(),
+                    remote: Some(&self.settings.cwl.remote),
+                    roots: self.settings.roots.as_ref(),
                     deliveries: &self.published,
                     inputs: &self.given,
                     nextflow: &self.scope_run,
@@ -551,8 +560,13 @@ impl WirDriver {
         };
         let (spec, op) = task::patched(spec, &node.op, &patch);
         let script = (&self.settings.cwl.javascript, self.launch.simulated);
-        let mut task = task::build(id, (&node.name, &node.step), &op, &spec, bound, script)?;
+        let name = node.task_name();
+        let mut task = task::build(id, (&name, &node.step), &op, &spec, bound, script)?;
         task.site = op.attributes.place.clone();
+        // A task of a CWL tool keeps its output streams as files, as uwe's CWL driver does.
+        let source = op.origin.as_ref().map(|origin| origin.source.as_str());
+        task.defer_logs = (self.document.sources.iter())
+            .any(|known| Some(known.id.as_str()) == source && known.language == Dialect::Cwl);
         self.patches.insert(id, patch);
         Ok(task)
     }
@@ -589,6 +603,8 @@ impl WirDriver {
                 printer: &self.settings.print_sink,
                 simulated: self.launch.simulated,
                 provider: self.files.as_deref(),
+                remote: Some(&self.settings.cwl.remote),
+                roots: self.settings.roots.as_ref(),
                 deliveries: &self.published,
                 inputs: &self.given,
                 nextflow: &self.scope_run,
@@ -646,6 +662,8 @@ impl WirDriver {
             printer: &self.settings.print_sink,
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
+            remote: Some(&self.settings.cwl.remote),
+            roots: self.settings.roots.as_ref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -730,15 +748,21 @@ impl WirDriver {
                 cwl::to_cwl(Json::Object(bound.clone())),
             ),
         };
-        let written = std::fs::create_dir_all(&folder)
-            .and_then(|()| std::fs::write(&job, values.to_string()));
+        // The params of a run with secret inputs reach a Nextflow block in memory, as no file
+        // may hold them.
+        let held =
+            native.language == Dialect::Nextflow && !self.settings.secret_inputs.0.is_empty();
+        let written = std::fs::create_dir_all(&folder).and_then(|()| match held {
+            true => Ok(()),
+            false => std::fs::write(&job, values.to_string()),
+        });
         written.map_err(|error| {
             DriverError::new(format!("cannot write {}: {error}", job.display()))
         })?;
         let output = self.output_root().join(&path);
         let mut launch = Launch {
             target,
-            inputs: Some(job),
+            inputs: (!held).then_some(job),
             profiles: native.profiles.clone(),
             configs,
             targets: native.entry.iter().cloned().collect(),
@@ -749,6 +773,27 @@ impl WirDriver {
             keep_going: self.launch.keep_going,
             ..Launch::default()
         };
+        // A Snakefile block plans the jobs that the run it holds picks.
+        let picks = !native.targets.is_empty() || native.config_values.is_some();
+        let picks = picks || !native.until.is_empty() || !native.omit_from.is_empty();
+        if (picks || !native.forcerun.is_empty() || native.forceall)
+            && native.language != Dialect::Snakemake
+        {
+            let message = format!("op {path}: only Snakefile blocks take targets or job options");
+            return Err(DriverError::unsupported(message));
+        }
+        if !native.targets.is_empty() {
+            launch.targets = native.targets.clone();
+        }
+        if let Some(id) = &native.config_values {
+            let values = snakemake_compiler::source_values(&self.document, id, &self.base);
+            launch.params =
+                values.map_err(|error| DriverError::new(format!("op {path}: {error}")))?;
+        }
+        launch.until = native.until.clone();
+        launch.omit_from = native.omit_from.clone();
+        launch.forcerun = native.forcerun.clone();
+        launch.forceall = native.forceall;
         let mut child = Child::new(match native.language {
             Dialect::Cwl if !launch.profiles.is_empty() || !launch.configs.is_empty() => {
                 let message = format!("op {path}: CWL blocks take no profiles or configs");
@@ -766,7 +811,10 @@ impl WirDriver {
             // files in a scratch folder of its own, which its driver removes.
             Dialect::Nextflow => {
                 (launch.output_dir, launch.scratch) = (None, folder);
-                let driver = nextflow::block(&launch, &output, &self.settings.nextflow)?;
+                let mut driver = nextflow::block(&launch, &output, &self.settings.nextflow)?;
+                if held {
+                    driver.use_inputs(values)?;
+                }
                 self.launched.insert(at, (output, bound));
                 driver
             }
@@ -781,7 +829,20 @@ impl WirDriver {
                 let message = format!("op {path}: Argo blocks take no profiles");
                 return Err(DriverError::unsupported(message));
             }
-            Dialect::Argo => argo::block(&launch, &self.settings.argo)?,
+            Dialect::Argo => {
+                // A block that is the whole run hears `uwe resume`, as the run does; another
+                // does not, since the requests name the steps of the run.
+                let node = self.progress.node(at);
+                let entry =
+                    (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+                let whole =
+                    node.parent.is_none() && entry.is_some_and(|graph| graph.ops.len() == 1);
+                let mut services = self.settings.argo.clone();
+                if !whole {
+                    services.resume = None;
+                }
+                argo::block(&launch, &services)?
+            }
             Dialect::Wdl if !launch.profiles.is_empty() || !launch.configs.is_empty() => {
                 let message = format!("op {path}: WDL blocks take no profiles or configs");
                 return Err(DriverError::unsupported(message));
@@ -1132,6 +1193,8 @@ impl WirDriver {
             printer: &self.settings.print_sink,
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
+            remote: Some(&self.settings.cwl.remote),
+            roots: self.settings.roots.as_ref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -1563,6 +1626,7 @@ impl Driver for WirDriver {
             .flat_map(|(_, child)| child.notes())
             .collect();
         notes.extend(self.dialects.notes());
+        notes.extend(self.scope_run.notes());
         notes
     }
 
@@ -1595,7 +1659,11 @@ fn mark(task: &mut Task, node: &Node, prefixed: bool) {
         || effects
             .iter()
             .any(|effect| !matches!(effect, Effect::Publish(_)));
-    if prefixed {
+    // A native op with a name runs one task, like a call of WDL, which takes its name and step.
+    let named = matches!(node.op.kind, Kind::Native(_)) && node.op.attributes.name.is_some();
+    if prefixed && named {
+        (task.name, task.step) = (node.task_name(), node.step.clone());
+    } else if prefixed {
         task.name = format!("{}: {}", node.name, task.name);
     }
     match node.op.attributes.cache {

@@ -76,8 +76,14 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
     };
     let mut files = Vec::new();
     let secret = secret_store(&target, arguments);
+    let secrets = crate::lower::secret_texts(&arguments.secrets);
     for file in found {
         if is_secret(&file.path, secret.as_deref()) {
+            continue;
+        }
+        // A file that holds a secret value of the run stays out of the record and the store.
+        let read = std::fs::read(&file.path);
+        if read.is_ok_and(|bytes| crate::lower::holds_secret(&bytes, &secrets)) {
             continue;
         }
         if let Ok((digest, size)) = content_store::hash_file(&file.path).await {
@@ -94,34 +100,6 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
         }
     }
     named(arguments, secret.as_deref(), &mut files, &mut skipped).await;
-    Sources {
-        folder,
-        files,
-        skipped,
-    }
-}
-
-/// The sources of a run of a compiled document: the document alone as its workflow, and the
-/// files of its command line. The folder of the document holds those of other runs too.
-pub async fn compiled(document: &Path, arguments: &Arguments) -> Sources {
-    let document = std::path::absolute(document).unwrap_or_else(|_| document.to_owned());
-    let folder = document.parent().unwrap_or(Path::new("/")).to_owned();
-    let (mut files, mut skipped) = (Vec::new(), None);
-    match content_store::hash_file(&document).await {
-        Ok((digest, size)) => files.push(Source {
-            kind: SourceKind::Workflow,
-            path: document
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-            digest: digest.to_string(),
-            size,
-            executable: false,
-        }),
-        Err(_) => skipped = Some(format!("cannot record {}", document.display())),
-    }
-    named(arguments, None, &mut files, &mut skipped).await;
     Sources {
         folder,
         files,
@@ -246,7 +224,7 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
     };
     if let Some((root, _)) = repository::root(target) {
         let mut files = Vec::new();
-        let complete = walk(&root, &root, None, &mut files);
+        let complete = walk(&root, &root, &[cache()], &mut files);
         let skipped = limited(&files).or_else(|| (!complete).then(|| too_many(&root)));
         if skipped.is_some() {
             files.clear();
@@ -312,12 +290,14 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
             }
         };
     }
+    // The output folder and the cache folder of uwe hold what runs write.
     let output = arguments
         .output_dir
         .as_ref()
         .and_then(|folder| std::path::absolute(folder).ok());
+    let skipped: Vec<PathBuf> = output.into_iter().chain([cache()]).collect();
     let mut files = Vec::new();
-    let complete = walk(&own, &own, output.as_deref(), &mut files);
+    let complete = walk(&own, &own, &skipped, &mut files);
     match complete.then(|| limited(&files)).flatten() {
         None if complete => (own, files, None),
         reason => {
@@ -325,6 +305,12 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
             (own, Vec::new(), Some(reason))
         }
     }
+}
+
+/// The cache folder of uwe, as an absolute path.
+fn cache() -> PathBuf {
+    let folder = crate::cache_directory();
+    std::path::absolute(&folder).unwrap_or(folder)
 }
 
 /// Why a list of files is too large to record, when it is.
@@ -353,8 +339,8 @@ fn too_many(folder: &Path) -> String {
 }
 
 /// The files below `folder`, without hidden files and folders, the folders that runs write
-/// into, and links. False when there are more than [`MOST_FILES`].
-fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found>) -> bool {
+/// into, like `skipped`, and links. False when there are more than [`MOST_FILES`].
+fn walk(root: &Path, folder: &Path, skipped: &[PathBuf], files: &mut Vec<Found>) -> bool {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return true;
     };
@@ -370,7 +356,7 @@ fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found
             || name == repository::MARKER
             || name == ".git"
             || kind.is_symlink()
-            || Some(path.as_path()) == output
+            || skipped.contains(&path)
         {
             continue;
         }
@@ -381,7 +367,7 @@ fn walk(root: &Path, folder: &Path, output: Option<&Path>, files: &mut Vec<Found
             {
                 continue;
             }
-            if !walk(root, &path, output, files) {
+            if !walk(root, &path, skipped, files) {
                 return false;
             }
         } else if kind.is_file() {
@@ -422,6 +408,35 @@ mod tests {
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes folders");
         std::fs::write(path, text).expect("writes");
+    }
+
+    /// A file of the folder of the workflow that holds a secret value of the run, like an
+    /// inputs file beside it, is no source of the run, so no store or crate keeps it.
+    #[test]
+    fn excludes_secret_files() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("main.nf");
+        write(&target, "workflow {}");
+        write(
+            &root.path().join("inputs.json"),
+            "{\"token\": \"hush-4711\"}",
+        );
+        let mut secrets = config_file::SecretValues::default();
+        secrets.insert("HOST_TOKEN", "hush-4711").unwrap();
+        let arguments = Arguments {
+            inputs: Some(root.path().join("inputs.json")),
+            secrets,
+            ..Arguments::default()
+        };
+        let sources = workflow_graph::runtime()
+            .unwrap()
+            .block_on(collect(&target, &arguments));
+        let paths: Vec<&str> = sources
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+        assert_eq!(paths, ["main.nf"]);
     }
 
     #[test]

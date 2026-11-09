@@ -50,21 +50,23 @@ impl Lowering {
 /// locations are relative to `base`, the folder the wir document is meant for, when they lie
 /// below it. It fails only when not even a native op can hold the document.
 pub fn lower(path: &Path, entry: Option<&str>, base: &Path) -> Result<Lowering, String> {
-    lower_with(path, entry, base, DEFAULT_IMAGE)
+    lower_with(path, entry, base, &wdl_runtime::Options::default())
 }
 
-/// [`lower`], with `image` for the tasks without a container, like `-default-image`.
+/// [`lower`], with the image of `options` for the tasks without a container, like
+/// `-default-image`, and its reader of imports at web addresses.
 pub fn lower_with(
     path: &Path,
     entry: Option<&str>,
     base: &Path,
-    image: &str,
+    options: &wdl_runtime::Options,
 ) -> Result<Lowering, String> {
-    let document = wdl_runtime::document::load(path).map_err(|error| error.message)?;
+    let imports = options.imports.as_ref();
+    let document = wdl_runtime::document::load(path, imports).map_err(|error| error.message)?;
     let unit = wdl_runtime::document::entry(&document, entry).map_err(|error| error.message)?;
     let mut lowerer = Lowerer {
         base: base.to_owned(),
-        image: image.to_owned(),
+        image: options.image.clone(),
         sources: Vec::new(),
         kept: Vec::new(),
         graphs: Vec::new(),
@@ -82,7 +84,8 @@ pub fn lower_with(
             }
         },
         Callable::Task(_) => {
-            let op = lowerer.task(&unit, &name)?;
+            let mut op = lowerer.task(&unit, &name)?;
+            (op.attributes.name, op.attributes.step) = (Some(name.clone()), Some(name.clone()));
             single(&unit, op)?
         }
     };
@@ -167,6 +170,12 @@ impl Lowerer {
             entry: Some(unit.name()),
             profiles: Vec::new(),
             configs: Vec::new(),
+            targets: Vec::new(),
+            config_values: None,
+            until: Vec::new(),
+            omit_from: Vec::new(),
+            forcerun: Vec::new(),
+            forceall: false,
         });
         let mut op = blank(path, kind, origin(&source, &unit.name()));
         let flags = defaulted(unit).into_iter().map(|name| {

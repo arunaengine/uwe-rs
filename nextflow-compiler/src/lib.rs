@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use nextflow_runtime::driver::{Nextflow, Settings};
 use nextflow_runtime::export::{Kind, Network};
 use serde_json::{Value as Json, json};
-use workflow_graph::Launch;
+use workflow_graph::{DriverError, Launch};
 
 pub use sources::Sources;
 
@@ -55,22 +55,26 @@ pub struct Context {
 
 /// Compiles the pipeline of a launch, as the native driver with these settings would build it.
 /// A build that needs what the compiler does not do gives one native op.
-/// It fails only when the pipeline does not build.
-pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, String> {
+/// It fails only when the pipeline does not build, as the native driver fails.
+pub fn compile(
+    launch: &Launch,
+    settings: Settings,
+    base: &Path,
+) -> Result<Compilation, DriverError> {
     // What the pipeline reads from the environment stays out of the document.
     nextflow_evaluator::secrets::noting(|| compiling(launch, settings, base))
 }
 
-fn compiling(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, String> {
+fn compiling(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, DriverError> {
     let context = Context {
         profiles: launch.profiles.clone(),
         configs: launch.configs.clone(),
         entry: launch.targets.first().cloned(),
         base: base.to_owned(),
     };
-    let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
+    let mut driver = Nextflow::new(launch, settings)?;
     match driver.export() {
-        Ok(network) => compile_network(&network, &context),
+        Ok(network) => compile_network(&network, &context).map_err(DriverError::new),
         Err(error) if error.unsupported => {
             let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
             let kept = vec![Kept {
@@ -78,10 +82,10 @@ fn compiling(launch: &Launch, settings: Settings, base: &Path) -> Result<Compila
                 reason: error.message,
             }];
             // The params of the launch and config stay the inputs of the native op.
-            let interface = driver.interface().map_err(|error| error.message)?;
-            native(&interface, &context, &mut sources, kept)
+            let interface = driver.interface()?;
+            native(&interface, &context, &mut sources, kept).map_err(DriverError::new)
         }
-        Err(error) => Err(error.message),
+        Err(error) => Err(error),
     }
 }
 
@@ -92,22 +96,22 @@ pub fn compile_native(
     settings: Settings,
     base: &Path,
     reason: &str,
-) -> Result<Compilation, String> {
+) -> Result<Compilation, DriverError> {
     let context = Context {
         profiles: launch.profiles.clone(),
         configs: launch.configs.clone(),
         entry: launch.targets.first().cloned(),
         base: base.to_owned(),
     };
-    let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
+    let mut driver = Nextflow::new(launch, settings)?;
     let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
     let kept = vec![Kept {
         path: "pipeline".into(),
         reason: reason.into(),
     }];
     nextflow_evaluator::secrets::noting(|| {
-        let interface = driver.interface().map_err(|error| error.message)?;
-        native(&interface, &context, &mut sources, kept)
+        let interface = driver.interface()?;
+        native(&interface, &context, &mut sources, kept).map_err(DriverError::new)
     })
 }
 

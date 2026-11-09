@@ -29,6 +29,8 @@ pub struct Options {
     pub image: String,
     /// Whether a real run prints its outputs.
     pub print: bool,
+    /// Reads the documents at web addresses that the document imports, instead of the analysis.
+    pub imports: Option<document::Imports>,
 }
 
 impl Default for Options {
@@ -36,6 +38,7 @@ impl Default for Options {
         Options {
             image: DEFAULT_IMAGE.into(),
             print: true,
+            imports: None,
         }
     }
 }
@@ -65,7 +68,7 @@ pub fn driver_with(launch: &Launch, options: Options) -> Result<Box<dyn Driver>,
 impl WdlDriver {
     /// Loads the document of a launch; `Launch.targets` may name the workflow or task to run.
     pub fn new(launch: &Launch, options: Options) -> Result<Self, DriverError> {
-        let document = document::load(&launch.target)?;
+        let document = document::load(&launch.target, options.imports.as_ref())?;
         let unit = document::entry(&document, launch.targets.first().map(String::as_str))?;
         let settings = Settings {
             image: options.image,

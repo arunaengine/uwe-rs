@@ -295,6 +295,14 @@ impl Host for Builder<'_> {
         if !self.defer {
             return self.base.plugin_function(plugin, name, arguments);
         }
+        // A compile calls no service: the pipeline stays one native op, which the run runs.
+        if nextflow_plugins::calls_service(plugin, name) {
+            let message = format!("the function `{name}` of `{plugin}`, which calls a service");
+            return Err(Error::Unsupported {
+                message,
+                span: Default::default(),
+            });
+        }
         // The build for the compiler reads the files of plugin functions itself, to keep them.
         let options = self.options;
         let workflow = crate::workflow::metadata(options, &self.base.launch_dir());

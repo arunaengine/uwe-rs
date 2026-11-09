@@ -251,11 +251,11 @@ pub(crate) fn planner_builder(planner: &Planner) -> TaskBuilder {
         wildcards: BTreeMap::new(),
         group: Vec::new(),
         targets: reference.targets.clone(),
-        config_values: None,
-        until: Vec::new(),
-        omit_from: Vec::new(),
-        forcerun: Vec::new(),
-        forceall: false,
+        config_values: reference.config_values.clone(),
+        until: reference.until.clone(),
+        omit_from: reference.omit_from.clone(),
+        forcerun: reference.forcerun.clone(),
+        forceall: reference.forceall,
         layout: None,
     })
 }

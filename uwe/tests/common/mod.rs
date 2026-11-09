@@ -112,3 +112,54 @@ pub fn without_display(output: &str) -> String {
     }
     kept.iter().map(|line| format!("{line}\n")).collect()
 }
+
+/// The workflow of a compiled document as one native op that runs it with the driver of its
+/// language, the native baseline of a compiled run. The entry graph keeps its ports.
+pub fn native_document(
+    compiled: &serde_json::Value,
+    source: serde_json::Value,
+) -> serde_json::Value {
+    use serde_json::{Value, json};
+    let entry = (compiled["graphs"].as_array().into_iter().flatten())
+        .find(|graph| graph["name"] == compiled["entry"])
+        .expect("an entry graph");
+    let ports = |key: &str| entry[key].as_array().cloned().unwrap_or_default();
+    // A native op takes no `dynamic` port; the workflow gives such values itself, like the
+    // params of a Nextflow config.
+    let ports = |key: &str| -> Vec<Value> {
+        let fixed = |port: &Value| !port["type"].to_string().contains("dynamic");
+        ports(key).into_iter().filter(fixed).collect()
+    };
+    let (inputs, outputs) = (ports("inputs"), ports("outputs"));
+    let typed = |ports: &[Value]| -> Vec<Value> {
+        let typed = ports
+            .iter()
+            .map(|port| json!({"name": port["name"], "type": port["type"]}));
+        typed.collect()
+    };
+    let mut edges: Vec<Value> = (inputs.iter())
+        .map(|port| json!({"from": {"port": port["name"]}, "to": {"op": "native", "port": port["name"]}}))
+        .collect();
+    edges.extend(outputs.iter().map(|port| {
+        json!({"from": {"op": "native", "port": port["name"]}, "to": {"port": port["name"]}})
+    }));
+    let mut native = json!({"source": source["id"], "language": source["language"]});
+    for key in ["entry", "profiles"] {
+        if let Some(value) = source.get(key) {
+            native[key] = value.clone();
+        }
+    }
+    let mut source = source;
+    if let Some(fields) = source.as_object_mut() {
+        fields.retain(|key, _| !["entry", "profiles"].contains(&key.as_str()));
+    }
+    let op = json!({
+        "path": "native",
+        "kind": {"native": native},
+        "inputs": typed(&inputs),
+        "outputs": typed(&outputs),
+    });
+    let graph =
+        json!({"name": "main", "inputs": inputs, "outputs": outputs, "ops": [op], "edges": edges});
+    json!({"wir_version": compiled["wir_version"], "sources": [source], "graphs": [graph], "entry": "main"})
+}

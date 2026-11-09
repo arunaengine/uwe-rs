@@ -37,6 +37,8 @@ pub enum Request {
     Take(Box<Outcome>),
     /// The files of the targets of the planned jobs, named as the outputs of a run.
     Targets,
+    /// The rule that a run without targets plans, the first of the Snakefile.
+    Entry,
     /// A new plan of the jobs after a checkpoint ended.
     Replan,
 }
@@ -221,6 +223,7 @@ impl CommandRunner {
                 | Request::Prepare(_)
                 | Request::Take(_)
                 | Request::Targets
+                | Request::Entry
                 | Request::Replan => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",

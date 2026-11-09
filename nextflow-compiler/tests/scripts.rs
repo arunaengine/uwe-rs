@@ -11,8 +11,15 @@ use workflow_graph::{Launch, Simulator, execute};
 /// A host in the folder of the test that prints nothing.
 struct Quiet(String);
 
+/// The value of `API_TOKEN` in the environment of the test host.
+const TOKEN: &str = "token-0123456789";
+
 impl nextflow_evaluator::interpreter::Host for Quiet {
     fn print(&mut self, _: &str) {}
+
+    fn environment(&self, name: &str) -> Option<String> {
+        (name == "API_TOKEN").then(|| TOKEN.to_owned())
+    }
 
     fn launch_dir(&self) -> String {
         self.0.clone()
@@ -80,4 +87,23 @@ fn locates_callback_errors() {
                   parts.small.view()\n}\n";
     let error = run(script).unwrap_err();
     assert!(error.contains("main.nf:5:"), "{error}");
+}
+
+/// A value of the environment that a callback reads, like a token, stays out of the document.
+#[test]
+fn keeps_environment_values() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    let script = "def token = System.getenv('API_TOKEN')\nworkflow {\n    \
+                  channel.of(1).map { n -> token.size() + n }.view()\n}\n";
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    let launch = Launch {
+        target: folder.to_owned(),
+        scratch: folder.join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let compiled = nextflow_compiler::compile(&launch, settings(folder), folder).unwrap();
+    let text = serde_json::to_string(&compiled.document).unwrap();
+    assert!(!text.contains(TOKEN));
 }

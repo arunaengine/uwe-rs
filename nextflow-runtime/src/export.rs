@@ -40,6 +40,9 @@ pub struct Network {
     /// Every script that the run loads: the main script, the scripts it includes, and the
     /// Groovy classes of `lib/`, which the compiler pins as sources.
     pub scripts: Vec<String>,
+    /// The `workflow.onComplete` handlers, then the `workflow.onError` ones, with whether
+    /// each is an error handler.
+    pub handlers: Vec<(bool, Callback)>,
 }
 
 #[derive(Debug)]

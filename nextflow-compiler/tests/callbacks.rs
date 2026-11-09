@@ -61,9 +61,8 @@ fn printed(folder: &Path, inputs: &str, run: &str) -> String {
     };
     let mut driver = wir_runtime::WirDriver::new(&run, wir).unwrap();
     let mut simulator = Simulator::new(folder.join("simulator"));
-    execute("callbacks", &mut driver, &mut simulator)
-        .into_result()
-        .unwrap();
+    // A failed run prints too, like its `onError` handlers.
+    let _ = execute("callbacks", &mut driver, &mut simulator).into_result();
     drop(driver);
     text.lock().unwrap().clone()
 }
@@ -98,4 +97,23 @@ fn callbacks_see_runs() {
         !stray.exists(),
         "the callbacks keep nothing in the working folder"
     );
+}
+
+#[test]
+fn runs_workflow_handlers() {
+    let handlers = "    workflow.onComplete { println \"done ${workflow.success} ${workflow.exitStatus}\" }\n    \
+                    workflow.onError { println \"failed: ${workflow.errorMessage}\" }\n";
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    std::fs::write(folder.join("nextflow.config"), "params.greeting = 'hi'\n").unwrap();
+    let good = format!("workflow {{\n{handlers}    channel.of(1).view()\n}}\n");
+    std::fs::write(folder.join("main.nf"), good).unwrap();
+    assert_eq!(printed(folder, "{}", "good"), "1\ndone true 0\n");
+    let bad = format!(
+        "workflow {{\n{handlers}    channel.of(1).map {{ throw new Exception('boom') }}.view()\n}}\n"
+    );
+    std::fs::write(folder.join("main.nf"), bad).unwrap();
+    let text = printed(folder, "{}", "bad");
+    assert!(text.starts_with("done false 1\nfailed: "), "{text}");
+    assert!(text.contains("boom"), "{text}");
 }

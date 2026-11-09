@@ -106,10 +106,13 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
         return native(network, context, &mut sources, kept);
     }
     match graph::compile(network, context, &mut sources) {
-        Ok(graphs) => Ok(Compilation {
-            document: document(&sources, graphs, observers(network, &sources))?,
-            kept: Vec::new(),
-        }),
+        Ok(graphs) => {
+            let hooks = hooks(network, &mut sources);
+            Ok(Compilation {
+                document: document(&sources, graphs, hooks)?,
+                kept: Vec::new(),
+            })
+        }
         Err(kept) => native(network, context, &mut sources, vec![kept]),
     }
 }
@@ -176,6 +179,19 @@ fn native(
         document: document(sources, vec![graph], Vec::new())?,
         kept,
     })
+}
+
+/// The run hooks: the observers of the run, then the `workflow.onComplete` and `onError`
+/// handlers, which the capture `wirHook` marks for the Groovy bridge.
+fn hooks(network: &Network, sources: &mut Sources) -> Vec<Json> {
+    let mut hooks = observers(network, sources);
+    for (on_error, callback) in &network.handlers {
+        let kind = if *on_error { "error" } else { "complete" };
+        let mut closure = groovy::closure(callback, sources);
+        closure["captures"]["wirHook"] = json!({"value": kind});
+        hooks.push(json!({kind: closure}));
+    }
+    hooks
 }
 
 /// The run hook that tells the observers of the run, like nf-prov, the processes of the

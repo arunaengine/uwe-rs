@@ -93,4 +93,9 @@ fn callbacks_see_runs() {
         changed, "hey third two\n",
         "a new run loads the scripts again"
     );
+    let stray = Path::new(env!("CARGO_MANIFEST_DIR")).join("callbacks");
+    assert!(
+        !stray.exists(),
+        "the callbacks keep nothing in the working folder"
+    );
 }

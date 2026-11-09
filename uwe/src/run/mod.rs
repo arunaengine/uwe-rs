@@ -233,7 +233,6 @@ fn execute_with(
         true => {
             let (path, inputs, values) =
                 crate::lower::document(&target, language, arguments, &setup)?;
-            let path = crate::lower::resumed(arguments, &target, language, path)?;
             private = values;
             // A WDL input file and parameters become one file for the entry graph; Snakemake
             // config files and values are in the document.

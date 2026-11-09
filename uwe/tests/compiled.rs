@@ -3,6 +3,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::path::{Path, PathBuf};
+
 use serde_json::Value as Json;
 
 mod common;
@@ -407,9 +409,31 @@ fn keeps_recorded_documents() {
 /// runs of the first database ran, also when nothing wrote them for over a week.
 #[test]
 fn keeps_shared_documents() {
+    shared_resume(&|_| {}, &|_| {});
+}
+
+/// A document that a run ran before the cache folder named its databases stays, as the run
+/// database that ran it may not be named there.
+#[test]
+fn keeps_unlisted_documents() {
+    shared_resume(
+        &|cache| std::fs::remove_file(listed(cache)).expect("removes the list"),
+        &|_| {},
+    );
+}
+
+/// The file of the cache folder below `cache` that names its run databases.
+fn listed(cache: &Path) -> PathBuf {
+    cache.join("uwe/scratch/lowered/databases")
+}
+
+/// Runs a pipeline with a first database, ages its document, runs `before` on the cache
+/// folder, runs it with a second database, runs `after`, and resumes the first run.
+fn shared_resume(before: &dyn Fn(&Path), after: &dyn Fn(&Path)) {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let (root, cache) = (folder.path(), folder.path().join("cache"));
     std::fs::write(root.join("main.nf"), TIMED).expect("writes the pipeline");
+    std::fs::create_dir_all(root.join("first")).expect("makes a folder");
     let run = |database: &str, resume: &[&str]| {
         let database = root.join(database);
         let output = common::command()
@@ -425,7 +449,7 @@ fn keeps_shared_documents() {
         let database = run_database::Database::open(&database).expect("opens the run database");
         database.runs(1).expect("lists the runs").remove(0)
     };
-    let first = run("a.sqlite", &[]);
+    let first = run("first/a.sqlite", &[]);
     let document = first.document.clone().expect("a document");
     let weeks = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
     let file = std::fs::File::options()
@@ -433,8 +457,10 @@ fn keeps_shared_documents() {
         .open(&document)
         .expect("opens it");
     file.set_modified(weeks).expect("ages it");
+    before(&cache);
     run("b.sqlite", &[]);
-    let resumed = run("a.sqlite", &["-resume", &first.id]);
+    after(&cache);
+    let resumed = run("first/a.sqlite", &["-resume", &first.id]);
     assert_eq!(resumed.document, Some(document));
 }
 

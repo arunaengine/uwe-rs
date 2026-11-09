@@ -473,38 +473,68 @@ fn written(folder: &Path, text: &str) -> Result<Values, Failure> {
 }
 
 /// The file in the folder of compiled documents that names each run database whose runs
-/// compile into it, one path per line.
+/// compile into it, one path per line, and as `kept <name>` the documents there before it.
 const DATABASES: &str = "databases";
 
-/// The documents that the runs of every database that compiles into `folder` ran, after it
-/// names the database of this run; none when a database there cannot be read.
+/// The documents that the runs of every database that compiles into `folder` ran, and those
+/// there before the list of databases, after the list names the database of this run; none
+/// when a database there cannot be read.
 fn recorded(arguments: &Arguments, folder: &Path) -> Result<Option<Vec<String>>, Failure> {
     let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
     let own = crate::runs::database_path(arguments);
     let own = std::path::absolute(&own).unwrap_or(own);
     let list = folder.join(DATABASES);
-    let text = std::fs::read_to_string(&list).unwrap_or_default();
-    let named: Vec<PathBuf> = text.lines().map(PathBuf::from).collect();
-    if !named.contains(&own) {
+    let mut text = std::fs::read_to_string(&list).unwrap_or_default();
+    if !text.lines().any(|line| Path::new(line) == own) {
         let line = format!("{}\n", own.display());
         let added = std::fs::create_dir_all(folder).and_then(|()| {
-            let mut file = std::fs::File::options()
-                .create(true)
-                .append(true)
-                .open(&list)?;
-            std::io::Write::write_all(&mut file, line.as_bytes())
+            let options = std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(&list);
+            let (mut file, added) = match options {
+                // A run database that the list does not name may hold the documents there.
+                Ok(file) => (file, before(folder)? + &line),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    (std::fs::File::options().append(true).open(&list)?, line)
+                }
+                Err(error) => return Err(error),
+            };
+            std::io::Write::write_all(&mut file, added.as_bytes())?;
+            std::fs::read_to_string(&list)
         });
-        added.map_err(|error| failure(format!("uwe: {}: {error}", list.display())))?;
+        text = added.map_err(|error| failure(format!("uwe: {}: {error}", list.display())))?;
     }
     let mut documents = crate::runs::open(arguments)?.documents().map_err(broken)?;
-    // A database that is gone holds no runs to resume.
-    for other in (named.iter()).filter(|other| **other != own && other.exists()) {
+    for line in text.lines() {
+        if let Some(name) = line.strip_prefix("kept ") {
+            documents.push(folder.join(name).to_string_lossy().into_owned());
+            continue;
+        }
+        let other = Path::new(line);
+        // A database that is gone holds no runs to resume.
+        if other == own || !other.exists() {
+            continue;
+        }
         let Ok(database) = run_database::Database::open(other) else {
             return Ok(None);
         };
         documents.extend(database.documents().map_err(broken)?);
     }
     Ok(Some(documents))
+}
+
+/// The lines `kept <name>` of the documents in `folder`.
+fn before(folder: &Path) -> std::io::Result<String> {
+    let mut kept = String::new();
+    for entry in std::fs::read_dir(folder)? {
+        let name = entry?.file_name();
+        let name = name.to_string_lossy();
+        if name.ends_with(".wir.json") {
+            kept.push_str(&format!("kept {name}\n"));
+        }
+    }
+    Ok(kept)
 }
 
 /// Removes the documents below `folder` that no run wrote for a week and no `recorded` run

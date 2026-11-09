@@ -333,7 +333,12 @@ pub fn capture(
                 (outcome, inputs, workdir, simulated),
             )
             .map_err(|problem| format!("output {}: {problem}", port.name))?;
-            let value = crate::cwl::to_wir(value);
+            let mut value = crate::cwl::to_wir(value);
+            // The Directories of the results hold the listings that CWL loads, as natively.
+            if let Some(listing) = capture.listing {
+                value = crate::load::listings(value, listing, ended.access)
+                    .map_err(|problem| format!("output {}: {problem}", port.name))?;
+            }
             values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
             continue;
         }
@@ -1349,6 +1354,69 @@ mod tests {
         assert_eq!(values["count"], 3);
         let child = &values["child"]["location"];
         assert_eq!(child, "/other/sub/c.txt", "below the deepest staged folder");
+    }
+
+    #[test]
+    fn lists_result_folders() {
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("d");
+        std::fs::create_dir_all(made.join("e")).unwrap();
+        std::fs::write(made.join("e/f.txt"), "f").unwrap();
+        let written = folder.path().join("cwl.output.json");
+        let object = json!({"dir": {"class": "Directory", "path": "/w/d"}});
+        std::fs::write(&written, object.to_string()).unwrap();
+        let file = |path: &str, location: &std::path::Path, directory| OutputFile {
+            path: path.into(),
+            location: location.to_string_lossy().into_owned(),
+            directory,
+            size: None,
+            digest: None,
+        };
+        let outcome = Outcome {
+            files: vec![
+                file("d/", &made, true),
+                file("cwl.output.json", &written, false),
+            ],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "dir".into(),
+            from: CaptureRule::Results,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: Some(wir::Listing::Deep),
+            code: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/w".into()),
+            results: Some("cwl.output.json".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "dir".into(),
+            r#type: Type::Directory,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        let inner = &values["dir"]["listing"][0];
+        assert_eq!(
+            inner["basename"], "e",
+            "the listing of the results: {values:?}"
+        );
+        assert_eq!(inner["listing"][0]["basename"], "f.txt", "a deep listing");
     }
 
     #[test]

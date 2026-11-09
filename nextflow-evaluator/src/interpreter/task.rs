@@ -441,6 +441,7 @@ impl Interpreter<'_> {
             return Ok(value.clone());
         }
         if let Some(value) = self.host.environment(name) {
+            crate::secrets::note_read(&value);
             return Ok(Value::string(value));
         }
         if let Some(delegate) = self.delegates.last().cloned() {

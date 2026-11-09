@@ -585,6 +585,12 @@ impl Nextflow {
         })
     }
 
+    /// Whether the loaded pipeline reads the params of the command line as the legacy parser
+    /// does, as numbers and booleans.
+    pub fn legacy(&self) -> bool {
+        self.loaded.as_ref().is_some_and(|loaded| loaded.legacy)
+    }
+
     /// The params of the launch and config with the schema of the pipeline and the launch
     /// folder, as an empty network has them, for a pipeline whose network cannot be exported.
     pub fn interface(&mut self) -> Result<crate::export::Network, DriverError> {

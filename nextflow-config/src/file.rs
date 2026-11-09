@@ -649,7 +649,11 @@ fn legacy_name(
         tree::get(&file.tree, &path)
     });
     setting
-        .or_else(|| host.environment(name).map(Value::string))
+        .or_else(|| {
+            let value = host.environment(name);
+            let value = value.inspect(|value| nextflow_evaluator::secrets::note_read(value));
+            value.map(Value::string)
+        })
         .map(Lowered::Literal)
 }
 

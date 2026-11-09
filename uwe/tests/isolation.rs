@@ -437,6 +437,52 @@ fn delivers_launched_targets() {
     }
 }
 
+/// Splits a file that the run names, like a channel operator of a compiled pipeline does.
+const SPLIT: &str = "workflow {\n  channel.of(file(params.outside)).splitText().view()\n}\n";
+
+/// The file operators of a compiled run keep to the folders of an isolated run, as the code
+/// of the workflow does: a split of a file outside them fails without reading it.
+#[test]
+fn confines_file_operators() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("confines_file_operators", None);
+    }
+    let root = tempfile::tempdir().unwrap();
+    let outside = root.path().join("outside/private.txt");
+    std::fs::create_dir_all(outside.parent().unwrap()).unwrap();
+    std::fs::write(&outside, "private line").unwrap();
+    let folder = root.path().join("pipeline");
+    let data = folder.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(folder.join("main.nf"), SPLIT).unwrap();
+    let mut settings = settings(&folder, &folder.join("main.nf"));
+    settings
+        .params
+        .insert("outside".into(), json!(outside.to_string_lossy()));
+    settings.isolation = Some(Isolation {
+        roots: vec![data],
+        launch: Some(folder.join("launch")),
+        ..Isolation::default()
+    });
+    let printed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let sink = printed.clone();
+    settings.print_sink = Some(uwe::run::PrintSink::new(move |text: &str| {
+        sink.lock().unwrap().push_str(text);
+    }));
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let message = match runtime.block_on(request.run()) {
+        Ok(ran) => (ran.execution.error.map(|error| error.to_string())).unwrap_or_default(),
+        Err(failure) => failure.message,
+    };
+    assert!(
+        message.contains("outside the folders of the run"),
+        "{message}"
+    );
+    assert!(!printed.lock().unwrap().contains("private line"));
+}
+
 /// A run of `workflow` with its database, store, cache and outputs in `folder`.
 fn settings(folder: &Path, workflow: &Path) -> Settings {
     let mut settings = Settings::new(workflow);

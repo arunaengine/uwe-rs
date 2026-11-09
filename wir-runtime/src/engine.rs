@@ -32,6 +32,8 @@ pub struct Context<'a> {
     /// Reads files at web addresses with the storage providers of the run, without a files
     /// provider, like in a simulated run.
     pub remote: Option<&'a cwl_parser::source::Remote>,
+    /// The folders that file ops of an isolated run reach.
+    pub roots: Option<&'a workflow_graph::Roots>,
     /// The deliveries that the file effects of stream ops ask the host for.
     pub deliveries: &'a crate::publishing::Deliveries,
     /// The input values of the run, which callbacks of Nextflow scopes see as params.
@@ -44,6 +46,9 @@ impl Context<'_> {
     /// The bytes of the file at a location, through the files provider when there is one.
     pub fn read(&self, location: &str) -> std::io::Result<Vec<u8>> {
         let location = location.strip_prefix("file://").unwrap_or(location);
+        if let Some(roots) = self.roots.filter(|_| !location.contains("://")) {
+            roots.check_read(Path::new(location))?;
+        }
         workflow_graph::files::read(self.provider, location)
     }
 }

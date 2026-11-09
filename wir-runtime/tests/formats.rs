@@ -14,10 +14,11 @@ const ONTOLOGY: &str = "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 <http://example.org/fa> owl:equivalentClass <http://example.org/narrow> .
 ";
 
-/// A document whose task reads a File of the format `fasta`, with the ontology above, run on
-/// a File of `format`.
-fn launch(root: &Path, format: &str) -> Launch {
+/// A document that takes a File of the format `fasta` and whose task reads one of `wanted`,
+/// with the ontology above, run on a File of `format`.
+fn launch_for(root: &Path, format: &str, wanted: &str) -> Launch {
     let file = json!({"file": {"format": "http://example.org/fasta"}});
+    let read = json!({"file": {"format": format!("http://example.org/{wanted}")}});
     let task =
         json!({"task": {"image": "debian:stable-slim", "command": ["wc", {"input": "text"}]}});
     let document = json!({
@@ -25,7 +26,7 @@ fn launch(root: &Path, format: &str) -> Launch {
         "graphs": [{
             "name": "main",
             "inputs": [{"name": "text", "type": file}],
-            "ops": [{"path": "count", "kind": task, "inputs": [{"name": "text", "type": file}]}],
+            "ops": [{"path": "count", "kind": task, "inputs": [{"name": "text", "type": read}]}],
             "edges": [{"from": {"port": "text"}, "to": {"op": "count", "port": "text"}}]
         }],
         "entry": "main",
@@ -45,14 +46,24 @@ fn launch(root: &Path, format: &str) -> Launch {
     }
 }
 
+fn launch(root: &Path, format: &str) -> Launch {
+    launch_for(root, format, "fasta")
+}
+
 /// Why a run on a File of `format` failed, if it did.
 fn run(format: &str) -> Option<String> {
+    run_for(format, "fasta")
+}
+
+/// Why a run on a File of `format`, whose task wants `wanted`, failed, if it did.
+fn run_for(format: &str, wanted: &str) -> Option<String> {
     let folder = tempfile::tempdir().unwrap();
     let settings = Settings {
         print: false,
         ..Settings::default()
     };
-    let mut driver = WirDriver::new(&launch(folder.path(), format), settings).unwrap();
+    let launch = launch_for(folder.path(), format, wanted);
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
     let mut simulator = Simulator::new(folder.path().join("simulator"));
     let execution = execute("formats", &mut driver, &mut simulator);
     execution.into_result().err().map(|error| error.to_string())
@@ -66,6 +77,18 @@ fn matches_ontology_formats() {
     }
     let error = run("ex:fastq").expect("another format fails");
     assert!(error.contains("does not fit its type"), "{error}");
+}
+
+#[test]
+fn checks_typed_connections() {
+    // The input fits the graph, but its op takes another format, which the run checks.
+    let error = run_for("ex:fasta", "bam").expect("a fasta file reaches a bam op");
+    assert!(error.contains("op count: input text"), "{error}");
+    assert_eq!(
+        run_for("ex:narrow", "fasta"),
+        None,
+        "a narrower format fits"
+    );
 }
 
 #[test]

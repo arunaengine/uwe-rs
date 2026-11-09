@@ -747,15 +747,21 @@ impl WirDriver {
                 cwl::to_cwl(Json::Object(bound.clone())),
             ),
         };
-        let written = std::fs::create_dir_all(&folder)
-            .and_then(|()| std::fs::write(&job, values.to_string()));
+        // The params of a run with secret inputs reach a Nextflow block in memory, as no file
+        // may hold them.
+        let held =
+            native.language == Dialect::Nextflow && !self.settings.secret_inputs.0.is_empty();
+        let written = std::fs::create_dir_all(&folder).and_then(|()| match held {
+            true => Ok(()),
+            false => std::fs::write(&job, values.to_string()),
+        });
         written.map_err(|error| {
             DriverError::new(format!("cannot write {}: {error}", job.display()))
         })?;
         let output = self.output_root().join(&path);
         let mut launch = Launch {
             target,
-            inputs: Some(job),
+            inputs: (!held).then_some(job),
             profiles: native.profiles.clone(),
             configs,
             targets: native.entry.iter().cloned().collect(),
@@ -783,7 +789,10 @@ impl WirDriver {
             // files in a scratch folder of its own, which its driver removes.
             Dialect::Nextflow => {
                 (launch.output_dir, launch.scratch) = (None, folder);
-                let driver = nextflow::block(&launch, &output, &self.settings.nextflow)?;
+                let mut driver = nextflow::block(&launch, &output, &self.settings.nextflow)?;
+                if held {
+                    driver.use_inputs(values)?;
+                }
                 self.launched.insert(at, (output, bound));
                 driver
             }

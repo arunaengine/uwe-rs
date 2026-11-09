@@ -62,11 +62,14 @@ fn run(folder: &Path, file: &str, text: &str) {
         Arc::new(Mutex::new(Vec::new())),
     );
     let (listened, found) = (seen.clone(), held.clone());
-    let place = compiled.clone();
+    // The cache folder holds no file with the value, apart from the folders of the tasks.
+    let (place, tasks) = (folder.join("cache"), folder.join("cache/scratch/simulator"));
     settings.listener = Some(Arc::new(move |event| {
         if let Event::Task(_) = event {
             listened.store(true, Ordering::SeqCst);
-            found.lock().unwrap().extend(holding(&place));
+            let mut held = holding(&place);
+            held.retain(|path| !path.starts_with(&*tasks.to_string_lossy()));
+            found.lock().unwrap().extend(held);
         }
     }));
     let mut request = RunRequest::new(settings);

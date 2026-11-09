@@ -773,7 +773,12 @@ fn launches_own_folder() {
             .join("cache/scratch/launch")
             .join(&run.id)
             .join("marker.txt");
-        assert_eq!(std::fs::read_to_string(&marker).unwrap(), word);
+        // A simulated run records what workflow code writes there and copies nothing.
+        let database = root.path().join(format!("{word}.sqlite"));
+        let database = run_database::Database::open(&database).unwrap();
+        let delivered = database.deliveries(&run.id).unwrap();
+        let targets: Vec<&str> = delivered.iter().map(|file| file.target.as_str()).collect();
+        assert_eq!(targets, [marker.to_string_lossy()]);
     }
     assert!(!std::env::current_dir().unwrap().join("marker.txt").exists());
 }

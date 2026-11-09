@@ -33,6 +33,60 @@ impl Unit {
     }
 }
 
+/// Reads every document at a web address that `path` imports, also through the documents it
+/// imports, with `read`, which may refuse one, before the analysis of [`load`] fetches it.
+pub fn remote_imports(
+    path: &Path,
+    read: &mut dyn FnMut(&str) -> Result<String, String>,
+) -> Result<(), DriverError> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| DriverError::new(format!("cannot read {}: {error}", path.display())))?;
+    let start = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
+    let mut pending = vec![(start.to_string_lossy().into_owned(), text)];
+    let mut seen = std::collections::HashSet::new();
+    while let Some((location, text)) = pending.pop() {
+        let (document, _) = wdl_ast::Document::parse(&text, None);
+        let wdl_ast::Ast::V1(ast) = document.ast() else {
+            continue;
+        };
+        for import in ast.imports() {
+            let wdl_ast::v1::ImportSource::Uri(uri) = import.source() else {
+                continue;
+            };
+            let Some(given) = uri.text() else {
+                continue;
+            };
+            let given = given.text().to_owned();
+            let target = match (given.contains("://"), location.contains("://")) {
+                (true, _) => given,
+                (false, true) => match location.rsplit_once('/') {
+                    Some((folder, _)) => format!("{folder}/{given}"),
+                    None => given,
+                },
+                (false, false) => {
+                    let folder = Path::new(&location).parent().unwrap_or(Path::new("/"));
+                    folder.join(&given).to_string_lossy().into_owned()
+                }
+            };
+            if !seen.insert(target.clone()) {
+                continue;
+            }
+            let text = match target.starts_with("http://") || target.starts_with("https://") {
+                true => {
+                    read(&target).map_err(|why| DriverError::new(format!("{target}: {why}")))?
+                }
+                // A local import is read where it is; its own imports may be remote.
+                false => match std::fs::read_to_string(target.trim_start_matches("file://")) {
+                    Ok(text) => text,
+                    Err(_) => continue,
+                },
+            };
+            pending.push((target, text));
+        }
+    }
+    Ok(())
+}
+
 /// Loads a document and its imports, and fails on the errors that the analysis finds.
 pub fn load(path: &Path) -> Result<Document, DriverError> {
     let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());

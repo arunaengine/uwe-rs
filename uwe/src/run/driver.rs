@@ -116,7 +116,10 @@ pub(crate) fn driver(
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
-        Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments)),
+        Language::Wdl => {
+            wdl_imports(&launch.target, setup)?;
+            wdl_runtime::driver_with(launch, wdl_options(arguments))
+        }
         Language::Wir => {
             let mut settings = wir_runtime::Settings {
                 // Only a block that is the whole run hears `uwe resume`, whose requests name
@@ -168,6 +171,24 @@ pub(crate) fn driver(
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
         }
     }
+}
+
+/// Reads each document at a web address that a WDL document of an isolated run imports
+/// through the storage of the run, which refuses an address the run may not reach, before
+/// the analysis of the document fetches it without that storage.
+pub(crate) fn wdl_imports(target: &Path, setup: &Setup) -> Result<(), DriverError> {
+    if setup.isolation.is_none() {
+        return Ok(());
+    }
+    let downloads = cache_directory().join("downloads");
+    let storage = setup.storage.blocking();
+    let mut read = |url: &str| {
+        let copy = storage
+            .fetch(url, &downloads)
+            .map_err(|error| error.to_string())?;
+        std::fs::read_to_string(copy).map_err(|error| error.to_string())
+    };
+    wdl_runtime::document::remote_imports(target, &mut read)
 }
 
 /// The services of Argo runs, and of the Argo blocks of wir runs.

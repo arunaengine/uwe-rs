@@ -62,6 +62,7 @@ pub fn document(
     let mut secret = SecretInputs::default();
     let (document, inputs) = match language {
         Language::Wdl => {
+            crate::run::driver::wdl_imports(target, setup)?;
             let lowering = wdl(target, arguments, &folder)?;
             let inputs = match converted(&lowering, arguments)? {
                 // Values that hold a secret reach the driver in memory.

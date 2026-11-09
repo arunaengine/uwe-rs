@@ -464,3 +464,72 @@ fn refuses_nested_places() {
     assert!(error.contains("/out/block/a.txt"), "{error}");
     assert!(driver.results().is_none());
 }
+
+#[test]
+fn stops_cancelled_blocks() {
+    // Each round of `proc` runs a CWL block; the first fails, which cancels the second.
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let tool = demos().join("hello_world.cwl");
+    let message = |flow: &str| json!({"name": "message", "type": "string", "flow": flow});
+    let block = json!({"path": "block", "kind": {"native": {"source": "hello", "language": "cwl"}},
+        "inputs": [message("value")]});
+    let say = json!({"name": "say", "inputs": [message("value")], "ops": [block],
+        "edges": [{"from": {"port": "message"}, "to": {"op": "block", "port": "message"}}]});
+    let proc = json!({"path": "proc", "kind": {"process": {"body": "say"}}, "inputs": [message("stream")]});
+    let main = json!({"name": "main", "inputs": [message("stream")], "ops": [proc],
+        "edges": [{"from": {"port": "message"}, "to": {"op": "proc", "port": "message"}}]});
+    let document = json!({"wir_version": "0.1",
+        "sources": [{"id": "hello", "language": "cwl", "location": tool}],
+        "graphs": [main, say], "entry": "main"});
+    std::fs::write(root.join("run.wir.json"), document.to_string()).unwrap();
+    std::fs::write(
+        root.join("job.json"),
+        json!({"message": ["a", "b"]}).to_string(),
+    )
+    .unwrap();
+    let launch = Launch {
+        keep_going: true,
+        ..launch(
+            root,
+            root.join("run.wir.json"),
+            root.join("job.json"),
+            false,
+        )
+    };
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let tasks = driver.start().unwrap();
+    assert_eq!(tasks.len(), 2, "each round's block asks for its task");
+    let failed = Outcome {
+        id: tasks[0].id,
+        attempt: 1,
+        exit_code: 1,
+        ..Outcome::default()
+    };
+    driver.complete(failed).unwrap();
+    // The ops after a block that ended start on the next wake.
+    assert!(driver.wake_at().is_some());
+    driver.wake().unwrap();
+    assert_eq!(
+        driver.cancellations(),
+        [tasks[1].id],
+        "the other block stops"
+    );
+    let cancelled = workflow_graph::ExecuteError::Cancelled;
+    assert!(
+        driver.handles_error(tasks[1].id, &cancelled),
+        "its cancellation is no run error"
+    );
+    let stopped = Outcome {
+        id: tasks[1].id,
+        attempt: 1,
+        error: Some(workflow_graph::TaskError::Cancelled),
+        ..Outcome::default()
+    };
+    assert!(
+        driver.complete(stopped).unwrap().is_empty(),
+        "its outcome is dropped"
+    );
+    let error = driver.finish().unwrap_err().message;
+    assert!(error.contains("proc"), "{error}");
+}

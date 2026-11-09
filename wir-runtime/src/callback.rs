@@ -18,9 +18,19 @@ use crate::state::Progress;
 #[derive(Default)]
 pub struct Callbacks {
     lowered: HashMap<String, Rc<groovy::Compiled>>,
+    /// Whether Groovy closures print through the print sink of the run, like hooks.
+    prints: bool,
 }
 
 impl Callbacks {
+    /// Callbacks whose Groovy closures print through the print sink of the run.
+    pub fn printing() -> Callbacks {
+        Callbacks {
+            prints: true,
+            ..Callbacks::default()
+        }
+    }
+
     /// The result of `body` for the positional `arguments` named `names`, with the value
     /// inputs of its op, which a graph body takes by name.
     pub fn call(
@@ -68,7 +78,12 @@ impl Callbacks {
                         compiled
                     }
                 };
-                compiled.call(&captures, arguments, context.base)
+                match self.prints {
+                    true => {
+                        compiled.call_printed((&captures, arguments), context.base, context.printer)
+                    }
+                    false => compiled.call(&captures, arguments, context.base),
+                }
             }
             ExprLanguage::Python => {
                 let code = crate::python::Code {

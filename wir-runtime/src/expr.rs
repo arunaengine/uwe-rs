@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use cwl_parser::model::Expression;
+use cwl_parser::model::{Expression, Part};
 use cwl_runtime::{Evaluator, JavaScriptSettings, Value, Variables};
 use serde_json::{Map, Value as Json, json};
 use wir::{Port, Type, TypeDef, resolve};
@@ -13,7 +13,8 @@ use crate::cwl::{to_cwl, to_wir};
 use crate::state::widen;
 
 /// The value of the output of an expr op from its input values, or why it has none. In a
-/// simulated run, whose files are made up, code over `self` that fails gives a placeholder.
+/// simulated run, whose files are made up, code over `self` or contents that fails gives a
+/// placeholder.
 pub fn evaluate(
     spec: &wir::Expr,
     bound: &Map<String, Json>,
@@ -22,7 +23,12 @@ pub fn evaluate(
     (settings, simulated): (&JavaScriptSettings, bool),
 ) -> Result<Json, String> {
     match compute(spec, bound, output, defs, settings) {
-        Err(_) if simulated && spec.code.contains("self") => {
+        Err(_)
+            if simulated
+                && ["self", "contents"]
+                    .iter()
+                    .any(|word| spec.code.contains(word)) =>
+        {
             Ok(placeholder(&output.r#type, &output.name, defs))
         }
         result => result,
@@ -43,10 +49,7 @@ fn compute(
         None => Value::Null,
     };
     let runtime = Value::Map(Default::default());
-    let evaluator = Evaluator {
-        javascript: Some(Arc::new(spec.library.clone())),
-        settings: settings.clone(),
-    };
+    let evaluator = evaluator(&expression, &spec.library, settings);
     let variables = Variables {
         inputs: &inputs,
         this: &this,
@@ -65,6 +68,65 @@ fn compute(
             "the value {json} does not fit output {}",
             output.name
         )),
+    }
+}
+
+/// The value of the code of a task argument or capture over input values, `self` and
+/// `runtime`, whose Files and Directories have their paths in the container.
+pub fn code(
+    code: &str,
+    (inputs, this, runtime): (Json, Json, Json),
+    (library, settings): (&[String], &JavaScriptSettings),
+) -> Result<Json, String> {
+    let expression = Expression::parse(code, false)?;
+    let (mut inputs, mut this) = (value(inputs)?, value(this)?);
+    listed(&mut inputs);
+    listed(&mut this);
+    let evaluator = evaluator(&expression, library, settings);
+    let variables = Variables {
+        inputs: &inputs,
+        this: &this,
+        runtime: &Value::parse(&runtime.to_string())?,
+    };
+    let result = evaluator.evaluate(&expression, variables)?;
+    serde_json::from_str(&result.to_json()).map_err(|error| error.to_string())
+}
+
+/// The evaluator of an expression: parameter references and text without a library run in
+/// the engine, as uwe's CWL driver runs them, so only code needs the JavaScript helper.
+fn evaluator(
+    expression: &Expression,
+    library: &[String],
+    settings: &JavaScriptSettings,
+) -> Evaluator {
+    let code = (expression.parts.iter())
+        .any(|part| matches!(part, Part::Javascript(_) | Part::Function(_)));
+    Evaluator {
+        javascript: (code || !library.is_empty()).then(|| Arc::new(library.to_vec())),
+        settings: settings.clone(),
+    }
+}
+
+/// Gives each entry of the listing of a staged Directory that has no path its path inside.
+fn listed(value: &mut Value) {
+    match value {
+        Value::List(items) => items.iter_mut().for_each(listed),
+        Value::Map(map) => {
+            let path = map.get("path").and_then(Value::as_str).map(str::to_owned);
+            if let (Some(path), Some(Value::List(items))) = (path, map.get_mut("listing")) {
+                for item in items {
+                    let Value::Map(entry) = item else { continue };
+                    let name = entry.get("basename").and_then(Value::as_str);
+                    if let Some(name) = name.filter(|_| !entry.contains_key("path")) {
+                        let inside = format!("{path}/{name}");
+                        entry.insert("dirname".into(), Value::string(&path));
+                        entry.insert("path".into(), Value::String(inside));
+                    }
+                }
+            }
+            map.values_mut().for_each(listed);
+        }
+        _ => {}
     }
 }
 
@@ -120,7 +182,7 @@ fn value(json: Json) -> Result<Value, String> {
             true => Some(text.to_owned()),
             false => cwl_runtime::files::local_path(text).map(|path| path.display().to_string()),
         });
-        if let Some(path) = path {
+        if let Some(path) = path.filter(|_| !file.contains_key("path")) {
             file.insert("path".into(), Value::String(path));
         }
     });
@@ -141,5 +203,23 @@ fn integral(json: Json, r#type: &Type, defs: &[TypeDef]) -> Json {
             }
         }
         _ => json,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn references_skip_javascript() {
+        let mut settings = JavaScriptSettings::default();
+        settings.engine = "/no/engine".into();
+        let inputs = json!({"name": "reads", "file": {"class": "File", "location": "/d/a.txt"}});
+        let values = (inputs, Json::Null, json!({}));
+        let code = "$(inputs.name)-$(inputs.file.basename)";
+        let value = super::code(code, values.clone(), (&[], &settings)).unwrap();
+        assert_eq!(value, json!("reads-a.txt"));
+        let failed = super::code("$(inputs.name.length + 1)", values, (&[], &settings));
+        assert!(failed.is_err(), "code needs the helper: {failed:?}");
     }
 }

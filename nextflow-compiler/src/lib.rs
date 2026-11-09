@@ -105,7 +105,7 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
     }
     match graph::compile(network, context, &mut sources) {
         Ok(graphs) => Ok(Compilation {
-            document: document(&sources, context, graphs)?,
+            document: document(&sources, graphs, observers(network, &sources))?,
             kept: Vec::new(),
         }),
         Err(kept) => native(network, context, &mut sources, vec![kept]),
@@ -171,9 +171,28 @@ fn native(
     let graph =
         json!({"name": "main", "inputs": inputs, "outputs": outputs, "ops": [op], "edges": edges});
     Ok(Compilation {
-        document: document(sources, context, vec![graph])?,
+        document: document(sources, vec![graph], Vec::new())?,
         kept,
     })
+}
+
+/// The run hook that tells the observers of the run, like nf-prov, the processes of the
+/// pipeline with the processes each feeds; scripts are named from the main script's folder.
+fn observers(network: &Network, sources: &Sources) -> Vec<Json> {
+    if network.processes.is_empty() {
+        return Vec::new();
+    }
+    let processes: Vec<Json> = (network.processes.iter())
+        .map(|process| {
+            let mut observed = json!({"id": process.id, "name": process.name,
+                "definition": process.definition, "feeds": process.feeds});
+            if let Some(script) = &process.script {
+                observed["script"] = json!(sources.beside_main(script));
+            }
+            observed
+        })
+        .collect();
+    vec![json!({"observe": {"source": sources.main(), "processes": processes}})]
 }
 
 /// The wir type of a plain value of a param: a scalar or an array of one scalar type.
@@ -200,15 +219,18 @@ fn plain(value: &Json) -> Option<Json> {
 /// The wir document of the graphs, which the strict format types check.
 fn document(
     sources: &Sources,
-    _context: &Context,
     graphs: Vec<Json>,
+    hooks: Vec<Json>,
 ) -> Result<wir::Document, String> {
-    let document = json!({
+    let mut document = json!({
         "wir_version": wir::VERSION,
         "sources": sources.list(),
         "graphs": graphs,
         "entry": "main",
     });
+    if !hooks.is_empty() {
+        document["hooks"] = Json::Array(hooks);
+    }
     let parsed = serde_json::from_value(document);
     parsed.map_err(|error| format!("the compiler made no wir document: {error}"))
 }

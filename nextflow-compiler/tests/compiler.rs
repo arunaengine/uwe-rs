@@ -430,3 +430,18 @@ fn pins_loaded_scripts() {
         );
     }
 }
+
+#[test]
+fn records_observed_processes() {
+    let document = full(&format!(
+        "{GREET}\nworkflow {{\n    GREET(channel.of('a'))\n}}\n"
+    ));
+    let hooks = document["hooks"].as_array().expect("run hooks");
+    let observe = &hooks[0]["observe"];
+    assert_eq!(observe["source"], "main");
+    let process = &observe["processes"][0];
+    assert_eq!(
+        (&process["name"], &process["script"]),
+        (&json!("GREET"), &json!("main.nf"))
+    );
+}

@@ -8,7 +8,10 @@ use argo_parser::model::{ContinueOn, Template};
 use argo_parser::{Node, Value as Yaml};
 use argo_runtime::adapter::Adapter;
 use wir::reserved::Carry;
-use wir::{Dependency, ExprForm, Graph, Kind, Port, Status, StatusGroup, Type};
+use wir::{
+    Control, Dependency, ExprForm, Graph, Kind, Port, ResultKind, Status, StatusGroup, StatusTest,
+    Type,
+};
 
 use crate::sites::Site;
 use crate::tags::single_tag;
@@ -401,48 +404,87 @@ impl Compiler {
                 heirs.entry(ancestor).or_default().push(target);
             }
         }
+        let dependencies: BTreeMap<&String, &Vec<String>> = (trees.iter())
+            .map(|(name, (_, names))| (name, names))
+            .collect();
         for (ancestor, targets) in heirs {
-            let continues = |target: &String| {
+            let mut accepts = Vec::new();
+            for &target in &targets {
                 let task = dag.tasks.iter().find(|task| task.name == *target);
-                task.and_then(|task| task.continue_on).unwrap_or_default()
-            };
-            let members: Option<Vec<(String, ContinueOn)>> = (targets.iter())
-                .map(|target| Some((built_ops.get(*target)?.clone(), continues(target))))
+                let continues = task.and_then(|task| task.continue_on).unwrap_or_default();
+                let accept = match (continues.failed, continues.error) {
+                    (false, false) => branch_ok(target, &dependencies, &built_ops),
+                    (true, true) => (built_ops.get(target)).map(|op| result(op, ended_results())),
+                    _ => {
+                        let reason = "a target that continues on failures or errors alone judges \
+                            the failures it inherits by their kind";
+                        return Err(kept(&graph.name, reason));
+                    }
+                };
+                accepts.extend(accept);
+            }
+            let members: Option<Vec<String>> = (targets.iter())
+                .map(|target| built_ops.get(*target).cloned())
                 .collect();
-            if let (Some(failing), Some(members)) = (built_ops.get(ancestor), members) {
-                graph.ops.push(judged(failing, &members));
+            let failing = built_ops.get(ancestor);
+            if let (Some(failing), Some(members)) = (failing, members)
+                && accepts.len() == members.len()
+            {
+                graph.ops.push(judged(failing, members, accepts));
             }
         }
         Ok(())
     }
 }
 
-/// A status group that handles the failures of the task `failing` once every target that
-/// inherits them succeeded, or failed in a way it continues on: Argo judges a DAG by the
-/// branches of its targets, so a failure only counts through a target that did not get past it.
-fn judged(failing: &str, targets: &[(String, ContinueOn)]) -> wir::Op {
-    let mut allow = Vec::new();
-    let mut after = Vec::new();
-    for (target, continues) in targets {
-        let mut on = vec![Status::Succeeded];
-        on.extend((continues.failed).then_some(Status::Failed));
-        on.extend((continues.error).then_some(Status::Errored));
-        for status in &on[1..] {
-            if !allow.contains(status) {
-                allow.push(*status);
-            }
-        }
-        after.push(Dependency {
-            op: target.clone(),
-            on,
-        });
+/// Whether the branch of a DAG task ended well, as Argo's `assessDAGPhase` finds it: the task
+/// succeeded, or it was skipped or omitted and the branches of all its dependencies ended well.
+fn branch_ok(
+    task: &String,
+    dependencies: &BTreeMap<&String, &Vec<String>>,
+    built: &BTreeMap<String, String>,
+) -> Option<Control> {
+    let op = built.get(task)?;
+    let mut passed = vec![result(op, vec![ResultKind::Skipped, ResultKind::Omitted])];
+    for dependency in dependencies
+        .get(task)
+        .into_iter()
+        .flat_map(|names| names.iter())
+    {
+        passed.push(branch_ok(dependency, dependencies, built)?);
     }
-    let members = targets.iter().map(|(target, _)| target.clone()).collect();
+    let succeeded = result(op, vec![ResultKind::Succeeded]);
+    Some(Control::Any(vec![succeeded, Control::All(passed)]))
+}
+
+fn result(op: &str, on: Vec<ResultKind>) -> Control {
+    Control::Result(StatusTest {
+        op: op.to_owned(),
+        on,
+    })
+}
+
+/// Every way an op ends, as a control result.
+fn ended_results() -> Vec<ResultKind> {
+    vec![
+        ResultKind::Succeeded,
+        ResultKind::Failed,
+        ResultKind::Errored,
+        ResultKind::Skipped,
+        ResultKind::Omitted,
+    ]
+}
+
+/// A status group that handles the failures of the task `failing` once every target that
+/// inherits them accepts them: Argo judges a DAG by the branches of its targets, so a failure
+/// only counts through a target whose branch did not get past it.
+fn judged(failing: &str, members: Vec<String>, accepts: Vec<Control>) -> wir::Op {
+    let allow = vec![Status::Failed, Status::Errored];
     let mut group = op(
         format!("{failing}.targets"),
         Kind::StatusGroup(StatusGroup { members, allow }),
     );
-    group.after = after;
+    group.depends = Some(Control::All(accepts));
     group.handles.push(Dependency {
         op: failing.to_owned(),
         on: vec![Status::Failed, Status::Errored],

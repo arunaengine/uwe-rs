@@ -162,6 +162,7 @@ impl Journal {
         })
         .await
         .map_err(|error| error.to_string())??;
+        let mut verified = false;
         for slot in slots {
             let folder = self.root.join(slot.to_string());
             let lock = match File::options().write(true).open(folder.join("lock")) {
@@ -196,8 +197,15 @@ impl Journal {
                 _lock: lock,
                 record,
             };
-            // A slow engine cannot turn historical cleanup into an unbounded admission wait.
-            if tokio::time::timeout(Duration::from_secs(2), pending.reconcile(client))
+            // The identity check has its own budget; each record then gets two seconds, so a
+            // slow engine cannot turn historical cleanup into an unbounded admission wait.
+            if !verified {
+                if verify(client, &self.daemon).await.is_err() {
+                    break;
+                }
+                verified = true;
+            }
+            if tokio::time::timeout(Duration::from_secs(2), pending.settle(client))
                 .await
                 .is_err()
             {
@@ -321,10 +329,14 @@ impl Pending {
         .map_err(|error| error.to_string())
     }
 
-    pub(crate) async fn reconcile(mut self, client: &Docker) -> bool {
+    pub(crate) async fn reconcile(self, client: &Docker) -> bool {
         if verify(client, &self.record.daemon).await.is_err() {
             return false;
         }
+        self.settle(client).await
+    }
+
+    async fn settle(mut self, client: &Docker) -> bool {
         let target = self.record.id.as_deref().unwrap_or(&self.record.name);
         let found = match client.inspect_container(target, None).await {
             Ok(found) => found,

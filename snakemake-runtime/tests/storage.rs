@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use sha2::Digest;
@@ -200,10 +201,7 @@ fn fetches_wrapper_environments() {
         image.strip_prefix("conda-env:").map(str::to_owned).unwrap()
     };
     let file = image("a");
-    assert!(
-        std::path::Path::new(&file).starts_with(&launch.scratch),
-        "{file}"
-    );
+    assert!(Path::new(&file).starts_with(&launch.scratch), "{file}");
     assert_eq!(std::fs::read(&file).unwrap(), environment);
     let address = format!("{}/wraps/demo/environment.yaml", server.address);
     let fetched = storage.fetched();
@@ -214,6 +212,19 @@ fn fetches_wrapper_environments() {
     assert_eq!(
         pinned.map(|pinned| pinned.digest.as_str()),
         Some(digest.as_str())
+    );
+    // The noted copies stay where the run reads them, for the store to keep for a repeat.
+    assert_eq!(fetched.len(), 2, "{fetched:?}");
+    for fetched in &fetched {
+        let copy = std::fs::read(&fetched.copy).unwrap_or_default();
+        let digest = sha2::Sha256::digest(&copy);
+        let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        assert_eq!(fetched.digest, format!("sha256:{digest}"), "{fetched:?}");
+    }
+    assert!(
+        fetched
+            .iter()
+            .any(|fetched| fetched.copy == Path::new(&file))
     );
     // A `file:` address is a path from the folder of the Snakefile.
     let local = folder.path().join("envs/local.yaml");

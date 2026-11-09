@@ -207,25 +207,15 @@ impl Mirrors {
         };
         let folder = path.parent().unwrap_or(Path::new("/"));
         std::fs::create_dir_all(folder)?;
-        // Another run may download the same file: write a copy, then rename it.
-        let partial = folder.join(format!(
-            ".{}.{}.part",
-            path.file_name().unwrap_or_default().to_string_lossy(),
-            std::process::id()
-        ));
-        // The storage providers share one client per process, so that a host's address is
-        // looked up once and its connection reused.
-        match self.storage.copy_of(&url, &partial) {
-            Ok(()) => std::fs::rename(&partial, path),
+        // The storage renames a private copy into place and notes that path; its providers
+        // share one client per process, so a host is looked up once and its connection reused.
+        match self.storage.copy_of(&url, path) {
+            Ok(()) => Ok(()),
             Err(StorageError::Missing { .. }) => {
-                let _ = std::fs::remove_file(&partial);
                 self.missing.borrow_mut().insert(path.to_owned());
                 Ok(())
             }
-            Err(error) => {
-                let _ = std::fs::remove_file(&partial);
-                Err(std::io::Error::other(error.to_string()))
-            }
+            Err(error) => Err(std::io::Error::other(error.to_string())),
         }
     }
 }

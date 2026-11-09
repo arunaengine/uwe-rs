@@ -333,3 +333,10 @@ fn joins_computed_items() {
         "the valueFrom keeps its separator: {word}"
     );
 }
+
+#[test]
+fn keeps_ontology_formats() {
+    let lowering = lowered("ontology.cwl");
+    let reason = &lowering.kept.first().expect("the tool stays native").reason;
+    assert!(reason.contains("ontology"), "{reason}");
+}

@@ -221,6 +221,11 @@ fn execute_with(
     setup.variables = arguments.secrets.clone();
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     setup.storage = setup.storage.session();
+    // A repeat reads the remote files of the run it repeats as they were, also when the
+    // workflow compiles.
+    for file in &pinned.files {
+        setup.storage.pin(file.clone());
+    }
     let (target, language) = target_and_language(arguments)?;
     let run = chosen.unwrap_or_else(run_id);
     // A run compiles its workflow into wir and checks its inputs with the schema of the
@@ -316,9 +321,6 @@ fn execute_with(
         .map(|config| config.for_network(network_rule(arguments, &setup).none_by_default))
         .transpose()
         .map_err(|error| Failure::setup(error.to_string()))?;
-    for file in &pinned.files {
-        setup.storage.pin(file.clone());
-    }
     let store = setup.store_location(arguments);
     let real = name != "simulator";
     // A real run shows its steps as it goes; in a terminal they are drawn in place, so the

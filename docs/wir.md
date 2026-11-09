@@ -117,20 +117,20 @@ The wir runtime runs the jobs of a document through one job adapter for the Snak
 
 ### Snakemake coverage
 
-`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs (their descriptions, cache keys, resume fingerprints and acceptance) and the target files that the native run exports with those that the outputs of the compiled entry graph name. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-08 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
+`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs (their descriptions, cache keys, resume fingerprints and acceptance) and the target files that the native run exports with those that the outputs of the compiled entry graph name. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-09 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
 
 | Outcome | Workflows |
 | --- | --- |
 | test workflows | 890 |
 | the native run succeeds | 633 |
-| compiles fully | 666 |
+| compiles fully | 667 |
 | stays one native op | 3 |
-| does not compile: planning fails as the native run fails (219), or a region cannot hold the launch (1) | 220 |
-| the compiled run ends as the native run does: both fail, or both give the same tasks | 666 |
-| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 632 |
+| does not compile: planning fails as the native run fails | 219 |
+| the compiled run ends as the native run does: both fail, or both give the same tasks | 667 |
+| both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 633 |
 | both succeed with the same target files | 594 |
 
-The 38 runs with the same tasks and other target files are checkpoint regions, which give no target files yet. What keeps a workflow native: a group whose jobs run in several images (1), and features that uwe does not run yet (2). The one that does not compile for its launch sets config values on the command line beside a checkpoint. `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+The 38 runs with the same tasks and other target files are checkpoint regions, which give no target files yet. What keeps a workflow native: a group whose jobs run in several images (1), and features that uwe does not run yet (2). `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
 
 ## Detection
 

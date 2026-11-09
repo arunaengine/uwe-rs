@@ -57,6 +57,16 @@ impl Database {
         }
     }
 
+    /// The compiled documents that runs ran, which resumes of them run again.
+    pub fn documents(&self) -> Result<Vec<String>, DatabaseError> {
+        let mut statement = (self.connection)
+            .prepare("SELECT DISTINCT document FROM runs WHERE document IS NOT NULL")?;
+        let documents = statement
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(documents)
+    }
+
     /// The ids of the runs of a lineage, the latest first.
     pub fn lineage(&self, lineage: &str) -> Result<Vec<String>, DatabaseError> {
         let mut statement = self

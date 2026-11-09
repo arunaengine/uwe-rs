@@ -255,7 +255,7 @@ fn execute_with(
             (target, language, arguments)
         }
     };
-    let private: Vec<tempfile::TempPath> = private;
+    let private: Vec<crate::lower::Values> = private;
     let target = &target;
     let launch = launch(arguments, target.clone());
     let picked;

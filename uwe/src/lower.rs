@@ -41,7 +41,7 @@ pub fn document(
     language: Language,
     arguments: &Arguments,
     setup: &Setup,
-) -> Result<(PathBuf, Option<PathBuf>, Vec<tempfile::TempPath>), Failure> {
+) -> Result<(PathBuf, Option<PathBuf>, Vec<Values>), Failure> {
     let folder = cache_directory().join("scratch").join("lowered");
     let mut private = Vec::new();
     let (document, inputs) = match language {
@@ -160,10 +160,41 @@ pub fn resumed(
     Ok(ran)
 }
 
+/// The file of the values of a run, which only the user reads. Runs with the same values
+/// share it: each holds a shared lock on it while it runs, and the last to end removes it.
+pub struct Values {
+    path: PathBuf,
+    file: std::fs::File,
+}
+
+impl std::ops::Deref for Values {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl AsRef<Path> for Values {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for Values {
+    /// Removes the file when no other run holds it; a run that crashed holds nothing, and
+    /// [`pruned`] removes what it left.
+    fn drop(&mut self) {
+        if self.file.try_lock().is_ok() {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
 /// The file of the values `text` below `folder`, named by their digest so that compiling
-/// again names it again; only the user reads it, and it goes when it is dropped.
-fn written(folder: &Path, text: &str) -> Result<tempfile::TempPath, Failure> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+/// again names it again, held by this run until it is dropped.
+fn written(folder: &Path, text: &str) -> Result<Values, Failure> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
     let values = folder.join("values");
     let shown = |error: std::io::Error| {
         failure(format!(
@@ -177,15 +208,26 @@ fn written(folder: &Path, text: &str) -> Result<tempfile::TempPath, Failure> {
     std::fs::set_permissions(&values, std::fs::Permissions::from_mode(0o700)).map_err(shown)?;
     let digest = task_model::Digest::sha256(text.as_bytes());
     let path = values.join(format!("{}.json", digest.hex()));
-    let mut file = (std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true))
-    .mode(0o600)
-    .open(&path)
-    .map_err(shown)?;
-    std::io::Write::write_all(&mut file, text.as_bytes()).map_err(shown)?;
-    tempfile::TempPath::try_from_path(path).map_err(shown)
+    loop {
+        // Not truncated: a run that holds the file reads the same bytes meanwhile.
+        let mut file = (std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false))
+        .mode(0o600)
+        .open(&path)
+        .map_err(shown)?;
+        file.lock_shared().map_err(shown)?;
+        // The last run of these values may have removed the file before the lock was taken.
+        let held = file.metadata().map_err(shown)?;
+        let named = std::fs::metadata(&path);
+        if !named.is_ok_and(|named| (named.dev(), named.ino()) == (held.dev(), held.ino())) {
+            continue;
+        }
+        std::io::Write::write_all(&mut file, text.as_bytes()).map_err(shown)?;
+        file.set_len(text.len() as u64).map_err(shown)?;
+        return Ok(Values { path, file });
+    }
 }
 
 /// Removes the documents below `folder` that no run wrote for a week, and value files left
@@ -202,7 +244,9 @@ fn pruned(folder: &Path) {
                 .ok()
                 .and_then(|modified| modified.elapsed().ok())
                 .is_some_and(|age| age > WEEK);
-            if old && path.is_file() {
+            // A value file that a live run holds stays.
+            let free = || std::fs::File::open(&path).is_ok_and(|file| file.try_lock().is_ok());
+            if old && path.is_file() && free() {
                 let _ = std::fs::remove_file(&path);
             }
         }
@@ -323,7 +367,7 @@ fn converted(
     lowering: &wdl_lowering::Lowering,
     arguments: &Arguments,
     folder: &Path,
-) -> Result<Option<tempfile::TempPath>, Failure> {
+) -> Result<Option<Values>, Failure> {
     let mut values = match &arguments.inputs {
         None if arguments.params.is_empty() => return Ok(None),
         None => serde_json::Value::Object(Default::default()),
@@ -347,4 +391,25 @@ fn converted(
         values.extend(given);
     }
     written(folder, &values.to_string()).map(Some)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two live runs with the same values share one file, which the first to end leaves for
+    /// the other, and the last removes.
+    #[test]
+    fn shares_value_files() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let first = written(folder.path(), "{\"word\": \"same\"}").expect("writes the values");
+        let second = written(folder.path(), "{\"word\": \"same\"}").expect("writes them again");
+        let path = first.to_path_buf();
+        assert_eq!(path, second.to_path_buf());
+        drop(first);
+        let text = std::fs::read_to_string(&path).expect("the second run still reads them");
+        assert_eq!(text, "{\"word\": \"same\"}");
+        drop(second);
+        assert!(!path.exists(), "the last run removes them");
+    }
 }

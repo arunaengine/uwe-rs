@@ -363,9 +363,20 @@ impl Pending {
     }
 }
 
-/// The engines whose identity this process checked, by socket and daemon ID: an engine keeps
-/// its daemon ID, so checking it again would only cost a request of a busy engine.
-static VERIFIED: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
+/// The engines whose identity this process checked, by socket, daemon ID and the socket file:
+/// an engine keeps its daemon ID, and a daemon that takes over the socket makes a new file.
+static VERIFIED: Mutex<BTreeSet<(String, String, Endpoint)>> = Mutex::new(BTreeSet::new());
+
+/// The device and inode of a socket file.
+type Endpoint = (u64, u64);
+
+/// The socket file of an engine, which only a new daemon replaces; none for an engine that is
+/// no file, like one on the network, which is then asked every time.
+fn endpoint(socket: &str) -> Option<Endpoint> {
+    use std::os::unix::fs::MetadataExt;
+    let found = std::fs::metadata(socket.trim_start_matches("unix://")).ok()?;
+    Some((found.dev(), found.ino()))
+}
 
 /// How long one identity request may take, and how often it is made; an engine with a
 /// hundred running containers answers slowly.
@@ -378,9 +389,9 @@ async fn verify(client: &Docker, socket: &str, daemon: &str) -> Result<(), Strin
     if daemon.is_empty() {
         return Err(changed.into());
     }
-    let key = (socket.to_owned(), daemon.to_owned());
+    let key = endpoint(socket).map(|file| (socket.to_owned(), daemon.to_owned(), file));
     let verified = || VERIFIED.lock().unwrap_or_else(PoisonError::into_inner);
-    if verified().contains(&key) {
+    if key.as_ref().is_some_and(|key| verified().contains(key)) {
         return Ok(());
     }
     let mut failed = String::new();
@@ -390,7 +401,7 @@ async fn verify(client: &Docker, socket: &str, daemon: &str) -> Result<(), Strin
         }
         match tokio::time::timeout(IDENTITY_WAIT, client.info()).await {
             Ok(Ok(info)) if info.id.as_deref() == Some(daemon) => {
-                verified().insert(key);
+                verified().extend(key);
                 return Ok(());
             }
             Ok(Ok(_)) => return Err(changed.into()),

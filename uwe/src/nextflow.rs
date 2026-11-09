@@ -518,8 +518,15 @@ pub fn compile(
     setup: &Setup,
     base: &std::path::Path,
 ) -> Result<nextflow_compiler::Compilation, String> {
+    // Workflow code that runs while the pipeline compiles reaches what the run may reach.
+    let console = console(true, setup, &arguments.secrets).confined(
+        launch,
+        None,
+        isolation(arguments, setup).as_ref(),
+        &shared_folders(arguments, setup),
+    );
     let settings = Settings {
-        host: Box::new(console(true, setup, &arguments.secrets)),
+        host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),
         ..Settings::default()
     };

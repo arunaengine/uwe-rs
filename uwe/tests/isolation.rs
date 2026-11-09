@@ -86,6 +86,44 @@ fn confines_workflow_code() {
     }
 }
 
+/// A compiled Nextflow run is confined while it compiles too: workflow code that reads a file
+/// outside the run when the workflow is built fails, as it does in a run.
+#[test]
+fn confines_compiled_code() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("confines_compiled_code", None);
+    }
+    let root = tempfile::tempdir().unwrap();
+    let outside = root.path().join("outside/secret.txt");
+    std::fs::create_dir_all(outside.parent().unwrap()).unwrap();
+    std::fs::write(&outside, "server file").unwrap();
+    let folder = root.path().join("pipeline");
+    let data = folder.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let workflow = folder.join("main.nf");
+    let script = "workflow {\n  channel.of(file(params.outside).text).view()\n}\n";
+    std::fs::write(&workflow, script).unwrap();
+    let mut settings = settings(&folder, &workflow);
+    let outside = json!(outside.to_string_lossy());
+    settings.params.insert("outside".into(), outside);
+    settings.isolation = Some(Isolation {
+        roots: vec![data],
+        launch: Some(folder.join("launch")),
+        ..Isolation::default()
+    });
+    settings.lowered = true;
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let error = match runtime.block_on(request.run()) {
+        Ok(ran) => (ran.execution.error)
+            .map(|error| error.to_string())
+            .unwrap_or_default(),
+        Err(failure) => failure.message,
+    };
+    assert!(error.contains("workflow code may not reach"), "{error}");
+}
+
 /// Tries to change and list the shared store and cache, then reads a stored file by its path,
 /// splits a file into chunk files and reads the output of its own task.
 const NEXTFLOW_SHARED: &str = "process MAKE {\n  output: path 'own.txt'\n  \

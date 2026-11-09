@@ -144,7 +144,7 @@ impl Lowerer {
         branch.outputs = (op.outputs.iter())
             .map(|item| port(&item.name, crate::types::optional(item.r#type.clone())))
             .collect();
-        self.body(body, inner, None);
+        self.body(body, nameless(inner), None);
         group.edges = feeds(&group, &Group::of(vec![condition.clone(), branch.clone()]));
         group.edges.push(Edge {
             from: end(Some(&test), "out"),
@@ -196,6 +196,8 @@ impl Lowerer {
             }),
             group.main().origin.clone(),
         );
+        // Its rounds are named as CWL names them, like `say[0]`.
+        map.attributes.name = Some(path.to_owned());
         map.inputs = (inputs.iter())
             .map(|port| match over.contains(&port.name) {
                 true => array(port.clone(), 1),
@@ -205,7 +207,7 @@ impl Lowerer {
         map.outputs = (group.main().outputs.iter())
             .map(|port| array(port.clone(), depth))
             .collect();
-        self.body(body, group, Some(inputs));
+        self.body(body, nameless(group), Some(inputs));
         Ok(Group::of(vec![map]))
     }
 
@@ -253,6 +255,15 @@ impl Lowerer {
         self.names.push(name.clone());
         name
     }
+}
+
+/// The group with an op of the step that adds no name to its tasks, as it runs in the body
+/// of a branch or a map at the path of the step, which names them already.
+fn nameless(mut group: Group) -> Group {
+    if let Some(main) = group.ops.last_mut() {
+        main.attributes.name = Some(String::new());
+    }
+    group
 }
 
 /// An expr op `<step>.<input>` for each `valueFrom` of the step: it sees the step inputs, as

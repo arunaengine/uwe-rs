@@ -80,14 +80,15 @@ pub fn begin(
             match plan::items(&map, bound) {
                 Ok(rounds) => {
                     let start = progress.plan.nodes.len();
+                    let shape = rounds.shape.clone();
                     plan::rounds(
                         context.document,
                         &mut progress.plan.nodes,
                         at,
                         &map.body,
-                        rounds.items,
+                        rounds,
                     )?;
-                    progress.plan.nodes[at].shape = rounds.shape;
+                    progress.plan.nodes[at].shape = shape;
                     progress.adopt(start);
                 }
                 Err(why) => progress.end(

@@ -10,10 +10,10 @@ use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{Driver, Launch, Simulator, execute};
 
-/// The steps and command words of the tasks of a run, and its outputs.
+/// The names, steps and command words of the tasks of a run, and its outputs.
 #[derive(Debug, PartialEq)]
 struct Ran {
-    tasks: Vec<(String, Vec<String>)>,
+    tasks: Vec<(String, String, Vec<String>)>,
     outputs: Json,
 }
 
@@ -21,21 +21,15 @@ fn run(driver: &mut dyn Driver, root: &Path, name: &str) -> Ran {
     let mut simulator = Simulator::new(root.join(format!("simulator-{name}")));
     let execution = execute(name, driver, &mut simulator);
     let graph = execution.into_result().expect("the run succeeds");
-    let mut tasks: Vec<(String, Vec<String>)> = (graph.nodes.iter())
-        .map(|node| (step(&node.task.step), words(&node.task)))
+    let mut tasks: Vec<(String, String, Vec<String>)> = (graph.nodes.iter())
+        .map(|node| {
+            let task = &node.task;
+            (task.name.clone(), task.step.clone(), words(task))
+        })
         .collect();
     tasks.sort();
     let outputs = shown(driver.results().expect("a real run has results"));
     Ran { tasks, outputs }
-}
-
-/// A step without the op path that a map or a branch repeats, like `say` for `say/say`,
-/// which docs/wir.md names as a difference of the step names.
-fn step(path: &str) -> String {
-    match path.rsplit_once('/') {
-        Some((head, last)) if head.rsplit('/').next() == Some(last) => head.to_owned(),
-        _ => path.to_owned(),
-    }
 }
 
 /// The words of a command without the shell around it, with paths as their last segment, as
@@ -121,6 +115,15 @@ fn values_match_native() {
 }
 
 #[test]
+fn crosses_match_native() {
+    let job = json!({"messages": ["a", "b"], "lists": [["x"], ["y", "z"]]});
+    let (native, lowered) = both("cross.cwl", job);
+    let names: Vec<&str> = (native.tasks.iter()).map(|task| task.0.as_str()).collect();
+    assert_eq!(names, ["say[0,0]", "say[0,1]", "say[1,0]", "say[1,1]"]);
+    assert_eq!(lowered, native);
+}
+
+#[test]
 fn links_match_native() {
     let job = json!({"name": "you", "names": ["a", "b"]});
     let (native, lowered) = both("links.cwl", job);
@@ -142,7 +145,11 @@ fn bindings_match_native() {
     let words = ["exec", ">", "out.txt", "echo", "hi!", "hi", "2"];
     assert_eq!(
         native.tasks,
-        [("shout".to_owned(), words.map(str::to_owned).to_vec())]
+        [(
+            "shout".to_owned(),
+            "shout".to_owned(),
+            words.map(str::to_owned).to_vec()
+        )]
     );
     assert_eq!(lowered, native);
 }

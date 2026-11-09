@@ -153,6 +153,7 @@ fn conda_source(rule: &Rule, conda: &str, setting: &TaskSetting) -> Result<Strin
             "Cannot fetch the Conda environment {location}: {error}"
         ))
     })?;
+    let local = mirrors.copy(&local);
     if !local.is_file() {
         return Err(workflow_error(format!(
             "The Conda environment file {location} does not exist"
@@ -527,7 +528,8 @@ pub fn build(
                     .host
                     .stat(&path)
                     .is_some_and(|stat| stat.kind == python_evaluator::FileKind::Directory);
-                (path, directory)
+                // A file of a mirror keeps its path, and comes from the copy of this run.
+                (setting.state.mirrors.copy(&path), directory)
             }
         };
         // A file that the job reads as it was before an update is a copy taken now, before

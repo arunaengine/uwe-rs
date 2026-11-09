@@ -431,7 +431,8 @@ fn targets(
             _ => Vec::new(),
         };
         for path in paths {
-            let Some(name) = context.nextflow.0.options.task_file(&path.path) else {
+            let location = nextflow_runtime::bridge::location(&path);
+            let Some(name) = context.nextflow.0.options.task_file(&location) else {
                 continue;
             };
             let place = match target.ends_with('/') {

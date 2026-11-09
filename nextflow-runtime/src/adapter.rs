@@ -289,7 +289,7 @@ impl Adapter {
                         span: Default::default(),
                     })?;
                     let names = (outcome.files.iter())
-                        .map(|(name, path)| (path.path.clone(), name.clone()))
+                        .map(|(name, path)| (bridge::location(path), name.clone()))
                         .collect();
                     let accepted = Completed::Accepted {
                         outputs,

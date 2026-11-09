@@ -354,3 +354,50 @@ fn reads_provided_stdout() {
         "the output read through the provider"
     );
 }
+
+#[test]
+fn names_remote_files() {
+    let directory = tempfile::tempdir().unwrap();
+    let script = "process MAKE {\n    output:\n    path 'result.txt'\n    script:\n    'touch result.txt'\n}\n\
+                  workflow {\n    MAKE()\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let mut adapter = Adapter::new(&launch, settings(directory.path()), json!({})).unwrap();
+    let call = Call {
+        script: directory
+            .path()
+            .join("main.nf")
+            .to_string_lossy()
+            .into_owned(),
+        process: "MAKE".into(),
+        name: "MAKE".into(),
+        singleton: true,
+    };
+    let task = run(adapter.prepare(&call, &[], 1, TaskId(1)).unwrap());
+    let location = "s3://bucket/work/1/result.txt";
+    let made = OutputFile {
+        path: "result.txt".into(),
+        location: location.into(),
+        ..OutputFile::default()
+    };
+    let outcome = Outcome {
+        id: task.id,
+        attempt: 1,
+        files: vec![made],
+        ..Outcome::default()
+    };
+    let Completed::Accepted { outputs, names, .. } = adapter.complete(outcome).unwrap() else {
+        panic!("an accepted attempt");
+    };
+    let output = outputs[0].clone().unwrap();
+    assert_eq!(output["location"], location, "the address keeps its scheme");
+    assert_eq!(
+        names,
+        [(location.to_owned(), "result.txt".to_owned())],
+        "named by it too"
+    );
+}

@@ -250,7 +250,8 @@ fn compiles_plan_settings() {
 }
 
 /// A workflow that stays one native op cannot hold config values of the command line, several
-/// targets or the options that pick jobs, so it does not compile with them.
+/// targets or the options that pick jobs, so it does not compile with them; the region of a
+/// checkpoint plans with them.
 #[test]
 fn refuses_dropped_settings() {
     let snakefile =
@@ -261,10 +262,10 @@ fn refuses_dropped_settings() {
         ..Launch::default()
     };
     let (_folder, compiled) = compile_in(&snakefile, launch.clone());
-    let error = compiled.err().unwrap_or_default();
-    let expected =
-        "rule c is a checkpoint, whose region cannot hold config values of the command line";
-    assert_eq!(error, expected);
+    let compiled = compiled.expect("compiles the region");
+    let document = serde_json::to_value(&compiled.document).expect("serializes");
+    let planner = &op(&document, "snakemake")["kind"]["dynamic"]["planner"]["snakemake"];
+    assert!(planner["config_values"].is_string(), "{planner}");
     let images = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
     let launch = Launch {
         targets: vec!["b.txt".into()],

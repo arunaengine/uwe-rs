@@ -66,6 +66,14 @@ pub(crate) fn gather(
         match source.kind {
             SourceKind::Workflow => {
                 let Some(folder) = &folder else { continue };
+                // The document of a compiled run is the main file at the root of the crate; a
+                // native workflow keeps its main file next to the files that it includes.
+                let main = folder.join(&source.path);
+                if run.language == "wir"
+                    && (main == options.workflow || main == Path::new(&run.workflow))
+                {
+                    continue;
+                }
                 let from = kept.unwrap_or_else(|| folder.join(&source.path));
                 let id = format!("{WORKFLOW_FOLDER}{}", source.path);
                 if crate::hidden::holds_secret(&from, options).unwrap_or(false) {

@@ -147,6 +147,14 @@ pub(crate) fn driver(
                     argo_services(run, setup),
                 ),
                 secret_inputs: arguments.secret_inputs.clone(),
+                // File ops reach what the code of the workflow reaches.
+                roots: isolation(arguments, setup).map(|isolation| {
+                    let workflow = arguments.target.clone().unwrap_or(launch.target.clone());
+                    let own =
+                        (isolation.launch.clone()).or_else(|| arguments.embedded.then(|| own(run)));
+                    let shared = shared_folders(arguments, setup);
+                    nextflow::run_roots(&workflow, launch, (&isolation, &shared), own)
+                }),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();

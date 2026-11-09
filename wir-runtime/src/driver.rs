@@ -58,6 +58,8 @@ pub struct Settings {
     pub adapters: Adapters,
     /// Values of entry graph inputs that no file may hold; they win over the inputs file.
     pub secret_inputs: SecretInputs,
+    /// The folders that the file ops of an isolated run reach, as its workflow code does.
+    pub roots: Option<workflow_graph::Roots>,
 }
 
 /// A function of the host that takes printed text.
@@ -134,6 +136,7 @@ impl Default for Settings {
             print_sink: Printer::default(),
             adapters: Adapters::default(),
             secret_inputs: SecretInputs::default(),
+            roots: None,
         }
     }
 }
@@ -349,6 +352,7 @@ impl WirDriver {
                 simulated: self.launch.simulated,
                 provider: self.files.as_deref(),
                 remote: Some(&self.settings.cwl.remote),
+                roots: self.settings.roots.as_ref(),
                 deliveries: &self.published,
                 inputs: &self.given,
                 nextflow: &self.scope_run,
@@ -402,6 +406,7 @@ impl WirDriver {
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
             remote: Some(&self.settings.cwl.remote),
+            roots: self.settings.roots.as_ref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -541,6 +546,7 @@ impl WirDriver {
                     simulated: self.launch.simulated,
                     provider: self.files.as_deref(),
                     remote: Some(&self.settings.cwl.remote),
+                    roots: self.settings.roots.as_ref(),
                     deliveries: &self.published,
                     inputs: &self.given,
                     nextflow: &self.scope_run,
@@ -597,6 +603,7 @@ impl WirDriver {
                 simulated: self.launch.simulated,
                 provider: self.files.as_deref(),
                 remote: Some(&self.settings.cwl.remote),
+                roots: self.settings.roots.as_ref(),
                 deliveries: &self.published,
                 inputs: &self.given,
                 nextflow: &self.scope_run,
@@ -655,6 +662,7 @@ impl WirDriver {
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
             remote: Some(&self.settings.cwl.remote),
+            roots: self.settings.roots.as_ref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -1142,6 +1150,7 @@ impl WirDriver {
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
             remote: Some(&self.settings.cwl.remote),
+            roots: self.settings.roots.as_ref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,

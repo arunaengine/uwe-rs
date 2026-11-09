@@ -93,22 +93,34 @@ impl Console {
             .map(std::path::Path::to_owned)
             .or(isolation.launch.clone())
             .or(own);
-        let mut folders = isolation.roots.clone();
-        let target = std::path::absolute(&launch.target).unwrap_or_else(|_| launch.target.clone());
-        // Other runs may reuse the workflow, like a fetched pipeline, so its code only reads it.
-        let mut readable = isolation.read_only.clone();
-        readable.extend(match target.is_dir() {
-            true => Some(target),
-            false => target.parent().map(std::path::Path::to_owned),
-        });
-        folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
-        folders.extend(self.operators.clone());
-        folders.extend(self.launch.clone());
-        let shared = shared.iter().chain([&launch.scratch]).cloned();
-        let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
-        self.roots = Some(roots.with_readable(readable));
+        let own = self.operators.iter().chain(&self.launch).cloned();
+        self.roots = Some(run_roots(&launch.target, launch, (isolation, shared), own));
         self
     }
+}
+
+/// The folders that the code of an isolated run of `target` reaches: those of its isolation,
+/// its config and inputs files and `own`; the shared folders and the scratch folder to read
+/// files by path; the folder of the workflow to read and list.
+pub(crate) fn run_roots(
+    target: &std::path::Path,
+    launch: &Launch,
+    (isolation, shared): (&crate::hosted::Isolation, &[PathBuf]),
+    own: impl IntoIterator<Item = PathBuf>,
+) -> workflow_graph::Roots {
+    let mut folders = isolation.roots.clone();
+    let target = std::path::absolute(target).unwrap_or_else(|_| target.to_owned());
+    // Other runs may reuse the workflow, like a fetched pipeline, so its code only reads it.
+    let mut readable = isolation.read_only.clone();
+    readable.extend(match target.is_dir() {
+        true => Some(target),
+        false => target.parent().map(std::path::Path::to_owned),
+    });
+    folders.extend(launch.configs.iter().chain(&launch.inputs).cloned());
+    folders.extend(own);
+    let shared = shared.iter().chain([&launch.scratch]).cloned();
+    let roots = workflow_graph::Roots::new(folders).with_read_only(shared);
+    roots.with_readable(readable)
 }
 
 impl Host for Console {

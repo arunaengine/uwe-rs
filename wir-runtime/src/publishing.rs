@@ -85,6 +85,10 @@ pub fn folder(
         if !wir::plain_folder(directory) {
             return Err(turn.failed(format!("the folder {directory} has an empty, . or .. part")));
         }
+        let local = !directory.contains("://");
+        if let Some(roots) = context.roots.filter(|_| local) {
+            (roots.check(Path::new(directory))).map_err(|error| turn.failed(error.to_string()))?;
+        }
         return match effects.iter().any(|effect| effect.publishes(directory)) {
             true => Ok((own, Some(directory.trim_end_matches('/').to_owned()))),
             false => Err(turn.failed(format!(

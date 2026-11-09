@@ -149,7 +149,10 @@ pub fn document(
     ));
     pruned(&folder);
     // A resume runs the document of the run it continues, so it writes no other.
-    let (ran, launch) = resumed(arguments, target, language, path.clone())?;
+    let (mut ran, launch) = resumed(arguments, target, language, path.clone())?;
+    if ran != path && language == Language::Nextflow {
+        ran = reprinted(&ran, &document, &own(target, language))?;
+    }
     let compiled = Compiled {
         path: ran,
         inputs,
@@ -164,6 +167,55 @@ pub fn document(
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
     Ok(compiled)
+}
+
+/// The document `earlier` with the prints of the build of `compiled`, like those that show
+/// `workflow.resume`: the emit ops that feed only `view` ops; a new file when they differ.
+fn reprinted(earlier: &Path, compiled: &wir::Document, start: &str) -> Result<PathBuf, Failure> {
+    let read = std::fs::read_to_string(earlier)
+        .map_err(|error| failure(format!("uwe: cannot read {}: {error}", earlier.display())))?;
+    let mut document = wir::parse(&read).map_err(|error| failure(format!("uwe: {error}")))?;
+    for graph in &mut document.graphs {
+        let Some(fresh) = compiled
+            .graphs
+            .iter()
+            .find(|fresh| fresh.name == graph.name)
+        else {
+            continue;
+        };
+        let views: Vec<String> = (graph.ops.iter())
+            .filter(|op| matches!(op.kind, wir::Kind::View(_)))
+            .map(|op| op.path.clone())
+            .collect();
+        let printed = |path: &str| {
+            let read = graph
+                .edges
+                .iter()
+                .filter(|edge| edge.from.op.as_deref() == Some(path));
+            let mut readers = read.map(|edge| edge.to.op.as_deref().unwrap_or_default());
+            readers.all(|reader| views.iter().any(|view| view == reader))
+        };
+        let replaced: Vec<wir::Op> = (graph.ops.iter())
+            .filter(|op| matches!(op.kind, wir::Kind::Emit(_)) && printed(&op.path))
+            .filter_map(|op| fresh.ops.iter().find(|new| new.path == op.path))
+            .filter(|new| matches!(new.kind, wir::Kind::Emit(_)))
+            .cloned()
+            .collect();
+        for new in replaced {
+            if let Some(op) = graph.ops.iter_mut().find(|op| op.path == new.path) {
+                *op = new;
+            }
+        }
+    }
+    let text = shown(&document)?;
+    if text == read {
+        return Ok(earlier.to_owned());
+    }
+    let digest = task_model::Digest::sha256(text.as_bytes());
+    let path = PathBuf::from(format!("{start}{}.wir.json", digest.hex()));
+    std::fs::write(&path, text)
+        .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
+    Ok(path)
 }
 
 /// What a run runs of the workflow that it compiled.

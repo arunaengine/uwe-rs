@@ -329,20 +329,33 @@ fn continued(
 }
 
 /// The run whose launch folder a resume of the compiled Snakemake run `earlier` starts in: a
-/// resumed run started in the folder of the run it continued, back to the first.
+/// resumed run started in the folder of the run it continued, back to the first. A run without
+/// a compiled document of the same workflow gave none, so the walk stops before it.
 fn first_launch(arguments: &Arguments, earlier: String) -> Result<String, Failure> {
     let database = crate::runs::open(arguments)?;
-    let mut seen = std::collections::HashSet::new();
-    let mut first = earlier;
-    while seen.insert(first.clone()) {
-        let run = database.run(&first);
-        let run = run.map_err(|error| failure(format!("uwe: {error}")))?;
-        match run.and_then(|run| run.resumes) {
-            Some(resumes) => first = resumes,
-            None => break,
+    let read = |id: &str| {
+        database
+            .run(id)
+            .map_err(|error| failure(format!("uwe: {error}")))
+    };
+    let Some(mut first) = read(&earlier)? else {
+        return Ok(earlier);
+    };
+    let mut seen = std::collections::HashSet::from([earlier]);
+    while let Some(id) = first.resumes.clone().filter(|id| seen.insert(id.clone())) {
+        let Some(before) = read(&id)? else {
+            break;
+        };
+        let compiled = match (&before.document, &first.document) {
+            (Some(one), Some(other)) => same_workflow(one, other),
+            _ => false,
+        };
+        if !compiled {
+            break;
         }
+        first = before;
     }
-    Ok(first)
+    Ok(first.id)
 }
 
 fn resumed(

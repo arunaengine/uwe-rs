@@ -551,7 +551,14 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
         entry.unpack(target).map_err(local)?;
     }
     // A link may reach outside through other links, like `alias -> .` and `leak -> alias/..`.
-    if links.keys().any(|link| resolved(link, &links, 0).is_none()) {
+    let mut total = MOST_STEPS;
+    let escapes = links.keys().any(|link| {
+        let mut steps = MOST_LINKS.min(total);
+        let place = resolved(link, &links, &mut steps);
+        total -= MOST_LINKS.min(total) - steps;
+        place.is_none()
+    });
+    if escapes {
         return Err(DriverError::unsupported("repository archive links that leave the repository or loop are unsupported; use a local workflow with materialized files").into());
     }
     let modules = std::fs::read_to_string(folder.join(".gitmodules")).unwrap_or_default();
@@ -576,23 +583,26 @@ fn gitlink(folder: &Path) -> bool {
     std::fs::read_dir(folder).is_ok_and(|mut entries| entries.next().is_none())
 }
 
-/// How many links a path may pass through, as Linux allows, so that loops end.
+/// How many links the resolution of one path may follow in all, as Linux allows, so that
+/// loops and chains that double at each link end.
 const MOST_LINKS: usize = 40;
 
+/// How many links the resolutions of all links of an archive may follow together.
+const MOST_STEPS: usize = 1 << 16;
+
 /// The place in the repository that `path` reaches through the `links` of the archive, by
-/// target, with `..` applied to the folder that a link reached; none outside or in a loop.
-fn resolved(path: &Path, links: &BTreeMap<PathBuf, PathBuf>, depth: usize) -> Option<PathBuf> {
+/// target, with `..` applied to the folder that a link reached; none outside, or when it
+/// would follow more links than `steps` has left.
+fn resolved(path: &Path, links: &BTreeMap<PathBuf, PathBuf>, steps: &mut usize) -> Option<PathBuf> {
     let mut place = PathBuf::new();
     for part in path.components() {
         match part {
             Component::Normal(name) => {
                 place.push(name);
                 if let Some(target) = links.get(&place) {
-                    if depth >= MOST_LINKS {
-                        return None;
-                    }
+                    *steps = steps.checked_sub(1)?;
                     let from = place.parent().unwrap_or(Path::new("")).join(target);
-                    place = resolved(&from, links, depth + 1)?;
+                    place = resolved(&from, links, steps)?;
                 }
             }
             Component::ParentDir => {

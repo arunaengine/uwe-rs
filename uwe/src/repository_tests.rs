@@ -299,6 +299,36 @@ fn keeps_inner_links() {
     unpack(bytes.as_slice(), folder.path()).unwrap();
 }
 
+/// Links that double at each step, `a1 -> a0/a0` and so on, end after a bounded number of
+/// steps instead of resolving for ages.
+#[test]
+fn bounds_link_steps() {
+    let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut archive = tar::Builder::new(encoder);
+    for index in 0..=30 {
+        let target = match index {
+            0 => ".".to_owned(),
+            _ => format!("a{0}/a{0}", index - 1),
+        };
+        let mut header = tar::Header::new_gnu();
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_link_name(&target).unwrap();
+        header.set_path(format!("checkout/a{index}")).unwrap();
+        header.set_cksum();
+        archive.append(&header, std::io::empty()).unwrap();
+    }
+    let bytes = archive.into_inner().unwrap().finish().unwrap();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let folder = tempfile::tempdir().unwrap();
+        let _ = sender.send(unpack(bytes.as_slice(), folder.path()).is_err());
+    });
+    let refused = receiver.recv_timeout(std::time::Duration::from_secs(30));
+    assert_eq!(refused, Ok(true));
+}
+
 #[test]
 fn reads_manifest_branch() {
     let folder = tempfile::tempdir().unwrap();

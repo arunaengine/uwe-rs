@@ -444,6 +444,12 @@ impl WirDriver {
         }
     }
 
+    /// Whether the entry graph has outputs, which a run delivers as its results.
+    fn entry_outputs(&self) -> bool {
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        entry.is_some_and(|graph| !graph.outputs.is_empty())
+    }
+
     /// The text of the source of a scope, once its byte range is checked against it.
     fn scope_text(&self, scope: &wir::Scope) -> Result<String, DriverError> {
         let path = self.locate(&scope.source)?;
@@ -733,10 +739,12 @@ impl WirDriver {
                 let message = format!("op {path}: CWL blocks take no profiles or configs");
                 return Err(DriverError::unsupported(message));
             }
-            // A CWL block delivers into its job folder: as in a native run, only the outputs of
-            // the run reach the output folder.
+            // Where the entry graph has outputs, as a compiled CWL workflow has, a CWL block
+            // delivers into its job folder, and only the outputs reach the output folder.
             Dialect::Cwl => {
-                launch.output_dir = Some(folder.join("results"));
+                if self.entry_outputs() {
+                    launch.output_dir = Some(folder.join("results"));
+                }
                 cwl::block(&launch, &self.settings.cwl)?
             }
             // A Nextflow block runs as if launched in its output folder, and keeps its own

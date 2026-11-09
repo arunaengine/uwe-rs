@@ -831,3 +831,77 @@ fn walk(folder: &std::path::Path) -> Vec<std::path::PathBuf> {
     }
     files
 }
+
+/// A chain as flowy runs it: a document of two native CWL blocks without graph outputs, the
+/// first feeding the second. A real run on a TES server that runs nothing, as no block has a
+/// step, delivers each block's output below the folder of its op, and records those files.
+#[tokio::test]
+async fn delivers_chain_blocks() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path();
+    let pass = "cwlVersion: v1.2\nclass: Workflow\ninputs:\n  text: File\n\
+                outputs:\n  out:\n    type: File\n    outputSource: text\nsteps: []\n";
+    std::fs::write(root.join("pass.cwl"), pass).unwrap();
+    std::fs::write(root.join("a.txt"), "chained\n").unwrap();
+    let file = json!({"file": {}});
+    let block = |path: &str| {
+        json!({
+            "path": path, "kind": {"native": {"source": path, "language": "cwl"}},
+            "inputs": [{"name": "text", "type": file}],
+            "outputs": [{"name": "out", "type": file}]
+        })
+    };
+    let source = |id: &str| json!({"id": id, "language": "cwl", "location": root.join("pass.cwl")});
+    let document = json!({
+        "wir_version": "0.1",
+        "sources": [source("first"), source("second")],
+        "graphs": [{
+            "name": "main",
+            "inputs": [{"name": "first.text", "type": file}],
+            "ops": [block("first"), block("second")],
+            "edges": [
+                {"from": {"port": "first.text"}, "to": {"op": "first", "port": "text"}},
+                {"from": {"op": "first", "port": "out"}, "to": {"op": "second", "port": "text"}}
+            ]
+        }],
+        "entry": "main"
+    });
+    std::fs::write(root.join("chain.wir.json"), document.to_string()).unwrap();
+    let mut settings = Settings::new(root.join("chain.wir.json"));
+    settings.language = Some(uwe::run::Language::Wir);
+    settings.executor = Some("tes".into());
+    settings.database = Some(root.join("runs.sqlite"));
+    settings.store = Some(root.join("store").to_string_lossy().into_owned());
+    settings.output_dir = Some(root.join("outputs"));
+    settings.cache = false;
+    settings.cache_folder = Some(root.join("cache"));
+    let mut setup = Setup::default();
+    setup.executors.tes_server = Some(empty_server());
+    settings.setup = Some(setup);
+    let text = json!({"class": "File", "location": root.join("a.txt")});
+    settings.inputs = Some(json!({"first.text": text}));
+    settings.print = false;
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let run = request.run().await.unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    let outputs = root.join("outputs");
+    for node in ["first", "second"] {
+        let delivered = std::fs::read_to_string(outputs.join(node).join("a.txt"));
+        assert_eq!(
+            delivered.unwrap(),
+            "chained\n",
+            "a block delivers below its node"
+        );
+    }
+    let database = run_database::Database::open(&root.join("runs.sqlite")).unwrap();
+    let mut recorded: Vec<String> = (database.deliveries(&run.id).unwrap().into_iter())
+        .map(|delivered| delivered.target)
+        .collect();
+    recorded.sort();
+    let expected: Vec<String> = ["first/a.txt", "second/a.txt"]
+        .iter()
+        .map(|name| outputs.join(name).to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(recorded, expected, "the run records the files that stay");
+}

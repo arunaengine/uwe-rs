@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{Value as Json, json};
@@ -105,26 +106,45 @@ pub fn plans_job(jobs: &[PlannedJob], rule: &RuleTask) -> bool {
     };
     let (key, group) = (job_key(rule), group_keys(rule));
     let digest = rule.layout.as_ref();
-    // A run groups only jobs that need work: it plans a compiled group whose jobs need no
-    // work, or all but one, as single jobs, with the same files.
-    let alone =
-        |key: &JobKey| (jobs.iter()).position(|job| named(key, job) && job.group.is_empty());
-    let members: Option<Vec<usize>> = std::iter::once(&key).chain(&group).map(alone).collect();
-    let apart = members
-        .filter(|_| !group.is_empty())
-        .is_some_and(|members| {
-            let needed = members
-                .iter()
-                .filter(|member| jobs[**member].needed)
-                .count();
-            needed <= 1 && digest.is_none_or(|digest| *digest == group_layout(jobs, &members))
-        });
+    // A run groups only jobs that need work: it plans a compiled group as parts, single jobs
+    // that need no work and at most one part that does, with the same files.
+    let keys: Vec<JobKey> = std::iter::once(key.clone()).chain(group.clone()).collect();
+    let apart = parts(jobs, &keys).is_some_and(|parts| {
+        let needed = parts.iter().filter(|part| jobs[**part].needed).count();
+        let layout = digest.is_none_or(|digest| *digest == group_layout(jobs, &parts));
+        parts.len() > 1 && needed <= 1 && layout
+    });
     apart
         || (0..jobs.len()).any(|index| {
             let job = &jobs[index];
             let layout = digest.is_none_or(|digest| *digest == layout(jobs, index));
             named(&key, job) && job.group == group && layout
         })
+}
+
+/// The planned jobs that hold the jobs of `keys` between them, in order: each holds a run of
+/// them in its own order, and no other job.
+fn parts(jobs: &[PlannedJob], keys: &[JobKey]) -> Option<Vec<usize>> {
+    let same = |key: &JobKey, rule: &str, wildcards: &BTreeMap<String, String>| {
+        key.rule == rule && key.wildcards == *wildcards
+    };
+    let mut parts = Vec::new();
+    let mut rest = keys;
+    while let Some(first) = rest.first() {
+        let index = (jobs.iter()).position(|job| same(first, &job.key.rule, &job.key.wildcards))?;
+        let job = &jobs[index];
+        let held = rest.get(1..=job.group.len())?;
+        let members = held.iter().zip(&job.group);
+        if !members
+            .into_iter()
+            .all(|(key, member)| same(key, &member.rule, &member.wildcards))
+        {
+            return None;
+        }
+        parts.push(index);
+        rest = &rest[1 + job.group.len()..];
+    }
+    Some(parts)
 }
 
 /// The identities of the other jobs of the group of `rule`.
@@ -151,7 +171,7 @@ pub(crate) fn layout(jobs: &[PlannedJob], index: usize) -> String {
     digest(&job.inputs, &outputs, made)
 }
 
-/// The layout of the single jobs `members` as one group: the files they read that none of
+/// The layout of the planned jobs `members` as one group: the files they read that none of
 /// them makes, each once, the files of each in turn, and those inputs that others make.
 fn group_layout(jobs: &[PlannedJob], members: &[usize]) -> String {
     let outputs: Vec<&str> = (members.iter())

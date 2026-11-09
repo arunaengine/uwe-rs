@@ -500,6 +500,18 @@ fn runs_group_rest() {
     assert!(names.contains(&"b") && !names.contains(&"a"), "{names:?}");
 }
 
+/// A compiled group `a -> b -> c` whose `a` became current runs `b` and `c` as the group the
+/// run makes of them.
+#[test]
+fn runs_group_tail() {
+    let snakefile = "rule all:\n    input: \"c.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n\nrule c:\n    input: \"b.txt\"\n    output: \"c.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n";
+    let ran = rerun(snakefile, "{}\n", &[("a.txt", "a\n")]).expect("runs the rest");
+    let names: Vec<&str> = (ran.iter())
+        .filter_map(|task| task.0.split('"').nth(5))
+        .collect();
+    assert_eq!(names, ["b, c", "all"]);
+}
+
 /// How a test workflow is launched: its working folder and Snakefile, config files, targets
 /// and profiles, from the launches of the test-workflows test of snakemake-runtime.
 fn launch_of(name: &str, folder: &Path, scratch: &Path) -> (Launch, PathBuf) {

@@ -86,12 +86,16 @@ pub fn compile(
         Err(error) => return Err(error.message),
     };
     let targets = driver.plan_targets().map_err(|error| error.message)?;
+    let first = driver.default_target().map_err(|error| error.message)?;
     drop(driver);
     if let Some(reason) = jobs.iter().find_map(kept_job) {
         return native(place(sources)?, &setting, launch, reason);
     }
+    // Without targets the run plans the first rule, also when options like `-until` or
+    // `-forcerun` add or remove roots of the plan.
+    let root = first.or_else(|| jobs.iter().find_map(|job| job.target.clone()));
     let setting = Setting {
-        entry: (setting.entry.clone()).or_else(|| jobs.iter().find_map(|job| job.target.clone())),
+        entry: setting.entry.clone().or(root),
         ..setting
     };
     let checkpoint = jobs.iter().find(|job| job.checkpoint);

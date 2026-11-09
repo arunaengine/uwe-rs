@@ -3336,6 +3336,7 @@ pub fn spawn_driver(
                     | Request::Prepare(_)
                     | Request::Take(_)
                     | Request::Targets
+                    | Request::Entry
                     | Request::Replan) => {
                         channel
                             .planning

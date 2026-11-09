@@ -247,7 +247,16 @@ impl Scoped {
             for argument in arguments {
                 items.push(rebuilt(argument, base, launching, interpreter)?);
             }
-            interpreter.call_closure(&closure, items)
+            let made = interpreter.call_closure(&closure, items);
+            // A script variable that the callback assigned again is the one of later callbacks.
+            let captured = closure.code.capture_names.iter().zip(&closure.captured);
+            for (name, cell) in captured {
+                if let Some(key) = script_key(values.get(name.as_ref())) {
+                    let value = cell.borrow().clone();
+                    launching.run.0.variables.borrow_mut().insert(key, value);
+                }
+            }
+            made
         };
         let result = match printer {
             Some(printer) if !bound.is_empty() => {
@@ -324,8 +333,7 @@ fn rebuilt(
             interpreter.call_function(&module, ENTRY, given)
         }
         Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("Script") => {
-            let text = |key| object.get(key).and_then(Json::as_str).unwrap_or_default();
-            let key = (text("source").to_owned(), text("name").to_owned());
+            let key = script_key(Some(json)).unwrap_or_default();
             if let Some(shared) = launching.run.0.variables.borrow().get(&key) {
                 return Ok(shared.clone());
             }
@@ -344,6 +352,21 @@ fn rebuilt(
         }
         other => Ok(crate::groovy::to_value(other, base)),
     }
+}
+
+/// The source and name of a variable of a script that a capture holds in its reserved
+/// `Script` form, which the callbacks of a run share.
+fn script_key(json: Option<&Json>) -> Option<(String, String)> {
+    let object = json?.as_object()?;
+    let text = |key| {
+        object
+            .get(key)
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    (object.get("class").and_then(Json::as_str) == Some("Script"))
+        .then(|| (text("source"), text("name")))
 }
 
 fn unsupported(message: &str) -> Error {

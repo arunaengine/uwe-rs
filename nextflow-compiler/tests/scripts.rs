@@ -168,3 +168,18 @@ fn notes_one_compile() {
                   channel.of(1).map { n -> label + n }.view()\n}\n";
     assert!(compiled(writes).full());
 }
+
+/// A callback that assigns a variable of its script again leaves it for the next one, as
+/// native code does.
+#[test]
+fn reassigns_script_variables() {
+    let script = "def count = 0\nprocess SAY {\n    input:\n    val n\n    script:\n    \
+                  \"echo $n\"\n}\nworkflow {\n    \
+                  SAY(channel.of('a', 'b').map { x -> count = count + 1; count })\n}\n";
+    let mut said: Vec<String> = (run(script).unwrap().iter())
+        .filter_map(|script| script.lines().find(|line| line.starts_with("echo")))
+        .map(str::to_owned)
+        .collect();
+    said.sort();
+    assert_eq!(said, ["echo 1", "echo 2"]);
+}

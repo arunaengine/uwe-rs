@@ -155,6 +155,12 @@ pub trait TaskAdapter {
     fn prefixed(&self) -> bool {
         true
     }
+
+    /// The first task that failed for good, by its id here, and what its language shows of
+    /// it, like the trace that a Nextflow `onError` handler gets.
+    fn failed_task(&self) -> Option<(TaskId, Json)> {
+        None
+    }
 }
 
 /// What an adapter opens with: the source context of its first op and the run around it.
@@ -499,6 +505,15 @@ impl Dialects {
     }
 
     /// Ends every adapter, once, with why the run failed; the problems of all, joined.
+    /// The first task of an adapter that failed for good, by its id in the run, with what
+    /// its language shows of it.
+    pub fn failed_task(&self) -> Option<(TaskId, Json)> {
+        (self.opened.iter()).find_map(|opened| {
+            let (id, shown) = opened.adapter.failed_task()?;
+            Some((opened.outer.get(&id).copied().unwrap_or(id), shown))
+        })
+    }
+
     pub fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
         if std::mem::replace(&mut self.ended, true) {
             return Ok(());

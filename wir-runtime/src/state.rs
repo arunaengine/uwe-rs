@@ -565,6 +565,14 @@ impl Progress {
         }
     }
 
+    /// The value that an output of a node bound, else null.
+    pub fn bound_output(&self, at: usize, port: &str) -> Json {
+        match self.value(&Source::Output(at, port.to_owned())) {
+            Supply::Bound(value) => value,
+            _ => Json::Null,
+        }
+    }
+
     /// Ends a call once every op of its graph ended: it succeeds when none of them failed
     /// and every output of the graph is bound.
     pub fn end_call(&mut self, at: usize) -> bool {

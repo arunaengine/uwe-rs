@@ -167,6 +167,8 @@ pub fn captured(
             let value = match binding {
                 Binding::Input(input) => values.get(input).cloned().unwrap_or_default(),
                 Binding::Value(value) => value.clone(),
+                // Only hooks capture outputs, which the run gives them as values.
+                Binding::Output(_) => Json::Null,
             };
             (name.clone(), value)
         })

@@ -911,6 +911,12 @@
             "additionalProperties": false,
             "required": ["value"],
             "properties": { "value": true }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["output"],
+            "properties": { "output": { "$ref": "#/$defs/endpoint" } }
           }
         ]
       }

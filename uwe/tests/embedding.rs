@@ -99,6 +99,48 @@ async fn runs_compiled_snakefiles() {
     );
 }
 
+/// A resumed embedded Snakemake run starts in the launch folder of the run it continues, so
+/// its tasks are those of that run, which it takes from there.
+#[tokio::test]
+async fn resumes_launch_folder() {
+    let root = tempfile::tempdir().unwrap();
+    let snakefile = "rule all:\n    input: \"a.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo a > {output}\"\n";
+    let target = root.path().join("Snakefile");
+    std::fs::write(&target, snakefile).unwrap();
+    let request = |resume: Option<String>| {
+        let mut request = request(root.path());
+        request.settings.target = target.clone();
+        request.settings.inputs = None;
+        request.settings.cache = true;
+        request.settings.resume = resume.map(Resume::Run);
+        request.policy = uwe::application::Policy::Relaxed;
+        request
+    };
+    let first = request(None).run().await.unwrap();
+    assert!(
+        first.execution.error.is_none(),
+        "{:?}",
+        first.execution.error
+    );
+    let again = request(Some(first.id.clone())).run().await.unwrap();
+    assert!(
+        again.execution.error.is_none(),
+        "{:?}",
+        again.execution.error
+    );
+    let nodes = &again.execution.graph.nodes;
+    assert!(!nodes.is_empty());
+    let fresh: Vec<&str> = (nodes.iter())
+        .filter(|node| !node.reused)
+        .map(|node| node.task.name.as_str())
+        .collect();
+    assert_eq!(fresh, Vec::<&str>::new(), "tasks that ran again");
+    // It runs the document of that run, whose targets lie in its launch folder.
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    let document = |id: &str| database.run(id).unwrap().unwrap().document;
+    assert_eq!(document(&again.id), document(&first.id));
+}
+
 /// The settings of a resume of the compiled Snakefile run `run` in `root`.
 fn request_settings(run: &uwe::Run, root: &std::path::Path) -> Settings {
     let mut settings = request(root).settings;

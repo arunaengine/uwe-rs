@@ -37,6 +37,26 @@ impl Database {
         }
     }
 
+    /// The latest run of a workflow whose path starts with `prefix`, like the compiled
+    /// documents of one workflow, as [`Database::last_run`] picks it.
+    pub fn last_run_below(&self, prefix: &str, real: bool) -> Result<Option<Run>, DatabaseError> {
+        let id: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT id FROM runs
+                 WHERE substr(workflow, 1, length(?1)) = ?1 AND (simulated = 0 OR NOT ?2)
+                   AND replays IS NULL
+                 ORDER BY started DESC, rowid DESC LIMIT 1",
+                params![prefix, real],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match id {
+            Some(id) => self.run(&id),
+            None => Ok(None),
+        }
+    }
+
     /// The ids of the runs of a lineage, the latest first.
     pub fn lineage(&self, lineage: &str) -> Result<Vec<String>, DatabaseError> {
         let mut statement = self

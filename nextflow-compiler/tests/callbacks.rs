@@ -117,3 +117,19 @@ fn runs_workflow_handlers() {
     assert!(text.starts_with("done false 1\nfailed: "), "{text}");
     assert!(text.contains("boom"), "{text}");
 }
+
+#[test]
+fn handlers_capture_channels() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    std::fs::write(folder.join("nextflow.config"), "params.greeting = 'hi'\n").unwrap();
+    let script = "workflow {\n    def reports = channel.of(1).toList()\n    \
+                  workflow.onComplete {\n        if (params.greeting == 'mail') {\n            \
+                  println reports.getVal()\n        }\n        println 'done'\n    }\n}\n";
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    assert_eq!(
+        printed(folder, "{}", "channels"),
+        "done\n",
+        "a handler that captures a channel"
+    );
+}

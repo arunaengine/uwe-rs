@@ -755,6 +755,10 @@ struct Staging {
     placed: HashMap<String, String>,
     /// The paths of Files and Directories without a location, by their JSON text.
     literals: HashMap<String, String>,
+    /// The absolute paths in the working folder of what its entries placed, by location.
+    entries: HashMap<String, String>,
+    /// The working folder while an entry places files there.
+    placing: Option<String>,
     /// How many numbered folders the staging folder has.
     folders: usize,
 }
@@ -809,6 +813,10 @@ impl Staging {
             return None;
         }
         let location = value.get("location").and_then(Json::as_str);
+        // Arguments name what an entry placed by its path in the container, as in CWL.
+        if let Some(path) = location.and_then(|location| self.entries.get(location)) {
+            return Some(path.clone());
+        }
         if let Some(path) = self.path(value) {
             return Some(path.clone());
         }
@@ -880,6 +888,7 @@ impl Staging {
                 let Some(name) = name.and_then(at) else {
                     return;
                 };
+                self.placing = Some(workdir.to_owned());
                 self.put(value, &name, writable);
                 let folder = name.rsplit_once('/').map_or("", |(folder, _)| folder);
                 for item in object
@@ -892,6 +901,7 @@ impl Staging {
                         self.put(item, &beside, writable);
                     }
                 }
+                self.placing = None;
             }
             other => {
                 // Other values are JSON text as Python writes it, as in uwe's CWL driver.
@@ -944,6 +954,10 @@ impl Staging {
         });
         if let Some(location) = location {
             self.placed.insert(location.to_owned(), path.to_owned());
+            if let Some(workdir) = &self.placing {
+                self.entries
+                    .insert(location.to_owned(), absolute(path, workdir));
+            }
         }
         if directory && location.is_none() {
             let listing = value.get("listing").and_then(Json::as_array);
@@ -1220,7 +1234,11 @@ mod tests {
         assert_eq!(staging.inputs[1].content.as_deref(), Some("x=1"));
         assert!(staging.inputs[2].directory && staging.inputs[2].source.is_empty());
         let words = staging.texts(&genome, "inputs/genome");
-        assert_eq!(words, ["out/g.fa"], "the last place of a file is its path");
+        let path = ["/var/spool/cwl/out/g.fa"];
+        assert_eq!(
+            words, path,
+            "the last place of a file is its path in the container"
+        );
     }
 
     #[test]

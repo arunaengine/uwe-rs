@@ -19,6 +19,9 @@ use crate::requirements;
 use crate::runtime;
 use crate::types::convert;
 
+/// The file whose JSON object gives the outputs of a tool that writes it.
+const RESULTS: &str = "cwl.output.json";
+
 /// The image of tools without `DockerRequirement`, as uwe runs them.
 pub const DEFAULT_IMAGE: &str = "debian:stable-slim";
 
@@ -30,8 +33,8 @@ pub struct Lowered {
     pub attributes: Attributes,
     /// The task inputs that exprs fill: arguments and the `valueFrom` of input bindings.
     pub values: Vec<Computed>,
-    /// The outputs that `outputEval` computes, from the files of the task output of that name.
-    pub evaluated: Vec<Evaluated>,
+    /// The inputs whose files CWL reads before the tool runs.
+    pub loads: Vec<(Port, wir::Load)>,
 }
 
 /// A task input that an expr fills, with the code, the task input it sees as `self`, and
@@ -43,21 +46,14 @@ pub struct Computed {
     pub r#type: Option<Type>,
 }
 
-/// An output of a tool that an expr computes from the files that its glob found, if any.
-pub struct Evaluated {
-    pub output: Port,
-    pub code: Expression,
-    /// Whether the task has an output of this name with the files.
-    pub captured: bool,
-}
-
 /// Makes the capture rule of the globs of an output, by its name.
 type Globs<'a> = dyn FnMut(&str, &[Expression]) -> Result<CaptureRule, String> + 'a;
 
-/// How the task gives an output: captured as it is, or as files for an `outputEval`.
+/// How the task gives an output of a type: captured as it is, or by code over the files
+/// that a rule matched, if any, like `outputEval`.
 enum Read {
     Direct(CaptureRule, Type),
-    Evaluated(Option<(CaptureRule, Type)>, Expression),
+    Evaluated(Option<CaptureRule>, Expression, Type),
 }
 
 /// The task of a tool, or the first thing it uses that a task cannot say the same way. File
@@ -79,9 +75,11 @@ pub fn lower(
         stderr: None,
         workdir: Some(runtime::OUTDIR.into()),
         staging: Some(runtime::STAGING.into()),
+        results: Some(RESULTS.into()),
         ..Task::default()
     };
-    let attributes = requirements::apply(scope, &mut task)?;
+    let mut attributes = requirements::apply(scope, &mut task)?;
+    attributes.resources = runtime::resources(scope, process.version);
     let named = crate::types::named(scope);
     let runtime = runtime::object(scope, process.version);
     let javascript = (scope.requirements.iter().chain(&scope.hints))
@@ -89,41 +87,53 @@ pub fn lower(
     let names: Vec<&str> = (process.inputs.iter())
         .map(|input| short_name(&input.id))
         .collect();
-    // Expressions see no listings, which CWL loads into Directory inputs.
-    let listed = scope.find(|class| match class {
-        RequirementClass::LoadListing { load_listing } => Some(*load_listing),
-        _ => None,
-    });
-    let listed = listed
-        .flatten()
-        .is_some_and(|listing| listing != LoadListing::NoListing)
-        || process
-            .inputs
-            .iter()
-            .any(|input| input.load_listing.is_some());
-    let runtime_of = |code: &Expression| {
-        if listed && code.text.contains("listing") {
-            return Err("an expression that reads a listing that CWL loads".to_owned());
-        }
+    let computed = runtime::computed(scope, process.version);
+    let given = format!("inputs[{:?}]", runtime::VALUES);
+    // Code that the runner evaluates sees the `runtime` object of a task input when the
+    // resources are computed. References stay references, which need no JavaScript.
+    let compile = |code: &Expression, runner: bool, typed: bool| {
         // Without JavaScript, CWL refuses a reference to an input that the tool lacks.
         if !javascript && undeclared(code, &names) {
             return Err("a reference to an input that the tool does not declare".to_owned());
         }
-        let strict;
-        let code = match javascript {
-            true => code,
-            false => {
-                strict = Expression::parse(&runtime::strict(code), false)?;
-                &strict
+        // A reference that names no parameter is JavaScript, as CWL runs it with JavaScript.
+        let marked;
+        let code = match javascript.then(|| runtime::marked(code)).flatten() {
+            Some(text) => {
+                marked = Expression::parse(&text, false)?;
+                &marked
             }
+            None => code,
         };
+        let object = runtime.as_ref().ok().map(String::as_str);
+        if !code.text.contains("runtime") {
+            return Ok(code.text.clone());
+        }
+        let dynamic = runner && computed.is_some();
+        if let Some(text) = runtime::inlined(code, object, dynamic, typed) {
+            return Ok(text);
+        }
         match &runtime {
             Ok(object) => Ok(runtime::with(code, object)),
+            Err(_) if runner && computed.is_some() => Ok(runtime::with(code, &given)),
             Err(why) if code.text.contains("runtime") => Err(why.clone()),
             Err(_) => Ok(code.text.clone()),
         }
     };
+    let runtime_of = |code: &Expression| compile(code, false, false);
+    let runner_of = |code: &Expression| compile(code, true, false);
+    let capture_of = |code: &Expression| compile(code, true, true);
     let mut values = Vec::new();
+    if let Some((given, limits)) = computed.clone() {
+        let made = [(runtime::VALUES, given), (runtime::LIMITS, limits)];
+        values.extend(made.into_iter().map(|(port, code)| Computed {
+            port: port.to_owned(),
+            code,
+            this: None,
+            r#type: Some(Type::Dynamic),
+        }));
+        task.limits = Some(runtime::LIMITS.to_owned());
+    }
     let mut stream = |field: Option<&Expression>, port: &str| match field {
         None => Ok(None),
         Some(text) if !code(text) => Ok(literal(Some(text), port)?.map(FileName::Text)),
@@ -258,25 +268,16 @@ pub fn lower(
             },
         };
         let key = vec![Key::Number(position), Key::Number(index as i64)];
+        // The runner evaluates code as it builds the task, as the tool sees its files staged.
         if code(&text) {
-            // An expr sees where a file is otherwise than the tool, which sees it staged.
-            if paths(&text) {
-                return Err("an expression in an argument that reads a path".into());
-            }
-            let port = format!("argument.{index}");
-            let word = Argument::Input {
-                input: port.clone(),
+            let word = Argument::Code {
+                code: runner_of(&text)?,
+                this: None,
                 prefix: binding.and_then(|binding| binding.prefix.clone()),
                 separate: binding.is_none_or(|binding| binding.separate),
                 separator: binding.and_then(|binding| binding.item_separator.clone()),
                 quote: true,
             };
-            values.push(Computed {
-                port,
-                code: runtime_of(&text)?,
-                this: None,
-                r#type: None,
-            });
             words.push((key, quoted(binding, vec![word])));
             continue;
         }
@@ -288,17 +289,34 @@ pub fn lower(
         words.push((key, quoted(binding, words_of)));
     }
     let mut inputs = Vec::new();
+    let mut loaded = Vec::new();
     for input in &process.inputs {
         let name = short_name(&input.id).to_owned();
-        // CWL reads the contents and refuses files over 64 KiB, which a task does not.
-        if input.load_contents == Some(true) {
-            return Err(format!("loadContents of input {name}"));
+        let load = crate::loads::of(input, scope, &named)?;
+        // uwe's CWL driver binds the fields of a record input that has no binding of its own.
+        if input.binding.is_none() && bindings(&input.value_type, &named, 0) {
+            return Err(format!("the command line bindings inside input {name}"));
         }
         if let Some(binding) = &input.binding {
             let key = vec![Key::Number(position(binding)?), Key::Name(name.clone())];
             let resolved = crate::types::resolve(&input.value_type, &named);
-            words.push((key, quoted(Some(binding), bound(binding, resolved, &name)?)));
-            if let Some(code) = &binding.value_from {
+            // CWL evaluates the valueFrom of an input that is not null over staged paths.
+            let evaluated = (binding.value_from.as_ref())
+                .filter(|code| paths(code) || matches!(resolved, Cwl::Union(_)));
+            if let Some(code) = evaluated {
+                let word = Argument::Code {
+                    code: runner_of(code)?,
+                    this: Some(name.clone()),
+                    prefix: binding.prefix.clone(),
+                    separate: binding.separate,
+                    separator: binding.item_separator.clone(),
+                    quote: true,
+                };
+                words.push((key, quoted(Some(binding), vec![word])));
+            } else {
+                words.push((key, quoted(Some(binding), bound(binding, resolved, &name)?)));
+            }
+            if let Some(code) = binding.value_from.as_ref().filter(|_| evaluated.is_none()) {
                 values.push(Computed {
                     port: format!("{name}.{}", crate::group::VALUE),
                     code: runtime_of(code)?,
@@ -321,12 +339,23 @@ pub fn lower(
             defaults::set(&mut port, default, base)
                 .map_err(|why| format!("input {}: {why}", port.name))?;
         }
+        if let Some(load) = load {
+            loaded.push((port.clone(), load));
+        }
         inputs.push(port);
     }
+    // Only the inputs of the tool are its job, which CWL stages first.
+    task.staged = Some(names.iter().map(|name| (*name).to_owned()).collect());
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();
+    if (task.command.iter()).any(|word| matches!(word, Argument::Code { .. })) {
+        task.library = scope.library();
+    }
     let mut outputs = Vec::new();
-    let mut evaluated = Vec::new();
+    let required = scope.find(|class| match class {
+        RequirementClass::LoadListing { load_listing } => *load_listing,
+        _ => None,
+    });
     let mut glob = |name: &str, globs: &[Expression]| match globs {
         [one] if !code(one) => Ok(CaptureRule::Glob(pattern(one)?)),
         _ if globs.iter().any(paths) => Err("an expression in a glob that reads a path".into()),
@@ -360,29 +389,34 @@ pub fn lower(
             flow: wir::Flow::Value,
             default: None,
         };
-        let (files, code) = match capture(output, &task, (listed, &named), &mut glob) {
-            Ok(Read::Direct(rule, r#type)) => (Some((rule, r#type)), None),
-            Ok(Read::Evaluated(files, code)) => (files, Some(code)),
+        let (rule, r#type, code) = match capture(output, &task, &named, &mut glob) {
+            Ok(Read::Direct(rule, r#type)) => (rule, r#type, None),
+            Ok(Read::Evaluated(rule, code, r#type)) => {
+                let code = capture_of(&code)?;
+                (rule.unwrap_or(CaptureRule::Empty), r#type, Some(code))
+            }
             Err(why) => return Err(format!("output {name}: {why}")),
         };
-        if let Some(code) = code {
-            let r#type = convert(&output.value_type, &named)?;
-            evaluated.push(Evaluated {
-                output: port(r#type),
-                code: Expression::parse(&runtime_of(&code)?, false)?,
-                captured: files.is_some(),
-            });
-        }
-        if let Some((rule, r#type)) = files {
-            task.captures.push(Capture {
-                output: name.clone(),
-                from: rule,
-                load_contents: loads(output),
-                optional: false,
-                arity: None,
-            });
-            outputs.push(port(r#type));
-        }
+        let binding = output.binding.as_ref();
+        let listing = match binding
+            .and_then(|binding| binding.load_listing)
+            .or(required)
+        {
+            Some(LoadListing::ShallowListing) => Some(wir::Listing::Shallow),
+            Some(LoadListing::DeepListing) => Some(wir::Listing::Deep),
+            _ => None,
+        };
+        task.captures.push(Capture {
+            output: name.clone(),
+            from: rule,
+            load_contents: loads(output),
+            optional: false,
+            arity: None,
+            listing: listing
+                .filter(|_| holds(&output.value_type, &Cwl::Directory) || code.is_some()),
+            code,
+        });
+        outputs.push(port(r#type));
     }
     Ok(Lowered {
         task,
@@ -390,7 +424,7 @@ pub fn lower(
         outputs,
         attributes,
         values,
-        evaluated,
+        loads: loaded,
     })
 }
 
@@ -438,6 +472,19 @@ fn bound(
         }
         [single] if plain(single) => Ok(vec![input(name.to_owned(), None)]),
         _ => Err(format!("the command line binding of input {name}")),
+    }
+}
+
+/// Whether a type holds a field or items with a command line binding.
+fn bindings(r#type: &Cwl, named: &crate::types::Named, depth: usize) -> bool {
+    match crate::types::resolve(r#type, named) {
+        _ if depth > 32 => false,
+        Cwl::Array(array) => array.binding.is_some() || bindings(&array.items, named, depth + 1),
+        Cwl::Union(members) => (members.iter()).any(|member| bindings(member, named, depth + 1)),
+        Cwl::Record(record) => record.fields.iter().any(|field| {
+            field.input_binding.is_some() || bindings(&field.value_type, named, depth + 1)
+        }),
+        _ => false,
     }
 }
 
@@ -490,7 +537,7 @@ fn literal(expression: Option<&Expression>, what: &str) -> Result<Option<String>
 fn capture(
     output: &cwl_parser::model::OutputParameter,
     task: &Task,
-    (listed, named): (bool, &crate::types::Named),
+    named: &crate::types::Named,
     glob: &mut Globs<'_>,
 ) -> Result<Read, String> {
     let name = short_name(&output.id);
@@ -507,8 +554,9 @@ fn capture(
     }
     let read = |rule: CaptureRule, r#type: Type| match computed {
         Some(format) => Ok(Read::Evaluated(
-            Some((rule, r#type)),
+            Some(rule),
             Expression::parse(&runtime::formats(format), false)?,
+            r#type,
         )),
         None => Ok(Read::Direct(rule, r#type)),
     };
@@ -524,37 +572,24 @@ fn capture(
         _ => {}
     }
     let Some(binding) = &output.binding else {
-        return Err("no glob".into());
+        // Only `cwl.output.json` gives an output without a binding, apart from a record.
+        let resolved = crate::types::resolve(&output.value_type, named);
+        if matches!(resolved, Cwl::Record(_)) || secondary {
+            return Err("no glob".into());
+        }
+        let r#type = with_format(convert(&output.value_type, named)?, format);
+        return read(CaptureRule::Results, r#type);
     };
-    if binding.load_listing.is_some() {
-        return Err("loadListing".into());
-    }
     if let Some(code) = &binding.output_eval {
         if output.format.is_some() || secondary {
             return Err("the format or secondary files of an evaluated output".into());
         }
-        let reads = paths(code) || code.text.contains("exitCode");
-        if reads || (listed && code.text.contains("listing")) {
-            return Err("an outputEval that reads the exit code, a path or a listing".into());
-        }
-        let files = match binding.glob.as_slice() {
+        let rule = match binding.glob.as_slice() {
             [] => None,
-            globs => {
-                let rule = glob(name, globs)?;
-                let items = match holds(&output.value_type, &Cwl::Directory)
-                    && !holds(&output.value_type, &Cwl::File)
-                {
-                    true => Type::Directory,
-                    false => file(None),
-                };
-                let found = Type::Array(wir::ArrayType {
-                    items: Box::new(items),
-                    nonempty: false,
-                });
-                Some((rule, found))
-            }
+            globs => Some(glob(name, globs)?),
         };
-        return Ok(Read::Evaluated(files, code.clone()));
+        let r#type = convert(&output.value_type, named)?;
+        return Ok(Read::Evaluated(rule, code.clone(), r#type));
     }
     if binding.glob.is_empty() {
         return Err("no glob".into());
@@ -624,6 +659,21 @@ fn unquoted(word: Argument) -> Argument {
             ..
         } => Argument::Input {
             input,
+            prefix,
+            separate,
+            separator,
+            quote: false,
+        },
+        Argument::Code {
+            code,
+            this,
+            prefix,
+            separate,
+            separator,
+            ..
+        } => Argument::Code {
+            code,
+            this,
             prefix,
             separate,
             separator,

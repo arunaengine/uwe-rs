@@ -194,17 +194,17 @@ fn compiles_dag_control() {
         b["depends"],
         json!({"result": {"op": "a", "on": ["failed"]}})
     );
-    assert_eq!(b["handles"], json!([{"op": "a", "on": ["failed"]}]));
+    assert!(b.get("handles").is_none(), "the targets judge a failure");
     let bare = json!(["succeeded", "skipped", "daemoned"]);
     let expected =
         json!({"any": [{"result": {"op": "a", "on": bare}}, {"result": {"op": "b", "on": bare}}]});
     assert_eq!(op(main, "c")["depends"], expected);
-    let failures = json!(["failed", "errored"]);
-    let ran_past = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
+    let judged = &op(main, "a.targets");
+    assert_eq!(judged["kind"]["status_group"]["members"], json!(["c"]));
+    assert_eq!(judged["after"], json!([{"op": "c", "on": ["succeeded"]}]));
     assert_eq!(
-        op(main, "c")["handles"],
-        ran_past,
-        "the target judges the DAG"
+        judged["handles"],
+        json!([{"op": "a", "on": ["failed", "errored"]}])
     );
 }
 
@@ -634,10 +634,12 @@ fn targets_handle_failures() {
     let (document, kept) = compiled(folder.path(), spec);
     assert!(kept.is_empty(), "{kept:?}");
     let main = graph(&document, "template.main");
-    let handles = &op(main, "c")["handles"];
-    let failures = json!(["failed", "errored"]);
-    let expected = json!([{"op": "a", "on": failures}, {"op": "b", "on": failures}]);
-    assert_eq!(handles, &expected);
+    for failing in ["a", "b"] {
+        let judged = &op(main, &format!("{failing}.targets"));
+        assert_eq!(judged["after"], json!([{"op": "c", "on": ["succeeded"]}]));
+        let handles = json!([{"op": failing, "on": ["failed", "errored"]}]);
+        assert_eq!(judged["handles"], handles);
+    }
 }
 
 #[test]

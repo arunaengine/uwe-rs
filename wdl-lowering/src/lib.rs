@@ -94,6 +94,7 @@ pub fn lower_with(
         types: Vec::new(),
         graphs,
         entry: "main".into(),
+        hooks: Vec::new(),
     };
     if let Err(problems) = wir::verify(&document) {
         let problems: Vec<String> = problems.iter().map(ToString::to_string).collect();

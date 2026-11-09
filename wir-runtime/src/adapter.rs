@@ -162,6 +162,8 @@ pub struct Opening<'a> {
     pub builder: &'a TaskBuilder,
     /// The sources of the document, like the config values a compiler pinned.
     pub sources: &'a [wir::Source],
+    /// The observers of its source and the processes they hear of, from the run hooks.
+    pub observers: Vec<&'a wir::Observers>,
     pub source: PathBuf,
     pub configs: Vec<PathBuf>,
     /// The input values of the run.
@@ -466,6 +468,11 @@ impl Dialects {
         ended: (&Identity, Status),
     ) -> Result<Option<PlanUpdate>, DriverError> {
         self.opened[index].adapter.replan(region, ended.0, ended.1)
+    }
+
+    /// The deliveries that adapters gave at their end, which the run has not handed out yet.
+    pub fn held(&self) -> impl Iterator<Item = &Delivery> + '_ {
+        self.opened.iter().flat_map(|opened| &opened.held)
     }
 
     /// Whether a delivery that an adapter gave waits for its acknowledgement.

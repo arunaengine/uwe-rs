@@ -18,13 +18,14 @@ pub use closure::{Binding, Body, Closure, ExprLanguage, Scope, ValueRules};
 pub use control::{Control, ResultKind, StatusGroup, StatusTest};
 pub use dialect::{PortMap, RuleTask, TaskBuilder, TaskRef};
 pub use document::{
-    Document, Edge, Endpoint, Graph, Language, ParseError, Port, SCHEMA, Source, VERSION, parse,
+    Document, Edge, Endpoint, Graph, Hook, Language, ObservedProcess, Observers, ParseError, Port,
+    SCHEMA, Source, VERSION, parse,
 };
 pub use flow::{Flow, Subscription};
 pub use op::{
     Argument, Arity, Attributes, Branch, Cache, Call, Capture, CaptureRule, Content, Dependency,
-    Effect, Emission, Expr, ExprForm, FailureRule, FileName, Kind, Map, Native, Op, Origin,
-    Process, Resources, Retry, Scatter, Staged, Status, Task, TaskPatch, plain_folder,
+    Effect, Emission, Expr, ExprForm, FailureRule, FileName, Kind, Listing, Load, Map, Native, Op,
+    Origin, Process, Resources, Retry, Scatter, Staged, Status, Task, TaskPatch, plain_folder,
 };
 pub use types::{
     ArrayType, Field, FileType, KeyType, MapType, SecondaryFile, Type, TypeDef, resolve,

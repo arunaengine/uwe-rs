@@ -10,7 +10,8 @@
     "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
     "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
     "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
-    "entry": { "$ref": "#/$defs/name" }
+    "entry": { "$ref": "#/$defs/name" },
+    "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } }
   },
   "$defs": {
     "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
@@ -337,6 +338,14 @@
             "form": { "enum": ["text", "condition", "items", "labels"] }
           }
         },
+        "load": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "contents": { "type": "boolean" },
+            "listing": { "enum": ["shallow", "deep"] }
+          }
+        },
         "map": {
           "type": "object",
           "additionalProperties": false,
@@ -388,7 +397,8 @@
             "compare": { "$ref": "#/$defs/callback" },
             "seed": { "$ref": "#/$defs/literal" },
             "empty": { "$ref": "#/$defs/empty_rule" },
-            "nulls": { "enum": ["keep", "keep_state"] }
+            "nulls": { "enum": ["keep", "keep_state"] },
+            "steps": { "type": "boolean" }
           }
         },
         "first": { "$ref": "#/$defs/pick" },
@@ -910,6 +920,39 @@
       }
     },
     "callback": { "oneOf": [{ "$ref": "#/$defs/name" }, { "$ref": "#/$defs/closure" }] },
+    "hook": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "complete": { "$ref": "#/$defs/closure" },
+        "error": { "$ref": "#/$defs/closure" },
+        "observe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "source": { "$ref": "#/$defs/name" },
+            "processes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "name"],
+                "properties": {
+                  "id": { "$ref": "#/$defs/count" },
+                  "name": { "type": "string" },
+                  "definition": { "type": "string" },
+                  "script": { "type": "string" },
+                  "feeds": { "type": "array", "items": { "$ref": "#/$defs/count" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "task": {
       "type": "object",
       "additionalProperties": false,
@@ -976,6 +1019,19 @@
                 "additionalProperties": false,
                 "required": ["raw"],
                 "properties": { "raw": { "type": "string" } }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code"],
+                "properties": {
+                  "code": { "type": "string" },
+                  "self": { "$ref": "#/$defs/name" },
+                  "prefix": { "type": "string" },
+                  "separate": { "type": "boolean" },
+                  "separator": { "type": "string" },
+                  "quote": { "type": "boolean" }
+                }
               }
             ]
           }
@@ -997,7 +1053,7 @@
               },
               "from": {
                 "oneOf": [
-                  { "enum": ["stdout", "stderr"] },
+                  { "enum": ["stdout", "stderr", "results", "empty"] },
                   {
                     "type": "object",
                     "additionalProperties": false,
@@ -1012,7 +1068,9 @@
                   }
                 ]
               },
-              "load_contents": { "type": "boolean" }
+              "load_contents": { "type": "boolean" },
+              "listing": { "enum": ["shallow", "deep"] },
+              "code": { "type": "string" }
             }
           }
         },
@@ -1023,11 +1081,15 @@
         "stderr": { "$ref": "#/$defs/file_name" },
         "workdir": { "type": "string" },
         "staging": { "type": "string" },
+        "staged": { "$ref": "#/$defs/names" },
         "environment": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/file_name" }
         },
         "stdin": { "$ref": "#/$defs/file_name" },
+        "library": { "type": "array", "items": { "type": "string" } },
+        "results": { "type": "string" },
+        "limits": { "$ref": "#/$defs/name" },
         "files": {
           "type": "array",
           "items": {

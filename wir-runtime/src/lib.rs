@@ -21,6 +21,7 @@ mod groovy;
 mod grouping;
 mod inputs;
 mod javascript;
+mod load;
 mod looping;
 mod mixing;
 pub mod nextflow;

@@ -10,7 +10,7 @@ use nextflow_evaluator::interpreter::{Error, FileMetadata, Host, Interpreter};
 use nextflow_evaluator::lowered::{Module, Process};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_plugins::observer;
-use serde_json::Value as Json;
+use serde_json::{Value as Json, json};
 use workflow_graph::{Delivery, Driver, DriverError, Launch, Outcome, Task};
 
 use crate::driver::{Ended, Nextflow, Settings, error};
@@ -69,6 +69,17 @@ pub struct Adapter {
     /// The `maxForks` and `fair` of each call, which its first task fixes, by call name.
     limits: HashMap<Rc<str>, Limits>,
     flights: HashMap<TaskId, (Rc<Binding>, InFlight)>,
+    /// The first task that failed for good, with the trace that an `onError` handler gets.
+    failed: Option<(workflow_graph::TaskId, Json)>,
+}
+
+/// What a run tells its handlers of itself: its start in milliseconds since the epoch, the
+/// number of tasks that succeeded, and the trace of the task that failed it.
+#[derive(Clone, Debug, Default)]
+pub struct RunEnd {
+    pub start: Option<i64>,
+    pub succeeded: i64,
+    pub trace: Option<Json>,
 }
 
 impl Adapter {
@@ -89,6 +100,7 @@ impl Adapter {
             calls: HashMap::new(),
             limits: HashMap::new(),
             flights: HashMap::new(),
+            failed: None,
         };
         let (module, params) = (adapter.module.clone(), adapter.options.config.params());
         adapter.interpret(|interpreter| {
@@ -150,6 +162,11 @@ impl Adapter {
             pending.extend(linked.map(|link| link.module.clone()));
         }
         None
+    }
+
+    /// The first task that failed for good, with its trace as an `onError` handler gets it.
+    pub fn failed_task(&self) -> Option<(workflow_graph::TaskId, &Json)> {
+        self.failed.as_ref().map(|(id, trace)| (*id, trace))
     }
 
     /// Takes the outcome of an attempt that [`Adapter::prepare`] or a retry asked for.
@@ -273,6 +290,7 @@ impl Adapter {
             Done(Completed),
             Retry,
         }
+        let mut trace = None;
         let next = self.interpret(|interpreter| {
             let failure = match binding.collect(interpreter, &mut flight, &mut outcome)? {
                 Collected::Values { mut values, files } => {
@@ -319,9 +337,19 @@ impl Adapter {
                     interpreter.print(&format!("NOTE: {message} -- Error is ignored\n"));
                     Next::Done(Completed::Ignored(message))
                 }
-                _ => Next::Done(Completed::Failed(message)),
+                _ => {
+                    // As the native driver keeps the task that fails the run.
+                    trace = Some(json!({"task_id": outcome.id.0.to_string(),
+                        "name": flight.name(), "process": &*binding.name,
+                        "exit": outcome.exit_status, "attempt": attempt, "status": "FAILED"}));
+                    Next::Done(Completed::Failed(message))
+                }
             })
         })?;
+        if let Some(trace) = trace {
+            let id = workflow_graph::TaskId(outcome.id.0);
+            self.failed.get_or_insert((id, trace));
+        }
         if let Next::Done(completed) = next {
             return Ok(completed);
         }
@@ -368,13 +396,62 @@ impl Adapter {
     }
 
     /// Records the end of the run in the `workflow` object, as the native driver does before
-    /// the `onComplete` and `onError` handlers: `success`, `complete`, `duration`, and for a
-    /// failed run `exitStatus` and `errorMessage`.
-    pub fn finish_run(&mut self, error: Option<&str>) {
-        crate::workflow::finish(&self.workflow, error.is_none(), 0);
-        if let Some(message) = error {
-            crate::workflow::failure(&self.workflow, message, Value::integer(1));
+    /// the `onComplete` and `onError` handlers: `start`, `success`, `complete`, `duration`, the
+    /// succeeded tasks, and for a failed run `exitStatus` and `errorMessage`.
+    pub fn finish_run(&mut self, error: Option<&str>, end: &RunEnd) {
+        if let Some(start) = end.start {
+            crate::workflow::started(&self.workflow, start);
         }
+        crate::workflow::finish(&self.workflow, error.is_none(), end.succeeded);
+        if let Some(message) = error {
+            let exit = end.trace.as_ref().and_then(|trace| trace["exit"].as_i64());
+            let status = exit.and_then(|exit| i32::try_from(exit).ok()).unwrap_or(1);
+            crate::workflow::failure(&self.workflow, message, Value::integer(status));
+        }
+    }
+
+    /// Runs what the plugins of the config do at the end of a run, as the native driver does
+    /// after the `onComplete` handlers.
+    pub fn finish_plugins(&mut self) {
+        let mut session = Session {
+            base: self.driver.host(),
+            options: &self.options,
+            network: None,
+            operator_directory: &mut self.operator_directory,
+        };
+        session.finish_plugins(&self.workflow);
+    }
+
+    /// Runs a handler like [`Adapter::evaluate_printed`], with value channels bound to these
+    /// values, whose values the handler reads as it reads them after a native run.
+    pub fn evaluate_ended<T>(
+        &mut self,
+        print: &dyn Fn(&str),
+        channels: &[Json],
+        code: impl FnOnce(&mut Interpreter, Vec<Value>) -> Result<T, Error>,
+    ) -> Result<T, DriverError> {
+        let mut network = crate::network::Network::default();
+        let mut made = Vec::new();
+        for value in channels {
+            let channel = network.channel(true);
+            if !value.is_null() {
+                network.bind(channel, bridge::from_json(value));
+            }
+            made.push(Value::Channel(channel));
+        }
+        let mut printed = Printed {
+            base: self.driver.host(),
+            print,
+        };
+        let mut session = Session {
+            base: &mut printed,
+            options: &self.options,
+            network: Some(&network),
+            operator_directory: &mut self.operator_directory,
+        };
+        let mut interpreter = Interpreter::new(&mut session);
+        crate::set_globals(&mut interpreter, &self.options, &self.workflow);
+        code(&mut interpreter, made).map_err(|failure| error(interpreter.locate(failure)))
     }
 
     /// The main script of the run.

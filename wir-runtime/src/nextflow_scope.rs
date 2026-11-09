@@ -11,7 +11,7 @@ use std::rc::Rc;
 use nextflow_evaluator::interpreter::{Error, Interpreter};
 use nextflow_evaluator::lowered::Module;
 use nextflow_evaluator::value::Value;
-use nextflow_runtime::{Adapter, Loader};
+use nextflow_runtime::{Adapter, Loader, RunEnd};
 use serde_json::{Map, Value as Json};
 use wir::{Document, Language, TaskBuilder};
 use workflow_graph::{Delivery, DeliveryMode, Launch};
@@ -192,18 +192,40 @@ impl Scoped {
         let arguments = match (hook, arguments) {
             (Some(kind), Some([run])) => {
                 let error = (run["success"] != true).then(|| run["error"].as_str().unwrap_or(""));
-                adapter.borrow_mut().finish_run(error);
+                let end = RunEnd {
+                    start: run["start"].as_i64(),
+                    succeeded: run["succeeded"].as_i64().unwrap_or(0),
+                    trace: trace(&run["failed"]),
+                };
+                adapter.borrow_mut().finish_run(error, &end);
+                // The plugins act once the `onComplete` handlers ran, as in a native run.
+                if kind == PLUGINS {
+                    adapter.borrow_mut().finish_plugins();
+                    return Ok(Json::Null);
+                }
                 hooked = match kind {
-                    "error" => vec![Json::Null],
+                    "error" => vec![end.trace.unwrap_or_default()],
                     _ => Vec::new(),
                 };
                 Some(&hooked[..])
             }
             _ => arguments,
         };
-        let code = |interpreter: &mut Interpreter| {
+        // The captured channels of a handler, which it reads as value channels.
+        let channels: Vec<&str> = (values.get(CHANNELS).and_then(Json::as_array))
+            .map(|names| names.iter().filter_map(Json::as_str).collect())
+            .unwrap_or_default();
+        let bound: Vec<Json> = (channels.iter())
+            .map(|name| values.get(*name).cloned().unwrap_or_default())
+            .collect();
+        let code = |interpreter: &mut Interpreter, made: Vec<Value>| {
+            let mut made = made.into_iter();
             let mut given = Vec::new();
             for name in &self.names {
+                if channels.contains(&name.as_str()) {
+                    given.push(made.next().unwrap_or(Value::Null));
+                    continue;
+                }
                 let value = values.get(name).unwrap_or(&Json::Null);
                 given.push(rebuilt(value, base, launching, interpreter)?);
             }
@@ -221,18 +243,37 @@ impl Scoped {
             interpreter.call_closure(&closure, items)
         };
         let result = match printer {
+            Some(printer) if !bound.is_empty() => {
+                let print = |text: &str| printer.print(text);
+                adapter.borrow_mut().evaluate_ended(&print, &bound, code)
+            }
             Some(printer) => adapter
                 .borrow_mut()
-                .evaluate_printed(&|text| printer.print(text), code),
-            None => adapter.borrow_mut().evaluate(code),
+                .evaluate_printed(&|text| printer.print(text), |at| code(at, Vec::new())),
+            None => adapter.borrow_mut().evaluate(|at| code(at, Vec::new())),
         };
         crate::groovy::to_json(&result.map_err(|error| error.message)?)
     }
 }
 
 /// The capture that marks a run hook of the `workflow.onComplete` or `onError` handlers, as
-/// `complete` or `error`.
+/// `complete` or `error`, or the end of the plugins of the run, as [`PLUGINS`].
 pub const HOOK: &str = "wirHook";
+
+/// The run hook in which the plugins of the config act at the end of the run.
+pub const PLUGINS: &str = "plugins";
+
+/// The capture that names the captures of a handler that are value channels.
+pub const CHANNELS: &str = "wirChannels";
+
+/// The trace of the task that failed the run, with its id in the run, as `onError` gets it.
+fn trace(failed: &Json) -> Option<Json> {
+    let mut shown = failed.get("shown")?.clone();
+    if let (Some(task), Json::Object(object)) = (failed.get("task"), &mut shown) {
+        object.insert("task_id".into(), Json::String(task.to_string()));
+    }
+    Some(shown)
+}
 
 /// A wir value as Groovy sees it, with captured closures in the reserved `Closure` form made
 /// again in their scripts.

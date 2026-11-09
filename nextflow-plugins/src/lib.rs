@@ -250,6 +250,11 @@ pub fn start(context: &mut Context) -> Result<bool, Error> {
     Ok(true)
 }
 
+/// Whether a plugin of the config acts at the end of a run, in [`finish`].
+pub fn finishes(config: &Config) -> bool {
+    (catalogue::configured(config).iter()).any(|id| id == "nf-bactopia" || id == "nf-fl86")
+}
+
 /// Runs what the plugins of the config do when a run ends, after its `onComplete` handlers;
 /// `context.workflow` is the finished `workflow` object.
 pub fn finish(context: &mut Context) {

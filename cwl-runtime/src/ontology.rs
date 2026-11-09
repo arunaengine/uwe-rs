@@ -13,7 +13,7 @@ const LIMIT: u64 = 16 << 20;
 type Relations = HashMap<NamedOrBlankNode, HashSet<NamedOrBlankNode>>;
 
 #[derive(Debug, Default)]
-pub(crate) struct Ontology {
+pub struct Ontology {
     schemas: Vec<String>,
     remote: Remote,
     relations: OnceLock<Result<Relations, String>>,

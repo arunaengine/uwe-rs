@@ -231,12 +231,12 @@ fn execute_with(
     let private;
     let (target, language, arguments) = match arguments.lowered {
         true => {
-            let (path, inputs, values) =
+            let (path, inputs, values, secret_inputs) =
                 crate::lower::document(&target, language, arguments, &setup)?;
             private = values;
-            // A WDL input file and parameters become one file for the entry graph; Snakemake
-            // config files and values are in the document.
-            let compiled = language == Language::Snakemake;
+            // A WDL input file and parameters become one file for the entry graph, or values in
+            // memory; Snakemake config files and values are in the document.
+            let compiled = matches!(language, Language::Snakemake | Language::Wdl);
             let params = match inputs {
                 Some(_) => Vec::new(),
                 None if compiled => Vec::new(),
@@ -245,6 +245,7 @@ fn execute_with(
             converted = Arguments {
                 inputs: inputs.or(arguments.inputs.clone().filter(|_| !compiled)),
                 params,
+                secret_inputs,
                 ..arguments.clone()
             };
             (path, Language::Wir, &converted)

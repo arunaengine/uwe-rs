@@ -242,6 +242,11 @@ pub(crate) struct InFlight {
 }
 
 impl InFlight {
+    /// The name of the task, like `FASTQC (sample1)`.
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Typed outputs compute their values from their parts in the frame of the task.
     pub(crate) fn typed_values(
         &mut self,

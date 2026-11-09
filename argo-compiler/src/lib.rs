@@ -109,6 +109,7 @@ pub fn compile_with(
         graphs,
         entry: ENTRY.into(),
         hooks: Vec::new(),
+        formats: Default::default(),
     };
     if let Err(problems) = wir::verify(&document) {
         let problems: Vec<String> = problems.iter().map(ToString::to_string).collect();

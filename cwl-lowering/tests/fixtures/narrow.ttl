@@ -1,0 +1,8 @@
+# Formats of sequences: a narrower one and an equivalent one of fasta.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+<http://example.org/formats/narrow> rdfs:subClassOf <http://example.org/formats/fasta> .
+<http://example.org/formats/fa> owl:equivalentClass <http://example.org/formats/fasta> .

@@ -11,7 +11,15 @@
     "types": { "type": "array", "items": { "$ref": "#/$defs/type_def" } },
     "graphs": { "type": "array", "items": { "$ref": "#/$defs/graph" } },
     "entry": { "$ref": "#/$defs/name" },
-    "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } }
+    "hooks": { "type": "array", "items": { "$ref": "#/$defs/hook" } },
+    "formats": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefixes": { "type": "object", "additionalProperties": { "type": "string" } },
+        "ontologies": { "type": "array", "items": { "type": "string" } }
+      }
+    }
   },
   "$defs": {
     "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
@@ -284,7 +292,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "cache": { "enum": ["default", "never", "resume"] },
+        "cache": { "enum": ["default", "never", "resume", "rerun"] },
         "place": { "type": "string" },
         "resources": {
           "type": "object",
@@ -297,7 +305,8 @@
           }
         },
         "retry": { "$ref": "#/$defs/count" },
-        "time": { "$ref": "#/$defs/count" }
+        "time": { "$ref": "#/$defs/count" },
+        "name": { "type": "string" }
       }
     },
     "kind": {
@@ -902,6 +911,12 @@
             "additionalProperties": false,
             "required": ["value"],
             "properties": { "value": true }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["output"],
+            "properties": { "output": { "$ref": "#/$defs/endpoint" } }
           }
         ]
       }

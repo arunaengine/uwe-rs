@@ -642,6 +642,9 @@ pub struct Attributes {
     /// The time limit of one attempt, in seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time: Option<u64>,
+    /// The name of the op in the names of its tasks, in place of its path; empty adds none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// Whether earlier results may be reused. No setting overrides a source's own veto on reuse.
@@ -653,6 +656,8 @@ pub enum Cache {
     Never,
     /// Reuse only results of the run that is resumed.
     Resume,
+    /// Run again every time, also on resume, as a CWL tool with `enableReuse: false` does.
+    Rerun,
 }
 
 /// What one attempt needs. Memory and disk are in bytes.

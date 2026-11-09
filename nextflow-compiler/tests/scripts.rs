@@ -245,3 +245,64 @@ fn keeps_channel_values() {
     let text = serde_json::to_string(&compilation.document).unwrap();
     assert!(!text.contains(TOKEN));
 }
+
+/// A config that reads a variable of the environment by its bare name, as legacy configs
+/// do, keeps the pipeline native, and its native op reads the param at run time.
+#[test]
+fn reads_legacy_variables() {
+    let config = "params.token = API_TOKEN\n";
+    let script = "process SAY {\n    input:\n    val n\n    script:\n    \"echo $n\"\n}\n\
+                  workflow {\n    SAY(channel.of(params.token.size()))\n}\n";
+    let compilation = configured(script, config);
+    let text = serde_json::to_string(&compilation.document).unwrap();
+    assert!(!text.contains(TOKEN));
+    assert!(!compilation.full());
+    let said = run_configured(script, config).unwrap();
+    let said: Vec<&str> = (said.iter())
+        .filter_map(|script| script.lines().find(|line| line.starts_with("echo")))
+        .collect();
+    assert_eq!(said, [format!("echo {}", TOKEN.len())]);
+}
+
+/// A file that the build reads at a place named by a value of the environment is no source
+/// of the native op.
+#[test]
+fn keeps_read_places() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    std::fs::write(folder.join(format!("{TOKEN}.csv")), "a,b\n").unwrap();
+    let script = "workflow {\n    channel.of(file(\"${projectDir}/\" + System.getenv('API_TOKEN') \
+                  + '.csv').text).view()\n}\n";
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    let launch = Launch {
+        target: folder.to_owned(),
+        scratch: folder.join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let compilation = nextflow_compiler::compile(&launch, settings(folder), folder).unwrap();
+    let text = serde_json::to_string(&compilation.document).unwrap();
+    assert!(!text.contains(TOKEN));
+    assert!(!compilation.full());
+}
+
+/// A value of the environment that the compiler would write into Groovy code, escaped, stays
+/// out of the document too.
+#[test]
+fn keeps_escaped_values() {
+    let script =
+        "workflow {\n    channel.of('x').filter(System.getenv('QUOTED_TOKEN')).view()\n}\n";
+    let compilation = compiled(script);
+    let text = serde_json::to_string(&compilation.document).unwrap();
+    assert!(!text.contains("a\\\"b"), "the document holds the value");
+    assert!(!compilation.full());
+}
+
+/// Reading a variable that the environment does not set reads nothing: the pipeline still
+/// compiles.
+#[test]
+fn ignores_unset_variables() {
+    let script = "def first = System.getenv('MISSING_TOKEN')\ndef second = env('MISSING_TOKEN')\n\
+                  workflow {\n    channel.of(1).map { n -> [n, first, second] }.view()\n}\n";
+    assert!(compiled(script).full());
+}

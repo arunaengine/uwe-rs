@@ -30,13 +30,19 @@ pub fn noting<T>(work: impl FnOnce() -> T) -> T {
     made
 }
 
-/// Notes a value that a script read from the environment, while a compile notes them.
-pub(crate) fn note_read(value: &str) {
+/// Notes the value of a set variable that a script or config read from the environment,
+/// while a compile notes them.
+pub fn note_read(value: &str) {
     READ.with(|read| {
         if let Some(read) = read.borrow_mut().as_mut() {
             read.insert(value.to_owned());
         }
     });
+}
+
+/// Whether the compile read a set variable of the environment, even an empty one.
+pub fn any_read() -> bool {
+    READ.with(|read| read.borrow().as_ref().is_some_and(|read| !read.is_empty()))
 }
 
 /// Whether `text` holds a value that a script of the compile read from the environment; an

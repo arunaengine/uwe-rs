@@ -73,7 +73,18 @@ fn compiling(launch: &Launch, settings: Settings, base: &Path) -> Result<Compila
         base: base.to_owned(),
     };
     let mut driver = Nextflow::new(launch, settings)?;
-    match driver.export() {
+    let exported = driver.export();
+    let built = exported
+        .as_ref()
+        .map_or_else(|error| error.unsupported, |_| true);
+    if built && nextflow_evaluator::secrets::any_read() {
+        let kept = vec![Kept {
+            path: "pipeline".into(),
+            reason: "the pipeline reads the environment while it builds".into(),
+        }];
+        return launched(launch, &context, driver.legacy(), kept);
+    }
+    match exported {
         Ok(network) => compile_network(&network, &context).map_err(DriverError::new),
         Err(error) if error.unsupported => {
             let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
@@ -111,8 +122,29 @@ pub fn compile_native(
     }];
     nextflow_evaluator::secrets::noting(|| {
         let interface = driver.interface()?;
+        if nextflow_evaluator::secrets::any_read() {
+            return launched(launch, &context, driver.legacy(), kept);
+        }
         native(&interface, &context, &mut sources, kept).map_err(DriverError::new)
     })
+}
+
+/// The pipeline as one native op made from the launch alone, for a pipeline that read the
+/// environment while it built: its script, configs, profiles, entry and the params given to
+/// it. The native op reads the config and the environment when it runs.
+fn launched(
+    launch: &Launch,
+    context: &Context,
+    legacy: bool,
+    kept: Vec<Kept>,
+) -> Result<Compilation, DriverError> {
+    let params = nextflow_runtime::driver::params(launch, legacy)?;
+    let network = Network {
+        params: nextflow_runtime::inputs::to_json(&params),
+        ..Network::default()
+    };
+    let mut sources = Sources::new(&launch.target.to_string_lossy(), &context.base);
+    native(&network, context, &mut sources, kept).map_err(DriverError::new)
 }
 
 /// Compiles a built network; a node that does not compile keeps the pipeline one native op.
@@ -171,16 +203,9 @@ fn native(
 ) -> Result<Compilation, String> {
     let emits = &network.emits;
     let schema = network.schema.as_ref();
-    // A param that holds a value of the environment is no input: the native op reads it.
-    let mut given = network.params.clone();
-    if let Json::Object(params) = &mut given {
-        params.retain(|name, value| {
-            !nextflow_runtime::export::read(&json!({ name.as_str(): value }))
-        });
-    }
     // A native op takes typed params only: a type with `dynamic` in it, like the optional
     // dynamic of a null param, becomes the shape of the param's value, which may be null.
-    let ports = params::ports(&given, schema);
+    let ports = params::ports(&network.params, schema);
     let inputs: Vec<Json> = (ports.into_iter())
         .map(|mut port| {
             if dynamic(&port["type"]) {

@@ -382,7 +382,10 @@ impl Interpreter<'_> {
 
 /// `System.getProperty` for the properties that pipelines read.
 fn property_value(name: &str) -> Value {
-    let variable = |name: &str| std::env::var(name).ok();
+    let variable = |name: &str| {
+        let value = std::env::var(name).ok();
+        value.inspect(|value| crate::secrets::note_read(value))
+    };
     let value = match name {
         "user.name" => variable("USER"),
         "user.home" => variable("HOME"),

@@ -28,6 +28,7 @@ use tags::Store;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &["getAWSSecret", "call_seqera_action"],
+    services: &["getAWSSecret", "call_seqera_action"],
     call: Some(call),
     scopes: &["notion", "seqera_action"],
     observer: Some(activate),

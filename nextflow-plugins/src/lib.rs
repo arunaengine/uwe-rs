@@ -314,6 +314,12 @@ pub(crate) fn native<T: Native>(value: &Value) -> Option<RefMut<'_, T>> {
 }
 
 /// Calls a function of a plugin.
+/// Whether the function of the plugin calls a service or needs the run, so that only a run
+/// calls it.
+pub fn calls_service(plugin: &str, name: &str) -> bool {
+    catalogue::find(plugin).is_some_and(|plugin| plugin.services.contains(&name))
+}
+
 pub fn call(
     plugin: &str,
     name: &str,

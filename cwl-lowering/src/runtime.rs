@@ -135,7 +135,9 @@ pub fn computed(scope: &Scope, version: Version) -> Option<(String, String)> {
     };
     let base = format!(
         "var runtime = {{\"outdir\": \"{OUTDIR}\", \"tmpdir\": \"{TMPDIR}\"}}; {TEXT} {PICK} \
-         var cores = {}, ram = {}, tmpdir = {}, outdir = {}; var time = {time}; \
+         var cores = {}, ram = {}, tmpdir = {}, outdir = {}; runtime.cores = Math.ceil(cores); \
+         runtime.ram = Math.ceil(ram); runtime.outdirSize = Math.ceil(outdir); \
+         runtime.tmpdirSize = Math.ceil(tmpdir); var time = {time}; \
          if (time !== null && time !== undefined && (time % 1 !== 0 || time < 0)) \
          {{ throw new Error(\"the timelimit is no whole number of 0 or more\"); }} \
          var mib = function(v) {{ return Math.ceil(v) * 1048576; }};",

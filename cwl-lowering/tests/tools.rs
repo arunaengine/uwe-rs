@@ -296,3 +296,27 @@ fn keeps_capture_library() {
         "capture code sees the expressionLib"
     );
 }
+
+#[test]
+fn times_with_cores() {
+    let lowering = lowered("timed.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let limits = ops
+        .iter()
+        .find(|op| op.path.ends_with("runtime.limits"))
+        .unwrap();
+    let wir::Kind::Expr(expr) = &limits.kind else {
+        panic!("an expr: {:?}", limits.kind);
+    };
+    let filled = expr
+        .code
+        .find("runtime.cores = ")
+        .expect("the cores in runtime");
+    let read = expr.code.find("runtime.cores * 60").unwrap();
+    assert!(
+        filled < read,
+        "the time limit sees the cores: {}",
+        expr.code
+    );
+}

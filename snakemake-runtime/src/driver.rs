@@ -3277,6 +3277,8 @@ fn copy_missing(
                     .create_new(true)
                     .open(&target)?;
                 std::io::copy(&mut std::fs::File::open(&source)?, &mut written)?;
+                // A script of the folder stays executable.
+                written.set_permissions(std::fs::metadata(&source)?.permissions())?;
             }
         }
     }

@@ -276,3 +276,35 @@ fn refuses_dropped_settings() {
         command line";
     assert_eq!(error, expected);
 }
+
+/// A command at the top level of a Snakefile runs once, in the run: compiling it keeps the
+/// workflow one native op, without running the command.
+#[test]
+fn defers_loading_commands() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let snakefile = "shell('echo entry >> counter.txt')\n\nrule all:\n    output: 'done.txt'\n    shell: 'touch {output}'\n";
+    std::fs::write(folder.path().join("Snakefile"), snakefile).expect("writes the Snakefile");
+    let launch = Launch {
+        target: folder.path().join("Snakefile"),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let run = RunSettings {
+        workdir: Some(folder.path().to_owned()),
+        planning: true,
+        ..RunSettings::default()
+    };
+    let base = folder.path().to_owned();
+    let compiled = snakemake_compiler::compile(&launch, Settings::default(), run, &base);
+    let compiled = compiled.expect("compiles");
+    let reasons: Vec<&str> = compiled
+        .kept
+        .iter()
+        .map(|kept| kept.reason.as_str())
+        .collect();
+    assert!(
+        reasons.iter().any(|reason| reason.contains("command")),
+        "{reasons:?}"
+    );
+    assert!(!folder.path().join("counter.txt").exists());
+}

@@ -104,15 +104,24 @@ pub fn plans_job(jobs: &[PlannedJob], rule: &RuleTask) -> bool {
         job.key.rule == key.rule && job.key.wildcards == key.wildcards
     };
     let (key, group) = (job_key(rule), group_keys(rule));
-    // A run plans a group whose jobs need no work as single jobs, which it skips.
-    let alone = |key: &JobKey| {
-        (jobs.iter()).any(|job| named(key, job) && job.group.is_empty() && !job.needed)
-    };
-    let current = !group.is_empty() && alone(&key) && group.iter().all(alone);
-    current
+    let digest = rule.layout.as_ref();
+    // A run groups only jobs that need work: it plans a compiled group whose jobs need no
+    // work, or all but one, as single jobs, with the same files.
+    let alone =
+        |key: &JobKey| (jobs.iter()).position(|job| named(key, job) && job.group.is_empty());
+    let members: Option<Vec<usize>> = std::iter::once(&key).chain(&group).map(alone).collect();
+    let apart = members
+        .filter(|_| !group.is_empty())
+        .is_some_and(|members| {
+            let needed = members
+                .iter()
+                .filter(|member| jobs[**member].needed)
+                .count();
+            needed <= 1 && digest.is_none_or(|digest| *digest == group_layout(jobs, &members))
+        });
+    apart
         || (0..jobs.len()).any(|index| {
             let job = &jobs[index];
-            let digest = rule.layout.as_ref();
             let layout = digest.is_none_or(|digest| *digest == layout(jobs, index));
             named(&key, job) && job.group == group && layout
         })
@@ -134,14 +143,41 @@ pub fn group_keys(rule: &RuleTask) -> Vec<JobKey> {
 pub(crate) fn layout(jobs: &[PlannedJob], index: usize) -> String {
     let job = &jobs[index];
     let outputs: Vec<&str> = job.outputs.iter().map(|file| file.path.as_str()).collect();
-    let mut made: Vec<usize> = job
+    let made = job
         .producers
         .iter()
         .map(|producer| producer.input)
         .collect();
+    digest(&job.inputs, &outputs, made)
+}
+
+/// The layout of the single jobs `members` as one group: the files they read that none of
+/// them makes, each once, the files of each in turn, and those inputs that others make.
+fn group_layout(jobs: &[PlannedJob], members: &[usize]) -> String {
+    let outputs: Vec<&str> = (members.iter())
+        .flat_map(|member| jobs[*member].outputs.iter().map(|file| file.path.as_str()))
+        .collect();
+    let mut inputs: Vec<String> = Vec::new();
+    for file in members.iter().flat_map(|member| &jobs[*member].inputs) {
+        if !outputs.contains(&file.as_str()) && !inputs.contains(file) {
+            inputs.push(file.clone());
+        }
+    }
+    let made = (members.iter())
+        .flat_map(|member| (jobs[*member].producers.iter()).map(move |producer| (member, producer)))
+        .filter(|(_, producer)| !members.contains(&producer.job))
+        .filter_map(|(member, producer)| {
+            let file = &jobs[*member].inputs[producer.input];
+            inputs.iter().position(|input| input == file)
+        })
+        .collect();
+    digest(&inputs, &outputs, made)
+}
+
+fn digest(inputs: &[String], outputs: &[&str], mut made: Vec<usize>) -> String {
     made.sort_unstable();
     made.dedup();
-    let text = json!([job.inputs, outputs, made]).to_string();
+    let text = json!([inputs, outputs, made]).to_string();
     let digest = Sha256::digest(text.as_bytes());
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
     format!("sha256:{hex}")

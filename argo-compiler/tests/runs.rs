@@ -388,3 +388,44 @@ fn uses_consumer_defaults() {
     assert_eq!(one.1, ["runs.consumer"]);
     assert_eq!(other, one);
 }
+
+const INHERITED: &str = r#"  entrypoint: main
+  templates:
+  - name: main
+    dag:
+      tasks:
+      - {name: bad, template: say}
+      - {name: b, template: say, depends: bad.Succeeded}
+      - {name: c, template: say, depends: bad.Failed}
+  - name: say
+    container: {image: alpine:3.20, command: [echo, hi]}
+"#;
+
+#[test]
+fn targets_inherit_failures() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    let file = workflow(root, INHERITED);
+    let failing = |folder| Writer {
+        fails: "bad",
+        ..Writer::new(folder)
+    };
+    let (one, other) = both(root, &file, &[], failing);
+    assert!(one.0.is_err(), "target b inherits the failure: {one:?}");
+    assert_eq!(other.1, one.1);
+    assert!(other.0.is_err(), "{other:?}");
+}
+
+#[test]
+fn reads_config_folders() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path();
+    std::fs::create_dir_all(root.join("flow")).unwrap();
+    std::fs::create_dir_all(root.join("templates")).unwrap();
+    let spec = "  workflowTemplateRef: {name: library}\n";
+    let file = workflow(&root.join("flow"), spec);
+    std::fs::write(root.join("templates/library.yaml"), LIBRARY).unwrap();
+    let (one, other) = both(root, &file, &[root.join("templates")], Writer::new);
+    one.0.as_ref().unwrap();
+    assert_eq!(other, one);
+}

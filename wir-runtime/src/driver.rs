@@ -166,6 +166,8 @@ pub struct WirDriver {
     /// Counts the calls of the engine, so that a planner hears of an instance after the call
     /// it ended in, once its files were delivered.
     turn: u64,
+    /// Whether the hooks of the document ran.
+    hooked: bool,
     texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
@@ -235,6 +237,7 @@ impl WirDriver {
         });
         for default in ports.filter_map(|port| port.default.as_mut()) {
             inputs::absolute(default, &base);
+            inputs::filled(default, launch.simulated);
         }
         let progress = Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
         let scope_run = crate::nextflow_scope::ScopeRun::new(settings.nextflow.clone());
@@ -248,6 +251,7 @@ impl WirDriver {
             owners: HashMap::new(),
             dialects: adapter::Dialects::default(),
             turn: 0,
+            hooked: false,
             texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
@@ -363,7 +367,7 @@ impl WirDriver {
             return Ok(Vec::new());
         }
         if let Kind::Process(spec) = &self.progress.node(at).op.kind {
-            let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at));
+            let rounding = processes::Rounding::new(spec.clone(), self.progress.node(at), &bound);
             self.processes.insert(at, rounding);
             return Ok(Vec::new());
         }
@@ -417,6 +421,19 @@ impl WirDriver {
                         Ok(Vec::new())
                     }
                 }
+            }
+            Kind::Load(spec) => {
+                let node = self.progress.node(at);
+                let mut access = self.settings.cwl.access();
+                access.assume_present |= self.launch.simulated;
+                match crate::load::load(&spec, &node.op, &bound, &access) {
+                    Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
+                    Err(why) => {
+                        let message = Some(format!("op {}: {why}", node.path));
+                        self.progress.end(at, Status::Failed, Map::new(), message);
+                    }
+                }
+                Ok(Vec::new())
             }
             _ => {
                 let path = &self.progress.node(at).path;
@@ -486,8 +503,8 @@ impl WirDriver {
         let patch = match directives {
             None => wir::TaskPatch::default(),
             Some(directives) => {
-                let index = adapter::frame(&self.progress, at).rounds.last().copied();
-                let argument = task::attempt_context(bound, index.unwrap_or(0), attempt, previous);
+                let index = self.progress.round_index(at);
+                let argument = task::attempt_context(bound, index, attempt, previous);
                 let context = engine::Context {
                     document: &self.document,
                     base: &self.base,
@@ -509,7 +526,8 @@ impl WirDriver {
             }
         };
         let (spec, op) = task::patched(spec, &node.op, &patch);
-        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound);
+        let script = (&self.settings.cwl.javascript, self.launch.simulated);
+        let mut task = task::build(id, (&node.path, &node.step), &op, &spec, bound, script)?;
         task.site = op.attributes.place.clone();
         self.patches.insert(id, patch);
         Ok(task)
@@ -536,9 +554,8 @@ impl WirDriver {
         let bound = self.tasks[&outcome.id].2.clone();
         let attempt = outcome.attempt + 1;
         if let Some(test) = retry.and_then(|retry| retry.retry_if.as_ref()) {
-            let index = adapter::frame(&self.progress, at).rounds.last().copied();
-            let argument =
-                task::attempt_context(&bound, index.unwrap_or(0), attempt, previous.clone());
+            let index = self.progress.round_index(at);
+            let argument = task::attempt_context(&bound, index, attempt, previous.clone());
             let context = engine::Context {
                 document: &self.document,
                 base: &self.base,
@@ -570,7 +587,7 @@ impl WirDriver {
     /// again while the op's `retry` allows it; then the op fails, or errors when the task
     /// could not run.
     fn complete_task(&mut self, outcome: &Outcome) -> Vec<Task> {
-        let (at, _, bound) = &self.tasks[&outcome.id];
+        let (at, task, bound) = &self.tasks[&outcome.id];
         let (at, node) = (*at, self.progress.node(*at));
         // The op of a stopped attempt was cancelled already.
         if matches!(self.progress.states[at], State::Ended(..)) {
@@ -580,10 +597,16 @@ impl WirDriver {
             return Vec::new();
         };
         let files = self.files.as_deref();
+        let mut access = self.settings.cwl.access();
+        access.assume_present |= self.launch.simulated;
         let ended = task::Ended {
             outcome,
             files,
             bound,
+            inputs: &task.inputs,
+            simulated: self.launch.simulated,
+            settings: &self.settings.cwl.javascript,
+            access: &access,
         };
         // An attempt is judged by its own patch, like its success codes.
         let patch = self.patches.get(&outcome.id).cloned().unwrap_or_default();
@@ -603,11 +626,11 @@ impl WirDriver {
             inputs: &self.given,
             nextflow: &self.scope_run,
         };
-        let index = adapter::frame(&self.progress, at).rounds.last().copied();
+        let index = self.progress.round_index(at);
         let accepted = captured.and_then(|(values, empty)| match &spec.accept {
             None => Ok((values, empty)),
             Some(accept) => {
-                let attempt = (bound, &values, index.unwrap_or(0));
+                let attempt = (bound, &values, index);
                 let callbacks = &mut self.callbacks;
                 match task::accepts(callbacks, &context, accept, attempt, outcome) {
                     Ok(true) => Ok((values, empty)),
@@ -765,9 +788,14 @@ impl WirDriver {
 
     /// Finishes a child, once, and binds its results to the node's outputs.
     fn end_child(&mut self, index: usize) {
-        self.ended = true;
         let (at, child) = &mut self.children[index];
         let at = *at;
+        // A block whose op was cancelled already gives no results.
+        if matches!(self.progress.states[at], State::Ended(..)) {
+            child.stop();
+            return;
+        }
+        self.ended = true;
         let finished = child.finish();
         let node = self.progress.node(at);
         let (path, defs) = (&node.path, &self.document.types);
@@ -898,6 +926,14 @@ impl WirDriver {
         let opening = adapter::Opening {
             builder,
             sources: &self.document.sources,
+            observers: (self.document.hooks.iter())
+                .filter_map(|hook| match hook {
+                    wir::Hook::Observe(observers) if observers.source == task.source => {
+                        Some(observers)
+                    }
+                    _ => None,
+                })
+                .collect(),
             source: self.locate(&task.source)?,
             configs: configs.collect::<Result<_, _>>()?,
             inputs: &self.progress.inputs,
@@ -1047,7 +1083,45 @@ impl WirDriver {
         for update in updates {
             region.adopt(&mut self.progress, checks, at, update)?;
         }
-        Ok(moved)
+        let forwarded = region.forward(&mut self.progress, at)?;
+        Ok(moved || forwarded)
+    }
+
+    /// Runs the hooks of the document once, at the end of the run: the `complete` hooks, and
+    /// the `error` hooks when it failed; why hooks failed.
+    fn run_hooks(&mut self, failure: Option<&str>) -> Vec<String> {
+        if std::mem::replace(&mut self.hooked, true) {
+            return Vec::new();
+        }
+        let context = engine::Context {
+            document: &self.document,
+            base: &self.base,
+            javascript: &self.settings.cwl.javascript,
+            scopes: &self.scopes,
+            files: &self.file_area,
+            printer: &self.settings.print_sink,
+            simulated: self.launch.simulated,
+            provider: self.files.as_deref(),
+            deliveries: &self.published,
+        };
+        let argument = json!({"success": failure.is_none(), "error": failure});
+        let mut problems = Vec::new();
+        for (index, hook) in self.document.hooks.iter().enumerate() {
+            let closure = match hook {
+                wir::Hook::Complete(closure) => closure,
+                wir::Hook::Error(closure) if failure.is_some() => closure,
+                _ => continue,
+            };
+            let body = wir::Body::Closure(closure.clone());
+            let arguments = (&["run"][..], std::slice::from_ref(&argument));
+            let called = self
+                .callbacks
+                .call(&context, &body, arguments, &self.progress.inputs);
+            if let Err(why) = called {
+                problems.push(format!("hook {index}: {why}"));
+            }
+        }
+        problems
     }
 
     /// Where the document source `id` is: the checkout of a repository at the commit of a
@@ -1153,6 +1227,10 @@ impl Driver for WirDriver {
             return Ok(tasks);
         }
         let index = self.owner(outcome.id)?;
+        // A stopped child of a cancelled op takes no more outcomes.
+        if self.children[index].1.finished() {
+            return self.advance();
+        }
         let last = &mut self.last;
         let tasks = self.children[index].1.complete(outcome, &mut || {
             *last += 1;
@@ -1206,6 +1284,16 @@ impl Driver for WirDriver {
             .flat_map(|(_, child)| child.cancellations())
             .collect();
         tasks.extend(self.dialects.cancellations());
+        // The native blocks of cancelled ops stop with their tasks.
+        for (at, child) in &mut self.children {
+            let cancelled = matches!(
+                self.progress.states[*at],
+                State::Ended(Status::Cancelled, _)
+            );
+            if cancelled && !child.finished() {
+                tasks.extend(child.stop());
+            }
+        }
         // The tasks of ops that a failed process cancelled stop too.
         let cancelled =
             |at: usize| matches!(self.progress.states[at], State::Ended(Status::Cancelled, _));
@@ -1287,6 +1375,9 @@ impl Driver for WirDriver {
                 self.end_child(index);
             }
         }
+        let failure = self.progress.failures.first().cloned();
+        let problems = self.run_hooks(failure.as_deref());
+        self.progress.failures.extend(problems);
         let failures = &self.progress.failures;
         if let Some(first) = failures.first() {
             return Err(DriverError::new(match failures.len() {
@@ -1305,6 +1396,12 @@ impl Driver for WirDriver {
             for target in (self.children.iter()).flat_map(|(_, child)| child.targets()) {
                 let place = cwl_parser::iri::file_path(target).unwrap_or(PathBuf::from(target));
                 places.insert(place.clone(), place);
+            }
+            // The files that adapters deliver at their end take their places first.
+            for delivery in self.dialects.held() {
+                let target = &delivery.target;
+                let place = cwl_parser::iri::file_path(target).unwrap_or(PathBuf::from(target));
+                places.insert(place, PathBuf::from(&delivery.location));
             }
             let sources = &self.document.sources;
             let wdl = !sources.is_empty() && sources.iter().all(|s| s.language == Dialect::Wdl);
@@ -1333,7 +1430,7 @@ impl Driver for WirDriver {
     }
 
     fn failed(&mut self, error: &ExecuteError) -> Result<(), DriverError> {
-        let mut problems = Vec::new();
+        let mut problems = self.run_hooks(Some(&error.to_string()));
         if let Err(problem) = self.dialects.end(Some(&error.to_string())) {
             problems.push(problem.message);
         }

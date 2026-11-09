@@ -14,12 +14,12 @@ use workflow_graph::{Driver, Launch, Simulator, execute};
 /// with outputs equal by class and basename; that end as the test expects (outputs or failure);
 /// and with outputs whose Files also have equal sizes and contents.
 const RECORDED: Counts = Counts {
-    full: 237,
-    partly: 121,
-    unlowered: 20,
-    same: 343,
-    equal: 318,
-    expected: 138,
+    full: 307,
+    partly: 52,
+    unlowered: 19,
+    same: 345,
+    equal: 316,
+    expected: 141,
     exact: 314,
 };
 
@@ -170,6 +170,12 @@ fn outcome(test: &Test, counts: &mut Counts) -> String {
         }
         _ => None,
     };
+    if std::env::var("CWL_SHOW").is_ok_and(|ids| ids.split(',').any(|id| id == test.id)) {
+        eprintln!(
+            "SHOW {} native={:?} lowered={:?}",
+            test.id, values, lowered_run
+        );
+    }
     let (native, lowered) = (native_run, lowered_run);
     let ended = match (&native, &lowered) {
         (Ok(one), Ok(other)) if one == other => match values {

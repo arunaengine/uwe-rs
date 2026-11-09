@@ -7,7 +7,7 @@ mod defaults;
 mod expression;
 mod group;
 mod links;
-mod outputs;
+mod loads;
 mod requirements;
 mod runtime;
 mod tool;
@@ -91,6 +91,7 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
         types: Vec::new(),
         graphs,
         entry: "main".into(),
+        hooks: Vec::new(),
     };
     if let Err(problems) = wir::verify(&document) {
         let problems: Vec<String> = problems.iter().map(ToString::to_string).collect();
@@ -195,18 +196,16 @@ impl Lowerer {
             at: entry.clone(),
         });
         let lowered = match &process.class {
-            Class::CommandLineTool(tool) => tool::lower(process, tool, &scope, &self.base)
-                .and_then(|lowered| {
+            Class::CommandLineTool(tool) => {
+                tool::lower(process, tool, &scope, &self.base).map(|lowered| {
                     let mut op = blank(path, Kind::Task(lowered.task), origin.clone());
                     (op.inputs, op.outputs) = (lowered.inputs, lowered.outputs);
                     op.attributes = lowered.attributes;
                     let library = scope.library();
                     let group = group::computed(op, &lowered.values, &library);
-                    match lowered.evaluated.is_empty() {
-                        true => Ok(group),
-                        false => self.evaluated(process, group, &lowered.evaluated, &library, path),
-                    }
-                }),
+                    loads::loaded(group, &lowered.loads)
+                })
+            }
             Class::Workflow(workflow) => self.call(process, workflow, &scope, path).map(one),
             Class::ExpressionTool(tool) => self.expression(process, tool, &scope, path).map(one),
             Class::Operation => Err("this process class has no lowering yet".into()),

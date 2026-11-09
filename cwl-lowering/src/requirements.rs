@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use cwl_parser::model::{Dynamic, RequirementClass};
-use wir::{Attributes, Cache, Resources, Task};
+use wir::{Attributes, Cache, Task};
 
 use crate::Scope;
 
@@ -68,26 +68,8 @@ pub fn apply(scope: &Scope, task: &mut Task) -> Result<Attributes, String> {
             Dynamic::Value(0) => {}
             // CWL refuses a negative limit when the tool runs; the native op keeps that.
             Dynamic::Value(_) => return Err("a negative time limit".into()),
-            Dynamic::Expression(_) => return Err("a time limit set by an expression".into()),
-        }
-    }
-    if let Some(resource) = scope.find(|class| match class {
-        RequirementClass::Resource(resource) => Some(resource),
-        _ => None,
-    }) {
-        let number = |setting: &Option<Dynamic<f64>>| match setting {
-            Some(Dynamic::Value(value)) => Ok(Some(*value)),
-            Some(Dynamic::Expression(_)) => Err("a resource set by an expression".to_owned()),
-            None => Ok(None),
-        };
-        let cpus = number(&resource.cores_min)?.map(|cores| cores.ceil().max(1.0) as u32);
-        let memory = number(&resource.ram_min)?.map(|mebibytes| (mebibytes * 1_048_576.0) as u64);
-        if cpus.is_some() || memory.is_some() {
-            attributes.resources = Some(Resources {
-                cpus,
-                memory,
-                ..Resources::default()
-            });
+            // The tool computes a time limit that an expression sets.
+            Dynamic::Expression(_) => {}
         }
     }
     Ok(attributes)
@@ -149,14 +131,8 @@ mod tests {
     }
 
     #[test]
-    fn sets_image_resources() {
-        let (attributes, task) = applied("count.cwl");
-        let resources = Resources {
-            cpus: Some(2),
-            memory: Some(64 * 1_048_576),
-            ..Resources::default()
-        };
-        assert_eq!(attributes.unwrap().resources, Some(resources));
+    fn sets_image_network() {
+        let (_, task) = applied("count.cwl");
         assert_eq!(
             task.image.as_deref(),
             Some("docker.io/library/debian:12-slim")

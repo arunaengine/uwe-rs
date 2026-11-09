@@ -375,3 +375,39 @@ async fn asks_each_operation() {
     assert!(journal.verify(&client).await.is_err());
     served.join().unwrap();
 }
+
+/// Recovery asks for the identity outside the two seconds that each record may take, so an
+/// engine that answers in three seconds still has its crash leftovers recovered.
+#[tokio::test]
+async fn recovers_behind_identity() {
+    use std::io::{BufRead, BufReader, Write};
+    let folder = tempfile::tempdir().unwrap();
+    let busy = Journal::new(folder.path(), "busy.sock".into(), "busy-engine".into());
+    let pending = busy.begin("task", "owner").await.unwrap();
+    assert!(busy.bind(pending, "gone-id").is_ok());
+    drop(busy);
+    let socket = folder.path().join("busy.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let served = std::thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 0 && !line.ends_with("\r\n\r\n") {}
+            let (code, body) = if line.lines().next().unwrap().contains("/info ") {
+                std::thread::sleep(Duration::from_secs(3));
+                (200, r#"{"ID":"busy-engine"}"#)
+            } else {
+                assert!(line.contains("/containers/gone-id/json"));
+                (404, r#"{"message":"gone"}"#)
+            };
+            write!(stream, "HTTP/1.1 {code} Reply\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    let path = socket.to_string_lossy().into_owned();
+    let client = Docker::connect_with_socket(&path, 120, bollard::API_DEFAULT_VERSION).unwrap();
+    let journal = Journal::new(folder.path(), "busy.sock".into(), "busy-engine".into());
+    journal.recover(&client).await.unwrap();
+    assert!(!journal.root.join("0/record.json").exists());
+    served.join().unwrap();
+}

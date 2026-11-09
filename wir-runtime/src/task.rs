@@ -613,7 +613,21 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
     let mut found = match made {
         Some(file) => entry(file, None),
         None => {
-            let staged = (inputs.iter()).find(|input| absolute(&input.path, workdir) == path);
+            // A staged input, or a place below the deepest staged Directory that holds it.
+            let staged = (inputs.iter())
+                .filter(|input| !input.source.is_empty())
+                .filter_map(|input| {
+                    let at = absolute(&input.path, workdir);
+                    if at == path {
+                        return Some((at.len(), input.source.clone()));
+                    }
+                    let rest = path
+                        .strip_prefix(&format!("{at}/"))
+                        .filter(|_| input.directory)?;
+                    Some((at.len(), join(&input.source, rest)))
+                })
+                .max_by_key(|(length, _)| *length)
+                .map(|(_, location)| location);
             // A place in the working folder is in the folder of the outputs, as uwe's CWL driver.
             let folder = (outcome.files.iter()).find_map(|file| {
                 let made = file.path.trim_end_matches('/');
@@ -621,7 +635,7 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
                     .map(|folder| folder.trim_end_matches('/').to_owned())
             });
             let location = match (staged, relative(&path, workdir), folder) {
-                (Some(input), _, _) => input.source.clone(),
+                (Some(location), _, _) => location,
                 (None, Some(inner), Some(folder)) => join(&folder, &inner),
                 // A simulated run that made no files takes them as present.
                 (None, Some(inner), None) if simulated => format!("_:{inner}"),
@@ -1250,7 +1264,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let written = folder.path().join("cwl.output.json");
         let object = json!({"made": {"class": "File", "path": "/w/a.txt"},
-            "given": {"class": "File", "location": "in/b.txt"}, "count": 3});
+            "given": {"class": "File", "location": "in/b.txt"}, "count": 3,
+            "child": {"class": "File", "path": "/w/in/d/sub/c.txt"}});
         std::fs::write(&written, object.to_string()).unwrap();
         let file = |path: &str, location: &str| OutputFile {
             path: path.into(),
@@ -1282,6 +1297,7 @@ mod tests {
                 rule("made", CaptureRule::Glob("none".into())),
                 rule("given", CaptureRule::Results),
                 rule("count", CaptureRule::Results),
+                rule("child", CaptureRule::Results),
             ],
             ..wir::Task::default()
         };
@@ -1294,14 +1310,21 @@ mod tests {
         let text = Type::File(wir::FileType::default());
         let ports = [
             port("made", text.clone()),
-            port("given", text),
+            port("given", text.clone()),
             port("count", Type::Int),
+            port("child", text),
         ];
-        let inputs = [Input {
-            path: "in/b.txt".into(),
-            source: "/data/b.txt".into(),
+        let staged = |path: &str, source: &str, directory| Input {
+            path: path.into(),
+            source: source.into(),
+            directory,
             ..Input::default()
-        }];
+        };
+        let inputs = [
+            staged("in/b.txt", "/data/b.txt", false),
+            staged("in/d", "/data/d", true),
+            staged("in/d/sub", "/other/sub", true),
+        ];
         let ended = Ended {
             outcome: &outcome,
             files: None,
@@ -1322,6 +1345,8 @@ mod tests {
         );
         assert_eq!(values["given"]["basename"], "b.txt");
         assert_eq!(values["count"], 3);
+        let child = &values["child"]["location"];
+        assert_eq!(child, "/other/sub/c.txt", "below the deepest staged folder");
     }
 
     #[test]

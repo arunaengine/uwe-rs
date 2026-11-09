@@ -260,11 +260,13 @@ impl Session {
         for (members, split) in planned.iter().zip(split) {
             let job = members[0];
             let key = job_key(planner, job);
-            let named = JobKey {
-                outputs: Vec::new(),
-                ..key.clone()
-            };
-            self.keys.insert(named, job);
+            for member in members {
+                let named = JobKey {
+                    outputs: Vec::new(),
+                    ..job_key(planner, *member)
+                };
+                self.keys.insert(named, *member);
+            }
             let inputs = group_inputs(planner, members);
             let mut producers = Vec::new();
             let mut after = Vec::new();
@@ -382,9 +384,13 @@ impl Session {
         images.len() > 1
     }
 
-    /// The jobs that run in one task with `job`, it first: a service job with the jobs that
-    /// use it, a group job or a pipe of the run, else `job` alone.
+    /// The jobs that run in one task with `job`, it first: a group that started, a service job
+    /// with the jobs that use it, a group job or a pipe of the run, else `job` alone.
     fn members(&self, job: usize) -> Vec<usize> {
+        // A group that started stays one, also when a later plan groups only jobs to come.
+        if let Some(members) = self.started_groups.get(&job) {
+            return members.clone();
+        }
         if let Some(services) = self.served(job)
             && let Ok((users, _)) = self.service_users(job, &services)
             && !users.is_empty()
@@ -413,22 +419,22 @@ impl Session {
         group: &[JobKey],
         staged: &[(String, Json)],
     ) -> Result<Prepared, DriverError> {
-        let job = self.job_of(key)?;
-        let members = self.members(job);
+        let recorded = std::iter::once(self.job_of(key));
+        let recorded = recorded.chain(group.iter().map(|key| self.job_of(key)));
+        let recorded: Vec<usize> = recorded.collect::<Result<_, _>>()?;
         let needed = |member: &usize| self.needrun.get(member).copied().unwrap_or(false);
-        // A run groups only jobs that need work; a compiled group of current jobs is skipped.
-        if members.len() < group.len() + 1 {
-            let recorded = std::iter::once(Ok(job)).chain(group.iter().map(|key| self.job_of(key)));
-            let recorded: Vec<usize> = recorded.collect::<Result<_, _>>()?;
-            if recorded.iter().any(needed) {
-                let message = format!("the run groups the job of rule {} otherwise", key.rule);
-                return Err(DriverError::new(message));
-            }
+        // A run groups only jobs that need work: those of the compiled group run as the run
+        // groups them, and its files keep the compiled order.
+        let running: Vec<usize> = recorded.iter().copied().filter(needed).collect();
+        let Some(first) = running.first() else {
             return Ok(Prepared::Skipped(self.group_files(&recorded)));
+        };
+        let members = self.members(*first);
+        if members.len() != running.len() || !members.iter().all(|job| running.contains(job)) {
+            let message = format!("the run groups the job of rule {} otherwise", key.rule);
+            return Err(DriverError::new(message));
         }
-        if !members.iter().any(needed) {
-            return Ok(Prepared::Skipped(self.group_files(&members)));
-        }
+        let job = members[0];
         if members.iter().any(|member| self.tasks.contains_key(member)) {
             return Err(DriverError::new(format!(
                 "the job of rule {} has started already",
@@ -437,7 +443,7 @@ impl Session {
         }
         let planner = (self.planner.as_ref())
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
-        let inputs = group_inputs(planner, &members);
+        let inputs = group_inputs(planner, &recorded);
         for (selector, value) in staged {
             let file = (selector.strip_prefix("input/"))
                 .and_then(|index| index.parse::<usize>().ok())
@@ -461,7 +467,13 @@ impl Session {
                 None => self.rule_group(&members, None)?,
             };
             return Ok(match task {
-                Some(task) => Prepared::Run(Box::new(task)),
+                Some(task) => {
+                    self.recorded.insert(task.id, recorded);
+                    for member in &members {
+                        self.started_groups.insert(*member, members.clone());
+                    }
+                    Prepared::Run(Box::new(task))
+                }
                 None => Prepared::Failed(self.failures.last().cloned().unwrap_or_else(|| {
                     format!("the group of rule {} did not run in one task", key.rule)
                 })),
@@ -485,7 +497,10 @@ impl Session {
             });
         }
         match self.start_job(job, task)? {
-            Some(task) => Ok(Prepared::Run(Box::new(task))),
+            Some(task) => {
+                self.recorded.insert(task.id, recorded);
+                Ok(Prepared::Run(Box::new(task)))
+            }
             None => {
                 let failure = self.failures.last().cloned().unwrap_or_default();
                 Ok(Prepared::Failed(failure))
@@ -512,6 +527,11 @@ impl Session {
                 (jobs, self.take_group(members, outcome)?)
             }
             None => (vec![job], self.take_job(job, outcome)?),
+        };
+        // The files of the jobs of the compiled group, in its order.
+        let members = match taken {
+            Taken::Retry(_) => members,
+            _ => self.recorded.remove(&identity.0).unwrap_or(members),
         };
         Ok(match taken {
             Taken::Retry(task) => JobResult::Retry(task),

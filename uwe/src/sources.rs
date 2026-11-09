@@ -32,6 +32,17 @@ pub struct Sources {
 }
 
 impl Sources {
+    /// Leaves out the files of `paths`, like the files of the values of a compiled run, which
+    /// no record or store keeps.
+    pub fn leave_out(&mut self, paths: &[impl AsRef<Path>]) {
+        let same = |path: &Path| paths.iter().any(|other| other.as_ref() == path);
+        let folder = &self.folder;
+        self.files.retain(|source| match source.kind {
+            SourceKind::Workflow => !same(&folder.join(&source.path)),
+            SourceKind::Named => !same(Path::new(&source.path)),
+        });
+    }
+
     /// Strict runs require a complete, nonempty source inventory.
     pub fn complete(&self) -> Result<(), String> {
         match &self.skipped {
@@ -82,10 +93,53 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
             skipped = Some(format!("cannot record {}", file.path.display()));
         }
     }
+    named(arguments, secret.as_deref(), &mut files, &mut skipped).await;
+    Sources {
+        folder,
+        files,
+        skipped,
+    }
+}
+
+/// The sources of a run of a compiled document: the document alone as its workflow, and the
+/// files of its command line. The folder of the document holds those of other runs too.
+pub async fn compiled(document: &Path, arguments: &Arguments) -> Sources {
+    let document = std::path::absolute(document).unwrap_or_else(|_| document.to_owned());
+    let folder = document.parent().unwrap_or(Path::new("/")).to_owned();
+    let (mut files, mut skipped) = (Vec::new(), None);
+    match content_store::hash_file(&document).await {
+        Ok((digest, size)) => files.push(Source {
+            kind: SourceKind::Workflow,
+            path: document
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            digest: digest.to_string(),
+            size,
+            executable: false,
+        }),
+        Err(_) => skipped = Some(format!("cannot record {}", document.display())),
+    }
+    named(arguments, None, &mut files, &mut skipped).await;
+    Sources {
+        folder,
+        files,
+        skipped,
+    }
+}
+
+/// Adds the config and inputs files of the command line to `files`.
+async fn named(
+    arguments: &Arguments,
+    secret: Option<&Path>,
+    files: &mut Vec<Source>,
+    skipped: &mut Option<String>,
+) {
     let named = (arguments.configs.iter()).chain(arguments.inputs.as_ref());
     for path in named {
         let path = std::path::absolute(path).unwrap_or_else(|_| path.clone());
-        if is_secret(&path, secret.as_deref()) {
+        if is_secret(&path, secret) {
             continue;
         }
         if let Ok((digest, size)) = content_store::hash_file(&path).await {
@@ -98,13 +152,8 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
                     .is_ok_and(|metadata| metadata.mode() & 0o111 != 0),
             });
         } else {
-            skipped = Some(format!("cannot record {}", path.display()));
+            *skipped = Some(format!("cannot record {}", path.display()));
         }
-    }
-    Sources {
-        folder,
-        files,
-        skipped,
     }
 }
 

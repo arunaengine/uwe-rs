@@ -217,6 +217,12 @@ impl Collecting {
             files.push(publication.file(context, &path, (&name, size), outside.as_deref()));
         }
         publication.ask(context);
+        // Without a files provider uwe puts the files it wrote in place itself, as Nextflow
+        // code writes them at once, also in a simulated run.
+        if context.provider.is_none() {
+            (publication.give())
+                .map_err(|error| turn.failed(format!("cannot deliver: {error}")))?;
+        }
         self.waiting = Some((publication, files));
         Ok(())
     }

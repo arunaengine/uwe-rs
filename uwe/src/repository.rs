@@ -550,13 +550,26 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
         }
         entry.unpack(target).map_err(local)?;
     }
-    if std::fs::read_to_string(folder.join(".gitmodules")).is_ok_and(|text| {
-        text.lines()
-            .any(|line| line.trim_start().starts_with("[submodule"))
-    }) {
+    let modules = std::fs::read_to_string(folder.join(".gitmodules")).unwrap_or_default();
+    if submodule_paths(&modules).any(|path| gitlink(&folder.join(path))) {
         return Err(DriverError::unsupported("repository submodules are unsupported; use a local workflow with materialized submodule files").into());
     }
     Ok(())
+}
+
+/// The `path` values of a `.gitmodules` text that stay inside the repository.
+fn submodule_paths(text: &str) -> impl Iterator<Item = &Path> {
+    (text.lines())
+        .filter_map(|line| line.trim().strip_prefix("path"))
+        .filter_map(|rest| rest.trim_start().strip_prefix('='))
+        .map(|path| Path::new(path.trim()))
+        .filter(|path| (path.components()).all(|part| matches!(part, Component::Normal(_))))
+}
+
+/// Whether a folder of an archive stands for a submodule: Git keeps no empty folder, and an
+/// archive writes a submodule as one. A `.gitmodules` entry without one is stale.
+fn gitlink(folder: &Path) -> bool {
+    std::fs::read_dir(folder).is_ok_and(|mut entries| entries.next().is_none())
 }
 
 /// Whether a link at `path` in the repository whose target is `target` points into the

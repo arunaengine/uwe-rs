@@ -726,6 +726,48 @@ async fn reruns_uncached_steps() {
         && matches!(edge.kind, workflow_graph::EdgeKind::File { .. })));
 }
 
+/// The callbacks of a compiled embedded Nextflow run start in the launch folder of the run
+/// too: a `map` that writes a relative path writes there, never into the working directory
+/// of the host. The run goes in a child process whose working directory is a temporary folder.
+#[test]
+fn confines_callback_writes() {
+    if std::env::var_os("UWE_EMBEDDED_CALLBACK").is_none() {
+        let folder = tempfile::tempdir().unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "confines_callback_writes", "--nocapture"])
+            .env("UWE_EMBEDDED_CALLBACK", "1")
+            .current_dir(folder.path())
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&[output.stdout, output.stderr].concat()).into_owned();
+        assert!(output.status.success(), "the child failed:\n{text}");
+        assert!(text.contains("1 passed"), "the child ran no test:\n{text}");
+        assert!(!folder.path().join("marker.txt").exists());
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let script =
+        "workflow {\n  channel.of('a').map { file('marker.txt').text = it; it }.view()\n}\n";
+    std::fs::write(root.path().join("main.nf"), script).unwrap();
+    let mut settings = Settings::new(root.path().join("main.nf"));
+    settings.executor = Some("simulator".into());
+    settings.database = Some(root.path().join("runs.sqlite"));
+    settings.cache = false;
+    settings.cache_folder = Some(root.path().join("cache"));
+    settings.setup = Some(Setup::default());
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let run = runtime.block_on(request.run()).unwrap();
+    assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+    let launch = root.path().join("cache/scratch/launch").join(&run.id);
+    assert_eq!(
+        std::fs::read_to_string(launch.join("marker.txt")).unwrap(),
+        "a"
+    );
+    assert!(!std::env::current_dir().unwrap().join("marker.txt").exists());
+}
+
 /// Two embedded Nextflow runs at the same time write the same relative path, each into a
 /// launch folder of its own, never into the working directory of the host. The runs go in a
 /// child process whose working directory is a temporary folder.

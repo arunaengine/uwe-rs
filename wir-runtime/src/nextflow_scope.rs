@@ -383,8 +383,9 @@ fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
         simulated: launching.simulated,
         ..Launch::default()
     };
-    let folder = std::env::current_dir().map_err(|error| error.to_string())?;
-    let settings = (launching.run.0.options.settings)(&launch, &folder);
+    let options = &launching.run.0.options;
+    let folder = options.launch_folder().map_err(|error| error.message)?;
+    let settings = (options.settings)(&launch, &folder);
     let made = Adapter::new(&launch, settings, launching.params.clone());
     let adapter = Rc::new(RefCell::new(made.map_err(|error| error.message)?));
     adapters.borrow_mut().insert(key, adapter.clone());

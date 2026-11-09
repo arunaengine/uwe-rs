@@ -516,7 +516,9 @@ impl Progress {
                         (value, _) => value,
                     };
                     let value = widen(value, &item.r#type, &self.defs);
-                    if self.unchecked(source) && !self.fits(&value, &item.r#type) {
+                    // With ontologies, the verifier left the formats of Files to the run.
+                    let formats = self.formats.is_some() && holds_format(&item.r#type, &self.defs);
+                    if (formats || self.unchecked(source)) && !self.fits(&value, &item.r#type) {
                         let path = &node.path;
                         return Readiness::Refuse(format!(
                             "op {path}: input {port} does not fit its type"
@@ -732,6 +734,23 @@ fn holds_dynamic(r#type: &Type, defs: &[TypeDef]) -> bool {
         }
         Some(Type::Union(items) | Type::Tuple(items)) => {
             items.iter().any(|item| holds_dynamic(item, defs))
+        }
+        _ => false,
+    }
+}
+
+/// Whether a type holds a File with a format.
+fn holds_format(r#type: &Type, defs: &[TypeDef]) -> bool {
+    match resolve(r#type, defs) {
+        Some(Type::File(file)) => file.format.is_some(),
+        Some(Type::Optional(inner)) => holds_format(inner, defs),
+        Some(Type::Array(array)) => holds_format(&array.items, defs),
+        Some(Type::Map(map)) => holds_format(&map.value, defs),
+        Some(Type::Record(fields)) => {
+            (fields.iter()).any(|field| holds_format(&field.r#type, defs))
+        }
+        Some(Type::Union(items) | Type::Tuple(items)) => {
+            items.iter().any(|item| holds_format(item, defs))
         }
         _ => false,
     }

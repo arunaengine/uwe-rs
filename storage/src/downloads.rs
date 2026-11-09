@@ -324,6 +324,12 @@ impl Storage {
         self.inner.journal.pin(fetched);
     }
 
+    /// A name of the pins of the process, so that copies with pinned bytes can stay apart from
+    /// the copies that other runs share; none without pins.
+    pub fn pinned_name(&self) -> Option<String> {
+        self.inner.journal.pins_name()
+    }
+
     /// Whether a remote file exists, and its size. As [`Storage::fetch`] does, it asks the
     /// provider once per process; a copy or a note in `downloads` of that version answers
     /// later calls, and a file that a request finds is noted there.

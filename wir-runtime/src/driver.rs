@@ -553,6 +553,10 @@ impl WirDriver {
         let script = (&self.settings.cwl.javascript, self.launch.simulated);
         let mut task = task::build(id, (&node.name, &node.step), &op, &spec, bound, script)?;
         task.site = op.attributes.place.clone();
+        // A task of a CWL tool keeps its output streams as files, as uwe's CWL driver does.
+        let source = op.origin.as_ref().map(|origin| origin.source.as_str());
+        task.defer_logs = (self.document.sources.iter())
+            .any(|known| Some(known.id.as_str()) == source && known.language == Dialect::Cwl);
         self.patches.insert(id, patch);
         Ok(task)
     }

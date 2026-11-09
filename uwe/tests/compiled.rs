@@ -321,9 +321,8 @@ fn resumes_compiled_runs() {
             .flatten())
         .filter(|entry| entry.file_name().to_string_lossy().ends_with(".wir.json"))
         .count();
-        // Compiling a Snakefile or a WDL task again gives the same document.
-        let expected = if name == "main.nf" { 2 } else { 1 };
-        assert_eq!(documents, expected, "{name}: the documents of both runs");
+        // The resume runs the document of the first run and writes no other.
+        assert_eq!(documents, 1, "{name}: the documents of both runs");
     }
 }
 

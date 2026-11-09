@@ -33,9 +33,8 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The wir document of a `-lowered` run below the scratch folder by its digest, the same when
-/// compiled again; the WDL inputs file of its entry graph; and the files of its values, see
-/// [`written`]. Documents that no run wrote for a week go.
+/// The wir document of a `-lowered` run by its digest, or of the run a resume continues; the
+/// WDL inputs file of its entry graph; the files of its values. Old documents go, see [`pruned`].
 pub fn document(
     target: &Path,
     language: Language,
@@ -93,6 +92,11 @@ pub fn document(
         digest.hex()
     ));
     pruned(&folder);
+    // A resume runs the document of the run it continues, so it writes no other.
+    let ran = resumed(arguments, target, language, path.clone())?;
+    if ran != path {
+        return Ok((ran, inputs, private));
+    }
     std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
@@ -113,7 +117,7 @@ fn own(target: &Path, language: Language) -> String {
 /// The document that a resume of a compiled run runs: the one that the run it continues ran,
 /// since compiling again may give another, like a Nextflow config that reads the time. The
 /// files of the values it names must be there, which a compile with the same values makes.
-pub fn resumed(
+fn resumed(
     arguments: &Arguments,
     target: &Path,
     language: Language,

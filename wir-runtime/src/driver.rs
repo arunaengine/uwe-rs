@@ -716,7 +716,12 @@ impl WirDriver {
                 let message = format!("op {path}: CWL blocks take no profiles or configs");
                 return Err(DriverError::unsupported(message));
             }
-            Dialect::Cwl => cwl::block(&launch, &self.settings.cwl)?,
+            // A CWL block delivers into its job folder: as in a native run, only the outputs of
+            // the run reach the output folder.
+            Dialect::Cwl => {
+                launch.output_dir = Some(folder.join("results"));
+                cwl::block(&launch, &self.settings.cwl)?
+            }
             // A Nextflow block runs as if launched in its output folder, and keeps its own
             // files in a scratch folder of its own, which its driver removes.
             Dialect::Nextflow => {
@@ -1649,6 +1654,11 @@ fn deliver(
                 }
                 if !inside {
                     let target = place.to_string_lossy().into_owned();
+                    // A `file:` location, like a result of a CWL block, is delivered from its path.
+                    let location = match cwl_parser::iri::file_path(&location) {
+                        Some(_) => local.to_string_lossy().into_owned(),
+                        None => location,
+                    };
                     deliveries.push(Delivery {
                         location,
                         target: target.clone(),

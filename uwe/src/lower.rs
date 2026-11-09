@@ -33,15 +33,15 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The wir document that a `-lowered` run runs, below the scratch folder by its digest with
-/// absolute source locations, the WDL inputs file of its entry graph, and the files of the
-/// values of the run, which only the user reads and which go when they are dropped.
+/// The wir document of a `-lowered` run below the scratch folder by its digest, the same when
+/// compiled again; the WDL inputs file of its entry graph; and the files of its values, see
+/// [`written`]. Documents that no run wrote for a week go.
 pub fn document(
     target: &Path,
     language: Language,
     arguments: &Arguments,
     setup: &Setup,
-) -> Result<(PathBuf, Option<PathBuf>, Vec<tempfile::TempPath>), Failure> {
+) -> Result<(PathBuf, Option<PathBuf>, Vec<Values>), Failure> {
     let folder = cache_directory().join("scratch").join("lowered");
     let mut private = Vec::new();
     let (document, inputs) = match language {
@@ -53,9 +53,26 @@ pub fn document(
             (lowering.document, path)
         }
         Language::Snakemake => {
+            // A config file of the inputs, like the one of an embedded run, is a value too.
+            let inputs = match &arguments.inputs {
+                Some(file) => {
+                    let text = std::fs::read_to_string(file).map_err(|error| {
+                        failure(format!("uwe: cannot read {}: {error}", file.display()))
+                    })?;
+                    let kept = written(&folder, &text)?;
+                    let path = kept.to_path_buf();
+                    private.push(kept);
+                    Some(path)
+                }
+                None => None,
+            };
+            let arguments = &Arguments {
+                inputs,
+                ..arguments.clone()
+            };
             let mut document = snakemake(target, arguments, &folder)?.document;
             let place = |text: &str| {
-                let file = written(&folder, "uwe-config-", text).map_err(|error| error.message)?;
+                let file = written(&folder, text).map_err(|error| error.message)?;
                 let location = file.to_string_lossy().into_owned();
                 private.push(file);
                 Ok(location)
@@ -70,27 +87,170 @@ pub fn document(
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| failure(format!("uwe: {error}")))?;
     let digest = task_model::Digest::sha256(text.as_bytes());
-    let path = folder.join(format!("{}.wir.json", digest.hex()));
+    let path = PathBuf::from(format!(
+        "{}{}.wir.json",
+        own(target, language),
+        digest.hex()
+    ));
+    pruned(&folder);
     std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
     Ok((path, inputs, private))
 }
 
-/// A file of `text` below `folder` that only the user reads, removed when it is dropped.
-fn written(folder: &Path, prefix: &str, text: &str) -> Result<tempfile::TempPath, Failure> {
+/// The start of the paths of the compiled documents of the workflow `target`, by a digest of
+/// its path and language.
+fn own(target: &Path, language: Language) -> String {
+    let target = std::path::absolute(target).unwrap_or_else(|_| target.to_owned());
+    let identity = format!("{language:?} {}", target.display());
+    let digest = task_model::Digest::sha256(identity.as_bytes());
+    let digest = digest.hex();
+    let folder = cache_directory().join("scratch").join("lowered");
+    format!("{}/{}-", folder.display(), &digest[..16])
+}
+
+/// The document that a resume of a compiled run runs: the one that the run it continues ran,
+/// since compiling again may give another, like a Nextflow config that reads the time. The
+/// files of the values it names must be there, which a compile with the same values makes.
+pub fn resumed(
+    arguments: &Arguments,
+    target: &Path,
+    language: Language,
+    compiled: PathBuf,
+) -> Result<PathBuf, Failure> {
+    let Some(resume) = &arguments.resume else {
+        return Ok(compiled);
+    };
+    let database = crate::runs::open(arguments)?;
+    let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
+    let prefix = own(target, language);
+    let real = arguments.executor.as_deref() != Some("simulator");
+    let earlier = match resume {
+        crate::arguments::Resume::Run(id) => database.run(id).map_err(broken)?,
+        crate::arguments::Resume::Last => database.last_run_below(&prefix, real).map_err(broken)?,
+    };
+    // Without an earlier compiled run of this workflow, the run checks the resume itself.
+    let Some(earlier) = earlier.filter(|earlier| earlier.workflow.starts_with(&prefix)) else {
+        return Ok(compiled);
+    };
+    let ran = PathBuf::from(&earlier.workflow);
+    let text = std::fs::read_to_string(&ran).map_err(|error| {
+        failure(format!(
+            "uwe: run {} ran {}, which is gone ({error}); run the workflow without -resume",
+            earlier.id,
+            ran.display()
+        ))
+    })?;
+    let document = wir::parse(&text).map_err(|error| failure(format!("uwe: {error}")))?;
+    let values = cache_directory()
+        .join("scratch")
+        .join("lowered")
+        .join("values");
+    let missing = (document.sources.iter())
+        .map(|source| PathBuf::from(&source.location))
+        .find(|location| location.starts_with(&values) && !location.is_file());
+    if missing.is_some() {
+        return Err(failure(format!(
+            "uwe: run {} ran with other values than this run gives; resume it with the same \
+             values, or run without -resume",
+            earlier.id
+        )));
+    }
+    Ok(ran)
+}
+
+/// The file of the values of a run, which only the user reads. Runs with the same values
+/// share it: each holds a shared lock on it while it runs, and the last to end removes it.
+pub struct Values {
+    path: PathBuf,
+    file: std::fs::File,
+}
+
+impl std::ops::Deref for Values {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl AsRef<Path> for Values {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for Values {
+    /// Removes the file when no other run holds it; a run that crashed holds nothing, and
+    /// [`pruned`] removes what it left.
+    fn drop(&mut self) {
+        if self.file.try_lock().is_ok() {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// The file of the values `text` below `folder`, named by their digest so that compiling
+/// again names it again, held by this run until it is dropped.
+fn written(folder: &Path, text: &str) -> Result<Values, Failure> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+    let values = folder.join("values");
     let shown = |error: std::io::Error| {
         failure(format!(
             "uwe: cannot write below {}: {error}",
-            folder.display()
+            values.display()
         ))
     };
-    std::fs::create_dir_all(folder).map_err(shown)?;
-    let mut file = (tempfile::Builder::new().prefix(prefix).suffix(".json"))
-        .tempfile_in(folder)
+    (std::fs::DirBuilder::new().recursive(true).mode(0o700))
+        .create(&values)
         .map_err(shown)?;
-    std::io::Write::write_all(&mut file, text.as_bytes()).map_err(shown)?;
-    Ok(file.into_temp_path())
+    std::fs::set_permissions(&values, std::fs::Permissions::from_mode(0o700)).map_err(shown)?;
+    let digest = task_model::Digest::sha256(text.as_bytes());
+    let path = values.join(format!("{}.json", digest.hex()));
+    loop {
+        // Not truncated: a run that holds the file reads the same bytes meanwhile.
+        let mut file = (std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false))
+        .mode(0o600)
+        .open(&path)
+        .map_err(shown)?;
+        file.lock_shared().map_err(shown)?;
+        // The last run of these values may have removed the file before the lock was taken.
+        let held = file.metadata().map_err(shown)?;
+        let named = std::fs::metadata(&path);
+        if !named.is_ok_and(|named| (named.dev(), named.ino()) == (held.dev(), held.ino())) {
+            continue;
+        }
+        std::io::Write::write_all(&mut file, text.as_bytes()).map_err(shown)?;
+        file.set_len(text.len() as u64).map_err(shown)?;
+        return Ok(Values { path, file });
+    }
+}
+
+/// Removes the documents below `folder` that no run wrote for a week, and value files left
+/// by runs that ended without removing them; a resume compiles a document again.
+fn pruned(folder: &Path) {
+    const WEEK: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+    for place in [folder.to_owned(), folder.join("values")] {
+        let Ok(entries) = std::fs::read_dir(&place) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let old = (entry.metadata().and_then(|metadata| metadata.modified()))
+                .ok()
+                .and_then(|modified| modified.elapsed().ok())
+                .is_some_and(|age| age > WEEK);
+            // A value file that a live run holds stays.
+            let free = || std::fs::File::open(&path).is_ok_and(|file| file.try_lock().is_ok());
+            if old && path.is_file() && free() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
 }
 
 fn lowered(
@@ -207,7 +367,7 @@ fn converted(
     lowering: &wdl_lowering::Lowering,
     arguments: &Arguments,
     folder: &Path,
-) -> Result<Option<tempfile::TempPath>, Failure> {
+) -> Result<Option<Values>, Failure> {
     let mut values = match &arguments.inputs {
         None if arguments.params.is_empty() => return Ok(None),
         None => serde_json::Value::Object(Default::default()),
@@ -230,5 +390,26 @@ fn converted(
     {
         values.extend(given);
     }
-    written(folder, "uwe-inputs-", &values.to_string()).map(Some)
+    written(folder, &values.to_string()).map(Some)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two live runs with the same values share one file, which the first to end leaves for
+    /// the other, and the last removes.
+    #[test]
+    fn shares_value_files() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let first = written(folder.path(), "{\"word\": \"same\"}").expect("writes the values");
+        let second = written(folder.path(), "{\"word\": \"same\"}").expect("writes them again");
+        let path = first.to_path_buf();
+        assert_eq!(path, second.to_path_buf());
+        drop(first);
+        let text = std::fs::read_to_string(&path).expect("the second run still reads them");
+        assert_eq!(text, "{\"word\": \"same\"}");
+        drop(second);
+        assert!(!path.exists(), "the last run removes them");
+    }
 }

@@ -261,3 +261,103 @@ fn records_own_document() {
         "the crate holds a value of the first run"
     );
 }
+
+/// A Nextflow pipeline whose compile reads the time, as nf-core's `trace_report_suffix` does.
+const TIMED: &str = "params.stamp = new Date().getTime()\n\nprocess HELLO {\n    input:\n    val stamp\n    output:\n    path 'out.txt'\n    script:\n    \"echo ${stamp} > out.txt\"\n}\n\nworkflow {\n    HELLO(Channel.of(params.stamp))\n}\n";
+
+/// A resume of a compiled run runs the document of the run it continues, with the same values
+/// kept apart, also when compiling again gives another document, as with the time.
+#[test]
+fn resumes_compiled_runs() {
+    let runs: [(&str, &str, &[&str]); 3] = [
+        ("Snakefile", WORD, &["--config", "word=hush4711"]),
+        ("hello.wdl", HELLO, &["--name", "hush4711"]),
+        ("main.nf", TIMED, &[]),
+    ];
+    for (name, text, values) in runs {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let (root, cache) = (folder.path(), folder.path().join("cache"));
+        std::fs::write(root.join(name), text).expect("writes the workflow");
+        let run = |resume: &[&str]| {
+            let output = common::command()
+                .args(["run", "-executor", "simulator", name, "-lowered"])
+                .args(values)
+                .args(resume)
+                .current_dir(root)
+                .env("XDG_CACHE_HOME", &cache)
+                .output()
+                .expect("runs uwe");
+            let errors = String::from_utf8_lossy(&output.stderr).into_owned();
+            assert!(output.status.success(), "{name}: {errors}");
+            let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+                .expect("opens the run database");
+            database.runs(1).expect("lists the runs").remove(0).id
+        };
+        let first = run(&[]);
+        // A document that no run wrote for over a week goes when another compiles.
+        let lowered = cache.join("uwe/scratch/lowered");
+        let stale = lowered.join("stale.wir.json");
+        std::fs::write(&stale, "{}").expect("writes a stale document");
+        let weeks = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+        let file = std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .expect("opens it");
+        file.set_modified(weeks).expect("ages it");
+        let resumed = run(&["-resume", &first]);
+        // Every task of the resumed run comes from the first run.
+        let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+            .expect("opens the run database");
+        let tasks = database.tasks(&resumed).expect("reads the tasks");
+        assert!(!tasks.is_empty(), "{name}: the resumed run has tasks");
+        let fresh: Vec<i64> = (tasks.iter())
+            .filter(|task| task.reused.is_none())
+            .map(|task| task.id as i64)
+            .collect();
+        assert!(fresh.is_empty(), "{name}: tasks {fresh:?} ran again");
+        assert!(!stale.exists(), "{name}: the stale document went");
+        let documents = (std::fs::read_dir(&lowered)
+            .expect("lists the documents")
+            .flatten())
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".wir.json"))
+        .count();
+        // Compiling a Snakefile or a WDL task again gives the same document.
+        let expected = if name == "main.nf" { 2 } else { 1 };
+        assert_eq!(documents, expected, "{name}: the documents of both runs");
+    }
+}
+
+/// A resume with other config values than the run it continues is refused.
+#[test]
+fn refuses_other_values() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("Snakefile"), WORD).expect("writes the Snakefile");
+    let run = |value: &str, resume: &[&str]| {
+        common::command()
+            .args([
+                "run",
+                "-executor",
+                "simulator",
+                "Snakefile",
+                "-lowered",
+                "--config",
+                value,
+            ])
+            .args(resume)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs uwe")
+    };
+    assert!(run("word=one", &[]).status.success());
+    let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+        .expect("opens the run database");
+    let first = database.runs(1).expect("lists the runs").remove(0).id;
+    let output = run("word=two", &["-resume", &first]);
+    let errors = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success() && errors.contains("ran with other values"),
+        "{errors}"
+    );
+}

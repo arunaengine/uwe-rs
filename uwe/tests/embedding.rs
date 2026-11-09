@@ -98,6 +98,25 @@ async fn runs_lowered_snakefiles() {
     assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
     let script = run.execution.graph.nodes[0].task.script.clone();
     assert!(script.unwrap_or_default().contains("samples.tsv"));
+    // A resume compiles the workflow again into the same document, with the same values.
+    let mut resumed = RunRequest::new(request_settings(&run, root.path()));
+    resumed.policy = uwe::application::Policy::Relaxed;
+    let again = resumed.run().await.expect("resumes the compiled run");
+    assert!(
+        again.execution.error.is_none(),
+        "{:?}",
+        again.execution.error
+    );
+}
+
+/// The settings of a resume of the compiled Snakefile run `run` in `root`.
+fn request_settings(run: &uwe::Run, root: &std::path::Path) -> Settings {
+    let mut settings = request(root).settings;
+    settings.target = root.join("Snakefile");
+    settings.lowered = true;
+    settings.inputs = Some(json!({"sample_sheet": "samples.tsv"}));
+    settings.resume = Some(Resume::Run(run.id.clone()));
+    settings
 }
 
 #[tokio::test]

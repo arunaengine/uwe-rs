@@ -57,6 +57,11 @@ pub struct Context {
 /// A build that needs what the compiler does not do gives one native op.
 /// It fails only when the pipeline does not build.
 pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, String> {
+    // What the pipeline reads from the environment stays out of the document.
+    nextflow_evaluator::secrets::noting(|| compiling(launch, settings, base))
+}
+
+fn compiling(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, String> {
     let context = Context {
         profiles: launch.profiles.clone(),
         configs: launch.configs.clone(),
@@ -100,8 +105,10 @@ pub fn compile_native(
         path: "pipeline".into(),
         reason: reason.into(),
     }];
-    let interface = driver.interface().map_err(|error| error.message)?;
-    native(&interface, &context, &mut sources, kept)
+    nextflow_evaluator::secrets::noting(|| {
+        let interface = driver.interface().map_err(|error| error.message)?;
+        native(&interface, &context, &mut sources, kept)
+    })
 }
 
 /// Compiles a built network; a node that does not compile keeps the pipeline one native op.
@@ -132,8 +139,17 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
     match graph::compile(network, context, &mut sources) {
         Ok((graphs, captured)) => {
             let hooks = hooks(network, &mut sources, &captured);
+            let document = document(&sources, graphs, hooks)?;
+            let text = serde_json::to_value(&document).map_err(|error| error.to_string())?;
+            if nextflow_runtime::export::read(&text) {
+                let kept = Kept {
+                    path: "pipeline".into(),
+                    reason: "the pipeline gives a value of the environment to its graph".into(),
+                };
+                return native(network, context, &mut sources, vec![kept]);
+            }
             Ok(Compilation {
-                document: document(&sources, graphs, hooks)?,
+                document,
                 kept: Vec::new(),
             })
         }
@@ -151,9 +167,16 @@ fn native(
 ) -> Result<Compilation, String> {
     let emits = &network.emits;
     let schema = network.schema.as_ref();
+    // A param that holds a value of the environment is no input: the native op reads it.
+    let mut given = network.params.clone();
+    if let Json::Object(params) = &mut given {
+        params.retain(|name, value| {
+            !nextflow_runtime::export::read(&json!({ name.as_str(): value }))
+        });
+    }
     // A native op takes typed params only: a type with `dynamic` in it, like the optional
     // dynamic of a null param, becomes the shape of the param's value, which may be null.
-    let ports = params::ports(&network.params, schema);
+    let ports = params::ports(&given, schema);
     let inputs: Vec<Json> = (ports.into_iter())
         .map(|mut port| {
             if dynamic(&port["type"]) {

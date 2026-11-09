@@ -176,11 +176,68 @@ struct Limits {
     running: HashMap<String, usize>,
     held: HashMap<String, VecDeque<(CallId, Task)>>,
     /// The endings of `fair` calls that wait for earlier ones, by call.
-    waiting: HashMap<String, Waiting>,
+    waiting: HashMap<String, Fair>,
 }
 
-/// The index of the next ending of a `fair` call to give, and the endings that wait for it.
-type Waiting = (u32, BTreeMap<u32, (CallId, Ending)>);
+/// The emissions of a `fair` call: as in Nextflow, the outputs of each task wait for those of
+/// the tasks before it, and a task that gives none, skipped, ignored or failed, holds back the
+/// later outputs for good; its own ending goes at once.
+struct Fair {
+    /// The index of the next task whose outputs go.
+    next: u32,
+    waiting: BTreeMap<u32, (CallId, Ending)>,
+    /// The first task that gave no outputs.
+    dead: Option<u32>,
+}
+
+impl Fair {
+    fn new() -> Fair {
+        Fair {
+            next: 1,
+            waiting: BTreeMap::new(),
+            dead: None,
+        }
+    }
+
+    /// The endings that go when the task `index` ends.
+    fn ended(&mut self, index: u32, call: CallId, ending: Ending) -> Vec<(CallId, Ending)> {
+        if !matches!(ending, Ending::Succeeded { .. }) {
+            self.dead = Some(self.dead.map_or(index, |dead| dead.min(index)));
+            let dead = self.dead.unwrap_or(index);
+            let held = self.waiting.split_off(&(dead + 1));
+            let mut ended = vec![(call, ending)];
+            ended.extend(
+                held.into_values()
+                    .map(|(call, ending)| (call, emptied(ending))),
+            );
+            return ended;
+        }
+        if self.dead.is_some_and(|dead| dead < index) {
+            return vec![(call, emptied(ending))];
+        }
+        self.waiting.insert(index, (call, ending));
+        let mut ended = Vec::new();
+        while let Some(given) = self.waiting.remove(&self.next) {
+            ended.push(given);
+            self.next += 1;
+        }
+        ended
+    }
+}
+
+/// A success whose outputs never go: each output closes empty.
+fn emptied(ending: Ending) -> Ending {
+    match ending {
+        Ending::Succeeded { values, mut empty } => {
+            empty.extend(values.into_iter().map(|(port, _)| port));
+            Ending::Succeeded {
+                values: Map::new(),
+                empty,
+            }
+        }
+        other => other,
+    }
+}
 
 impl Tasks {
     /// The `maxForks` and `fair` of the call of an op instance.
@@ -227,20 +284,9 @@ impl Tasks {
         self.limits.rounds.remove(&call);
         let ended = match fair {
             false => vec![(call, ending)],
-            true => {
-                let (next, waiting) = self
-                    .limits
-                    .waiting
-                    .entry(name)
-                    .or_insert((1, BTreeMap::new()));
-                waiting.insert(index, (call, ending));
-                let mut ended = Vec::new();
-                while let Some(given) = waiting.remove(next) {
-                    ended.push(given);
-                    *next += 1;
-                }
-                ended
-            }
+            true => (self.limits.waiting.entry(name))
+                .or_insert_with(Fair::new)
+                .ended(index, call, ending),
         };
         Changes {
             tasks,
@@ -574,6 +620,47 @@ mod tests {
 
     fn port(name: &str, r#type: Json) -> Port {
         serde_json::from_value(json!({"name": name, "type": r#type})).unwrap()
+    }
+
+    #[test]
+    fn fair_endings() {
+        let success = |value: i64| Ending::Succeeded {
+            values: Map::from_iter([("out".to_owned(), json!(value))]),
+            empty: Vec::new(),
+        };
+        let empty = Ending::Succeeded {
+            values: Map::new(),
+            empty: vec!["out".to_owned()],
+        };
+        let mut fair = Fair::new();
+        assert_eq!(
+            fair.ended(2, CallId(2), success(2)),
+            [],
+            "task 2 waits for task 1"
+        );
+        let failed = Ending::Failed("no".into());
+        assert_eq!(
+            fair.ended(3, CallId(3), failed.clone()),
+            [(CallId(3), failed)],
+            "a failure goes at once"
+        );
+        let first = fair.ended(1, CallId(1), success(1));
+        assert_eq!(first, [(CallId(1), success(1)), (CallId(2), success(2))]);
+        assert_eq!(
+            fair.ended(4, CallId(4), success(4)),
+            [(CallId(4), empty.clone())]
+        );
+        let mut skipping = Fair::new();
+        let skipped = Ending::Skipped(Map::new());
+        assert_eq!(
+            skipping.ended(1, CallId(1), skipped.clone()),
+            [(CallId(1), skipped)]
+        );
+        assert_eq!(
+            skipping.ended(2, CallId(2), success(2)),
+            [(CallId(2), empty)],
+            "a skipped task holds back the later outputs for good"
+        );
     }
 
     #[test]

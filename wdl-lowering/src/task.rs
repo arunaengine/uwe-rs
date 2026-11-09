@@ -217,6 +217,7 @@ impl Lowerer {
                 arity: None,
                 listing: None,
                 code: None,
+                format: None,
             });
             captured.push(port(&output.name, output.r#type.clone()));
         }

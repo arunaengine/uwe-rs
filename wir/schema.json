@@ -1071,7 +1071,8 @@
               },
               "load_contents": { "type": "boolean" },
               "listing": { "enum": ["shallow", "deep"] },
-              "code": { "type": "string" }
+              "code": { "type": "string" },
+              "format": { "type": "string" }
             }
           }
         },

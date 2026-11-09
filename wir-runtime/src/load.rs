@@ -43,6 +43,21 @@ pub(crate) fn listings(value: Json, listing: Listing, access: &Access) -> Result
     })
 }
 
+/// A value whose Files have the size and `sha1$` checksum that uwe's CWL driver gives
+/// them, in place of the digests of the executor.
+pub(crate) fn checksums(value: Json, access: &Access) -> Result<Json, String> {
+    read(value, &|value| {
+        let mut failed = Ok(());
+        cwl_runtime::files::visit_files(value, &mut |file| {
+            if file.get("class").and_then(Value::as_str) == Some("File") && failed.is_ok() {
+                file.shift_remove("checksum");
+                failed = access.add_checksum(file);
+            }
+        });
+        failed
+    })
+}
+
 /// A value after `change` read files into it as a CWL value.
 fn read(value: Json, change: &dyn Fn(&mut Value) -> Result<(), String>) -> Result<Json, String> {
     let mut value = Value::parse(&to_cwl(located(value, &urls)).to_string())?;

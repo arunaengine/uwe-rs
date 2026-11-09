@@ -53,6 +53,8 @@ type Globs<'a> = dyn FnMut(&str, &[Expression]) -> Result<CaptureRule, String> +
 /// that a rule matched, if any, like `outputEval`.
 enum Read {
     Direct(CaptureRule, Type),
+    /// Captured as it is, each File with the format of the code.
+    Formatted(CaptureRule, Type, Expression),
     Evaluated(Option<CaptureRule>, Expression, Type),
 }
 
@@ -348,9 +350,6 @@ pub fn lower(
     task.staged = Some(names.iter().map(|name| (*name).to_owned()).collect());
     words.sort_by(|a, b| compare(&a.0, &b.0));
     task.command = words.into_iter().flat_map(|(_, words)| words).collect();
-    if (task.command.iter()).any(|word| matches!(word, Argument::Code { .. })) {
-        task.library = scope.library();
-    }
     let mut outputs = Vec::new();
     let required = scope.find(|class| match class {
         RequirementClass::LoadListing { load_listing } => *load_listing,
@@ -389,8 +388,13 @@ pub fn lower(
             flow: wir::Flow::Value,
             default: None,
         };
+        let mut format = None;
         let (rule, r#type, code) = match capture(output, &task, &named, &mut glob) {
             Ok(Read::Direct(rule, r#type)) => (rule, r#type, None),
+            Ok(Read::Formatted(rule, r#type, code)) => {
+                format = Some(runner_of(&code)?);
+                (rule, r#type, None)
+            }
             Ok(Read::Evaluated(rule, code, r#type)) => {
                 let code = capture_of(&code)?;
                 (rule.unwrap_or(CaptureRule::Empty), r#type, Some(code))
@@ -415,8 +419,15 @@ pub fn lower(
             listing: listing
                 .filter(|_| holds(&output.value_type, &Cwl::Directory) || code.is_some()),
             code,
+            format,
         });
         outputs.push(port(r#type));
+    }
+    // The code of arguments and captures sees the `expressionLib` of the tool.
+    let argued = (task.command.iter()).any(|word| matches!(word, Argument::Code { .. }));
+    let captured = (task.captures.iter()).any(|item| item.code.is_some() || item.format.is_some());
+    if argued || captured {
+        task.library = scope.library();
     }
     Ok(Lowered {
         task,
@@ -445,7 +456,13 @@ fn bound(
         // CWL binds no input that is null, where an expr of its valueFrom still runs.
         return match value_type {
             Cwl::Union(_) => Err(format!("the valueFrom of input {name}")),
-            _ => Ok(vec![input(format!("{name}.{}", crate::group::VALUE), None)]),
+            _ => {
+                let separator = binding.item_separator.as_ref();
+                Ok(vec![input(
+                    format!("{name}.{}", crate::group::VALUE),
+                    separator,
+                )])
+            }
         };
     }
     let members: Vec<&Cwl> = match value_type {
@@ -547,17 +564,13 @@ fn capture(
             secondary_files: Vec::new(),
         })
     };
-    // A format that code computes is set on each File by an expr after the task.
+    // The runner sets a format that code computes on each File, as CWL sets it.
     let computed = output.format.as_ref().filter(|format| code(format));
     if computed.is_some_and(paths) {
         return Err("an expression in the format that reads a path".into());
     }
     let read = |rule: CaptureRule, r#type: Type| match computed {
-        Some(format) => Ok(Read::Evaluated(
-            Some(rule),
-            Expression::parse(&runtime::formats(format), false)?,
-            r#type,
-        )),
+        Some(format) => Ok(Read::Formatted(rule, r#type, format.clone())),
         None => Ok(Read::Direct(rule, r#type)),
     };
     let format = match computed {

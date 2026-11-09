@@ -19,7 +19,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let (target, language) = crate::target_and_language(arguments)?;
     let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
     let document = match language {
-        Language::Wdl => wdl(&target, arguments, &base)?.document,
+        Language::Wdl => wdl(&target, arguments, &Setup::load(arguments)?, &base)?.document,
         Language::Nextflow => {
             let setup = Setup::load(arguments)?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
@@ -62,8 +62,7 @@ pub fn document(
     let mut secret = SecretInputs::default();
     let (document, inputs) = match language {
         Language::Wdl => {
-            crate::run::driver::wdl_imports(target, setup)?;
-            let lowering = wdl(target, arguments, &folder)?;
+            let lowering = wdl(target, arguments, setup, &folder)?;
             let inputs = match converted(&lowering, arguments)? {
                 // Values that hold a secret reach the driver in memory.
                 Some(serde_json::Value::Object(values))
@@ -561,11 +560,12 @@ fn snakemake(
 fn wdl(
     target: &Path,
     arguments: &Arguments,
+    setup: &Setup,
     base: &Path,
 ) -> Result<wdl_lowering::Lowering, Failure> {
     let entry = arguments.targets.first().map(String::as_str);
-    let image = (arguments.default_image.as_deref()).unwrap_or(wdl_lowering::DEFAULT_IMAGE);
-    let lowering = wdl_lowering::lower_with(target, entry, base, image)
+    let options = crate::run::driver::wdl_options(arguments, setup);
+    let lowering = wdl_lowering::lower_with(target, entry, base, &options)
         .map_err(|error| failure(format!("uwe: {}: {error}", target.display())))?;
     for kept in &lowering.kept {
         eprintln!(

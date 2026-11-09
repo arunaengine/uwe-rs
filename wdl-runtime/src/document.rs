@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
+use std::sync::Arc;
 
+use url::Url;
 use wdl_analysis::types::v1::AstTypeConverter;
 use wdl_analysis::types::{Type, TypeNameResolver};
-use wdl_analysis::{Analyzer, Config, Document};
+use wdl_analysis::{Analyzer, Config, Document, IncrementalChange};
 use wdl_ast::v1::{Ast, CallTarget, TaskDefinition, WorkflowDefinition};
 use wdl_ast::{AstNode, AstToken, Diagnostic, Severity, Span, SupportedVersion, TreeNode};
 use workflow_graph::DriverError;
@@ -33,65 +35,79 @@ impl Unit {
     }
 }
 
-/// Reads every document at a web address that `path` imports, also through the documents it
-/// imports, with `read`, which may refuse one, before the analysis of [`load`] fetches it.
-pub fn remote_imports(
-    path: &Path,
-    read: &mut dyn FnMut(&str) -> Result<String, String>,
-) -> Result<(), DriverError> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|error| DriverError::new(format!("cannot read {}: {error}", path.display())))?;
-    let start = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
-    let mut pending = vec![(start.to_string_lossy().into_owned(), text)];
-    let mut seen = std::collections::HashSet::new();
-    while let Some((location, text)) = pending.pop() {
-        let (document, _) = wdl_ast::Document::parse(&text, None);
+/// Reads a document at a web address that a WDL document imports, and may refuse it.
+#[derive(Clone)]
+pub struct Imports(Arc<Read>);
+
+type Read = dyn Fn(&str) -> Result<String, String> + Send + Sync;
+
+impl Imports {
+    pub fn new(read: impl Fn(&str) -> Result<String, String> + Send + Sync + 'static) -> Imports {
+        Imports(Arc::new(read))
+    }
+}
+
+impl std::fmt::Debug for Imports {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Imports")
+    }
+}
+
+/// The documents at web addresses that the document at `uri` imports, also through the
+/// documents it imports, each read with `imports`. Addresses resolve as in the analysis.
+fn remote_imports(uri: &Url, imports: &Imports) -> Result<Vec<(Url, String)>, DriverError> {
+    let text = |uri: &Url| std::fs::read_to_string(uri.to_file_path().ok()?).ok();
+    let root = text(uri).ok_or_else(|| DriverError::new(format!("cannot read {uri}")))?;
+    let mut pending = vec![(uri.clone(), root)];
+    let (mut seen, mut fetched) = (std::collections::HashSet::new(), Vec::new());
+    while let Some((location, source)) = pending.pop() {
+        let (document, _) = wdl_ast::Document::parse(&source, None);
         let wdl_ast::Ast::V1(ast) = document.ast() else {
             continue;
         };
         for import in ast.imports() {
-            let wdl_ast::v1::ImportSource::Uri(uri) = import.source() else {
+            let wdl_ast::v1::ImportSource::Uri(given) = import.source() else {
                 continue;
             };
-            let Some(given) = uri.text() else {
+            let Some(target) = given
+                .text()
+                .and_then(|given| location.join(given.text()).ok())
+            else {
                 continue;
-            };
-            let given = given.text().to_owned();
-            let target = match (given.contains("://"), location.contains("://")) {
-                (true, _) => given,
-                (false, true) => match location.rsplit_once('/') {
-                    Some((folder, _)) => format!("{folder}/{given}"),
-                    None => given,
-                },
-                (false, false) => {
-                    let folder = Path::new(&location).parent().unwrap_or(Path::new("/"));
-                    folder.join(&given).to_string_lossy().into_owned()
-                }
             };
             if !seen.insert(target.clone()) {
                 continue;
             }
-            let text = match target.starts_with("http://") || target.starts_with("https://") {
-                true => {
-                    read(&target).map_err(|why| DriverError::new(format!("{target}: {why}")))?
+            let source = match target.scheme() {
+                "http" | "https" => {
+                    let read = (imports.0)(target.as_str());
+                    let source =
+                        read.map_err(|why| DriverError::new(format!("{target}: {why}")))?;
+                    fetched.push((target.clone(), source.clone()));
+                    source
                 }
                 // A local import is read where it is; its own imports may be remote.
-                false => match std::fs::read_to_string(target.trim_start_matches("file://")) {
-                    Ok(text) => text,
-                    Err(_) => continue,
+                _ => match text(&target) {
+                    Some(source) => source,
+                    None => continue,
                 },
             };
-            pending.push((target, text));
+            pending.push((target, source));
         }
     }
-    Ok(())
+    Ok(fetched)
 }
 
 /// Loads a document and its imports, and fails on the errors that the analysis finds.
-pub fn load(path: &Path) -> Result<Document, DriverError> {
+/// With `imports`, the analysis reads each document at a web address only through it.
+pub fn load(path: &Path, imports: Option<&Imports>) -> Result<Document, DriverError> {
     let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
     let uri = wdl_analysis::path_to_uri(&absolute)
         .ok_or_else(|| DriverError::new(format!("{} is not a file path", path.display())))?;
+    let fetched = match imports {
+        Some(imports) => remote_imports(&uri, imports)?,
+        None => Vec::new(),
+    };
     // The analyzer needs a Tokio runtime of its own; the engine may already run one.
     let analysis = std::thread::scope(|scope| {
         let worker = scope.spawn(|| {
@@ -105,6 +121,17 @@ pub fn load(path: &Path) -> Result<Document, DriverError> {
                     .add_document(uri.clone())
                     .await
                     .map_err(|error| error.to_string())?;
+                for (address, source) in fetched {
+                    let change = IncrementalChange {
+                        version: 1,
+                        start: Some(source),
+                        edits: Vec::new(),
+                    };
+                    let added = analyzer.add_document(address.clone()).await;
+                    added
+                        .and_then(|()| analyzer.notify_incremental_change(address, change))
+                        .map_err(|error| error.to_string())?;
+                }
                 analyzer
                     .analyze(())
                     .await
@@ -263,5 +290,44 @@ pub fn place(document: &Document, node: &impl AstNode<wdl_ast::SyntaxNode>) -> S
     match line {
         Some(line) => format!("{path}:{line}"),
         None => path.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// The analysis takes the imports at web addresses from the reader, which resolves them as
+    /// the analysis does, and fetches none itself: no host of `.invalid` exists.
+    #[test]
+    fn reads_guarded_imports() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("main.wdl");
+        let main = "version 1.1\nimport \"HTTP://lib.invalid/sub/lib.wdl\" as lib\n\nworkflow main {\n  call lib.hello\n}\n";
+        std::fs::write(&path, main).unwrap();
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let seen = asked.clone();
+        let imports = Imports::new(move |address| {
+            seen.lock().unwrap().push(address.to_owned());
+            Ok(match address.ends_with("lib.wdl") {
+                true => "version 1.1\nimport \"more.wdl\" as more\ntask hello {\n  command <<< echo hi >>>\n}\n",
+                false => "version 1.1\ntask other {\n  command <<< echo hi >>>\n}\n",
+            }
+            .to_owned())
+        });
+        let loaded = load(&path, Some(&imports));
+        assert!(
+            loaded.is_ok(),
+            "{:?}",
+            loaded.err().map(|error| error.message)
+        );
+        assert_eq!(
+            *asked.lock().unwrap(),
+            [
+                "http://lib.invalid/sub/lib.wdl",
+                "http://lib.invalid/sub/more.wdl"
+            ]
+        );
     }
 }

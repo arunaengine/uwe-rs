@@ -116,10 +116,7 @@ pub(crate) fn driver(
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
-        Language::Wdl => {
-            wdl_imports(&launch.target, setup)?;
-            wdl_runtime::driver_with(launch, wdl_options(arguments))
-        }
+        Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments, setup)),
         Language::Wir => {
             let mut settings = wir_runtime::Settings {
                 // Only a block that is the whole run hears `uwe resume`, whose requests name
@@ -131,7 +128,7 @@ pub(crate) fn driver(
                     settings: snakemake(arguments, setup, cancel),
                     run: snakemake_options(arguments, setup, run),
                 },
-                wdl: wdl_options(arguments),
+                wdl: wdl_options(arguments, setup),
                 print: !arguments.no_print,
                 print_sink: {
                     let secrets = arguments.secrets.clone();
@@ -171,24 +168,6 @@ pub(crate) fn driver(
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
         }
     }
-}
-
-/// Reads each document at a web address that a WDL document of an isolated run imports
-/// through the storage of the run, which refuses an address the run may not reach, before
-/// the analysis of the document fetches it without that storage.
-pub(crate) fn wdl_imports(target: &Path, setup: &Setup) -> Result<(), DriverError> {
-    if setup.isolation.is_none() {
-        return Ok(());
-    }
-    let downloads = cache_directory().join("downloads");
-    let storage = setup.storage.blocking();
-    let mut read = |url: &str| {
-        let copy = storage
-            .fetch(url, &downloads)
-            .map_err(|error| error.to_string())?;
-        std::fs::read_to_string(copy).map_err(|error| error.to_string())
-    };
-    wdl_runtime::document::remote_imports(target, &mut read)
 }
 
 /// The services of Argo runs, and of the Argo blocks of wir runs.
@@ -237,12 +216,26 @@ fn argo_services(run: &str, setup: &Setup) -> argo_runtime::Services {
 }
 
 /// The options of WDL runs, and of the WDL blocks of wir runs.
-fn wdl_options(arguments: &Arguments) -> wdl_runtime::Options {
+pub(crate) fn wdl_options(arguments: &Arguments, setup: &Setup) -> wdl_runtime::Options {
     wdl_runtime::Options {
         image: (arguments.default_image.clone())
             .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
         print: !arguments.no_print,
+        imports: setup.isolation.is_some().then(|| wdl_imports(setup)),
     }
+}
+
+/// Reads each document at a web address that a WDL document of an isolated run imports
+/// through the storage of the run, which refuses an address the run may not reach.
+fn wdl_imports(setup: &Setup) -> wdl_runtime::document::Imports {
+    let downloads = cache_directory().join("downloads");
+    let storage = setup.storage.blocking();
+    wdl_runtime::document::Imports::new(move |url| {
+        let copy = storage
+            .fetch(url, &downloads)
+            .map_err(|error| error.to_string())?;
+        std::fs::read_to_string(copy).map_err(|error| error.to_string())
+    })
 }
 
 /// The options of CWL runs, and of the CWL blocks of wir runs.

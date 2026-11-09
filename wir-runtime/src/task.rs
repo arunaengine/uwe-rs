@@ -573,9 +573,9 @@ fn formatted(
             .try_for_each(|item| formatted(item, code, spec, ended)),
         Json::Object(file) if class(file) == Some("File") => {
             let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
-            let this = with_paths(&Json::Object(file.clone()), &|item| {
-                made_path(item, ended, workdir)
-            });
+            // The code sees the checksum of uwe's CWL driver, not the digest of the executor.
+            let checked = crate::load::checksums(Json::Object(file.clone()), ended.access)?;
+            let this = with_paths(&checked, &|item| made_path(item, ended, workdir));
             let runtime = json!({"exitCode": ended.outcome.exit_code});
             let values = (seen_inputs(ended, workdir), this, runtime);
             match crate::expr::code(code, values, (&spec.library, ended.settings)) {
@@ -1603,6 +1603,16 @@ mod tests {
     }
 
     #[test]
+    fn formats_see_checksums() {
+        let format = formatted_file("$(self.checksum)", "hello\n");
+        let sha1 = "sha1$f572d396fae9206628714fb2ce00f72e94f2258f";
+        assert_eq!(
+            format, sha1,
+            "format code sees the checksum of uwe's CWL driver"
+        );
+    }
+
+    #[test]
     fn formats_read_files() {
         let op: Op = serde_json::from_value(json!({
             "path": "sort",
@@ -1641,10 +1651,13 @@ mod tests {
             ["a.txt"],
             "a format takes no other files"
         );
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("a.txt");
+        std::fs::write(&made, "a\n").unwrap();
         let outcome = Outcome {
             files: vec![OutputFile {
                 path: "a.txt".into(),
-                location: "/out/a.txt".into(),
+                location: made.to_string_lossy().into_owned(),
                 directory: false,
                 size: None,
                 digest: None,

@@ -220,6 +220,35 @@ fn reads_provider_content() {
 }
 
 #[test]
+fn finds_web_neighbours() {
+    use std::sync::atomic::Ordering;
+    let (server, requests) = serve();
+    let text = format!(
+        "[storage.data]\ntype = \"https\"\nprefixes = [\"{server}/\"]\ntoken = \"t0k3n\"\n"
+    );
+    let config = config_file::ConfigFile::parse(&text, Path::new("config.toml")).expect("TOML");
+    let storage = storage::Storage::from_config(&config).expect("valid settings");
+    let downloads = tempfile::tempdir().expect("a folder");
+    let remote = Remote::new(&storage, downloads.path().to_owned());
+    let real = Access {
+        assume_present: false,
+        remote: remote.clone(),
+    };
+    let primary = format!("{server}/data.txt");
+    assert!(real.exists_next_to(&format!("{server}/big.txt"), &primary));
+    let missing = format!("{server}/data.txt.bwt.2bit.64");
+    assert!(!real.exists_next_to(&missing, &primary), "a 404 is no file");
+    // A simulated run takes the file as present and sends no request.
+    let before = requests.load(Ordering::SeqCst);
+    let simulated = Access {
+        assume_present: true,
+        remote,
+    };
+    assert!(simulated.exists_next_to(&missing, &primary));
+    assert_eq!(requests.load(Ordering::SeqCst), before);
+}
+
+#[test]
 fn matches_remote_listings() {
     let root = tempfile::tempdir().expect("provider folder");
     let directory = root.path().join("data");

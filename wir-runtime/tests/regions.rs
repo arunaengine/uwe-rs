@@ -182,3 +182,39 @@ fn region_inner_streams() {
         .unwrap();
     assert_eq!(driver.results().unwrap()["ys"], json!([4, 5]));
 }
+
+#[test]
+fn region_passthrough() {
+    // The final plan passes the input stream of the region on as its output, unchanged.
+    let folder = tempfile::tempdir().unwrap();
+    let stream = |name: &str| json!({"name": name, "type": "int", "flow": "stream"});
+    let graph = json!({"name": "plan", "inputs": [stream("xs")], "outputs": [stream("ys")],
+        "edges": [edge((None, "xs"), (None, "ys"))]});
+    let plan = json!({"revision": 0, "graph": graph, "final_plan": true});
+    let op = json!({"path": "r", "kind": {"dynamic": {"plan": "plan"}},
+        "inputs": [{"name": "plan", "type": "dynamic"}, stream("xs")], "outputs": [stream("ys")]});
+    let main = json!({"name": "main", "inputs": [{"name": "plan", "type": "dynamic"}, stream("xs")],
+        "outputs": [stream("ys")], "ops": [op],
+        "edges": [edge((None, "plan"), (Some("r"), "plan")), edge((None, "xs"), (Some("r"), "xs")),
+            edge((Some("r"), "ys"), (None, "ys"))]});
+    let document = json!({"wir_version": "0.1", "graphs": [main], "entry": "main"});
+    std::fs::write(folder.path().join("run.wir.json"), document.to_string()).unwrap();
+    let inputs = json!({"plan": plan, "xs": [1, 2]});
+    std::fs::write(folder.path().join("inputs.json"), inputs.to_string()).unwrap();
+    let launch = Launch {
+        target: folder.path().join("run.wir.json"),
+        inputs: Some(folder.path().join("inputs.json")),
+        scratch: folder.path().join("scratch"),
+        output_dir: Some(folder.path().join("out")),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    execute("regions", &mut driver, &mut Idle)
+        .into_result()
+        .unwrap();
+    assert_eq!(driver.results().unwrap()["ys"], json!([1, 2]));
+}

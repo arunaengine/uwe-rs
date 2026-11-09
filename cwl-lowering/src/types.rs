@@ -113,7 +113,11 @@ fn nested(cwl: &Cwl, named: &Named, depth: usize) -> Result<Type, String> {
                 .map(|field| {
                     Ok(Field {
                         name: short_name(&field.name).to_owned(),
-                        r#type: formatted(convert(&field.value_type)?, &field.format, named)?,
+                        r#type: secondary(
+                            formatted(convert(&field.value_type)?, &field.format, named)?,
+                            &field.secondary_files,
+                            true,
+                        )?,
                     })
                 })
                 .collect::<Result<_, String>>()?,

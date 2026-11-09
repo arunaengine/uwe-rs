@@ -152,11 +152,30 @@ impl Compiled {
         arguments: &[Json],
         base: &Path,
     ) -> Result<Json, String> {
+        self.call_in(&mut Quiet, values, arguments, base)
+    }
+
+    /// Calls the closure like [`Compiled::call`], printing through `printer`, like a hook.
+    pub fn call_printed(
+        &self,
+        (values, arguments): (&Map<String, Json>, &[Json]),
+        base: &Path,
+        printer: &crate::driver::Printer,
+    ) -> Result<Json, String> {
+        self.call_in(&mut Printing(printer), values, arguments, base)
+    }
+
+    fn call_in(
+        &self,
+        host: &mut dyn Host,
+        values: &Map<String, Json>,
+        arguments: &[Json],
+        base: &Path,
+    ) -> Result<Json, String> {
         if let Some(scoped) = &self.nextflow {
             return scoped.run(values, Some(arguments), base);
         }
-        let mut host = Quiet;
-        let mut interpreter = Interpreter::new(&mut host);
+        let mut interpreter = Interpreter::new(host);
         let Value::Closure(closure) = self.run(&mut interpreter, values, base)? else {
             return Err("the Groovy code gives no closure".into());
         };

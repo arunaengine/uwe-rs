@@ -175,8 +175,9 @@ impl CommandRunner {
                 "the workflow runs a command while it is loaded, which only a run can do",
             ));
         }
-        // A compile runs no command of the Snakefile, which the run runs once.
-        if self.settings.planning {
+        // A compile runs no command of the Snakefile, which the run runs once; a simulated
+        // one runs none anyway.
+        if self.settings.planning && !self.simulated {
             return Err(Error::unsupported(
                 "a command that the Snakefile runs while it loads, which only the run runs",
             ));

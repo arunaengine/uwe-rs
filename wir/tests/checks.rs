@@ -1285,11 +1285,12 @@ fn hook_rules() {
 fn hook_outputs() {
     let op = json!({"path": "count", "kind": {"expr": {"language": "groovy", "code": "1"}},
         "outputs": [{"name": "out", "type": "int"}]});
+    let call = json!({"path": "inner", "kind": {"call": {"graph": "inner"}}});
     let document = |end: Json| {
         let hook =
             json!({"language": "groovy", "code": "{ it }", "captures": {"n": {"output": end}}});
-        json!({"wir_version": wir::VERSION, "graphs": [{"name": "main", "ops": [op]}],
-            "entry": "main", "hooks": [{"complete": hook}]})
+        json!({"wir_version": wir::VERSION, "graphs": [{"name": "main", "ops": [op, call]},
+            {"name": "inner", "ops": [op]}], "entry": "main", "hooks": [{"complete": hook}]})
     };
     // A hook reads the value that an op of the entry graph ended with.
     let good = document(json!({"op": "count", "port": "out"}));
@@ -1298,6 +1299,11 @@ fn hook_outputs() {
     assert_eq!(problems(&port).len(), 1, "an output of the op");
     let gone = document(json!({"op": "gone", "port": "out"}));
     assert_eq!(problems(&gone).len(), 1, "an op of the entry graph");
+    // An op of a graph that a call runs, by its path through the call.
+    let inside = document(json!({"op": "inner/count", "port": "out"}));
+    assert_eq!(problems(&inside), Vec::<String>::new());
+    let missing = document(json!({"op": "inner/gone", "port": "out"}));
+    assert_eq!(problems(&missing).len(), 1, "an op of the called graph");
 }
 
 #[test]

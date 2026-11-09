@@ -9,6 +9,8 @@ use uwe::RunRequest;
 use uwe::hosted::Isolation;
 use uwe::run::Settings;
 
+mod common;
+
 /// A variable of the service process that no workflow may read.
 const SERVICE: &str = "UWE_TEST_SERVICE_TOKEN";
 
@@ -481,6 +483,47 @@ fn confines_file_operators() {
         "{message}"
     );
     assert!(!printed.lock().unwrap().contains("private line"));
+}
+
+/// A confined run reads the documents that its workflow includes or imports from the web
+/// through its storage, which refuses a host that is not among its allowed hosts, also while
+/// the workflow compiles.
+#[test]
+fn refuses_private_imports() {
+    let server = common::WebServer::start(&[
+        ("/word.txt", "private-word"),
+        (
+            "/lib.wdl",
+            "version 1.1\ntask hello {\n  command <<< echo private-word >>>\n}\n",
+        ),
+    ]);
+    let address = &server.address;
+    let cwl = format!(
+        "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\narguments:\n  - $include: {address}/word.txt\ninputs: []\noutputs: []\n"
+    );
+    let wdl = format!(
+        "version 1.1\nimport \"{address}/lib.wdl\" as lib\n\nworkflow main {{\n  call lib.hello\n}}\n"
+    );
+    for (name, text) in [("tool.cwl", cwl), ("main.wdl", wdl)] {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(root.path().join(name), text).unwrap();
+        let mut settings = settings(root.path(), &root.path().join(name));
+        settings.executor = Some("simulator".into());
+        settings.isolation = Some(Isolation {
+            roots: vec![data],
+            ..Isolation::default()
+        });
+        let mut request = RunRequest::new(settings);
+        request.policy = uwe::application::Policy::Relaxed;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let message = match runtime.block_on(request.run()) {
+            Ok(ran) => (ran.execution.error.map(|error| error.to_string())).unwrap_or_default(),
+            Err(failure) => failure.message,
+        };
+        assert!(message.contains("127.0.0.1"), "{name}: {message}");
+    }
 }
 
 /// A run of `workflow` with its database, store, cache and outputs in `folder`.

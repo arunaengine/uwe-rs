@@ -275,6 +275,28 @@ fn keeps_inner_links() {
         ("checkout/up/escape", Some("../..")),
     ]);
     assert!(unpack(bytes.as_slice(), folder.path()).is_err());
+    // A link reaches outside through another link, or links loop.
+    for entries in [
+        &[
+            ("checkout/alias", Some(".")),
+            ("checkout/leak", Some("alias/../outside")),
+        ][..],
+        &[("checkout/a", Some("b")), ("checkout/b", Some("a"))][..],
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let bytes = linked(entries);
+        assert!(
+            unpack(bytes.as_slice(), folder.path()).is_err(),
+            "{entries:?}"
+        );
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let bytes = linked(&[
+        ("checkout/envs/a.yml", None),
+        ("checkout/alias", Some("envs")),
+        ("checkout/module/env.yml", Some("../alias/a.yml")),
+    ]);
+    unpack(bytes.as_slice(), folder.path()).unwrap();
 }
 
 #[test]

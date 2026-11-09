@@ -289,14 +289,14 @@ impl Storage {
             }
             None => {
                 let downloaded = self.download_from(target, file).await?;
-                // A later run that finds this copy notes its version from here.
-                let noted = journal::with_suffix(file, "version");
-                let _ = match &downloaded.version {
-                    Some(version) => std::fs::write(&noted, version),
-                    None => std::fs::remove_file(&noted),
-                };
                 (journal::described(target, file).await?, downloaded.version)
             }
+        };
+        // A later run that finds this copy notes its version from here, the one of these bytes.
+        let noted = journal::with_suffix(file, "version");
+        let _ = match &version {
+            Some(version) => std::fs::write(&noted, version),
+            None => std::fs::remove_file(&noted),
         };
         self.inner.journal.note(Fetched { version, ..fetched });
         Ok(())

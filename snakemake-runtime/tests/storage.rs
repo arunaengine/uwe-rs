@@ -308,8 +308,10 @@ fn notes_cached_copies() {
     });
     let (file, text) = located(&third);
     assert_eq!(text, "dependencies: [zstd]\n");
-    // The pinned bytes are in a mirror of that run alone; the copies that other runs read and
-    // keep stay as they are.
+    // The pinned bytes and their version are in a mirror of that run alone; the copies that
+    // other runs read and keep stay as they are.
+    let version = std::fs::read_to_string(format!("{file}.version")).unwrap();
+    assert_eq!(version, "\"pinned\"");
     for fetched in first.fetched() {
         assert_ne!(fetched.copy, Path::new(&file));
         let bytes = std::fs::read(&fetched.copy).unwrap();

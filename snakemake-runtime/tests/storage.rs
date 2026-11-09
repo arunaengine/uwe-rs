@@ -232,7 +232,7 @@ fn fetches_wrapper_environments() {
 }
 
 /// A later run that finds the files of a wrapper in the shared mirror notes them as read as
-/// the first run did, and a repeat's pin replaces them by the copy that the repeated run read.
+/// the first run did, and a repeat reads the copy that the repeated run read in its own mirror.
 #[test]
 fn notes_cached_copies() {
     let server = Server::start();
@@ -251,11 +251,18 @@ fn notes_cached_copies() {
         server.address
     );
     let launch = launch(folder.path(), &workflow);
-    let environment = |storage: &Storage| {
+    let located = |storage: &Storage| {
         let tasks = Session::new(&launch, storage).unwrap().start().unwrap();
         let image = tasks[0].image.clone().unwrap_or_default();
         let file = image.strip_prefix("conda-env:").unwrap().to_owned();
-        std::fs::read_to_string(file).unwrap()
+        let text = std::fs::read_to_string(&file).unwrap();
+        (file, text)
+    };
+    let environment = |storage: &Storage| located(storage).1;
+    let digest = |bytes: &[u8]| {
+        let digest = sha2::Sha256::digest(bytes);
+        let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        format!("sha256:{hex}")
     };
     let noted = |storage: &Storage| {
         let mut fetched = storage.fetched();
@@ -291,16 +298,26 @@ fn notes_cached_copies() {
         .fetched()
         .into_iter()
         .find(|fetched| fetched.address == address);
-    let digest = sha2::Sha256::digest(b"dependencies: [zstd]\n");
-    let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
     let third = Storage::default();
     third.pin(storage::Fetched {
         copy: pinned,
-        digest: format!("sha256:{digest}"),
+        digest: digest(b"dependencies: [zstd]\n"),
         size: 21,
+        version: Some("\"pinned\"".into()),
         ..kept.unwrap()
     });
-    assert_eq!(environment(&third), "dependencies: [zstd]\n");
+    let (file, text) = located(&third);
+    assert_eq!(text, "dependencies: [zstd]\n");
+    // The pinned bytes are in a mirror of that run alone; the copies that other runs read and
+    // keep stay as they are.
+    for fetched in first.fetched() {
+        assert_ne!(fetched.copy, Path::new(&file));
+        let bytes = std::fs::read(&fetched.copy).unwrap();
+        assert_eq!(digest(&bytes), fetched.digest, "{fetched:?}");
+    }
+    let fourth = Storage::default();
+    assert_eq!(environment(&fourth), "dependencies: [jq]\n");
+    assert_eq!(noted(&fourth), noted(&first));
 }
 
 /// A confined run fetches the environment file of a rule only from a host that it allows.

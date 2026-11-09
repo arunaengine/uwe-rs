@@ -52,6 +52,12 @@ impl Mirrors {
     }
 
     pub fn new(downloads: PathBuf, storage: &Storage) -> Mirrors {
+        // A repeat reads pinned bytes, which must not replace the copies that other runs read;
+        // `@` starts no host name, so no mirror of an address is in this folder.
+        let downloads = match storage.pinned_name() {
+            Some(name) => downloads.join("@pinned").join(name),
+            None => downloads,
+        };
         Mirrors {
             downloads,
             storage: storage.blocking(),

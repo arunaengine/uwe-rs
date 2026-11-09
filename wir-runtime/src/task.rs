@@ -655,7 +655,11 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
     };
     let path = cwl_parser::iri::file_path(place)
         .map_or(place.to_owned(), |path| path.to_string_lossy().into_owned());
+    // `.` and `..` parts resolve first, so a place cannot leave the folder that holds it.
     let path = absolute(path.trim_start_matches("./"), workdir);
+    let Some(path) = normalized(&path) else {
+        return Err(format!("the results name {place}, which leaves the root"));
+    };
     let made = (outcome.files.iter())
         .find(|file| absolute(file.path.trim_end_matches('/'), workdir) == path);
     let mut found = match made {
@@ -1091,6 +1095,20 @@ fn with_paths(value: &Json, path_of: &dyn Fn(&Json) -> Option<String>) -> Json {
     }
 }
 
+/// An absolute path with its `.` and `..` parts resolved, or none when it climbs above the
+/// root.
+fn normalized(path: &str) -> Option<String> {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => drop(parts.pop()?),
+            part => parts.push(part),
+        }
+    }
+    Some(format!("/{}", parts.join("/")))
+}
+
 /// A path in the container, from the working folder when it is relative.
 fn absolute(path: &str, workdir: &str) -> String {
     match path.starts_with('/') {
@@ -1396,6 +1414,67 @@ mod tests {
         assert_eq!(values["count"], 3);
         let child = &values["child"]["location"];
         assert_eq!(child, "/other/sub/c.txt", "below the deepest staged folder");
+    }
+
+    #[test]
+    fn refuses_escaping_results() {
+        let folder = tempfile::tempdir().unwrap();
+        let written = folder.path().join("cwl.output.json");
+        let leak = json!({"class": "File", "path": "/var/lib/cwl/inputs/0/d/../private.txt"});
+        std::fs::write(&written, json!({"leak": leak}).to_string()).unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "cwl.output.json".into(),
+                location: written.to_string_lossy().into_owned(),
+                directory: false,
+                size: None,
+                digest: None,
+            }],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "leak".into(),
+            from: CaptureRule::Results,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/w".into()),
+            results: Some("cwl.output.json".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "leak".into(),
+            r#type: Type::File(wir::FileType::default()),
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let inputs = [Input {
+            path: "/var/lib/cwl/inputs/0/d".into(),
+            source: "/data/d".into(),
+            directory: true,
+            ..Input::default()
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &inputs,
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let error = capture(&spec, &ports, ended, &[]).unwrap_err();
+        assert!(
+            error.contains("did not make"),
+            "no file beside the staged folder: {error}"
+        );
     }
 
     #[test]

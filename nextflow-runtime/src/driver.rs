@@ -577,6 +577,36 @@ impl Nextflow {
         network.map_err(|failure| self.fault(failure))
     }
 
+    /// The params of the launch and config with the schema of the pipeline and the launch
+    /// folder, as an empty network has them, for a pipeline whose network cannot be exported.
+    pub fn interface(&mut self) -> Result<crate::export::Network, DriverError> {
+        let loaded = self.setup()?;
+        let options = self.options(&loaded, loaded.config.clone());
+        self.loaded = Some(loaded);
+        // Each param that crosses into wir is an input; one that cannot, like a duration,
+        // keeps the default of the config, which the native op reads too.
+        let mut params = serde_json::Map::new();
+        if let Value::Map(map) = options.config.params() {
+            for (key, value) in &map.borrow().entries {
+                if let Ok(value) = crate::bridge::to_json(value) {
+                    params.insert(key.0.to_string(), value);
+                }
+            }
+        }
+        let params = serde_json::Value::Object(params);
+        let project = Path::new(&options.project_dir);
+        let schema = crate::inputs::schema_file(&options.config, project);
+        let schema = (schema.is_file()).then(|| crate::inputs::from_file(&schema, project).ok());
+        Ok(crate::export::Network {
+            params,
+            schema: schema.flatten(),
+            launch: launch_folder(self.settings.host.as_ref())
+                .to_string_lossy()
+                .into_owned(),
+            ..crate::export::Network::default()
+        })
+    }
+
     /// The host of the run, which prints and reads files.
     pub(crate) fn host(&mut self) -> &mut dyn Host {
         self.settings.host.as_mut()

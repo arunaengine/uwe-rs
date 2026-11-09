@@ -43,11 +43,13 @@ pub enum Prepared {
 /// How an attempt ended for its process.
 #[derive(Debug)]
 pub enum Completed {
-    /// The value of each output in declaration order, `None` for a missing optional one, and
-    /// the files that `publishDir` publishes.
+    /// The value of each output in declaration order, `None` for a missing optional one, the
+    /// files that `publishDir` publishes, and the files of the task by location with their
+    /// names in its work folder, which workflow outputs publish by.
     Accepted {
         outputs: Vec<Option<Json>>,
         deliveries: Vec<Delivery>,
+        names: Vec<(String, String)>,
     },
     /// The next attempt, which keeps the task id.
     Retry(Box<Task>),
@@ -64,6 +66,8 @@ pub struct Adapter {
     workflow: Value,
     operator_directory: Option<PathValue>,
     calls: HashMap<Call, Rc<Binding>>,
+    /// The `maxForks` and `fair` of each call, which its first task fixes, by call name.
+    limits: HashMap<Rc<str>, Limits>,
     flights: HashMap<TaskId, (Rc<Binding>, InFlight)>,
 }
 
@@ -83,6 +87,7 @@ impl Adapter {
             workflow,
             operator_directory: None,
             calls: HashMap::new(),
+            limits: HashMap::new(),
             flights: HashMap::new(),
         };
         let (module, params) = (adapter.module.clone(), adapter.options.config.params());
@@ -105,6 +110,22 @@ impl Adapter {
         let binding = self.binding(call)?;
         let values = inputs.iter().map(bridge::from_json).collect();
         self.attempt(binding, values, index, TaskId(id.0), 1)
+    }
+
+    /// Reads the files of outcomes, like the standard output of a task, through the files
+    /// provider of the executor.
+    pub fn use_files(&mut self, files: std::sync::Arc<dyn workflow_graph::Files>) {
+        Driver::use_files(&mut self.driver, files);
+    }
+
+    /// The `maxForks` and `fair` directives of a call, once its first task fixed them.
+    pub fn limits(&self, call: &Call) -> (Option<usize>, bool) {
+        let limits = self
+            .limits
+            .get(call.name.as_str())
+            .copied()
+            .unwrap_or_default();
+        (limits.max_forks, limits.fair)
     }
 
     /// The script that defines the process of this name at these bytes, which a compiled
@@ -205,8 +226,8 @@ impl Adapter {
         id: TaskId,
         attempt: u32,
     ) -> Result<Prepared, DriverError> {
+        let mut limits = self.limits.get(&binding.name).copied().unwrap_or_default();
         let asked = self.interpret(|interpreter| {
-            let mut limits = Limits::default();
             let given = Some(id);
             binding.prepare(
                 interpreter,
@@ -218,6 +239,7 @@ impl Adapter {
                 attempt,
             )
         })?;
+        self.limits.insert(binding.name.clone(), limits);
         let Some(Asked {
             request,
             flight,
@@ -266,9 +288,13 @@ impl Adapter {
                         message: format!("an output value: {message}"),
                         span: Default::default(),
                     })?;
+                    let names = (outcome.files.iter())
+                        .map(|(name, path)| (bridge::location(path), name.clone()))
+                        .collect();
                     let accepted = Completed::Accepted {
                         outputs,
                         deliveries,
+                        names,
                     };
                     return Ok(Next::Done(accepted));
                 }

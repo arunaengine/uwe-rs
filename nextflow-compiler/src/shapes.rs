@@ -33,11 +33,14 @@ pub(crate) fn route(
                 .collect();
             json!({"route": {"cases": cases}})
         }
+        // A label that the criteria set gives its value, null too; one it did not set gives
+        // nothing, so each value goes wrapped in a list that `<choose>.<index>` takes off.
         true => {
             let outputs: Vec<Json> = (labels.iter())
                 .map(|label| {
-                    let value = written(format!("{{ it -> it[{}] }}", text(label)));
-                    json!({"output": label, "body": value, "nulls": "drop"})
+                    let key = text(label);
+                    let code = format!("{{ it -> it.containsKey({key}) ? [it[{key}]] : null }}");
+                    json!({"output": label, "body": written(code), "nulls": "drop"})
                 })
                 .collect();
             json!({"multi_map": {"outputs": outputs}})
@@ -73,6 +76,22 @@ pub(crate) fn route(
         .iter()
         .map(|label| end(&chosen, label, true))
         .collect();
+    if all {
+        for (index, label) in labels.iter().enumerate() {
+            let unwrap = format!("{chosen}.{index}");
+            let body = written("{ it -> it[0] }".into());
+            let mut taken = unary(
+                &unwrap,
+                "transform",
+                json!({"body": body, "nulls": "keep"}),
+                true,
+                true,
+            );
+            piece.ops.append(&mut taken.ops);
+            piece.edges.push(edge(&chosen, label, &unwrap, "source"));
+            piece.outputs[index] = end(&unwrap, "out", true);
+        }
+    }
     Ok(piece)
 }
 

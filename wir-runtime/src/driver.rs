@@ -204,6 +204,10 @@ pub struct WirDriver {
     regions: regions::Regions,
     /// The text of each source that a scope names, by source id.
     scopes: HashMap<String, String>,
+    /// The input values that the run was given, for the callbacks of Nextflow scopes.
+    given: Map<String, Json>,
+    /// The interpreters and scripts of the Groovy callbacks of Nextflow scopes of the run.
+    scope_run: crate::nextflow_scope::ScopeRun,
     /// The file area of the run, made when an op of the document writes files.
     file_area: PathBuf,
     /// The deliveries of the file effects of stream ops.
@@ -236,6 +240,7 @@ impl WirDriver {
             inputs::filled(default, launch.simulated);
         }
         let progress = Progress::new(plan(&document, &settings.adapters)?, document.types.clone());
+        let scope_run = crate::nextflow_scope::ScopeRun::new(settings.nextflow.clone());
         WirDriver {
             launch: launch.clone(),
             settings,
@@ -267,6 +272,8 @@ impl WirDriver {
             loops: looping::Loops::new(),
             regions: regions::Regions::new(),
             scopes: HashMap::new(),
+            given: Map::new(),
+            scope_run,
             file_area: PathBuf::new(),
             published: Default::default(),
         }
@@ -327,6 +334,8 @@ impl WirDriver {
                 simulated: self.launch.simulated,
                 provider: self.files.as_deref(),
                 deliveries: &self.published,
+                inputs: &self.given,
+                nextflow: &self.scope_run,
             };
             let stepped = operator::step_all(&mut self.progress, &mut self.operators, &context);
             let rounds =
@@ -377,6 +386,8 @@ impl WirDriver {
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
             deliveries: &self.published,
+            inputs: &self.given,
+            nextflow: &self.scope_run,
         };
         if engine::begin(&mut self.progress, at, &bound, &context)? {
             return Ok(Vec::new());
@@ -507,6 +518,8 @@ impl WirDriver {
                     simulated: self.launch.simulated,
                     provider: self.files.as_deref(),
                     deliveries: &self.published,
+                    inputs: &self.given,
+                    nextflow: &self.scope_run,
                 };
                 let callbacks = &mut self.callbacks;
                 let given = task::callback(callbacks, &context, directives, argument, bound)
@@ -556,6 +569,8 @@ impl WirDriver {
                 simulated: self.launch.simulated,
                 provider: self.files.as_deref(),
                 deliveries: &self.published,
+                inputs: &self.given,
+                nextflow: &self.scope_run,
             };
             match task::callback(&mut self.callbacks, &context, test, argument, &bound) {
                 Ok(Json::Bool(true)) => {}
@@ -611,6 +626,8 @@ impl WirDriver {
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
             deliveries: &self.published,
+            inputs: &self.given,
+            nextflow: &self.scope_run,
         };
         let index = self.progress.round_index(at);
         let accepted = captured.and_then(|(values, empty)| match &spec.accept {
@@ -1093,6 +1110,8 @@ impl WirDriver {
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
             deliveries: &self.published,
+            inputs: &self.given,
+            nextflow: &self.scope_run,
         };
         let argument = json!({"success": failure.is_none(), "error": failure});
         // Hooks print, like a Nextflow `onComplete` that tells how the run ended.
@@ -1195,6 +1214,7 @@ impl Driver for WirDriver {
             .collect();
         self.progress.feed(&values, &streams)?;
         values.retain(|name, _| !streams.contains(name));
+        self.given = values.clone();
         self.progress.inputs = values;
         self.progress.activate(None)?;
         self.advance()

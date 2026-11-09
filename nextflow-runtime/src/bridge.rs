@@ -42,11 +42,7 @@ pub fn to_json(value: &Value) -> Result<Json, String> {
             Json::Object(object)
         }
         Value::Path(path) => {
-            let location = match path.prefix {
-                None => path.path.clone(),
-                Some(_) => path.uri(),
-            };
-            json!({"class": "File", "location": location, "basename": path.name()})
+            json!({"class": "File", "location": location(path), "basename": path.name()})
         }
         Value::Object(object) => match &object.borrow().state {
             State::GroupKey(target, size) => {
@@ -56,6 +52,15 @@ pub fn to_json(value: &Value) -> Result<Json, String> {
         },
         other => return Err(format!("a {} cannot leave the script", other.class_name())),
     })
+}
+
+/// The location of a path in wir values: a local path, or the address with its scheme, like
+/// `s3://bucket/result.txt`.
+pub fn location(path: &PathValue) -> String {
+    match path.prefix {
+        None => path.path.clone(),
+        Some(_) => path.uri(),
+    }
 }
 
 /// A JSON value as Nextflow sees it: whole numbers as Integer or Long, other numbers as

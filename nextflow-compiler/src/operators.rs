@@ -135,7 +135,21 @@ pub(crate) fn piece(
                 json!({"body": written(transpose(&by, *remainder))}),
             )
         }
-        Kind::Scan { .. } => return Err("nf-boost's `scan`, which no wir op does".into()),
+        // nf-boost's `scan` gives the fold after every item; a null seed is no seed, and after
+        // a null result the next item starts again, as with no seed.
+        Kind::Scan { callback, seed } => {
+            let mut fold = body(callback);
+            let code = format!(
+                "{{ wirState, wirItem -> wirState == null ? wirItem : ({}).call(wirState, wirItem) }}",
+                callback.code
+            );
+            fold["code"] = json!(code);
+            let mut payload = json!({"rule": "fold", "body": fold, "steps": true});
+            if !seed.is_null() {
+                payload["seed"] = json!({"value": seed});
+            }
+            unary(path, "reduce", payload, true, true)
+        }
         Kind::Collect {
             callback,
             flat,

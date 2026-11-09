@@ -164,3 +164,41 @@ fn keeps_values_private() {
         }
     }
 }
+
+/// The files of the values of a compiled run are no source of the run: a run records the
+/// files of its workflow and keeps them, longer than the values may stay.
+#[test]
+fn records_no_values() {
+    let wdl = "version 1.1\n\ntask hello {\n  input {\n    String name\n  }\n  command <<<\n    echo ~{name}\n  >>>\n  output {\n    File out = stdout()\n  }\n}\n";
+    let runs = [
+        ("Snakefile", WORD, ["--config", "word=hush4711"]),
+        ("hello.wdl", wdl, ["--name", "hush4711"]),
+    ];
+    for (name, text, values) in runs {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let (root, cache) = (folder.path(), folder.path().join("cache"));
+        std::fs::write(root.join(name), text).expect("writes the workflow");
+        let output = common::command()
+            .args(["run", "-executor", "simulator", name, "-lowered"])
+            .args(values)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs uwe");
+        let errors = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{errors}");
+        let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+            .expect("opens the run database");
+        let run = database.runs(1).expect("lists the runs")[0].id.clone();
+        let sources = database.sources(&run).expect("reads the sources");
+        assert!(!sources.is_empty());
+        for source in sources {
+            let file = std::path::Path::new(&source.path)
+                .file_name()
+                .unwrap_or_default();
+            let file = file.to_string_lossy();
+            let private = file.starts_with("uwe-config-") || file.starts_with("uwe-inputs-");
+            assert!(!private, "{name}: the run records {}", source.path);
+        }
+    }
+}

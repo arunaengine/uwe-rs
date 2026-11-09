@@ -32,6 +32,17 @@ pub struct Sources {
 }
 
 impl Sources {
+    /// Leaves out the files of `paths`, like the files of the values of a compiled run, which
+    /// no record or store keeps.
+    pub fn leave_out(&mut self, paths: &[impl AsRef<Path>]) {
+        let same = |path: &Path| paths.iter().any(|other| other.as_ref() == path);
+        let folder = &self.folder;
+        self.files.retain(|source| match source.kind {
+            SourceKind::Workflow => !same(&folder.join(&source.path)),
+            SourceKind::Named => !same(Path::new(&source.path)),
+        });
+    }
+
     /// Strict runs require a complete, nonempty source inventory.
     pub fn complete(&self) -> Result<(), String> {
         match &self.skipped {

@@ -130,6 +130,8 @@ pub struct Nextflow {
     cause: Option<String>,
     /// The config and the main script, once loaded; the run takes them when it starts.
     loaded: Option<Loaded>,
+    /// The params given in memory, which the config sees as those of a params file.
+    given: Option<Value>,
     /// The files of the tasks, where a real executor keeps them.
     files: Option<Arc<dyn Files>>,
     /// The files that `exec:` sections made, by their path, with the task that made them, so
@@ -188,6 +190,7 @@ impl Nextflow {
             report_deliveries: Vec::new(),
             cause: None,
             loaded: None,
+            given: None,
             files: None,
             made_by: HashMap::new(),
             acceptance: HashMap::new(),
@@ -209,7 +212,8 @@ impl Nextflow {
         let host = self.settings.host.as_mut();
         let target = &self.launch.target;
         let project = project_folder(target);
-        let (mut config, mut files) = load_config(&project, &self.launch, host, false)?;
+        let given = self.given.as_ref();
+        let (mut config, mut files) = load_config(&project, &self.launch, host, false, given)?;
         let script = if target.is_dir() {
             let main = config
                 .get(&["manifest", "mainScript"])
@@ -235,7 +239,7 @@ impl Nextflow {
             && disabled.is_none_or(|value| value.is_empty());
         // The config sees the params of the command line as the script does.
         if legacy && !self.launch.params.is_empty() {
-            (config, files) = load_config(&project, &self.launch, host, true)?;
+            (config, files) = load_config(&project, &self.launch, host, true, given)?;
         }
         self.loaded = Some(Loaded {
             project,
@@ -341,7 +345,7 @@ impl Nextflow {
         bare.params.clear();
         bare.inputs = None;
         let host = self.settings.host.as_mut();
-        let (config, _) = load_config(&loaded.project, &bare, host, loaded.legacy)?;
+        let (config, _) = load_config(&loaded.project, &bare, host, loaded.legacy, None)?;
         let options = self.options(loaded, config.clone());
         let host = self.settings.host.as_mut();
         let (params, defaults) = crate::declared_params(&loaded.module, &options, host)
@@ -846,10 +850,13 @@ impl Driver for Nextflow {
     }
 
     fn use_inputs(&mut self, values: serde_json::Value) -> Result<(), DriverError> {
-        self.load()?;
         let text =
             serde_json::to_string(&values).map_err(|error| DriverError::new(error.to_string()))?;
         let values = parse_json(&text).map_err(|error| DriverError::new(error.to_string()))?;
+        // The config sees the values as the params of a params file, so it loads again.
+        self.given = Some(values.clone());
+        self.loaded = None;
+        self.load()?;
         let loaded = self.loaded.as_mut().ok_or_else(not_started)?;
         tree::deep_merge(&loaded.config.params(), &values);
         // The check reads command-line texts as the types of the schema, but Nextflow 26.04.6
@@ -997,7 +1004,7 @@ fn project_folder(target: &Path) -> PathBuf {
 /// check` lists. A config that does not load gives none; the check reports its error.
 pub fn plugin_warnings(launch: &Launch, host: &mut dyn Host) -> Vec<String> {
     let project = project_folder(&launch.target);
-    match load_config(&project, launch, host, false) {
+    match load_config(&project, launch, host, false, None) {
         Ok((config, _)) => nextflow_plugins::catalogue::warnings(&config),
         Err(_) => Vec::new(),
     }
@@ -1006,7 +1013,7 @@ pub fn plugin_warnings(launch: &Launch, host: &mut dyn Host) -> Vec<String> {
 /// The config of a project directory or of a script's folder, as `nextflow run` and `nextflow
 /// config` read it.
 pub fn config(target: &Path, launch: &Launch, host: &mut dyn Host) -> Result<Config, DriverError> {
-    load_config(&project_folder(target), launch, host, false).map(|(config, _)| config)
+    load_config(&project_folder(target), launch, host, false, None).map(|(config, _)| config)
 }
 
 /// The config of a project directory and the files it came from, in the order read.
@@ -1015,13 +1022,24 @@ fn load_config(
     launch: &Launch,
     host: &mut dyn Host,
     typed: bool,
+    given: Option<&Value>,
 ) -> Result<(Config, Vec<PathBuf>), DriverError> {
     let launch_dir = launch_folder(host);
+    let values = params(launch, typed)?;
+    if let Some(given) = given {
+        // The params of the command line stay over the given ones.
+        tree::deep_merge(&values, given);
+        let bare = Launch {
+            inputs: None,
+            ..launch.clone()
+        };
+        tree::deep_merge(&values, &params(&bare, typed)?);
+    }
     let project = std::path::absolute(project).unwrap_or_else(|_| project.to_owned());
     let files = nextflow_config::files(&project, &launch_dir, &launch.configs);
     let options = nextflow_config::Options {
         profiles: (!launch.profiles.is_empty()).then(|| launch.profiles.clone()),
-        params: params(launch, typed)?,
+        params: values,
         project_dir: project.to_string_lossy().into_owned(),
         launch_dir: launch_dir.to_string_lossy().into_owned(),
         work_dir: launch_dir.join("work").to_string_lossy().into_owned(),

@@ -9,6 +9,8 @@ use uwe::RunRequest;
 use uwe::hosted::Isolation;
 use uwe::run::Settings;
 
+mod common;
+
 /// A variable of the service process that no workflow may read.
 const SERVICE: &str = "UWE_TEST_SERVICE_TOKEN";
 
@@ -111,7 +113,6 @@ fn confines_compiled_code() {
         launch: Some(folder.join("launch")),
         ..Isolation::default()
     });
-    settings.lowered = true;
     let mut request = RunRequest::new(settings);
     request.policy = uwe::application::Policy::Relaxed;
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -381,6 +382,150 @@ fn launches_isolated_snakefile() {
         std::fs::read_to_string(launch.join("service.txt")).unwrap(),
         "changed"
     );
+}
+
+/// A Snakefile whose target lies below `results`, relative to the folder it starts in.
+const SNAKEFILE_TARGET: &str = "rule all:\n    input: 'results/made.txt'\n\n\
+    rule make:\n    output: 'results/made.txt'\n    shell: 'echo made > {output}'\n";
+
+/// A compiled Snakemake run starts in its launch folder: the one of the host when confined,
+/// else one of its own. It delivers its target from there and writes nothing into the working
+/// directory of the process.
+#[test]
+fn delivers_launched_targets() {
+    if std::env::var_os(CHILD).is_none() {
+        let process = tempfile::tempdir().unwrap();
+        in_child("delivers_launched_targets", Some(process.path()));
+        let left: Vec<_> = std::fs::read_dir(process.path())
+            .unwrap()
+            .flatten()
+            .collect();
+        assert!(left.is_empty(), "the runs wrote {left:?}");
+        return;
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = folder.path().join("workflow/Snakefile");
+    std::fs::create_dir_all(workflow.parent().unwrap()).unwrap();
+    std::fs::write(&workflow, SNAKEFILE_TARGET).unwrap();
+    let launch = folder.path().join("launch");
+    for confined in [true, false] {
+        let mut settings = settings(folder.path(), &workflow);
+        settings.executor = Some("simulator".into());
+        if confined {
+            settings.isolation = Some(Isolation {
+                launch: Some(launch.clone()),
+                ..Isolation::default()
+            });
+        }
+        let mut request = RunRequest::new(settings);
+        request.policy = uwe::application::Policy::Relaxed;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let ran = runtime.block_on(request.run());
+        let ran = ran.unwrap_or_else(|failure| panic!("{}", failure.message));
+        assert!(ran.execution.error.is_none(), "{:?}", ran.execution.error);
+        let started = match confined {
+            true => launch.clone(),
+            false => folder.path().join("cache/scratch/launch").join(&ran.id),
+        };
+        // The compiled document names the target where the run makes it.
+        let database = run_database::Database::open(&folder.path().join("runs.sqlite")).unwrap();
+        let document = database.run(&ran.id).unwrap().unwrap().document.unwrap();
+        let text = std::fs::read_to_string(document).unwrap();
+        let target = started.join("results/made.txt");
+        assert!(
+            text.contains(target.to_str().unwrap()),
+            "confined {confined}: {text}"
+        );
+    }
+}
+
+/// Splits a file that the run names, like a channel operator of a compiled pipeline does.
+const SPLIT: &str = "workflow {\n  channel.of(file(params.outside)).splitText().view()\n}\n";
+
+/// The file operators of a compiled run keep to the folders of an isolated run, as the code
+/// of the workflow does: a split of a file outside them fails without reading it.
+#[test]
+fn confines_file_operators() {
+    if std::env::var_os(CHILD).is_none() {
+        return in_child("confines_file_operators", None);
+    }
+    let root = tempfile::tempdir().unwrap();
+    let outside = root.path().join("outside/private.txt");
+    std::fs::create_dir_all(outside.parent().unwrap()).unwrap();
+    std::fs::write(&outside, "private line").unwrap();
+    let folder = root.path().join("pipeline");
+    let data = folder.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(folder.join("main.nf"), SPLIT).unwrap();
+    let mut settings = settings(&folder, &folder.join("main.nf"));
+    settings
+        .params
+        .insert("outside".into(), json!(outside.to_string_lossy()));
+    settings.isolation = Some(Isolation {
+        roots: vec![data],
+        launch: Some(folder.join("launch")),
+        ..Isolation::default()
+    });
+    let printed = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let sink = printed.clone();
+    settings.print_sink = Some(uwe::run::PrintSink::new(move |text: &str| {
+        sink.lock().unwrap().push_str(text);
+    }));
+    let mut request = RunRequest::new(settings);
+    request.policy = uwe::application::Policy::Relaxed;
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let message = match runtime.block_on(request.run()) {
+        Ok(ran) => (ran.execution.error.map(|error| error.to_string())).unwrap_or_default(),
+        Err(failure) => failure.message,
+    };
+    assert!(
+        message.contains("outside the folders of the run"),
+        "{message}"
+    );
+    assert!(!printed.lock().unwrap().contains("private line"));
+}
+
+/// A confined run reads the documents that its workflow includes or imports from the web
+/// through its storage, which refuses a host that is not among its allowed hosts, also while
+/// the workflow compiles.
+#[test]
+fn refuses_private_imports() {
+    let server = common::WebServer::start(&[
+        ("/word.txt", "private-word"),
+        (
+            "/lib.wdl",
+            "version 1.1\ntask hello {\n  command <<< echo private-word >>>\n}\n",
+        ),
+    ]);
+    let address = &server.address;
+    let cwl = format!(
+        "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: echo\narguments:\n  - $include: {address}/word.txt\ninputs: []\noutputs: []\n"
+    );
+    let wdl = format!(
+        "version 1.1\nimport \"{address}/lib.wdl\" as lib\n\nworkflow main {{\n  call lib.hello\n}}\n"
+    );
+    // The analysis of a WDL document reads a scheme in any case.
+    let upper = wdl.replacen("http://", "HTTP://", 1);
+    for (name, text) in [("tool.cwl", cwl), ("main.wdl", wdl), ("upper.wdl", upper)] {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(root.path().join(name), text).unwrap();
+        let mut settings = settings(root.path(), &root.path().join(name));
+        settings.executor = Some("simulator".into());
+        settings.isolation = Some(Isolation {
+            roots: vec![data],
+            ..Isolation::default()
+        });
+        let mut request = RunRequest::new(settings);
+        request.policy = uwe::application::Policy::Relaxed;
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let message = match runtime.block_on(request.run()) {
+            Ok(ran) => (ran.execution.error.map(|error| error.to_string())).unwrap_or_default(),
+            Err(failure) => failure.message,
+        };
+        assert!(message.contains("127.0.0.1"), "{name}: {message}");
+    }
 }
 
 /// A run of `workflow` with its database, store, cache and outputs in `folder`.

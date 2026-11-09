@@ -114,6 +114,8 @@ pub enum Answer {
     /// The files of the targets by output name, as a finished native run names them, in
     /// the working folder.
     Targets(Json),
+    /// The rule that a run without targets plans.
+    Entry(Option<String>),
     /// The jobs of a new plan after a checkpoint ended, or `None` without one.
     Replanned(Option<Vec<PlannedJob>>),
 }
@@ -136,6 +138,16 @@ impl SnakemakeDriver {
         match self.ask_job(Request::Targets)? {
             Answer::Targets(targets) => Ok(targets),
             _ => Err(DriverError::new("the Snakemake session gave no targets")),
+        }
+    }
+
+    /// The rule that a run without targets plans, the first of the Snakefile.
+    pub fn default_target(&mut self) -> Result<Option<String>, DriverError> {
+        match self.ask_job(Request::Entry)? {
+            Answer::Entry(entry) => Ok(entry),
+            _ => Err(DriverError::new(
+                "the Snakemake session gave no default target",
+            )),
         }
     }
 
@@ -200,6 +212,7 @@ impl Session {
             }
             Request::Take(outcome) => Answer::Taken(self.take_key(*outcome)?),
             Request::Targets => Answer::Targets(self.target_files()),
+            Request::Entry => Answer::Entry(self.state.borrow().default_target.clone()),
             _ => return Err(DriverError::new("not a request of a job")),
         };
         *answers.lock().unwrap_or_else(PoisonError::into_inner) = Some(answer);

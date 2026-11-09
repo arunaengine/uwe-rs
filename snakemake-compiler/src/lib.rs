@@ -17,6 +17,7 @@ use workflow_graph::Launch;
 
 pub use launch::{
     group_keys, job_key, job_launch, place_values, plan_launch, plans_job, rule_values,
+    source_values,
 };
 pub use region::region_plan;
 
@@ -69,6 +70,11 @@ pub fn compile(
     };
     let folder = run.workdir.clone();
     let place = |sources: Vec<Json>| started(sources, launch, folder.as_deref(), base);
+    // The code of the Snakefile writes its files when the run runs it, not here.
+    let run = RunSettings {
+        planning: true,
+        ..run
+    };
     let mut driver =
         snakemake_runtime::spawn_driver(launch, settings, run).map_err(|error| error.message)?;
     let jobs = match driver.plan_jobs() {
@@ -81,17 +87,21 @@ pub fn compile(
         Err(error) => return Err(error.message),
     };
     let targets = driver.plan_targets().map_err(|error| error.message)?;
+    let first = driver.default_target().map_err(|error| error.message)?;
     drop(driver);
     if let Some(reason) = jobs.iter().find_map(kept_job) {
         return native(place(sources)?, &setting, launch, reason);
     }
+    // Without targets the run plans the first rule, also when options like `-until` or
+    // `-forcerun` add or remove roots of the plan.
+    let root = first.or_else(|| jobs.iter().find_map(|job| job.target.clone()));
     let setting = Setting {
-        entry: (setting.entry.clone()).or_else(|| jobs.iter().find_map(|job| job.target.clone())),
+        entry: setting.entry.clone().or(root),
         ..setting
     };
     let checkpoint = jobs.iter().find(|job| job.checkpoint);
     let graph = match checkpoint {
-        Some(job) => region(&setting, launch, &job.key.rule)?,
+        Some(_) => region(&setting, launch)?,
         None => jobs::graph(&jobs, &setting, launch, &targets),
     };
     let document = json!({
@@ -116,23 +126,19 @@ pub(crate) struct Setting {
     pub values: Option<String>,
 }
 
-/// The settings of a launch that a native op does not hold: config values of the command
-/// line and the options that pick the jobs of a plan.
-fn unheld(launch: &Launch) -> Vec<&'static str> {
-    let held = [
-        (
-            !launch.params.is_empty(),
-            "config values of the command line",
-        ),
-        (launch.targets.len() > 1, "several targets"),
-        (!launch.until.is_empty(), "the option until"),
-        (!launch.omit_from.is_empty(), "the option omit-from"),
-        (!launch.forcerun.is_empty(), "the option forcerun"),
-        (launch.forceall, "the option forceall"),
+/// Sets the options of `launch` that pick the jobs of a plan on a planner or a native op.
+fn pick_jobs(target: &mut Json, launch: &Launch) {
+    let lists = [
+        ("until", &launch.until),
+        ("omit_from", &launch.omit_from),
+        ("forcerun", &launch.forcerun),
     ];
-    (held.into_iter())
-        .filter_map(|(set, reason)| set.then_some(reason))
-        .collect()
+    for (field, list) in lists.into_iter().filter(|(_, list)| !list.is_empty()) {
+        target[field] = json!(list);
+    }
+    if launch.forceall {
+        target["forceall"] = json!(true);
+    }
 }
 
 /// Why a job keeps the workflow native, like a group of several images; a job that waits for
@@ -148,15 +154,7 @@ fn kept_job(job: &PlannedJob) -> Option<String> {
 
 /// The entry graph of a workflow with checkpoints: one dynamic region that the Snakemake
 /// planner plans again after each checkpoint, as a native run does.
-fn region(setting: &Setting, launch: &Launch, checkpoint: &str) -> Result<Json, String> {
-    let held = (unheld(launch).into_iter()).filter(|unheld| *unheld != "several targets");
-    let held: Vec<&str> = held.collect();
-    if !held.is_empty() || setting.values.is_some() {
-        let held = held.join(", ");
-        return Err(format!(
-            "rule {checkpoint} is a checkpoint, whose region cannot hold {held}"
-        ));
-    }
+fn region(setting: &Setting, launch: &Launch) -> Result<Json, String> {
     let targets = match launch.targets.is_empty() {
         true => setting.entry.iter().cloned().collect(),
         false => launch.targets.clone(),
@@ -168,25 +166,23 @@ fn region(setting: &Setting, launch: &Launch, checkpoint: &str) -> Result<Json, 
     if !setting.configs.is_empty() {
         planner["configs"] = json!(setting.configs);
     }
+    // The region plans with the config values and the options that pick jobs of the run.
+    if let Some(values) = &setting.values {
+        planner["config_values"] = json!(values);
+    }
+    pick_jobs(&mut planner, launch);
     let kind = json!({"dynamic": {"planner": {"snakemake": planner}}});
     Ok(json!({"name": "main", "ops": [{"path": "snakemake", "kind": kind}]}))
 }
 
-/// The whole workflow as one native Snakemake op; it fails when the launch has settings
-/// that the op cannot hold, since the run would plan other jobs without them.
+/// The whole workflow as one native Snakemake op, which plans its jobs with the config values
+/// and the options of the launch, as the run would.
 fn native(
     sources: Vec<Json>,
     setting: &Setting,
     launch: &Launch,
     reason: String,
 ) -> Result<Compiled, String> {
-    let dropped = unheld(launch);
-    if !dropped.is_empty() {
-        let dropped = dropped.join(", ");
-        return Err(format!(
-            "the workflow stays one native Snakemake op ({reason}), which cannot hold {dropped}"
-        ));
-    }
     let path = "snakemake";
     let mut native = json!({"source": SOURCE, "language": "snakemake"});
     if let Some(entry) = &setting.entry {
@@ -198,6 +194,13 @@ fn native(
     if !setting.configs.is_empty() {
         native["configs"] = json!(setting.configs);
     }
+    if launch.targets.len() > 1 {
+        native["targets"] = json!(launch.targets);
+    }
+    if let Some(values) = &setting.values {
+        native["config_values"] = json!(values);
+    }
+    pick_jobs(&mut native, launch);
     let document = json!({
         "wir_version": wir::VERSION,
         "sources": sources,

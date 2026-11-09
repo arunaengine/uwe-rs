@@ -116,21 +116,19 @@ pub(crate) fn driver(
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
-        Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments)),
+        Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments, setup)),
         Language::Wir => {
             let mut settings = wir_runtime::Settings {
-                // A block runs no `uwe resume` requests: they name the steps of a whole run.
-                argo: argo_runtime::Services {
-                    resume: None,
-                    ..argo_services(run, setup)
-                },
+                // Only a block that is the whole run hears `uwe resume`, whose requests name
+                // the steps of the run.
+                argo: argo_services(run, setup),
                 cwl: cwl_options(arguments, setup, cancel),
                 nextflow: nextflow::blocks(run, quiet, arguments, setup),
                 snakemake: wir_runtime::snakemake::Options {
                     settings: snakemake(arguments, setup, cancel),
                     run: snakemake_options(arguments, setup, run),
                 },
-                wdl: wdl_options(arguments),
+                wdl: wdl_options(arguments, setup),
                 print: !arguments.no_print,
                 print_sink: {
                     let secrets = arguments.secrets.clone();
@@ -147,6 +145,14 @@ pub(crate) fn driver(
                     argo_services(run, setup),
                 ),
                 secret_inputs: arguments.secret_inputs.clone(),
+                // File ops reach what the code of the workflow reaches.
+                roots: isolation(arguments, setup).map(|isolation| {
+                    let workflow = arguments.target.clone().unwrap_or(launch.target.clone());
+                    let own =
+                        (isolation.launch.clone()).or_else(|| arguments.embedded.then(|| own(run)));
+                    let shared = shared_folders(arguments, setup);
+                    nextflow::run_roots(&workflow, launch, (&isolation, &shared), own)
+                }),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
                     let arguments = arguments.clone();
@@ -210,12 +216,26 @@ fn argo_services(run: &str, setup: &Setup) -> argo_runtime::Services {
 }
 
 /// The options of WDL runs, and of the WDL blocks of wir runs.
-fn wdl_options(arguments: &Arguments) -> wdl_runtime::Options {
+pub(crate) fn wdl_options(arguments: &Arguments, setup: &Setup) -> wdl_runtime::Options {
     wdl_runtime::Options {
         image: (arguments.default_image.clone())
             .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
         print: !arguments.no_print,
+        imports: setup.isolation.is_some().then(|| wdl_imports(setup)),
     }
+}
+
+/// Reads each document at a web address that a WDL document of an isolated run imports
+/// through the storage of the run, which refuses an address the run may not reach.
+fn wdl_imports(setup: &Setup) -> wdl_runtime::document::Imports {
+    let downloads = cache_directory().join("downloads");
+    let storage = setup.storage.blocking();
+    wdl_runtime::document::Imports::new(move |url| {
+        let copy = storage
+            .fetch(url, &downloads)
+            .map_err(|error| error.to_string())?;
+        std::fs::read_to_string(copy).map_err(|error| error.to_string())
+    })
 }
 
 /// The options of CWL runs, and of the CWL blocks of wir runs.
@@ -263,6 +283,7 @@ pub(crate) fn snakemake_options(
     setup: &Setup,
     run: &str,
 ) -> snakemake_runtime::RunSettings {
+    let run = arguments.launch_run.as_deref().unwrap_or(run);
     snakemake_runtime::RunSettings {
         image: arguments.default_image.clone(),
         offline: super::backend::network_rule(arguments, setup).offline(&workflow_graph::Task {
@@ -273,13 +294,19 @@ pub(crate) fn snakemake_options(
         conda: setup.conda.is_some(),
         shared_workdir: shared_workdir(arguments, setup),
         local: arguments.executor.as_deref().unwrap_or("local") == "local",
-        // An isolated run without a launch folder of the host starts in one of its own, as a
-        // Nextflow run does, so that its code never reaches the working directory of uwe.
-        workdir: (setup.isolation.as_ref()).map(|isolation| {
-            (isolation.launch.clone())
-                .unwrap_or_else(|| cache_directory().join("scratch").join("launch").join(run))
-        }),
+        // An isolated or embedded run without a launch folder of the host starts in one of its
+        // own, or that of the run it resumes, never in the working directory of the process.
+        workdir: match &setup.isolation {
+            Some(isolation) => Some(isolation.launch.clone().unwrap_or_else(|| own(run))),
+            None => arguments.embedded.then(|| own(run)),
+        },
+        planning: arguments.planning,
     }
+}
+
+/// The launch folder of its own of the run `run`.
+fn own(run: &str) -> PathBuf {
+    cache_directory().join("scratch").join("launch").join(run)
 }
 
 /// Whether the executor sees the folders of this machine at their paths, so that Snakemake

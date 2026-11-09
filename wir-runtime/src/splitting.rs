@@ -97,13 +97,21 @@ impl Splitting {
                     .and_then(Json::as_str)
                     .unwrap_or_default();
                 let path = location.strip_prefix("file://").unwrap_or(location);
-                if path.contains("://") && context.provider.is_none() {
-                    return Err(
-                        turn.failed(format!("uwe splits only local files yet, not {location}"))
-                    );
-                }
-                let bytes = (context.read(location))
-                    .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?;
+                let bytes = match (context.provider, context.remote) {
+                    // A run without a files provider reads a web address as Nextflow does.
+                    (None, Some(remote)) if path.contains("://") => {
+                        let copy = (remote.storage.blocking().fetch(path, &remote.downloads()))
+                            .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?;
+                        std::fs::read(&copy)
+                            .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?
+                    }
+                    (None, _) if path.contains("://") => {
+                        let why = format!("uwe splits only local files yet, not {location}");
+                        return Err(turn.failed(why));
+                    }
+                    _ => (context.read(location))
+                        .map_err(|error| turn.failed(format!("cannot read {path}: {error}")))?,
+                };
                 let gzip = match self.spec.decompress {
                     Decompress::Always => true,
                     Decompress::Never => false,

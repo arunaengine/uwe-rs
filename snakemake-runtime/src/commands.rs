@@ -37,6 +37,8 @@ pub enum Request {
     Take(Box<Outcome>),
     /// The files of the targets of the planned jobs, named as the outputs of a run.
     Targets,
+    /// The rule that a run without targets plans, the first of the Snakefile.
+    Entry,
     /// A new plan of the jobs after a checkpoint ended.
     Replan,
 }
@@ -173,6 +175,13 @@ impl CommandRunner {
                 "the workflow runs a command while it is loaded, which only a run can do",
             ));
         }
+        // A compile runs no command of the Snakefile, which the run runs once; a simulated
+        // one runs none anyway.
+        if self.settings.planning && !self.simulated {
+            return Err(Error::unsupported(
+                "a command that the Snakefile runs while it loads, which only the run runs",
+            ));
+        }
         if self.channel.planning.get() {
             return self.run_now(command);
         }
@@ -221,6 +230,7 @@ impl CommandRunner {
                 | Request::Prepare(_)
                 | Request::Take(_)
                 | Request::Targets
+                | Request::Entry
                 | Request::Replan => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",

@@ -599,7 +599,8 @@ pub enum Planner {
     Snakemake(PlanRef),
 }
 
-/// The source, targets, profiles and configs a planner plans from.
+/// The source, targets, profiles and configs a planner plans from, with the config values
+/// and the options that pick jobs, as a `snakemake_job` builder has them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanRef {
@@ -610,6 +611,16 @@ pub struct PlanRef {
     pub profiles: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub configs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_values: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub until: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub omit_from: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forcerun: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forceall: bool,
 }
 
 /// One revision of the graph of a region, with the identities of its top-level ops.

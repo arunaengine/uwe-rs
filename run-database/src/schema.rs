@@ -8,12 +8,12 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
 const MIGRATIONS: [&str; VERSION as usize] = [
     VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5, VERSION_6, VERSION_7, VERSION_8,
-    VERSION_9,
+    VERSION_9, VERSION_10,
 ];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
@@ -278,6 +278,15 @@ const VERSION_9: &str = "
 ALTER TABLE sources ADD COLUMN executable INTEGER NOT NULL DEFAULT 0 CHECK (executable IN (0, 1));
 ALTER TABLE logs ADD COLUMN location TEXT;
 CREATE INDEX events_task ON events (run, task, sequence);
+";
+
+/// Version 10: the wir document that a run compiled its workflow into, and its digest. Earlier
+/// runs that recorded the document as their workflow keep it there and get it here too.
+const VERSION_10: &str = "
+ALTER TABLE runs ADD COLUMN document TEXT;
+ALTER TABLE runs ADD COLUMN document_digest TEXT;
+UPDATE runs SET document = workflow
+    WHERE language = 'wir' AND workflow LIKE '%/scratch/lowered/%.wir.json';
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

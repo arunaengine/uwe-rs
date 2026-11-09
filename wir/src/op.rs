@@ -358,6 +358,10 @@ pub struct Capture {
     /// as an array in `self`; see the README.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    /// Code like that of a `code` argument whose value is the format of each File it reads,
+    /// with that File as `self`, like a CWL `format` expression.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
 }
 
 /// The least and the most paths a capture may match.

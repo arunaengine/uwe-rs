@@ -715,12 +715,30 @@ fn holds_dynamic(r#type: &Type, defs: &[TypeDef]) -> bool {
     }
 }
 
-/// An `int` value where a `float` is wanted becomes a float, also inside other values.
+/// An `int` value where a `float` is wanted becomes a float, also inside other values, and a
+/// File whose type asks for secondary files lists them, none when it lists none, as in CWL.
 pub fn widen(value: Json, r#type: &Type, defs: &[TypeDef]) -> Json {
     let Some(r#type) = resolve(r#type, defs) else {
         return value;
     };
     match (r#type, value) {
+        (Type::File(file), Json::Object(mut object))
+            if !file.secondary_files.is_empty()
+                && object.get("class").and_then(Json::as_str) == Some("File") =>
+        {
+            object
+                .entry("secondary_files")
+                .or_insert_with(|| Json::Array(Vec::new()));
+            Json::Object(object)
+        }
+        (Type::Union(members), value @ Json::Object(_)) if value["class"] == "File" => {
+            let file = (members.iter())
+                .find(|member| matches!(resolve(member, defs), Some(Type::File(_))));
+            match file {
+                Some(member) => widen(value, member, defs),
+                None => value,
+            }
+        }
         (Type::Float, Json::Number(number)) if !number.is_f64() => {
             (number.as_f64()).map_or(Json::Number(number), Json::from)
         }

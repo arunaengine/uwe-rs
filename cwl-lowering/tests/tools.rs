@@ -268,8 +268,12 @@ fn lowers_format_expressions() {
     let op = only_op(&lowering);
     let capture = &op["kind"]["task"]["captures"][0];
     assert_eq!(capture["from"], "stdout");
-    let code = capture["code"].as_str().unwrap();
-    assert!(code.contains("file.format = format(file)"), "{code}");
+    let format = capture["format"].as_str().unwrap();
+    assert!(format.contains("inputs.text.format"), "{format}");
+    assert!(
+        capture.get("code").is_none(),
+        "a format is no output code: {capture}"
+    );
 }
 
 #[test]
@@ -282,4 +286,61 @@ fn lowers_environment_variables() {
         "NAME": {"input": "environment.NAME"}, "TMPDIR": "/tmp"});
     assert_eq!(task["task"]["environment"], environment);
     assert_eq!(ops[0].path, "environment.environment.NAME");
+}
+
+#[test]
+fn keeps_capture_library() {
+    let lowering = lowered("parsed.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let task = &only_op(&lowering)["kind"]["task"];
+    assert_eq!(task["captures"][0]["code"], "$(parse(self))");
+    let library = json!(["function parse(files) { return parseInt(files[0].contents); }"]);
+    assert_eq!(
+        task["library"], library,
+        "capture code sees the expressionLib"
+    );
+}
+
+#[test]
+fn times_with_cores() {
+    let lowering = lowered("timed.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let limits = ops
+        .iter()
+        .find(|op| op.path.ends_with("runtime.limits"))
+        .unwrap();
+    let wir::Kind::Expr(expr) = &limits.kind else {
+        panic!("an expr: {:?}", limits.kind);
+    };
+    let filled = expr
+        .code
+        .find("runtime.cores = ")
+        .expect("the cores in runtime");
+    let read = expr.code.find("runtime.cores * 60").unwrap();
+    assert!(
+        filled < read,
+        "the time limit sees the cores: {}",
+        expr.code
+    );
+}
+
+#[test]
+fn joins_computed_items() {
+    let lowering = lowered("joined.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let task = serde_json::to_value(&ops.last().unwrap().kind).unwrap();
+    let word = &task["task"]["command"][1];
+    assert_eq!(
+        word["separator"], ",",
+        "the valueFrom keeps its separator: {word}"
+    );
+}
+
+#[test]
+fn keeps_ontology_formats() {
+    let lowering = lowered("ontology.cwl");
+    let reason = &lowering.kept.first().expect("the tool stays native").reason;
+    assert!(reason.contains("ontology"), "{reason}");
 }

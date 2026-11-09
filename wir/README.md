@@ -65,7 +65,7 @@ A port of type `want` accepts a value of type `found` when one of these holds:
 
 Named types are resolved first and must not be defined through themselves.
 
-A secondary file pattern is a suffix added to the primary basename; each leading `^` first removes one extension, as in CWL.
+A secondary file pattern is a suffix added to the primary basename; each leading `^` first removes one extension, as in CWL. A File that a port of a type with secondary files takes or gives lists them in `secondary_files`, an empty list when it has none, as CWL lists them.
 
 ## Channel contract
 
@@ -138,6 +138,8 @@ The stream log is not a replacement for the task cache or resume database. This 
 `results` names a file in the working folder, like CWL `cwl.output.json`. When the command writes it, its JSON object gives every output in place of the captures: the field of its name, null when it has none. A File or Directory there with a `path`, or else a `location`, names a place in the container, absolute or from the working folder, and becomes the file that the task made or the input staged there. A runner lists the file among the outputs of the task and as its output manifest.
 
 A capture with `load_contents` puts the text of each File it reads into `contents`, like CWL `loadContents`; a file over 64 KiB fails the task. The output must hold Files. With `listing`, each Directory it reads holds its listing, `shallow` or `deep` as with a `load` op.
+
+A capture with `format` sets the format of each File it reads, alone or in arrays, to the value of that code, evaluated like the `code` of a capture with that File as `self`, like a CWL `format` expression; a value that is no string sets none.
 
 A capture with `code` gives the value of that code as the output, like CWL `outputEval`. The runner evaluates it as a `code` argument once the command ended, after `load_contents` and `listing`: `self` is the array of what the rule matched, each File and Directory with its `path` in the container, the Files and Directories of `inputs` have their staged paths, and `runtime` holds `exitCode`. A File or Directory of the value names a place as in the `results` file. For an output of one File or Directory, a list of no or one item is that item or null. The value must fit the output.
 

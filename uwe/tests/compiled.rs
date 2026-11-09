@@ -261,3 +261,62 @@ fn records_own_document() {
         "the crate holds a value of the first run"
     );
 }
+
+/// A resume of a compiled run compiles the workflow again into the same document, with the
+/// same values kept apart, and continues the run.
+#[test]
+fn resumes_compiled_runs() {
+    let runs = [
+        ("Snakefile", WORD, ["--config", "word=hush4711"]),
+        ("hello.wdl", HELLO, ["--name", "hush4711"]),
+    ];
+    for (name, text, values) in runs {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let (root, cache) = (folder.path(), folder.path().join("cache"));
+        std::fs::write(root.join(name), text).expect("writes the workflow");
+        let run = |resume: bool| {
+            let output = common::command()
+                .args(["run", "-executor", "simulator", name, "-lowered"])
+                .args(values)
+                .args(resume.then_some("-resume"))
+                .current_dir(root)
+                .env("XDG_CACHE_HOME", &cache)
+                .output()
+                .expect("runs uwe");
+            let errors = String::from_utf8_lossy(&output.stderr).into_owned();
+            assert!(output.status.success(), "{name}: {errors}");
+        };
+        run(false);
+        // A document that no run wrote for over a week goes when another compiles.
+        let lowered = cache.join("uwe/scratch/lowered");
+        let stale = lowered.join("stale.wir.json");
+        std::fs::write(&stale, "{}").expect("writes a stale document");
+        let weeks = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+        let file = std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .expect("opens it");
+        file.set_modified(weeks).expect("ages it");
+        run(true);
+        // Every task of the resumed run comes from the first run.
+        let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+            .expect("opens the run database");
+        let resumed = database.runs(1).expect("lists the runs").remove(0);
+        let tasks = database.tasks(&resumed.id).expect("reads the tasks");
+        assert!(!tasks.is_empty(), "{name}: the resumed run has tasks");
+        let fresh: Vec<i64> = (tasks.iter())
+            .filter(|task| task.reused.is_none())
+            .map(|task| task.id as i64)
+            .collect();
+        assert!(fresh.is_empty(), "{name}: tasks {fresh:?} ran again");
+        let documents = (std::fs::read_dir(&lowered)
+            .expect("lists the documents")
+            .flatten())
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".wir.json"))
+        .count();
+        assert_eq!(
+            documents, 1,
+            "{name}: both runs ran one document, the stale one went"
+        );
+    }
+}

@@ -33,9 +33,9 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The wir document that a `-lowered` run runs, below the scratch folder by its digest with
-/// absolute source locations, the WDL inputs file of its entry graph, and the files of the
-/// values of the run, which only the user reads and which go when they are dropped.
+/// The wir document of a `-lowered` run below the scratch folder by its digest, the same when
+/// compiled again; the WDL inputs file of its entry graph; and the files of its values, see
+/// [`written`]. Documents that no run wrote for a week go.
 pub fn document(
     target: &Path,
     language: Language,
@@ -53,9 +53,26 @@ pub fn document(
             (lowering.document, path)
         }
         Language::Snakemake => {
+            // A config file of the inputs, like the one of an embedded run, is a value too.
+            let inputs = match &arguments.inputs {
+                Some(file) => {
+                    let text = std::fs::read_to_string(file).map_err(|error| {
+                        failure(format!("uwe: cannot read {}: {error}", file.display()))
+                    })?;
+                    let kept = written(&folder, &text)?;
+                    let path = kept.to_path_buf();
+                    private.push(kept);
+                    Some(path)
+                }
+                None => None,
+            };
+            let arguments = &Arguments {
+                inputs,
+                ..arguments.clone()
+            };
             let mut document = snakemake(target, arguments, &folder)?.document;
             let place = |text: &str| {
-                let file = written(&folder, "uwe-config-", text).map_err(|error| error.message)?;
+                let file = written(&folder, text).map_err(|error| error.message)?;
                 let location = file.to_string_lossy().into_owned();
                 private.push(file);
                 Ok(location)
@@ -71,26 +88,60 @@ pub fn document(
         .map_err(|error| failure(format!("uwe: {error}")))?;
     let digest = task_model::Digest::sha256(text.as_bytes());
     let path = folder.join(format!("{}.wir.json", digest.hex()));
+    pruned(&folder);
     std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
     Ok((path, inputs, private))
 }
 
-/// A file of `text` below `folder` that only the user reads, removed when it is dropped.
-fn written(folder: &Path, prefix: &str, text: &str) -> Result<tempfile::TempPath, Failure> {
+/// The file of the values `text` below `folder`, named by their digest so that compiling
+/// again names it again; only the user reads it, and it goes when it is dropped.
+fn written(folder: &Path, text: &str) -> Result<tempfile::TempPath, Failure> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+    let values = folder.join("values");
     let shown = |error: std::io::Error| {
         failure(format!(
             "uwe: cannot write below {}: {error}",
-            folder.display()
+            values.display()
         ))
     };
-    std::fs::create_dir_all(folder).map_err(shown)?;
-    let mut file = (tempfile::Builder::new().prefix(prefix).suffix(".json"))
-        .tempfile_in(folder)
+    (std::fs::DirBuilder::new().recursive(true).mode(0o700))
+        .create(&values)
         .map_err(shown)?;
+    std::fs::set_permissions(&values, std::fs::Permissions::from_mode(0o700)).map_err(shown)?;
+    let digest = task_model::Digest::sha256(text.as_bytes());
+    let path = values.join(format!("{}.json", digest.hex()));
+    let mut file = (std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true))
+    .mode(0o600)
+    .open(&path)
+    .map_err(shown)?;
     std::io::Write::write_all(&mut file, text.as_bytes()).map_err(shown)?;
-    Ok(file.into_temp_path())
+    tempfile::TempPath::try_from_path(path).map_err(shown)
+}
+
+/// Removes the documents below `folder` that no run wrote for a week, and value files left
+/// by runs that ended without removing them; a resume compiles a document again.
+fn pruned(folder: &Path) {
+    const WEEK: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+    for place in [folder.to_owned(), folder.join("values")] {
+        let Ok(entries) = std::fs::read_dir(&place) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let old = (entry.metadata().and_then(|metadata| metadata.modified()))
+                .ok()
+                .and_then(|modified| modified.elapsed().ok())
+                .is_some_and(|age| age > WEEK);
+            if old && path.is_file() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
 }
 
 fn lowered(
@@ -230,5 +281,5 @@ fn converted(
     {
         values.extend(given);
     }
-    written(folder, "uwe-inputs-", &values.to_string()).map(Some)
+    written(folder, &values.to_string()).map(Some)
 }

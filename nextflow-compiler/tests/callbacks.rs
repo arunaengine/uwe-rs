@@ -199,6 +199,24 @@ fn handlers_see_tasks() {
 }
 
 #[test]
+fn failed_calls_capture() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    // The report binds before the process of its workflow fails, as nf-core's MultiQC does.
+    let script = "process P {\n    input:\n    val x\n    script:\n    'true'\n}\n\
+                  workflow INNER {\n    main:\n    def report = channel.of(1).toList()\n    \
+                  workflow.onComplete {\n        println \"report ${report.getVal()}\"\n    }\n    \
+                  P(report)\n}\nworkflow {\n    INNER()\n}\n";
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    let mut failing = Exiting {
+        exit: 3,
+        first: None,
+    };
+    let text = printed_by(folder, ("{}", "failed"), &mut failing);
+    assert_eq!(text, "report [1]\n");
+}
+
+#[test]
 fn plugins_end_runs() {
     let directory = tempfile::tempdir().unwrap();
     let folder = directory.path();

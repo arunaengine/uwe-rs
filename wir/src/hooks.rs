@@ -7,7 +7,8 @@ use std::collections::BTreeSet;
 
 use super::{Checker, Problem};
 use crate::closure::{Binding, Closure, ExprLanguage};
-use crate::document::Hook;
+use crate::document::{Document, Graph, Hook};
+use crate::op::{Kind, Op};
 
 impl Checker<'_> {
     pub(super) fn hooks(&mut self) {
@@ -34,7 +35,7 @@ impl Checker<'_> {
     }
 
     /// A hook closure takes one object; its captures name inputs of the entry graph, or value
-    /// outputs of its ops.
+    /// outputs of its ops and of the ops of the graphs that its calls run.
     fn hook_closure(&mut self, at: &str, closure: &Closure) {
         let wrong = match (closure.language, closure.parameters.len()) {
             (ExprLanguage::Js | ExprLanguage::Argo, _) => Some("a closure language"),
@@ -57,12 +58,11 @@ impl Checker<'_> {
                     .is_some_and(|graph| graph.inputs.iter().any(|port| port.name == *input)))
                 .then(|| format!("capture {name} names no input {input} of the entry graph")),
                 Binding::Output(end) => {
-                    let op = entry.and_then(|graph| {
-                        (graph.ops.iter()).find(|op| end.op.as_deref() == Some(op.path.as_str()))
-                    });
+                    let path = end.op.as_deref().unwrap_or_default();
+                    let op = entry.and_then(|graph| called(document, graph, path));
                     let port = op.and_then(|op| op.outputs.iter().find(|p| p.name == end.port));
                     (!port.is_some_and(|port| port.flow.is_value())).then(|| {
-                        format!("capture {name} names no value output of an op of the entry graph")
+                        format!("capture {name} names no value output of an op of the run")
                     })
                 }
                 Binding::Value(_) => None,
@@ -75,4 +75,24 @@ impl Checker<'_> {
             self.scope(at, scope, closure.language);
         }
     }
+}
+
+/// The op at a path of a graph, or below a call op of it in the graph it runs, like
+/// `inner/count` for the op `count` of the graph that the call `inner` runs.
+fn called<'d>(document: &'d Document, graph: &'d Graph, path: &str) -> Option<&'d Op> {
+    if let Some(op) = graph.ops.iter().find(|op| op.path == path) {
+        return Some(op);
+    }
+    for op in &graph.ops {
+        let (Kind::Call(call), Some(rest)) =
+            (&op.kind, path.strip_prefix(&format!("{}/", op.path)))
+        else {
+            continue;
+        };
+        let inner = document.graphs.iter().find(|item| item.name == call.graph);
+        if let Some(found) = inner.and_then(|inner| called(document, inner, rest)) {
+            return Some(found);
+        }
+    }
+    None
 }

@@ -1146,15 +1146,14 @@ impl WirDriver {
                 _ => continue,
             };
             let mut closure = closure.clone();
-            // A captured output of an op of the entry graph takes the value it ended with.
+            // A captured output of an op, also inside a call, takes the value it ended with.
             for binding in closure.captures.values_mut() {
                 let wir::Binding::Output(end) = binding else {
                     continue;
                 };
-                let roots = self.progress.children(None);
-                let node = (roots.iter())
-                    .find(|at| end.op.as_deref() == Some(self.progress.node(**at).path.as_str()));
-                let value = node.map(|at| self.progress.bound_output(*at, &end.port));
+                let mut nodes = self.progress.plan.nodes.iter();
+                let node = nodes.position(|node| end.op.as_deref() == Some(node.path.as_str()));
+                let value = node.map(|at| self.progress.bound_output(at, &end.port));
                 *binding = wir::Binding::Value(value.unwrap_or_default());
             }
             let body = wir::Body::Closure(closure);

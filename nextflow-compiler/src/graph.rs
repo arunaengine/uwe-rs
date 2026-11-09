@@ -64,7 +64,7 @@ pub(crate) fn compile(
     Ok((graphs, compiler.ends.into_inner()))
 }
 
-/// What a captured channel holds once the run ended: the output of an op of the entry graph,
+/// What a captured channel holds once the run ended: the output of an op of the run,
 /// or a value that the build bound, by channel.
 pub(crate) type Captured = BTreeMap<usize, Result<Json, Json>>;
 
@@ -86,7 +86,7 @@ struct Compiler<'a> {
     pieces: Vec<Option<Piece>>,
     /// The workflow call whose graph holds each node.
     scopes: Vec<usize>,
-    /// The value channels that handlers capture and nodes write, which leave their calls.
+    /// The value channels that handlers capture and nodes write.
     captured: BTreeSet<usize>,
     ends: RefCell<Captured>,
 }
@@ -269,8 +269,7 @@ impl<'a> Compiler<'a> {
             let read_outside = (self.network.nodes.iter().enumerate()).any(|(index, node)| {
                 node.inputs.contains(&channel) && !self.inside(scope, self.scopes[index])
             });
-            let captured = self.captured.contains(&channel) && scope != 0;
-            if read_outside || emitted.contains(&channel) || captured {
+            if read_outside || emitted.contains(&channel) {
                 outputs.insert(channel);
             }
         }
@@ -377,9 +376,7 @@ impl<'a> Compiler<'a> {
                 .push(json!({"from": endpoint(&from), "to": {"port": output}}));
         }
         // The handlers read the value channels that they capture once the run ended.
-        if scope == 0 {
-            self.capture(&mut draft)?;
-        }
+        self.capture(scope, &mut draft)?;
         Ok(json!({
             "name": graph_name(&network.scopes[scope].name),
             "inputs": inputs,
@@ -389,9 +386,10 @@ impl<'a> Compiler<'a> {
         }))
     }
 
-    /// Where the entry graph gives each value channel that a handler captures, or the value
-    /// that the build bound to it; a captured queue channel does not compile.
-    fn capture(&self, draft: &mut Draft) -> Result<(), Kept> {
+    /// Where the run gives each captured value channel that a node of `scope` writes: that op,
+    /// by its path through the calls, so a failed call keeps its value. The entry graph takes
+    /// the values that the build bound; a captured queue channel does not compile.
+    fn capture(&self, scope: usize, draft: &mut Draft) -> Result<(), Kept> {
         let mut ends = self.ends.borrow_mut();
         for channel in captures(self.network) {
             let path = format!("channel.{channel}");
@@ -401,18 +399,39 @@ impl<'a> Compiler<'a> {
                     "a workflow event handler captures a queue channel",
                 ));
             }
-            let end = match self.literal(channel) {
-                Some(Literal::Value(value)) => Err(value),
-                Some(Literal::Empty) => Err(Json::Null),
-                None if !self.captured.contains(&channel) => Err(Json::Null),
-                None => {
-                    let from = self.writer(0, channel, draft)?;
-                    Ok(json!({"op": from.op, "port": from.port}))
+            let writer = self.producer[channel].map(|(node, _)| self.scopes[node]);
+            let end = match (self.literal(channel), writer) {
+                (None, Some(found)) if self.captured.contains(&channel) => {
+                    if found != scope {
+                        continue;
+                    }
+                    let from = self.writer(scope, channel, draft)?;
+                    let op = format!("{}{}", self.prefix(scope), from.op);
+                    Ok(json!({"op": op, "port": from.port}))
                 }
+                _ if scope != 0 => continue,
+                (Some(Literal::Value(value)), _) => Err(value),
+                _ => Err(Json::Null),
             };
             ends.insert(channel, end);
         }
         Ok(())
+    }
+
+    /// The paths of the calls from the entry graph to the graph of `scope`, like `a/b/`.
+    fn prefix(&self, scope: usize) -> String {
+        let mut parts = Vec::new();
+        let mut current = scope;
+        while let Some(parent) = self.network.scopes[current].parent {
+            let qualified = &self.network.scopes[current].name;
+            parts.push(format!(
+                "{}/",
+                name(qualified.rsplit(':').next().unwrap_or_default())
+            ));
+            current = parent;
+        }
+        parts.reverse();
+        parts.concat()
     }
 
     /// Connects a reader of a channel in a graph: by an edge from its writer, through an op

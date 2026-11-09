@@ -74,6 +74,12 @@ impl Blocking {
         run(async move { storage.copy_of(&target, &file).await })
     }
 
+    /// Notes an existing copy as read, or replaces it by a pin; see [`Storage::note_copy`].
+    pub fn note_copy(&self, target: &str, file: &Path) -> Result<(), StorageError> {
+        let (storage, target, file) = self.owned(target, file);
+        run(async move { storage.note_copy(&target, &file).await })
+    }
+
     /// The entries of a directory; see [`Storage::list`].
     pub fn list(&self, target: &str) -> Result<Vec<Entry>, StorageError> {
         let (storage, target) = (self.storage.clone(), target.to_owned());

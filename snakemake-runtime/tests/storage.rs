@@ -231,6 +231,78 @@ fn fetches_wrapper_environments() {
     assert_eq!(image("b"), local.to_string_lossy());
 }
 
+/// A later run that finds the files of a wrapper in the shared mirror notes them as read as
+/// the first run did, and a repeat's pin replaces them by the copy that the repeated run read.
+#[test]
+fn notes_cached_copies() {
+    let server = Server::start();
+    let address = format!("{}/wraps/demo/environment.yaml", server.address);
+    {
+        let mut files = server.files.lock().unwrap();
+        files.insert("/wraps/demo/wrapper.py".into(), b"print('demo')\n".to_vec());
+        files.insert(
+            "/wraps/demo/environment.yaml".into(),
+            b"dependencies: [jq]\n".to_vec(),
+        );
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = format!(
+        "rule a:\n    output: 'o'\n    wrapper: '{}/wraps/demo'\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let environment = |storage: &Storage| {
+        let tasks = Session::new(&launch, storage).unwrap().start().unwrap();
+        let image = tasks[0].image.clone().unwrap_or_default();
+        let file = image.strip_prefix("conda-env:").unwrap().to_owned();
+        std::fs::read_to_string(file).unwrap()
+    };
+    let noted = |storage: &Storage| {
+        let mut fetched = storage.fetched();
+        fetched.sort_by(|a, b| a.address.cmp(&b.address));
+        let noted = fetched.into_iter();
+        noted
+            .map(|fetched| {
+                (
+                    fetched.address,
+                    fetched.digest,
+                    fetched.copy,
+                    fetched.version,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let first = Storage::default();
+    assert_eq!(environment(&first), "dependencies: [jq]\n");
+    assert_eq!(noted(&first).len(), 2);
+    // The web has another version now; the next run reads and notes the copy in the mirror.
+    let changed = b"dependencies: [yq]\n".to_vec();
+    server
+        .files
+        .lock()
+        .unwrap()
+        .insert("/wraps/demo/environment.yaml".into(), changed);
+    let second = Storage::default();
+    assert_eq!(environment(&second), "dependencies: [jq]\n");
+    assert_eq!(noted(&second), noted(&first));
+    let pinned = folder.path().join("pinned.yaml");
+    std::fs::write(&pinned, "dependencies: [zstd]\n").unwrap();
+    let kept = first
+        .fetched()
+        .into_iter()
+        .find(|fetched| fetched.address == address);
+    let digest = sha2::Sha256::digest(b"dependencies: [zstd]\n");
+    let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let third = Storage::default();
+    third.pin(storage::Fetched {
+        copy: pinned,
+        digest: format!("sha256:{digest}"),
+        size: 21,
+        ..kept.unwrap()
+    });
+    assert_eq!(environment(&third), "dependencies: [zstd]\n");
+}
+
 /// A confined run fetches the environment file of a rule only from a host that it allows.
 #[test]
 fn confines_environment_hosts() {

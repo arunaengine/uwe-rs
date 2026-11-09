@@ -537,8 +537,20 @@ fn files_below(folder: &Path) -> Vec<String> {
     found
 }
 
+/// The targets of the deliveries of a run, which the run database records.
+#[derive(Default)]
+struct Delivered(Vec<String>);
+
+impl workflow_graph::Observer for Delivered {
+    fn event(&mut self, event: workflow_graph::Event<'_>) {
+        if let workflow_graph::Event::Delivered { delivery } = event {
+            self.0.push(delivery.target.clone());
+        }
+    }
+}
+
 /// A run of two CWL blocks delivers only its output, at the top of the output folder, as a
-/// native run does; the file that the first block gives the second stays out of it.
+/// native run does; the file that the first block gives the second is no delivery of it.
 #[test]
 fn delivers_run_outputs() {
     let folder = tempfile::tempdir().unwrap();
@@ -598,13 +610,19 @@ fn delivers_run_outputs() {
     let mut runner = Runner {
         root: root.join("work"),
     };
-    execute("two", &mut driver, &mut runner)
-        .into_result()
-        .unwrap();
+    let mut delivered = Delivered::default();
+    let engine = workflow_graph::Engine::new(&mut runner).observer(&mut delivered);
+    engine.run("two", &mut driver).into_result().unwrap();
     assert_eq!(
         files_below(&root.join("out")),
         ["joined.txt"],
         "only the run output"
+    );
+    let joined = root.join("out/joined.txt").to_string_lossy().into_owned();
+    assert_eq!(
+        delivered.0,
+        [joined],
+        "the copies of the blocks are no deliveries"
     );
     let location = driver.results().unwrap()["joined"]["location"].clone();
     assert_eq!(

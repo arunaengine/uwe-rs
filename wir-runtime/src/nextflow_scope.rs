@@ -176,16 +176,32 @@ impl Scoped {
         })
     }
 
-    /// The value of the code, or of the closure it gives called with `arguments`.
+    /// The value of the code, or of the closure it gives called with `arguments`, printing
+    /// through `printer` if given; a [`HOOK`] records the end of the run in `workflow` first.
     pub fn run(
         &self,
         values: &Map<String, Json>,
         arguments: Option<&[Json]>,
         base: &Path,
+        printer: Option<&crate::driver::Printer>,
     ) -> Result<Json, String> {
         let adapter = adapter(&self.launching)?;
         let launching = &self.launching;
-        let result = adapter.borrow_mut().evaluate(|interpreter| {
+        let hook = values.get(HOOK).and_then(Json::as_str);
+        let hooked;
+        let arguments = match (hook, arguments) {
+            (Some(kind), Some([run])) => {
+                let error = (run["success"] != true).then(|| run["error"].as_str().unwrap_or(""));
+                adapter.borrow_mut().finish_run(error);
+                hooked = match kind {
+                    "error" => vec![Json::Null],
+                    _ => Vec::new(),
+                };
+                Some(&hooked[..])
+            }
+            _ => arguments,
+        };
+        let code = |interpreter: &mut Interpreter| {
             let mut given = Vec::new();
             for name in &self.names {
                 let value = values.get(name).unwrap_or(&Json::Null);
@@ -203,10 +219,20 @@ impl Scoped {
                 items.push(rebuilt(argument, base, launching, interpreter)?);
             }
             interpreter.call_closure(&closure, items)
-        });
+        };
+        let result = match printer {
+            Some(printer) => adapter
+                .borrow_mut()
+                .evaluate_printed(&|text| printer.print(text), code),
+            None => adapter.borrow_mut().evaluate(code),
+        };
         crate::groovy::to_json(&result.map_err(|error| error.message)?)
     }
 }
+
+/// The capture that marks a run hook of the `workflow.onComplete` or `onError` handlers, as
+/// `complete` or `error`.
+pub const HOOK: &str = "wirHook";
 
 /// A wir value as Groovy sees it, with captured closures in the reserved `Closure` form made
 /// again in their scripts.

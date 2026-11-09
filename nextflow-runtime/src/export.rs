@@ -40,6 +40,9 @@ pub struct Network {
     /// Every script that the run loads: the main script, the scripts it includes, and the
     /// Groovy classes of `lib/`, which the compiler pins as sources.
     pub scripts: Vec<String>,
+    /// The `workflow.onComplete` handlers, then the `workflow.onError` ones, with whether
+    /// each is an error handler.
+    pub handlers: Vec<(bool, Callback)>,
 }
 
 #[derive(Debug)]
@@ -271,11 +274,17 @@ impl Callback {
     /// The code and captured values of a closure; it fails for a capture that has no JSON
     /// form, like a channel or another closure.
     pub(crate) fn of(closure: &Closure) -> Result<Callback, String> {
-        Callback::nested(closure, 0)
+        Callback::nested(closure, 0, false)
+    }
+
+    /// A workflow event handler, whose captured channels are null: a run hook reads no channel,
+    /// like nf-core's `multiqc_report`, which only an email at the end of the run needs.
+    pub(crate) fn handler(closure: &Closure) -> Result<Callback, String> {
+        Callback::nested(closure, 0, true)
     }
 
     /// A closure whose captured closures, down to `depth` 8, are reserved `Closure` forms.
-    fn nested(closure: &Closure, depth: usize) -> Result<Callback, String> {
+    fn nested(closure: &Closure, depth: usize, handler: bool) -> Result<Callback, String> {
         let span = closure.code.span;
         let module = &closure.module;
         let source = module.source.borrow();
@@ -293,8 +302,9 @@ impl Callback {
             .map(|(value, name)| {
                 let value = match &*value.borrow() {
                     Value::Closure(inner) if depth < 8 => {
-                        Callback::nested(inner, depth + 1).map(form)
+                        Callback::nested(inner, depth + 1, handler).map(form)
                     }
+                    Value::Channel(_) | Value::ChannelOut(_) if handler => Ok(Json::Null),
                     other => crate::bridge::to_json(other),
                 };
                 value.map(|value| (name.to_string(), value))

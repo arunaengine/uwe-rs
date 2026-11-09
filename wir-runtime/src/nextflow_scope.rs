@@ -5,11 +5,12 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use nextflow_evaluator::interpreter::{Error, Interpreter};
-use nextflow_evaluator::lowered::Module;
+use nextflow_evaluator::lowered::{Copied, Module};
 use nextflow_evaluator::value::Value;
 use nextflow_runtime::{Adapter, Loader, RunEnd};
 use serde_json::{Map, Value as Json};
@@ -159,16 +160,19 @@ impl Scoped {
     /// after the `library` lines.
     pub fn load(
         launching: Launching,
-        code: &str,
+        (code, closure): (&str, Range<u64>),
         library: &[String],
         names: Vec<String>,
     ) -> Result<Scoped, String> {
         let mut extra = library.join("\n");
         extra.push_str(&format!(
-            "\ndef {ENTRY}({}) {{\n    return ({code})\n}}\n",
+            "\ndef {ENTRY}({}) {{\n    return (",
             names.join(", ")
         ));
+        let at = extra.len();
+        extra.push_str(&format!("{code})\n}}\n"));
         let module = module(&launching, &launching.path, &extra)?;
+        copied(&module, (&extra, at, code), closure);
         Ok(Scoped {
             module,
             names,
@@ -346,6 +350,27 @@ fn module(launching: &Launching, path: &Path, extra: &str) -> Result<Rc<Module>,
     let module = loaded.map_err(|error| format!("the Groovy code does not load: {error}"))?;
     modules.borrow_mut().insert(key, module.clone());
     Ok(module)
+}
+
+/// Notes where the code appended to the script, `extra` with the callback `code` at `at`,
+/// copies the closure of the script at `closure`, which a rewrite, like a `branch` case, holds.
+fn copied(module: &Module, (extra, at, code): (&str, usize, &str), closure: Range<u64>) {
+    let source = module.source.borrow();
+    let Some(source) = source.as_deref() else {
+        return;
+    };
+    let appended = source.len().saturating_sub(extra.len());
+    let original = (usize::try_from(closure.start).ok())
+        .zip(usize::try_from(closure.end).ok())
+        .and_then(|(start, end)| source.get(start..end).filter(|_| end <= appended));
+    let inside = original.and_then(|text| code.find(text));
+    let offset = |at: usize| u32::try_from(at).unwrap_or(u32::MAX);
+    module.copied.set(Some(Copied {
+        appended: offset(appended),
+        copy: offset(appended + at + inside.unwrap_or(0)),
+        length: offset(inside.and(original).map_or(0, str::len)),
+        original: offset(usize::try_from(closure.start).unwrap_or(0)),
+    }));
 }
 
 /// The interpreter of a run, made once with the config and params of the run.

@@ -76,8 +76,14 @@ pub async fn collect(target: &Path, arguments: &Arguments) -> Sources {
     };
     let mut files = Vec::new();
     let secret = secret_store(&target, arguments);
+    let secrets = crate::lower::secret_texts(&arguments.secrets);
     for file in found {
         if is_secret(&file.path, secret.as_deref()) {
+            continue;
+        }
+        // A file that holds a secret value of the run stays out of the record and the store.
+        let read = std::fs::read(&file.path);
+        if read.is_ok_and(|bytes| crate::lower::holds_secret(&bytes, &secrets)) {
             continue;
         }
         if let Ok((digest, size)) = content_store::hash_file(&file.path).await {
@@ -402,6 +408,35 @@ mod tests {
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("makes folders");
         std::fs::write(path, text).expect("writes");
+    }
+
+    /// A file of the folder of the workflow that holds a secret value of the run, like an
+    /// inputs file beside it, is no source of the run, so no store or crate keeps it.
+    #[test]
+    fn excludes_secret_files() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("main.nf");
+        write(&target, "workflow {}");
+        write(
+            &root.path().join("inputs.json"),
+            "{\"token\": \"hush-4711\"}",
+        );
+        let mut secrets = config_file::SecretValues::default();
+        secrets.insert("HOST_TOKEN", "hush-4711").unwrap();
+        let arguments = Arguments {
+            inputs: Some(root.path().join("inputs.json")),
+            secrets,
+            ..Arguments::default()
+        };
+        let sources = workflow_graph::runtime()
+            .unwrap()
+            .block_on(collect(&target, &arguments));
+        let paths: Vec<&str> = sources
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+        assert_eq!(paths, ["main.nf"]);
     }
 
     #[test]

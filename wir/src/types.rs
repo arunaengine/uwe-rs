@@ -140,9 +140,24 @@ impl Type {
     }
 }
 
+impl Type {
+    /// Removes the formats of the File types in it.
+    pub fn unformat(&mut self) {
+        match self {
+            Type::File(file) => file.format = None,
+            Type::Optional(inner) => inner.unformat(),
+            Type::Array(array) => array.items.unformat(),
+            Type::Map(map) => map.value.unformat(),
+            Type::Record(fields) => fields.iter_mut().for_each(|field| field.r#type.unformat()),
+            Type::Union(items) | Type::Tuple(items) => items.iter_mut().for_each(Type::unformat),
+            _ => {}
+        }
+    }
+}
+
 impl FileType {
-    /// The format must match exactly when one is wanted (no ontology reasoning yet), and every
-    /// required secondary file must be required by the source too.
+    /// The format must match exactly when one is wanted, unless the document has ontologies,
+    /// and every required secondary file must be required by the source too.
     pub fn accepts(&self, source: &FileType) -> bool {
         let format = self.format.is_none() || self.format == source.format;
         format

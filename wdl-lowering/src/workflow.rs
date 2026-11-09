@@ -418,6 +418,7 @@ impl Lowerer {
             graphs,
             entry: graph.name.clone(),
             hooks: Vec::new(),
+            formats: Default::default(),
         };
         match wir::verify(&document) {
             Ok(()) => Ok(()),

@@ -52,6 +52,7 @@ impl Lowering {
 pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, String> {
     let mut lowerer = Lowerer {
         base: base.to_owned(),
+        formats: formats(document, base),
         sources: Vec::new(),
         kept: Vec::new(),
         graphs: Vec::new(),
@@ -92,6 +93,7 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
         graphs,
         entry: "main".into(),
         hooks: Vec::new(),
+        formats: lowerer.formats,
     };
     if let Err(problems) = wir::verify(&document) {
         let problems: Vec<String> = problems.iter().map(ToString::to_string).collect();
@@ -104,6 +106,24 @@ pub fn lower(document: &cwl_parser::Document, base: &Path) -> Result<Lowering, S
         document,
         kept: lowerer.kept,
     })
+}
+
+/// The `$namespaces` and `$schemas` of a document, with local schemas from `base` when they
+/// lie below it, by which a run matches formats as CWL does.
+fn formats(document: &cwl_parser::Document, base: &Path) -> wir::Formats {
+    let ontologies = (document.schemas.iter())
+        .map(|schema| match cwl_parser::iri::file_path(schema) {
+            Some(path) => match path.strip_prefix(base) {
+                Ok(relative) => relative.to_string_lossy().into_owned(),
+                Err(_) => path.to_string_lossy().into_owned(),
+            },
+            None => schema.clone(),
+        })
+        .collect();
+    wir::Formats {
+        prefixes: document.namespaces.iter().cloned().collect(),
+        ontologies,
+    }
 }
 
 /// The entry graph of a process that the ops of a group run, with its ports.
@@ -138,7 +158,7 @@ pub(crate) struct Scope {
     pub requirements: Vec<Requirement>,
     pub hints: Vec<Requirement>,
     /// Whether the document has `$schemas` or `$namespaces`, so formats may match otherwise
-    /// than by equal text.
+    /// than by equal text, which needs the schemas.
     pub ontology: bool,
     /// Whether a local file of `$schemas` is missing, which fails CWL format checks.
     pub unreadable: bool,
@@ -175,6 +195,8 @@ impl Scope {
 
 struct Lowerer {
     base: PathBuf,
+    /// The prefixes and ontologies of the formats of the document.
+    formats: wir::Formats,
     sources: Vec<Source>,
     kept: Vec<Kept>,
     /// The graphs that call ops run, apart from the entry graph.

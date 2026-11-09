@@ -258,6 +258,10 @@ pub fn build(
         output_manifest: spec.results.clone().filter(|_| !simulated),
         reuse: match attributes.cache {
             Some(wir::Cache::Never) => Reuse::Disabled,
+            Some(wir::Cache::Rerun) => Reuse::Denied,
+            _ if limits.and_then(|limits| limits.get("cache")) == Some(&json!("rerun")) => {
+                Reuse::Denied
+            }
             Some(wir::Cache::Resume) => Reuse::Lineage,
             // The outputs or the effect of an op with effects may differ from another run's.
             _ if !op.effects.is_empty() => Reuse::Lineage,

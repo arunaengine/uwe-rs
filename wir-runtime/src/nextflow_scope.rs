@@ -219,11 +219,11 @@ impl Scoped {
             .map(|name| values.get(*name).cloned().unwrap_or_default())
             .collect();
         let code = |interpreter: &mut Interpreter, made: Vec<Value>| {
-            let mut made = made.into_iter();
+            let made: HashMap<&str, Value> = channels.iter().copied().zip(made).collect();
             let mut given = Vec::new();
             for name in &self.names {
-                if channels.contains(&name.as_str()) {
-                    given.push(made.next().unwrap_or(Value::Null));
+                if let Some(channel) = made.get(name.as_str()) {
+                    given.push(channel.clone());
                     continue;
                 }
                 let value = values.get(name).unwrap_or(&Json::Null);

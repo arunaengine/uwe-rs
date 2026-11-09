@@ -107,3 +107,17 @@ fn delivers_reports() {
         assert!(found.contains(&target), "{target} in {found:?}");
     }
 }
+
+#[test]
+fn records_simulated_writes() {
+    let script = "workflow {\n    file(\"${launchDir}/info/params.json\").text = 'x'\n}\n";
+    let directory = tempfile::tempdir().unwrap();
+    let found = delivered(directory.path(), script, true);
+    assert_eq!(
+        found,
+        ["/info/params.json"],
+        "a simulated run records the delivery"
+    );
+    let written = directory.path().join("info").join("params.json");
+    assert!(!written.exists(), "and copies nothing");
+}

@@ -28,6 +28,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     script: Some(SCRIPT),
     factories: &["fromPrompt"],
     scopes: &["gpt"],
+    services: &["gptPromptForText", "gptPromptForData"],
     ..Plugin::new("nf-gpt", Kind::Functions, State::Implemented)
 };
 

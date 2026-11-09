@@ -23,6 +23,7 @@ use crate::service::safe_url;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     functions: &["loadIridaSampleIds"],
+    services: &["loadIridaSampleIds"],
     call: Some(call),
     script: Some(SCRIPT),
     scopes: &["iridanext"],

@@ -31,6 +31,7 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ],
     call: Some(call),
     scopes: &["lamin"],
+    services: &["annotateArtifact", "getRunUid", "getTransformUid"],
     observer: Some(activate),
     ..Plugin::new("nf-lamin", Kind::Observer, State::Partial)
 };

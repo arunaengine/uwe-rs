@@ -535,6 +535,7 @@ fn evaluated(
     if let Some(listing) = capture.listing {
         this = crate::load::listings(this, listing, ended.access)?;
     }
+    this = crate::load::checksums(this, ended.access)?;
     let location = |item: &Json| {
         item.get("location")
             .and_then(Json::as_str)
@@ -1348,6 +1349,55 @@ mod tests {
         assert_eq!(values["count"], 3);
         let child = &values["child"]["location"];
         assert_eq!(child, "/other/sub/c.txt", "below the deepest staged folder");
+    }
+
+    #[test]
+    fn codes_see_checksums() {
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("a.txt");
+        std::fs::write(&made, "hello\n").unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "a.txt".into(),
+                location: made.to_string_lossy().into_owned(),
+                directory: false,
+                size: Some(6),
+                digest: Some("sha256:0000".into()),
+            }],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "sum".into(),
+            from: CaptureRule::Glob("a.txt".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: Some("$(self[0].checksum)".into()),
+        };
+        let spec = wir::Task {
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "sum".into(),
+            r#type: Type::String,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        let sha1 = "sha1$f572d396fae9206628714fb2ce00f72e94f2258f";
+        assert_eq!(values["sum"], sha1, "the checksum of uwe's CWL driver");
     }
 
     #[test]

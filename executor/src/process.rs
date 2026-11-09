@@ -491,12 +491,18 @@ pub(crate) async fn create_id(
         engine: engine.name.clone(),
         reason,
     })?;
-    bounded(cancel, STOP_GRACE, engine.journal.recover(engine.client()))
-        .await?
-        .map_err(|reason| ProcessError::Start {
-            engine: engine.name.clone(),
-            reason,
-        })?;
+    // Recovery waits for the queue as long as an operation may; each record that it settles
+    // has a short limit of its own.
+    bounded(
+        cancel,
+        OPERATION_LIMIT,
+        engine.journal.recover(engine.client()),
+    )
+    .await?
+    .map_err(|reason| ProcessError::Start {
+        engine: engine.name.clone(),
+        reason,
+    })?;
     let client = engine.client().clone();
     let engine_name = engine.name.clone();
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -899,6 +905,48 @@ mod tests {
         .await;
         assert!(matches!(result, Err(ProcessError::Start { .. })));
         assert!(server.engine.journal.empty());
+        server.finish();
+    }
+
+    /// Another run that holds the queue of container records longer than the short limit of
+    /// one reconciliation delays the admission of a container and does not fail it.
+    #[tokio::test]
+    async fn waits_for_admission() {
+        use crate::test_engine::{Reply, Server};
+        let folder = tempfile::tempdir().unwrap();
+        let server = Server::start(1, |request| {
+            assert!(request.path.contains("/containers/create?"));
+            Reply::Json(
+                201,
+                serde_json::json!({"Id": "admitted-id", "Warnings": []}),
+            )
+        })
+        .await;
+        let engine = (server.engine.clone()).with_journal_root(folder.path().join("journal"));
+        // The journal keeps its queue in a folder of the engine, which a first record makes.
+        let warmup = engine.journal.begin("warmup", "warmup").await.unwrap();
+        warmup.reject().unwrap();
+        let roots = std::fs::read_dir(folder.path().join("journal")).unwrap();
+        let root = roots.flatten().next().unwrap().path();
+        let held = std::fs::File::options()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(root.join("queue.lock"))
+            .unwrap();
+        held.try_lock().unwrap();
+        let holder = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(12));
+            drop(held);
+        });
+        let options = CreateContainerOptions {
+            name: Some("admitted-task".into()),
+            ..Default::default()
+        };
+        let body = ContainerCreateBody::default();
+        let result = create_id(&engine, options, body, &CancellationToken::new()).await;
+        holder.join().unwrap();
+        assert_eq!(result.ok().as_deref(), Some("admitted-id"));
         server.finish();
     }
 

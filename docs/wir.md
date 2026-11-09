@@ -130,7 +130,7 @@ The wir runtime runs the jobs of a document through one job adapter for the Snak
 | both succeed with the same tasks, cache keys, resume fingerprints and acceptance | 633 |
 | both succeed with the same target files | 594 |
 
-The 38 runs with the same tasks and other target files are checkpoint regions, which give no target files yet. What keeps a workflow native: a group whose jobs run in several images (1), and features that uwe does not run yet (2). `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
+The 39 runs with the same tasks and other target files are checkpoint regions, which give no target files yet. What keeps a workflow native: a group whose jobs run in several images (1), and features that uwe does not run yet (2). `test_many_jobs`, with 150,000 jobs, hits the time limit, as its native run does.
 
 ## Detection
 

@@ -68,7 +68,10 @@ fn latest(cache: &Path) -> (String, Vec<(Task, String, Option<String>)>) {
     let run = database.runs(1).expect("reads").remove(0);
     let mut tasks = Vec::new();
     for row in database.tasks(&run.id).expect("reads the tasks") {
-        let detail = (database.task(&run.id, row.id).expect("reads")).expect("a task");
+        let mut detail = (database.task(&run.id, row.id).expect("reads")).expect("a task");
+        // The tasks of the native op of a baseline have its path before their names.
+        let name = &detail.description.name;
+        detail.description.name = name.strip_prefix("native: ").unwrap_or(name).to_owned();
         tasks.push((detail.description, detail.fingerprint, row.reused));
     }
     tasks.sort_by(|a, b| a.0.step.cmp(&b.0.step));

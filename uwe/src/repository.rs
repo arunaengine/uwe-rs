@@ -489,7 +489,7 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
     let mut archive = tar::Archive::new(reader);
     let mut size = 0;
     let mut top = None;
-    let mut links: Vec<PathBuf> = Vec::new();
+    let mut links: BTreeMap<PathBuf, PathBuf> = BTreeMap::new();
     for (count, entry) in archive.entries().map_err(local)?.enumerate() {
         let mut entry = entry.map_err(local)?;
         if count >= MOST_FILES {
@@ -527,7 +527,7 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
             ));
         }
         // Git keeps nothing below a link, so a path through one could only lead elsewhere.
-        if links.iter().any(|link| relative.starts_with(link)) {
+        if links.keys().any(|link| relative.starts_with(link)) {
             return Err(failure("unsafe repository archive: a path through a link"));
         }
         let kind = entry.header().entry_type();
@@ -536,7 +536,7 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
             if !inside(&relative, &target) {
                 return Err(DriverError::unsupported("repository archive links that leave the repository are unsupported; use a local workflow with materialized files").into());
             }
-            links.push(relative.clone());
+            links.insert(relative.clone(), target.into_owned());
         } else if !kind.is_file() && !kind.is_dir() {
             return Err(DriverError::unsupported("repository archive links other than symbolic links are unsupported; use a local workflow with materialized files").into());
         }
@@ -549,6 +549,10 @@ fn unpack(reader: impl Read, folder: &Path) -> Result<(), Failure> {
             std::fs::create_dir_all(parent).map_err(local)?;
         }
         entry.unpack(target).map_err(local)?;
+    }
+    // A link may reach outside through other links, like `alias -> .` and `leak -> alias/..`.
+    if links.keys().any(|link| resolved(link, &links, 0).is_none()) {
+        return Err(DriverError::unsupported("repository archive links that leave the repository or loop are unsupported; use a local workflow with materialized files").into());
     }
     let modules = std::fs::read_to_string(folder.join(".gitmodules")).unwrap_or_default();
     if submodule_paths(&modules).any(|path| gitlink(&folder.join(path))) {
@@ -570,6 +574,35 @@ fn submodule_paths(text: &str) -> impl Iterator<Item = &Path> {
 /// archive writes a submodule as one. A `.gitmodules` entry without one is stale.
 fn gitlink(folder: &Path) -> bool {
     std::fs::read_dir(folder).is_ok_and(|mut entries| entries.next().is_none())
+}
+
+/// How many links a path may pass through, as Linux allows, so that loops end.
+const MOST_LINKS: usize = 40;
+
+/// The place in the repository that `path` reaches through the `links` of the archive, by
+/// target, with `..` applied to the folder that a link reached; none outside or in a loop.
+fn resolved(path: &Path, links: &BTreeMap<PathBuf, PathBuf>, depth: usize) -> Option<PathBuf> {
+    let mut place = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::Normal(name) => {
+                place.push(name);
+                if let Some(target) = links.get(&place) {
+                    if depth >= MOST_LINKS {
+                        return None;
+                    }
+                    let from = place.parent().unwrap_or(Path::new("")).join(target);
+                    place = resolved(&from, links, depth + 1)?;
+                }
+            }
+            Component::ParentDir => {
+                place.pop().then_some(())?;
+            }
+            Component::CurDir => {}
+            Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(place)
 }
 
 /// Whether a link at `path` in the repository whose target is `target` points into the

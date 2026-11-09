@@ -547,6 +547,7 @@ pub fn compile(
     let settings = Settings {
         host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),
+        resume: arguments.resume.is_some(),
         ..Settings::default()
     };
     match native {

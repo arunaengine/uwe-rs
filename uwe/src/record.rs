@@ -49,6 +49,8 @@ pub struct Started<'a> {
     /// Explicit invocation for an embedded run; CLI runs retain their original arguments.
     pub invocation: Option<&'a [String]>,
     pub strict_provenance: bool,
+    /// The wir document that the run compiled its workflow into.
+    pub document: Option<&'a Path>,
 }
 
 /// Opens the run database and starts the record of a run. With `-resume`, the run joins the
@@ -69,7 +71,7 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
     .to_string_lossy()
     .into_owned();
     let resumed = match &arguments.resume {
-        Some(resume) => resumed(&database, resume, &workflow, run.simulated)?,
+        Some(resume) => resumed(&database, resume, &workflow, run)?,
         None => None,
     };
     let reusable = match &resumed {
@@ -103,6 +105,15 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
     };
     let mut recorder = database.record(&start).map_err(broken)?;
     recorder.sources(&run.sources.files);
+    if let Some(document) = run.document {
+        let read = std::fs::read(document);
+        let read = read.map_err(|error| failure(format!("uwe: {}: {error}", document.display())));
+        let digest = task_model::Digest::sha256(&read?);
+        recorder.document(
+            &document.to_string_lossy(),
+            &format!("sha256:{}", digest.hex()),
+        );
+    }
     Ok(Recording { recorder, reusable })
 }
 
@@ -194,8 +205,9 @@ fn resumed(
     database: &Database,
     resume: &Resume,
     workflow: &str,
-    simulated: bool,
+    run: &Started,
 ) -> Result<Option<Run>, Failure> {
+    let simulated = run.simulated;
     let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
     let earlier = match resume {
         Resume::Last => database.last_run(workflow, !simulated).map_err(broken)?,
@@ -213,8 +225,14 @@ fn resumed(
         eprintln!("uwe: no earlier run of {workflow} to resume; the run starts from the beginning");
         return Ok(None);
     };
-    // A compiled workflow may run another document when the earlier one cannot run again.
-    if earlier.workflow != workflow && !crate::lower::same_workflow(&earlier.workflow, workflow) {
+    // A run of a compiled workflow may run another document than the run it continues, like
+    // an earlier run that recorded its document as its workflow.
+    let document = run.document.map(|path| path.to_string_lossy().into_owned());
+    let compiled = match (earlier.document.as_deref(), document.as_deref()) {
+        (Some(one), Some(other)) => crate::lower::same_workflow(one, other),
+        _ => false,
+    };
+    if earlier.workflow != workflow && !compiled {
         return Err(failure(format!(
             "uwe: run {} ran {}, not {workflow}; resume a run of the same workflow",
             earlier.id, earlier.workflow

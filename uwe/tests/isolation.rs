@@ -427,7 +427,7 @@ fn delivers_launched_targets() {
         };
         // The compiled document names the target where the run makes it.
         let database = run_database::Database::open(&folder.path().join("runs.sqlite")).unwrap();
-        let document = database.run(&ran.id).unwrap().unwrap().workflow;
+        let document = database.run(&ran.id).unwrap().unwrap().document.unwrap();
         let text = std::fs::read_to_string(document).unwrap();
         let target = started.join("results/made.txt");
         assert!(

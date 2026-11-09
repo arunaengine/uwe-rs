@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use run_database::SourceKind;
 use serde_json::json;
 use uwe::RunRequest;
 use uwe::run::{Event, SecretValues, Settings};
@@ -86,10 +87,12 @@ fn run(folder: &Path, file: &str, text: &str) {
     let database = run_database::Database::open(&folder.join("runs.sqlite")).unwrap();
     let record = database.run(&ran.id).unwrap().unwrap();
     assert!(
-        record.workflow.ends_with(".wir.json"),
+        record.workflow.ends_with(file),
         "{file}: {}",
         record.workflow
     );
+    let document = record.document.clone().unwrap_or_default();
+    assert!(document.ends_with(".wir.json"), "{file}: {document}");
     // The value reaches the task as in a run without wir.
     let tasks = database.tasks(&ran.id).unwrap();
     let described = (tasks.iter())
@@ -99,10 +102,13 @@ fn run(folder: &Path, file: &str, text: &str) {
         described.into_iter().any(|text| text.contains(SECRET)),
         "{file}: no task got the value"
     );
-    // The recorded sources are the document alone, not the file of the inputs.
+    // The recorded sources are files of the workflow, not the file of the inputs.
     let sources = database.sources(&ran.id).unwrap();
-    let paths: Vec<&str> = sources.iter().map(|source| source.path.as_str()).collect();
-    assert_eq!(paths.len(), 1, "{file}: {paths:?}");
+    let named = sources
+        .iter()
+        .filter(|source| source.kind == SourceKind::Named);
+    let named: Vec<&str> = named.map(|source| source.path.as_str()).collect();
+    assert_eq!(named, Vec::<&str>::new(), "{file}");
     let options = run_crate::Options {
         workflow: record.workflow.clone().into(),
         secrets: vec![SECRET.to_owned()],

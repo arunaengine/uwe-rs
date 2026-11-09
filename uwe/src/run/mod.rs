@@ -16,7 +16,7 @@ pub use task_runner::NetworkRule;
 pub use workflow_graph::Language;
 
 use crate::application::{self, Description, Policy};
-use crate::arguments::Arguments;
+use crate::arguments::{Arguments, Resume};
 use crate::repeat::Pinned;
 use crate::{
     Failure, driver, executor, failure, fetched, inputs, launch, network_rule, page, progress,
@@ -226,6 +226,8 @@ fn execute_with(
     // A run compiles its workflow into wir and checks its inputs with the schema of the
     // workflow; a wir document runs as it is.
     let source = (language != Language::Wir).then(|| (launch(arguments, target.clone()), language));
+    // The run records the workflow and the command line that the user gave.
+    let given = arguments;
     let converted;
     // The files of the values of a compiled run, removed when the run ends.
     let private;
@@ -251,6 +253,11 @@ fn execute_with(
                 inputs: inputs.or(arguments.inputs.clone().filter(|_| !compiled)),
                 params,
                 secret_inputs,
+                // A resume continues the run whose document it runs.
+                resume: launch_run
+                    .clone()
+                    .map(Resume::Run)
+                    .or(arguments.resume.clone()),
                 launch_run,
                 ..arguments.clone()
             };
@@ -319,16 +326,21 @@ fn execute_with(
     let shown = real && !quiet;
     let verbose = !quiet && !(shown && terminal::possible());
     let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
-    let mut sources = match source.is_some() {
-        true => runtime.block_on(sources::compiled(target, arguments)),
-        false => runtime.block_on(sources::collect(target, arguments)),
+    let recorded = Arguments {
+        resume: arguments.resume.clone(),
+        ..given.clone()
     };
+    let (workflow, written) = match &source {
+        Some((launch, language)) => (&launch.target, *language),
+        None => (target, language),
+    };
+    let mut sources = runtime.block_on(sources::collect(workflow, given));
     sources.leave_out(&private);
     if real && strict {
         sources.complete().map_err(Failure::setup)?;
     }
     let invocation = admission.map(|_| {
-        let mut words = record::run_arguments(arguments);
+        let mut words = record::run_arguments(&recorded);
         for (option, targets) in [
             ("-until", &arguments.until),
             ("-omit-from", &arguments.omit_from),
@@ -346,8 +358,8 @@ fn execute_with(
     });
     let started = record::Started {
         id: &run,
-        target,
-        language,
+        target: workflow,
+        language: written,
         executor: name,
         simulated: !real,
         store: real.then_some(store.as_str()),
@@ -355,13 +367,14 @@ fn execute_with(
         repeats: pinned.repeats.as_deref(),
         invocation: invocation.as_deref(),
         strict_provenance: strict,
+        document: source.is_some().then_some(target.as_path()),
     };
     // Read before this run is in the database.
     let measured = resources::measured(arguments);
     let record::Recording {
         mut recorder,
         reusable,
-    } = record::start(arguments, &started)?;
+    } = record::start(&recorded, &started)?;
     let page = match arguments.page {
         true => Some(page::start(arguments, &format!("/runs/{run}"))?),
         false => None,
@@ -497,11 +510,10 @@ fn execute_with(
             Order::AsAsked
         }),
     };
-    let workflow = target.to_string_lossy();
     let progress = shown.then(|| {
         progress::Progress::start(progress::Header {
-            target,
-            language,
+            target: workflow,
+            language: written,
             executor: name,
             run: &run,
         })
@@ -536,7 +548,9 @@ fn execute_with(
         .observer(observer)
         .cancel(interrupt.clone())
         .no_cache_steps(arguments.no_cache_steps.clone())
-        .run(&workflow, driver.as_mut());
+        .run(&workflow.to_string_lossy(), driver.as_mut());
+    // The graph is that of the workflow the user ran, whatever it compiled into.
+    execution.graph.language = Some(written);
     if !real {
         execution.graph.simulate();
     }

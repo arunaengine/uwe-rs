@@ -133,7 +133,7 @@ fn matches_native_tasks() {
     let (code, _, errors) = uwe(root, &cache, &compiled);
     assert_eq!(code, 0, "{errors}");
     let (language, through) = latest(&cache);
-    assert_eq!(language, "wir");
+    assert_eq!(language, "wdl");
     assert_eq!(alone.len(), 2, "a task per name");
     let images = |tasks: &[(String, Option<String>)]| -> Vec<Option<String>> {
         tasks.iter().map(|(_, image)| image.clone()).collect()
@@ -169,7 +169,7 @@ fn parameters_convert() {
     let (language, tasks) = latest(&cache);
     assert_eq!(
         (language.as_str(), tasks.len()),
-        ("wir", 2),
+        ("wdl", 2),
         "a task per name"
     );
 }

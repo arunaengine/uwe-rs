@@ -583,7 +583,17 @@ impl Nextflow {
         let loaded = self.setup()?;
         let options = self.options(&loaded, loaded.config.clone());
         self.loaded = Some(loaded);
-        let params = crate::bridge::to_json(&options.config.params()).map_err(DriverError::new)?;
+        // Each param that crosses into wir is an input; one that cannot, like a duration,
+        // keeps the default of the config, which the native op reads too.
+        let mut params = serde_json::Map::new();
+        if let Value::Map(map) = options.config.params() {
+            for (key, value) in &map.borrow().entries {
+                if let Ok(value) = crate::bridge::to_json(value) {
+                    params.insert(key.0.to_string(), value);
+                }
+            }
+        }
+        let params = serde_json::Value::Object(params);
         let project = Path::new(&options.project_dir);
         let schema = crate::inputs::schema_file(&options.config, project);
         let schema = (schema.is_file()).then(|| crate::inputs::from_file(&schema, project).ok());

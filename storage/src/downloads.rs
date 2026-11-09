@@ -289,10 +289,27 @@ impl Storage {
             }
             None => {
                 let downloaded = self.download_from(target, file).await?;
+                // A later run that finds this copy notes its version from here.
+                let noted = journal::with_suffix(file, "version");
+                let _ = match &downloaded.version {
+                    Some(version) => std::fs::write(&noted, version),
+                    None => std::fs::remove_file(&noted),
+                };
                 (journal::described(target, file).await?, downloaded.version)
             }
         };
         self.inner.journal.note(Fetched { version, ..fetched });
+        Ok(())
+    }
+
+    /// Notes the copy at `file` that an earlier [`Storage::copy_of`] made as read, as that call
+    /// notes it; a pinned copy of the address replaces it.
+    pub async fn note_copy(&self, target: &str, file: &Path) -> Result<(), StorageError> {
+        if self.inner.journal.pinned(target).is_some() {
+            return self.copy_of(target, file).await;
+        }
+        let fetched = journal::described(target, file).await?;
+        self.inner.journal.note(fetched);
         Ok(())
     }
 

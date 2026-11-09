@@ -22,6 +22,8 @@ pub struct Mirrors {
     storage: Blocking,
     mirrors: RefCell<Vec<Mirror>>,
     missing: RefCell<HashSet<PathBuf>>,
+    /// The files of mirrors that this run read, so noted in its storage.
+    read: RefCell<HashSet<PathBuf>>,
     /// The Git client for the repositories on the web of `gitfile(...)`, and the ones that
     /// this run fetched already.
     pub git: RefCell<Option<crate::gitfile::GitClient>>,
@@ -55,6 +57,7 @@ impl Mirrors {
             storage: storage.blocking(),
             mirrors: RefCell::new(Vec::new()),
             missing: RefCell::new(HashSet::new()),
+            read: RefCell::default(),
             git: RefCell::new(None),
             fetched: RefCell::default(),
         }
@@ -196,21 +199,31 @@ impl Mirrors {
         text
     }
 
-    /// Downloads a file of a mirror that is not there yet. Paths outside the mirrors, files
-    /// that are there and files that the web does not have are left as they are.
+    /// Downloads a file of a mirror that is not there yet, or notes the copy that an earlier run
+    /// left there, once per run. Paths outside the mirrors, folders and files that the web does
+    /// not have are left as they are.
     pub fn fetch(&self, path: &Path) -> std::io::Result<()> {
-        if path.exists() || self.missing.borrow().contains(path) {
+        let done = self.read.borrow().contains(path) || self.missing.borrow().contains(path);
+        if done || path.is_dir() {
             return Ok(());
         }
         let Some(url) = self.address(path) else {
             return Ok(());
         };
-        let folder = path.parent().unwrap_or(Path::new("/"));
-        std::fs::create_dir_all(folder)?;
-        // The storage renames a private copy into place and notes that path; its providers
-        // share one client per process, so a host is looked up once and its connection reused.
-        match self.storage.copy_of(&url, path) {
-            Ok(()) => Ok(()),
+        // A copy from an earlier run is read by this one too, which a repeat's pin replaces.
+        let copied = if path.is_file() {
+            self.storage.note_copy(&url, path)
+        } else {
+            std::fs::create_dir_all(path.parent().unwrap_or(Path::new("/")))?;
+            // The storage renames a private copy into place and notes that path; its providers
+            // share one client per process, so a host is looked up once and its connection reused.
+            self.storage.copy_of(&url, path)
+        };
+        match copied {
+            Ok(()) => {
+                self.read.borrow_mut().insert(path.to_owned());
+                Ok(())
+            }
             Err(StorageError::Missing { .. }) => {
                 self.missing.borrow_mut().insert(path.to_owned());
                 Ok(())

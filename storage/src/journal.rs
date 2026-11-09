@@ -138,7 +138,7 @@ fn hash(file: &Path) -> std::io::Result<String> {
 }
 
 /// The path of a note next to a file: its name with `.<suffix>` after it.
-fn with_suffix(file: &Path, suffix: &str) -> PathBuf {
+pub(crate) fn with_suffix(file: &Path, suffix: &str) -> PathBuf {
     let mut name = file.as_os_str().to_owned();
     name.push(format!(".{suffix}"));
     PathBuf::from(name)

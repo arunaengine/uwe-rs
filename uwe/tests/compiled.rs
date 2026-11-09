@@ -125,6 +125,29 @@ fn plans_checkpoint_values() {
     );
 }
 
+/// A Snakefile that stays one native op plans its jobs with the config values of the command
+/// line.
+#[test]
+fn plans_native_values() {
+    let snakefile = IMAGES.replace(
+        "cp {input} {output}\"\n\nrule b",
+        "echo {config[sample]}\"\n\nrule b",
+    );
+    let (_folder, graph) = graph_lowered(
+        &snakefile,
+        &[("in.txt", "raw\n")],
+        &["--config", "sample=xyz"],
+    );
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let scripts: Vec<&str> = (nodes.iter())
+        .filter_map(|node| node["task"]["script"].as_str())
+        .collect();
+    assert!(
+        scripts.iter().any(|script| script.contains("echo xyz")),
+        "{scripts:?}"
+    );
+}
+
 /// A config file of `-inputs` is a config source of the document, not an input of its graph.
 #[test]
 fn takes_config_inputs() {

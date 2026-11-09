@@ -170,6 +170,12 @@ impl Lowerer {
             entry: Some(unit.name()),
             profiles: Vec::new(),
             configs: Vec::new(),
+            targets: Vec::new(),
+            config_values: None,
+            until: Vec::new(),
+            omit_from: Vec::new(),
+            forcerun: Vec::new(),
+            forceall: false,
         });
         let mut op = blank(path, kind, origin(&source, &unit.name()));
         let flags = defaulted(unit).into_iter().map(|name| {

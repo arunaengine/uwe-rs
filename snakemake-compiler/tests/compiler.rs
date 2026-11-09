@@ -249,11 +249,10 @@ fn compiles_plan_settings() {
     assert_eq!(launch.target, folder.path().join("Snakefile"));
 }
 
-/// A workflow that stays one native op cannot hold config values of the command line, several
-/// targets or the options that pick jobs, so it does not compile with them; the region of a
-/// checkpoint plans with them.
+/// A workflow that stays one native op holds the config values of the command line, several
+/// targets and the options that pick jobs, as the region of a checkpoint plans with them.
 #[test]
-fn refuses_dropped_settings() {
+fn keeps_launch_settings() {
     let snakefile =
         format!("checkpoint c:\n    output: \"c.txt\"\n    shell: \"touch {{output}}\"\n\n{TWO}");
     let launch = Launch {
@@ -268,18 +267,21 @@ fn refuses_dropped_settings() {
     assert!(planner["config_values"].is_string(), "{planner}");
     let images = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
     let launch = Launch {
-        targets: vec!["b.txt".into()],
+        targets: vec!["b.txt".into(), "a.txt".into()],
+        forceall: true,
         ..launch
     };
-    let error = compile_in(images, launch).1.err().unwrap_or_default();
-    let expected = "the workflow stays one native Snakemake op (a job of rule a: its group runs \
-        jobs of several images, which a run splits), which cannot hold config values of the \
-        command line";
-    assert_eq!(error, expected);
+    let (_folder, compiled) = compile_in(images, launch);
+    let compiled = compiled.expect("compiles one native op");
+    let document = serde_json::to_value(&compiled.document).expect("serializes");
+    let native = &op(&document, "snakemake")["kind"]["native"];
+    assert!(native["config_values"].is_string(), "{native}");
+    assert_eq!(native["targets"], json!(["b.txt", "a.txt"]));
+    assert_eq!(native["forceall"], true);
 }
 
 /// A command at the top level of a Snakefile runs once, in the run: compiling it keeps the
-/// workflow one native op, without running the command.
+/// workflow one native op, without running the command, which plans as the launch does.
 #[test]
 fn defers_loading_commands() {
     let folder = tempfile::tempdir().expect("a temporary directory");
@@ -288,6 +290,8 @@ fn defers_loading_commands() {
     let launch = Launch {
         target: folder.path().join("Snakefile"),
         scratch: folder.path().join("scratch"),
+        params: vec![("sample".into(), "x".into())],
+        until: vec!["all".into()],
         ..Launch::default()
     };
     let run = RunSettings {
@@ -308,4 +312,8 @@ fn defers_loading_commands() {
         "{reasons:?}"
     );
     assert!(!folder.path().join("counter.txt").exists());
+    let document = serde_json::to_value(&compiled.document).expect("serializes");
+    let native = &op(&document, "snakemake")["kind"]["native"];
+    assert!(native["config_values"].is_string(), "{native}");
+    assert_eq!(native["until"], json!(["all"]));
 }

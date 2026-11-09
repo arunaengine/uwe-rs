@@ -76,9 +76,18 @@ pub fn rule_values(
     base: &Path,
 ) -> Result<Vec<(String, String)>, String> {
     match &rule.config_values {
-        Some(id) => read_values(&located(document, id)?, base),
+        Some(id) => source_values(document, id, base),
         None => Ok(Vec::new()),
     }
+}
+
+/// The config values of the command line in the source `id` of `document`.
+pub fn source_values(
+    document: &Document,
+    id: &str,
+    base: &Path,
+) -> Result<Vec<(String, String)>, String> {
+    read_values(&located(document, id)?, base)
 }
 
 fn located(document: &Document, id: &str) -> Result<String, String> {

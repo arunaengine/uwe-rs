@@ -544,7 +544,7 @@ impl<'d> Checker<'d> {
             let (found, want) = (show(&native.language), show(&source.language));
             self.report(at, Problem::Language { named, found, want });
         }
-        for config in &native.configs {
+        for config in native.configs.iter().chain(&native.config_values) {
             if let Some(source) = self.source(at, config)
                 && source.language != native.language
             {

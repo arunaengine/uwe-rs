@@ -773,6 +773,27 @@ impl WirDriver {
             keep_going: self.launch.keep_going,
             ..Launch::default()
         };
+        // A Snakefile block plans the jobs that the run it holds picks.
+        let picks = !native.targets.is_empty() || native.config_values.is_some();
+        let picks = picks || !native.until.is_empty() || !native.omit_from.is_empty();
+        if (picks || !native.forcerun.is_empty() || native.forceall)
+            && native.language != Dialect::Snakemake
+        {
+            let message = format!("op {path}: only Snakefile blocks take targets or job options");
+            return Err(DriverError::unsupported(message));
+        }
+        if !native.targets.is_empty() {
+            launch.targets = native.targets.clone();
+        }
+        if let Some(id) = &native.config_values {
+            let values = snakemake_compiler::source_values(&self.document, id, &self.base);
+            launch.params =
+                values.map_err(|error| DriverError::new(format!("op {path}: {error}")))?;
+        }
+        launch.until = native.until.clone();
+        launch.omit_from = native.omit_from.clone();
+        launch.forcerun = native.forcerun.clone();
+        launch.forceall = native.forceall;
         let mut child = Child::new(match native.language {
             Dialect::Cwl if !launch.profiles.is_empty() || !launch.configs.is_empty() => {
                 let message = format!("op {path}: CWL blocks take no profiles or configs");

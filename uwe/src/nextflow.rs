@@ -565,9 +565,12 @@ pub fn compile(
         isolation(arguments, setup).as_ref(),
         &shared_folders(arguments, setup),
     );
+    // The build sees the run as the driver of the run does, like `workflow.runName`.
     let settings = Settings {
         host: Box::new(console),
         container_engine: Some(setup.engine_kind(arguments)),
+        run_name: run.to_owned(),
+        command_line: std::env::args().collect::<Vec<_>>().join(" "),
         resume: arguments.resume.is_some(),
         ..Settings::default()
     };

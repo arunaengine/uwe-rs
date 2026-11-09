@@ -363,6 +363,38 @@ fn keeps_recorded_documents() {
     assert_eq!(resumed.document, Some(document));
 }
 
+/// A pipeline that passes the name of its run to a task.
+const NAMED: &str = "process SAY {\n    input:\n    val name\n    output:\n    stdout\n    script:\n    \"echo ${name}\"\n}\n\nworkflow {\n    SAY(Channel.of(workflow.runName))\n}\n";
+
+/// A compiled pipeline sees the name of its run, as the native driver gives it.
+#[test]
+fn names_compiled_runs() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("main.nf"), NAMED).expect("writes the pipeline");
+    let output = common::command()
+        .args(["run", "-executor", "simulator", "main.nf"])
+        .current_dir(root)
+        .env("XDG_CACHE_HOME", &cache)
+        .output()
+        .expect("runs uwe");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let database = run_database::Database::open(&cache.join("uwe/runs.sqlite"))
+        .expect("opens the run database");
+    let run = database.runs(1).expect("lists the runs").remove(0);
+    let tasks = database.tasks(&run.id).expect("reads the tasks");
+    let task = database
+        .task(&run.id, tasks[0].id)
+        .expect("reads")
+        .expect("a task");
+    let script = task.description.script.unwrap_or_default();
+    assert!(script.contains(&format!("echo {}", run.id)), "{script}");
+}
+
 /// A resume with other config values than the run it continues is refused.
 #[test]
 fn refuses_other_values() {

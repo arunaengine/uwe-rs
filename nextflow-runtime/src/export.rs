@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use nextflow_evaluator::secrets::holds_read;
 use nextflow_evaluator::split::Splitter;
 use nextflow_evaluator::value::{Closure, Value};
 use serde_json::{Value as Json, json};
@@ -336,6 +337,12 @@ impl Callback {
             if let Some(value) = value.filter(|_| !taken) {
                 captures.push((name.to_string(), value));
             }
+        }
+        // A value of the environment, like a token, stays out of every document; the workflow
+        // then runs natively.
+        let read = |(_, value): &(String, Json)| holds_read(&value.to_string());
+        if captures.iter().any(read) {
+            return Err("a closure captures a value of the environment".into());
         }
         Ok(Callback {
             script,

@@ -10,6 +10,33 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+/// The values that scripts of this process read from the environment, which no compiled
+/// document may hold, as they can be credentials like an API token.
+static READ: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// How long a value of the environment must be to count: shorter values, like `1` or `true`,
+/// are in many texts and hardly credentials.
+const NOTED_LENGTH: usize = 8;
+
+/// Notes a value that a script read from the environment.
+pub(crate) fn note_read(value: &str) {
+    if value.len() >= NOTED_LENGTH {
+        let mut read = READ
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        read.insert(value.to_owned());
+    }
+}
+
+/// Whether `text` holds a value that a script of this process read from the environment.
+pub fn holds_read(text: &str) -> bool {
+    let read = READ
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    read.iter().any(|value| text.contains(value.as_str()))
+}
+
 pub fn get<H: Host + ?Sized>(host: &H, name: &str) -> Result<Option<String>, Error> {
     Ok(load(&path(host))?.remove(name))
 }

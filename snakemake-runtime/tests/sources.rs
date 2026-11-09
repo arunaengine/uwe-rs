@@ -1,4 +1,5 @@
-//! Checks workflow source staging without Snakefiles or conflicts with job-owned files.
+//! Checks workflow source staging without Snakefiles or conflicts with job-owned files, and
+//! the working folder of a project folder.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -109,4 +110,63 @@ fn stages_workflow_sources() {
     let mut table: Vec<String> = table.into_iter().map(str::to_owned).collect();
     table.sort();
     assert_eq!(inputs("table"), table);
+}
+
+/// As `--directory .test` of Snakemake, a project folder works in its test folder, in a copy of
+/// it in the launch folder, and writes nothing into the project.
+#[test]
+fn works_in_directories() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let project = folder.path().join("project");
+    let snakefile = "configfile: 'config/config.yaml'\nrule all:\n    input: 'results/out.txt'\n\
+                     rule copy:\n    input: config['data']\n    output: 'results/out.txt'\n    \
+                     shell: 'cp {input} {output}'\n";
+    write(&project, "workflow/Snakefile", snakefile);
+    write(&project, ".test/config/config.yaml", "data: data/in.txt\n");
+    write(&project, ".test/data/in.txt", "reads\n");
+    let launch = Launch {
+        target: project.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let started = folder.path().join("launch");
+    let options = snakemake_runtime::RunSettings {
+        image: Some("debian:stable-slim".into()),
+        workdir: Some(started.clone()),
+        directory: Some(".test".into()),
+        ..snakemake_runtime::RunSettings::default()
+    };
+    let settings = snakemake_runtime::Settings::default();
+    let mut driver =
+        snakemake_runtime::driver_with_options(&launch, settings, options).expect("a driver");
+    let tasks = driver.start().expect("plans the run");
+    let input = (tasks.iter().flat_map(|task| &task.inputs))
+        .find(|input| input.path == "data/in.txt")
+        .expect("the data file");
+    assert_eq!(Path::new(&input.source), started.join("data/in.txt"));
+    let mut kept: Vec<_> = walkdir(&project.join(".test"));
+    kept.sort();
+    assert_eq!(kept, ["config/config.yaml", "data/in.txt"]);
+}
+
+/// The files below `folder`, relative to it.
+fn walkdir(folder: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(folder)
+        .expect("lists the folder")
+        .flatten()
+    {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            files.extend(
+                walkdir(&path)
+                    .into_iter()
+                    .map(|file| format!("{name}/{file}")),
+            );
+        } else {
+            files.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    files
 }

@@ -5,7 +5,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -180,15 +180,16 @@ enum Taken {
 
 impl Session {
     pub fn new(launch: &Launch, storage: &Storage) -> Result<Session, DriverError> {
-        Session::within(launch, storage, None, None)
+        Session::within(launch, storage, (None, None), None)
     }
 
     /// A session that starts in `folder` rather than in the working directory of the process:
     /// relative config files and profiles start there, and so does the work of a Snakefile.
+    /// A project folder works in its `directory`, copied into `folder`, as `--directory` does.
     fn within(
         launch: &Launch,
         storage: &Storage,
-        folder: Option<&Path>,
+        (folder, directory): (Option<&Path>, Option<&Path>),
         environment: Option<Vec<(String, String)>>,
     ) -> Result<Session, DriverError> {
         // Config files are relative to where the run starts, as Snakemake takes them.
@@ -205,7 +206,13 @@ impl Session {
             let snakefile = find_snakefile(&target).ok_or_else(|| {
                 DriverError::new(format!("No Snakefile found in {}", target.display()))
             })?;
-            (snakefile, target.clone())
+            match directory {
+                Some(directory) => {
+                    let workdir = staged(&target, directory, folder, launch.simulated)?;
+                    (snakefile, workdir)
+                }
+                None => (snakefile, target.clone()),
+            }
         } else if target.is_file() {
             let workdir = match folder {
                 Some(folder) => folder.to_owned(),
@@ -3178,6 +3185,55 @@ pub struct RunSettings {
     /// The folder that the run starts in, as if launched there: the working directory of a
     /// Snakefile, and where relative config files and profiles start. Else the process's.
     pub workdir: Option<PathBuf>,
+    /// A folder of a project folder target to work in, like Snakemake's `--directory .test`:
+    /// the run works in a copy of it in `workdir`, so that it writes nothing into the project.
+    pub directory: Option<PathBuf>,
+}
+
+/// The working folder of a run of the project `target` in its `directory`: a copy in the
+/// folder that the run starts in, else in the working directory of the process. A simulated
+/// run writes nothing, so it reads the folder of the project itself.
+fn staged(
+    target: &Path,
+    directory: &Path,
+    folder: Option<&Path>,
+    simulated: bool,
+) -> Result<PathBuf, DriverError> {
+    let inside = (directory.components()).all(|part| matches!(part, Component::Normal(_)));
+    let source = target.join(directory);
+    if !inside || !source.is_dir() {
+        return Err(DriverError::new(format!(
+            "the working folder {} is no folder inside {}",
+            directory.display(),
+            target.display()
+        )));
+    }
+    if simulated {
+        return Ok(source);
+    }
+    let workdir = match folder {
+        Some(folder) => folder.to_owned(),
+        None => std::env::current_dir().map_err(|error| DriverError::new(error.to_string()))?,
+    };
+    copy_missing(&source, &workdir)
+        .map_err(|error| DriverError::new(format!("cannot copy {}: {error}", source.display())))?;
+    Ok(workdir)
+}
+
+/// Copies the files of `from` into `to` that `to` does not have, so that a resume keeps the
+/// files that its run made.
+fn copy_missing(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if std::fs::metadata(entry.path())?.is_dir() {
+            copy_missing(&entry.path(), &target)?;
+        } else if !target.exists() {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -3239,7 +3295,8 @@ pub fn spawn_driver(
                     ));
                 }
                 let environment = settings.environment.clone();
-                let mut session = Session::within(&launch, &settings.storage, folder, environment)?;
+                let place = (folder, options.directory.as_deref());
+                let mut session = Session::within(&launch, &settings.storage, place, environment)?;
                 if let Some(roots) = &settings.roots {
                     let mut folders = roots.clone();
                     folders.push(session.workdir.clone());
@@ -3251,6 +3308,12 @@ pub fn spawn_driver(
                     // The folder of the Snakefile stays writable only as the working folder.
                     let mut readable = settings.readable.clone();
                     readable.extend(session.snakefile.parent().map(Path::to_owned));
+                    // A project that works in a copy of its folder only reads its own files.
+                    if options.directory.is_some() {
+                        readable.push(
+                            std::path::absolute(&launch.target).unwrap_or(launch.target.clone()),
+                        );
+                    }
                     session.files.confine(roots.with_readable(readable));
                 }
                 *session.state.borrow().mirrors.git.borrow_mut() = settings.git.clone();

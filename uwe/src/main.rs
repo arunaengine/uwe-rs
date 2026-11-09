@@ -158,6 +158,8 @@ options:
   -fold <n>                           in pictures of the graph of tasks, a step with more
                                       than n tasks is one box (default 5; 0 draws every task)
   -output-dir <folder>                where CWL outputs and Argo artifacts go
+  -workdir <folder>                   a folder of a Snakemake project folder to work in, in a
+                                      copy, like Snakemake's --directory
   -tes-server <address>               the TES server of -executor tes; Funnel's
                                       http://localhost:8000 by default
   -slurm-container <runtime>          how the nodes of -executor slurm run containers:

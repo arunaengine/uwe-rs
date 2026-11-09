@@ -279,6 +279,7 @@ pub(crate) fn snakemake_options(
             (isolation.launch.clone())
                 .unwrap_or_else(|| cache_directory().join("scratch").join("launch").join(run))
         }),
+        directory: arguments.workdir.clone(),
     }
 }
 

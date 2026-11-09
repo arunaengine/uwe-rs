@@ -3,13 +3,11 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::Path;
-
 use serde_json::{Map, Value as Json, json};
 
 /// The inputs of the entry graph for the params of a run. A param whose name is no port name
 /// goes into the one port `params`, with the others of its kind.
-pub(crate) fn ports(params: &Json, schema: Option<&Json>, launch: &str) -> Vec<Json> {
+pub(crate) fn ports(params: &Json, schema: Option<&Json>) -> Vec<Json> {
     let properties = schema.map(described).unwrap_or_default();
     let mut ports = Vec::new();
     let mut rest = Map::new();
@@ -22,7 +20,7 @@ pub(crate) fn ports(params: &Json, schema: Option<&Json>, launch: &str) -> Vec<J
             continue;
         }
         let r#type = properties.get(name).map_or(json!("dynamic"), kind);
-        let (r#type, value) = fitting(r#type, value, launch);
+        let (r#type, value) = fitting(r#type, value);
         ports.push(json!({"name": name, "type": r#type, "default": value}));
     }
     if !rest.is_empty() {
@@ -52,12 +50,13 @@ fn described(schema: &Json) -> Map<String, Json> {
     properties
 }
 
-/// The wir type of a schema property.
+/// The wir type of a schema property. A path param takes a File or Directory, or its text, as
+/// a direct run of the pipeline does, which reads the text from the launch folder.
 fn kind(property: &Json) -> Json {
     let format = property.get("format").and_then(Json::as_str);
     match (property.get("type").and_then(Json::as_str), format) {
-        (_, Some("file-path")) => json!({"file": {}}),
-        (_, Some("directory-path")) => json!("directory"),
+        (_, Some("file-path")) => json!({"union": [{"file": {}}, "string"]}),
+        (_, Some("directory-path")) => json!({"union": ["directory", "string"]}),
         (Some("string"), _) => match property.get("enum").and_then(Json::as_array) {
             Some(symbols) if symbols.iter().all(Json::is_string) => json!({"enum": symbols}),
             _ => json!("string"),
@@ -69,33 +68,15 @@ fn kind(property: &Json) -> Json {
     }
 }
 
-/// The type and default of a port for the value of a param: a path as a File or Directory,
-/// a null value as optional, and a value that does not fit the type as `dynamic`.
-fn fitting(r#type: Json, value: &Json, launch: &str) -> (Json, Json) {
-    let class = match &r#type {
-        Json::Object(object) if object.contains_key("file") => Some("File"),
-        Json::String(name) if name == "directory" => Some("Directory"),
-        _ => None,
-    };
-    let value = match (class, value) {
-        (Some(class), Json::String(path)) => {
-            json!({"class": class, "location": absolute(path, launch)})
-        }
-        (_, value) => value.clone(),
-    };
+/// The type and default of a port for the value of a param: the value as the run has it, a
+/// null value as optional, and a value that does not fit the type as `dynamic`.
+fn fitting(r#type: Json, value: &Json) -> (Json, Json) {
+    let value = value.clone();
     let parsed: Option<wir::Type> = serde_json::from_value(r#type.clone()).ok();
     match parsed {
         _ if value.is_null() => (json!({"optional": r#type}), value),
         Some(parsed) if wir::fits(&value, &parsed, &[]) => (r#type, value),
         _ => (json!("dynamic"), value),
-    }
-}
-
-/// A path of a param from the launch folder, where a run reads it; an address stays as it is.
-fn absolute(path: &str, launch: &str) -> String {
-    match path.contains("://") || path.starts_with('/') {
-        true => path.to_owned(),
-        false => Path::new(launch).join(path).to_string_lossy().into_owned(),
     }
 }
 
@@ -126,7 +107,7 @@ mod tests {
             "input": "sheet.csv", "outdir": "s3://bucket/out", "mode": "other", "max_cpus": 4,
             "skip": false, "email": null, "genomes": {"GRCh38": {}}, "with space": 1
         });
-        let ports = ports(&params, Some(&schema), "/launch");
+        let ports = ports(&params, Some(&schema));
         let by = |name: &str| {
             ports
                 .iter()
@@ -134,14 +115,18 @@ mod tests {
                 .unwrap()
                 .clone()
         };
-        let file = json!({"class": "File", "location": "/launch/sheet.csv"});
-        assert_eq!(by("input")["type"], json!({"file": {}}));
+        let path = json!({"union": [{"file": {}}, "string"]});
+        assert_eq!(
+            by("input")["type"],
+            path,
+            "a File or the text of a direct run"
+        );
         assert_eq!(
             by("input")["default"],
-            file,
-            "a relative path from the launch folder"
+            "sheet.csv",
+            "the text as the run has it"
         );
-        assert_eq!(by("outdir")["default"]["location"], "s3://bucket/out");
+        assert_eq!(by("outdir")["default"], "s3://bucket/out");
         assert_eq!(by("mode")["type"], "dynamic", "a value outside the enum");
         assert_eq!(
             (by("max_cpus")["type"].clone(), by("skip")["type"].clone()),

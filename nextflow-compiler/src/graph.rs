@@ -328,11 +328,7 @@ impl<'a> Compiler<'a> {
         // The params of the run, which the Nextflow tasks of the document read.
         if scope == 0 {
             let schema = network.schema.as_ref();
-            inputs.extend(crate::params::ports(
-                &network.params,
-                schema,
-                &network.launch,
-            ));
+            inputs.extend(crate::params::ports(&network.params, schema));
         }
         let mut outputs = Vec::new();
         let named: Vec<(String, usize)> = match scope {

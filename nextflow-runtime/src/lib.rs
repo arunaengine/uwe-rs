@@ -458,6 +458,16 @@ pub fn export(
     exported.launch = launch;
     exported.reads = reads;
     exported.scripts = scripts(module, project);
+    for on_error in [false, true] {
+        for handler in workflow::handlers(&workflow, on_error) {
+            let callback =
+                export::Callback::handler(&handler).map_err(|message| Error::Unsupported {
+                    message: format!("a workflow event handler: {message}"),
+                    span: Default::default(),
+                })?;
+            exported.handlers.push((on_error, callback));
+        }
+    }
     Ok(exported)
 }
 

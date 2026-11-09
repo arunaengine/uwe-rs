@@ -447,6 +447,7 @@ impl Network {
             processes: self.processes(),
             reads: Vec::new(),
             scripts: Vec::new(),
+            handlers: Vec::new(),
         })
     }
 

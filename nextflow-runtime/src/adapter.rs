@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use nextflow_evaluator::interpreter::{Error, Interpreter};
+use nextflow_evaluator::interpreter::{Error, FileMetadata, Host, Interpreter};
 use nextflow_evaluator::lowered::{Module, Process};
 use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_plugins::observer;
@@ -345,6 +345,38 @@ impl Adapter {
         self.interpret(code)
     }
 
+    /// Runs code like [`Adapter::evaluate`], whose prints go to `print`, like those of the
+    /// handlers of the run to the print sink of a wir run.
+    pub fn evaluate_printed<T>(
+        &mut self,
+        print: &dyn Fn(&str),
+        code: impl FnOnce(&mut Interpreter) -> Result<T, Error>,
+    ) -> Result<T, DriverError> {
+        let mut printed = Printed {
+            base: self.driver.host(),
+            print,
+        };
+        let mut session = Session {
+            base: &mut printed,
+            options: &self.options,
+            network: None,
+            operator_directory: &mut self.operator_directory,
+        };
+        let mut interpreter = Interpreter::new(&mut session);
+        crate::set_globals(&mut interpreter, &self.options, &self.workflow);
+        code(&mut interpreter).map_err(|failure| error(interpreter.locate(failure)))
+    }
+
+    /// Records the end of the run in the `workflow` object, as the native driver does before
+    /// the `onComplete` and `onError` handlers: `success`, `complete`, `duration`, and for a
+    /// failed run `exitStatus` and `errorMessage`.
+    pub fn finish_run(&mut self, error: Option<&str>) {
+        crate::workflow::finish(&self.workflow, error.is_none(), 0);
+        if let Some(message) = error {
+            crate::workflow::failure(&self.workflow, message, Value::integer(1));
+        }
+    }
+
     /// The main script of the run.
     pub fn script(&self) -> Option<String> {
         self.module.path.borrow().as_deref().map(str::to_owned)
@@ -403,4 +435,80 @@ fn find(main: &Rc<Module>, script: &str, name: &str) -> Option<(Rc<Module>, Rc<P
         pending.extend(linked.map(|link| link.module.clone()));
     }
     None
+}
+
+/// A host whose prints go to `print`, and everything else to `base`.
+struct Printed<'a> {
+    base: &'a mut dyn Host,
+    print: &'a dyn Fn(&str),
+}
+
+impl Host for Printed<'_> {
+    fn print(&mut self, text: &str) {
+        (self.print)(text);
+    }
+
+    fn simulated(&self) -> bool {
+        self.base.simulated()
+    }
+
+    fn launch_dir(&self) -> String {
+        self.base.launch_dir()
+    }
+
+    fn operator_directory(&mut self) -> Result<PathValue, Error> {
+        self.base.operator_directory()
+    }
+
+    fn download(&mut self, path: &PathValue) -> Result<std::path::PathBuf, Error> {
+        self.base.download(path)
+    }
+
+    fn read(&mut self, path: &PathValue) -> Result<Vec<u8>, Error> {
+        self.base.read(path)
+    }
+
+    fn open(&mut self, path: &PathValue) -> Result<Box<dyn std::io::Read>, Error> {
+        self.base.open(path)
+    }
+
+    fn metadata(&mut self, path: &PathValue) -> Result<Option<FileMetadata>, Error> {
+        self.base.metadata(path)
+    }
+
+    fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
+        self.base.list(directory)
+    }
+
+    fn spread(&mut self, path: &PathValue) {
+        self.base.spread(path);
+    }
+
+    fn write(&mut self, path: &PathValue, bytes: &[u8]) -> Result<(), Error> {
+        self.base.write(path, bytes)
+    }
+
+    fn copy_file(&mut self, source: &PathValue, target: &PathValue) -> Result<(), Error> {
+        self.base.copy_file(source, target)
+    }
+
+    fn delete(&mut self, path: &PathValue) -> Result<bool, Error> {
+        self.base.delete(path)
+    }
+
+    fn create_directories(&mut self, path: &PathValue) -> Result<(), Error> {
+        self.base.create_directories(path)
+    }
+
+    fn environment(&self, name: &str) -> Option<String> {
+        self.base.environment(name)
+    }
+
+    fn secret(&mut self, name: &str) -> Result<Option<String>, Error> {
+        self.base.secret(name)
+    }
+
+    fn validate_json(&mut self, schema: &str, instance: &str) -> Result<Option<String>, Error> {
+        self.base.validate_json(schema, instance)
+    }
 }

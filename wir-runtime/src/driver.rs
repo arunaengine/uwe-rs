@@ -1524,6 +1524,7 @@ impl Driver for WirDriver {
             .flat_map(|(_, child)| child.notes())
             .collect();
         notes.extend(self.dialects.notes());
+        notes.extend(self.scope_run.notes());
         notes
     }
 

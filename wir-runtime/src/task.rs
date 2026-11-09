@@ -421,6 +421,10 @@ pub fn capture(
             value = crate::load::listings(value, listing, ended.access)
                 .map_err(|problem| format!("output {}: {problem}", port.name))?;
         }
+        if let Some(code) = &capture.format {
+            formatted(&mut value, code, spec, ended)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+        }
         if !wir::fits(&value, &port.r#type, defs) {
             return Err(format!("output {} does not fit its type", port.name));
         }
@@ -541,32 +545,69 @@ fn evaluated(
         this = crate::load::listings(this, listing, ended.access)?;
     }
     this = crate::load::checksums(this, ended.access)?;
-    let location = |item: &Json| {
-        item.get("location")
-            .and_then(Json::as_str)
-            .map(str::to_owned)
-    };
-    let made = |item: &Json| {
-        let location = location(item)?;
-        let file = (ended.outcome.files.iter()).find(|file| file.location == location)?;
-        Some(absolute(file.path.trim_end_matches('/'), workdir))
-    };
-    let given = |item: &Json| {
-        let location = location(item)?;
-        let source = cwl_parser::iri::file_path(&location)
-            .map_or(location, |path| path.to_string_lossy().into_owned());
-        // The last place of a file is where the task sees it, as the entries come last.
-        let input = ended.inputs.iter().rfind(|input| input.source == source)?;
-        Some(absolute(&input.path, workdir))
-    };
-    let inputs = with_paths(&Json::Object(ended.bound.clone()), &given);
     let runtime = json!({"exitCode": ended.outcome.exit_code});
-    let values = (inputs, with_paths(&this, &made), runtime);
+    let made = |item: &Json| made_path(item, ended, workdir);
+    let values = (
+        seen_inputs(ended, workdir),
+        with_paths(&this, &made),
+        runtime,
+    );
     let value = crate::expr::code(code, values, (&spec.library, ended.settings))?;
     located(
         value,
         (ended.outcome, ended.inputs, workdir, ended.simulated),
     )
+}
+
+/// Sets the format of each File of a value, alone or in arrays, to the value of the code
+/// with that File as `self`; a simulated run whose code fails sets none, as uwe's CWL driver.
+fn formatted(
+    value: &mut Json,
+    code: &str,
+    spec: &wir::Task,
+    ended: Ended<'_>,
+) -> Result<(), String> {
+    match value {
+        Json::Array(items) => items
+            .iter_mut()
+            .try_for_each(|item| formatted(item, code, spec, ended)),
+        Json::Object(file) if class(file) == Some("File") => {
+            let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
+            let this = with_paths(&Json::Object(file.clone()), &|item| {
+                made_path(item, ended, workdir)
+            });
+            let values = (seen_inputs(ended, workdir), this, json!({}));
+            match crate::expr::code(code, values, (&spec.library, ended.settings)) {
+                Ok(Json::String(format)) => drop(file.insert("format".into(), json!(format))),
+                Ok(_) => {}
+                Err(_) if ended.simulated => {}
+                Err(why) => return Err(format!("the format: {why}")),
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// The path in the container of a file that the task made.
+fn made_path(item: &Json, ended: Ended<'_>, workdir: &str) -> Option<String> {
+    let location = item.get("location").and_then(Json::as_str)?;
+    let file = (ended.outcome.files.iter()).find(|file| file.location == location)?;
+    Some(absolute(file.path.trim_end_matches('/'), workdir))
+}
+
+/// The input values as the code of captures sees them, each staged file at its last place,
+/// where the task sees it, as the entries of the working folder come last.
+fn seen_inputs(ended: Ended<'_>, workdir: &str) -> Json {
+    let given = |item: &Json| {
+        let location = item.get("location").and_then(Json::as_str)?;
+        let source = cwl_parser::iri::file_path(location).map_or(location.to_owned(), |path| {
+            path.to_string_lossy().into_owned()
+        });
+        let input = ended.inputs.iter().rfind(|input| input.source == source)?;
+        Some(absolute(&input.path, workdir))
+    };
+    with_paths(&Json::Object(ended.bound.clone()), &given)
 }
 
 /// The object of the results file that the task wrote, if any; the made-up file of a
@@ -1296,6 +1337,7 @@ mod tests {
             arity: None,
             listing: None,
             code: None,
+            format: None,
         };
         let spec = wir::Task {
             workdir: Some("/w".into()),
@@ -1387,6 +1429,7 @@ mod tests {
             arity: None,
             listing: Some(wir::Listing::Deep),
             code: None,
+            format: None,
         };
         let spec = wir::Task {
             workdir: Some("/w".into()),
@@ -1420,6 +1463,68 @@ mod tests {
     }
 
     #[test]
+    fn formats_read_files() {
+        let op: Op = serde_json::from_value(json!({
+            "path": "sort",
+            "kind": {"task": {}},
+            "inputs": [{"name": "kind", "type": "string"}],
+            "outputs": [{"name": "sorted", "type": {"file": {}}}]
+        }))
+        .unwrap();
+        let rule = wir::Capture {
+            output: "sorted".into(),
+            from: CaptureRule::Glob("a.txt".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: Some("$(inputs.kind)".into()),
+        };
+        let spec = wir::Task {
+            command: vec![Argument::Text("sort".into())],
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let bound = Map::from_iter([("kind".to_owned(), json!("http://edam/format_1"))]);
+        let settings = JavaScriptSettings::default();
+        let task = build(
+            TaskId(1),
+            ("sort", "sort"),
+            &op,
+            &spec,
+            &bound,
+            (&settings, false),
+        );
+        assert_eq!(
+            task.unwrap().outputs,
+            ["a.txt"],
+            "a format takes no other files"
+        );
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "a.txt".into(),
+                location: "/out/a.txt".into(),
+                directory: false,
+                size: None,
+                digest: None,
+            }],
+            ..Outcome::default()
+        };
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &op.outputs, ended, &[]).unwrap();
+        assert_eq!(values["sorted"]["format"], "http://edam/format_1");
+    }
+
+    #[test]
     fn codes_see_checksums() {
         let folder = tempfile::tempdir().unwrap();
         let made = folder.path().join("a.txt");
@@ -1442,6 +1547,7 @@ mod tests {
             arity: None,
             listing: None,
             code: Some("$(self[0].checksum)".into()),
+            format: None,
         };
         let spec = wir::Task {
             captures: vec![rule],
@@ -1478,6 +1584,7 @@ mod tests {
             arity: None,
             listing: None,
             code: Some("$(inputs.file.path)".into()),
+            format: None,
         };
         let spec = wir::Task {
             workdir: Some("/w".into()),
@@ -1536,6 +1643,7 @@ mod tests {
             arity: None,
             listing: None,
             code: None,
+            format: None,
         };
         let spec = wir::Task {
             captures: vec![rule],

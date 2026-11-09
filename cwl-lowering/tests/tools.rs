@@ -268,8 +268,12 @@ fn lowers_format_expressions() {
     let op = only_op(&lowering);
     let capture = &op["kind"]["task"]["captures"][0];
     assert_eq!(capture["from"], "stdout");
-    let code = capture["code"].as_str().unwrap();
-    assert!(code.contains("file.format = format(file)"), "{code}");
+    let format = capture["format"].as_str().unwrap();
+    assert!(format.contains("inputs.text.format"), "{format}");
+    assert!(
+        capture.get("code").is_none(),
+        "a format is no output code: {capture}"
+    );
 }
 
 #[test]

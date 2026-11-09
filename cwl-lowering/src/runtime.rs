@@ -246,18 +246,6 @@ pub fn list(codes: &[Expression]) -> String {
     format!("${{ {TEXT} return [].concat({}); }}", values.join(", "))
 }
 
-/// The code that sets the format of each File of `self`, a File or a list, to the value of a
-/// format expression over that File as `self`, as CWL sets the format of an output.
-pub fn formats(format: &Expression) -> String {
-    format!(
-        "${{ {TEXT} var format = function(self) {{ return {}; }}; \
-         var set = function(file) {{ if (file !== null && typeof file === \"object\" \
-         && file.class === \"File\") {{ file.format = format(file); }} return file; }}; \
-         return Array.isArray(self) ? self.map(set) : set(self); }}",
-        value(format)
-    )
-}
-
 /// The function `text` that the code of text with parts uses.
 const TEXT: &str =
     "var text = function(v) { return typeof v === \"string\" ? v : JSON.stringify(v); };";

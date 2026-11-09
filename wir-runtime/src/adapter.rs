@@ -245,6 +245,7 @@ pub(crate) fn planner_builder(planner: &Planner) -> TaskBuilder {
         omit_from: Vec::new(),
         forcerun: Vec::new(),
         forceall: false,
+        layout: None,
     })
 }
 

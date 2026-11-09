@@ -31,7 +31,10 @@ use crate::workflow::{Hook, State};
 #[path = "adapter.rs"]
 mod adapter;
 
-pub use adapter::{Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer};
+pub(crate) use adapter::JobCall;
+pub use adapter::{
+    Answer, FileKind, JobFile, JobKey, JobResult, PlannedJob, Prepared, Producer, WAITING,
+};
 
 /// The Snakefile of a workflow folder, as Snakemake looks for it.
 pub fn find_snakefile(folder: &Path) -> Option<PathBuf> {
@@ -138,6 +141,8 @@ pub struct Session {
     /// of jobs whose run has not started, and what the runs need from the session.
     cwl: HashMap<usize, crate::cwl::Run>,
     cwl_tasks: HashMap<TaskId, usize>,
+    /// The outcome of the task of a job whose CWL run ended, for a job that runs alone.
+    cwl_ended: Option<Outcome>,
     cwl_jobs: HashMap<usize, crate::cwl::Job>,
     cwl_engine: Option<(String, Option<PathBuf>, executor::CancellationToken)>,
     storage: Storage,
@@ -298,6 +303,7 @@ impl Session {
             placed: HashMap::new(),
             cwl: HashMap::new(),
             cwl_tasks: HashMap::new(),
+            cwl_ended: None,
             cwl_jobs: HashMap::new(),
             cwl_engine: None,
             storage: storage.clone(),
@@ -1225,6 +1231,11 @@ impl Session {
                     }
                 }
             }
+        }
+        // A job that runs alone, by its key, is taken by the caller.
+        if !self.keys.is_empty() {
+            self.cwl_ended = Some(outcome);
+            return Ok(Vec::new());
         }
         self.complete(outcome)
     }
@@ -2909,7 +2920,7 @@ impl Session {
 
     /// The files of the targets, as [`Session::outputs`] names them: the items of the target
     /// jobs, their inputs where they have no outputs, like those of `all`, and target files.
-    fn target_files(&self) -> serde_json::Value {
+    pub(crate) fn target_files(&self) -> serde_json::Value {
         let Some(planner) = &self.planner else {
             return serde_json::Value::Object(serde_json::Map::new());
         };
@@ -3311,7 +3322,11 @@ pub fn spawn_driver(
                     }
                     Request::Start => session.start(),
                     Request::Complete(outcome) => session.complete(*outcome),
-                    request @ (Request::Jobs(_) | Request::Prepare(_) | Request::Take(_)) => {
+                    request @ (Request::Jobs(_)
+                    | Request::Prepare(_)
+                    | Request::Take(_)
+                    | Request::Targets
+                    | Request::Replan) => {
                         channel
                             .planning
                             .set(matches!(request, Request::Jobs(false)));

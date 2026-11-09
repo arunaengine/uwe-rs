@@ -10,10 +10,13 @@ use serde_json::Value as Json;
 use snakemake_runtime::{
     Answer, JobResult, PlannedJob, Prepared, RunSettings, Settings, SnakemakeDriver,
 };
-use wir::{RuleTask, TaskBuilder};
+use wir::reserved::{Identity, PlanUpdate};
+use wir::{RuleTask, Status, TaskBuilder};
 use workflow_graph::{Delivery, Driver, DriverError, ExecuteError, Launch, Outcome, Task, TaskId};
 
-use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
+use crate::adapter::{
+    Adapters, CallId, Changes, Ending, Opening, RegionCall, TaskAdapter, TaskCall,
+};
 use crate::child::Block;
 
 /// What the drivers of Snakemake blocks use, as a Snakemake run alone does.
@@ -75,6 +78,13 @@ struct Jobs {
     /// The call of each job task, and the output port of each output selector of a call.
     owners: HashMap<TaskId, CallId>,
     ports: HashMap<CallId, HashMap<String, String>>,
+    /// The job of the source context, which a region plans with, and its last revision.
+    rule: RuleTask,
+    revision: Option<u64>,
+    /// The jobs of the region that ended, as its planner hears of them.
+    ended: HashSet<String>,
+    /// Whether the run is simulated, which delivers no files.
+    simulated: bool,
 }
 
 impl Jobs {
@@ -118,7 +128,44 @@ impl Jobs {
             ready: Vec::new(),
             owners: HashMap::new(),
             ports: HashMap::new(),
+            rule: rule.clone(),
+            revision: None,
+            ended: HashSet::new(),
+            simulated: opening.launch.simulated,
         })
+    }
+
+    /// The jobs of the plan, planned by starting the run of the jobs the first time.
+    fn started_jobs(&mut self) -> Result<Vec<PlannedJob>, DriverError> {
+        if self.planned.is_none() {
+            match self.driver.start_jobs()? {
+                Answer::Jobs(jobs) => self.planned = Some(jobs),
+                // A region plans when it starts, which takes no tasks of workflow code.
+                _ => {
+                    let why = "workflow code runs commands while a checkpoint region is planned";
+                    return Err(DriverError::unsupported(why));
+                }
+            }
+        }
+        Ok(self.planned.clone().unwrap_or_default())
+    }
+
+    /// The next plan update of a region with the jobs `jobs`; final once each needed
+    /// checkpoint ended, after which the native run plans no more and runs no waiting job.
+    fn update(&mut self, jobs: &[PlannedJob]) -> Result<PlanUpdate, DriverError> {
+        let revision = self.revision.map_or(0, |revision| revision + 1);
+        self.revision = Some(revision);
+        let mut update = snakemake_compiler::region_plan(jobs, &self.rule, revision)
+            .map_err(DriverError::new)?;
+        let pending = (jobs.iter())
+            .filter(|job| job.checkpoint && job.needed)
+            .any(|job| {
+                !self
+                    .ended
+                    .contains(&job_name(&job.key.rule, &job.key.wildcards))
+            });
+        update.final_plan = !pending;
+        Ok(update)
     }
 
     /// Runs the steps that wait while no command holds them up.
@@ -140,7 +187,8 @@ impl Jobs {
                         continue;
                     }
                     let key = snakemake_compiler::job_key(&rule);
-                    (call, self.driver.prepare_job(&key, staged)?)
+                    let group = snakemake_compiler::group_keys(&rule);
+                    (call, self.driver.prepare_job(&key, &group, staged)?)
                 }
                 Step::Take(outcome) => (self.owners[&outcome.id], self.driver.take_job(*outcome)?),
             };
@@ -160,9 +208,15 @@ impl Jobs {
                     .extend(commands.into_iter().map(|task| (call, task)));
             }
             Answer::Jobs(jobs) => self.planned = Some(jobs),
+            Answer::Targets(_) | Answer::Replanned(_) => {}
             Answer::Prepared(Prepared::Run(task)) | Answer::Taken(JobResult::Retry(task)) => {
                 self.owners.insert(task.id, call);
                 self.ready.push((call, *task));
+            }
+            Answer::Prepared(Prepared::Tasks(tasks)) | Answer::Taken(JobResult::Tasks(tasks)) => {
+                self.owners.extend(tasks.iter().map(|task| (task.id, call)));
+                self.ready
+                    .extend(tasks.into_iter().map(|task| (call, task)));
             }
             Answer::Prepared(Prepared::Skipped(made))
             | Answer::Taken(JobResult::Accepted(made)) => {
@@ -223,8 +277,13 @@ impl TaskAdapter for Jobs {
         self.driver.take_acceptance(task, attempt)
     }
 
+    /// The files to deliver; a simulated run delivers none, and so acknowledges none.
     fn deliveries(&mut self) -> Vec<Delivery> {
-        self.driver.deliveries()
+        let deliveries = self.driver.deliveries();
+        match self.simulated {
+            true => Vec::new(),
+            false => deliveries,
+        }
     }
 
     fn delivered(&mut self, delivery: &Delivery) -> Result<(), DriverError> {
@@ -246,4 +305,38 @@ impl TaskAdapter for Jobs {
     fn prefixed(&self) -> bool {
         false
     }
+
+    /// The jobs that wait for no checkpoint, as the native Planner plans them.
+    fn plan(&mut self, _region: &RegionCall) -> Result<PlanUpdate, DriverError> {
+        let jobs = self.started_jobs()?;
+        self.update(&jobs)
+    }
+
+    /// A new plan once an accepted checkpoint ended, as a native run plans again then.
+    fn replan(
+        &mut self,
+        _region: CallId,
+        instance: &Identity,
+        _status: Status,
+    ) -> Result<Option<PlanUpdate>, DriverError> {
+        if let Identity::Rule(key) = instance {
+            self.ended.insert(job_name(&key.rule, &key.wildcards));
+        }
+        match self.driver.replan_jobs()? {
+            Answer::Replanned(Some(jobs)) => {
+                self.planned = Some(jobs.clone());
+                self.update(&jobs).map(Some)
+            }
+            Answer::Replanned(None) => Ok(None),
+            _ => {
+                let why = "workflow code runs commands while a checkpoint region is planned again";
+                Err(DriverError::unsupported(why))
+            }
+        }
+    }
+}
+
+/// The name of a job by its rule and wildcards, as the planner of a region hears of it.
+fn job_name(rule: &str, wildcards: &std::collections::BTreeMap<String, String>) -> String {
+    format!("{rule} {wildcards:?}")
 }

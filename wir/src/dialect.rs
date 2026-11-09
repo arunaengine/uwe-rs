@@ -98,6 +98,10 @@ pub struct RuleTask {
     pub forcerun: Vec<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub forceall: bool,
+    /// A digest of the files the job reads and makes and of those that other jobs make, as
+    /// planned; a run that plans another layout refuses the job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
 }
 
 fn is_false(value: &bool) -> bool {

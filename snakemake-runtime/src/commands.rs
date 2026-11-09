@@ -30,10 +30,15 @@ pub enum Request {
     Failed(String),
     /// The planned jobs of the workflow; with `true` a run of single jobs starts too.
     Jobs(bool),
-    /// The first task of a planned job, with input files as wir values by their selectors.
-    Prepare(Box<(crate::driver::JobKey, Vec<(String, serde_json::Value)>)>),
+    /// The first task of a planned job, with the other jobs of its group and the input files
+    /// as wir values by their selectors.
+    Prepare(Box<crate::driver::JobCall>),
     /// The outcome of the task of a single job.
     Take(Box<Outcome>),
+    /// The files of the targets of the planned jobs, named as the outputs of a run.
+    Targets,
+    /// A new plan of the jobs after a checkpoint ended.
+    Replan,
 }
 
 /// The answer to a request: the tasks that can run now.
@@ -214,7 +219,9 @@ impl CommandRunner {
                 | Request::Finish
                 | Request::Jobs(_)
                 | Request::Prepare(_)
-                | Request::Take(_) => {
+                | Request::Take(_)
+                | Request::Targets
+                | Request::Replan => {
                     return Err(Error::runtime_error(
                         "the engine asked the session to start or finish while a command ran",
                     ));

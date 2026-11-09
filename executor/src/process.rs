@@ -1066,7 +1066,8 @@ mod tests {
         let server = std::thread::spawn(move || {
             let mut requests = Vec::new();
             let deadline = std::time::Instant::now() + Duration::from_secs(2);
-            for _ in 0..6 {
+            // The process asks the engine for its identity once; the removal asks no more.
+            for _ in 0..5 {
                 let mut stream = loop {
                     if let Ok((stream, _)) = listener.accept() {
                         break stream;
@@ -1143,9 +1144,9 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
-        assert!(requests[5].starts_with("DELETE "));
-        assert!(requests[5].contains("/containers/accepted-id?"));
-        assert!(!requests[5].contains("unowned-name"));
+        assert!(requests[4].starts_with("DELETE "));
+        assert!(requests[4].contains("/containers/accepted-id?"));
+        assert!(!requests[4].contains("unowned-name"));
     }
 
     #[test]

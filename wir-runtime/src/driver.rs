@@ -166,8 +166,8 @@ pub struct WirDriver {
     /// Counts the calls of the engine, so that a planner hears of an instance after the call
     /// it ended in, once its files were delivered.
     turn: u64,
-    /// Whether the hooks of the document ran.
-    hooked: bool,
+    /// Whether the `complete` hooks, and the `error` hooks, of the document ran.
+    hooked: (bool, bool),
     texts: crate::argo::Texts,
     /// The launch folder and the input values of each Nextflow block, by node.
     launched: HashMap<usize, (PathBuf, Map<String, Json>)>,
@@ -251,7 +251,7 @@ impl WirDriver {
             owners: HashMap::new(),
             dialects: adapter::Dialects::default(),
             turn: 0,
-            hooked: false,
+            hooked: (false, false),
             texts: crate::argo::Texts::default(),
             launched: HashMap::new(),
             tasks: HashMap::new(),
@@ -475,6 +475,9 @@ impl WirDriver {
                 &mut scopes,
             );
         }
+        // Hook closures may name a scope that no op names.
+        let hooks = serde_json::to_value(&self.document.hooks).unwrap_or_default();
+        scopes_in(&hooks, &mut scopes);
         let mut texts = HashMap::new();
         for scope in scopes {
             let text = self.scope_text(&scope)?;
@@ -1087,12 +1090,11 @@ impl WirDriver {
         Ok(moved || forwarded)
     }
 
-    /// Runs the hooks of the document once, at the end of the run: the `complete` hooks, and
-    /// the `error` hooks when it failed; why hooks failed.
+    /// Runs the hooks of the document at the end of the run, each kind once: the `complete`
+    /// hooks, and the `error` hooks when it failed, also after `finish`; why hooks failed.
     fn run_hooks(&mut self, failure: Option<&str>) -> Vec<String> {
-        if std::mem::replace(&mut self.hooked, true) {
-            return Vec::new();
-        }
+        let complete = !std::mem::replace(&mut self.hooked.0, true);
+        let error = failure.is_some() && !std::mem::replace(&mut self.hooked.1, true);
         let context = engine::Context {
             document: &self.document,
             base: &self.base,
@@ -1107,18 +1109,18 @@ impl WirDriver {
             nextflow: &self.scope_run,
         };
         let argument = json!({"success": failure.is_none(), "error": failure});
+        // Hooks print, like a Nextflow `onComplete` that tells how the run ended.
+        let mut hooks = Callbacks::printing();
         let mut problems = Vec::new();
         for (index, hook) in self.document.hooks.iter().enumerate() {
             let closure = match hook {
-                wir::Hook::Complete(closure) => closure,
-                wir::Hook::Error(closure) if failure.is_some() => closure,
+                wir::Hook::Complete(closure) if complete => closure,
+                wir::Hook::Error(closure) if error => closure,
                 _ => continue,
             };
             let body = wir::Body::Closure(closure.clone());
             let arguments = (&["run"][..], std::slice::from_ref(&argument));
-            let called = self
-                .callbacks
-                .call(&context, &body, arguments, &self.progress.inputs);
+            let called = hooks.call(&context, &body, arguments, &self.progress.inputs);
             if let Err(why) = called {
                 problems.push(format!("hook {index}: {why}"));
             }
@@ -1317,7 +1319,12 @@ impl Driver for WirDriver {
         if self.dialects.owns(task) {
             return self.dialects.handles_error(task, error);
         }
-        (self.owner(task)).is_ok_and(|index| self.children[index].1.handles_error(task, error))
+        (self.owner(task)).is_ok_and(|index| {
+            let child = &self.children[index].1;
+            // A stopped block's cancelled attempt is no run error; its outcome is dropped.
+            let stopped = child.finished() && matches!(error, ExecuteError::Cancelled);
+            stopped || child.handles_error(task, error)
+        })
     }
 
     fn started(&mut self, task: TaskId, attempt: u32) {
@@ -1377,9 +1384,11 @@ impl Driver for WirDriver {
                 self.end_child(index);
             }
         }
-        let failure = self.progress.failures.first().cloned();
-        let problems = self.run_hooks(failure.as_deref());
-        self.progress.failures.extend(problems);
+        // A run whose ops failed runs its hooks now; one that succeeded once its results stay.
+        if let Some(failure) = self.progress.failures.first().cloned() {
+            let problems = self.run_hooks(Some(&failure));
+            self.progress.failures.extend(problems);
+        }
         let failures = &self.progress.failures;
         if let Some(first) = failures.first() {
             return Err(DriverError::new(match failures.len() {
@@ -1428,7 +1437,11 @@ impl Driver for WirDriver {
             }
             self.results = Some(results);
         }
-        Ok(())
+        let problems = self.run_hooks(None);
+        match problems.is_empty() {
+            true => Ok(()),
+            false => Err(DriverError::new(problems.join("; "))),
+        }
     }
 
     fn failed(&mut self, error: &ExecuteError) -> Result<(), DriverError> {

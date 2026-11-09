@@ -74,13 +74,7 @@ impl Console {
     /// `text` with each secret value of the run as `[secret]`, the longest values first, so
     /// that a value inside another one leaves no part of the other.
     fn hidden(&self, text: &str) -> String {
-        let names = self.variables.names();
-        let mut values: Vec<String> = names.filter_map(|name| self.variables.get(name)).collect();
-        values.retain(|value| !value.is_empty());
-        values.sort_by_key(|value| std::cmp::Reverse(value.len()));
-        (values.iter()).fold(text.to_owned(), |text, value| {
-            text.replace(value, "[secret]")
-        })
+        hidden(text, &self.variables)
     }
 
     /// The same host, limited to the folders of the launch and of the isolation of the run.
@@ -469,13 +463,30 @@ fn console(quiet: bool, setup: &Setup, variables: &config_file::SecretValues) ->
     }
 }
 
+/// `text` with each secret value of `variables` as `[secret]`, the longest values first, so
+/// that a value inside another one leaves no part of the other.
+pub(crate) fn hidden(text: &str, variables: &config_file::SecretValues) -> String {
+    let names = variables.names();
+    let mut values: Vec<String> = names.filter_map(|name| variables.get(name)).collect();
+    values.retain(|value| !value.is_empty());
+    values.sort_by_key(|value| std::cmp::Reverse(value.len()));
+    (values.iter()).fold(text.to_owned(), |text, value| {
+        text.replace(value, "[secret]")
+    })
+}
+
 /// The settings of the Nextflow blocks of a wir run: those of a Nextflow run of `run`, each
-/// launched in the folder of its block.
-pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::nextflow::Options {
+/// launched in the folder of its block. `quiet` sends what they print to standard error.
+pub fn blocks(
+    run: &str,
+    quiet: bool,
+    arguments: &Arguments,
+    setup: &Setup,
+) -> wir_runtime::nextflow::Options {
     let console = Console {
         print: !arguments.no_print,
         sink: arguments.print_sink.clone(),
-        ..console(false, setup, &arguments.secrets)
+        ..console(quiet, setup, &arguments.secrets)
     };
     let engine = setup.engine_kind(arguments);
     // As for a Nextflow run: only executors on this machine inject secrets and pass options.
@@ -510,16 +521,24 @@ pub fn blocks(run: &str, arguments: &Arguments, setup: &Setup) -> wir_runtime::n
     })
 }
 
-/// The wir document compiled from a pipeline as the Nextflow driver of a launch would build it;
-/// what the build reads goes through the host of a run, and what it prints to standard error.
+/// The wir document compiled from a pipeline as the Nextflow driver of a launch would build it,
+/// or with the pipeline as one native op for the reason `native`; what the build reads goes
+/// through the host of a run, and what it prints to standard error.
 pub fn compile(
     launch: &Launch,
     arguments: &Arguments,
     setup: &Setup,
     base: &std::path::Path,
+    native: Option<&str>,
 ) -> Result<nextflow_compiler::Compilation, String> {
-    // Workflow code that runs while the pipeline compiles reaches what the run may reach.
-    let console = console(true, setup, &arguments.secrets).confined(
+    // Workflow code that runs while the pipeline compiles reaches what the run may reach, and
+    // prints where the run prints.
+    let console = Console {
+        print: !arguments.no_print,
+        sink: arguments.print_sink.clone(),
+        ..console(true, setup, &arguments.secrets)
+    }
+    .confined(
         launch,
         None,
         isolation(arguments, setup).as_ref(),
@@ -530,7 +549,10 @@ pub fn compile(
         container_engine: Some(setup.engine_kind(arguments)),
         ..Settings::default()
     };
-    nextflow_compiler::compile(launch, settings, base)
+    match native {
+        Some(reason) => nextflow_compiler::compile_native(launch, settings, base, reason),
+        None => nextflow_compiler::compile(launch, settings, base),
+    }
 }
 
 /// The Nextflow driver of a launch. `quiet` sends what the workflow prints to standard error.

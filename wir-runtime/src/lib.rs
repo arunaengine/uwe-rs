@@ -52,3 +52,4 @@ mod writing;
 
 pub use child::{Block, Child};
 pub use driver::{Printer, Repositories, Settings, WirDriver, driver};
+pub use inputs::SecretInputs;

@@ -174,6 +174,9 @@ pub struct Arguments {
     pub no_grouping: bool,
     /// The secret values of an embedded run; the command line reads the environment.
     pub secrets: config_file::SecretValues,
+    /// The input values of a compiled run that hold a secret value, which reach the wir driver
+    /// in memory.
+    pub secret_inputs: wir_runtime::SecretInputs,
     /// Whether a host runs this through the Rust API, not the command line.
     pub embedded: bool,
     /// Where an embedded run sends what its workflow prints, from `run::Settings.print_sink`.

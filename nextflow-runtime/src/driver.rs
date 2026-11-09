@@ -569,12 +569,16 @@ impl Nextflow {
 
     /// The network that the workflow builds, without starting it, for the compiler into wir.
     pub fn export(&mut self) -> Result<crate::export::Network, DriverError> {
-        let loaded = self.setup()?;
-        let options = self.options(&loaded, loaded.config.clone());
-        let host = self.settings.host.as_mut();
-        let network = crate::export(&loaded.module, &options, host);
-        self.loaded = Some(loaded);
-        network.map_err(|failure| self.fault(failure))
+        // The values that the config and the scripts read from the environment stay out of
+        // the network; they are noted for this compile alone.
+        nextflow_evaluator::secrets::noting(|| {
+            let loaded = self.setup()?;
+            let options = self.options(&loaded, loaded.config.clone());
+            let host = self.settings.host.as_mut();
+            let network = crate::export(&loaded.module, &options, host);
+            self.loaded = Some(loaded);
+            network.map_err(|failure| self.fault(failure))
+        })
     }
 
     /// The params of the launch and config with the schema of the pipeline and the launch

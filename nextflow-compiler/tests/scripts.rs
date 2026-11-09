@@ -18,7 +18,14 @@ impl nextflow_evaluator::interpreter::Host for Quiet {
     fn print(&mut self, _: &str) {}
 
     fn environment(&self, name: &str) -> Option<String> {
-        (name == "API_TOKEN").then(|| TOKEN.to_owned())
+        let value = match name {
+            "API_TOKEN" => TOKEN,
+            "SHORT_TOKEN" => "tok",
+            "QUOTED_TOKEN" => "a\"b\\c",
+            "LABEL" => "label-value",
+            _ => return None,
+        };
+        Some(value.to_owned())
     }
 
     fn launch_dir(&self) -> String {
@@ -121,4 +128,43 @@ fn shares_script_variables() {
         .collect();
     said.sort();
     assert_eq!(said, ["echo 1", "echo 2"]);
+}
+
+/// Compiles `script` in a folder of its own.
+fn compiled(script: &str) -> nextflow_compiler::Compilation {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    let launch = Launch {
+        target: folder.to_owned(),
+        scratch: folder.join("scratch"),
+        simulated: true,
+        ..Launch::default()
+    };
+    nextflow_compiler::compile(&launch, settings(folder), folder).unwrap()
+}
+
+/// A short value of the environment, or one with quotes and backslashes, stays out of the
+/// document too: the workflow stays native.
+#[test]
+fn keeps_every_value() {
+    for name in ["SHORT_TOKEN", "QUOTED_TOKEN"] {
+        let script = format!(
+            "def token = System.getenv('{name}')\nworkflow {{\n    \
+             channel.of(1).map {{ n -> token.size() + n }}.view()\n}}\n"
+        );
+        assert!(!compiled(&script).full(), "{name}");
+    }
+}
+
+/// What one compile read from the environment does not count for the next one, whose own
+/// text may equal it.
+#[test]
+fn notes_one_compile() {
+    let reads = "def label = System.getenv('LABEL')\nworkflow {\n    \
+                 channel.of(1).map { n -> label + n }.view()\n}\n";
+    assert!(!compiled(reads).full());
+    let writes = "def label = 'label-value'\nworkflow {\n    \
+                  channel.of(1).map { n -> label + n }.view()\n}\n";
+    assert!(compiled(writes).full());
 }

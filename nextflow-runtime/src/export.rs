@@ -343,8 +343,7 @@ impl Callback {
         }
         // A value of the environment, like a token, stays out of every document; the workflow
         // then runs natively.
-        let read = |(_, value): &(String, Json)| holds_read(&value.to_string());
-        if captures.iter().any(read) {
+        if captures.iter().any(|(_, value)| read(value)) {
             return Err("a closure captures a value of the environment".into());
         }
         Ok(Callback {
@@ -355,6 +354,18 @@ impl Callback {
             parameters: closure.code.parameters.len(),
             captures,
         })
+    }
+}
+
+/// Whether a captured value holds a value of the environment: in a text or a key, at any depth.
+fn read(value: &Json) -> bool {
+    match value {
+        Json::String(text) => holds_read(text),
+        Json::Array(items) => items.iter().any(read),
+        Json::Object(object) => object
+            .iter()
+            .any(|(key, item)| holds_read(key) || read(item)),
+        _ => false,
     }
 }
 

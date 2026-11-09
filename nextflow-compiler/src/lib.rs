@@ -80,6 +80,30 @@ pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compi
     }
 }
 
+/// Compiles the pipeline of a launch into one native op that runs it with the native driver,
+/// for `reason`; the params of the launch are the inputs of the op.
+pub fn compile_native(
+    launch: &Launch,
+    settings: Settings,
+    base: &Path,
+    reason: &str,
+) -> Result<Compilation, String> {
+    let context = Context {
+        profiles: launch.profiles.clone(),
+        configs: launch.configs.clone(),
+        entry: launch.targets.first().cloned(),
+        base: base.to_owned(),
+    };
+    let mut driver = Nextflow::new(launch, settings).map_err(|error| error.message)?;
+    let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
+    let kept = vec![Kept {
+        path: "pipeline".into(),
+        reason: reason.into(),
+    }];
+    let interface = driver.interface().map_err(|error| error.message)?;
+    native(&interface, &context, &mut sources, kept)
+}
+
 /// Compiles a built network; a node that does not compile keeps the pipeline one native op.
 /// It fails only when the compiler makes no wir document, which is a bug of the compiler.
 pub fn compile_network(network: &Network, context: &Context) -> Result<Compilation, String> {
@@ -106,8 +130,8 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
         return native(network, context, &mut sources, kept);
     }
     match graph::compile(network, context, &mut sources) {
-        Ok(graphs) => {
-            let hooks = hooks(network, &mut sources);
+        Ok((graphs, captured)) => {
+            let hooks = hooks(network, &mut sources, &captured);
             Ok(Compilation {
                 document: document(&sources, graphs, hooks)?,
                 kept: Vec::new(),
@@ -181,15 +205,44 @@ fn native(
     })
 }
 
-/// The run hooks: the observers of the run, then the `workflow.onComplete` and `onError`
-/// handlers, which the capture `wirHook` marks for the Groovy bridge.
-fn hooks(network: &Network, sources: &mut Sources) -> Vec<Json> {
+/// The run hooks: the observers of the run, then the `workflow.onComplete` handlers, the end
+/// of the plugins and the `onError` handlers, which the capture `wirHook` marks for the Groovy
+/// bridge; `wirChannels` names the captures that are value channels.
+fn hooks(network: &Network, sources: &mut Sources, captured: &graph::Captured) -> Vec<Json> {
     let mut hooks = observers(network, sources);
+    let plugins = json!({"complete": {"language": "groovy", "code": "{ -> }",
+        "scope": {"source": sources.main(), "start": 0, "end": 0},
+        "captures": {"wirHook": {"value": "plugins"}}}});
+    let mut ended = !network.plugin_end;
     for (on_error, callback) in &network.handlers {
+        if *on_error && !std::mem::replace(&mut ended, true) {
+            hooks.push(plugins.clone());
+        }
         let kind = if *on_error { "error" } else { "complete" };
         let mut closure = groovy::closure(callback, sources);
+        let mut channels = Vec::new();
+        for (name, value) in &callback.captures {
+            let Some(channel) = value["channel"]
+                .as_u64()
+                .filter(|_| value["class"] == "Channel")
+            else {
+                continue;
+            };
+            closure["captures"][name] = match captured.get(&(channel as usize)) {
+                Some(Ok(end)) => json!({"output": end}),
+                Some(Err(value)) => json!({"value": value}),
+                None => json!({"value": null}),
+            };
+            channels.push(name.clone());
+        }
+        if !channels.is_empty() {
+            closure["captures"]["wirChannels"] = json!({"value": channels});
+        }
         closure["captures"]["wirHook"] = json!({"value": kind});
         hooks.push(json!({kind: closure}));
+    }
+    if !ended {
+        hooks.push(plugins);
     }
     hooks
 }

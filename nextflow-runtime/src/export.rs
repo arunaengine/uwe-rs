@@ -43,6 +43,8 @@ pub struct Network {
     /// The `workflow.onComplete` handlers, then the `workflow.onError` ones, with whether
     /// each is an error handler.
     pub handlers: Vec<(bool, Callback)>,
+    /// Whether a plugin of the config acts at the end of the run, after the handlers.
+    pub plugin_end: bool,
 }
 
 #[derive(Debug)]
@@ -277,8 +279,8 @@ impl Callback {
         Callback::nested(closure, 0, false)
     }
 
-    /// A workflow event handler, whose captured channels are null: a run hook reads no channel,
-    /// like nf-core's `multiqc_report`, which only an email at the end of the run needs.
+    /// A workflow event handler, whose captured channels are reserved `Channel` forms with
+    /// their ids, like nf-core's `multiqc_report`, which the handler reads at the end.
     pub(crate) fn handler(closure: &Closure) -> Result<Callback, String> {
         Callback::nested(closure, 0, true)
     }
@@ -304,7 +306,13 @@ impl Callback {
                     Value::Closure(inner) if depth < 8 => {
                         Callback::nested(inner, depth + 1, handler).map(form)
                     }
-                    Value::Channel(_) | Value::ChannelOut(_) if handler => Ok(Json::Null),
+                    // A handler reads its channels once the run ended; the compiler binds them.
+                    Value::Channel(channel) if handler && depth == 0 => {
+                        Ok(json!({"class": "Channel", "channel": channel.0}))
+                    }
+                    Value::Channel(_) | Value::ChannelOut(_) if handler => {
+                        Err("a channel that the compiler cannot bind".to_owned())
+                    }
                     other => crate::bridge::to_json(other),
                 };
                 value.map(|value| (name.to_string(), value))

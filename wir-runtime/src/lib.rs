@@ -17,6 +17,7 @@ mod effects;
 mod engine;
 mod expr;
 mod flows;
+mod formats;
 mod groovy;
 mod grouping;
 mod inputs;
@@ -51,3 +52,4 @@ mod writing;
 
 pub use child::{Block, Child};
 pub use driver::{Printer, Repositories, Settings, WirDriver, driver};
+pub use inputs::SecretInputs;

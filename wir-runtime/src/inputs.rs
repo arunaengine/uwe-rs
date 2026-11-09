@@ -13,13 +13,27 @@ use cwl_runtime::files::Access;
 
 use crate::state::widen;
 
+/// Values of entry graph inputs that hold secrets, which the host keeps in memory, as no file
+/// may hold them. Debug shows their names only.
+#[derive(Clone, Default, PartialEq)]
+pub struct SecretInputs(pub Map<String, Json>);
+
+impl std::fmt::Debug for SecretInputs {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_set().entries(self.0.keys()).finish()
+    }
+}
+
 /// The input values of a launch by port name: the JSON or YAML inputs file, with File and Directory
-/// locations taken from its folder, then the parameters, read by the type of their port.
+/// locations taken from its folder, then the values in memory, then the parameters, read by the
+/// type of their port.
 pub fn read(
     launch: &Launch,
+    secret: &SecretInputs,
     ports: &[Port],
     defs: &[TypeDef],
     remote: &cwl_parser::source::Remote,
+    formats: Option<&crate::formats::FormatCheck>,
 ) -> Result<Map<String, Json>, DriverError> {
     let access = cwl_runtime::files::Access {
         assume_present: launch.simulated,
@@ -41,11 +55,15 @@ pub fn read(
         let base = std::path::absolute(path).unwrap_or_else(|_| path.clone());
         absolute(&mut json, base.parent().unwrap_or(Path::new("/")));
         filled(&mut json, launch.simulated);
+        if let Some(check) = formats {
+            check.expand(&mut json);
+        }
         let Json::Object(object) = json else {
             return Err(DriverError::new(format!("{shown} must hold an object")));
         };
         values = object;
     }
+    values.extend(secret.0.clone());
     let mut given: Vec<(&str, Vec<&str>)> = Vec::new();
     for (name, text) in &launch.params {
         match given.iter_mut().find(|(known, _)| known == name) {
@@ -75,7 +93,14 @@ pub fn read(
                 return Err(DriverError::new(message));
             }
         };
-        if !wir::fits(&value, &port.r#type, defs) {
+        let fits = match formats {
+            None => wir::fits(&value, &port.r#type, defs),
+            Some(check) => {
+                let formats = |found: &str, wanted: &str| check.matches(found, wanted);
+                wir::fits_with(&value, &port.r#type, defs, &formats)
+            }
+        };
+        if !fits {
             let message = format!("the value of the input {} does not fit its type", port.name);
             return Err(DriverError::new(message));
         }

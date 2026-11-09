@@ -94,16 +94,18 @@ fn launch(root: &Path, version: &str, gates: &[bool]) -> Launch {
     }
 }
 
-/// Writes `<basename of the last word>.out` for each task, and records the task names.
+/// Writes `<basename of the last word>.out` for each task, and records the task names and steps.
 struct Echoing {
     root: std::path::PathBuf,
     names: Vec<String>,
+    steps: Vec<String>,
 }
 
 impl Executor for Echoing {
     fn run(&mut self, attempt: Attempt) -> Running {
         let task = &attempt.task;
         self.names.push(task.name.clone());
+        self.steps.push(task.step.clone());
         let word = task.command.last().unwrap();
         let path = format!("{}.out", word.rsplit('/').next().unwrap());
         let location = self.root.join(format!("work-{}-{path}", task.id));
@@ -133,6 +135,7 @@ fn skips_false_rounds() {
     let mut executor = Echoing {
         root: folder.path().to_owned(),
         names: Vec::new(),
+        steps: Vec::new(),
     };
     execute("branch", &mut driver, &mut executor)
         .into_result()
@@ -146,4 +149,32 @@ fn skips_false_rounds() {
         names,
         [json!("t0.txt.out"), Json::Null, json!("t2.txt.out")]
     );
+}
+
+#[test]
+fn names_by_attributes() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = launch(folder.path(), wir::VERSION, &[true, false, true]);
+    let mut document: Json =
+        serde_json::from_slice(&std::fs::read(&launch.target).unwrap()).unwrap();
+    // The map names its rounds by position, and the ops in its bodies add no names.
+    document["graphs"][0]["ops"][0]["attributes"] = json!({"name": "each"});
+    document["graphs"][1]["ops"][0]["attributes"] = json!({"name": ""});
+    document["graphs"][2]["ops"][0]["attributes"] = json!({"name": ""});
+    std::fs::write(&launch.target, document.to_string()).unwrap();
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).unwrap();
+    let mut executor = Echoing {
+        root: folder.path().to_owned(),
+        names: Vec::new(),
+        steps: Vec::new(),
+    };
+    execute("branch", &mut driver, &mut executor)
+        .into_result()
+        .unwrap();
+    assert_eq!(executor.names, ["each[0]", "each[2]"]);
+    assert_eq!(executor.steps, ["each", "each"]);
 }

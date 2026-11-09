@@ -151,9 +151,20 @@ pub trait TaskAdapter {
         Ok(Vec::new())
     }
 
-    /// Whether task names get the op path in front, as `<path>: <name>`.
+    /// Whether task names get the name of the op in front, as `<op>: <name>`.
     fn prefixed(&self) -> bool {
         true
+    }
+
+    /// The first task that failed for good, by its id here, and what its language shows of
+    /// it, like the trace that a Nextflow `onError` handler gets.
+    fn failed_task(&self) -> Option<(TaskId, Json)> {
+        None
+    }
+
+    /// How many tasks it accepted without an attempt, like Nextflow tasks from `storeDir`.
+    fn settled(&self) -> u64 {
+        0
     }
 }
 
@@ -499,6 +510,22 @@ impl Dialects {
     }
 
     /// Ends every adapter, once, with why the run failed; the problems of all, joined.
+    /// How many tasks the adapters accepted without an attempt.
+    pub fn settled(&self) -> u64 {
+        (self.opened.iter())
+            .map(|opened| opened.adapter.settled())
+            .sum()
+    }
+
+    /// The first task of an adapter that failed for good, by its id in the run, with what
+    /// its language shows of it.
+    pub fn failed_task(&self) -> Option<(TaskId, Json)> {
+        (self.opened.iter()).find_map(|opened| {
+            let (id, shown) = opened.adapter.failed_task()?;
+            Some((opened.outer.get(&id).copied().unwrap_or(id), shown))
+        })
+    }
+
     pub fn end(&mut self, failure: Option<&str>) -> Result<(), DriverError> {
         if std::mem::replace(&mut self.ended, true) {
             return Ok(());

@@ -129,7 +129,7 @@ fn native(
     let schema = network.schema.as_ref();
     // A native op takes typed params only: a type with `dynamic` in it, like the optional
     // dynamic of a null param, becomes the shape of the param's value, which may be null.
-    let ports = params::ports(&network.params, schema, &network.launch);
+    let ports = params::ports(&network.params, schema);
     let inputs: Vec<Json> = (ports.into_iter())
         .map(|mut port| {
             if dynamic(&port["type"]) {

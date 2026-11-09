@@ -146,6 +146,7 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
         names: options.names.clone(),
         folder: (opening.source.parent()).map_or_else(PathBuf::new, Path::to_owned),
         limits: Limits::default(),
+        settled: 0,
     }))
 }
 
@@ -164,6 +165,8 @@ struct Tasks {
     /// The folder of the main script, which the scripts of processes are named from.
     folder: PathBuf,
     limits: Limits,
+    /// The tasks accepted without an attempt, like those whose outputs were in `storeDir`.
+    settled: u64,
 }
 
 /// The `maxForks` and `fair` rules of the process calls: the tasks held back while a call runs
@@ -399,7 +402,10 @@ impl TaskAdapter for Tasks {
                 self.calls.remove(&id);
                 self.finish(call.call, Ending::Skipped(serde_json::Map::new()), false)
             }
-            Prepared::Done(completed) => self.judged(id, 0, completed),
+            Prepared::Done(completed) => {
+                self.settled += u64::from(matches!(completed, Completed::Accepted { .. }));
+                self.judged(id, 0, completed)
+            }
         })
     }
 
@@ -432,6 +438,10 @@ impl TaskAdapter for Tasks {
     /// Tasks keep the names of the native run, like `NFCORE_DEMO:DEMO:FASTQC (sample1)`.
     fn prefixed(&self) -> bool {
         false
+    }
+
+    fn settled(&self) -> u64 {
+        self.settled
     }
 
     fn failed_task(&self) -> Option<(TaskId, Json)> {

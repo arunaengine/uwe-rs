@@ -1135,7 +1135,8 @@ impl WirDriver {
         let failed = (self.dialects.failed_task())
             .map(|(task, shown)| json!({"task": task.0, "shown": shown}));
         let argument = json!({"success": failure.is_none(), "error": failure,
-            "start": self.started, "succeeded": self.succeeded, "failed": failed});
+            "start": self.started, "succeeded": self.succeeded + self.dialects.settled(),
+            "failed": failed});
         // Hooks print, like a Nextflow `onComplete` that tells how the run ended.
         let mut hooks = Callbacks::printing();
         let mut problems = Vec::new();

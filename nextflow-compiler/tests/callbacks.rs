@@ -217,6 +217,28 @@ fn failed_calls_capture() {
 }
 
 #[test]
+fn stored_tasks_count() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = directory.path();
+    let script = "process P {\n    storeDir 'store'\n    input:\n    val x\n    \
+                  output:\n    path 'out.txt'\n    script:\n    'true'\n}\n\
+                  workflow {\n    workflow.onComplete {\n        \
+                  println \"complete ${workflow.stats.succeededCount}\"\n    }\n    \
+                  P(channel.of(1))\n}\n";
+    std::fs::write(folder.join("main.nf"), script).unwrap();
+    std::fs::create_dir_all(folder.join("store")).unwrap();
+    std::fs::write(folder.join("store/out.txt"), "stored\n").unwrap();
+    let mut executor = Exiting {
+        exit: 0,
+        first: None,
+    };
+    // The outputs are in the store, so the task succeeds without running, as Nextflow counts.
+    let text = printed_by(folder, ("{}", "stored"), &mut executor);
+    assert_eq!(text, "complete 1\n");
+    assert_eq!(executor.first, None, "no task ran");
+}
+
+#[test]
 fn plugins_end_runs() {
     let directory = tempfile::tempdir().unwrap();
     let folder = directory.path();

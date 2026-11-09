@@ -216,6 +216,31 @@ async fn reuses_verified_archives() {
     server.join().unwrap();
 }
 
+/// As for builds, a load response whose last line end comes in a read of its own restores the
+/// image, since the inspection finds it; the reader's buffer fills after 8 KiB.
+#[tokio::test]
+async fn accepts_split_loads() {
+    let folder = tempfile::tempdir().unwrap();
+    let prepared = preparation();
+    let store = Store::memory().unwrap();
+    store.put_content(ARCHIVE.as_bytes().into()).await.unwrap();
+    let last = "{\"stream\":\"Loaded image\\n\"}";
+    let fill = 8192 - last.len() - "{\"stream\":\"\\n\"}\r\n".len();
+    let body = format!("{{\"stream\":\"{}\\n\"}}\r\n{last}\r\n", "x".repeat(fill));
+    assert_eq!(body.find(last).unwrap() + last.len(), 8192);
+    let replies = vec![missing(), ("/images/load", 200, body), inspect(&prepared)];
+    let (engine, server) = engine(folder.path(), replies).await;
+    let bounded = TransferLimits {
+        progress_bytes: 1 << 20,
+        ..limits()
+    };
+    let cancel = CancellationToken::new();
+    let completed = receipt(&prepared);
+    let restored = restore(&engine, &prepared, &completed, &store, bounded, &cancel).await;
+    assert_eq!(restored.unwrap(), completed);
+    server.join().unwrap();
+}
+
 #[tokio::test]
 async fn rejects_invalid_archives() {
     for corrupt in [true, false] {

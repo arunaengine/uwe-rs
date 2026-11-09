@@ -69,6 +69,18 @@ impl Journal {
         let pinned = self.pinned.lock().unwrap_or_else(PoisonError::into_inner);
         pinned.get(&redacted(address)).cloned()
     }
+
+    /// A name of the pins from their addresses and digests, or none without pins.
+    pub(crate) fn pins_name(&self) -> Option<String> {
+        let pinned = self.pinned.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut entries: Vec<String> = (pinned.iter())
+            .map(|(address, fetched)| format!("{address} {}\n", fetched.digest))
+            .collect();
+        entries.sort();
+        let digest = Sha256::digest(entries.concat().as_bytes());
+        let name = digest.iter().take(16).map(|byte| format!("{byte:02x}"));
+        (!entries.is_empty()).then(|| name.collect())
+    }
 }
 
 /// Reads cached digest, size and version while the copy is unchanged; recorded addresses hide
@@ -138,7 +150,7 @@ fn hash(file: &Path) -> std::io::Result<String> {
 }
 
 /// The path of a note next to a file: its name with `.<suffix>` after it.
-fn with_suffix(file: &Path, suffix: &str) -> PathBuf {
+pub(crate) fn with_suffix(file: &Path, suffix: &str) -> PathBuf {
     let mut name = file.as_os_str().to_owned();
     name.push(format!(".{suffix}"));
     PathBuf::from(name)

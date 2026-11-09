@@ -153,6 +153,27 @@ impl Host for Session<'_> {
             }
             return Ok(Some(Value::Null));
         }
+        // A factory outside a network, as a compiled run calls it, gives the list of its values.
+        let factory = matches!(name, "fromPath" | "fromFilePairs")
+            || nextflow_plugins::factory_plugin(name).is_some();
+        if namespace == "channel" && factory && self.network.is_none() {
+            let mut network = Network::default();
+            let options = self.options;
+            let mut builder = crate::build::Builder {
+                network: &mut network,
+                defer: false,
+                written: Vec::new(),
+                reads: Vec::new(),
+                options,
+                base: self,
+                stub: options.stub,
+                config: &options.config,
+                output_dir: options.output_dir.clone(),
+                exec_folder: options.exec_folder.clone().map(Rc::from),
+            };
+            let values = builder.factory_values(name, arguments)?;
+            return Ok(Some(Value::list(values)));
+        }
         self.base.namespace_method(namespace, name, arguments)
     }
 

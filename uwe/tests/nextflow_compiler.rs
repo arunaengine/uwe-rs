@@ -31,13 +31,13 @@ const COMPILED: &[&str] = &[
 ];
 
 /// How many pipelines verify, run natively and compiled, give equal tasks in both orders, and
-/// publish the same files; compiled runs simulate no delivery, and demo's `mix` order differs.
+/// publish the same files; demo's MULTIQC stages what `mix` merges in another order.
 const RECORDED: Counts = Counts {
     verified: 2,
     native: 2,
     compiled: 2,
     tasks: 1,
-    published: 0,
+    published: 2,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -98,35 +98,44 @@ fn run(project: &Path, folder: &Path, order: &str, compiled: bool) -> Outcome {
         })
         .collect();
     tasks.sort_by(|a, b| a.0.cmp(&b.0));
-    let files = published(&output);
+    let database = folder.join("cache/uwe").join(run_database::FILE_NAME);
+    let files = published(&output, &database);
     Ok(Ran { tasks, files })
 }
 
-/// The files below a folder, by their paths in it with digits as `0`, so that the times in
-/// names like `params_<time>.json` match, sorted.
-fn published(folder: &Path) -> Vec<String> {
+/// The files that a run published below a folder, by their paths in it with digits as `0`,
+/// so that the times in names like `params_<time>.json` match, sorted: those in the folder and
+/// those whose deliveries the run database recorded, as a simulated run copies none.
+fn published(folder: &Path, database: &Path) -> Vec<String> {
     let mut files = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
     while let Some(current) = pending.pop() {
         for entry in std::fs::read_dir(&current).into_iter().flatten().flatten() {
-            let path = entry.path();
-            match path.is_dir() {
-                true => pending.push(path),
-                false => files.push(
-                    (path
-                        .strip_prefix(folder)
-                        .unwrap_or(&path)
-                        .display()
-                        .to_string())
-                    .chars()
-                    .map(|letter| if letter.is_ascii_digit() { '0' } else { letter })
-                    .collect(),
-                ),
+            match entry.path().is_dir() {
+                true => pending.push(entry.path()),
+                false => files.push(entry.path()),
             }
         }
     }
-    files.sort();
-    files
+    let recorded = run_database::Database::open(database).and_then(|db| db.all_deliveries());
+    files.extend(
+        recorded
+            .into_iter()
+            .flatten()
+            .map(|delivered| PathBuf::from(delivered.target)),
+    );
+    let mut names: Vec<String> = (files.iter())
+        .filter_map(|path| path.strip_prefix(folder).ok())
+        .map(|path| path.display().to_string())
+        .map(|name| {
+            name.chars()
+                .map(|letter| if letter.is_ascii_digit() { '0' } else { letter })
+                .collect()
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 /// The problems of the document that `uwe lower` prints for a pipeline with `-profile test`.

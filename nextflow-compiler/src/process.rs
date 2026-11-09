@@ -31,7 +31,8 @@ pub(crate) fn process(
     // A call of value channels reads them as streams, so that an empty one runs no task and
     // closes the outputs empty, as in Nextflow; it runs at most one round.
     let reads = |value: &bool| !value || call.singleton;
-    let streams = place.values_in.iter().any(reads);
+    // `each` inputs run several rounds, which give streams too.
+    let streams = place.values_in.iter().any(reads) || !definition.each.is_empty();
     let source = sources.script(&call.script);
     let inputs: Vec<String> = (0..place.values_in.len())
         .map(|index| format!("input.{index}"))
@@ -55,7 +56,10 @@ pub(crate) fn process(
         "scope": {"source": source, "start": definition.span.0, "end": definition.span.1},
         "inputs": maps(&inputs, "input"),
         "outputs": maps(&outputs, "output"),
-        "captures": {"singleton": {"value": call.singleton}},
+        "captures": {
+            "singleton": {"value": call.singleton},
+            "script": {"value": sources.beside_main(&call.script)},
+        },
     });
     // Observers of the run, like nf-prov, know the process by its id and the ids it feeds.
     if let Some(process) = place.observer {
@@ -142,10 +146,12 @@ pub(crate) fn source(
         true => format!("channel.{name}(*arguments)"),
         false => format!("{name}(*arguments)"),
     };
+    // It runs in the run of the main script, whose host finds the files.
     let mut expr = json!({
         "language": "groovy",
         "code": code,
         "captures": {"arguments": {"value": arguments}},
+        "scope": {"source": "main", "start": 0, "end": 0},
     });
     if let Some(plugin) = plugin {
         expr["library"] = json!([format!(

@@ -457,7 +457,43 @@ pub fn export(
         .flatten();
     exported.launch = launch;
     exported.reads = reads;
+    exported.scripts = scripts(module, project);
     Ok(exported)
+}
+
+/// The scripts of a run: the main script and those it includes, and the Groovy classes of the
+/// `lib/` folder of the project.
+fn scripts(main: &Rc<Module>, project: &std::path::Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut pending = vec![main.clone()];
+    let mut seen: Vec<Rc<Module>> = Vec::new();
+    while let Some(module) = pending.pop() {
+        if seen.iter().any(|known| Rc::ptr_eq(known, &module)) {
+            continue;
+        }
+        seen.push(module.clone());
+        if let Some(path) = module.path.borrow().as_deref() {
+            found.push(path.to_owned());
+        }
+        let links = module.links.borrow();
+        let conditional = module.conditional_links.borrow();
+        pending
+            .extend((links.values().chain(conditional.values())).map(|link| link.module.clone()));
+    }
+    let library = std::fs::read_dir(project.join("lib"))
+        .into_iter()
+        .flatten()
+        .flatten();
+    let mut classes: Vec<String> = (library.map(|entry| entry.path()))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "groovy")
+        })
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    classes.sort();
+    found.extend(classes);
+    found
 }
 
 /// Runs a script whose workflow runs no tasks.

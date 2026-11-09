@@ -72,7 +72,9 @@ pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compi
                 path: "pipeline".into(),
                 reason: error.message,
             }];
-            native(&[], &context, &mut sources, kept)
+            // The params of the launch and config stay the inputs of the native op.
+            let interface = driver.interface().map_err(|error| error.message)?;
+            native(&interface, &context, &mut sources, kept)
         }
         Err(error) => Err(error.message),
     }
@@ -89,6 +91,9 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
     for (location, digest) in &network.reads {
         sources.data(location, digest);
     }
+    for script in &network.scripts {
+        sources.script(script);
+    }
     let opaque = network.nodes.iter().filter_map(|node| match &node.kind {
         Kind::Opaque(reason) => Some(Kept {
             path: node.name.clone(),
@@ -98,24 +103,38 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
     });
     let kept: Vec<Kept> = opaque.collect();
     if !kept.is_empty() {
-        return native(&network.emits, context, &mut sources, kept);
+        return native(network, context, &mut sources, kept);
     }
     match graph::compile(network, context, &mut sources) {
         Ok(graphs) => Ok(Compilation {
-            document: document(&sources, context, graphs)?,
+            document: document(&sources, graphs, observers(network, &sources))?,
             kept: Vec::new(),
         }),
-        Err(kept) => native(&network.emits, context, &mut sources, vec![kept]),
+        Err(kept) => native(network, context, &mut sources, vec![kept]),
     }
 }
 
-/// The pipeline as one native op, which runs it with the native driver.
+/// The pipeline as one native op, which runs it with the native driver; the params of the
+/// run are inputs of the graph and of the op.
 fn native(
-    emits: &[(String, usize)],
+    network: &Network,
     context: &Context,
     sources: &mut Sources,
     kept: Vec<Kept>,
 ) -> Result<Compilation, String> {
+    let emits = &network.emits;
+    let schema = network.schema.as_ref();
+    // A native op takes typed params only: a type with `dynamic` in it, like the optional
+    // dynamic of a null param, becomes the shape of the param's value, which may be null.
+    let ports = params::ports(&network.params, schema, &network.launch);
+    let inputs: Vec<Json> = (ports.into_iter())
+        .map(|mut port| {
+            if dynamic(&port["type"]) {
+                port["type"] = optional(shape(&port["default"]));
+            }
+            port
+        })
+        .collect();
     let configs: Vec<String> = context
         .configs
         .iter()
@@ -134,34 +153,114 @@ fn native(
     let outputs: Vec<Json> = (emits.iter())
         .map(|(name, _)| json!({"name": name, "type": "dynamic"}))
         .collect();
-    let edges: Vec<Json> = (emits.iter())
+    let mut edges: Vec<Json> = (emits.iter())
         .map(|(name, _)| json!({"from": {"op": "pipeline", "port": name}, "to": {"port": name}}))
+        .collect();
+    edges.extend((inputs.iter()).map(|port| {
+        let name = &port["name"];
+        json!({"from": {"port": name}, "to": {"op": "pipeline", "port": name}})
+    }));
+    let op_inputs: Vec<Json> = (inputs.iter())
+        .map(|port| json!({"name": port["name"], "type": port["type"]}))
         .collect();
     let op = json!({
         "path": "pipeline",
         "kind": {"native": native},
+        "inputs": op_inputs,
         "outputs": outputs,
         "origin": {"source": sources.main()},
     });
-    let graph = json!({"name": "main", "outputs": outputs, "ops": [op], "edges": edges});
+    let graph =
+        json!({"name": "main", "inputs": inputs, "outputs": outputs, "ops": [op], "edges": edges});
     Ok(Compilation {
-        document: document(sources, context, vec![graph])?,
+        document: document(sources, vec![graph], Vec::new())?,
         kept,
     })
+}
+
+/// The run hook that tells the observers of the run, like nf-prov, the processes of the
+/// pipeline with the processes each feeds; scripts are named from the main script's folder.
+fn observers(network: &Network, sources: &Sources) -> Vec<Json> {
+    if network.processes.is_empty() {
+        return Vec::new();
+    }
+    let processes: Vec<Json> = (network.processes.iter())
+        .map(|process| {
+            let mut observed = json!({"id": process.id, "name": process.name,
+                "definition": process.definition, "feeds": process.feeds});
+            if let Some(script) = &process.script {
+                observed["script"] = json!(sources.beside_main(script));
+            }
+            observed
+        })
+        .collect();
+    vec![json!({"observe": {"source": sources.main(), "processes": processes}})]
+}
+
+/// Whether a type is or holds `dynamic`.
+fn dynamic(r#type: &Json) -> bool {
+    match r#type {
+        Json::String(name) => name == "dynamic",
+        Json::Array(items) => items.iter().any(dynamic),
+        Json::Object(object) => object.values().any(dynamic),
+        _ => false,
+    }
+}
+
+fn optional(r#type: Json) -> Json {
+    match r#type.get("optional") {
+        Some(_) => r#type,
+        None => json!({"optional": r#type}),
+    }
+}
+
+/// The wir type of the value of a param: scalars by their kind, arrays of the union of their
+/// items, maps as records of optional fields, and null as an optional string.
+fn shape(value: &Json) -> Json {
+    match value {
+        Json::Null => json!({"optional": "string"}),
+        Json::Bool(_) => json!("bool"),
+        Json::Number(number) if number.is_i64() => json!("int"),
+        Json::Number(_) => json!("float"),
+        Json::String(_) => json!("string"),
+        Json::Array(items) => {
+            let mut kinds: Vec<Json> = Vec::new();
+            for kind in items.iter().map(shape) {
+                if !kinds.contains(&kind) {
+                    kinds.push(kind);
+                }
+            }
+            let items = match kinds.len() {
+                0 => json!("string"),
+                1 => kinds.remove(0),
+                _ => json!({"union": kinds}),
+            };
+            json!({"array": {"items": items}})
+        }
+        Json::Object(object) => {
+            let fields = object
+                .iter()
+                .map(|(name, item)| json!({"name": name, "type": optional(shape(item))}));
+            json!({"record": fields.collect::<Vec<_>>()})
+        }
+    }
 }
 
 /// The wir document of the graphs, which the strict format types check.
 fn document(
     sources: &Sources,
-    _context: &Context,
     graphs: Vec<Json>,
+    hooks: Vec<Json>,
 ) -> Result<wir::Document, String> {
-    let document = json!({
+    let mut document = json!({
         "wir_version": wir::VERSION,
         "sources": sources.list(),
         "graphs": graphs,
         "entry": "main",
     });
+    if !hooks.is_empty() {
+        document["hooks"] = Json::Array(hooks);
+    }
     let parsed = serde_json::from_value(document);
     parsed.map_err(|error| format!("the compiler made no wir document: {error}"))
 }

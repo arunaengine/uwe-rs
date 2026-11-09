@@ -1,4 +1,5 @@
-//! Checks storage metadata, mapped transfers, default providers, and missing inputs locally.
+//! Checks storage metadata, mapped transfers, default providers, missing inputs and fetched
+//! Conda environment files locally.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,6 +8,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
+use sha2::Digest;
 use snakemake_runtime::{Session, Settings};
 use storage::Storage;
 use workflow_graph::{Launch, Outcome, OutputFile};
@@ -164,6 +166,90 @@ fn delivers_protected_objects() {
     let delivery = driver.deliveries().remove(0);
     assert_eq!(delivery.target, format!("{}/new", server.address));
     driver.delivered(&delivery).unwrap();
+}
+
+/// As Snakemake 9.27, a wrapper on the web runs in the `environment.yaml` of its folder, which
+/// the run fetches through its storage as it fetches `wrapper.py`, and records with its digest.
+#[test]
+fn fetches_wrapper_environments() {
+    let server = Server::start();
+    let environment = b"channels: [conda-forge]\ndependencies: [fastqc=0.12.1]\n";
+    {
+        let mut files = server.files.lock().unwrap();
+        files.insert("/wraps/demo/wrapper.py".into(), b"print('demo')\n".to_vec());
+        files.insert("/wraps/demo/environment.yaml".into(), environment.to_vec());
+    }
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::create_dir(folder.path().join("envs")).unwrap();
+    std::fs::write(
+        folder.path().join("envs/local.yaml"),
+        "dependencies: [jq]\n",
+    )
+    .unwrap();
+    let workflow = format!(
+        "rule all:\n    input: 'o', 'p'\nrule a:\n    output: 'o'\n    wrapper: '{}/wraps/demo'\nrule b:\n    output: 'p'\n    conda: 'file:envs/local.yaml'\n    shell: 'touch {{output}}'\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let storage = Storage::default().public_only(&["127.0.0.1".into()]);
+    let mut session = Session::new(&launch, &storage).unwrap();
+    let tasks = session.start().unwrap();
+    let image = |step: &str| {
+        let task = tasks.iter().find(|task| task.step == step).unwrap();
+        let image = task.image.clone().unwrap_or_default();
+        image.strip_prefix("conda-env:").map(str::to_owned).unwrap()
+    };
+    let file = image("a");
+    assert!(
+        std::path::Path::new(&file).starts_with(&launch.scratch),
+        "{file}"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), environment);
+    let address = format!("{}/wraps/demo/environment.yaml", server.address);
+    let fetched = storage.fetched();
+    let pinned = fetched.iter().find(|fetched| fetched.address == address);
+    let digest = sha2::Sha256::digest(environment);
+    let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let digest = format!("sha256:{digest}");
+    assert_eq!(
+        pinned.map(|pinned| pinned.digest.as_str()),
+        Some(digest.as_str())
+    );
+    // A `file:` address is a path from the folder of the Snakefile.
+    let local = folder.path().join("envs/local.yaml");
+    assert_eq!(image("b"), local.to_string_lossy());
+}
+
+/// A confined run fetches the environment file of a rule only from a host that it allows.
+#[test]
+fn confines_environment_hosts() {
+    let server = Server::start();
+    server
+        .files
+        .lock()
+        .unwrap()
+        .insert("/envs/qc.yaml".into(), b"dependencies: [jq]\n".to_vec());
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = format!(
+        "rule a:\n    output: 'o'\n    conda: '{}/envs/qc.yaml'\n    shell: 'touch {{output}}'\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let confined = Storage::default().public_only(&[]);
+    let mut session = Session::new(&launch, &confined).unwrap();
+    let error = session.start().unwrap_err();
+    assert!(
+        error.message.contains("Cannot fetch the Conda environment"),
+        "{error}"
+    );
+    assert!(confined.fetched().is_empty());
+    drop(session);
+    let allowed = Storage::default().public_only(&["127.0.0.1".into()]);
+    let mut session = Session::new(&launch, &allowed).unwrap();
+    let tasks = session.start().unwrap();
+    let image = tasks[0].image.as_deref().unwrap_or_default();
+    let file = image.strip_prefix("conda-env:").unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), b"dependencies: [jq]\n");
 }
 
 #[test]

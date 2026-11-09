@@ -1,12 +1,15 @@
-//! Checks storage metadata, mapped transfers, default providers, and missing inputs locally.
+//! Checks storage metadata, mapped transfers, default providers, missing inputs and fetched
+//! Conda environment files locally.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use sha2::Digest;
 use snakemake_runtime::{Session, Settings};
 use storage::Storage;
 use workflow_graph::{Launch, Outcome, OutputFile};
@@ -164,6 +167,277 @@ fn delivers_protected_objects() {
     let delivery = driver.deliveries().remove(0);
     assert_eq!(delivery.target, format!("{}/new", server.address));
     driver.delivered(&delivery).unwrap();
+}
+
+/// As Snakemake 9.27, a wrapper on the web runs in the `environment.yaml` of its folder, which
+/// the run fetches through its storage as it fetches `wrapper.py`, and records with its digest.
+#[test]
+fn fetches_wrapper_environments() {
+    let server = Server::start();
+    let environment = b"channels: [conda-forge]\ndependencies: [fastqc=0.12.1]\n";
+    {
+        let mut files = server.files.lock().unwrap();
+        files.insert("/wraps/demo/wrapper.py".into(), b"print('demo')\n".to_vec());
+        files.insert("/wraps/demo/environment.yaml".into(), environment.to_vec());
+    }
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::create_dir(folder.path().join("envs")).unwrap();
+    std::fs::write(
+        folder.path().join("envs/local.yaml"),
+        "dependencies: [jq]\n",
+    )
+    .unwrap();
+    let workflow = format!(
+        "rule all:\n    input: 'o', 'p'\nrule a:\n    output: 'o'\n    wrapper: '{}/wraps/demo'\nrule b:\n    output: 'p'\n    conda: 'file:envs/local.yaml'\n    shell: 'touch {{output}}'\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let storage = Storage::default().public_only(&["127.0.0.1".into()]);
+    let mut session = Session::new(&launch, &storage).unwrap();
+    let tasks = session.start().unwrap();
+    let image = |step: &str| {
+        let task = tasks.iter().find(|task| task.step == step).unwrap();
+        let image = task.image.clone().unwrap_or_default();
+        image.strip_prefix("conda-env:").map(str::to_owned).unwrap()
+    };
+    let file = image("a");
+    assert!(Path::new(&file).starts_with(&launch.scratch), "{file}");
+    assert_eq!(std::fs::read(&file).unwrap(), environment);
+    let address = format!("{}/wraps/demo/environment.yaml", server.address);
+    let fetched = storage.fetched();
+    let pinned = fetched.iter().find(|fetched| fetched.address == address);
+    let digest = sha2::Sha256::digest(environment);
+    let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let digest = format!("sha256:{digest}");
+    assert_eq!(
+        pinned.map(|pinned| pinned.digest.as_str()),
+        Some(digest.as_str())
+    );
+    // The noted copies stay where the run reads them, for the store to keep for a repeat.
+    assert_eq!(fetched.len(), 2, "{fetched:?}");
+    for fetched in &fetched {
+        let copy = std::fs::read(&fetched.copy).unwrap_or_default();
+        let digest = sha2::Sha256::digest(&copy);
+        let digest: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        assert_eq!(fetched.digest, format!("sha256:{digest}"), "{fetched:?}");
+    }
+    assert!(
+        fetched
+            .iter()
+            .any(|fetched| fetched.copy == Path::new(&file))
+    );
+    // A `file:` address is a path from the folder of the Snakefile.
+    let local = folder.path().join("envs/local.yaml");
+    assert_eq!(image("b"), local.to_string_lossy());
+}
+
+/// A later run that finds the files of a wrapper in the shared mirror notes them as read as
+/// the first run did, and a repeat reads the copy that the repeated run read in its own mirror.
+#[test]
+fn notes_cached_copies() {
+    let server = Server::start();
+    let address = format!("{}/wraps/demo/environment.yaml", server.address);
+    {
+        let mut files = server.files.lock().unwrap();
+        files.insert("/wraps/demo/wrapper.py".into(), b"print('demo')\n".to_vec());
+        files.insert(
+            "/wraps/demo/environment.yaml".into(),
+            b"dependencies: [jq]\n".to_vec(),
+        );
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = format!(
+        "rule a:\n    output: 'o'\n    wrapper: '{}/wraps/demo'\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let located = |storage: &Storage| {
+        let tasks = Session::new(&launch, storage).unwrap().start().unwrap();
+        let image = tasks[0].image.clone().unwrap_or_default();
+        let file = image.strip_prefix("conda-env:").unwrap().to_owned();
+        let text = std::fs::read_to_string(&file).unwrap();
+        (file, text)
+    };
+    let environment = |storage: &Storage| located(storage).1;
+    let digest = |bytes: &[u8]| {
+        let digest = sha2::Sha256::digest(bytes);
+        let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        format!("sha256:{hex}")
+    };
+    let noted = |storage: &Storage| {
+        let mut fetched = storage.fetched();
+        fetched.sort_by(|a, b| a.address.cmp(&b.address));
+        let noted = fetched.into_iter();
+        noted
+            .map(|fetched| {
+                (
+                    fetched.address,
+                    fetched.digest,
+                    fetched.copy,
+                    fetched.version,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let first = Storage::default();
+    assert_eq!(environment(&first), "dependencies: [jq]\n");
+    assert_eq!(noted(&first).len(), 2);
+    // The web has another version now; the next run reads and notes the copy in the mirror.
+    let changed = b"dependencies: [yq]\n".to_vec();
+    server
+        .files
+        .lock()
+        .unwrap()
+        .insert("/wraps/demo/environment.yaml".into(), changed);
+    let second = Storage::default();
+    assert_eq!(environment(&second), "dependencies: [jq]\n");
+    assert_eq!(noted(&second), noted(&first));
+    let pinned = folder.path().join("pinned.yaml");
+    std::fs::write(&pinned, "dependencies: [zstd]\n").unwrap();
+    let kept = first
+        .fetched()
+        .into_iter()
+        .find(|fetched| fetched.address == address);
+    let third = Storage::default();
+    third.pin(storage::Fetched {
+        copy: pinned,
+        digest: digest(b"dependencies: [zstd]\n"),
+        size: 21,
+        version: Some("\"pinned\"".into()),
+        ..kept.unwrap()
+    });
+    let (file, text) = located(&third);
+    assert_eq!(text, "dependencies: [zstd]\n");
+    // The pinned bytes and their version are in a mirror of that run alone; the copies that
+    // other runs read and keep stay as they are.
+    let version = std::fs::read_to_string(format!("{file}.version")).unwrap();
+    assert_eq!(version, "\"pinned\"");
+    for fetched in first.fetched() {
+        assert_ne!(fetched.copy, Path::new(&file));
+        let bytes = std::fs::read(&fetched.copy).unwrap();
+        assert_eq!(digest(&bytes), fetched.digest, "{fetched:?}");
+    }
+    let fourth = Storage::default();
+    assert_eq!(environment(&fourth), "dependencies: [jq]\n");
+    assert_eq!(noted(&fourth), noted(&first));
+}
+
+/// A run with pins, like a repeat, reads its pinned copies elsewhere, but its tasks see the
+/// paths that other runs see: of a file next to a remote include and of a script of a local
+/// `gitfile`, so that their cache keys stay the same.
+#[test]
+fn keeps_pinned_paths() {
+    use gix::objs::tree::{Entry, EntryKind};
+    let server = Server::start();
+    let rules = "rule b:\n    input: workflow.source_path('data.txt')\n    output: 'p'\n    shell: 'cat {input} > {output}'\n";
+    {
+        let mut files = server.files.lock().unwrap();
+        files.insert("/wf/rules.smk".into(), rules.as_bytes().to_vec());
+        files.insert("/wf/data.txt".into(), b"web\n".to_vec());
+    }
+    let folder = tempfile::tempdir().unwrap();
+    let repository = gix::init(folder.path().join("repo")).unwrap();
+    let entry = |name: &str, kind: EntryKind, oid| Entry {
+        mode: kind.into(),
+        filename: name.into(),
+        oid,
+    };
+    let script = repository.write_blob("print('s')\n").unwrap().detach();
+    let scripts = gix::objs::Tree {
+        entries: vec![entry("s.py", EntryKind::Blob, script)],
+    };
+    let scripts = repository.write_object(&scripts).unwrap().detach();
+    let top = gix::objs::Tree {
+        entries: vec![entry("scripts", EntryKind::Tree, scripts)],
+    };
+    let top = repository.write_object(&top).unwrap().detach();
+    let person = gix::actor::SignatureRef {
+        name: "test".into(),
+        email: "test@example.org".into(),
+        time: "0 +0000",
+    };
+    let parents: Vec<gix::ObjectId> = Vec::new();
+    (repository.commit_as(person, person, "refs/heads/main", "s", top, parents)).unwrap();
+    let workflow = format!(
+        "rule all:\n    input: 'o', 'p'\ninclude: '{}/wf/rules.smk'\nrule a:\n    output: 'o'\n    script: gitfile('repo', 'scripts/s.py', ref='main')\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let run = |storage: &Storage| {
+        let tasks = Session::new(&launch, storage).unwrap().start().unwrap();
+        let mut seen = Vec::new();
+        let mut sources = Vec::new();
+        for task in tasks {
+            let mut inputs = Vec::new();
+            for input in task.inputs {
+                sources.push((input.path.clone(), input.source));
+                inputs.push((input.path, input.content));
+            }
+            inputs.sort();
+            seen.push((task.step, task.command, inputs));
+        }
+        seen.sort();
+        (seen, sources)
+    };
+    let (unpinned, sources) = run(&Storage::default());
+    let data = |sources: &[(String, String)]| {
+        let found = sources
+            .iter()
+            .find(|(path, _)| path.ends_with("/wf/data.txt"));
+        found.cloned().unwrap()
+    };
+    let (path, shared) = data(&sources);
+    let copy = folder.path().join("pinned.txt");
+    std::fs::write(&copy, "pinned\n").unwrap();
+    let digest = sha2::Sha256::digest(b"pinned\n");
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let pinned = Storage::default();
+    pinned.pin(storage::Fetched {
+        address: format!("{}/wf/data.txt", server.address),
+        copy,
+        digest: format!("sha256:{hex}"),
+        size: 7,
+        time: std::time::SystemTime::UNIX_EPOCH,
+        version: None,
+    });
+    let (seen, sources) = run(&pinned);
+    assert_eq!(seen, unpinned);
+    let (pinned_path, source) = data(&sources);
+    assert_eq!(pinned_path, path);
+    assert_eq!(std::fs::read_to_string(source).unwrap(), "pinned\n");
+    assert_eq!(std::fs::read_to_string(shared).unwrap(), "web\n");
+}
+
+/// A confined run fetches the environment file of a rule only from a host that it allows.
+#[test]
+fn confines_environment_hosts() {
+    let server = Server::start();
+    server
+        .files
+        .lock()
+        .unwrap()
+        .insert("/envs/qc.yaml".into(), b"dependencies: [jq]\n".to_vec());
+    let folder = tempfile::tempdir().unwrap();
+    let workflow = format!(
+        "rule a:\n    output: 'o'\n    conda: '{}/envs/qc.yaml'\n    shell: 'touch {{output}}'\n",
+        server.address
+    );
+    let launch = launch(folder.path(), &workflow);
+    let confined = Storage::default().public_only(&[]);
+    let mut session = Session::new(&launch, &confined).unwrap();
+    let error = session.start().unwrap_err();
+    assert!(
+        error.message.contains("Cannot fetch the Conda environment"),
+        "{error}"
+    );
+    assert!(confined.fetched().is_empty());
+    drop(session);
+    let allowed = Storage::default().public_only(&["127.0.0.1".into()]);
+    let mut session = Session::new(&launch, &allowed).unwrap();
+    let tasks = session.start().unwrap();
+    let image = tasks[0].image.as_deref().unwrap_or_default();
+    let file = image.strip_prefix("conda-env:").unwrap();
+    assert_eq!(std::fs::read(file).unwrap(), b"dependencies: [jq]\n");
 }
 
 #[test]

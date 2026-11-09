@@ -32,6 +32,31 @@ struct RunState {
     modules: RefCell<HashMap<(PathBuf, String), Rc<Module>>>,
     /// The published values of each output op, with their files at their new places.
     indexes: RefCell<HashMap<String, Vec<Json>>>,
+    /// The scratch folder of the interpreters, which goes with the run.
+    folder: RefCell<Option<tempfile::TempDir>>,
+}
+
+impl RunState {
+    /// The scratch folder of the interpreters: below the file area of the run, or a temporary
+    /// folder when the run has none; never the working folder.
+    fn folder(&self, area: &Path) -> Result<PathBuf, String> {
+        let mut folder = self.folder.borrow_mut();
+        if folder.is_none() {
+            let made = match area.as_os_str().is_empty() {
+                true => tempfile::Builder::new().prefix("callbacks-").tempdir(),
+                false => std::fs::create_dir_all(area).and_then(|()| {
+                    tempfile::Builder::new()
+                        .prefix("callbacks-")
+                        .tempdir_in(area)
+                }),
+            };
+            *folder = Some(made.map_err(|error| format!("no folder for callbacks: {error}"))?);
+        }
+        Ok(folder
+            .as_ref()
+            .map(|folder| folder.path().to_owned())
+            .unwrap_or_default())
+    }
 }
 
 impl ScopeRun {
@@ -271,7 +296,7 @@ fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
     }
     // A scratch folder of its own, which the driver deletes when it ends, so that the run
     // keeps its name and session.
-    let scratch = launching.scratch.join("callbacks");
+    let scratch = launching.run.0.folder(&launching.scratch)?;
     let inputs = crate::nextflow::params_file(&scratch, &launching.params);
     let launch = Launch {
         target: launching.main.clone(),

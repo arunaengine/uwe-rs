@@ -41,6 +41,12 @@ impl Observer for Targets {
 /// The delivery targets of a run of the compiled pipeline `script` on the simulator, below
 /// `folder`, simulated or not.
 fn delivered(folder: &Path, script: &str, simulated: bool) -> Vec<String> {
+    delivered_with(folder, script, simulated, "{}")
+}
+
+/// The delivery targets of [`delivered`] for a run with these inputs.
+fn delivered_with(folder: &Path, script: &str, simulated: bool, inputs: &str) -> Vec<String> {
+    std::fs::write(folder.join("inputs.json"), inputs).unwrap();
     std::fs::write(folder.join("main.nf"), script).unwrap();
     let launch = |target: &Path| Launch {
         target: target.to_owned(),
@@ -66,7 +72,11 @@ fn delivered(folder: &Path, script: &str, simulated: bool) -> Vec<String> {
         adapters,
         ..wir_runtime::Settings::default()
     };
-    let mut driver = wir_runtime::WirDriver::new(&launch(&document), wir).unwrap();
+    let run = Launch {
+        inputs: Some(folder.join("inputs.json")),
+        ..launch(&document)
+    };
+    let mut driver = wir_runtime::WirDriver::new(&run, wir).unwrap();
     let mut simulator = Simulator::new(folder.join("simulator"));
     let mut targets = Targets::default();
     let engine = Engine::new(&mut simulator).observer(&mut targets);
@@ -98,10 +108,13 @@ fn delivers_reports() {
                   script:\n    \"touch ${name}.txt\"\n}\n\nworkflow {\n    P(channel.of('a'))\n}\n";
     let directory = tempfile::tempdir().unwrap();
     let reports = ["trace", "report", "timeline", "dag"]
-        .map(|kind| format!("{kind}.enabled = true\n{kind}.file = 'info/{kind}.txt'\n"))
+        .map(|kind| {
+            format!("{kind}.enabled = true\n{kind}.file = \"${{params.outdir}}/{kind}.txt\"\n")
+        })
         .concat();
-    std::fs::write(directory.path().join("nextflow.config"), reports).unwrap();
-    let found = delivered(directory.path(), script, false);
+    let config = format!("params.outdir = 'results'\n{reports}");
+    std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+    let found = delivered_with(directory.path(), script, false, r#"{"outdir": "info"}"#);
     for kind in ["trace", "report", "timeline", "dag"] {
         let target = format!("/info/{kind}.txt");
         assert!(found.contains(&target), "{target} in {found:?}");

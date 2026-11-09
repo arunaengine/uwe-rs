@@ -271,11 +271,14 @@ fn adapter(launching: &Launching) -> Result<Rc<RefCell<Adapter>>, String> {
     }
     // A scratch folder of its own, which the driver deletes when it ends, so that the run
     // keeps its name and session.
+    let scratch = launching.scratch.join("callbacks");
+    let inputs = crate::nextflow::params_file(&scratch, &launching.params);
     let launch = Launch {
         target: launching.main.clone(),
         profiles: launching.profiles.clone(),
         configs: launching.configs.clone(),
-        scratch: launching.scratch.join("callbacks"),
+        inputs: Some(inputs.map_err(|error| error.message)?),
+        scratch,
         simulated: launching.simulated,
         ..Launch::default()
     };

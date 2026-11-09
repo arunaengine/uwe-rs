@@ -107,10 +107,11 @@ pub fn register(adapters: &mut Adapters, options: Options) {
 }
 
 fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, DriverError> {
+    let given = params(opening.inputs);
     let launch = Launch {
         target: opening.source.clone(),
         params: Vec::new(),
-        inputs: None,
+        inputs: Some(params_file(&opening.folder, &given)?),
         profiles: opening.builder.task().profiles.clone(),
         configs: opening.configs.clone(),
         targets: Vec::new(),
@@ -119,7 +120,7 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
     let folder = std::env::current_dir()
         .map_err(|error| DriverError::new(format!("no working folder: {error}")))?;
     let settings = (options.settings)(&launch, &folder);
-    let mut adapter = Adapter::new(&launch, settings, params(opening.inputs))?;
+    let mut adapter = Adapter::new(&launch, settings, given)?;
     if let Some(files) = opening.files.clone() {
         adapter.use_files(files);
     }
@@ -386,6 +387,17 @@ impl TaskAdapter for Tasks {
     fn prefixed(&self) -> bool {
         false
     }
+}
+
+/// A params file in `folder`, like `-params-file`, so that the config sees the params as a
+/// native run does, like `${params.outdir}` in the paths of reports.
+pub(crate) fn params_file(folder: &Path, params: &Json) -> Result<PathBuf, DriverError> {
+    let path = folder.join("params.json");
+    let written =
+        std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, params.to_string()));
+    written
+        .map_err(|error| DriverError::new(format!("cannot write {}: {error}", path.display())))?;
+    Ok(path)
 }
 
 /// The op inputs as Nextflow params: a File or a Directory becomes its path, and a null

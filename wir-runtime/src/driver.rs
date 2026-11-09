@@ -1476,7 +1476,22 @@ impl Driver for WirDriver {
 
     fn deliveries(&mut self) -> Vec<Delivery> {
         let mut deliveries = std::mem::take(&mut self.delivering);
-        deliveries.extend((self.children.iter_mut()).flat_map(|(_, child)| child.deliveries()));
+        let inner = self.folder.as_ref().map(|folder| folder.path().to_owned());
+        for (_, child) in &mut self.children {
+            for delivery in child.deliveries() {
+                // A copy into the job folder is no result of the run, so the driver makes it.
+                let internal = (inner.as_ref())
+                    .is_some_and(|folder| Path::new(&delivery.target).starts_with(folder));
+                let made = match (internal, &self.files) {
+                    (true, Some(files)) => files.deliver(&delivery).is_ok(),
+                    _ => false,
+                };
+                match made.then(|| child.delivered(&delivery)).flatten() {
+                    Some(Ok(())) => {}
+                    _ => deliveries.push(delivery),
+                }
+            }
+        }
         deliveries.extend(self.dialects.deliveries());
         deliveries.extend(self.published.take());
         deliveries

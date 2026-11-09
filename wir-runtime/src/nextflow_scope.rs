@@ -66,6 +66,15 @@ impl ScopeRun {
             ..RunState::default()
         }))
     }
+
+    /// What the code of the scopes noticed since the last call, like reads of task outputs.
+    pub fn notes(&self) -> Vec<workflow_graph::Note> {
+        let adapters = self.0.adapters.borrow();
+        let notes = adapters
+            .values()
+            .flat_map(|adapter| adapter.borrow_mut().notes());
+        notes.collect()
+    }
 }
 
 /// The run of a Nextflow scope: its main script, the script of the scope, the profiles,

@@ -504,7 +504,9 @@ fn refuses_private_imports() {
     let wdl = format!(
         "version 1.1\nimport \"{address}/lib.wdl\" as lib\n\nworkflow main {{\n  call lib.hello\n}}\n"
     );
-    for (name, text) in [("tool.cwl", cwl), ("main.wdl", wdl)] {
+    // The analysis of a WDL document reads a scheme in any case.
+    let upper = wdl.replacen("http://", "HTTP://", 1);
+    for (name, text) in [("tool.cwl", cwl), ("main.wdl", wdl), ("upper.wdl", upper)] {
         let root = tempfile::tempdir().unwrap();
         let data = root.path().join("data");
         std::fs::create_dir_all(&data).unwrap();

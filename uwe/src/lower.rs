@@ -105,7 +105,10 @@ pub fn document(
                 ..arguments.clone()
             };
             // A resume plans in the launch folder of the run it continues.
-            let earlier = continued(arguments, target, language)?.map(|(earlier, _)| earlier.id);
+            let earlier = match continued(arguments, target, language)? {
+                Some((earlier, _)) => Some(first_launch(arguments, earlier.id)?),
+                None => None,
+            };
             let started = earlier.as_deref().unwrap_or(run);
             let mut document = snakemake(target, arguments, setup, started, &folder)?.document;
             let place = |text: &str| {
@@ -154,7 +157,11 @@ pub fn document(
     let recorded = recorded.map_err(|error| failure(format!("uwe: {error}")))?;
     pruned(&folder, &recorded);
     // A resume runs the document of the run it continues, so it writes no other.
-    let (mut ran, launch) = resumed(arguments, target, language, path.clone())?;
+    let (mut ran, resumes) = resumed(arguments, target, language, path.clone())?;
+    let launch = match (language, resumes.clone()) {
+        (Language::Snakemake, Some(earlier)) => Some(first_launch(arguments, earlier)?),
+        (_, earlier) => earlier,
+    };
     if ran != path && language == Language::Nextflow {
         ran = reprinted(&ran, &document, &own(target, language))?;
     }
@@ -163,6 +170,7 @@ pub fn document(
         inputs,
         private,
         secret,
+        resumes,
         launch,
     };
     if compiled.path != path {
@@ -233,6 +241,8 @@ pub struct Compiled {
     pub private: Vec<Values>,
     /// The values that hold a secret, which no file holds.
     pub secret: SecretInputs,
+    /// The run that a resume continues.
+    pub resumes: Option<String>,
     /// The run whose launch folder a resume starts in, as it runs the document of that run.
     pub launch: Option<String>,
 }
@@ -316,6 +326,23 @@ fn continued(
     };
     let ran = (earlier.as_ref()).and_then(|earlier| earlier.document.clone());
     Ok(earlier.zip(ran.filter(|ran| ran.starts_with(&prefix))))
+}
+
+/// The run whose launch folder a resume of the compiled Snakemake run `earlier` starts in: a
+/// resumed run started in the folder of the run it continued, back to the first.
+fn first_launch(arguments: &Arguments, earlier: String) -> Result<String, Failure> {
+    let database = crate::runs::open(arguments)?;
+    let mut seen = std::collections::HashSet::new();
+    let mut first = earlier;
+    while seen.insert(first.clone()) {
+        let run = database.run(&first);
+        let run = run.map_err(|error| failure(format!("uwe: {error}")))?;
+        match run.and_then(|run| run.resumes) {
+            Some(resumes) => first = resumes,
+            None => break,
+        }
+    }
+    Ok(first)
 }
 
 fn resumed(

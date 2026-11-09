@@ -122,23 +122,27 @@ async fn resumes_launch_folder() {
         "{:?}",
         first.execution.error
     );
+    // A resume of a resume starts in the launch folder of the first run too.
     let again = request(Some(first.id.clone())).run().await.unwrap();
-    assert!(
-        again.execution.error.is_none(),
-        "{:?}",
-        again.execution.error
-    );
-    let nodes = &again.execution.graph.nodes;
-    assert!(!nodes.is_empty());
-    let fresh: Vec<&str> = (nodes.iter())
-        .filter(|node| !node.reused)
-        .map(|node| node.task.name.as_str())
-        .collect();
-    assert_eq!(fresh, Vec::<&str>::new(), "tasks that ran again");
-    // It runs the document of that run, whose targets lie in its launch folder.
+    let third = request(Some(again.id.clone())).run().await.unwrap();
     let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
     let document = |id: &str| database.run(id).unwrap().unwrap().document;
-    assert_eq!(document(&again.id), document(&first.id));
+    for resumed in [&again, &third] {
+        let error = &resumed.execution.error;
+        assert!(error.is_none(), "{error:?}");
+        let nodes = &resumed.execution.graph.nodes;
+        assert!(!nodes.is_empty());
+        let fresh: Vec<&str> = (nodes.iter())
+            .filter(|node| !node.reused)
+            .map(|node| node.task.name.as_str())
+            .collect();
+        assert_eq!(fresh, Vec::<&str>::new(), "tasks that ran again");
+        // It runs the document of the first run, whose targets lie in its launch folder.
+        assert_eq!(document(&resumed.id), document(&first.id));
+    }
+    // It continues the run it resumes, in the folder of the first.
+    let resumes = database.run(&third.id).unwrap().unwrap().resumes;
+    assert_eq!(resumes, Some(again.id.clone()));
 }
 
 /// The settings of a resume of the compiled Snakefile run `run` in `root`.

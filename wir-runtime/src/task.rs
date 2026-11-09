@@ -576,7 +576,8 @@ fn formatted(
             let this = with_paths(&Json::Object(file.clone()), &|item| {
                 made_path(item, ended, workdir)
             });
-            let values = (seen_inputs(ended, workdir), this, json!({}));
+            let runtime = json!({"exitCode": ended.outcome.exit_code});
+            let values = (seen_inputs(ended, workdir), this, runtime);
             match crate::expr::code(code, values, (&spec.library, ended.settings)) {
                 Ok(Json::String(format)) => drop(file.insert("format".into(), json!(format))),
                 Ok(_) => {}
@@ -1539,6 +1540,66 @@ mod tests {
             "the listing of the results: {values:?}"
         );
         assert_eq!(inner["listing"][0]["basename"], "f.txt", "a deep listing");
+    }
+
+    /// The format that `code` gives the File `a.txt` that a task made with `content`.
+    fn formatted_file(code: &str, content: &str) -> Json {
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("a.txt");
+        std::fs::write(&made, content).unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "a.txt".into(),
+                location: made.to_string_lossy().into_owned(),
+                directory: false,
+                size: None,
+                digest: Some("sha256:0000".into()),
+            }],
+            exit_code: 3,
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "text".into(),
+            from: CaptureRule::Glob("a.txt".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: Some(code.into()),
+        };
+        let spec = wir::Task {
+            captures: vec![rule],
+            success_codes: vec![3],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "text".into(),
+            r#type: Type::File(wir::FileType::default()),
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        values["text"]["format"].clone()
+    }
+
+    #[test]
+    fn formats_see_exits() {
+        let format = formatted_file("http://edam/code_$(runtime.exitCode)", "a\n");
+        assert_eq!(
+            format, "http://edam/code_3",
+            "format code sees the exit code"
+        );
     }
 
     #[test]

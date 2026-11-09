@@ -104,18 +104,7 @@ async fn runs_compiled_snakefiles() {
 #[tokio::test]
 async fn resumes_launch_folder() {
     let root = tempfile::tempdir().unwrap();
-    let snakefile = "rule all:\n    input: \"a.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo a > {output}\"\n";
-    let target = root.path().join("Snakefile");
-    std::fs::write(&target, snakefile).unwrap();
-    let request = |resume: Option<String>| {
-        let mut request = request(root.path());
-        request.settings.target = target.clone();
-        request.settings.inputs = None;
-        request.settings.cache = true;
-        request.settings.resume = resume.map(Resume::Run);
-        request.policy = uwe::application::Policy::Relaxed;
-        request
-    };
+    let request = |resume: Option<String>| resume_request(root.path(), resume);
     let first = request(None).run().await.unwrap();
     assert!(
         first.execution.error.is_none(),
@@ -143,6 +132,45 @@ async fn resumes_launch_folder() {
     // It continues the run it resumes, in the folder of the first.
     let resumes = database.run(&third.id).unwrap().unwrap().resumes;
     assert_eq!(resumes, Some(again.id.clone()));
+}
+
+/// A compiled run that resumes a run without a compiled document, like a run of an older uwe,
+/// starts in its own launch folder, and so does a resume of it.
+#[tokio::test]
+async fn resumes_legacy_runs() {
+    let root = tempfile::tempdir().unwrap();
+    let request = |resume: Option<String>| resume_request(root.path(), resume);
+    let first = request(None).run().await.unwrap();
+    let database = root.path().join("runs.sqlite");
+    let connection = rusqlite::Connection::open(&database).unwrap();
+    let forget = "UPDATE runs SET document = NULL, document_digest = NULL WHERE id = ?1";
+    connection.execute(forget, [&first.id]).unwrap();
+    drop(connection);
+    let again = request(Some(first.id.clone())).run().await.unwrap();
+    let third = request(Some(again.id.clone())).run().await.unwrap();
+    for resumed in [&again, &third] {
+        let error = &resumed.execution.error;
+        assert!(error.is_none(), "{error:?}");
+    }
+    let database = run_database::Database::open(&database).unwrap();
+    let run = |id: &str| database.run(id).unwrap().unwrap();
+    assert_eq!(run(&again.id).resumes, Some(first.id.clone()));
+    // It runs the document of the run it resumes, which started in its own folder.
+    assert_eq!(run(&third.id).document, run(&again.id).document);
+}
+
+/// A run of a Snakefile in `root` that makes `a.txt`, which resumes the run `resume`.
+fn resume_request(root: &std::path::Path, resume: Option<String>) -> RunRequest {
+    let snakefile = "rule all:\n    input: \"a.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo a > {output}\"\n";
+    let target = root.join("Snakefile");
+    std::fs::write(&target, snakefile).unwrap();
+    let mut request = request(root);
+    request.settings.target = target;
+    request.settings.inputs = None;
+    request.settings.cache = true;
+    request.settings.resume = resume.map(Resume::Run);
+    request.policy = uwe::application::Policy::Relaxed;
+    request
 }
 
 /// The settings of a resume of the compiled Snakefile run `run` in `root`.

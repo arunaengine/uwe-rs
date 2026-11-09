@@ -77,5 +77,6 @@ base64.workspace = true
 fancy-regex.workspace = true
 hmac.workspace = true
 rcgen.workspace = true
+rusqlite.workspace = true
 sha2.workspace = true
 tokio-rustls.workspace = true

@@ -1227,6 +1227,36 @@ mod tests {
         server.finish();
     }
 
+    /// The entrypoint of an image that left the engine is read after the image is pulled
+    /// again, as a task that runs the image's own command needs it first.
+    #[tokio::test]
+    async fn reads_removed_commands() {
+        use crate::test_engine::Reply;
+        let mut inspected = 0;
+        let server = crate::test_engine::Server::start(3, move |request| {
+            match (request.method.as_str(), request.path.contains("/images/")) {
+                ("GET", true) => {
+                    inspected += 1;
+                    match inspected {
+                        1 => Reply::Json(404, serde_json::json!({"message": "No such image"})),
+                        _ => Reply::Json(
+                            200,
+                            serde_json::json!({"Id": "sha256:aa",
+                                "Config": {"Entrypoint": ["/bin/tool"]}}),
+                        ),
+                    }
+                }
+                _ => Reply::Json(200, serde_json::json!({"status": "pulled"})),
+            }
+        })
+        .await;
+        let reference = format!("registry.test/tool@sha256:{}", "b".repeat(64));
+        let commands = Commands::of(&server.engine, &reference, None).await;
+        let arguments = commands.unwrap().arguments(&reference, vec!["run".into()]);
+        assert_eq!(arguments.unwrap(), ["/bin/tool", "run"]);
+        server.finish();
+    }
+
     /// An image that left the engine after the run pinned it, as by a prune, is pulled again
     /// before its container is made, rather than failing every attempt alike.
     #[tokio::test]

@@ -417,10 +417,8 @@ impl Commands {
         reference: &str,
         platform: Option<&str>,
     ) -> Result<Commands, ExecutorError> {
-        let image = match platform {
-            None => inspect(engine, reference).await?,
-            Some(_) => available_for(engine, reference, platform).await?,
-        };
+        // An image that left the engine after the run pinned it, as by a prune, comes again.
+        let image = available_for(engine, reference, platform).await?;
         let config = image.config.unwrap_or_default();
         Ok(Commands {
             entrypoint: config.entrypoint.unwrap_or_default(),

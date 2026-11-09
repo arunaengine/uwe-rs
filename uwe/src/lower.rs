@@ -153,9 +153,9 @@ pub fn document(
         own(target, language),
         digest.hex()
     ));
-    let recorded = crate::runs::open(arguments)?.documents();
-    let recorded = recorded.map_err(|error| failure(format!("uwe: {error}")))?;
-    pruned(&folder, &recorded);
+    if let Some(recorded) = recorded(arguments, &folder)? {
+        pruned(&folder, &recorded);
+    }
     // A resume runs the document of the run it continues, so it writes no other.
     let (mut ran, resumes) = resumed(arguments, target, language, path.clone())?;
     let launch = match (language, resumes.clone()) {
@@ -472,6 +472,41 @@ fn written(folder: &Path, text: &str) -> Result<Values, Failure> {
     }
 }
 
+/// The file in the folder of compiled documents that names each run database whose runs
+/// compile into it, one path per line.
+const DATABASES: &str = "databases";
+
+/// The documents that the runs of every database that compiles into `folder` ran, after it
+/// names the database of this run; none when a database there cannot be read.
+fn recorded(arguments: &Arguments, folder: &Path) -> Result<Option<Vec<String>>, Failure> {
+    let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
+    let own = crate::runs::database_path(arguments);
+    let own = std::path::absolute(&own).unwrap_or(own);
+    let list = folder.join(DATABASES);
+    let text = std::fs::read_to_string(&list).unwrap_or_default();
+    let named: Vec<PathBuf> = text.lines().map(PathBuf::from).collect();
+    if !named.contains(&own) {
+        let line = format!("{}\n", own.display());
+        let added = std::fs::create_dir_all(folder).and_then(|()| {
+            let mut file = std::fs::File::options()
+                .create(true)
+                .append(true)
+                .open(&list)?;
+            std::io::Write::write_all(&mut file, line.as_bytes())
+        });
+        added.map_err(|error| failure(format!("uwe: {}: {error}", list.display())))?;
+    }
+    let mut documents = crate::runs::open(arguments)?.documents().map_err(broken)?;
+    // A database that is gone holds no runs to resume.
+    for other in (named.iter()).filter(|other| **other != own && other.exists()) {
+        let Ok(database) = run_database::Database::open(other) else {
+            return Ok(None);
+        };
+        documents.extend(database.documents().map_err(broken)?);
+    }
+    Ok(Some(documents))
+}
+
 /// Removes the documents below `folder` that no run wrote for a week and no `recorded` run
 /// ran, and value files left by runs that ended without removing them.
 fn pruned(folder: &Path, recorded: &[String]) {
@@ -490,7 +525,8 @@ fn pruned(folder: &Path, recorded: &[String]) {
             let free = || std::fs::File::open(&path).is_ok_and(|file| file.try_lock().is_ok());
             // A document that a run ran stays for its resumes.
             let named = recorded.iter().any(|document| Path::new(document) == path);
-            if old && !named && path.is_file() && free() {
+            let listed = path == folder.join(DATABASES);
+            if old && !named && !listed && path.is_file() && free() {
                 let _ = std::fs::remove_file(&path);
             }
         }

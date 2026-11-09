@@ -403,6 +403,41 @@ fn keeps_recorded_documents() {
     assert_eq!(resumed.document, Some(document));
 }
 
+/// A run with another run database that shares the cache folder keeps the documents that the
+/// runs of the first database ran, also when nothing wrote them for over a week.
+#[test]
+fn keeps_shared_documents() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let (root, cache) = (folder.path(), folder.path().join("cache"));
+    std::fs::write(root.join("main.nf"), TIMED).expect("writes the pipeline");
+    let run = |database: &str, resume: &[&str]| {
+        let database = root.join(database);
+        let output = common::command()
+            .args(["run", "-executor", "simulator", "main.nf", "-database"])
+            .arg(&database)
+            .args(resume)
+            .current_dir(root)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs uwe");
+        let errors = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(output.status.success(), "{errors}");
+        let database = run_database::Database::open(&database).expect("opens the run database");
+        database.runs(1).expect("lists the runs").remove(0)
+    };
+    let first = run("a.sqlite", &[]);
+    let document = first.document.clone().expect("a document");
+    let weeks = std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 24 * 3600);
+    let file = std::fs::File::options()
+        .write(true)
+        .open(&document)
+        .expect("opens it");
+    file.set_modified(weeks).expect("ages it");
+    run("b.sqlite", &[]);
+    let resumed = run("a.sqlite", &["-resume", &first.id]);
+    assert_eq!(resumed.document, Some(document));
+}
+
 /// A pipeline that passes the name of its run to a task.
 const NAMED: &str = "process SAY {\n    input:\n    val name\n    output:\n    stdout\n    script:\n    \"echo ${name}\"\n}\n\nworkflow {\n    SAY(Channel.of(workflow.runName))\n}\n";
 

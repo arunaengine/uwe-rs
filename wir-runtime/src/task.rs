@@ -905,7 +905,7 @@ impl Staging {
                     other => python(other),
                 };
                 if let Some(name) = path.map(str::to_owned).and_then(at) {
-                    self.inputs.push(Input {
+                    self.add(Input {
                         path: name,
                         content: Some(text),
                         writable: copy(writable),
@@ -914,6 +914,13 @@ impl Staging {
                 }
             }
         }
+    }
+
+    /// Adds a task input in place of one at the same destination, as the later entry of the
+    /// working folder wins in uwe's CWL driver.
+    fn add(&mut self, input: Input) {
+        self.inputs.retain(|known| known.path != input.path);
+        self.inputs.push(input);
     }
 
     /// Stages a File or Directory at `path`; a Directory without a location is made, with its
@@ -927,7 +934,7 @@ impl Staging {
             None => String::new(),
         };
         let content = (value.get("contents").and_then(Json::as_str)).filter(|_| location.is_none());
-        self.inputs.push(Input {
+        self.add(Input {
             path: path.to_owned(),
             source,
             directory,
@@ -1345,6 +1352,19 @@ mod tests {
         );
         let error = capture(&spec, &ports, ended(false), &[]).unwrap_err();
         assert!(error.contains("2 files matched one value"), "{error}");
+    }
+
+    #[test]
+    fn replaces_repeated_places() {
+        let mut staging = Staging::default();
+        staging.place(&json!("a=1"), Some("config.txt"), false, "/var/spool/cwl");
+        staging.place(&json!("a=2"), Some("config.txt"), false, "/var/spool/cwl");
+        assert_eq!(staging.inputs.len(), 1, "one input per destination");
+        assert_eq!(
+            staging.inputs[0].content.as_deref(),
+            Some("a=2"),
+            "the later wins"
+        );
     }
 
     #[test]

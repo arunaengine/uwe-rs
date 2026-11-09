@@ -409,8 +409,13 @@ fn execute_with(
             Some(policy) => {
                 let inputs = match &source {
                     Some((launch, language)) => {
+                        // It reads the inputs only, so the code of a Snakefile writes nothing.
+                        let planning = Arguments {
+                            planning: true,
+                            ..arguments.clone()
+                        };
                         let mut source = driver::driver(
-                            *language, launch, &run, quiet, arguments, &setup, &interrupt,
+                            *language, launch, &run, quiet, &planning, &setup, &interrupt,
                         )?;
                         source.inputs()?
                     }

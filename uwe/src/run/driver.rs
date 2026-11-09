@@ -280,6 +280,7 @@ pub(crate) fn snakemake_options(
             Some(isolation) => Some(isolation.launch.clone().unwrap_or_else(|| own(run))),
             None => arguments.embedded.then(|| own(run)),
         },
+        planning: arguments.planning,
     }
 }
 

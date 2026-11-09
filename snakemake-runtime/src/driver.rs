@@ -180,7 +180,7 @@ enum Taken {
 
 impl Session {
     pub fn new(launch: &Launch, storage: &Storage) -> Result<Session, DriverError> {
-        Session::within(launch, storage, None, None)
+        Session::within(launch, storage, (None, false), None)
     }
 
     /// A session that starts in `folder` rather than in the working directory of the process:
@@ -188,7 +188,7 @@ impl Session {
     fn within(
         launch: &Launch,
         storage: &Storage,
-        folder: Option<&Path>,
+        (folder, planning): (Option<&Path>, bool),
         environment: Option<Vec<(String, String)>>,
     ) -> Result<Session, DriverError> {
         // Config files are relative to where the run starts, as Snakemake takes them.
@@ -235,7 +235,7 @@ impl Session {
         let mut files = WorkflowFiles::new(&workdir, mirrors.clone());
         files.environment = environment;
         let files = Rc::new(files);
-        if !launch.simulated {
+        if !launch.simulated && !planning {
             files.write_to_disk();
         }
         let mut interpreter = Interpreter::new(files.clone());
@@ -3178,6 +3178,9 @@ pub struct RunSettings {
     /// The folder that the run starts in, as if launched there: the working directory of a
     /// Snakefile, and where relative config files and profiles start. Else the process's.
     pub workdir: Option<PathBuf>,
+    /// Whether the run only plans its jobs, like a compile into wir: the code of the Snakefile
+    /// writes its files in memory then, as in a simulated run, and the run writes them.
+    pub planning: bool,
 }
 
 /// The driver of a Snakemake workflow: `launch.target` is a Snakefile, or a folder with a
@@ -3239,7 +3242,8 @@ pub fn spawn_driver(
                     ));
                 }
                 let environment = settings.environment.clone();
-                let mut session = Session::within(&launch, &settings.storage, folder, environment)?;
+                let place = (folder, options.planning);
+                let mut session = Session::within(&launch, &settings.storage, place, environment)?;
                 if let Some(roots) = &settings.roots {
                     let mut folders = roots.clone();
                     folders.push(session.workdir.clone());

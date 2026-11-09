@@ -69,6 +69,11 @@ pub fn compile(
     };
     let folder = run.workdir.clone();
     let place = |sources: Vec<Json>| started(sources, launch, folder.as_deref(), base);
+    // The code of the Snakefile writes its files when the run runs it, not here.
+    let run = RunSettings {
+        planning: true,
+        ..run
+    };
     let mut driver =
         snakemake_runtime::spawn_driver(launch, settings, run).map_err(|error| error.message)?;
     let jobs = match driver.plan_jobs() {

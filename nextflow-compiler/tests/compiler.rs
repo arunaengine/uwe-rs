@@ -445,3 +445,48 @@ fn records_observed_processes() {
         (&json!("GREET"), &json!("main.nf"))
     );
 }
+
+/// Compiles `script` with `config` as its `nextflow.config`, without a profile.
+fn compile_config(script: &str, config: &str) -> Compilation {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::write(directory.path().join("nextflow.config"), config).unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Quiet(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    nextflow_compiler::compile(&launch, settings, directory.path()).unwrap()
+}
+
+#[test]
+fn types_native_params() {
+    let config = "params.extra = null\nparams.opts = [a: 1, b: 'x']\nparams.none = []\n\
+                  params.mixed = [1, 'a']\n";
+    let compiled = compile_config(
+        "workflow {\n    channel.of(['a', 1]).groupBy().view()\n}\n",
+        config,
+    );
+    assert!(
+        !compiled.full(),
+        "the typed operator keeps the pipeline native"
+    );
+    if let Err(problems) = wir::verify(&compiled.document) {
+        let shown: Vec<String> = problems.iter().map(ToString::to_string).collect();
+        panic!("the native document verifies: {}", shown.join("; "));
+    }
+    let document = json(&compiled);
+    let names: Vec<&str> = (graph(&document, "main")["inputs"]
+        .as_array()
+        .unwrap()
+        .iter())
+    .map(|port| port["name"].as_str().unwrap())
+    .collect();
+    for name in ["extra", "opts", "none", "mixed"] {
+        assert!(names.contains(&name), "{name} in {names:?}");
+    }
+}

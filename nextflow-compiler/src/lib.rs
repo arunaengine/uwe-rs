@@ -122,15 +122,15 @@ fn native(
 ) -> Result<Compilation, String> {
     let emits = &network.emits;
     let schema = network.schema.as_ref();
-    // A native op takes typed params only: a dynamic one gets the type of its value, and one
-    // whose value has no plain type stays out, so that the pipeline's default holds.
+    // A native op takes typed params only: a type with `dynamic` in it, like the optional
+    // dynamic of a null param, becomes the shape of the param's value, which may be null.
     let ports = params::ports(&network.params, schema, &network.launch);
     let inputs: Vec<Json> = (ports.into_iter())
-        .filter_map(|mut port| {
-            if port["type"] == "dynamic" {
-                port["type"] = json!({"optional": plain(&port["default"])?});
+        .map(|mut port| {
+            if dynamic(&port["type"]) {
+                port["type"] = optional(shape(&port["default"]));
             }
-            Some(port)
+            port
         })
         .collect();
     let configs: Vec<String> = context
@@ -195,25 +195,53 @@ fn observers(network: &Network, sources: &Sources) -> Vec<Json> {
     vec![json!({"observe": {"source": sources.main(), "processes": processes}})]
 }
 
-/// The wir type of a plain value of a param: a scalar or an array of one scalar type.
-fn plain(value: &Json) -> Option<Json> {
-    Some(match value {
+/// Whether a type is or holds `dynamic`.
+fn dynamic(r#type: &Json) -> bool {
+    match r#type {
+        Json::String(name) => name == "dynamic",
+        Json::Array(items) => items.iter().any(dynamic),
+        Json::Object(object) => object.values().any(dynamic),
+        _ => false,
+    }
+}
+
+fn optional(r#type: Json) -> Json {
+    match r#type.get("optional") {
+        Some(_) => r#type,
+        None => json!({"optional": r#type}),
+    }
+}
+
+/// The wir type of the value of a param: scalars by their kind, arrays of the union of their
+/// items, maps as records of optional fields, and null as an optional string.
+fn shape(value: &Json) -> Json {
+    match value {
+        Json::Null => json!({"optional": "string"}),
         Json::Bool(_) => json!("bool"),
         Json::Number(number) if number.is_i64() => json!("int"),
         Json::Number(_) => json!("float"),
-        Json::String(_) | Json::Null => json!("string"),
+        Json::String(_) => json!("string"),
         Json::Array(items) => {
-            let first = plain(items.first()?)?;
-            if !items
-                .iter()
-                .all(|item| plain(item).as_ref() == Some(&first))
-            {
-                return None;
+            let mut kinds: Vec<Json> = Vec::new();
+            for kind in items.iter().map(shape) {
+                if !kinds.contains(&kind) {
+                    kinds.push(kind);
+                }
             }
-            json!({"array": {"items": first}})
+            let items = match kinds.len() {
+                0 => json!("string"),
+                1 => kinds.remove(0),
+                _ => json!({"union": kinds}),
+            };
+            json!({"array": {"items": items}})
         }
-        Json::Object(_) => return None,
-    })
+        Json::Object(object) => {
+            let fields = object
+                .iter()
+                .map(|(name, item)| json!({"name": name, "type": optional(shape(item))}));
+            json!({"record": fields.collect::<Vec<_>>()})
+        }
+    }
 }
 
 /// The wir document of the graphs, which the strict format types check.

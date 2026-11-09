@@ -72,7 +72,9 @@ pub fn compile(launch: &Launch, settings: Settings, base: &Path) -> Result<Compi
                 path: "pipeline".into(),
                 reason: error.message,
             }];
-            native(&Network::default(), &context, &mut sources, kept)
+            // The params of the launch and config stay the inputs of the native op.
+            let interface = driver.interface().map_err(|error| error.message)?;
+            native(&interface, &context, &mut sources, kept)
         }
         Err(error) => Err(error.message),
     }

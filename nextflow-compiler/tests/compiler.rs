@@ -490,3 +490,20 @@ fn types_native_params() {
         assert!(names.contains(&name), "{name} in {names:?}");
     }
 }
+
+#[test]
+fn keeps_refused_params() {
+    let script = "workflow {\n    file(\"${launchDir}/old.txt\").delete()\n}\n";
+    let compiled = compile_config(script, "params.sample = 'a'\n");
+    assert!(
+        compiled.kept[0].reason.contains("deleting files"),
+        "{:?}",
+        compiled.kept
+    );
+    let document = json(&compiled);
+    let main = graph(&document, "main");
+    let param = json!({"name": "sample", "type": {"optional": "string"}, "default": "a"});
+    assert_eq!(main["inputs"], json!([param]), "the params of the config");
+    let edge = json!({"from": {"port": "sample"}, "to": {"op": "pipeline", "port": "sample"}});
+    assert!(main["edges"].as_array().unwrap().contains(&edge));
+}

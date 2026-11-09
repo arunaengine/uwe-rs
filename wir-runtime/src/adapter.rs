@@ -161,6 +161,11 @@ pub trait TaskAdapter {
     fn failed_task(&self) -> Option<(TaskId, Json)> {
         None
     }
+
+    /// How many tasks it accepted without an attempt, like Nextflow tasks from `storeDir`.
+    fn settled(&self) -> u64 {
+        0
+    }
 }
 
 /// What an adapter opens with: the source context of its first op and the run around it.
@@ -505,6 +510,13 @@ impl Dialects {
     }
 
     /// Ends every adapter, once, with why the run failed; the problems of all, joined.
+    /// How many tasks the adapters accepted without an attempt.
+    pub fn settled(&self) -> u64 {
+        (self.opened.iter())
+            .map(|opened| opened.adapter.settled())
+            .sum()
+    }
+
     /// The first task of an adapter that failed for good, by its id in the run, with what
     /// its language shows of it.
     pub fn failed_task(&self) -> Option<(TaskId, Json)> {

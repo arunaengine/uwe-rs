@@ -1103,6 +1103,8 @@ impl WirDriver {
             simulated: self.launch.simulated,
             provider: self.files.as_deref(),
             deliveries: &self.published,
+            inputs: &self.given,
+            nextflow: &self.scope_run,
         };
         let argument = json!({"success": failure.is_none(), "error": failure});
         let mut problems = Vec::new();

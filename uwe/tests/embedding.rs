@@ -58,16 +58,19 @@ async fn forwards_cwl_image() {
 #[tokio::test]
 async fn runs_lowered_documents() {
     let root = tempfile::tempdir().unwrap();
-    let mut workdirs = Vec::new();
+    let mut tasks = Vec::new();
     for lowered in [false, true] {
         let mut request = request(root.path());
         request.settings.lowered = lowered;
         let run = request.run().await.unwrap();
         assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
-        workdirs.push(run.execution.graph.nodes[0].task.workdir.clone());
+        tasks.push(run.execution.graph.nodes[0].task.clone());
     }
-    assert_eq!(workdirs[0].as_deref(), Some("/var/spool/cwl"));
-    assert_eq!(workdirs[1].as_deref(), Some("/work"));
+    // The compiled task runs as the native one does, in the output folder of CWL.
+    for task in &tasks {
+        assert_eq!(task.workdir.as_deref(), Some("/var/spool/cwl"));
+    }
+    assert_eq!(tasks[0].command, tasks[1].command);
     let mut request = request(root.path());
     request.settings.lowered = true;
     request.settings.inputs = Some(json!({"count": "three"}));

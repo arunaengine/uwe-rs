@@ -1,5 +1,5 @@
 //! Compiles Snakemake workflows into wir, runs each natively and compiled through the wir
-//! runtime on the simulator, and compares their tasks, cache keys, fingerprints and acceptance.
+//! runtime on the simulator, and compares their tasks, acceptance and target files.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,23 +7,25 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde_json::{Value as Json, json};
 use snakemake_runtime::{RunSettings, Settings};
-use wir::Document;
+use wir::{Document, Kind};
 use workflow_graph::{
     Driver, ExecutionGraph, Launch, Order, RunOptions, Simulator, Task, TaskId, execute_with,
 };
 
 /// The counts of `just snakemake-test-workflows`: native runs, how workflows compile, and
-/// compiled runs that succeed, end as the native run, and give its tasks.
+/// compiled runs that succeed, end as the native run, and give its tasks and target files.
 const RECORDED: Counts = Counts {
     workflows: 890,
     native: 633,
-    full: 616,
-    partly: 54,
-    failed: 219,
-    compiled: 593,
-    ends: 616,
-    same: 593,
+    full: 666,
+    partly: 3,
+    failed: 220,
+    compiled: 632,
+    ends: 666,
+    same: 632,
+    equal: 594,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -36,6 +38,7 @@ struct Counts {
     compiled: usize,
     ends: usize,
     same: usize,
+    equal: usize,
 }
 
 const LAUNCHES: &str =
@@ -147,6 +150,7 @@ struct Compared {
     compiled: bool,
     ends: bool,
     same: bool,
+    equal: bool,
     shown: String,
 }
 
@@ -167,7 +171,10 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
     let native = snakemake_runtime::spawn_driver(&native_launch, Settings::default(), run.clone());
     let native = native
         .map_err(|error| error.message)
-        .and_then(|mut driver| simulate(&mut driver, &folders, &scratch.join("simulator-native")));
+        .and_then(|mut driver| {
+            let ran = simulate(&mut driver, &folders, &scratch.join("simulator-native"))?;
+            Ok((ran, driver.exported().unwrap_or_default()))
+        });
     compared.native = native.is_ok();
     let compile_launch = Launch {
         scratch: scratch.join("compile"),
@@ -205,8 +212,9 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
         }
         (Err(error), Ok(_)) => format!("only the native run fails: {}", first_line(error)),
         (Ok(_), Err(error)) => format!("the compiled run fails: {}", first_line(error)),
-        (Ok(native), Ok(ran)) => {
+        (Ok((native, targets)), Ok(ran)) => {
             compared.same = native == ran;
+            compared.equal = *targets == named_targets(&compiled.document);
             // `SNAKEMAKE_COMPARE=2` prints the first pair of tasks that differ.
             let pairs = native.iter().zip(ran);
             if let Some(pair) = pairs.into_iter().find(|(one, other)| one != other)
@@ -215,9 +223,10 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
                 eprintln!("native:   {:?}\ncompiled: {:?}", pair.0, pair.1);
             }
             compared.ends = compared.same;
-            match compared.same {
-                true => format!("same: {} tasks", native.len()),
-                false => format!(
+            match (compared.same, compared.equal) {
+                (true, true) => format!("same: {} tasks", native.len()),
+                (true, false) => "other target files".to_owned(),
+                _ => format!(
                     "other tasks: {} native, {} compiled",
                     native.len(),
                     ran.len()
@@ -226,6 +235,53 @@ fn compare(launch: &Launch, workdir: &Path, scratch: &Path) -> Compared {
         }
     };
     compared
+}
+
+/// The target files that the outputs of the entry graph of `document` name, as values.
+fn named_targets(document: &Document) -> Json {
+    let Some(graph) = document
+        .graphs
+        .iter()
+        .find(|graph| graph.name == document.entry)
+    else {
+        return Json::Null;
+    };
+    let file = |location: &str, class: &str| {
+        let trimmed = location.trim_end_matches('/');
+        let basename = trimmed.rsplit('/').next().unwrap_or(trimmed);
+        json!({"class": class, "location": location, "basename": basename})
+    };
+    let mut targets = serde_json::Map::new();
+    for op in &graph.ops {
+        let (Kind::Expr(expr), Some(name)) = (&op.kind, op.path.strip_prefix("result.")) else {
+            continue;
+        };
+        let class = match serde_json::to_string(&op.outputs[0].r#type) {
+            Ok(text) if text.contains("directory") => "Directory",
+            _ => "File",
+        };
+        // A list of files and folders names each in a typed declaration.
+        let declared: Vec<Json> = (expr.library.iter())
+            .filter_map(|line| {
+                let (declaration, text) = line.split_once(" = ")?;
+                let class = declaration.split(' ').next()?;
+                Some(file(&serde_json::from_str::<String>(text).ok()?, class))
+            })
+            .collect();
+        if !declared.is_empty() {
+            targets.insert(name.to_owned(), Json::Array(declared));
+            continue;
+        }
+        let value = match serde_json::from_str(&expr.code) {
+            Ok(Json::String(location)) => file(&location, class),
+            Ok(Json::Array(items)) => (items.iter())
+                .map(|item| file(item.as_str().unwrap_or_default(), class))
+                .collect(),
+            _ => Json::Null,
+        };
+        targets.insert(name.to_owned(), value);
+    }
+    Json::Object(targets)
 }
 
 /// The wir runtime for `document`, written below `scratch`, with the Snakemake adapter and
@@ -267,10 +323,18 @@ fn first_line(text: &str) -> String {
 
 /// Compares the runs of `snakefile` with the targets of the command line.
 fn compared(snakefile: &str, targets: &[&str]) -> Compared {
+    compared_with(snakefile, targets, &[])
+}
+
+/// Compares the runs of `snakefile` with `files` beside it.
+fn compared_with(snakefile: &str, targets: &[&str], files: &[(&str, &str)]) -> Compared {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path().join("work");
     std::fs::create_dir(&root).expect("makes the working folder");
     std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    for (name, text) in files {
+        std::fs::write(root.join(name), text).expect("writes a file");
+    }
     let launch = Launch {
         target: root.join("Snakefile"),
         targets: targets.iter().map(|target| (*target).to_owned()).collect(),
@@ -310,6 +374,46 @@ fn compiled_groups_match() {
     }
 }
 
+/// Target files and folders in one list keep their classes.
+#[test]
+fn compiled_targets_match() {
+    let snakefile = "rule all:\n    input: \"a\", \"b.txt\"\n\nrule a:\n    output: directory(\"a\")\n    shell: \"mkdir {output}\"\n\nrule b:\n    output: \"b.txt\"\n    shell: \"touch {output}\"\n";
+    assert_eq!(compared(snakefile, &[]).shown, "same: 3 tasks");
+}
+
+/// A workflow with a checkpoint runs as a region that the Snakemake planner plans again
+/// once the checkpoint ended, as natively.
+#[test]
+fn checkpoints_match() {
+    let snakefile = "import os\n\nrule all:\n    input: \"aggregated.txt\"\n\ncheckpoint split:\n    output: directory(\"parts\")\n    shell: \"mkdir -p {output}\"\n\nrule process:\n    input: \"parts/{n}.txt\"\n    output: \"processed/{n}.txt\"\n    shell: \"cp {input} {output}\"\n\ndef parts(wildcards):\n    folder = checkpoints.split.get().output[0]\n    names = glob_wildcards(os.path.join(folder, \"{n}.txt\")).n\n    return expand(\"processed/{n}.txt\", n=names)\n\nrule aggregate:\n    input: parts\n    output: \"aggregated.txt\"\n    shell: \"cat {input} > {output}\"\n";
+    let compared = compared(snakefile, &[]);
+    assert!(compared.full, "{}", compared.shown);
+    assert!(compared.same, "{}", compared.shown);
+}
+
+/// The native run plans again after each checkpoint, also one that no input function reads,
+/// and a checkpoint whose files are there runs no task and plans no more.
+#[test]
+fn replanned_checkpoints_match() {
+    let plain = "rule all:\n    input: \"d.txt\"\n\ncheckpoint c:\n    output: \"c.txt\"\n    shell: \"touch {output}\"\n\nrule d:\n    input: \"c.txt\"\n    output: \"d.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let current = "rule all:\n    input: \"t.txt\"\n\ncheckpoint c:\n    output: \"c.txt\"\n    shell: \"touch {output}\"\n\ndef made(wildcards):\n    return checkpoints.c.get().output[0]\n\nrule p:\n    input: made\n    output: \"p.txt\"\n    shell: \"cp {input} {output}\"\n\nrule t:\n    input: \"p.txt\"\n    output: \"t.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let made = [("c.txt", "c\n"), ("p.txt", "c\n")];
+    for (snakefile, files) in [(plain, &[][..]), (current, &made[..])] {
+        let compared = compared_with(snakefile, &[], files);
+        assert!(compared.full && compared.same, "{}", compared.shown);
+    }
+}
+
+/// A `cwl:` job runs the tasks of its CWL run, as natively.
+#[test]
+fn cwl_jobs_match() {
+    let tool = "cwlVersion: v1.2\nclass: CommandLineTool\nbaseCommand: sort\ninputs:\n  input:\n    type: File\n    inputBinding: {position: 1}\nstdout: sorted.txt\noutputs:\n  output:\n    type: stdout\n";
+    let snakefile = "rule all:\n    input: \"sorted.txt\"\n\nrule make:\n    output: \"test.txt\"\n    shell: \"echo b > {output}\"\n\nrule a:\n    input: input=\"test.txt\"\n    output: output=\"sorted.txt\"\n    cwl: \"tool.cwl\"\n";
+    let compared = compared_with(snakefile, &[], &[("tool.cwl", tool)]);
+    assert!(compared.full, "{}", compared.shown);
+    assert_eq!(compared.shown, "same: 3 tasks");
+}
+
 /// Commands of workflow code run while the run plans and while a job is prepared, for two
 /// targets.
 #[test]
@@ -321,6 +425,58 @@ fn compiled_commands_match() {
     );
     let compared = compared(&snakefile, &["summary.txt", "counts/a.txt"]);
     assert_eq!(compared.shown, "same: 7 tasks");
+}
+
+/// Compiles `snakefile` in a folder with the config file `config`, writes `changed` there,
+/// and runs the compiled document; its tasks, or why it failed.
+fn rerun(snakefile: &str, config: &str, changed: &[(&str, &str)]) -> Result<Ran, String> {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let root = folder.path().join("work");
+    std::fs::create_dir(&root).expect("makes the working folder");
+    std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    std::fs::write(root.join("config.yaml"), config).expect("writes the config");
+    let launch = Launch {
+        target: root.join("Snakefile"),
+        configs: vec![root.join("config.yaml")],
+        scratch: folder.path().join("compile"),
+        simulated: true,
+        ..Launch::default()
+    };
+    let run = RunSettings {
+        workdir: Some(root.clone()),
+        ..RunSettings::default()
+    };
+    let scratch = folder.path().join("scratch");
+    let compiled =
+        snakemake_compiler::compile(&launch, Settings::default(), run.clone(), &scratch)?;
+    for (name, text) in changed {
+        std::fs::write(root.join(name), text).expect("writes a file");
+    }
+    let mut driver = run_compiled(&compiled.document, run, &scratch.join("compiled"))?;
+    simulate(&mut *driver, &[&root], &scratch.join("simulator"))
+}
+
+/// A run whose plan reads the inputs of a job in another order refuses the job.
+#[test]
+fn refuses_other_layouts() {
+    let snakefile = "rule c:\n    input: expand(\"{n}.txt\", n=config[\"order\"])\n    output: \"c.txt\"\n    shell: \"cat {input} > {output}\"\n\nrule make:\n    output: \"{n}.txt\"\n    wildcard_constraints: n=\"[xy]\"\n    shell: \"echo {wildcards.n} > {output}\"\n";
+    let swapped = [("config.yaml", "order: [y, x]\n")];
+    let ran = rerun(snakefile, "order: [x, y]\n", &swapped);
+    let error = ran.expect_err("refuses the job");
+    assert!(
+        error.contains("plans no job of rule c as compiled"),
+        "{error}"
+    );
+    assert!(rerun(snakefile, "order: [x, y]\n", &[]).is_ok());
+}
+
+/// A compiled group whose files are current skips its jobs, which a run plans one by one.
+#[test]
+fn skips_current_groups() {
+    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n";
+    let made = [("a.txt", "a\n"), ("b.txt", "a\n")];
+    let ran = rerun(snakefile, "{}\n", &made).expect("skips the group");
+    assert_eq!(ran, Ran::new(), "nothing needs to run, as natively");
 }
 
 /// How a test workflow is launched: its working folder and Snakefile, config files, targets
@@ -409,6 +565,7 @@ fn compare_one() {
         compared.compiled,
         compared.ends,
         compared.same,
+        compared.equal,
     ];
     let flags: Vec<&str> = flags
         .iter()
@@ -449,7 +606,7 @@ fn matches_recorded() {
                 .status
                 .code()
                 .map_or("a signal".into(), |code| code.to_string());
-            format!("0000000\tthe child ended with {code}")
+            format!("00000000\tthe child ended with {code}")
         });
         let (flags, shown) = text.split_once('\t').unwrap_or((&text, ""));
         let flag = |position: usize| flags.as_bytes().get(position) == Some(&b'1');
@@ -462,6 +619,7 @@ fn matches_recorded() {
             &mut counts.compiled,
             &mut counts.ends,
             &mut counts.same,
+            &mut counts.equal,
         ]
         .into_iter()
         .enumerate()

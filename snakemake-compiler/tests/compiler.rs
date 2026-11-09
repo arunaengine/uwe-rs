@@ -33,6 +33,23 @@ fn compiled_with(
     snakefile: &str,
     launch: Launch,
 ) -> (tempfile::TempDir, snakemake_compiler::Compiled, Json) {
+    let (folder, compiled) = compile_in(snakefile, launch);
+    let compiled = compiled.expect("compiles");
+    if let Err(problems) = wir::verify(&compiled.document) {
+        panic!("{problems:?}");
+    }
+    let json = serde_json::to_value(&compiled.document).expect("serializes");
+    (folder, compiled, json)
+}
+
+/// Compiles `snakefile` in a folder of its own, which is also the working folder.
+fn compile_in(
+    snakefile: &str,
+    launch: Launch,
+) -> (
+    tempfile::TempDir,
+    Result<snakemake_compiler::Compiled, String>,
+) {
     let folder = tempfile::tempdir().expect("a temporary directory");
     std::fs::write(folder.path().join("Snakefile"), snakefile).expect("writes the Snakefile");
     let launch = Launch {
@@ -46,13 +63,8 @@ fn compiled_with(
         ..RunSettings::default()
     };
     let base = folder.path().to_owned();
-    let compiled =
-        snakemake_compiler::compile(&launch, Settings::default(), run, &base).expect("compiles");
-    if let Err(problems) = wir::verify(&compiled.document) {
-        panic!("{problems:?}");
-    }
-    let json = serde_json::to_value(&compiled.document).expect("serializes");
-    (folder, compiled, json)
+    let compiled = snakemake_compiler::compile(&launch, Settings::default(), run, &base);
+    (folder, compiled)
 }
 
 fn op<'a>(document: &'a Json, path: &str) -> &'a Json {
@@ -82,8 +94,26 @@ fn compiles_jobs() {
     sorted.sort();
     assert_eq!(
         sorted,
-        ["all", "count/a", "count/b_c", "make/a", "make/b_c"]
+        [
+            "all",
+            "count/a",
+            "count/b_c",
+            "make/a",
+            "make/b_c",
+            "result.targets"
+        ]
     );
+    // The entry graph gives the target files as the native run names them.
+    let files = json!({"array": {"items": {"file": {}}}});
+    let outputs = &document["graphs"][0]["outputs"];
+    assert_eq!(*outputs, json!([{"name": "targets", "type": files}]));
+    let result = op(&document, "result.targets");
+    let code = result["kind"]["expr"]["code"].as_str().unwrap_or_default();
+    assert!(code.contains("/counts/a.txt\""), "{code}");
+    let after: Vec<&str> = (result["after"].as_array().expect("after").iter())
+        .filter_map(|before| before["op"].as_str())
+        .collect();
+    assert_eq!(after, ["count/a", "count/b_c"]);
     let count = op(&document, "count/b_c");
     let builder = &count["kind"]["task"]["builder"]["snakemake_job"];
     assert_eq!(builder["wildcards"], json!({"s": "b/c"}));
@@ -117,15 +147,14 @@ fn compiles_jobs() {
     assert_eq!(all["inputs"].as_array().map(Vec::len), Some(2));
 }
 
+/// A workflow with a checkpoint is one dynamic region that the Snakemake planner plans.
 #[test]
-fn keeps_checkpoints() {
+fn compiles_checkpoints() {
     let snakefile = "rule all:\n    input: \"b.txt\"\n\ncheckpoint a:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
     let (_folder, compiled, document) = compiled(snakefile);
-    assert_eq!(compiled.kept.len(), 1);
-    assert_eq!(compiled.kept[0].reason, "rule a is a checkpoint");
-    let native = &op(&document, "snakemake")["kind"]["native"];
-    assert_eq!(native["source"], "snakefile");
-    assert!(native.get("entry").is_none());
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let planner = &op(&document, "snakemake")["kind"]["dynamic"]["planner"]["snakemake"];
+    assert_eq!(*planner, json!({"source": "snakefile", "targets": ["all"]}));
 }
 
 #[test]
@@ -143,7 +172,41 @@ fn compiles_groups() {
     assert_eq!(group["outputs"].as_array().map(Vec::len), Some(2));
     let edge =
         json!({"from": {"op": "a", "port": "output_1"}, "to": {"op": "all", "port": "input_0"}});
-    assert_eq!(document["graphs"][0]["edges"], json!([edge]));
+    assert_eq!(document["graphs"][0]["edges"][0], edge);
+}
+
+/// A job outside a group that makes an input of the group feeds it, whatever its position.
+#[test]
+fn feeds_group_inputs() {
+    let snakefile = "rule z:\n    input: \"y.txt\", \"w.txt\"\n    output: \"z.txt\"\n    group: \"g\"\n    shell: \"cat {input} > {output}\"\n\nrule y:\n    input: \"x.txt\"\n    output: \"y.txt\"\n    group: \"g\"\n    shell: \"cp {input} {output}\"\n\nrule x:\n    output: \"x.txt\"\n    group: \"g\"\n    shell: \"touch {output}\"\n\nrule w:\n    output: \"w.txt\"\n    shell: \"touch {output}\"\n";
+    let (_folder, compiled, document) = compiled(snakefile);
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let edges = document["graphs"][0]["edges"].as_array().expect("edges");
+    let fed = (edges.iter()).any(|edge| edge["from"]["op"] == "w" && edge["to"]["op"] == "x");
+    assert!(fed, "{edges:?}");
+}
+
+/// A job that updates a file runs after the jobs that read the file as it was before.
+#[test]
+fn updates_after_readers() {
+    let snakefile = "rule all:\n    input: \"out.txt\", \"test.txt\"\n\nrule b:\n    input: before_update(\"test.txt\")\n    output: \"out.txt\"\n    shell: \"cp {input} {output}\"\n\nrule a:\n    input: \"in.txt\"\n    output: update(\"test.txt\")\n    shell: \"cat {input} >> {output}\"\n";
+    let (_folder, compiled, document) = compiled(snakefile);
+    assert!(compiled.full(), "{:?}", compiled.kept);
+    let after = &op(&document, "a")["after"];
+    assert_eq!(*after, json!([{"op": "b", "on": ["succeeded"]}]));
+}
+
+/// A group whose jobs run in other images splits into separate tasks in a run, which a group
+/// op cannot, so the workflow stays native.
+#[test]
+fn keeps_mixed_images() {
+    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
+    let (_folder, compiled, _) = compiled(snakefile);
+    let reason = compiled.kept.first().map(|kept| kept.reason.as_str());
+    assert_eq!(
+        reason,
+        Some("a job of rule a: its group runs jobs of several images, which a run splits")
+    );
 }
 
 #[test]
@@ -186,8 +249,10 @@ fn compiles_plan_settings() {
     assert_eq!(launch.target, folder.path().join("Snakefile"));
 }
 
+/// A workflow that stays one native op cannot hold config values of the command line, several
+/// targets or the options that pick jobs, so it does not compile with them.
 #[test]
-fn keeps_dropped_settings() {
+fn refuses_dropped_settings() {
     let snakefile =
         format!("checkpoint c:\n    output: \"c.txt\"\n    shell: \"touch {{output}}\"\n\n{TWO}");
     let launch = Launch {
@@ -195,18 +260,19 @@ fn keeps_dropped_settings() {
         params: vec![("x".into(), "1".into())],
         ..Launch::default()
     };
-    let (_folder, compiled, document) = compiled_with(&snakefile, launch);
-    let reasons: Vec<&str> = compiled
-        .kept
-        .iter()
-        .map(|kept| kept.reason.as_str())
-        .collect();
-    assert_eq!(
-        reasons,
-        [
-            "rule c is a checkpoint",
-            "it drops config values of the command line"
-        ]
-    );
-    assert_eq!(document["sources"].as_array().map(Vec::len), Some(1));
+    let (_folder, compiled) = compile_in(&snakefile, launch.clone());
+    let error = compiled.err().unwrap_or_default();
+    let expected =
+        "rule c is a checkpoint, whose region cannot hold config values of the command line";
+    assert_eq!(error, expected);
+    let images = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
+    let launch = Launch {
+        targets: vec!["b.txt".into()],
+        ..launch
+    };
+    let error = compile_in(images, launch).1.err().unwrap_or_default();
+    let expected = "the workflow stays one native Snakemake op (a job of rule a: its group runs \
+        jobs of several images, which a run splits), which cannot hold config values of the \
+        command line";
+    assert_eq!(error, expected);
 }

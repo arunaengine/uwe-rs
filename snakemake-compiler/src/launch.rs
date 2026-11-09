@@ -97,19 +97,75 @@ pub fn job_key(rule: &RuleTask) -> JobKey {
     }
 }
 
-/// Whether the jobs that a run planned hold the job of `rule`, with the same group, so that
-/// the run runs the plan that the document was compiled from.
+/// Whether the jobs that a run planned hold the job of `rule`, with the same group and file
+/// layout, so that the run runs the plan that the document was compiled from.
 pub fn plans_job(jobs: &[PlannedJob], rule: &RuleTask) -> bool {
-    let key = job_key(rule);
-    let group = (rule.group.iter()).map(|member| JobKey {
-        rule: member.rule.clone(),
-        wildcards: member.wildcards.clone(),
-        outputs: Vec::new(),
-    });
-    let group: Vec<JobKey> = group.collect();
-    (jobs.iter()).any(|job| {
-        job.key.rule == key.rule && job.key.wildcards == key.wildcards && job.group == group
-    })
+    let named = |key: &JobKey, job: &PlannedJob| {
+        job.key.rule == key.rule && job.key.wildcards == key.wildcards
+    };
+    let (key, group) = (job_key(rule), group_keys(rule));
+    // A run plans a group whose jobs need no work as single jobs, which it skips.
+    let alone = |key: &JobKey| {
+        (jobs.iter()).any(|job| named(key, job) && job.group.is_empty() && !job.needed)
+    };
+    let current = !group.is_empty() && alone(&key) && group.iter().all(alone);
+    current
+        || (0..jobs.len()).any(|index| {
+            let job = &jobs[index];
+            let digest = rule.layout.as_ref();
+            let layout = digest.is_none_or(|digest| *digest == layout(jobs, index));
+            named(&key, job) && job.group == group && layout
+        })
+}
+
+/// The identities of the other jobs of the group of `rule`.
+pub fn group_keys(rule: &RuleTask) -> Vec<JobKey> {
+    (rule.group.iter())
+        .map(|member| JobKey {
+            rule: member.rule.clone(),
+            wildcards: member.wildcards.clone(),
+            outputs: Vec::new(),
+        })
+        .collect()
+}
+
+/// The digest of the input and output files of a planned job and of its inputs that other
+/// jobs make, by position.
+pub(crate) fn layout(jobs: &[PlannedJob], index: usize) -> String {
+    let job = &jobs[index];
+    let outputs: Vec<&str> = job.outputs.iter().map(|file| file.path.as_str()).collect();
+    let mut made: Vec<usize> = job
+        .producers
+        .iter()
+        .map(|producer| producer.input)
+        .collect();
+    made.sort_unstable();
+    made.dedup();
+    let text = json!([job.inputs, outputs, made]).to_string();
+    let digest = Sha256::digest(text.as_bytes());
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("sha256:{hex}")
+}
+
+/// Moves the config values that `document` holds in a `data:` source to the location that
+/// `place` writes their text to, which keeps the digest; a document without them stays.
+pub fn place_values(
+    document: &mut Document,
+    place: impl FnOnce(&str) -> Result<String, String>,
+) -> Result<(), String> {
+    let source = document
+        .sources
+        .iter_mut()
+        .find(|source| source.id == VALUES);
+    let Some(source) = source else {
+        return Ok(());
+    };
+    let Some(encoded) = source.location.strip_prefix(DATA) else {
+        return Ok(());
+    };
+    let text = decode(encoded).ok_or("a config value source is not percent-encoded")?;
+    source.location = place(&text)?;
+    Ok(())
 }
 
 /// The config values of a source: a `data:` location, or a file below `base`.

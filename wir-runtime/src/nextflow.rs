@@ -3,16 +3,16 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 
 use nextflow_evaluator::interpreter::Host;
 use nextflow_runtime::driver::{Nextflow, Settings};
 use nextflow_runtime::{Adapter, Completed, Prepared};
 use serde_json::{Map, Value as Json, json};
 use wir::{Binding, Port, Type, TypeDef};
-use workflow_graph::{Delivery, DriverError, Launch, Outcome, TaskId};
+use workflow_graph::{Delivery, DriverError, Launch, Outcome, Task, TaskId};
 
 use crate::adapter::{Adapters, CallId, Changes, Ending, Opening, TaskAdapter, TaskCall};
 use crate::child::Block;
@@ -25,13 +25,23 @@ type Making = dyn Fn(&Launch, &Path) -> Settings + Send + Sync;
 #[derive(Clone)]
 pub struct Options {
     pub(crate) settings: Arc<Making>,
+    /// The files that tasks made, by location, with their names in the work folder of their
+    /// task, which workflow outputs publish by.
+    pub(crate) names: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 impl Options {
     pub fn new(settings: impl Fn(&Launch, &Path) -> Settings + Send + Sync + 'static) -> Options {
         Options {
             settings: Arc::new(settings),
+            names: Arc::default(),
         }
+    }
+
+    /// The name of a file that a task made in its work folder, by its location.
+    pub(crate) fn task_file(&self, location: &str) -> Option<String> {
+        let names = self.names.lock().unwrap_or_else(PoisonError::into_inner);
+        names.get(location).cloned()
     }
 }
 
@@ -93,15 +103,15 @@ impl Block for Nextflow {
 /// Runs `nextflow_process` tasks through adapters whose drivers get their settings from
 /// `options`, launched in the working folder, as a Nextflow run alone is.
 pub fn register(adapters: &mut Adapters, options: Options) {
-    crate::nextflow_scope::use_options(options.clone());
     adapters.register("nextflow_process", move |opening| open(opening, &options));
 }
 
 fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, DriverError> {
+    let given = params(opening.inputs);
     let launch = Launch {
         target: opening.source.clone(),
         params: Vec::new(),
-        inputs: None,
+        inputs: Some(params_file(&opening.folder, &given)?),
         profiles: opening.builder.task().profiles.clone(),
         configs: opening.configs.clone(),
         targets: Vec::new(),
@@ -110,8 +120,22 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
     let folder = std::env::current_dir()
         .map_err(|error| DriverError::new(format!("no working folder: {error}")))?;
     let settings = (options.settings)(&launch, &folder);
-    let mut adapter = Adapter::new(&launch, settings, params(opening.inputs))?;
-    adapter.start(Vec::new());
+    let mut adapter = Adapter::new(&launch, settings, given)?;
+    if let Some(files) = opening.files.clone() {
+        adapter.use_files(files);
+    }
+    // The observers of the run hear of the processes of the pipeline, as in a native run.
+    let folder = (opening.source.parent()).map_or_else(PathBuf::new, Path::to_owned);
+    let processes = (opening.observers.iter()).flat_map(|observers| &observers.processes);
+    let processes = processes.map(|process| nextflow_runtime::export::Process {
+        id: process.id,
+        name: process.name.clone(),
+        definition: process.definition.clone().unwrap_or_default(),
+        script: (process.script.as_ref())
+            .map(|script| folder.join(script).to_string_lossy().into_owned()),
+        feeds: process.feeds.clone(),
+    });
+    adapter.start(processes.collect());
     Ok(Box::new(Tasks {
         adapter,
         calls: HashMap::new(),
@@ -119,6 +143,9 @@ fn open(opening: &Opening, options: &Options) -> Result<Box<dyn TaskAdapter>, Dr
         next: 0,
         accepted: HashSet::new(),
         deliveries: Vec::new(),
+        names: options.names.clone(),
+        folder: (opening.source.parent()).map_or_else(PathBuf::new, Path::to_owned),
+        limits: Limits::default(),
     }))
 }
 
@@ -132,9 +159,142 @@ struct Tasks {
     next: u64,
     accepted: HashSet<(TaskId, u32)>,
     deliveries: Vec<Delivery>,
+    /// The names of the files of tasks in their work folders, shared with workflow outputs.
+    names: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    /// The folder of the main script, which the scripts of processes are named from.
+    folder: PathBuf,
+    limits: Limits,
+}
+
+/// The `maxForks` and `fair` rules of the process calls: the tasks held back while a call runs
+/// as many as it may, and the endings held back until those of the earlier tasks went.
+#[derive(Default)]
+struct Limits {
+    /// The call name and the task index of each op instance.
+    rounds: HashMap<CallId, (String, u32)>,
+    natives: HashMap<String, nextflow_runtime::Call>,
+    running: HashMap<String, usize>,
+    held: HashMap<String, VecDeque<(CallId, Task)>>,
+    /// The endings of `fair` calls that wait for earlier ones, by call.
+    waiting: HashMap<String, Fair>,
+}
+
+/// The emissions of a `fair` call: as in Nextflow, the outputs of each task wait for those of
+/// the tasks before it, and a task that gives none, skipped, ignored or failed, holds back the
+/// later outputs for good; its own ending goes at once.
+struct Fair {
+    /// The index of the next task whose outputs go.
+    next: u32,
+    waiting: BTreeMap<u32, (CallId, Ending)>,
+    /// The first task that gave no outputs.
+    dead: Option<u32>,
+}
+
+impl Fair {
+    fn new() -> Fair {
+        Fair {
+            next: 1,
+            waiting: BTreeMap::new(),
+            dead: None,
+        }
+    }
+
+    /// The endings that go when the task `index` ends.
+    fn ended(&mut self, index: u32, call: CallId, ending: Ending) -> Vec<(CallId, Ending)> {
+        if !matches!(ending, Ending::Succeeded { .. }) {
+            self.dead = Some(self.dead.map_or(index, |dead| dead.min(index)));
+            let dead = self.dead.unwrap_or(index);
+            let held = self.waiting.split_off(&(dead + 1));
+            let mut ended = vec![(call, ending)];
+            ended.extend(
+                held.into_values()
+                    .map(|(call, ending)| (call, emptied(ending))),
+            );
+            return ended;
+        }
+        if self.dead.is_some_and(|dead| dead < index) {
+            return vec![(call, emptied(ending))];
+        }
+        self.waiting.insert(index, (call, ending));
+        let mut ended = Vec::new();
+        while let Some(given) = self.waiting.remove(&self.next) {
+            ended.push(given);
+            self.next += 1;
+        }
+        ended
+    }
+}
+
+/// A success whose outputs never go: each output closes empty.
+fn emptied(ending: Ending) -> Ending {
+    match ending {
+        Ending::Succeeded { values, mut empty } => {
+            empty.extend(values.into_iter().map(|(port, _)| port));
+            Ending::Succeeded {
+                values: Map::new(),
+                empty,
+            }
+        }
+        other => other,
+    }
 }
 
 impl Tasks {
+    /// The `maxForks` and `fair` of the call of an op instance.
+    fn rules(&self, call: CallId) -> (String, u32, Option<usize>, bool) {
+        let (name, index) = self.limits.rounds.get(&call).cloned().unwrap_or_default();
+        let (forks, fair) = (self.limits.natives.get(&name))
+            .map_or((None, false), |native| self.adapter.limits(native));
+        (name, index, forks, fair)
+    }
+
+    /// The task of an op instance, or none while its call runs as many tasks as it may.
+    fn launch(&mut self, call: CallId, task: Task) -> Vec<(CallId, Task)> {
+        let (name, _, forks, _) = self.rules(call);
+        let running = self.limits.running.entry(name.clone()).or_default();
+        if forks.is_some_and(|forks| *running >= forks) {
+            self.limits
+                .held
+                .entry(name)
+                .or_default()
+                .push_back((call, task));
+            return Vec::new();
+        }
+        *running += 1;
+        vec![(call, task)]
+    }
+
+    /// The changes when an op instance ends: the held tasks that may run now, and the endings
+    /// that may go, in task order for a `fair` call.
+    fn finish(&mut self, call: CallId, ending: Ending, ran: bool) -> Changes {
+        let (name, index, forks, fair) = self.rules(call);
+        let mut tasks = Vec::new();
+        if ran {
+            let running = self.limits.running.entry(name.clone()).or_default();
+            *running = running.saturating_sub(1);
+            while forks.is_none_or(|forks| self.limits.running[&name] < forks) {
+                let held = self.limits.held.get_mut(&name);
+                let Some((next, task)) = held.and_then(VecDeque::pop_front) else {
+                    break;
+                };
+                *self.limits.running.entry(name.clone()).or_default() += 1;
+                tasks.push((next, task));
+            }
+        }
+        self.limits.rounds.remove(&call);
+        let ended = match fair {
+            false => vec![(call, ending)],
+            true => (self.limits.waiting.entry(name))
+                .or_insert_with(Fair::new)
+                .ended(index, call, ending),
+        };
+        Changes {
+            tasks,
+            ended,
+            ready: Vec::new(),
+        }
+    }
+
     /// What an attempt that the native driver judged gives: a retry, or the ending.
     fn judged(&mut self, id: TaskId, attempt: u32, completed: Completed) -> Changes {
         let Some((call, ports)) = self.calls.get(&id).cloned() else {
@@ -151,27 +311,30 @@ impl Tasks {
             Completed::Accepted {
                 outputs,
                 deliveries,
+                names,
             } => {
                 self.accepted.insert((id, attempt));
                 self.deliveries.extend(deliveries);
-                let given = ports.into_iter().filter_map(|(index, port)| {
-                    let value = outputs.get(index).cloned().flatten()?;
-                    Some((port, value))
-                });
-                Ending::Succeeded {
-                    values: given.collect(),
-                    empty: Vec::new(),
+                let mut known = self.names.lock().unwrap_or_else(PoisonError::into_inner);
+                known.extend(names);
+                drop(known);
+                // A missing optional output closes empty, as Nextflow emits nothing for it.
+                let mut values = Map::new();
+                let mut empty = Vec::new();
+                for (index, port) in ports {
+                    match outputs.get(index).cloned().flatten() {
+                        Some(value) => drop(values.insert(port, value)),
+                        None => empty.push(port),
+                    }
                 }
+                Ending::Succeeded { values, empty }
             }
             Completed::Ignored(message) => Ending::Ignored(message),
             Completed::Failed(message) => Ending::Failed(message),
         };
         self.calls.remove(&id);
-        Changes {
-            tasks: Vec::new(),
-            ended: vec![(call, ending)],
-            ready: Vec::new(),
-        }
+        // A task from its `storeDir` ran nothing.
+        self.finish(call, ending, attempt > 0)
     }
 }
 
@@ -182,8 +345,20 @@ impl TaskAdapter for Tasks {
             Some(Binding::Value(value)) => value.as_bool().unwrap_or(false),
             _ => false,
         };
-        let script = (task.scope.as_ref())
-            .and_then(|scope| self.adapter.script_at(&task.entry, scope.start, scope.end));
+        // The script of the process, from the folder of the main script, else by its place.
+        let script = match task.captures.get("script") {
+            Some(Binding::Value(Json::String(script))) if script.starts_with("plugin/") => {
+                Some(PathBuf::from(script))
+            }
+            Some(Binding::Value(Json::String(script))) => Some(self.folder.join(script)),
+            _ => None,
+        };
+        let script = script
+            .map(|script| script.to_string_lossy().into_owned())
+            .or_else(|| {
+                let scope = task.scope.as_ref()?;
+                self.adapter.script_at(&task.entry, scope.start, scope.end)
+            });
         let native = nextflow_runtime::Call {
             script: script.unwrap_or_default(),
             process: task.entry.clone(),
@@ -208,19 +383,21 @@ impl TaskAdapter for Tasks {
         self.next += 1;
         let id = TaskId(self.next);
         self.calls.insert(id, (call.call, ports));
-        Ok(match self.adapter.prepare(&native, &inputs, *count, id)? {
+        let index = *count;
+        self.limits
+            .rounds
+            .insert(call.call, (task.call.clone(), index));
+        let prepared = self.adapter.prepare(&native, &inputs, index, id)?;
+        self.limits.natives.insert(task.call.clone(), native);
+        Ok(match prepared {
             Prepared::Run(task) => Changes {
-                tasks: vec![(call.call, *task)],
+                tasks: self.launch(call.call, *task),
                 ended: Vec::new(),
                 ready: Vec::new(),
             },
             Prepared::Skipped => {
                 self.calls.remove(&id);
-                Changes {
-                    tasks: Vec::new(),
-                    ended: vec![(call.call, Ending::Skipped(serde_json::Map::new()))],
-                    ready: Vec::new(),
-                }
+                self.finish(call.call, Ending::Skipped(serde_json::Map::new()), false)
             }
             Prepared::Done(completed) => self.judged(id, 0, completed),
         })
@@ -256,6 +433,17 @@ impl TaskAdapter for Tasks {
     fn prefixed(&self) -> bool {
         false
     }
+}
+
+/// A params file in `folder`, like `-params-file`, so that the config sees the params as a
+/// native run does, like `${params.outdir}` in the paths of reports.
+pub(crate) fn params_file(folder: &Path, params: &Json) -> Result<PathBuf, DriverError> {
+    let path = folder.join("params.json");
+    let written =
+        std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, params.to_string()));
+    written
+        .map_err(|error| DriverError::new(format!("cannot write {}: {error}", path.display())))?;
+    Ok(path)
 }
 
 /// The op inputs as Nextflow params: a File or a Directory becomes its path, and a null
@@ -432,6 +620,47 @@ mod tests {
 
     fn port(name: &str, r#type: Json) -> Port {
         serde_json::from_value(json!({"name": name, "type": r#type})).unwrap()
+    }
+
+    #[test]
+    fn fair_endings() {
+        let success = |value: i64| Ending::Succeeded {
+            values: Map::from_iter([("out".to_owned(), json!(value))]),
+            empty: Vec::new(),
+        };
+        let empty = Ending::Succeeded {
+            values: Map::new(),
+            empty: vec!["out".to_owned()],
+        };
+        let mut fair = Fair::new();
+        assert_eq!(
+            fair.ended(2, CallId(2), success(2)),
+            [],
+            "task 2 waits for task 1"
+        );
+        let failed = Ending::Failed("no".into());
+        assert_eq!(
+            fair.ended(3, CallId(3), failed.clone()),
+            [(CallId(3), failed)],
+            "a failure goes at once"
+        );
+        let first = fair.ended(1, CallId(1), success(1));
+        assert_eq!(first, [(CallId(1), success(1)), (CallId(2), success(2))]);
+        assert_eq!(
+            fair.ended(4, CallId(4), success(4)),
+            [(CallId(4), empty.clone())]
+        );
+        let mut skipping = Fair::new();
+        let skipped = Ending::Skipped(Map::new());
+        assert_eq!(
+            skipping.ended(1, CallId(1), skipped.clone()),
+            [(CallId(1), skipped)]
+        );
+        assert_eq!(
+            skipping.ended(2, CallId(2), success(2)),
+            [(CallId(2), empty)],
+            "a skipped task holds back the later outputs for good"
+        );
     }
 
     #[test]

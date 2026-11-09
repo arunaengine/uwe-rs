@@ -94,15 +94,20 @@ pub fn build(
                 let staged = staging.adjusted(&Json::Object(bound.clone()), workdir);
                 let given = this.as_ref().and_then(|name| staged.get(name)).cloned();
                 let values = (staged, given.unwrap_or(Json::Null), json!({}));
-                let value = match crate::expr::code(code, values, (&spec.library, settings)) {
-                    Ok(value) => crate::cwl::to_wir(value),
+                let given = match crate::expr::code(code, values, (&spec.library, settings)) {
+                    Ok(value) => value,
                     // As uwe's CWL driver, a simulated run marks code over made-up contents.
                     Err(_) if simulated && code.contains("contents") => {
                         json!(cwl_runtime::tool::FAKE_ARGUMENT)
                     }
                     Err(why) => return Err(format!("argument {index}: {why}")),
                 };
-                let texts = staging.texts(&value, &format!("arguments/{index}"));
+                let value = crate::cwl::to_wir(given.clone());
+                // As CWL binds a bool: only a prefix, and only when it is true.
+                if value.is_boolean() && prefix.is_none() {
+                    continue;
+                }
+                let texts = staging.words(&given, &value, &format!("arguments/{index}"));
                 let binding = (prefix.as_deref(), *separate, separator.as_deref());
                 let raw = spec.shell && !quote;
                 let bound = bind(&value, texts, binding).into_iter();
@@ -328,7 +333,12 @@ pub fn capture(
                 (outcome, inputs, workdir, simulated),
             )
             .map_err(|problem| format!("output {}: {problem}", port.name))?;
-            let value = crate::cwl::to_wir(value);
+            let mut value = crate::cwl::to_wir(value);
+            // The Directories of the results hold the listings that CWL loads, as natively.
+            if let Some(listing) = capture.listing {
+                value = crate::load::listings(value, listing, ended.access)
+                    .map_err(|problem| format!("output {}: {problem}", port.name))?;
+            }
             values.insert(port.name.clone(), settled(value, port, defs, simulated)?);
             continue;
         }
@@ -409,6 +419,10 @@ pub fn capture(
         }
         if let Some(listing) = capture.listing {
             value = crate::load::listings(value, listing, ended.access)
+                .map_err(|problem| format!("output {}: {problem}", port.name))?;
+        }
+        if let Some(code) = &capture.format {
+            formatted(&mut value, code, spec, ended)
                 .map_err(|problem| format!("output {}: {problem}", port.name))?;
         }
         if !wir::fits(&value, &port.r#type, defs) {
@@ -530,31 +544,71 @@ fn evaluated(
     if let Some(listing) = capture.listing {
         this = crate::load::listings(this, listing, ended.access)?;
     }
-    let location = |item: &Json| {
-        item.get("location")
-            .and_then(Json::as_str)
-            .map(str::to_owned)
-    };
-    let made = |item: &Json| {
-        let location = location(item)?;
-        let file = (ended.outcome.files.iter()).find(|file| file.location == location)?;
-        Some(absolute(file.path.trim_end_matches('/'), workdir))
-    };
-    let given = |item: &Json| {
-        let location = location(item)?;
-        let source = cwl_parser::iri::file_path(&location)
-            .map_or(location, |path| path.to_string_lossy().into_owned());
-        let input = ended.inputs.iter().find(|input| input.source == source)?;
-        Some(absolute(&input.path, workdir))
-    };
-    let inputs = with_paths(&Json::Object(ended.bound.clone()), &given);
+    this = crate::load::checksums(this, ended.access)?;
     let runtime = json!({"exitCode": ended.outcome.exit_code});
-    let values = (inputs, with_paths(&this, &made), runtime);
+    let made = |item: &Json| made_path(item, ended, workdir);
+    let values = (
+        seen_inputs(ended, workdir),
+        with_paths(&this, &made),
+        runtime,
+    );
     let value = crate::expr::code(code, values, (&spec.library, ended.settings))?;
     located(
         value,
         (ended.outcome, ended.inputs, workdir, ended.simulated),
     )
+}
+
+/// Sets the format of each File of a value, alone or in arrays, to the value of the code
+/// with that File as `self`; a simulated run whose code fails sets none, as uwe's CWL driver.
+fn formatted(
+    value: &mut Json,
+    code: &str,
+    spec: &wir::Task,
+    ended: Ended<'_>,
+) -> Result<(), String> {
+    match value {
+        Json::Array(items) => items
+            .iter_mut()
+            .try_for_each(|item| formatted(item, code, spec, ended)),
+        Json::Object(file) if class(file) == Some("File") => {
+            let workdir = spec.workdir.as_deref().unwrap_or(WORKDIR);
+            // The code sees the checksum of uwe's CWL driver, not the digest of the executor.
+            let checked = crate::load::checksums(Json::Object(file.clone()), ended.access)?;
+            let this = with_paths(&checked, &|item| made_path(item, ended, workdir));
+            let runtime = json!({"exitCode": ended.outcome.exit_code});
+            let values = (seen_inputs(ended, workdir), this, runtime);
+            match crate::expr::code(code, values, (&spec.library, ended.settings)) {
+                Ok(Json::String(format)) => drop(file.insert("format".into(), json!(format))),
+                Ok(_) => {}
+                Err(_) if ended.simulated => {}
+                Err(why) => return Err(format!("the format: {why}")),
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// The path in the container of a file that the task made.
+fn made_path(item: &Json, ended: Ended<'_>, workdir: &str) -> Option<String> {
+    let location = item.get("location").and_then(Json::as_str)?;
+    let file = (ended.outcome.files.iter()).find(|file| file.location == location)?;
+    Some(absolute(file.path.trim_end_matches('/'), workdir))
+}
+
+/// The input values as the code of captures sees them, each staged file at its last place,
+/// where the task sees it, as the entries of the working folder come last.
+fn seen_inputs(ended: Ended<'_>, workdir: &str) -> Json {
+    let given = |item: &Json| {
+        let location = item.get("location").and_then(Json::as_str)?;
+        let source = cwl_parser::iri::file_path(location).map_or(location.to_owned(), |path| {
+            path.to_string_lossy().into_owned()
+        });
+        let input = ended.inputs.iter().rfind(|input| input.source == source)?;
+        Some(absolute(&input.path, workdir))
+    };
+    with_paths(&Json::Object(ended.bound.clone()), &given)
 }
 
 /// The object of the results file that the task wrote, if any; the made-up file of a
@@ -602,21 +656,47 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
     };
     let path = cwl_parser::iri::file_path(place)
         .map_or(place.to_owned(), |path| path.to_string_lossy().into_owned());
+    // `.` and `..` parts resolve first, so a place cannot leave the folder that holds it.
     let path = absolute(path.trim_start_matches("./"), workdir);
-    let made = (outcome.files.iter())
-        .find(|file| absolute(file.path.trim_end_matches('/'), workdir) == path);
+    let Some(path) = normalized(&path) else {
+        return Err(format!("the results name {place}, which leaves the root"));
+    };
+    let made = (outcome.files.iter()).find(|file| {
+        normalized(&absolute(file.path.trim_end_matches('/'), workdir)).as_ref() == Some(&path)
+    });
     let mut found = match made {
         Some(file) => entry(file, None),
         None => {
-            let staged = (inputs.iter()).find(|input| absolute(&input.path, workdir) == path);
+            // A staged input, or a place below the deepest staged Directory that holds it.
+            let staged = (inputs.iter())
+                .filter(|input| !input.source.is_empty())
+                .filter_map(|input| {
+                    let at = absolute(&input.path, workdir);
+                    if at == path {
+                        return Some((at.len(), input.source.clone()));
+                    }
+                    let rest = path
+                        .strip_prefix(&format!("{at}/"))
+                        .filter(|_| input.directory)?;
+                    Some((at.len(), join(&input.source, rest)))
+                })
+                .max_by_key(|(length, _)| *length)
+                .map(|(_, location)| location);
             // A place in the working folder is in the folder of the outputs, as uwe's CWL driver.
             let folder = (outcome.files.iter()).find_map(|file| {
                 let made = file.path.trim_end_matches('/');
                 (file.location.trim_end_matches('/').strip_suffix(made))
                     .map(|folder| folder.trim_end_matches('/').to_owned())
             });
-            let location = match (staged, relative(&path, workdir), folder) {
-                (Some(input), _, _) => input.source.clone(),
+            // A path that names the working folder itself is `.` in it.
+            let inner = match path == workdir.trim_end_matches('/') {
+                true => Some(".".to_owned()),
+                false => relative(&path, workdir),
+            };
+            let location = match (staged, inner.clone(), folder) {
+                (Some(location), _, _) => location,
+                // The working folder itself is the folder of the outputs, as uwe's CWL driver.
+                (None, Some(inner), Some(folder)) if inner == "." => folder,
                 (None, Some(inner), Some(folder)) => join(&folder, &inner),
                 // A simulated run that made no files takes them as present.
                 (None, Some(inner), None) if simulated => format!("_:{inner}"),
@@ -626,7 +706,12 @@ fn located(value: Json, task: (&Outcome, &[Input], &str, bool)) -> Result<Json, 
                     ));
                 }
             };
-            let name = path.rsplit('/').next().unwrap_or_default();
+            // Its basename comes from the place the results name, like `.`, as natively.
+            let named = place.trim_end_matches('/').rsplit('/').next();
+            let name = match inner.as_deref() {
+                Some(".") => named.unwrap_or("."),
+                _ => path.rsplit('/').next().unwrap_or_default(),
+            };
             json!({"class": class(&object), "location": location, "basename": name})
         }
     };
@@ -754,6 +839,10 @@ struct Staging {
     placed: HashMap<String, String>,
     /// The paths of Files and Directories without a location, by their JSON text.
     literals: HashMap<String, String>,
+    /// The absolute paths in the working folder of what its entries placed, by location.
+    entries: HashMap<String, String>,
+    /// The working folder while an entry places files there.
+    placing: Option<String>,
     /// How many numbered folders the staging folder has.
     folders: usize,
 }
@@ -781,6 +870,25 @@ impl Staging {
         }
     }
 
+    /// The arguments of the value of code: a File or Directory with a `path` is at that place,
+    /// as uwe's CWL driver binds it; other values as [`Staging::texts`].
+    fn words(&mut self, given: &Json, value: &Json, folder: &str) -> Vec<String> {
+        match (given, value) {
+            (Json::Array(items), Json::Array(values)) => (items.iter().zip(values).enumerate())
+                .flat_map(|(index, (item, value))| {
+                    self.words(item, value, &format!("{folder}/{index}"))
+                })
+                .collect(),
+            (Json::Object(object), _) if matches!(class(object), Some("File" | "Directory")) => {
+                match object.get("path").and_then(Json::as_str) {
+                    Some(path) => vec![path.to_owned()],
+                    None => self.texts(value, folder),
+                }
+            }
+            _ => self.texts(value, folder),
+        }
+    }
+
     /// Stages a File or Directory value and its secondary files in `folder`; its path there,
     /// or in the working folder when an entry placed it there.
     fn stage(&mut self, value: &Json, folder: &str) -> Option<String> {
@@ -789,6 +897,10 @@ impl Staging {
             return None;
         }
         let location = value.get("location").and_then(Json::as_str);
+        // Arguments name what an entry placed by its path in the container, as in CWL.
+        if let Some(path) = location.and_then(|location| self.entries.get(location)) {
+            return Some(path.clone());
+        }
         if let Some(path) = self.path(value) {
             return Some(path.clone());
         }
@@ -860,6 +972,7 @@ impl Staging {
                 let Some(name) = name.and_then(at) else {
                     return;
                 };
+                self.placing = Some(workdir.to_owned());
                 self.put(value, &name, writable);
                 let folder = name.rsplit_once('/').map_or("", |(folder, _)| folder);
                 for item in object
@@ -872,6 +985,7 @@ impl Staging {
                         self.put(item, &beside, writable);
                     }
                 }
+                self.placing = None;
             }
             other => {
                 // Other values are JSON text as Python writes it, as in uwe's CWL driver.
@@ -885,7 +999,7 @@ impl Staging {
                     other => python(other),
                 };
                 if let Some(name) = path.map(str::to_owned).and_then(at) {
-                    self.inputs.push(Input {
+                    self.add(Input {
                         path: name,
                         content: Some(text),
                         writable: copy(writable),
@@ -894,6 +1008,13 @@ impl Staging {
                 }
             }
         }
+    }
+
+    /// Adds a task input in place of one at the same destination, as the later entry of the
+    /// working folder wins in uwe's CWL driver.
+    fn add(&mut self, input: Input) {
+        self.inputs.retain(|known| known.path != input.path);
+        self.inputs.push(input);
     }
 
     /// Stages a File or Directory at `path`; a Directory without a location is made, with its
@@ -907,7 +1028,7 @@ impl Staging {
             None => String::new(),
         };
         let content = (value.get("contents").and_then(Json::as_str)).filter(|_| location.is_none());
-        self.inputs.push(Input {
+        self.add(Input {
             path: path.to_owned(),
             source,
             directory,
@@ -917,6 +1038,10 @@ impl Staging {
         });
         if let Some(location) = location {
             self.placed.insert(location.to_owned(), path.to_owned());
+            if let Some(workdir) = &self.placing {
+                self.entries
+                    .insert(location.to_owned(), absolute(path, workdir));
+            }
         }
         if directory && location.is_none() {
             let listing = value.get("listing").and_then(Json::as_array);
@@ -982,6 +1107,20 @@ fn with_paths(value: &Json, path_of: &dyn Fn(&Json) -> Option<String>) -> Json {
         }
         other => other.clone(),
     }
+}
+
+/// An absolute path with its `.` and `..` parts resolved, or none when it climbs above the
+/// root.
+fn normalized(path: &str) -> Option<String> {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => drop(parts.pop()?),
+            part => parts.push(part),
+        }
+    }
+    Some(format!("/{}", parts.join("/")))
 }
 
 /// A path in the container, from the working folder when it is relative.
@@ -1193,7 +1332,11 @@ mod tests {
         assert_eq!(staging.inputs[1].content.as_deref(), Some("x=1"));
         assert!(staging.inputs[2].directory && staging.inputs[2].source.is_empty());
         let words = staging.texts(&genome, "inputs/genome");
-        assert_eq!(words, ["out/g.fa"], "the last place of a file is its path");
+        let path = ["/var/spool/cwl/out/g.fa"];
+        assert_eq!(
+            words, path,
+            "the last place of a file is its path in the container"
+        );
     }
 
     #[test]
@@ -1201,7 +1344,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let written = folder.path().join("cwl.output.json");
         let object = json!({"made": {"class": "File", "path": "/w/a.txt"},
-            "given": {"class": "File", "location": "in/b.txt"}, "count": 3});
+            "given": {"class": "File", "location": "in/b.txt"}, "count": 3,
+            "child": {"class": "File", "path": "/w/in/d/sub/c.txt"}});
         std::fs::write(&written, object.to_string()).unwrap();
         let file = |path: &str, location: &str| OutputFile {
             path: path.into(),
@@ -1225,6 +1369,7 @@ mod tests {
             arity: None,
             listing: None,
             code: None,
+            format: None,
         };
         let spec = wir::Task {
             workdir: Some("/w".into()),
@@ -1233,6 +1378,7 @@ mod tests {
                 rule("made", CaptureRule::Glob("none".into())),
                 rule("given", CaptureRule::Results),
                 rule("count", CaptureRule::Results),
+                rule("child", CaptureRule::Results),
             ],
             ..wir::Task::default()
         };
@@ -1245,14 +1391,21 @@ mod tests {
         let text = Type::File(wir::FileType::default());
         let ports = [
             port("made", text.clone()),
-            port("given", text),
+            port("given", text.clone()),
             port("count", Type::Int),
+            port("child", text),
         ];
-        let inputs = [Input {
-            path: "in/b.txt".into(),
-            source: "/data/b.txt".into(),
+        let staged = |path: &str, source: &str, directory| Input {
+            path: path.into(),
+            source: source.into(),
+            directory,
             ..Input::default()
-        }];
+        };
+        let inputs = [
+            staged("in/b.txt", "/data/b.txt", false),
+            staged("in/d", "/data/d", true),
+            staged("in/d/sub", "/other/sub", true),
+        ];
         let ended = Ended {
             outcome: &outcome,
             files: None,
@@ -1273,6 +1426,424 @@ mod tests {
         );
         assert_eq!(values["given"]["basename"], "b.txt");
         assert_eq!(values["count"], 3);
+        let child = &values["child"]["location"];
+        assert_eq!(child, "/other/sub/c.txt", "below the deepest staged folder");
+    }
+
+    #[test]
+    fn refuses_escaping_results() {
+        let folder = tempfile::tempdir().unwrap();
+        let written = folder.path().join("cwl.output.json");
+        let leak = json!({"class": "File", "path": "/var/lib/cwl/inputs/0/d/../private.txt"});
+        std::fs::write(&written, json!({"leak": leak}).to_string()).unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "cwl.output.json".into(),
+                location: written.to_string_lossy().into_owned(),
+                directory: false,
+                size: None,
+                digest: None,
+            }],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "leak".into(),
+            from: CaptureRule::Results,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/w".into()),
+            results: Some("cwl.output.json".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "leak".into(),
+            r#type: Type::File(wir::FileType::default()),
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let inputs = [Input {
+            path: "/var/lib/cwl/inputs/0/d".into(),
+            source: "/data/d".into(),
+            directory: true,
+            ..Input::default()
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &inputs,
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let error = capture(&spec, &ports, ended, &[]).unwrap_err();
+        assert!(
+            error.contains("did not make"),
+            "no file beside the staged folder: {error}"
+        );
+    }
+
+    #[test]
+    fn maps_working_folder() {
+        let folder = tempfile::tempdir().unwrap();
+        let written = folder.path().join("cwl.output.json");
+        let object = json!({"out": {"class": "Directory", "path": "."}});
+        std::fs::write(&written, object.to_string()).unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "cwl.output.json".into(),
+                location: written.to_string_lossy().into_owned(),
+                directory: false,
+                size: None,
+                digest: None,
+            }],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "out".into(),
+            from: CaptureRule::Results,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/var/spool/cwl".into()),
+            results: Some("cwl.output.json".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "out".into(),
+            r#type: Type::Directory,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        let out = &values["out"];
+        assert_eq!(
+            out["location"],
+            folder.path().to_string_lossy().as_ref(),
+            "{out}"
+        );
+        assert_eq!(out["basename"], ".", "as uwe's CWL driver names it");
+    }
+
+    #[test]
+    fn lists_result_folders() {
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("d");
+        std::fs::create_dir_all(made.join("e")).unwrap();
+        std::fs::write(made.join("e/f.txt"), "f").unwrap();
+        let written = folder.path().join("cwl.output.json");
+        let object = json!({"dir": {"class": "Directory", "path": "/w/d"}});
+        std::fs::write(&written, object.to_string()).unwrap();
+        let file = |path: &str, location: &std::path::Path, directory| OutputFile {
+            path: path.into(),
+            location: location.to_string_lossy().into_owned(),
+            directory,
+            size: None,
+            digest: None,
+        };
+        let outcome = Outcome {
+            files: vec![
+                file("d/", &made, true),
+                file("cwl.output.json", &written, false),
+            ],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "dir".into(),
+            from: CaptureRule::Results,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: Some(wir::Listing::Deep),
+            code: None,
+            format: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/w".into()),
+            results: Some("cwl.output.json".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "dir".into(),
+            r#type: Type::Directory,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        let inner = &values["dir"]["listing"][0];
+        assert_eq!(
+            inner["basename"], "e",
+            "the listing of the results: {values:?}"
+        );
+        assert_eq!(inner["listing"][0]["basename"], "f.txt", "a deep listing");
+    }
+
+    /// The format that `code` gives the File `a.txt` that a task made with `content`.
+    fn formatted_file(code: &str, content: &str) -> Json {
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("a.txt");
+        std::fs::write(&made, content).unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "a.txt".into(),
+                location: made.to_string_lossy().into_owned(),
+                directory: false,
+                size: None,
+                digest: Some("sha256:0000".into()),
+            }],
+            exit_code: 3,
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "text".into(),
+            from: CaptureRule::Glob("a.txt".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: Some(code.into()),
+        };
+        let spec = wir::Task {
+            captures: vec![rule],
+            success_codes: vec![3],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "text".into(),
+            r#type: Type::File(wir::FileType::default()),
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        values["text"]["format"].clone()
+    }
+
+    #[test]
+    fn formats_see_exits() {
+        let format = formatted_file("http://edam/code_$(runtime.exitCode)", "a\n");
+        assert_eq!(
+            format, "http://edam/code_3",
+            "format code sees the exit code"
+        );
+    }
+
+    #[test]
+    fn formats_see_checksums() {
+        let format = formatted_file("$(self.checksum)", "hello\n");
+        let sha1 = "sha1$f572d396fae9206628714fb2ce00f72e94f2258f";
+        assert_eq!(
+            format, sha1,
+            "format code sees the checksum of uwe's CWL driver"
+        );
+    }
+
+    #[test]
+    fn formats_read_files() {
+        let op: Op = serde_json::from_value(json!({
+            "path": "sort",
+            "kind": {"task": {}},
+            "inputs": [{"name": "kind", "type": "string"}],
+            "outputs": [{"name": "sorted", "type": {"file": {}}}]
+        }))
+        .unwrap();
+        let rule = wir::Capture {
+            output: "sorted".into(),
+            from: CaptureRule::Glob("a.txt".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: None,
+            format: Some("$(inputs.kind)".into()),
+        };
+        let spec = wir::Task {
+            command: vec![Argument::Text("sort".into())],
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let bound = Map::from_iter([("kind".to_owned(), json!("http://edam/format_1"))]);
+        let settings = JavaScriptSettings::default();
+        let task = build(
+            TaskId(1),
+            ("sort", "sort"),
+            &op,
+            &spec,
+            &bound,
+            (&settings, false),
+        );
+        assert_eq!(
+            task.unwrap().outputs,
+            ["a.txt"],
+            "a format takes no other files"
+        );
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("a.txt");
+        std::fs::write(&made, "a\n").unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "a.txt".into(),
+                location: made.to_string_lossy().into_owned(),
+                directory: false,
+                size: None,
+                digest: None,
+            }],
+            ..Outcome::default()
+        };
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &op.outputs, ended, &[]).unwrap();
+        assert_eq!(values["sorted"]["format"], "http://edam/format_1");
+    }
+
+    #[test]
+    fn codes_see_checksums() {
+        let folder = tempfile::tempdir().unwrap();
+        let made = folder.path().join("a.txt");
+        std::fs::write(&made, "hello\n").unwrap();
+        let outcome = Outcome {
+            files: vec![OutputFile {
+                path: "a.txt".into(),
+                location: made.to_string_lossy().into_owned(),
+                directory: false,
+                size: Some(6),
+                digest: Some("sha256:0000".into()),
+            }],
+            ..Outcome::default()
+        };
+        let rule = wir::Capture {
+            output: "sum".into(),
+            from: CaptureRule::Glob("a.txt".into()),
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: Some("$(self[0].checksum)".into()),
+            format: None,
+        };
+        let spec = wir::Task {
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "sum".into(),
+            r#type: Type::String,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let (bound, settings) = (Map::new(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &[],
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        let sha1 = "sha1$f572d396fae9206628714fb2ce00f72e94f2258f";
+        assert_eq!(values["sum"], sha1, "the checksum of uwe's CWL driver");
+    }
+
+    #[test]
+    fn codes_see_placements() {
+        let rule = wir::Capture {
+            output: "where".into(),
+            from: CaptureRule::Empty,
+            load_contents: false,
+            optional: false,
+            arity: None,
+            listing: None,
+            code: Some("$(inputs.file.path)".into()),
+            format: None,
+        };
+        let spec = wir::Task {
+            workdir: Some("/w".into()),
+            captures: vec![rule],
+            ..wir::Task::default()
+        };
+        let ports = [Port {
+            name: "where".into(),
+            r#type: Type::String,
+            flow: wir::Flow::Value,
+            default: None,
+        }];
+        let staged = |path: &str| Input {
+            path: path.into(),
+            source: "/data/a.txt".into(),
+            ..Input::default()
+        };
+        let inputs = [staged("/var/lib/cwl/inputs/0/a.txt"), staged("a.txt")];
+        let file = json!({"class": "File", "location": "/data/a.txt"});
+        let bound = Map::from_iter([("file".to_owned(), file)]);
+        let (outcome, settings) = (Outcome::default(), JavaScriptSettings::default());
+        let ended = Ended {
+            outcome: &outcome,
+            files: None,
+            bound: &bound,
+            inputs: &inputs,
+            simulated: false,
+            settings: &settings,
+            access: &Access::default(),
+        };
+        let (values, _) = capture(&spec, &ports, ended, &[]).unwrap();
+        assert_eq!(
+            values["where"], "/w/a.txt",
+            "the place of the working folder entry"
+        );
     }
 
     #[test]
@@ -1296,6 +1867,7 @@ mod tests {
             arity: None,
             listing: None,
             code: None,
+            format: None,
         };
         let spec = wir::Task {
             captures: vec![rule],
@@ -1325,6 +1897,99 @@ mod tests {
         );
         let error = capture(&spec, &ports, ended(false), &[]).unwrap_err();
         assert!(error.contains("2 files matched one value"), "{error}");
+    }
+
+    #[test]
+    fn binds_code_flags() {
+        let op: Op = serde_json::from_value(json!({
+            "path": "echo",
+            "kind": {"task": {}},
+            "inputs": [{"name": "flag", "type": "bool"}]
+        }))
+        .unwrap();
+        let flag = |prefix: Option<&str>| Argument::Code {
+            code: "$(inputs.flag)".into(),
+            this: None,
+            prefix: prefix.map(str::to_owned),
+            separate: true,
+            separator: None,
+            quote: true,
+        };
+        let spec = wir::Task {
+            command: vec![Argument::Text("echo".into()), flag(None), flag(Some("-v"))],
+            ..wir::Task::default()
+        };
+        let settings = JavaScriptSettings::default();
+        let command = |value: bool| {
+            let bound = Map::from_iter([("flag".to_owned(), json!(value))]);
+            let task = build(
+                TaskId(1),
+                ("echo", "echo"),
+                &op,
+                &spec,
+                &bound,
+                (&settings, false),
+            );
+            task.unwrap().command
+        };
+        assert_eq!(
+            command(true),
+            ["echo", "-v"],
+            "a bool is no word of its own"
+        );
+        assert_eq!(command(false), ["echo"]);
+    }
+
+    #[test]
+    fn replaces_repeated_places() {
+        let mut staging = Staging::default();
+        staging.place(&json!("a=1"), Some("config.txt"), false, "/var/spool/cwl");
+        staging.place(&json!("a=2"), Some("config.txt"), false, "/var/spool/cwl");
+        assert_eq!(staging.inputs.len(), 1, "one input per destination");
+        assert_eq!(
+            staging.inputs[0].content.as_deref(),
+            Some("a=2"),
+            "the later wins"
+        );
+    }
+
+    #[test]
+    fn binds_staged_literals() {
+        let op: Op = serde_json::from_value(json!({
+            "path": "cat",
+            "kind": {"task": {}},
+            "inputs": [{"name": "file", "type": {"file": {}}}]
+        }))
+        .unwrap();
+        let spec = wir::Task {
+            command: vec![
+                Argument::Text("cat".into()),
+                Argument::Code {
+                    code: "$(inputs.file)".into(),
+                    this: None,
+                    prefix: None,
+                    separate: true,
+                    separator: None,
+                    quote: true,
+                },
+            ],
+            staging: Some("/var/lib/cwl/inputs".into()),
+            ..wir::Task::default()
+        };
+        let literal = json!({"class": "File", "basename": "a.txt", "contents": "x"});
+        let bound = Map::from_iter([("file".to_owned(), literal)]);
+        let settings = JavaScriptSettings::default();
+        let task = build(
+            TaskId(1),
+            ("cat", "cat"),
+            &op,
+            &spec,
+            &bound,
+            (&settings, false),
+        );
+        let task = task.unwrap();
+        assert_eq!(task.command, ["cat", "/var/lib/cwl/inputs/0/a.txt"]);
+        assert_eq!(task.inputs.len(), 1, "the literal is staged once");
     }
 
     #[test]

@@ -87,12 +87,77 @@ pub fn document(
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| failure(format!("uwe: {error}")))?;
     let digest = task_model::Digest::sha256(text.as_bytes());
-    let path = folder.join(format!("{}.wir.json", digest.hex()));
+    let path = PathBuf::from(format!(
+        "{}{}.wir.json",
+        own(target, language),
+        digest.hex()
+    ));
     pruned(&folder);
     std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
     Ok((path, inputs, private))
+}
+
+/// The start of the paths of the compiled documents of the workflow `target`, by a digest of
+/// its path and language.
+fn own(target: &Path, language: Language) -> String {
+    let target = std::path::absolute(target).unwrap_or_else(|_| target.to_owned());
+    let identity = format!("{language:?} {}", target.display());
+    let digest = task_model::Digest::sha256(identity.as_bytes());
+    let digest = digest.hex();
+    let folder = cache_directory().join("scratch").join("lowered");
+    format!("{}/{}-", folder.display(), &digest[..16])
+}
+
+/// The document that a resume of a compiled run runs: the one that the run it continues ran,
+/// since compiling again may give another, like a Nextflow config that reads the time. The
+/// files of the values it names must be there, which a compile with the same values makes.
+pub fn resumed(
+    arguments: &Arguments,
+    target: &Path,
+    language: Language,
+    compiled: PathBuf,
+) -> Result<PathBuf, Failure> {
+    let Some(resume) = &arguments.resume else {
+        return Ok(compiled);
+    };
+    let database = crate::runs::open(arguments)?;
+    let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
+    let prefix = own(target, language);
+    let real = arguments.executor.as_deref() != Some("simulator");
+    let earlier = match resume {
+        crate::arguments::Resume::Run(id) => database.run(id).map_err(broken)?,
+        crate::arguments::Resume::Last => database.last_run_below(&prefix, real).map_err(broken)?,
+    };
+    // Without an earlier compiled run of this workflow, the run checks the resume itself.
+    let Some(earlier) = earlier.filter(|earlier| earlier.workflow.starts_with(&prefix)) else {
+        return Ok(compiled);
+    };
+    let ran = PathBuf::from(&earlier.workflow);
+    let text = std::fs::read_to_string(&ran).map_err(|error| {
+        failure(format!(
+            "uwe: run {} ran {}, which is gone ({error}); run the workflow without -resume",
+            earlier.id,
+            ran.display()
+        ))
+    })?;
+    let document = wir::parse(&text).map_err(|error| failure(format!("uwe: {error}")))?;
+    let values = cache_directory()
+        .join("scratch")
+        .join("lowered")
+        .join("values");
+    let missing = (document.sources.iter())
+        .map(|source| PathBuf::from(&source.location))
+        .find(|location| location.starts_with(&values) && !location.is_file());
+    if missing.is_some() {
+        return Err(failure(format!(
+            "uwe: run {} ran with other values than this run gives; resume it with the same \
+             values, or run without -resume",
+            earlier.id
+        )));
+    }
+    Ok(ran)
 }
 
 /// The file of the values `text` below `folder`, named by their digest so that compiling

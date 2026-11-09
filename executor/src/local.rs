@@ -861,6 +861,9 @@ impl LocalContainer {
                     run.image.reference
                 ))
             })?);
+        } else {
+            // An image that left the engine after the run pinned it, as by a prune, comes again.
+            image::available(&self.engine, &run.image.reference).await?;
         }
         let id = create_id(&self.engine, options, body, cancel)
             .await
@@ -1221,6 +1224,76 @@ mod tests {
             Pool::new(1, 64 << 20),
         );
         assert_eq!((smaller.pool.cpus(), smaller.pool.memory()), (1, 64 << 20));
+        server.finish();
+    }
+
+    /// An image that left the engine after the run pinned it, as by a prune, is pulled again
+    /// before its container is made, rather than failing every attempt alike.
+    #[tokio::test]
+    async fn pulls_removed_images() {
+        use crate::test_engine::Reply;
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let mut inspected = 0;
+        let image = format!("registry.test/tool@sha256:{}", "b".repeat(64));
+        let server = crate::test_engine::Server::start(4, move |request| {
+            let path = request
+                .path
+                .split('?')
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            log.lock()
+                .unwrap()
+                .push(format!("{} {path}", request.method));
+            match (request.method.as_str(), path.contains("/images/")) {
+                ("GET", true) => {
+                    inspected += 1;
+                    match inspected {
+                        1 => Reply::Json(404, serde_json::json!({"message": "No such image"})),
+                        _ => Reply::Json(200, serde_json::json!({"Id": "sha256:aa"})),
+                    }
+                }
+                ("POST", true) => Reply::Json(200, serde_json::json!({"status": "pulled"})),
+                _ => Reply::Json(400, serde_json::json!({"message": "no container"})),
+            }
+        })
+        .await;
+        let folder = tempfile::tempdir().unwrap();
+        let backend = LocalContainer::new(
+            server.engine.clone(),
+            folder.path().to_owned(),
+            Pool::new(1, 1 << 30),
+        );
+        let pinned = Image {
+            reference: image,
+            platform: None,
+        };
+        let access = Access::default();
+        let run = ContainerRun {
+            name: "task",
+            image: &pinned,
+            root: folder.path(),
+            workdir: None,
+            mounts: &[],
+            owner: (1000, 1000),
+            cpus: 1,
+            memory: None,
+            offline: true,
+            wrapper_path: None,
+            access: &access,
+        };
+        let (cancel, flags) = (CancellationToken::new(), Flags::default());
+        let ending = backend.run_to_end(&run, 1_000_000_000, None, &cancel, &flags);
+        assert!(ending.await.is_err(), "the engine makes no container");
+        let seen = seen.lock().unwrap().clone();
+        let pulled = seen
+            .iter()
+            .position(|request| request.contains("/images/create"));
+        let made = seen
+            .iter()
+            .position(|request| request.contains("/containers/create"));
+        assert!(pulled.is_some() && pulled < made, "{seen:?}");
         server.finish();
     }
 

@@ -284,7 +284,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "cache": { "enum": ["default", "never", "resume"] },
+        "cache": { "enum": ["default", "never", "resume", "rerun"] },
         "place": { "type": "string" },
         "resources": {
           "type": "object",

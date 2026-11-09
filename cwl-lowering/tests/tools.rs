@@ -326,6 +326,33 @@ fn times_with_cores() {
 }
 
 #[test]
+fn reruns_without_reuse() {
+    let lowering = lowered("rerun.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    assert_eq!(only_op(&lowering)["attributes"]["cache"], "rerun");
+    // An expression sets the cache rule in the limits of the task.
+    let lowering = lowered("fresh.cwl");
+    assert!(lowering.full(), "{:?}", lowering.kept);
+    let ops = &lowering.document.graphs[0].ops;
+    let task = ops.iter().find(|op| op.path == "fresh").unwrap();
+    let wir::Kind::Task(spec) = &task.kind else {
+        panic!("a task: {:?}", task.kind);
+    };
+    assert_eq!(spec.limits.as_deref(), Some("runtime.limits"));
+    assert_eq!(task.attributes.cache, None);
+    let limits = ops.iter().find(|op| op.path == "fresh.runtime.limits");
+    let wir::Kind::Expr(expr) = &limits.unwrap().kind else {
+        panic!("an expr of the limits");
+    };
+    assert!(
+        expr.code.contains("var reuse = (!inputs.fresh);"),
+        "{}",
+        expr.code
+    );
+    assert!(expr.code.contains("\"cache\": cache"), "{}", expr.code);
+}
+
+#[test]
 fn joins_computed_items() {
     let lowering = lowered("joined.cwl");
     assert!(lowering.full(), "{:?}", lowering.kept);

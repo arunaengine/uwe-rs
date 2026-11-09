@@ -310,7 +310,10 @@ fn execute_with(
     let shown = real && !quiet;
     let verbose = !quiet && !(shown && terminal::possible());
     let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
-    let mut sources = runtime.block_on(sources::collect(target, arguments));
+    let mut sources = match source.is_some() {
+        true => runtime.block_on(sources::compiled(target, arguments)),
+        false => runtime.block_on(sources::collect(target, arguments)),
+    };
     sources.leave_out(&private);
     if real && strict {
         sources.complete().map_err(Failure::setup)?;

@@ -100,7 +100,7 @@ pub fn compile(
     };
     let checkpoint = jobs.iter().find(|job| job.checkpoint);
     let graph = match checkpoint {
-        Some(job) => region(&setting, launch, &job.key.rule)?,
+        Some(_) => region(&setting, launch)?,
         None => jobs::graph(&jobs, &setting, launch, &targets),
     };
     let document = json!({
@@ -157,15 +157,7 @@ fn kept_job(job: &PlannedJob) -> Option<String> {
 
 /// The entry graph of a workflow with checkpoints: one dynamic region that the Snakemake
 /// planner plans again after each checkpoint, as a native run does.
-fn region(setting: &Setting, launch: &Launch, checkpoint: &str) -> Result<Json, String> {
-    let held = (unheld(launch).into_iter()).filter(|unheld| *unheld != "several targets");
-    let held: Vec<&str> = held.collect();
-    if !held.is_empty() || setting.values.is_some() {
-        let held = held.join(", ");
-        return Err(format!(
-            "rule {checkpoint} is a checkpoint, whose region cannot hold {held}"
-        ));
-    }
+fn region(setting: &Setting, launch: &Launch) -> Result<Json, String> {
     let targets = match launch.targets.is_empty() {
         true => setting.entry.iter().cloned().collect(),
         false => launch.targets.clone(),
@@ -176,6 +168,21 @@ fn region(setting: &Setting, launch: &Launch, checkpoint: &str) -> Result<Json, 
     }
     if !setting.configs.is_empty() {
         planner["configs"] = json!(setting.configs);
+    }
+    // The region plans with the config values and the options that pick jobs of the run.
+    if let Some(values) = &setting.values {
+        planner["config_values"] = json!(values);
+    }
+    let lists = [
+        ("until", &launch.until),
+        ("omit_from", &launch.omit_from),
+        ("forcerun", &launch.forcerun),
+    ];
+    for (field, list) in lists.into_iter().filter(|(_, list)| !list.is_empty()) {
+        planner[field] = json!(list);
+    }
+    if launch.forceall {
+        planner["forceall"] = json!(true);
     }
     let kind = json!({"dynamic": {"planner": {"snakemake": planner}}});
     Ok(json!({"name": "main", "ops": [{"path": "snakemake", "kind": kind}]}))

@@ -685,7 +685,12 @@
                     "source": { "$ref": "#/$defs/name" },
                     "targets": { "$ref": "#/$defs/texts" },
                     "profiles": { "$ref": "#/$defs/texts" },
-                    "configs": { "$ref": "#/$defs/names" }
+                    "configs": { "$ref": "#/$defs/names" },
+                    "config_values": { "type": "string" },
+                    "until": { "$ref": "#/$defs/texts" },
+                    "omit_from": { "$ref": "#/$defs/texts" },
+                    "forcerun": { "$ref": "#/$defs/texts" },
+                    "forceall": { "type": "boolean" }
                   }
                 }
               }

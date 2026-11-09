@@ -138,7 +138,7 @@ impl Compiled {
         base: &Path,
     ) -> Result<Json, String> {
         if let Some(scoped) = &self.nextflow {
-            return scoped.run(values, None, base);
+            return scoped.run(values, None, base, None);
         }
         let mut interpreter = Interpreter::new(host);
         let result = self.run(&mut interpreter, values, base)?;
@@ -162,6 +162,9 @@ impl Compiled {
         base: &Path,
         printer: &crate::driver::Printer,
     ) -> Result<Json, String> {
+        if let Some(scoped) = &self.nextflow {
+            return scoped.run(values, Some(arguments), base, Some(printer));
+        }
         self.call_in(&mut Printing(printer), values, arguments, base)
     }
 
@@ -173,7 +176,7 @@ impl Compiled {
         base: &Path,
     ) -> Result<Json, String> {
         if let Some(scoped) = &self.nextflow {
-            return scoped.run(values, Some(arguments), base);
+            return scoped.run(values, Some(arguments), base, None);
         }
         let mut interpreter = Interpreter::new(host);
         let Value::Closure(closure) = self.run(&mut interpreter, values, base)? else {

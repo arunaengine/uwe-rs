@@ -314,12 +314,13 @@ fn types_entry_ports() {
             .find(|port| port["name"] == name)
             .unwrap()
     };
-    assert_eq!(by("sheet")["type"], json!({"file": {}}));
-    let location = by("sheet")["default"]["location"].as_str().unwrap();
-    assert!(
-        location.ends_with("/sheet.csv") && location.starts_with('/'),
-        "{location}"
+    let path = json!({"union": [{"file": {}}, "string"]});
+    assert_eq!(
+        by("sheet")["type"],
+        path,
+        "a File, or its text as a direct run takes it"
     );
+    assert_eq!(by("sheet")["default"], "sheet.csv");
     assert_eq!(
         (&by("greeting")["type"], &by("count")["type"]),
         (&json!("string"), &json!("int"))

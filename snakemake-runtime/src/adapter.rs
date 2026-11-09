@@ -3,18 +3,17 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use python_evaluator::Value;
 use serde_json::{Value as Json, json};
-use workflow_graph::{DriverError, Outcome, Task};
+use workflow_graph::{DriverError, Outcome, Task, TaskId};
 
 use super::{Session, SnakemakeDriver, Taken};
 use crate::commands::{Reply, Request};
 use crate::files::Produced;
-use crate::rule::Action;
 
 /// The identity of a planned job: its rule, its wildcard values and the files it makes.
 /// Positions in the plan are no identity, since a new plan may order jobs differently.
@@ -24,6 +23,13 @@ pub struct JobKey {
     pub wildcards: BTreeMap<String, String>,
     pub outputs: Vec<String>,
 }
+
+/// A call to prepare a job: its identity, the other jobs of its group as compiled, and its
+/// input files as wir values by their selectors.
+pub(crate) type JobCall = (JobKey, Vec<JobKey>, Vec<(String, Json)>);
+
+/// Why a planned job cannot run yet: an input function of it reads the files of a checkpoint.
+pub const WAITING: &str = "it waits for a checkpoint";
 
 /// A planned job, in the order a native run asks for the tasks of jobs.
 #[derive(Clone, Debug, PartialEq)]
@@ -38,7 +44,8 @@ pub struct PlannedJob {
     pub outputs: Vec<JobFile>,
     /// The inputs that other jobs make, by input index, with that job and its output index.
     pub producers: Vec<Producer>,
-    /// Jobs that end before it besides its producers: checkpoints its input functions read.
+    /// Jobs that end before it besides its producers: checkpoints its input functions read,
+    /// and the jobs that read a file of its `update()` outputs as it was before.
     pub after: Vec<usize>,
     pub checkpoint: bool,
     /// The rule of its job or group job that a target of the run names, like the first rule
@@ -79,6 +86,8 @@ pub struct Producer {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Prepared {
     Run(Box<Task>),
+    /// The tasks of the CWL run of a `cwl:` job, whose outcomes end the job.
+    Tasks(Vec<Task>),
     Skipped(Vec<Json>),
     Failed(String),
 }
@@ -89,6 +98,8 @@ pub enum Prepared {
 pub enum JobResult {
     Accepted(Vec<Json>),
     Retry(Box<Task>),
+    /// More tasks of the CWL run of a `cwl:` job, maybe none while others run.
+    Tasks(Vec<Task>),
     Failed(String),
 }
 
@@ -100,6 +111,11 @@ pub enum Answer {
     Prepared(Prepared),
     Taken(JobResult),
     Commands(Vec<Task>),
+    /// The files of the targets by output name, as a finished native run names them, in
+    /// the working folder.
+    Targets(Json),
+    /// The jobs of a new plan after a checkpoint ended, or `None` without one.
+    Replanned(Option<Vec<PlannedJob>>),
 }
 
 pub(crate) type Answers = Arc<Mutex<Option<Answer>>>;
@@ -114,6 +130,21 @@ impl SnakemakeDriver {
         }
     }
 
+    /// The files of the targets of the jobs that [`SnakemakeDriver::plan_jobs`] planned, by
+    /// the names of the outputs of a run.
+    pub fn plan_targets(&mut self) -> Result<Json, DriverError> {
+        match self.ask_job(Request::Targets)? {
+            Answer::Targets(targets) => Ok(targets),
+            _ => Err(DriverError::new("the Snakemake session gave no targets")),
+        }
+    }
+
+    /// The jobs of a new plan once a checkpoint was accepted, as a native run plans them
+    /// then; `None` while no checkpoint ended since the last plan.
+    pub fn replan_jobs(&mut self) -> Result<Answer, DriverError> {
+        self.ask_job(Request::Replan)
+    }
+
     /// Starts a run whose jobs run one by one through [`SnakemakeDriver::prepare_job`]: plans
     /// the jobs, takes the lock and runs `onstart`, as a native run does before its tasks.
     /// It gives the jobs, or commands first.
@@ -121,14 +152,17 @@ impl SnakemakeDriver {
         self.ask_job(Request::Jobs(true))
     }
 
-    /// The first task of the job of `key`, with input files given as wir values by their
-    /// selectors, like `input/0`; the task the native run builds for that job, or commands.
+    /// The first task of the job of `key`, with the other jobs of its group as compiled and
+    /// input files given as wir values by their selectors, like `input/0`; the task the native
+    /// run builds for that job, or commands.
     pub fn prepare_job(
         &mut self,
         key: &JobKey,
+        group: &[JobKey],
         staged: Vec<(String, Json)>,
     ) -> Result<Answer, DriverError> {
-        self.ask_job(Request::Prepare(Box::new((key.clone(), staged))))
+        let call = (key.clone(), group.to_vec(), staged);
+        self.ask_job(Request::Prepare(Box::new(call)))
     }
 
     /// Takes the outcome of a task that a call gave: of a job, which gives the result or a
@@ -159,11 +193,13 @@ impl Session {
     pub(crate) fn answer(&mut self, request: Request, answers: &Answers) -> Reply {
         let answer = match request {
             Request::Jobs(start) => Answer::Jobs(self.planned_jobs(start)?),
+            Request::Replan => Answer::Replanned(self.replanned_jobs()?),
             Request::Prepare(request) => {
-                let (key, staged) = *request;
-                Answer::Prepared(self.prepare_key(&key, &staged)?)
+                let (key, group, staged) = *request;
+                Answer::Prepared(self.prepare_key(&key, &group, &staged)?)
             }
             Request::Take(outcome) => Answer::Taken(self.take_key(*outcome)?),
+            Request::Targets => Answer::Targets(self.target_files()),
             _ => return Err(DriverError::new("not a request of a job")),
         };
         *answers.lock().unwrap_or_else(PoisonError::into_inner) = Some(answer);
@@ -177,6 +213,22 @@ impl Session {
         if start {
             self.begin_run()?;
         }
+        self.listed_jobs(start)
+    }
+
+    /// The jobs of a new plan after an accepted checkpoint, as a native run plans again then;
+    /// `None` while no checkpoint ended since the last plan.
+    fn replanned_jobs(&mut self) -> Result<Option<Vec<PlannedJob>>, DriverError> {
+        if !std::mem::replace(&mut self.replan, false) {
+            return Ok(None);
+        }
+        self.plan()?;
+        self.take_lock()?;
+        self.listed_jobs(true).map(Some)
+    }
+
+    /// The planned jobs, each job alone or with the jobs of its task.
+    fn listed_jobs(&mut self, start: bool) -> Result<Vec<PlannedJob>, DriverError> {
         let planner = (self.planner.as_ref())
             .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         // Each planned job with the jobs of its task, and where each job and its files are.
@@ -194,9 +246,18 @@ impl Session {
             }
             planned.push(members);
         }
+        // A compiler learns which groups a run splits since their jobs run in several images.
+        let split: Vec<bool> = match start {
+            true => vec![false; planned.len()],
+            false => (planned.iter())
+                .map(|members| members.len() > 1 && self.split_images(members))
+                .collect(),
+        };
+        let planner = (self.planner.as_ref())
+            .ok_or_else(|| DriverError::new("the Snakemake session has not planned its jobs"))?;
         self.keys.clear();
         let mut jobs = Vec::new();
-        for members in &planned {
+        for (members, split) in planned.iter().zip(split) {
             let job = members[0];
             let key = job_key(planner, job);
             let named = JobKey {
@@ -208,7 +269,9 @@ impl Session {
             let mut producers = Vec::new();
             let mut after = Vec::new();
             for entry in members.iter().map(|member| &planner.jobs[*member]) {
-                for (file, producer) in &entry.dependencies {
+                // Jobs of the group make files for each other, not for the group.
+                let outside = (entry.dependencies.iter()).filter(|(_, job)| !members.contains(job));
+                for (file, producer) in outside {
                     let made = planner.jobs[*producer].output_files();
                     let (Some(input), Some(output), Some((job, offset))) = (
                         inputs.iter().position(|input| input == file),
@@ -222,7 +285,7 @@ impl Session {
                         job: *job,
                         output: offset + output,
                     };
-                    if !members.contains(&producer.job) && !producers.contains(&producer) {
+                    if !producers.contains(&producer) {
                         producers.push(producer);
                     }
                 }
@@ -233,18 +296,38 @@ impl Session {
                         .find(|other| planner.jobs[**other].output_files().contains(file))?;
                     position.get(maker).map(|(job, _)| *job)
                 }));
+                // An `update()` waits for the jobs that read the file as it was before.
+                let updated: Vec<&str> = (entry.output.values.iter())
+                    .filter(|value| value.tag("update").is_some())
+                    .filter_map(Value::as_str)
+                    .collect();
+                let readers = (self.order.iter()).filter(|reader| {
+                    !members.contains(reader)
+                        && (planner.jobs[**reader].input.values.iter()).any(|value| {
+                            value.tag("before_update").is_some()
+                                && value.as_str().is_some_and(|file| updated.contains(&file))
+                        })
+                });
+                after
+                    .extend(readers.filter_map(|reader| position.get(reader).map(|(job, _)| *job)));
             }
-            let native = members.iter().find_map(|member| {
-                let entry = &planner.jobs[*member];
-                if entry.incomplete {
-                    Some("it waits for a checkpoint".to_owned())
-                } else if members.len() == 1 && !crate::services::service_files(entry).is_empty() {
-                    Some("it has service outputs".to_owned())
-                } else if matches!(planner.rules[entry.rule].action, Action::Cwl(_)) {
-                    Some("it runs a CWL document".to_owned())
-                } else {
-                    None
-                }
+            after.sort_unstable();
+            after.dedup();
+            let split =
+                split.then_some("its group runs jobs of several images, which a run splits");
+            let native = split.map(str::to_owned).or_else(|| {
+                members.iter().find_map(|member| {
+                    let entry = &planner.jobs[*member];
+                    if entry.incomplete {
+                        Some(WAITING.to_owned())
+                    } else if members.len() == 1
+                        && !crate::services::service_files(entry).is_empty()
+                    {
+                        Some("it has service outputs".to_owned())
+                    } else {
+                        None
+                    }
+                })
             });
             let needed = |member: &usize| self.needrun.get(member).copied().unwrap_or(false);
             jobs.push(PlannedJob {
@@ -271,6 +354,32 @@ impl Session {
             });
         }
         Ok(jobs)
+    }
+
+    /// Whether the jobs of a group build tasks of several images, which a run splits into
+    /// separate tasks; also when a task cannot be built while the jobs are planned.
+    fn split_images(&mut self, members: &[usize]) -> bool {
+        let mut images = HashSet::new();
+        for member in members {
+            let Some(planner) = self.planner.as_ref() else {
+                return true;
+            };
+            let entry = &planner.jobs[*member];
+            let state = self.state.borrow();
+            let setting = crate::task::TaskSetting {
+                state: &state,
+                files: &self.files,
+                workdir: &self.workdir,
+                embedded: &self.embedded,
+                sources: &self.sources,
+            };
+            let rule = &planner.rules[entry.rule];
+            match crate::task::build(&mut self.interpreter, &setting, rule, entry, TaskId(0), 1) {
+                Ok(built) => images.insert(built.task.image),
+                Err(_) => return true,
+            };
+        }
+        images.len() > 1
     }
 
     /// The jobs that run in one task with `job`, it first: a service job with the jobs that
@@ -301,11 +410,22 @@ impl Session {
     fn prepare_key(
         &mut self,
         key: &JobKey,
+        group: &[JobKey],
         staged: &[(String, Json)],
     ) -> Result<Prepared, DriverError> {
         let job = self.job_of(key)?;
         let members = self.members(job);
         let needed = |member: &usize| self.needrun.get(member).copied().unwrap_or(false);
+        // A run groups only jobs that need work; a compiled group of current jobs is skipped.
+        if members.len() < group.len() + 1 {
+            let recorded = std::iter::once(Ok(job)).chain(group.iter().map(|key| self.job_of(key)));
+            let recorded: Vec<usize> = recorded.collect::<Result<_, _>>()?;
+            if recorded.iter().any(needed) {
+                let message = format!("the run groups the job of rule {} otherwise", key.rule);
+                return Err(DriverError::new(message));
+            }
+            return Ok(Prepared::Skipped(self.group_files(&recorded)));
+        }
         if !members.iter().any(needed) {
             return Ok(Prepared::Skipped(self.group_files(&members)));
         }
@@ -348,9 +468,21 @@ impl Session {
             });
         }
         let task = self.prepare_job(job)?;
-        if self.cwl_jobs.remove(&job).is_some() {
-            let message = format!("the job of rule {} runs a CWL document", key.rule);
-            return Err(DriverError::new(message));
+        if let Some(cwl) = self.cwl_jobs.remove(&job) {
+            let Some(task) = self.start_job(job, task)? else {
+                let failure = self.failures.last().cloned().unwrap_or_default();
+                return Ok(Prepared::Failed(failure));
+            };
+            let tasks = self.start_cwl(job, task.id, cwl)?;
+            return Ok(match self.cwl_ended.take() {
+                None => Prepared::Tasks(tasks),
+                Some(ended) => match self.take_key(ended)? {
+                    JobResult::Accepted(made) => Prepared::Skipped(made),
+                    JobResult::Failed(message) => Prepared::Failed(message),
+                    JobResult::Retry(task) => Prepared::Run(task),
+                    JobResult::Tasks(tasks) => Prepared::Tasks(tasks),
+                },
+            });
         }
         match self.start_job(job, task)? {
             Some(task) => Ok(Prepared::Run(Box::new(task))),
@@ -362,6 +494,13 @@ impl Session {
     }
 
     fn take_key(&mut self, mut outcome: Outcome) -> Result<JobResult, DriverError> {
+        if let Some(job) = self.cwl_tasks.remove(&outcome.id) {
+            let more = self.complete_cwl(job, outcome)?;
+            return match self.cwl_ended.take() {
+                Some(ended) => self.take_key(ended),
+                None => Ok(JobResult::Tasks(more)),
+            };
+        }
         self.unplace(&mut outcome)?;
         let identity = (outcome.id, outcome.attempt);
         let Some(job) = self.jobs_of_tasks.get(&outcome.id).copied() else {
@@ -418,12 +557,14 @@ impl Session {
         let Some(planner) = &self.planner else {
             return Vec::new();
         };
-        (planner.jobs[job].output_files().iter())
-            .map(|file| {
+        (job_files(&planner.jobs[job]).iter())
+            .map(|made| {
+                let file = &made.path;
                 let path = self.interpreter.host.resolve(file.trim_end_matches('/'));
                 let (location, directory) = self.files.location(&path).unwrap_or_else(|| {
-                    let directory = path.is_dir() || file.ends_with('/');
-                    (path.clone(), directory)
+                    // A `directory()` output that is not there yet is still a folder.
+                    let marked = made.flags.iter().any(|flag| flag == "directory");
+                    (path.clone(), marked || path.is_dir() || file.ends_with('/'))
                 });
                 let basename = Path::new(file.trim_end_matches('/')).file_name();
                 json!({

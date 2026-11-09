@@ -40,49 +40,62 @@ fn prints_compiled_snakefiles() {
         .filter_map(|op| op["kind"]["task"]["builder"]["snakemake_job"]["task"]["call"].as_str())
         .collect();
     assert_eq!(calls, ["a", "b", "all"]);
+    // Two files between jobs, and the target files to the output of the graph.
     assert_eq!(
         document["graphs"][0]["edges"].as_array().map(Vec::len),
-        Some(2)
+        Some(3)
     );
+    assert_eq!(document["graphs"][0]["outputs"][0]["name"], "targets");
 }
 
 #[test]
 fn names_native_parts() {
-    let snakefile = "rule all:\n    input: \"b.txt\"\n\ncheckpoint a:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
+    let snakefile = "storage:\n    provider=\"xrootd\"\n\nrule all:\n    output: \"a.txt\"\n    shell: \"touch {output}\"\n";
     let (code, printed, errors) = lower(snakefile);
     assert_eq!(code, 0, "{errors}");
-    let expected = "uwe: op snakemake stays a native Snakemake op: rule a is a checkpoint\n";
-    assert_eq!(errors, expected);
+    let expected = "uwe: op snakemake stays a native Snakemake op: Snakefile:1: Not supported yet:";
+    assert!(errors.starts_with(expected), "{errors}");
     let document: Json = serde_json::from_str(&printed).expect("prints JSON");
     let native = &document["graphs"][0]["ops"][0]["kind"]["native"];
     assert_eq!(native["language"], "snakemake");
 }
 
-/// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
-/// the config values of the command line in the document.
-#[test]
-fn runs_compiled_snakefiles() {
+/// A group of jobs in two images, which keeps a workflow one native op.
+const IMAGES: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    input: \"in.txt\"\n    output: \"a.txt\"\n    group: \"g\"\n    container: \"docker://alpine\"\n    shell: \"cp {input} {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    group: \"g\"\n    container: \"docker://debian\"\n    shell: \"cp {input} {output}\"\n";
+
+const WORD: &str = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
+
+/// Runs `uwe graph <arguments> -lowered -format json` on `snakefile` in a folder of its own,
+/// with `files` beside it; the folder and the graph it printed.
+fn graph_lowered(
+    snakefile: &str,
+    files: &[(&str, &str)],
+    arguments: &[&str],
+) -> (tempfile::TempDir, Json) {
     let folder = tempfile::tempdir().expect("a temporary directory");
     let root = folder.path();
-    let snakefile = "rule all:\n    input: \"b.txt\"\n\nrule a:\n    output: \"a.txt\"\n    shell: \"echo {config[word]} > {output}\"\n\nrule b:\n    input: \"a.txt\"\n    output: \"b.txt\"\n    shell: \"cp {input} {output}\"\n";
     std::fs::write(root.join("Snakefile"), snakefile).expect("writes the Snakefile");
+    for (name, text) in files {
+        std::fs::write(root.join(name), text).expect("writes a file");
+    }
     let output = common::command()
-        .args([
-            "graph",
-            "Snakefile",
-            "-lowered",
-            "-format",
-            "json",
-            "--config",
-            "word=hello",
-        ])
+        .args(["graph", "Snakefile", "-lowered", "-format", "json"])
+        .args(arguments)
         .current_dir(root)
         .env("XDG_CACHE_HOME", root.join("cache"))
         .output()
         .expect("runs uwe");
     let errors = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{errors}");
-    let graph: Json = serde_json::from_slice(&output.stdout).expect("prints JSON");
+    let graph = serde_json::from_slice(&output.stdout).expect("prints JSON");
+    (folder, graph)
+}
+
+/// `uwe graph -lowered` runs the jobs of a compiled Snakefile through the job adapter, with
+/// the config values of the command line in the document.
+#[test]
+fn runs_compiled_snakefiles() {
+    let (_folder, graph) = graph_lowered(WORD, &[], &["--config", "word=hello"]);
     let nodes = graph["nodes"].as_array().expect("nodes");
     let names: Vec<&str> = (nodes.iter())
         .filter_map(|node| node["task"]["name"].as_str())
@@ -93,4 +106,61 @@ fn runs_compiled_snakefiles() {
             .as_str()
             .is_some_and(|script| script.contains("echo hello"))
     );
+}
+
+/// A config file of `-inputs` is a config source of the document, not an input of its graph.
+#[test]
+fn takes_config_inputs() {
+    let (_folder, graph) = graph_lowered(
+        WORD,
+        &[("config.yaml", "word: hello\n")],
+        &["-inputs", "config.yaml"],
+    );
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let script = nodes[0]["task"]["script"].as_str().unwrap_or_default();
+    assert!(script.contains("echo hello"), "{script}");
+}
+
+/// A Snakefile that stays one native op runs in the launch folder, where its inputs are.
+#[test]
+fn starts_in_place() {
+    let (folder, graph) = graph_lowered(IMAGES, &[("in.txt", "raw\n")], &[]);
+    let nodes = graph["nodes"].as_array().expect("nodes");
+    let copy = (nodes.iter())
+        .find(|node| node["task"]["step"] == "a")
+        .expect("the task of rule a");
+    let source = copy["task"]["inputs"][0]["source"]
+        .as_str()
+        .unwrap_or_default();
+    assert_eq!(std::path::Path::new(source), folder.path().join("in.txt"));
+}
+
+/// The config values of a compiled run stay in no file beside its compiled document.
+#[test]
+fn keeps_values_private() {
+    let (folder, graph) = graph_lowered(WORD, &[], &["--config", "word=hush4711"]);
+    let script = graph["nodes"][0]["task"]["script"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(script.contains("hush4711"), "{script}");
+    let lowered = folder.path().join("cache/uwe/scratch/lowered");
+    assert!(lowered.is_dir());
+    let mut pending = vec![lowered];
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            pending.extend(
+                std::fs::read_dir(&path)
+                    .unwrap()
+                    .flatten()
+                    .map(|entry| entry.path()),
+            );
+        } else if let Ok(text) = std::fs::read(&path) {
+            let text = String::from_utf8_lossy(&text);
+            assert!(
+                !text.contains("hush4711"),
+                "{} keeps the value",
+                path.display()
+            );
+        }
+    }
 }

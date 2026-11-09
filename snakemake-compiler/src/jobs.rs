@@ -15,7 +15,12 @@ use crate::{SOURCE, Setting};
 const UNDELIVERED: [&str; 3] = ["temp", "pipe", "service"];
 
 /// The entry graph `main` of the jobs, in the order of the plan.
-pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> Json {
+pub(crate) fn graph(
+    jobs: &[PlannedJob],
+    setting: &Setting,
+    launch: &Launch,
+    targets: &Json,
+) -> Json {
     let paths = paths(jobs);
     let plan = plan(setting, launch);
     let mut ops = Vec::new();
@@ -65,7 +70,7 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> 
         if !setting.configs.is_empty() {
             task["configs"] = json!(setting.configs);
         }
-        let mut builder = json!({"task": task});
+        let mut builder = json!({"task": task, "layout": crate::launch::layout(jobs, index)});
         if !job.key.wildcards.is_empty() {
             builder["wildcards"] = json!(job.key.wildcards);
         }
@@ -83,9 +88,13 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> 
             "kind": {"task": {"builder": {"snakemake_job": builder}}},
             "origin": {"source": SOURCE, "at": rule},
         });
+        let after: Vec<Json> = (job.after.iter())
+            .map(|before| json!({"op": paths[*before], "on": ["succeeded"]}))
+            .collect();
         for (field, value) in [
             ("inputs", inputs),
             ("outputs", outputs),
+            ("after", after),
             ("effects", effects),
         ] {
             if !value.is_empty() {
@@ -94,7 +103,103 @@ pub(crate) fn graph(jobs: &[PlannedJob], setting: &Setting, launch: &Launch) -> 
         }
         ops.push(op);
     }
-    json!({"name": "main", "ops": ops, "edges": edges})
+    let mut outputs = Vec::new();
+    for (name, value) in targets.as_object().into_iter().flatten() {
+        let Some((op, edge, port)) = result(jobs, &paths, name, value) else {
+            continue;
+        };
+        ops.push(op);
+        edges.push(edge);
+        outputs.push(port);
+    }
+    json!({"name": "main", "outputs": outputs, "ops": ops, "edges": edges})
+}
+
+/// The output `name` of the entry graph with the target files of `value`, as a native run
+/// names them: an expr op that gives them once the ops that make them have ended.
+fn result(
+    jobs: &[PlannedJob],
+    paths: &[String],
+    name: &str,
+    value: &Json,
+) -> Option<(Json, Json, Json)> {
+    let files: Vec<&Json> = match value {
+        Json::Array(items) => items.iter().collect(),
+        file => vec![file],
+    };
+    let mut locations = Vec::new();
+    let mut after = Vec::new();
+    for file in &files {
+        let location = file["location"].as_str()?;
+        // The text of a WDL string takes placeholders, which a path rarely holds.
+        if location.contains("~{") || location.contains("${") {
+            return None;
+        }
+        locations.push(serde_json::to_string(location).ok()?);
+        let made = (jobs.iter().enumerate())
+            .flat_map(|(index, job)| {
+                job.outputs
+                    .iter()
+                    .map(move |made| (index, made.path.trim_end_matches('/')))
+            })
+            .filter(|(_, path)| location == *path || location.ends_with(&format!("/{path}")))
+            .max_by_key(|(_, path)| path.len());
+        if let Some((index, _)) = made
+            && !after
+                .iter()
+                .any(|before: &Json| before["op"] == paths[index])
+        {
+            after.push(json!({"op": paths[index], "on": ["succeeded"]}));
+        }
+    }
+    let class = |file: &Json| match file["class"] == "Directory" {
+        true => json!("directory"),
+        false => json!({"file": {}}),
+    };
+    let classes: Vec<Json> = files.iter().map(|file| class(file)).collect();
+    let mixed = classes.windows(2).any(|pair| pair[0] != pair[1]);
+    let mut library = Vec::new();
+    let (code, kind) = match value {
+        // Files and folders in one list are typed one by one, the list as either.
+        Json::Array(_) if mixed => {
+            let names: Vec<String> = (0..files.len())
+                .map(|index| format!("item_{index}"))
+                .collect();
+            for ((name, location), class) in names.iter().zip(&locations).zip(&classes) {
+                let declared = if *class == json!("directory") {
+                    "Directory"
+                } else {
+                    "File"
+                };
+                library.push(format!("{declared} {name} = {location}"));
+            }
+            let items = json!({"union": [{"file": {}}, "directory"]});
+            (
+                format!("[{}]", names.join(", ")),
+                json!({"array": {"items": items}}),
+            )
+        }
+        Json::Array(_) => {
+            let items = classes.first().cloned().unwrap_or(json!({"file": {}}));
+            (
+                format!("[{}]", locations.join(", ")),
+                json!({"array": {"items": items}}),
+            )
+        }
+        file => (locations.join(""), class(file)),
+    };
+    let path = format!("result.{name}");
+    let mut expr = json!({"language": "wdl", "code": code});
+    if !library.is_empty() {
+        expr["library"] = json!(library);
+    }
+    let mut op = json!({"path": path, "kind": {"expr": expr},
+        "outputs": [{"name": "value", "type": kind}]});
+    if !after.is_empty() {
+        op["after"] = json!(after);
+    }
+    let edge = json!({"from": {"op": path, "port": "value"}, "to": {"port": name}});
+    Some((op, edge, json!({"name": name, "type": kind})))
 }
 
 /// The fields of the plan settings of a launch that are set, as every job carries them.

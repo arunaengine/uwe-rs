@@ -33,24 +33,37 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// The wir document that a run with `-lowered` runs instead of a CWL or WDL file, and for WDL
-/// the inputs file of its entry graph. They are written below the scratch folder, named by
-/// their digest, and the sources keep absolute locations.
+/// The wir document that a `-lowered` run runs, below the scratch folder by its digest with
+/// absolute source locations, the WDL inputs file of its entry graph, and the files of the
+/// values of the run, which only the user reads and which go when they are dropped.
 pub fn document(
     target: &Path,
     language: Language,
     arguments: &Arguments,
     setup: &Setup,
-) -> Result<(PathBuf, Option<PathBuf>), Failure> {
+) -> Result<(PathBuf, Option<PathBuf>, Vec<tempfile::TempPath>), Failure> {
     let folder = cache_directory().join("scratch").join("lowered");
+    let mut private = Vec::new();
     let (document, inputs) = match language {
         Language::Wdl => {
             let lowering = wdl(target, arguments, &folder)?;
             let inputs = converted(&lowering, arguments, &folder)?;
-            (lowering.document, inputs)
+            let path = inputs.as_ref().map(|inputs| inputs.to_path_buf());
+            private.extend(inputs);
+            (lowering.document, path)
+        }
+        Language::Snakemake => {
+            let mut document = snakemake(target, arguments, &folder)?.document;
+            let place = |text: &str| {
+                let file = written(&folder, "uwe-config-", text).map_err(|error| error.message)?;
+                let location = file.to_string_lossy().into_owned();
+                private.push(file);
+                Ok(location)
+            };
+            snakemake_compiler::place_values(&mut document, place).map_err(failure)?;
+            (document, None)
         }
         Language::Nextflow => (nextflow(arguments, setup, target, &folder)?, None),
-        Language::Snakemake => (snakemake(target, arguments, &folder)?.document, None),
         Language::Argo => (argo(target, arguments, &folder)?.document, None),
         _ => (lowered(target, language, &folder)?.document, None),
     };
@@ -61,7 +74,23 @@ pub fn document(
     std::fs::create_dir_all(&folder)
         .and_then(|()| std::fs::write(&path, text))
         .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
-    Ok((path, inputs))
+    Ok((path, inputs, private))
+}
+
+/// A file of `text` below `folder` that only the user reads, removed when it is dropped.
+fn written(folder: &Path, prefix: &str, text: &str) -> Result<tempfile::TempPath, Failure> {
+    let shown = |error: std::io::Error| {
+        failure(format!(
+            "uwe: cannot write below {}: {error}",
+            folder.display()
+        ))
+    };
+    std::fs::create_dir_all(folder).map_err(shown)?;
+    let mut file = (tempfile::Builder::new().prefix(prefix).suffix(".json"))
+        .tempfile_in(folder)
+        .map_err(shown)?;
+    std::io::Write::write_all(&mut file, text.as_bytes()).map_err(shown)?;
+    Ok(file.into_temp_path())
 }
 
 fn lowered(
@@ -173,12 +202,12 @@ fn argo(
 }
 
 /// The inputs file of the entry graph from the WDL input file and the parameters of a run,
-/// below `folder`.
+/// below `folder`, which only the user reads.
 fn converted(
     lowering: &wdl_lowering::Lowering,
     arguments: &Arguments,
     folder: &Path,
-) -> Result<Option<PathBuf>, Failure> {
+) -> Result<Option<tempfile::TempPath>, Failure> {
     let mut values = match &arguments.inputs {
         None if arguments.params.is_empty() => return Ok(None),
         None => serde_json::Value::Object(Default::default()),
@@ -201,11 +230,5 @@ fn converted(
     {
         values.extend(given);
     }
-    let text = values.to_string();
-    let digest = task_model::Digest::sha256(text.as_bytes());
-    let path = folder.join(format!("{}.inputs.json", digest.hex()));
-    std::fs::create_dir_all(folder)
-        .and_then(|()| std::fs::write(&path, text))
-        .map_err(|error| failure(format!("uwe: cannot write {}: {error}", path.display())))?;
-    Ok(Some(path))
+    written(folder, "uwe-inputs-", &values.to_string()).map(Some)
 }

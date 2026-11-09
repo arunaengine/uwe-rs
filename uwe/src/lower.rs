@@ -279,6 +279,11 @@ fn resumed(
             earlier.id
         )));
     }
+    // A Snakefile compiles into the same jobs again, with the options that pick them, like
+    // `-forcerun`, which the document of the earlier run does not have.
+    if language == Language::Snakemake {
+        return Ok((compiled, None));
+    }
     // A config file that held a secret was read where it was, and is gone with its run.
     if (locations.iter()).any(|location| location.is_absolute() && !location.exists()) {
         return Ok((compiled, None));

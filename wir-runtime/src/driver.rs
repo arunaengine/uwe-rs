@@ -22,7 +22,7 @@ use crate::callback::Callbacks;
 use crate::child::Child;
 use crate::cwl;
 use crate::engine;
-use crate::inputs;
+use crate::inputs::{self, SecretInputs};
 use crate::looping;
 use crate::nextflow;
 use crate::operator;
@@ -56,6 +56,8 @@ pub struct Settings {
     pub print_sink: Printer,
     /// The adapters that run dialect tasks, by builder name.
     pub adapters: Adapters,
+    /// Values of entry graph inputs that no file may hold; they win over the inputs file.
+    pub secret_inputs: SecretInputs,
 }
 
 /// A function of the host that takes printed text.
@@ -131,6 +133,7 @@ impl Default for Settings {
             repositories: Repositories::default(),
             print_sink: Printer::default(),
             adapters: Adapters::default(),
+            secret_inputs: SecretInputs::default(),
         }
     }
 }
@@ -215,7 +218,7 @@ pub struct WirDriver {
 }
 
 impl WirDriver {
-    pub fn new(launch: &Launch, settings: Settings) -> Result<Self, DriverError> {
+    pub fn new(launch: &Launch, mut settings: Settings) -> Result<Self, DriverError> {
         let shown = launch.target.display();
         let text = std::fs::read_to_string(&launch.target)
             .map_err(|error| DriverError::new(format!("cannot read {shown}: {error}")))?;
@@ -235,7 +238,8 @@ impl WirDriver {
             let inner = graph.ops.iter_mut().flat_map(|op| op.inputs.iter_mut());
             graph.inputs.iter_mut().chain(inner)
         });
-        for default in ports.filter_map(|port| port.default.as_mut()) {
+        let held = settings.secret_inputs.0.values_mut();
+        for default in ports.filter_map(|port| port.default.as_mut()).chain(held) {
             inputs::absolute(default, &base);
             inputs::filled(default, launch.simulated);
         }
@@ -1215,7 +1219,8 @@ impl Driver for WirDriver {
             })
             .collect();
         let remote = &self.settings.cwl.remote;
-        let mut values = inputs::read(&self.launch, &given, &self.document.types, remote)?;
+        let secret = &self.settings.secret_inputs;
+        let mut values = inputs::read(&self.launch, secret, &given, &self.document.types, remote)?;
         let streams: Vec<String> = (ports.iter())
             .filter(|port| !port.flow.is_value())
             .map(|port| port.name.clone())

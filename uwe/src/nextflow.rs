@@ -530,7 +530,7 @@ pub fn compile(
     setup: &Setup,
     base: &std::path::Path,
     native: Option<&str>,
-) -> Result<nextflow_compiler::Compilation, String> {
+) -> Result<nextflow_compiler::Compilation, DriverError> {
     // Workflow code that runs while the pipeline compiles reaches what the run may reach, and
     // prints where the run prints.
     let console = Console {

@@ -560,7 +560,8 @@ impl WirDriver {
         };
         let (spec, op) = task::patched(spec, &node.op, &patch);
         let script = (&self.settings.cwl.javascript, self.launch.simulated);
-        let mut task = task::build(id, (&node.name, &node.step), &op, &spec, bound, script)?;
+        let name = node.task_name();
+        let mut task = task::build(id, (&name, &node.step), &op, &spec, bound, script)?;
         task.site = op.attributes.place.clone();
         // A task of a CWL tool keeps its output streams as files, as uwe's CWL driver does.
         let source = op.origin.as_ref().map(|origin| origin.source.as_str());
@@ -1637,7 +1638,11 @@ fn mark(task: &mut Task, node: &Node, prefixed: bool) {
         || effects
             .iter()
             .any(|effect| !matches!(effect, Effect::Publish(_)));
-    if prefixed {
+    // A native op with a name runs one task, like a call of WDL, which takes its name and step.
+    let named = matches!(node.op.kind, Kind::Native(_)) && node.op.attributes.name.is_some();
+    if prefixed && named {
+        (task.name, task.step) = (node.task_name(), node.step.clone());
+    } else if prefixed {
         task.name = format!("{}: {}", node.name, task.name);
     }
     match node.op.attributes.cache {

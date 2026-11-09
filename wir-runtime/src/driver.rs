@@ -1180,7 +1180,8 @@ impl Driver for WirDriver {
                 },
             })
             .collect();
-        let mut values = inputs::read(&self.launch, &given, &self.document.types)?;
+        let remote = &self.settings.cwl.remote;
+        let mut values = inputs::read(&self.launch, &given, &self.document.types, remote)?;
         let streams: Vec<String> = (ports.iter())
             .filter(|port| !port.flow.is_value())
             .map(|port| port.name.clone())

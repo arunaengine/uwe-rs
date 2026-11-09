@@ -124,6 +124,10 @@ fn works_in_directories() {
     write(&project, "workflow/Snakefile", snakefile);
     write(&project, ".test/config/config.yaml", "data: data/in.txt\n");
     write(&project, ".test/data/in.txt", "reads\n");
+    write(&project, ".test/run.sh", "#!/bin/sh\n");
+    use std::os::unix::fs::PermissionsExt;
+    let executable = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(project.join(".test/run.sh"), executable).unwrap();
     let launch = Launch {
         target: project.clone(),
         scratch: folder.path().join("scratch"),
@@ -146,7 +150,13 @@ fn works_in_directories() {
     assert_eq!(Path::new(&input.source), started.join("data/in.txt"));
     let mut kept: Vec<_> = walkdir(&project.join(".test"));
     kept.sort();
-    assert_eq!(kept, ["config/config.yaml", "data/in.txt"]);
+    assert_eq!(kept, ["config/config.yaml", "data/in.txt", "run.sh"]);
+    // A script of the folder stays executable in the copy.
+    let mode = std::fs::metadata(started.join("run.sh"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o755);
 }
 
 /// The files below `folder`, relative to it.

@@ -169,7 +169,14 @@ impl Host for Builder<'_> {
                 mode: 0o644,
             }));
         }
-        self.base.metadata(path)
+        let metadata = self.base.metadata(path)?;
+        // What the build learns of a file, like `exists()`, pins the document too.
+        if self.defer {
+            let known = metadata.as_ref().map(|found| (found.directory, found.size));
+            let location = format!("{}#metadata", path.uri());
+            self.keep_digest(location, format!("{known:?}").as_bytes());
+        }
+        Ok(metadata)
     }
 
     /// Writes, or for the compiler keeps the file, which the compiled run writes when it starts.
@@ -258,7 +265,14 @@ impl Host for Builder<'_> {
     }
 
     fn list(&mut self, directory: &PathValue) -> Result<Vec<(String, bool)>, Error> {
-        self.base.list(directory)
+        let listed = self.base.list(directory)?;
+        if self.defer {
+            let mut names: Vec<&(String, bool)> = listed.iter().collect();
+            names.sort();
+            let location = format!("{}#listing", directory.uri());
+            self.keep_digest(location, format!("{names:?}").as_bytes());
+        }
+        Ok(listed)
     }
 
     fn plugin_function(
@@ -885,7 +899,12 @@ impl Builder<'_> {
 
     /// Keeps the digest of a file that the build for the compiler read.
     fn keep_read(&mut self, path: &PathValue, bytes: &[u8]) {
-        let location = path.uri();
+        self.keep_digest(path.uri(), bytes);
+    }
+
+    /// Keeps the digest of what the build for the compiler learned at a location: the bytes of
+    /// a file, or the metadata or listing of one, at `#metadata` or `#listing` after it.
+    fn keep_digest(&mut self, location: String, bytes: &[u8]) {
         if !self.reads.iter().any(|(known, _)| *known == location) {
             let digest = sha2::Sha256::digest(bytes);
             let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -897,9 +916,34 @@ impl Builder<'_> {
     /// compiled run starts.
     pub(crate) fn write_kept(&mut self) {
         for (path, bytes) in std::mem::take(&mut self.written) {
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            let write = crate::export::Kind::Write { path, text };
+            // A file that is no text, like a copied gzip, keeps the pipeline native.
+            let write = match String::from_utf8(bytes) {
+                Ok(text) => crate::export::Kind::Write { path, text },
+                Err(_) => crate::export::Kind::Opaque(format!("the build writes {path}, no text")),
+            };
             self.network.add("write", &[], Box::new(Deferred(write)));
+        }
+    }
+
+    /// The values of the channel factory `name`, like `fromPath`, as a run reads them when it
+    /// starts, for a compiled run, which calls the factory then.
+    pub(crate) fn factory_values(
+        &mut self,
+        name: &str,
+        arguments: Vec<Value>,
+    ) -> Result<Vec<Value>, Error> {
+        match (name, arguments.last()) {
+            ("fromPath", Some(pattern)) if !pattern.truth() => {
+                Err(thrown("Missing `fromPath` parameter".into()))
+            }
+            ("fromPath", _) => self.path_values(&arguments),
+            ("fromFilePairs", _) => self.file_pair_values(&arguments),
+            _ => match nextflow_plugins::factory_plugin(name) {
+                Some(plugin) => Ok(elements(
+                    &self.base.plugin_function(plugin, name, arguments)?,
+                )),
+                None => Err(thrown(format!("No such channel factory `{name}`"))),
+            },
         }
     }
 

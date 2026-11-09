@@ -240,3 +240,60 @@ fn reads_build_data() {
     let digest = "sha256:55fc01feec80df5521dde64da128cf7c9a69b3dad5d275b5008f6ba671f8c915";
     assert_eq!(sheet.map(|(_, known)| known.as_str()), Some(digest));
 }
+
+#[test]
+fn keeps_binary_writes() {
+    let directory = tempfile::tempdir().unwrap();
+    let script =
+        "workflow {\n    file(\"${projectDir}/in.gz\").copyTo(\"${launchDir}/out.gz\")\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::write(
+        directory.path().join("in.gz"),
+        [0x1f, 0x8b, 0x08, 0xff, 0xfe],
+    )
+    .unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Silent(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let network = Nextflow::new(&launch, settings).unwrap().export().unwrap();
+    let kinds: Vec<&Kind> = network.nodes.iter().map(|node| &node.kind).collect();
+    assert!(
+        kinds
+            .iter()
+            .any(|kind| matches!(kind, Kind::Opaque(why) if why.contains("no text"))),
+        "a binary file keeps the pipeline native: {kinds:?}"
+    );
+    assert!(!kinds.iter().any(|kind| matches!(kind, Kind::Write { .. })));
+}
+
+#[test]
+fn pins_file_checks() {
+    let directory = tempfile::tempdir().unwrap();
+    let script = "workflow {\n    def found = file(\"${projectDir}/index\").exists()\n    \
+                  def names = file(\"${projectDir}/data\").list()\n    \
+                  channel.of(found, names.size()).view()\n}\n";
+    std::fs::write(directory.path().join("main.nf"), script).unwrap();
+    std::fs::create_dir(directory.path().join("data")).unwrap();
+    std::fs::write(directory.path().join("data").join("a.txt"), "a").unwrap();
+    let launch = Launch {
+        target: directory.path().to_owned(),
+        scratch: directory.path().join("scratch"),
+        ..Launch::default()
+    };
+    let settings = Settings {
+        host: Box::new(Silent(directory.path().to_string_lossy().into_owned())),
+        ..Settings::default()
+    };
+    let network = Nextflow::new(&launch, settings).unwrap().export().unwrap();
+    let pinned: Vec<&str> = (network.reads.iter())
+        .map(|(location, _)| location.rsplit('/').next().unwrap())
+        .collect();
+    assert!(pinned.contains(&"index#metadata"), "{pinned:?}");
+    assert!(pinned.contains(&"data#listing"), "{pinned:?}");
+}

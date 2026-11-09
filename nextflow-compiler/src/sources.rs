@@ -122,6 +122,21 @@ impl Sources {
         }
     }
 
+    /// The path of a script from the folder of the main script, which a dialect task finds
+    /// its process by, or the path itself outside that folder or for a plugin script.
+    pub fn beside_main(&self, path: &str) -> String {
+        if nextflow_runtime::plugin_script(path).is_some() {
+            return path.to_owned();
+        }
+        let main = self.base.join(&self.files[0].1);
+        let script = self.base.join(self.location(Path::new(path)));
+        let folder = main.parent().unwrap_or(&self.base);
+        match script.strip_prefix(folder) {
+            Ok(relative) => relative.to_string_lossy().into_owned(),
+            Err(_) => script.to_string_lossy().into_owned(),
+        }
+    }
+
     /// The sources as the document lists them.
     pub fn list(&self) -> Vec<Json> {
         (self.files.iter())

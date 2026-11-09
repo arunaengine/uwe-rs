@@ -8,7 +8,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value as Json, json};
 use wir::Effect;
-use workflow_graph::{Delivery, DeliveryMode};
+use workflow_graph::{Delivery, DeliveryMode, Files};
 
 use crate::engine::Context;
 use crate::operator::Turn;
@@ -135,6 +135,13 @@ impl Publication {
             .shelves()
             .asked
             .extend_from_slice(&self.0);
+    }
+
+    /// Copies the files to their local targets, for a run without a files provider, like a
+    /// simulated one, as the code that wrote them would have written them there.
+    pub fn give(&self) -> std::io::Result<()> {
+        let mut local = (self.0.iter()).filter(|delivery| !delivery.target.contains("://"));
+        local.try_for_each(|delivery| workflow_graph::LocalFiles.deliver(delivery))
     }
 
     /// Why the files wait, when they have deliveries: for the host to acknowledge them.

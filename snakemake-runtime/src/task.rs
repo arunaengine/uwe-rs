@@ -128,6 +128,39 @@ fn source_file(rule: &Rule, path: &str, setting: &TaskSetting) -> (String, Strin
     (relative, absolute.to_string_lossy().into_owned())
 }
 
+/// The environment file of a rule where its task reads it, or the name of an environment. A
+/// file on the web is fetched into its mirror as wrapper scripts are, unless the run is simulated.
+fn conda_source(rule: &Rule, conda: &str, setting: &TaskSetting) -> Result<String, Error> {
+    if !(conda.ends_with(".yaml") || conda.ends_with(".yml")) {
+        return Ok(conda.to_owned());
+    }
+    // As Snakemake's `infer_source_file`, a `file:` address is a local path.
+    let path = ["file://", "file:"]
+        .iter()
+        .find_map(|scheme| conda.strip_prefix(scheme))
+        .unwrap_or(conda);
+    let location = source_file(rule, path, setting).1;
+    let mirrors = &setting.state.mirrors;
+    let local = match setting.embedded.simulated {
+        true => None,
+        false => mirrors.url(&location),
+    };
+    let Some(local) = local else {
+        return Ok(location);
+    };
+    mirrors.fetch(&local).map_err(|error| {
+        workflow_error(format!(
+            "Cannot fetch the Conda environment {location}: {error}"
+        ))
+    })?;
+    if !local.is_file() {
+        return Err(workflow_error(format!(
+            "The Conda environment file {location} does not exist"
+        )));
+    }
+    Ok(local.to_string_lossy().into_owned())
+}
+
 /// A script of a rule with its text. A file of a remote module comes from its mirror, which the
 /// workflow's files are read from; a simulated run reads no file on the web, and goes on
 /// without a file that is not there, as Snakemake's dry run does not open scripts.
@@ -781,9 +814,19 @@ pub fn build(
         }
         _ => None,
     };
+    let conda = conda.map(|conda| pattern::apply(&conda, &job.wildcards).unwrap_or(conda));
+    // Only a task that runs in its environment fetches the environment file.
+    let in_conda = !matches!(rule.action, Action::None)
+        && (container.is_none() || setting.state.conda_enabled);
+    let conda = match conda {
+        Some(conda) if in_conda => Some(conda_source(rule, &conda, setting)?),
+        other => other,
+    };
     let software = conda.as_ref().map(|conda| {
-        let file = pattern::apply(conda, &job.wildcards).unwrap_or_else(|_| conda.clone());
-        let source = source_file(rule, &file, setting).1;
+        let source = match Path::new(conda).is_absolute() {
+            true => conda.clone(),
+            false => source_file(rule, conda, setting).1,
+        };
         std::fs::read(source)
             .ok()
             .map(|bytes| sha2::Sha256::digest(bytes).to_vec())
@@ -791,20 +834,10 @@ pub fn build(
     let image = match (container, conda) {
         // A rule without an action is a no-op task: no command and no image.
         _ if matches!(rule.action, Action::None) => None,
-        (Some(container), Some(conda)) if setting.state.conda_enabled => {
-            let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
-            let reference = if (conda.ends_with(".yaml") || conda.ends_with(".yml"))
-                && !conda.contains("://")
-            {
-                source_file(rule, &conda, setting).1
-            } else {
-                conda
-            };
-            Some(format!(
-                "conda-container:{}",
-                serde_json::json!([image_name(&container), reference])
-            ))
-        }
+        (Some(container), Some(conda)) if setting.state.conda_enabled => Some(format!(
+            "conda-container:{}",
+            serde_json::json!([image_name(&container), conda])
+        )),
         (Some(container), _) => Some(image_name(&container)),
         // A `run:` block runs in the Python image that the user gave, else in the default
         // image of the executor.
@@ -818,16 +851,7 @@ pub fn build(
             (setting.state.default_image.clone())
                 .unwrap_or_else(|| crate::commands::DEFAULT_IMAGE.to_owned()),
         ),
-        (None, Some(conda)) => {
-            let conda = pattern::apply(&conda, &job.wildcards).unwrap_or(conda);
-            let is_file = conda.ends_with(".yaml") || conda.ends_with(".yml");
-            let reference = if is_file && !conda.contains("://") {
-                source_file(rule, &conda, setting).1
-            } else {
-                conda
-            };
-            Some(format!("conda-env:{reference}"))
-        }
+        (None, Some(conda)) => Some(format!("conda-env:{conda}")),
         (None, None) => setting.state.default_image.clone(),
     };
     let mut outputs: Vec<String> = Vec::new();
@@ -905,8 +929,12 @@ pub fn build(
             .collect();
         format!("{} ({})", rule.name, values.join(", "))
     };
+    // A fetched environment file counts by its address, wherever the cache folder is.
+    let named = image
+        .as_deref()
+        .map(|image| setting.state.mirrors.describe(image));
     let signature = serde_json::json!({
-        "version": 1, "rule": rule.name, "command": command, "script": script, "image": image,
+        "version": 1, "rule": rule.name, "command": command, "script": script, "image": named,
         "params": recorded_params, "param_names": param_names,
         "inputs": job.input.values.iter().filter_map(Value::as_str).collect::<Vec<_>>(),
         "input_names": job.input.names,

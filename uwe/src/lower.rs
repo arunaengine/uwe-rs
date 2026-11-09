@@ -31,7 +31,15 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
             snakemake(&target, arguments, &setup, "lower", &base)?.document
         }
         Language::Argo => argo(&target, arguments, &base)?.document,
-        _ => lowered(&target, language, arguments, &base)?.document,
+        _ => {
+            lowered(
+                &target,
+                language,
+                (arguments, &Setup::load(arguments)?),
+                &base,
+            )?
+            .document
+        }
     };
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| failure(format!("uwe: {error}")))?;
@@ -123,7 +131,7 @@ pub fn document(
         }
         Language::Argo => (argo(target, arguments, &folder)?.document, None),
         _ => (
-            lowered(target, language, arguments, &folder)?.document,
+            lowered(target, language, (arguments, setup), &folder)?.document,
             None,
         ),
     };
@@ -397,7 +405,7 @@ fn pruned(folder: &Path) {
 fn lowered(
     target: &Path,
     language: Language,
-    arguments: &Arguments,
+    (arguments, setup): (&Arguments, &Setup),
     base: &Path,
 ) -> Result<cwl_lowering::Lowering, Failure> {
     if language != Language::Cwl {
@@ -407,7 +415,10 @@ fn lowered(
         ));
     }
     let shown = target.display();
-    let document = cwl_parser::load_file(target, Default::default())
+    // Documents at web addresses come through the storage providers, as a run reads them.
+    let downloads = cache_directory().join("downloads");
+    let remote = cwl_parser::source::Remote::new(&setup.storage, downloads);
+    let document = cwl_parser::load_file(target, remote)
         .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
     let image = (arguments.default_image.as_deref()).unwrap_or(cwl_lowering::DEFAULT_IMAGE);
     let lowering = cwl_lowering::lower_with(&document, base, image)

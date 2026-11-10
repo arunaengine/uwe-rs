@@ -289,10 +289,13 @@ impl Interpreter<'_> {
             ("MemoryUnit", "of", [text]) => {
                 Value::MemoryUnit(crate::units::parse_memory(&text.to_string()).at(span)?)
             }
-            ("System", "getenv", [variable]) => self
-                .host
-                .environment(&variable.to_string())
-                .map_or(Value::Null, Value::string),
+            ("System", "getenv", [variable]) => {
+                let value = self.host.environment(&variable.to_string());
+                value
+                    .iter()
+                    .for_each(|value| crate::secrets::note_read(value));
+                value.map_or(Value::Null, Value::string)
+            }
             ("System", "getProperty", [property]) => property_value(&property.to_string()),
             ("System", "currentTimeMillis", []) => Value::Number(Number::Long(crate::date::now())),
             ("Math", _, [Value::Number(a), Value::Number(b)]) => match math2(name, a, b) {
@@ -379,7 +382,10 @@ impl Interpreter<'_> {
 
 /// `System.getProperty` for the properties that pipelines read.
 fn property_value(name: &str) -> Value {
-    let variable = |name: &str| std::env::var(name).ok();
+    let variable = |name: &str| {
+        let value = std::env::var(name).ok();
+        value.inspect(|value| crate::secrets::note_read(value))
+    };
     let value = match name {
         "user.name" => variable("USER"),
         "user.home" => variable("HOME"),

@@ -341,12 +341,16 @@ impl Interpreter<'_> {
                     .map(|(name, _)| path.resolve(&name))
                     .collect();
                 files.sort_by(|a, b| a.path.cmp(&b.path));
-                return Ok(Some(Value::list(
+                let list = Value::list(
                     files
                         .into_iter()
                         .map(|file| Value::Path(Rc::new(file)))
                         .collect(),
-                )));
+                );
+                if let Value::List(list) = &list {
+                    list.borrow_mut().kind = crate::value::ListKind::Array;
+                }
+                return Ok(Some(list));
             }
             (_, []) => {}
             _ => return Ok(None),

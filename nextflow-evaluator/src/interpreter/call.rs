@@ -282,6 +282,9 @@ impl Interpreter<'_> {
             }
             ("env", [name]) => {
                 let value = self.host.environment(&name.to_string());
+                value
+                    .iter()
+                    .for_each(|value| crate::secrets::note_read(value));
                 return Ok(value.map_or(Value::Null, Value::string));
             }
             ("error", []) => {

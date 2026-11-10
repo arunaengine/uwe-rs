@@ -86,6 +86,21 @@ pub struct Module {
     pub params: std::cell::RefCell<Option<Value>>,
     /// Whether the statements of the script ran, which they do once.
     pub started: std::cell::Cell<bool>,
+    /// The copy of a closure that a callback of a compiled run appends to the script, so that
+    /// errors in it are shown at the closure.
+    pub copied: std::cell::Cell<Option<Copied>>,
+}
+
+/// Where code appended to a script copies a closure of it, as byte offsets of the source.
+#[derive(Clone, Copy, Debug)]
+pub struct Copied {
+    /// Where the appended code starts.
+    pub appended: u32,
+    /// Where the copy of the closure starts, and its length.
+    pub copy: u32,
+    pub length: u32,
+    /// Where the closure is in the script.
+    pub original: u32,
 }
 
 /// A Groovy class or enum, which only the legacy parser accepts.
@@ -383,6 +398,9 @@ pub struct Code {
     pub captures: Vec<Place>,
     /// The names of the captured variables, in the same order.
     pub capture_names: Vec<Rc<str>>,
+    /// The variables of the script that a closure, or a closure in it, reads, by their index in
+    /// `Module::variables`; a compiled run gives their values to the closure as captures.
+    pub module_reads: Vec<(Rc<str>, usize)>,
     pub body: Vec<Statement>,
     pub span: Span,
 }

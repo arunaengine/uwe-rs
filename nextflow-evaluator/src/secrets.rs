@@ -10,6 +10,51 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+thread_local! {
+    /// The values that the scripts of the compile on this thread read from the environment,
+    /// while it notes them; no compiled document may hold them, as they can be credentials.
+    static READ: std::cell::RefCell<Option<std::collections::BTreeSet<String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Runs `work`, a compile, while noting the values that its scripts read from the environment,
+/// which [`holds_read`] then finds; nothing of one compile reaches another. Work inside a
+/// compile notes into the set of that compile.
+pub fn noting<T>(work: impl FnOnce() -> T) -> T {
+    if READ.with(|read| read.borrow().is_some()) {
+        return work();
+    }
+    let earlier = READ.with(|read| read.replace(Some(Default::default())));
+    let made = work();
+    READ.with(|read| read.replace(earlier));
+    made
+}
+
+/// Notes the value of a set variable that a script or config read from the environment,
+/// while a compile notes them.
+pub fn note_read(value: &str) {
+    READ.with(|read| {
+        if let Some(read) = read.borrow_mut().as_mut() {
+            read.insert(value.to_owned());
+        }
+    });
+}
+
+/// Whether the compile read a set variable of the environment, even an empty one.
+pub fn any_read() -> bool {
+    READ.with(|read| read.borrow().as_ref().is_some_and(|read| !read.is_empty()))
+}
+
+/// Whether `text` holds a value that a script of the compile read from the environment; an
+/// empty value holds nothing to keep.
+pub fn holds_read(text: &str) -> bool {
+    READ.with(|read| {
+        let read = read.borrow();
+        let mut values = read.iter().flatten().filter(|value| !value.is_empty());
+        values.any(|value| text.contains(value.as_str()))
+    })
+}
+
 pub fn get<H: Host + ?Sized>(host: &H, name: &str) -> Result<Option<String>, Error> {
     Ok(load(&path(host))?.remove(name))
 }

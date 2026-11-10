@@ -75,6 +75,9 @@ pub struct Settings {
     /// Completion cancels a child token and leaves this host token untouched.
     pub cancel: CancellationToken,
     pub output_dir: Option<PathBuf>,
+    /// The folder of a Snakemake project folder that the run works in, like Snakemake's
+    /// `--directory .test`: in a copy of it in the launch folder, never in the project.
+    pub workdir: Option<PathBuf>,
     pub database: Option<PathBuf>,
     /// Local folder or writable storage address for cached results.
     pub store: Option<String>,
@@ -136,6 +139,7 @@ impl Default for Settings {
             default_time: None,
             cancel: CancellationToken::new(),
             output_dir: None,
+            workdir: None,
             database: None,
             store: None,
             cache_folder: None,
@@ -234,6 +238,7 @@ impl Settings {
             (self.default_time).map(|time| time.as_secs() + u64::from(time.subsec_nanos() > 0));
         arguments.no_print = !self.print;
         arguments.output_dir = self.output_dir;
+        arguments.workdir = self.workdir;
         arguments.database = self.database;
         arguments.store = self.store;
         if let Some(isolation) = &isolation {

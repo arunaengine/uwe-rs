@@ -162,6 +162,7 @@ impl Journal {
         })
         .await
         .map_err(|error| error.to_string())??;
+        let mut verified = false;
         for slot in slots {
             let folder = self.root.join(slot.to_string());
             let lock = match File::options().write(true).open(folder.join("lock")) {
@@ -196,8 +197,15 @@ impl Journal {
                 _lock: lock,
                 record,
             };
-            // A slow engine cannot turn historical cleanup into an unbounded admission wait.
-            if tokio::time::timeout(Duration::from_secs(2), pending.reconcile(client))
+            // The identity check has its own budget; each record then gets two seconds, so a
+            // slow engine cannot turn historical cleanup into an unbounded admission wait.
+            if !verified {
+                if verify(client, &self.daemon).await.is_err() {
+                    break;
+                }
+                verified = true;
+            }
+            if tokio::time::timeout(Duration::from_secs(2), pending.settle(client))
                 .await
                 .is_err()
             {
@@ -210,7 +218,7 @@ impl Journal {
 
 fn create_record(root: &Path, record: Record) -> Result<Pending, String> {
     make_folder(root)?;
-    let _queue = queue_lock(root)?;
+    let queue_held = queue_lock(root)?;
     let mut queue = read_queue(root)?;
     let folder = root.join(queue.next.to_string());
     queue.next = queue
@@ -228,6 +236,8 @@ fn create_record(root: &Path, record: Record) -> Result<Pending, String> {
         .open(folder.join("lock"))
         .map_err(|error| error.to_string())?;
     lock.try_lock().map_err(|error| error.to_string())?;
+    // The held lock of the slot keeps recovery away from it, so the record needs no queue lock.
+    drop(queue_held);
     let pending = Pending {
         folder,
         _lock: lock,
@@ -237,6 +247,13 @@ fn create_record(root: &Path, record: Record) -> Result<Pending, String> {
     Ok(pending)
 }
 
+/// How long a run waits for the queue of container records, which the runs of this machine hold
+/// for a few writes each; on a loaded machine with many tasks starting, that takes a while.
+const QUEUE_WAIT: Duration = Duration::from_secs(600);
+
+/// How often a run that waits for the queue says so.
+const QUEUE_NOTICE: Duration = Duration::from_secs(30);
+
 fn queue_lock(root: &Path) -> Result<File, String> {
     let lock = File::options()
         .write(true)
@@ -245,11 +262,17 @@ fn queue_lock(root: &Path) -> Result<File, String> {
         .open(root.join("queue.lock"))
         .map_err(|error| error.to_string())?;
     let started = std::time::Instant::now();
+    let mut notice = QUEUE_NOTICE;
     loop {
         match lock.try_lock() {
             Ok(()) => return Ok(lock),
-            Err(TryLockError::WouldBlock) if started.elapsed() < Duration::from_secs(5) => {
-                std::thread::sleep(Duration::from_millis(2));
+            Err(TryLockError::WouldBlock) if started.elapsed() < QUEUE_WAIT => {
+                if started.elapsed() >= notice {
+                    let waited = started.elapsed().as_secs();
+                    tracing::warn!(waited, "waiting for the container ownership queue");
+                    notice += QUEUE_NOTICE;
+                }
+                std::thread::sleep(Duration::from_millis(5));
             }
             Err(error) => {
                 return Err(format!(
@@ -306,10 +329,14 @@ impl Pending {
         .map_err(|error| error.to_string())
     }
 
-    pub(crate) async fn reconcile(mut self, client: &Docker) -> bool {
+    pub(crate) async fn reconcile(self, client: &Docker) -> bool {
         if verify(client, &self.record.daemon).await.is_err() {
             return false;
         }
+        self.settle(client).await
+    }
+
+    async fn settle(mut self, client: &Docker) -> bool {
         let target = self.record.id.as_deref().unwrap_or(&self.record.name);
         let found = match client.inspect_container(target, None).await {
             Ok(found) => found,
@@ -345,15 +372,32 @@ impl Pending {
     }
 }
 
+/// How long one identity request may take, and how often it is made; an engine with a
+/// hundred running containers answers slowly.
+const IDENTITY_WAIT: Duration = Duration::from_secs(30);
+const IDENTITY_TRIES: u32 = 3;
+
+/// Asks the engine for its identity before it creates or deletes a container: a daemon that
+/// another one replaced, even behind the same socket, must not take orders for the old one.
 async fn verify(client: &Docker, daemon: &str) -> Result<(), String> {
-    let info = tokio::time::timeout(Duration::from_secs(2), client.info())
-        .await
-        .map_err(|_| "the container engine identity request timed out")?
-        .map_err(|error| error.to_string())?;
-    if daemon.is_empty() || info.id.as_deref() != Some(daemon) {
-        return Err("the container engine identity changed; reconnect before creating or deleting containers".into());
+    let changed =
+        "the container engine identity changed; reconnect before creating or deleting containers";
+    if daemon.is_empty() {
+        return Err(changed.into());
     }
-    Ok(())
+    let mut failed = String::new();
+    for attempt in 0..IDENTITY_TRIES {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        match tokio::time::timeout(IDENTITY_WAIT, client.info()).await {
+            Ok(Ok(info)) if info.id.as_deref() == Some(daemon) => return Ok(()),
+            Ok(Ok(_)) => return Err(changed.into()),
+            Ok(Err(error)) => failed = error.to_string(),
+            Err(_) => failed = "the container engine identity request timed out".into(),
+        }
+    }
+    Err(failed)
 }
 
 fn save_json(folder: &Path, name: &str, value: &impl Serialize) -> Result<(), String> {

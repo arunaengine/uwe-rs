@@ -240,6 +240,18 @@ fn rejects_file_children() {
     assert_eq!(value(&body), "[false, false, null, null]");
 }
 
+/// `listFiles()` gives a Java array, whose `length` nf-core smrnaseq reads.
+#[test]
+fn counts_listed_files() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let dir = directory.path().display();
+    let body = format!(
+        "file('{dir}/a.1.ebwt').text = 'x'\nfile('{dir}/b.txt').text = 'y'\n\
+         def files = file('{dir}').listFiles()\n[files.length, files.size(), files[0].name]"
+    );
+    assert_eq!(value(&body), "[2, 2, a.1.ebwt]");
+}
+
 #[test]
 fn reads_file_metadata() {
     let directory = tempfile::tempdir().expect("a temporary directory");

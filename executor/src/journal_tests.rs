@@ -268,3 +268,146 @@ async fn concurrent_engines_create() {
     assert!(super::super::remove_owned(&second, &two).await);
     server.finish();
 }
+
+/// Another run that holds the queue longer than a few seconds, as on a loaded machine with
+/// many tasks starting, delays a record and does not fail it.
+#[test]
+fn waits_for_queue() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path().join("journal");
+    make_folder(&root).unwrap();
+    let held = queue_lock(&root).unwrap();
+    let holder = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(6));
+        drop(held);
+    });
+    let record = Record {
+        socket: "socket".into(),
+        daemon: "test-engine".into(),
+        name: "task".into(),
+        owner: "owner".into(),
+        id: None,
+    };
+    let pending = create_record(&root, record).unwrap();
+    holder.join().unwrap();
+    assert!(pending.folder.join("record.json").is_file());
+}
+
+/// A busy engine answers its identity request later than the two seconds that a check once
+/// allowed, and each later check asks it again.
+#[tokio::test]
+async fn waits_for_identity() {
+    use std::io::{BufRead, BufReader, Write};
+    let folder = tempfile::tempdir().unwrap();
+    let socket = folder.path().join("busy.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let served = std::thread::spawn(move || {
+        for answer in [3, 0] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 0 && !line.ends_with("\r\n\r\n") {}
+            std::thread::sleep(Duration::from_secs(answer));
+            let body = r#"{"ID":"busy-engine"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    let path = socket.to_string_lossy().into_owned();
+    let client = Docker::connect_with_socket(&path, 120, bollard::API_DEFAULT_VERSION).unwrap();
+    let journal = Journal::new(folder.path(), path, "busy-engine".into());
+    journal.verify(&client).await.unwrap();
+    journal.verify(&client).await.unwrap();
+    served.join().unwrap();
+}
+
+/// A daemon that takes over the socket makes a new socket file, so the identity that the
+/// process knew no longer counts, and the new daemon is asked.
+#[tokio::test]
+async fn asks_new_endpoints() {
+    use std::io::{BufRead, BufReader, Write};
+    let folder = tempfile::tempdir().unwrap();
+    let socket = folder.path().join("engine.sock");
+    let serve = |id: &'static str| {
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 0 && !line.ends_with("\r\n\r\n") {}
+            let body = format!(r#"{{"ID":"{id}"}}"#);
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        })
+    };
+    let first = serve("first-engine");
+    let path = socket.to_string_lossy().into_owned();
+    let client = Docker::connect_with_socket(&path, 120, bollard::API_DEFAULT_VERSION).unwrap();
+    let journal = Journal::new(folder.path(), path, "first-engine".into());
+    journal.verify(&client).await.unwrap();
+    first.join().unwrap();
+    std::fs::remove_file(&socket).unwrap();
+    let second = serve("second-engine");
+    assert!(journal.verify(&client).await.is_err());
+    second.join().unwrap();
+}
+
+/// Each creation or deletion asks the engine again: a daemon that took over the same socket,
+/// as systemd starts one with another data root, is not trusted for the old one.
+#[tokio::test]
+async fn asks_each_operation() {
+    use std::io::{BufRead, BufReader, Write};
+    let folder = tempfile::tempdir().unwrap();
+    let socket = folder.path().join("engine.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let served = std::thread::spawn(move || {
+        for id in ["first-engine", "second-engine"] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 0 && !line.ends_with("\r\n\r\n") {}
+            let body = format!(r#"{{"ID":"{id}"}}"#);
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    let path = socket.to_string_lossy().into_owned();
+    let client = Docker::connect_with_socket(&path, 120, bollard::API_DEFAULT_VERSION).unwrap();
+    let journal = Journal::new(folder.path(), path, "first-engine".into());
+    journal.verify(&client).await.unwrap();
+    assert!(journal.verify(&client).await.is_err());
+    served.join().unwrap();
+}
+
+/// Recovery asks for the identity outside the two seconds that each record may take, so an
+/// engine that answers in three seconds still has its crash leftovers recovered.
+#[tokio::test]
+async fn recovers_behind_identity() {
+    use std::io::{BufRead, BufReader, Write};
+    let folder = tempfile::tempdir().unwrap();
+    let busy = Journal::new(folder.path(), "busy.sock".into(), "busy-engine".into());
+    let pending = busy.begin("task", "owner").await.unwrap();
+    assert!(busy.bind(pending, "gone-id").is_ok());
+    drop(busy);
+    let socket = folder.path().join("busy.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let served = std::thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 0 && !line.ends_with("\r\n\r\n") {}
+            let (code, body) = if line.lines().next().unwrap().contains("/info ") {
+                std::thread::sleep(Duration::from_secs(3));
+                (200, r#"{"ID":"busy-engine"}"#)
+            } else {
+                assert!(line.contains("/containers/gone-id/json"));
+                (404, r#"{"message":"gone"}"#)
+            };
+            write!(stream, "HTTP/1.1 {code} Reply\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    let path = socket.to_string_lossy().into_owned();
+    let client = Docker::connect_with_socket(&path, 120, bollard::API_DEFAULT_VERSION).unwrap();
+    let journal = Journal::new(folder.path(), "busy.sock".into(), "busy-engine".into());
+    journal.recover(&client).await.unwrap();
+    assert!(!journal.root.join("0/record.json").exists());
+    served.join().unwrap();
+}

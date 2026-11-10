@@ -375,6 +375,57 @@ fn exports_historical_workflows() {
     );
 }
 
+/// A compiled run keeps its wir document at the root of the crate, and not again among the
+/// files of its workflow.
+#[test]
+fn keeps_one_document() {
+    let root = tempfile::tempdir().expect("a directory");
+    let folder = root.path().join("lowered");
+    std::fs::create_dir_all(&folder).expect("makes the folder");
+    let text = "{\"version\": \"wir\"}\n";
+    let document = folder.join("abc.wir.json");
+    std::fs::write(&document, text).expect("writes the document");
+    let start = RunStart {
+        id: "compiled-run".into(),
+        resumes: None,
+        workflow: document.to_string_lossy().into_owned(),
+        language: Language::Wir,
+        revision: None,
+        arguments: Vec::new(),
+        parameters: Vec::new(),
+        executor: "simulator".into(),
+        simulated: true,
+        store: None,
+        program: None,
+        launch: Some(root.path().to_string_lossy().into_owned()),
+        workflow_folder: Some(folder.to_string_lossy().into_owned()),
+        repeats: None,
+    };
+    let path = root.path().join("runs.sqlite");
+    let mut recorder = (Database::open(&path).expect("opens"))
+        .record(&start)
+        .expect("starts");
+    recorder.sources(&[Source {
+        kind: SourceKind::Workflow,
+        path: "abc.wir.json".into(),
+        digest: task_model::Digest::sha256(text.as_bytes()).to_string(),
+        size: text.len() as u64,
+        executable: false,
+    }]);
+    recorder.ended(None);
+    drop(recorder);
+    let database = Database::open(&path).expect("opens");
+    let options = Options {
+        workflow: document.clone(),
+        ..Options::default()
+    };
+    let output = root.path().join("crate");
+    export(&database, "compiled-run", &output, &options).expect("exports");
+    let kept = std::fs::read_to_string(output.join("abc.wir.json")).expect("reads");
+    assert_eq!(kept, text);
+    assert!(!output.join("workflow/abc.wir.json").exists());
+}
+
 #[test]
 fn preserves_historical_inputs() {
     let root = tempfile::tempdir().expect("a directory");

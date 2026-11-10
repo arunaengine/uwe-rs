@@ -34,7 +34,8 @@ pub struct Compiled {
 /// Nextflow script of its scope.
 pub enum Scope<'a> {
     Text(Option<&'a str>),
-    Nextflow(Box<Launching>),
+    /// The run of the script, and where the closure of the code is in it.
+    Nextflow(Box<Launching>, std::ops::Range<u64>),
 }
 
 /// The scope of a callback or expression of an op.
@@ -43,7 +44,7 @@ pub fn scope<'a>(context: &Context<'a>, scope: Option<&wir::Scope>) -> Scope<'a>
         return Scope::Text(None);
     };
     match crate::nextflow_scope::launching(context, &scope.source) {
-        Some(launching) => Scope::Nextflow(Box::new(launching)),
+        Some(launching) => Scope::Nextflow(Box::new(launching), scope.start..scope.end),
         None => Scope::Text(context.scopes.get(&scope.source).map(String::as_str)),
     }
 }
@@ -57,8 +58,8 @@ pub fn compile(
     names: Vec<String>,
 ) -> Result<Compiled, String> {
     let scope = match scope {
-        Scope::Nextflow(launching) => {
-            let scoped = Scoped::load(*launching, code, library, names.clone())?;
+        Scope::Nextflow(launching, closure) => {
+            let scoped = Scoped::load(*launching, (code, closure), library, names.clone())?;
             return Ok(Compiled {
                 module: Rc::new(Module::default()),
                 names,
@@ -243,6 +244,8 @@ pub fn to_value(json: &Json, base: &Path) -> Value {
         Json::String(text) => Value::string(text.as_str()),
         Json::Array(items) => Value::list(items.iter().map(|item| to_value(item, base)).collect()),
         Json::Object(object) => match object.get("class").and_then(Json::as_str) {
+            // A variable of a script, which only a Nextflow scope shares between callbacks.
+            Some("Script") => to_value(object.get("value").unwrap_or(&Json::Null), base),
             Some("File" | "Directory") => {
                 let location = object
                     .get("location")

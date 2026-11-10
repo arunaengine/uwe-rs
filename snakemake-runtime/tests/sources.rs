@@ -1,4 +1,5 @@
-//! Checks workflow source staging without Snakefiles or conflicts with job-owned files.
+//! Checks workflow source staging without Snakefiles or conflicts with job-owned files, and
+//! the working folder of a project folder.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -109,4 +110,123 @@ fn stages_workflow_sources() {
     let mut table: Vec<String> = table.into_iter().map(str::to_owned).collect();
     table.sort();
     assert_eq!(inputs("table"), table);
+}
+
+/// As `--directory .test` of Snakemake, a project folder works in its test folder, in a copy of
+/// it in the launch folder, and writes nothing into the project.
+#[test]
+fn works_in_directories() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let project = folder.path().join("project");
+    let snakefile = "configfile: 'config/config.yaml'\nrule all:\n    input: 'results/out.txt'\n\
+                     rule copy:\n    input: config['data']\n    output: 'results/out.txt'\n    \
+                     shell: 'cp {input} {output}'\n";
+    write(&project, "workflow/Snakefile", snakefile);
+    write(&project, ".test/config/config.yaml", "data: data/in.txt\n");
+    write(&project, ".test/data/in.txt", "reads\n");
+    write(&project, ".test/run.sh", "#!/bin/sh\n");
+    use std::os::unix::fs::PermissionsExt;
+    let executable = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(project.join(".test/run.sh"), executable).unwrap();
+    let launch = Launch {
+        target: project.clone(),
+        scratch: folder.path().join("scratch"),
+        ..Launch::default()
+    };
+    let started = folder.path().join("launch");
+    let options = snakemake_runtime::RunSettings {
+        image: Some("debian:stable-slim".into()),
+        workdir: Some(started.clone()),
+        directory: Some(".test".into()),
+        ..snakemake_runtime::RunSettings::default()
+    };
+    let settings = snakemake_runtime::Settings::default();
+    let mut driver =
+        snakemake_runtime::driver_with_options(&launch, settings, options).expect("a driver");
+    let tasks = driver.start().expect("plans the run");
+    let input = (tasks.iter().flat_map(|task| &task.inputs))
+        .find(|input| input.path == "data/in.txt")
+        .expect("the data file");
+    assert_eq!(Path::new(&input.source), started.join("data/in.txt"));
+    let mut kept: Vec<_> = walkdir(&project.join(".test"));
+    kept.sort();
+    assert_eq!(kept, ["config/config.yaml", "data/in.txt", "run.sh"]);
+    // A script of the folder stays executable in the copy.
+    let mode = std::fs::metadata(started.join("run.sh"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o755);
+}
+
+/// The files below `folder`, relative to it.
+fn walkdir(folder: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(folder)
+        .expect("lists the folder")
+        .flatten()
+    {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            files.extend(
+                walkdir(&path)
+                    .into_iter()
+                    .map(|file| format!("{name}/{file}")),
+            );
+        } else {
+            files.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    files
+}
+
+/// The copy of a working folder neither reads nor writes outside: a link of the project that
+/// leads outside or loops, and a link in the launch folder, stop the run before it starts.
+#[test]
+fn refuses_outer_links() {
+    let snakefile = "rule all:\n    input: 'data/in.txt'\n";
+    let planned = |root: &Path| {
+        let launch = Launch {
+            target: root.join("project"),
+            scratch: root.join("scratch"),
+            ..Launch::default()
+        };
+        let options = snakemake_runtime::RunSettings {
+            workdir: Some(root.join("launch")),
+            directory: Some(".test".into()),
+            ..snakemake_runtime::RunSettings::default()
+        };
+        let settings = snakemake_runtime::Settings::default();
+        match snakemake_runtime::driver_with_options(&launch, settings, options) {
+            Ok(mut driver) => driver.start().is_ok(),
+            Err(_) => false,
+        }
+    };
+    let link = |target: &str, link: &Path| std::os::unix::fs::symlink(target, link).unwrap();
+    for case in ["folder", "inner", "launch", "loop"] {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let root = folder.path();
+        write(&root.join("project"), "workflow/Snakefile", snakefile);
+        write(root, "outside/in.txt", "private\n");
+        match case {
+            "folder" => link("../outside", &root.join("project/.test")),
+            "inner" => {
+                write(&root.join("project"), ".test/data/in.txt", "reads\n");
+                link("../../outside", &root.join("project/.test/inner"));
+            }
+            "launch" => {
+                write(&root.join("project"), ".test/data/in.txt", "reads\n");
+                std::fs::create_dir_all(root.join("launch")).unwrap();
+                link("../outside", &root.join("launch/data"));
+            }
+            _ => {
+                write(&root.join("project"), ".test/data/in.txt", "reads\n");
+                link(".", &root.join("project/.test/loop"));
+            }
+        }
+        assert!(!planned(root), "{case}");
+        let outside = std::fs::read_dir(root.join("outside")).unwrap().count();
+        assert_eq!(outside, 1, "{case}: nothing is written outside");
+    }
 }

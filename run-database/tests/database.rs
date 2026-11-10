@@ -1237,3 +1237,29 @@ fn reads_historical_chains() {
     // Simulated runs and other workflows tell nothing.
     assert!(database.chains("/work/other.nf").expect("reads").is_empty());
 }
+
+/// A task that the stop of a run ended, like with Ctrl-C, is stopped rather than failed.
+#[test]
+fn stops_cancelled_tasks() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    let mut recorder = Database::open(&path)
+        .expect("opens")
+        .record(&start("run-1", None))
+        .expect("records");
+    recorder.requested(&task(1, "MAKE", Vec::new()), &[]);
+    recorder.started(TaskId(1), 1);
+    let stopped = Outcome {
+        id: TaskId(1),
+        exit_code: -1,
+        error: Some(workflow_graph::TaskError::Cancelled),
+        stderr: "the run was stopped".into(),
+        ..Outcome::default()
+    };
+    recorder.finished(&stopped, 1, false);
+    recorder.ended(Some("the run was stopped"));
+    drop(recorder);
+    let database = Database::open(&path).expect("opens");
+    let tasks = database.tasks("run-1").expect("lists tasks");
+    assert_eq!(tasks[0].state, "stopped");
+}

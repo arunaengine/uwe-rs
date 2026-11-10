@@ -61,6 +61,11 @@ pub fn compile(
     settings: Settings,
     base: &Path,
 ) -> Result<Compilation, DriverError> {
+    // What the pipeline reads from the environment stays out of the document.
+    nextflow_evaluator::secrets::noting(|| compiling(launch, settings, base))
+}
+
+fn compiling(launch: &Launch, settings: Settings, base: &Path) -> Result<Compilation, DriverError> {
     let context = Context {
         profiles: launch.profiles.clone(),
         configs: launch.configs.clone(),
@@ -68,7 +73,18 @@ pub fn compile(
         base: base.to_owned(),
     };
     let mut driver = Nextflow::new(launch, settings)?;
-    match driver.export() {
+    let exported = driver.export();
+    let built = exported
+        .as_ref()
+        .map_or_else(|error| error.unsupported, |_| true);
+    if built && nextflow_evaluator::secrets::any_read() {
+        let kept = vec![Kept {
+            path: "pipeline".into(),
+            reason: "the pipeline reads the environment while it builds".into(),
+        }];
+        return launched(launch, &context, driver.legacy(), kept);
+    }
+    match exported {
         Ok(network) => compile_network(&network, &context).map_err(DriverError::new),
         Err(error) if error.unsupported => {
             let mut sources = Sources::new(&launch.target.to_string_lossy(), base);
@@ -104,8 +120,31 @@ pub fn compile_native(
         path: "pipeline".into(),
         reason: reason.into(),
     }];
-    let interface = driver.interface()?;
-    native(&interface, &context, &mut sources, kept).map_err(DriverError::new)
+    nextflow_evaluator::secrets::noting(|| {
+        let interface = driver.interface()?;
+        if nextflow_evaluator::secrets::any_read() {
+            return launched(launch, &context, driver.legacy(), kept);
+        }
+        native(&interface, &context, &mut sources, kept).map_err(DriverError::new)
+    })
+}
+
+/// The pipeline as one native op made from the launch alone, for a pipeline that read the
+/// environment while it built: its script, configs, profiles, entry and the params given to
+/// it. The native op reads the config and the environment when it runs.
+fn launched(
+    launch: &Launch,
+    context: &Context,
+    legacy: bool,
+    kept: Vec<Kept>,
+) -> Result<Compilation, DriverError> {
+    let params = nextflow_runtime::driver::params(launch, legacy)?;
+    let network = Network {
+        params: nextflow_runtime::inputs::to_json(&params),
+        ..Network::default()
+    };
+    let mut sources = Sources::new(&launch.target.to_string_lossy(), &context.base);
+    native(&network, context, &mut sources, kept).map_err(DriverError::new)
 }
 
 /// Compiles a built network; a node that does not compile keeps the pipeline one native op.
@@ -136,8 +175,17 @@ pub fn compile_network(network: &Network, context: &Context) -> Result<Compilati
     match graph::compile(network, context, &mut sources) {
         Ok((graphs, captured)) => {
             let hooks = hooks(network, &mut sources, &captured);
+            let document = document(&sources, graphs, hooks)?;
+            let text = serde_json::to_value(&document).map_err(|error| error.to_string())?;
+            if nextflow_runtime::export::read(&text) {
+                let kept = Kept {
+                    path: "pipeline".into(),
+                    reason: "the pipeline gives a value of the environment to its graph".into(),
+                };
+                return native(network, context, &mut sources, vec![kept]);
+            }
             Ok(Compilation {
-                document: document(&sources, graphs, hooks)?,
+                document,
                 kept: Vec::new(),
             })
         }

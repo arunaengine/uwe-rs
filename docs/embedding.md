@@ -51,6 +51,8 @@ let run = uwe::RunRequest::new(settings).run().await?;
 
 ## Steps that never use the cache
 
+Set `run::Settings.workdir` to a folder of a Snakemake project folder or repository, like `.test`, to work in it as Snakemake's `--directory` does. The run copies that folder into its launch folder, without files that are there already, and works there. Relative paths of the config start in the copy, and the run writes nothing into the project, so runs of one shared checkout never write into it. A simulated run reads the folder of the project. On the command line this is `-workdir .test`.
+
 Set `run::Settings.no_cache_steps` to the names of steps whose tasks must not use the cache. Such a task looks up no stored result and keeps none, like a Nextflow process with `cache false`. So it runs on every run, also with `-resume`. Its outputs still reach the steps after it, and those steps can still come from the cache. On the command line this is `-no-cache-steps a,b`.
 
 A name matches a step as the step graph names it, like the step of `Event::Task`: by its full name, or by the last part after `:` or `/`. So `FASTQC` matches the Nextflow process `NFCORE_DEMO:DEMO:FASTQC`, and `sort` matches the step `align/sort` of a CWL subworkflow. Snakemake rules and Argo templates have names of one part. Names are not patterns.

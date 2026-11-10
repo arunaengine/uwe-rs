@@ -3,6 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use nextflow_evaluator::secrets::holds_read;
 use nextflow_evaluator::split::Splitter;
 use nextflow_evaluator::value::{Closure, Value};
 use serde_json::{Value as Json, json};
@@ -300,7 +301,7 @@ impl Callback {
             .and_then(|text| text.get(span.start as usize..span.end as usize))
             .ok_or_else(|| format!("the code of a closure in {script}"))?;
         let names = closure.code.capture_names.iter();
-        let captures = (closure.captured.iter().zip(names))
+        let mut captures: Vec<(String, Json)> = (closure.captured.iter().zip(names))
             .map(|(value, name)| {
                 let value = match &*value.borrow() {
                     Value::Closure(inner) if depth < 8 => {
@@ -319,6 +320,32 @@ impl Callback {
             })
             .collect::<Result<_, String>>()
             .map_err(|message| format!("a closure captures {message}"))?;
+        // The variables of the script that the closure reads, as the native run set them; one
+        // without a JSON form stays out, as before.
+        for (name, index) in &closure.code.module_reads {
+            let Some(cell) = module.variables.get(*index) else {
+                continue;
+            };
+            let value = match &*cell.borrow() {
+                Value::Closure(inner) if depth < 8 => {
+                    Callback::nested(inner, depth + 1, handler).map(form).ok()
+                }
+                Value::Closure(_) | Value::Channel(_) | Value::ChannelOut(_) => None,
+                // The variable itself, which all callbacks of a run share, as native code does.
+                other => (crate::bridge::to_json(other).ok()).map(|value| {
+                    json!({"class": "Script", "script": script, "name": name.as_ref(), "value": value})
+                }),
+            };
+            let taken = captures.iter().any(|(captured, _)| **captured == **name);
+            if let Some(value) = value.filter(|_| !taken) {
+                captures.push((name.to_string(), value));
+            }
+        }
+        // A value of the environment, like a token, stays out of every document; the workflow
+        // then runs natively.
+        if captures.iter().any(|(_, value)| read(value)) {
+            return Err("a closure captures a value of the environment".into());
+        }
         Ok(Callback {
             script,
             start: span.start,
@@ -327,6 +354,18 @@ impl Callback {
             parameters: closure.code.parameters.len(),
             captures,
         })
+    }
+}
+
+/// Whether a value holds a value of the environment: in a text or a key, at any depth.
+pub fn read(value: &Json) -> bool {
+    match value {
+        Json::String(text) => holds_read(text),
+        Json::Array(items) => items.iter().any(read),
+        Json::Object(object) => object
+            .iter()
+            .any(|(key, item)| holds_read(key) || read(item)),
+        _ => false,
     }
 }
 

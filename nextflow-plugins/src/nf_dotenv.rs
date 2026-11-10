@@ -40,6 +40,7 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
         thrown(Exception::new("IllegalStateException", message))
     })?;
     if let Some(value) = context.host.environment(&key) {
+        nextflow_evaluator::secrets::note_read(&value);
         return Ok(Value::string(value));
     }
     match entries.iter().rev().find(|(name, _)| *name == key) {

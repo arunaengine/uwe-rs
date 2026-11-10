@@ -66,6 +66,9 @@ pub struct Arguments {
     pub report: Option<PathBuf>,
     /// `-output-dir folder`: where results go that the workflow gives no place of its own.
     pub output_dir: Option<PathBuf>,
+    /// `-workdir folder`: the folder of a Snakemake project folder that the run works in, like
+    /// Snakemake's `--directory`, in a copy of it so that the run writes nothing into the project.
+    pub workdir: Option<PathBuf>,
     /// `-tes-server address`: the TES server of `-executor tes`.
     pub tes_server: Option<String>,
     /// `-slurm-container apptainer|singularity|podman|docker`: how the nodes of
@@ -220,6 +223,7 @@ impl Arguments {
             retry_delay: self.retry_delay_ms.map(std::time::Duration::from_millis),
             default_time: self.task_seconds.map(std::time::Duration::from_secs),
             output_dir: self.output_dir.clone(),
+            workdir: self.workdir.clone(),
             database: self.database.clone(),
             store: self.store.clone(),
             print: true,
@@ -378,6 +382,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-graph" => parsed.graph = Some(value()?.into()),
             "-report" => parsed.report = Some(value()?.into()),
             "-output-dir" => parsed.output_dir = Some(value()?.into()),
+            "-workdir" => parsed.workdir = Some(value()?.into()),
             "-tes-server" => parsed.tes_server = Some(value()?),
             "-slurm-container" => parsed.slurm_container = Some(value()?),
             "-slurm-options" => parsed.slurm_options = Some(value()?),
@@ -784,6 +789,7 @@ const OPTIONS: &[(&str, &[&str])] = &[
         &["run", "graph", "check", "inputs", "outputs", "check-order"],
     ),
     ("-output-dir <folder>", WORKFLOW),
+    ("-workdir <folder>", WORKFLOW),
     ("-graph <file>", &["run", "graph"]),
     ("-report <file>", &["run", "compare"]),
     ("-fail-on-change", &["compare"]),

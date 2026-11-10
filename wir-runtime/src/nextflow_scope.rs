@@ -5,11 +5,12 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use nextflow_evaluator::interpreter::{Error, Interpreter};
-use nextflow_evaluator::lowered::Module;
+use nextflow_evaluator::lowered::{Copied, Module};
 use nextflow_evaluator::value::Value;
 use nextflow_runtime::{Adapter, Loader, RunEnd};
 use serde_json::{Map, Value as Json};
@@ -25,11 +26,17 @@ use crate::operator::Turn;
 #[derive(Clone, Default)]
 pub struct ScopeRun(Rc<RunState>);
 
+/// The cell of a variable of a script, which the closures of all callbacks capture.
+type Variable = Rc<RefCell<Value>>;
+
 #[derive(Default)]
 struct RunState {
     options: crate::nextflow::Options,
     adapters: RefCell<HashMap<String, Rc<RefCell<Adapter>>>>,
     modules: RefCell<HashMap<(PathBuf, String), Rc<Module>>>,
+    /// The variables of the scripts that callbacks read, by source and name, which all
+    /// callbacks of the run share, as the code of a native run does.
+    variables: RefCell<HashMap<(String, String), Variable>>,
     /// The published values of each output op, with their files at their new places.
     indexes: RefCell<HashMap<String, Vec<Json>>>,
     /// The scratch folder of the interpreters, which goes with the run.
@@ -168,16 +175,19 @@ impl Scoped {
     /// after the `library` lines.
     pub fn load(
         launching: Launching,
-        code: &str,
+        (code, closure): (&str, Range<u64>),
         library: &[String],
         names: Vec<String>,
     ) -> Result<Scoped, String> {
         let mut extra = library.join("\n");
         extra.push_str(&format!(
-            "\ndef {ENTRY}({}) {{\n    return ({code})\n}}\n",
+            "\ndef {ENTRY}({}) {{\n    return (",
             names.join(", ")
         ));
+        let at = extra.len();
+        extra.push_str(&format!("{code})\n}}\n"));
         let module = module(&launching, &launching.path, &extra)?;
+        copied(&module, (&extra, at, code), closure);
         Ok(Scoped {
             module,
             names,
@@ -239,6 +249,7 @@ impl Scoped {
                 given.push(rebuilt(value, base, launching, interpreter)?);
             }
             let made = interpreter.call_function(&self.module, ENTRY, given)?;
+            let made = shared(made, Some(values), launching);
             let Some(arguments) = arguments else {
                 return Ok(made);
             };
@@ -323,7 +334,23 @@ fn rebuilt(
             for (_, value) in captures {
                 given.push(rebuilt(value, base, launching, interpreter)?);
             }
-            interpreter.call_function(&module, ENTRY, given)
+            let made = interpreter.call_function(&module, ENTRY, given)?;
+            Ok(shared(
+                made,
+                object.get("captures").and_then(Json::as_object),
+                launching,
+            ))
+        }
+        Json::Object(object) if object.get("class").and_then(Json::as_str) == Some("Script") => {
+            let key = script_key(Some(json)).unwrap_or_default();
+            if let Some(shared) = launching.run.0.variables.borrow().get(&key) {
+                return Ok(shared.borrow().clone());
+            }
+            let value = object.get("value").unwrap_or(&Json::Null);
+            let value = rebuilt(value, base, launching, interpreter)?;
+            let cell = Rc::new(RefCell::new(value.clone()));
+            launching.run.0.variables.borrow_mut().insert(key, cell);
+            Ok(value)
         }
         Json::Object(object) if object.get("class").is_none() => {
             let mut entries = Vec::new();
@@ -335,6 +362,43 @@ fn rebuilt(
         }
         other => Ok(crate::groovy::to_value(other, base)),
     }
+}
+
+/// The closure `made` with its captures of script variables, in `captures`, bound to the cells
+/// of the run, so that what it assigns is there for later callbacks, as in native code.
+fn shared(made: Value, captures: Option<&Map<String, Json>>, launching: &Launching) -> Value {
+    let Value::Closure(closure) = &made else {
+        return made;
+    };
+    let variables = launching.run.0.variables.borrow();
+    let mut captured = closure.captured.clone();
+    let names = closure.code.capture_names.iter().zip(&mut captured);
+    for (name, cell) in names {
+        let key = script_key(captures.and_then(|captures| captures.get(name.as_ref())));
+        if let Some(shared) = key.and_then(|key| variables.get(&key)) {
+            *cell = shared.clone();
+        }
+    }
+    Value::Closure(Rc::new(nextflow_evaluator::value::Closure {
+        code: closure.code.clone(),
+        module: closure.module.clone(),
+        captured,
+    }))
+}
+
+/// The source and name of a variable of a script that a capture holds in its reserved
+/// `Script` form, which the callbacks of a run share.
+fn script_key(json: Option<&Json>) -> Option<(String, String)> {
+    let object = json?.as_object()?;
+    let text = |key| {
+        object
+            .get(key)
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    (object.get("class").and_then(Json::as_str) == Some("Script"))
+        .then(|| (text("source"), text("name")))
 }
 
 fn unsupported(message: &str) -> Error {
@@ -355,6 +419,27 @@ fn module(launching: &Launching, path: &Path, extra: &str) -> Result<Rc<Module>,
     let module = loaded.map_err(|error| format!("the Groovy code does not load: {error}"))?;
     modules.borrow_mut().insert(key, module.clone());
     Ok(module)
+}
+
+/// Notes where the code appended to the script, `extra` with the callback `code` at `at`,
+/// copies the closure of the script at `closure`, which a rewrite, like a `branch` case, holds.
+fn copied(module: &Module, (extra, at, code): (&str, usize, &str), closure: Range<u64>) {
+    let source = module.source.borrow();
+    let Some(source) = source.as_deref() else {
+        return;
+    };
+    let appended = source.len().saturating_sub(extra.len());
+    let original = (usize::try_from(closure.start).ok())
+        .zip(usize::try_from(closure.end).ok())
+        .and_then(|(start, end)| source.get(start..end).filter(|_| end <= appended));
+    let inside = original.and_then(|text| code.find(text));
+    let offset = |at: usize| u32::try_from(at).unwrap_or(u32::MAX);
+    module.copied.set(Some(Copied {
+        appended: offset(appended),
+        copy: offset(appended + at + inside.unwrap_or(0)),
+        length: offset(inside.and(original).map_or(0, str::len)),
+        original: offset(usize::try_from(closure.start).unwrap_or(0)),
+    }));
 }
 
 /// The interpreter of a run, made once with the config and params of the run.

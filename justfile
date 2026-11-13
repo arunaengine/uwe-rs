@@ -72,7 +72,7 @@ test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	root="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}"
-	grep -v '^#' nextflow-parser/tests/fixtures/nf_core_revisions.txt | while read -r name branch commit; do
+	grep -v '^#' workflows/nextflow/parser/tests/fixtures/nf_core_revisions.txt | while read -r name branch commit; do
 		if [ "$name" = modules ]; then target="$root/modules"; else target="$root/pipelines/$name"; fi
 		[ -d "$target" ] && continue
 		work="$(mktemp -d)"
@@ -293,7 +293,7 @@ cwl-conformance-data:
 	home = os.path.expanduser("~/.cache/uwe/test-workflows")
 	test_workflows = os.environ.get("CWL_TEST_WORKFLOWS") or f"{home}/cwl"
 	data = os.environ.get("CWL_CONFORMANCE_DATA") or f"{home}/cwl-conformance-data"
-	for line in open("cwl-parser/tests/fixtures/test-workflows/revisions.txt"):
+	for line in open("workflows/cwl/parser/tests/fixtures/test-workflows/revisions.txt"):
 	    if line.startswith("#") or not line.startswith("conformance/"):
 	        continue
 	    path, url, ref, commit, *prefixes = line.split()
@@ -334,7 +334,7 @@ cwl-graph-test-workflows-test:
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
 
 # Runs the real-world CWL test workflows with their example job files, with the
-# simulator, and compares the outcomes with cwl-runtime/tests/fixtures/job_test_workflows.txt.
+# simulator, and compares the outcomes with workflows/cwl/runtime/tests/fixtures/job_test_workflows.txt.
 cwl-job-test-workflows-test:
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
 
@@ -389,7 +389,7 @@ snakemake-test-workflows:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}"
-	grep -v '^#' snakemake-parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
+	grep -v '^#' workflows/snakemake/parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
 		if [ "$repository" = snakemake/snakemake ]; then
 			target="$root/snakemake-tests"
 			patterns=('/tests/**/Snakefile' '/tests/**/snakefile' '/tests/**/*.smk' '/tests/**/*.snakefile')
@@ -418,7 +418,7 @@ snakemake-test-workflows-data:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	root="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}"
-	grep -v '^#' snakemake-parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
+	grep -v '^#' workflows/snakemake/parser/tests/fixtures/test_workflows_revisions.txt | while read -r repository branch commit; do
 		if [ "$repository" = snakemake/snakemake ]; then
 			target="$root/snakemake-tests"
 			scope='^tests/'
@@ -469,7 +469,7 @@ snakemake-test-workflows-test:
 	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-parser --test test_workflows -- --ignored --nocapture
 
 # Runs every Snakemake test workflow with the simulator and compares the outcomes
-# with snakemake-runtime/tests/fixtures/run_test_workflows.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
+# with workflows/snakemake/runtime/tests/fixtures/run_test_workflows.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
 snakemake-run-test-workflows-test:
 	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact matches_recorded_workflows
 
@@ -481,7 +481,7 @@ argo-test-workflows:
 	set -euo pipefail
 	root="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}"
 	mkdir -p "$root"
-	grep -v '^#' argo-parser/tests/fixtures/test-workflows/revisions.txt | while read -r repository branch commit patterns; do
+	grep -v '^#' workflows/argo/parser/tests/fixtures/test-workflows/revisions.txt | while read -r repository branch commit patterns; do
 		target="$root/${repository#*/}"
 		[ -d "$target" ] && continue
 		work="$(mktemp -d "$root/.fetch.XXXXXX")"
@@ -508,7 +508,7 @@ argo-test-workflows:
 
 # Runs every Argo document of the test workflows that has an entrypoint with the simulator, checks
 # the others as Argo does when they are created, and compares the outcomes with
-# argo-runtime/tests/fixtures/test-workflows/outcomes.txt.
+# workflows/argo/runtime/tests/fixtures/test-workflows/outcomes.txt.
 argo-test-workflows-test:
 	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
 

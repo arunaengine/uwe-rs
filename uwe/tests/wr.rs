@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod common;
-#[path = "../../wr-executor/tests/common/mod.rs"]
+#[path = "../../executors/wr/tests/common/mod.rs"]
 mod fake;
 
 use std::path::{Path, PathBuf};

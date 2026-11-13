@@ -268,7 +268,7 @@ verdict: output byte parity
 uwe: driver exit 1 in 4 s; exactly one attempt, task exit 7, retried=0; -machine-retries 0 and default process termination policy
 jobs: 37373018
 verdict: task failure propagated without retry
-notes: sacct records COMPLETED and 0:0 for the batch wrapper. executor/src/wrapper.rs stores the tool exit and intentionally exits 0 after collecting the result. Scheduler accounting alone does not report task failure; the run database records exit 7 and rejected acceptance.
+notes: sacct records COMPLETED and 0:0 for the batch wrapper. executors/executor/src/wrapper.rs stores the tool exit and intentionally exits 0 after collecting the result. Scheduler accounting alone does not report task failure; the run database records exit 7 and rejected acceptance.
 
 ## cancel-slurm-20261008: Ctrl-C during a running Nextflow container task
 uwe: driver exit 130 in 35 s after SIGINT; sacct records job 37373019 CANCELLED by 10157 and its batch step CANCELLED with 0:9

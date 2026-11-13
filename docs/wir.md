@@ -32,13 +32,13 @@ Every run of a CWL, WDL or Argo document, a Snakefile or a Nextflow pipeline com
 - An ExpressionTool becomes a `call` op of a graph with an `expr` op per output, at the path of the output, which takes its field of the object that the expression gives, or null when the object has none. As an `expr` reads no files, an input that loads its contents or listing keeps the tool native.
 - Anything else stays a `native` CWL op that runs the process as a whole, and `uwe lower` names it with the first thing that cannot be compiled into wir yet: expressions in tools that read the paths of files or listings that CWL loads, `loadContents` of inputs, Operations, and requirements such as `InplaceUpdateRequirement`. A workflow keeps its steps only when every step lowers; otherwise the whole workflow is one native op.
 
-A tool compiled into wir runs as a wir task that the runner builds as the CWL driver builds the task of the tool: it works in `/var/spool/cwl`, sets `HOME` and `TMPDIR`, stages each input file in `/var/lib/cwl/inputs/<n>` and quotes its shell commands the same way, so its cache key and resume fingerprint are those of the same tool run as CWL. They differ when a job lists the file inputs in another order than the tool, as the CWL driver numbers the folders in the order of the job, and in a real run, where the CWL driver also asks for `cwl.output.json`. `uwe/tests/lowering.rs` compares the tasks on the simulator and the outputs in Docker, and `cwl-lowering/tests/runs.rs` compares the commands and outputs of both runs on the simulator. Two runs of the same compiled document share cache keys and resume fingerprints.
+A tool compiled into wir runs as a wir task that the runner builds as the CWL driver builds the task of the tool: it works in `/var/spool/cwl`, sets `HOME` and `TMPDIR`, stages each input file in `/var/lib/cwl/inputs/<n>` and quotes its shell commands the same way, so its cache key and resume fingerprint are those of the same tool run as CWL. They differ when a job lists the file inputs in another order than the tool, as the CWL driver numbers the folders in the order of the job, and in a real run, where the CWL driver also asks for `cwl.output.json`. `uwe/tests/lowering.rs` compares the tasks on the simulator and the outputs in Docker, and `workflows/cwl/lowering/tests/runs.rs` compares the commands and outputs of both runs on the simulator. Two runs of the same compiled document share cache keys and resume fingerprints.
 
 Not compiled the same way: a compiled tool ignores a `cwl.output.json` that it writes. The `$namespaces` and `$schemas` of a CWL document become the `formats` of the wir document, so a compiled run expands the prefixed formats of its inputs file and matches the formats of input Files by the ontologies, as the CWL run does; a tool whose local schema file is missing stays native.
 
 ### Coverage
 
-`cwl-lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-07 (a checkout of suite commit `97908339` with its data files, and the CWL JavaScript helper image):
+`workflows/cwl/lowering/tests/conformance.rs` lowers each of the 378 tests of the CWL v1.2 conformance suite and runs it natively and lowered on the simulator; `CWL_TEST_WORKFLOWS` names the folder of the test workflows, and `CWL_TEST=1` prints the outcome of each test. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-07 (a checkout of suite commit `97908339` with its data files, and the CWL JavaScript helper image):
 
 | Outcome | Tests |
 | --- | --- |
@@ -70,7 +70,7 @@ A lowered task is a wir task, so its cache key differs from that of the same tas
 
 ### WDL coverage
 
-`wdl-lowering/tests/conformance.rs` lowers each of the 170 examples of the WDL 1.2.1 specification that `just wdl-spec-tests` extracts, and runs it natively and lowered on the simulator; `WDL_SPEC_TESTS` names their folder, and `WDL_TEST=1` prints the outcome of each. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-08 (`SPEC.md` of openwdl/wdl commit `42c106d0`, the data files of openwdl/wdl-tests commit `082340ad`):
+`workflows/wdl/lowering/tests/conformance.rs` lowers each of the 170 examples of the WDL 1.2.1 specification that `just wdl-spec-tests` extracts, and runs it natively and lowered on the simulator; `WDL_SPEC_TESTS` names their folder, and `WDL_TEST=1` prints the outcome of each. It compares the outputs of both runs where both succeed, with Files and Directories by class and basename. On 2026-11-08 (`SPEC.md` of openwdl/wdl commit `42c106d0`, the data files of openwdl/wdl-tests commit `082340ad`):
 
 | Outcome | Examples |
 | --- | --- |
@@ -117,7 +117,7 @@ The wir runtime runs the jobs of a document through one job adapter for the Snak
 
 ### Snakemake coverage
 
-`snakemake-compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs (their descriptions, cache keys, resume fingerprints and acceptance) and the target files that the native run exports with those that the outputs of the compiled entry graph name. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-09 (the commits of `snakemake-parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
+`workflows/snakemake/compiler/tests/differential.rs` compiles each test workflow of `just snakemake-test-workflows`, runs it natively and compiled through the wir runtime on the simulator, and compares the tasks of both runs (their descriptions, cache keys, resume fingerprints and acceptance) and the target files that the native run exports with those that the outputs of the compiled entry graph name. `SNAKEMAKE_TEST_WORKFLOWS` names the folder of the test workflows, and `SNAKEMAKE_COMPARE=1` prints the outcome of each. On 2026-11-09 (the commits of `workflows/snakemake/parser/tests/fixtures/test_workflows_revisions.txt`, of which two repositories no longer exist), each workflow with a time limit of 300 seconds:
 
 | Outcome | Workflows |
 | --- | --- |

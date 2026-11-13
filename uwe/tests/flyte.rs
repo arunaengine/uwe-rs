@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod common;
-#[path = "../../flyte-executor/tests/common/mod.rs"]
+#[path = "../../executors/flyte/tests/common/mod.rs"]
 mod fake;
 
 use std::path::Path;

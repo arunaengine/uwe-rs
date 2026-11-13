@@ -21,7 +21,7 @@ import yaml
 TESTS = Path(os.environ.get("ARGO_TEST_WORKFLOWS")
              or Path.home() / ".cache/uwe/test-workflows/argo")
 REPOSITORY = Path(__file__).resolve().parents[4]
-OUTCOMES = REPOSITORY / "argo-runtime/tests/fixtures/test-workflows/outcomes.txt"
+OUTCOMES = REPOSITORY / "workflows/argo/runtime/tests/fixtures/test-workflows/outcomes.txt"
 UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
 OUTPUT = Path(__file__).resolve().parents[1].joinpath("real_runs_argo.txt")
 TIMEOUT = 300

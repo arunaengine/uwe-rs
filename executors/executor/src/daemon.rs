@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::sync::PoisonError;
 use std::time::Duration;
 
 use bollard::models::{ContainerCreateBody, NetworkCreateRequest, PortBinding};
@@ -189,7 +190,10 @@ impl LocalContainer {
             drop(share);
             let _ = tokio::fs::remove_dir_all(&root).await;
         });
-        self.daemons.lock().expect("the daemons").push(watcher);
+        self.daemons
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(watcher);
         let started = self.start_daemon(name, &id, &daemon, cancel);
         let address = match time {
             Some(time) => tokio::time::timeout(time, started)
@@ -400,7 +404,8 @@ impl LocalContainer {
     /// Waits until every daemon stopped, once their run asked them to, and removes the
     /// network of the run.
     pub(crate) async fn release_daemons(&self) {
-        let watchers: Vec<_> = std::mem::take(&mut *self.daemons.lock().expect("the daemons"));
+        let watchers: Vec<_> =
+            std::mem::take(&mut *self.daemons.lock().unwrap_or_else(PoisonError::into_inner));
         for watcher in watchers {
             let _ = watcher.await;
         }

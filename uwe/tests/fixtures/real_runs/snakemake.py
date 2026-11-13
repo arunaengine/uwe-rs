@@ -21,7 +21,7 @@ from docker_no_pull import NoPull  # noqa: E402
 HOME = Path.home() / ".cache/uwe/test-workflows/snakemake"
 TESTS = Path(os.environ.get("SNAKEMAKE_TESTS") or HOME / "snakemake-tests") / "tests"
 REPOSITORY = Path(__file__).resolve().parents[4]
-LAUNCHES = REPOSITORY / "snakemake-runtime/tests/fixtures/run_test_workflows_launches.txt"
+LAUNCHES = REPOSITORY / "workflows/snakemake/runtime/tests/fixtures/run_test_workflows_launches.txt"
 UWE = Path(os.environ.get("UWE") or "target/release/uwe").resolve()
 SNAKEMAKE = os.environ.get("SNAKEMAKE") or "snakemake"
 OUTPUT = Path(__file__).resolve().parents[1].joinpath("real_runs_snakemake.txt")

@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod common;
-#[path = "../../nomad-executor/tests/common/mod.rs"]
+#[path = "../../executors/nomad/tests/common/mod.rs"]
 mod fake;
 
 use std::path::Path;

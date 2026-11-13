@@ -18,8 +18,8 @@ manifest = json.loads((root / "manifest.json").read_text())
 if manifest.get("format") != 1 or manifest.get("nextflow_version") != "26.04.6":
     raise SystemExit("requires bundle format 1 and Nextflow 26.04.6 oracle")
 fixtures = [
-    "nextflow-parser/tests/fixtures/nf_core_revisions.txt",
-    "snakemake-parser/tests/fixtures/test_workflows_revisions.txt",
+    "workflows/nextflow/parser/tests/fixtures/nf_core_revisions.txt",
+    "workflows/snakemake/parser/tests/fixtures/test_workflows_revisions.txt",
     "conda-environment/tests/fixtures/workflow_rejections.json",
 ]
 expected_fixtures = {name: digest(pathlib.Path(name)) for name in fixtures}

@@ -67,7 +67,7 @@ fn matches_oracle() {
         .collect();
     pipelines.sort();
     let mut inventory: Vec<&str> =
-        include_str!("../../nextflow-parser/tests/fixtures/nf_core_revisions.txt")
+        include_str!("../../workflows/nextflow/parser/tests/fixtures/nf_core_revisions.txt")
             .lines()
             .filter(|line| !line.starts_with('#') && !line.is_empty())
             .filter_map(|line| line.split_whitespace().next())

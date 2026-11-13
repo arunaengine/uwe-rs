@@ -5,54 +5,54 @@
 [workspace]
 resolver = "3"
 members = [
-    "argo-compiler",
-    "argo-parser",
-    "argo-runtime",
-    "aws-batch-executor",
-    "azure-batch-executor",
+    "workflows/argo/compiler",
+    "workflows/argo/parser",
+    "workflows/argo/runtime",
+    "executors/aws-batch",
+    "executors/azure-batch",
     "conda-environment",
     "config-file",
     "content-store",
-    "cwl-lowering",
-    "cwl-parser",
-    "cwl-runtime",
-    "executor",
-    "flyte-executor",
-    "google-batch-executor",
-    "htcondor-executor",
+    "workflows/cwl/lowering",
+    "workflows/cwl/parser",
+    "workflows/cwl/runtime",
+    "executors/executor",
+    "executors/flyte",
+    "executors/google-batch",
+    "executors/htcondor",
     "input-schema",
-    "jarvice-executor",
+    "executors/jarvice",
     "uwe",
-    "kubernetes-executor",
-    "nextflow-compiler",
-    "nextflow-config",
-    "nextflow-evaluator",
-    "nextflow-parser",
-    "nextflow-plugins",
-    "nextflow-runtime",
-    "nomad-executor",
-    "pbs-executor",
+    "executors/kubernetes",
+    "workflows/nextflow/compiler",
+    "workflows/nextflow/config",
+    "workflows/nextflow/evaluator",
+    "workflows/nextflow/parser",
+    "workflows/nextflow/plugins",
+    "workflows/nextflow/runtime",
+    "executors/nomad",
+    "executors/pbs",
     "python-evaluator",
     "run-crate",
     "run-database",
     "run-page",
     "run-telemetry",
-    "slurm-executor",
-    "snakemake-compiler",
-    "snakemake-parser",
-    "snakemake-runtime",
-    "snowflake-executor",
+    "executors/slurm",
+    "workflows/snakemake/compiler",
+    "workflows/snakemake/parser",
+    "workflows/snakemake/runtime",
+    "executors/snowflake",
     "storage",
     "task-model",
     "task-runner",
-    "tes-executor",
+    "executors/tes",
     "tool-record",
-    "wdl-lowering",
-    "wdl-runtime",
+    "workflows/wdl/lowering",
+    "workflows/wdl/runtime",
     "wir",
     "wir-runtime",
     "workflow-graph",
-    "wr-executor",
+    "executors/wr",
 ]
 
 [workspace.package]
@@ -64,50 +64,50 @@ publish = false
 
 [workspace.dependencies]
 # Workspace crates
-argo-compiler = { path = "argo-compiler" }
-argo-parser = { path = "argo-parser" }
-argo-runtime = { path = "argo-runtime" }
-aws-batch-executor = { path = "aws-batch-executor" }
-azure-batch-executor = { path = "azure-batch-executor" }
+argo-compiler = { path = "workflows/argo/compiler" }
+argo-parser = { path = "workflows/argo/parser" }
+argo-runtime = { path = "workflows/argo/runtime" }
+aws-batch-executor = { path = "executors/aws-batch" }
+azure-batch-executor = { path = "executors/azure-batch" }
 conda-environment = { path = "conda-environment" }
 config-file = { path = "config-file" }
 content-store = { path = "content-store" }
-cwl-lowering = { path = "cwl-lowering" }
-cwl-parser = { path = "cwl-parser" }
-cwl-runtime = { path = "cwl-runtime" }
-executor = { path = "executor" }
-flyte-executor = { path = "flyte-executor" }
-google-batch-executor = { path = "google-batch-executor" }
-htcondor-executor = { path = "htcondor-executor" }
+cwl-lowering = { path = "workflows/cwl/lowering" }
+cwl-parser = { path = "workflows/cwl/parser" }
+cwl-runtime = { path = "workflows/cwl/runtime" }
+executor = { path = "executors/executor" }
+flyte-executor = { path = "executors/flyte" }
+google-batch-executor = { path = "executors/google-batch" }
+htcondor-executor = { path = "executors/htcondor" }
 input-schema = { path = "input-schema" }
-jarvice-executor = { path = "jarvice-executor" }
-kubernetes-executor = { path = "kubernetes-executor" }
-nextflow-compiler = { path = "nextflow-compiler" }
-nextflow-config = { path = "nextflow-config" }
-nextflow-evaluator = { path = "nextflow-evaluator" }
-nextflow-parser = { path = "nextflow-parser" }
-nextflow-plugins = { path = "nextflow-plugins" }
-nextflow-runtime = { path = "nextflow-runtime" }
-nomad-executor = { path = "nomad-executor" }
-pbs-executor = { path = "pbs-executor" }
-wr-executor = { path = "wr-executor" }
+jarvice-executor = { path = "executors/jarvice" }
+kubernetes-executor = { path = "executors/kubernetes" }
+nextflow-compiler = { path = "workflows/nextflow/compiler" }
+nextflow-config = { path = "workflows/nextflow/config" }
+nextflow-evaluator = { path = "workflows/nextflow/evaluator" }
+nextflow-parser = { path = "workflows/nextflow/parser" }
+nextflow-plugins = { path = "workflows/nextflow/plugins" }
+nextflow-runtime = { path = "workflows/nextflow/runtime" }
+nomad-executor = { path = "executors/nomad" }
+pbs-executor = { path = "executors/pbs" }
+wr-executor = { path = "executors/wr" }
 python-evaluator = { path = "python-evaluator" }
 run-crate = { path = "run-crate" }
 run-database = { path = "run-database" }
 run-page = { path = "run-page" }
 run-telemetry = { path = "run-telemetry" }
-slurm-executor = { path = "slurm-executor" }
-snakemake-compiler = { path = "snakemake-compiler" }
-snakemake-parser = { path = "snakemake-parser" }
-snakemake-runtime = { path = "snakemake-runtime" }
-snowflake-executor = { path = "snowflake-executor" }
+slurm-executor = { path = "executors/slurm" }
+snakemake-compiler = { path = "workflows/snakemake/compiler" }
+snakemake-parser = { path = "workflows/snakemake/parser" }
+snakemake-runtime = { path = "workflows/snakemake/runtime" }
+snowflake-executor = { path = "executors/snowflake" }
 storage = { path = "storage" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
-tes-executor = { path = "tes-executor" }
+tes-executor = { path = "executors/tes" }
 tool-record = { path = "tool-record" }
-wdl-lowering = { path = "wdl-lowering" }
-wdl-runtime = { path = "wdl-runtime" }
+wdl-lowering = { path = "workflows/wdl/lowering" }
+wdl-runtime = { path = "workflows/wdl/runtime" }
 wir = { path = "wir" }
 wir-runtime = { path = "wir-runtime" }
 workflow-graph = { path = "workflow-graph" }

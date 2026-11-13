@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 mod common;
-#[path = "../../snowflake-executor/tests/common/mod.rs"]
+#[path = "../../executors/snowflake/tests/common/mod.rs"]
 mod fake;
 
 use std::path::{Path, PathBuf};
@@ -31,7 +31,7 @@ workflow {
 /// The fixed RSA key of the Snowflake tests.
 const KEY: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../snowflake-executor/tests/fixtures/snowflake_key.pem"
+    "/../executors/snowflake/tests/fixtures/snowflake_key.pem"
 );
 
 /// The settings of `[executor.snowflake]` for the fake and a staging root in `folder`, with

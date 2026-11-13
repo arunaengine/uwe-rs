@@ -791,7 +791,7 @@ class PythonToolTest(TreeTest):
         self.assertEqual(findings, [])
 
     def test_scoped_constant(self):
-        path = "snakemake-runtime/src/embedded/snakemake/iocontainers.py"
+        path = "workflows/snakemake/runtime/src/embedded/snakemake/iocontainers.py"
         source = "FILE_HASH_PREFIX_LEN = 16\n"
         self.assertEqual(self.python([(path, source)]), [])
         self.assertEqual(len(self.python([("pkg/src/worker.py", source)])), 1)

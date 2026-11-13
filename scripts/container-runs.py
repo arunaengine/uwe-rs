@@ -84,7 +84,7 @@ def exercise(binary, root, environment, name):
         summary(output, "Failed after", 1, 0, 0, 1)
     elif name == "cancel":
         assert code == 130, output
-        assert run[1] == "failed" and tasks == [("WAIT", "failed")], (run, tasks, output)
+        assert run[1] == "failed" and tasks == [("WAIT", "stopped")], (run, tasks, output)
         assert not owned(folder), "cancelled containers remain"
         summary(output, "Failed after", 1, 0, 0, 1)
     else:

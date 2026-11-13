@@ -313,6 +313,7 @@ impl Host for Builder<'_> {
             project_dir: &options.project_dir,
             cli_params: &options.cli_params,
             workflow,
+            containers: options.containers.clone(),
         };
         nextflow_plugins::call(plugin, name, arguments, &mut context)
     }

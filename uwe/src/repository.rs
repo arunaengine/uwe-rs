@@ -384,6 +384,7 @@ pub(crate) fn prepare(
     reference: Option<&str>,
     latest: bool,
     arguments: &crate::arguments::Arguments,
+    storage: Option<&storage::Storage>,
 ) -> Result<PathBuf, Failure> {
     if target.exists() {
         if reference.is_some() || latest {
@@ -397,12 +398,7 @@ pub(crate) fn prepare(
         return Ok(target.to_owned());
     };
     let cache = crate::cache_directory();
-    // Git signs in with the account of the https provider of the config file for each address.
-    let accounts = || -> Result<Option<crate::git::Accounts>, Failure> {
-        let storage = crate::setup::Setup::load(arguments)?.storage;
-        let lookup = move |url: &str| storage.account(url).map_err(|error| error.to_string());
-        Ok(Some(crate::git::Accounts(std::sync::Arc::new(lookup))))
-    };
+    let accounts = || git_accounts(arguments, storage);
     let runtime = workflow_graph::runtime().map_err(|error| Failure::setup(error.to_string()))?;
     if repository.host == Host::Git {
         // A long path without `.git` is a repository only if the server answers as Git.
@@ -671,6 +667,20 @@ fn default_branch(folder: &Path) -> Result<Option<String>, Failure> {
         Ok(found)
     }
     find(&parsed.tree.statements, false)
+}
+
+/// Git signs in with the account of the https provider of `storage` for each address, else of
+/// the config files.
+fn git_accounts(
+    arguments: &crate::arguments::Arguments,
+    storage: Option<&storage::Storage>,
+) -> Result<Option<crate::git::Accounts>, Failure> {
+    let storage = match storage {
+        Some(storage) => storage.clone(),
+        None => crate::setup::Setup::load(arguments)?.storage,
+    };
+    let lookup = move |url: &str| storage.account(url).map_err(|error| error.to_string());
+    Ok(Some(crate::git::Accounts(std::sync::Arc::new(lookup))))
 }
 
 #[cfg(test)]

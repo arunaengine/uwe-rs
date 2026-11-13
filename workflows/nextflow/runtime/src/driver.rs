@@ -54,6 +54,8 @@ pub struct Settings {
     pub repository: Option<Repository>,
     /// Whether the run resumes an earlier one, `workflow.resume`.
     pub resume: bool,
+    /// The engine and journal folder of the containers that plugins start.
+    pub containers: nextflow_plugins::Containers,
 }
 
 /// The Git repository of a pulled pipeline, as `workflow.repository`, `workflow.commitId` and
@@ -80,6 +82,7 @@ impl Default for Settings {
             local_options: false,
             repository: None,
             resume: false,
+            containers: Default::default(),
         }
     }
 }
@@ -276,6 +279,7 @@ impl Nextflow {
             output_dir: (self.launch.output_dir.as_ref())
                 .map(|folder| folder.to_string_lossy().into_owned()),
             container_engine: self.settings.container_engine.clone(),
+            containers: self.settings.containers.clone(),
             config,
             profile: if profiles.is_empty() {
                 "standard".into()

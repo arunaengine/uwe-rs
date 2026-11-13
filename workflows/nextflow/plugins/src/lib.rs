@@ -202,6 +202,23 @@ pub fn script(plugin: &str) -> Option<&'static str> {
     catalogue::find(plugin)?.script
 }
 
+/// The engine and the journal folder of the containers that plugins start, like those of
+/// nf-python and nf-r-ipc.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Containers {
+    /// The engine as `UWE_ENGINE` names it, empty for the default; `None` reads `UWE_ENGINE`.
+    pub engine: Option<String>,
+    /// The folder of the journals of the containers; `None` uses the cache folder of the user.
+    pub journals: Option<std::path::PathBuf>,
+}
+
+impl Containers {
+    /// The engine of the run, else of `UWE_ENGINE`, as the command line gives it.
+    pub(crate) fn engine(&self) -> String {
+        (self.engine.clone()).unwrap_or_else(|| std::env::var("UWE_ENGINE").unwrap_or_default())
+    }
+}
+
 /// What plugin functions can see of the run.
 pub struct Context<'a> {
     /// Reads files, prints and knows the launch directory.
@@ -216,6 +233,7 @@ pub struct Context<'a> {
     pub cli_params: &'a [String],
     /// The `workflow` object of the run, which nf-schema 3 summaries read; null when unknown.
     pub workflow: Value,
+    pub containers: Containers,
 }
 
 /// Runs what the plugins of the config do when a run starts, before its script: nf-schema

@@ -204,7 +204,8 @@ fn r_function(
         .collect();
     let output = scratch.join("launcher.log");
     let ended = container::run(&Call {
-        engine: std::env::var("UWE_ENGINE").unwrap_or_default(),
+        engine: context.containers.engine(),
+        journals: context.containers.journals.clone(),
         image: runtime.image.clone(),
         program: runtime.program.clone(),
         arguments: vec![text(&launcher)],

@@ -519,6 +519,7 @@ pub fn blocks(
     let run = run.to_owned();
     let isolation = isolation(arguments, setup);
     let shared = shared_folders(arguments, setup);
+    let containers = plugin_containers(setup);
     let options =
         wir_runtime::nextflow::Options::new(move |launch: &Launch, folder: &std::path::Path| {
             let console = Console {
@@ -536,6 +537,7 @@ pub fn blocks(
                 local_options: local,
                 repository: None,
                 resume,
+                containers: containers.clone(),
             }
         });
     options.with_launch(started)
@@ -572,6 +574,7 @@ pub fn compile(
         run_name: run.to_owned(),
         command_line: std::env::args().collect::<Vec<_>>().join(" "),
         resume: arguments.resume.is_some(),
+        containers: plugin_containers(setup),
         ..Settings::default()
     };
     match native {
@@ -633,8 +636,18 @@ pub fn driver(
             &launch.target,
         ),
         resume: arguments.resume.is_some(),
+        containers: plugin_containers(setup),
     };
     Ok(Box::new(Nextflow::new(launch, settings)?))
+}
+
+/// The engine and journal folder of the run for the containers of Nextflow plugins, like those
+/// of nf-python.
+fn plugin_containers(setup: &Setup) -> nextflow_plugins::Containers {
+    nextflow_plugins::Containers {
+        engine: Some(setup.engine()),
+        journals: Some(crate::journal_folder()),
+    }
 }
 
 /// The plugins of the config of a launch that a run skips, as warnings for `uwe check`.
@@ -1226,6 +1239,17 @@ pub(crate) fn text(value: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use nextflow_evaluator::interpreter::Host;
+
+    #[test]
+    fn passes_plugin_containers() {
+        let _scope = crate::run::support::CacheScope::new(false);
+        crate::run::support::use_journal_folder("/runs/journals".into());
+        let mut setup = crate::setup::Setup::default();
+        setup.executors.engine = Some("podman".into());
+        let containers = super::plugin_containers(&setup);
+        assert_eq!(containers.engine, Some(setup.engine()));
+        assert_eq!(containers.journals, Some("/runs/journals".into()));
+    }
 
     #[test]
     fn skips_secret_store() {

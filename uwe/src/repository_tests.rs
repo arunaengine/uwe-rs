@@ -441,3 +441,30 @@ fn describes_pulled_origin() {
         "a local folder"
     );
 }
+
+#[test]
+fn uses_run_accounts() {
+    let folder = tempfile::tempdir().unwrap();
+    let (given, broken) = (
+        folder.path().join("given.toml"),
+        folder.path().join("bad.toml"),
+    );
+    let text = "[storage.git]\ntype = \"https\"\nprefixes = [\"https://git.example.org/\"]\n\
+                token = { environment = \"UWE_TEST_TOKEN\" }\n";
+    std::fs::write(&given, text).unwrap();
+    std::fs::write(&broken, "[nonsense]\nkey = 1\n").unwrap();
+    let mut secrets = config_file::SecretValues::default();
+    secrets.insert("UWE_TEST_TOKEN", "given").unwrap();
+    let storage = crate::setup::Setup::from_files(&[given], &secrets)
+        .unwrap()
+        .storage;
+    // The config files of the arguments cannot load, so only the run's storage answers.
+    let arguments = crate::arguments::Arguments {
+        config_file: Some(broken),
+        ..Default::default()
+    };
+    let accounts = git_accounts(&arguments, Some(&storage)).unwrap().unwrap();
+    let account = (accounts.0)("https://git.example.org/team/tools.git").unwrap();
+    assert_eq!(account, Some(("git".to_owned(), "given".to_owned())));
+    assert!(git_accounts(&arguments, None).is_err());
+}

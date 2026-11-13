@@ -83,6 +83,9 @@ pub struct Setup {
     pub variables: config_file::SecretValues,
     /// `[cwl] registry`: where images that CWL tools build go for remote executors.
     pub cwl_registry: Option<String>,
+    /// The config files that `from_files` read, whose presets and defaults a run with this
+    /// setup takes; `None` for a setup made otherwise.
+    pub config: Option<ConfigFile>,
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -697,6 +700,11 @@ impl Defaults {
         Defaults::read(&config).map_err(failed)
     }
 
+    /// The defaults of config files that were read already, like those of `Setup::from_files`.
+    pub(crate) fn from_config(config: &ConfigFile) -> Result<Defaults, Failure> {
+        Defaults::read(config).map_err(|error| Failure::setup(format!("uwe: {error}")))
+    }
+
     fn read(config: &ConfigFile) -> Result<Defaults, ConfigError> {
         let mut defaults = Defaults::default();
         if let Some(executor) = config.section("executor")? {
@@ -803,7 +811,12 @@ impl Setup {
     ) -> Result<Setup, Failure> {
         let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::read(files).map_err(failed)?;
-        Setup::read(config.with_secrets(secrets.clone()))
+        let config = config.with_secrets(secrets.clone());
+        let setup = Setup::read(config.clone())?;
+        Ok(Setup {
+            config: Some(config),
+            ..setup
+        })
     }
 
     fn read(config: ConfigFile) -> Result<Setup, Failure> {

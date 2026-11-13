@@ -288,9 +288,15 @@ impl Settings {
         } else {
             None
         };
+        // A setup from given files names the presets and defaults; the site and user files
+        // then stay out.
+        let given = (self.setup.as_ref()).and_then(|setup| setup.config.clone());
         let prepared = if arguments.preset.is_some() {
-            crate::catalogue::Catalogue::load(arguments.config_file.as_deref())?
-                .prepare(&mut arguments)?
+            let catalogue = match given.clone() {
+                Some(config) => crate::catalogue::Catalogue::from_config(config)?,
+                None => crate::catalogue::Catalogue::load(arguments.config_file.as_deref())?,
+            };
+            catalogue.prepare(&mut arguments)?
         } else {
             None
         };
@@ -301,8 +307,15 @@ impl Settings {
                 .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
             hosted.authorize_values(&values)?;
         }
-        if (!cli || prepared.is_some()) && self.setup.is_none() {
-            Defaults::load(&arguments)?.apply("run", &mut arguments)?;
+        if !cli || prepared.is_some() {
+            let defaults = match (&given, &self.setup) {
+                (Some(config), _) => Some(Defaults::from_config(config)?),
+                (None, None) => Some(Defaults::load(&arguments)?),
+                (None, Some(_)) => None,
+            };
+            if let Some(defaults) = defaults {
+                defaults.apply("run", &mut arguments)?;
+            }
         }
         if let Some(folder) = self.cache_folder {
             crate::use_cache_folder(folder);
@@ -443,6 +456,67 @@ mod tests {
             assert!(refused.contains("private or local network"), "{refused}");
         }
         assert!(storage.fetch("drs://127.0.0.1/a", &downloads).is_err());
+    }
+
+    #[test]
+    fn reads_given_presets() {
+        let root = tempfile::tempdir().unwrap();
+        let (given, other) = (
+            root.path().join("given.toml"),
+            root.path().join("other.toml"),
+        );
+        let preset = format!(
+            "[workflows.demo]\nsource='team/pipeline'\nrevision='{}'\n",
+            "a".repeat(40)
+        );
+        std::fs::write(&given, preset).unwrap();
+        std::fs::write(&other, "").unwrap();
+        let setup = Setup::from_files(&[given], &SecretValues::default()).unwrap();
+        let settings = Settings {
+            preset: Some("demo".into()),
+            config_file: Some(other),
+            setup: Some(setup),
+            ..Settings::default()
+        };
+        let (arguments, setup, _inputs) = settings.prepare().unwrap();
+        assert_eq!(arguments.target, Some(PathBuf::from("team/pipeline")));
+        assert_eq!(arguments.revision, Some("a".repeat(40)));
+        assert!(setup.and_then(|setup| setup.config).is_some());
+    }
+
+    #[test]
+    fn applies_given_defaults() {
+        let root = tempfile::tempdir().unwrap();
+        let (file, cache) = (root.path().join("given.toml"), root.path().join("cache"));
+        let text = format!(
+            "[executor]\ndefault = 'slurm'\ntask_minutes = 2\n[retry]\nmachine_count = 5\n\
+             [cache]\nfolder = '{}'\n",
+            cache.display()
+        );
+        std::fs::write(&file, text).unwrap();
+        let _scope = crate::run::support::CacheScope::new(false);
+        let setup = Setup::from_files(&[file], &SecretValues::default()).unwrap();
+        let settings = Settings {
+            setup: Some(setup),
+            retries: Some(1),
+            ..Settings::new(root.path().join("main.nf"))
+        };
+        let (arguments, _, _inputs) = settings.prepare().unwrap();
+        assert_eq!(arguments.executor.as_deref(), Some("slurm"));
+        assert_eq!(arguments.task_seconds, Some(120));
+        assert_eq!(
+            arguments.machine_retries,
+            Some(1),
+            "the run's own setting wins"
+        );
+        assert_eq!(crate::cache_directory(), cache);
+        // A setup made otherwise keeps the defaults out, as before.
+        let settings = Settings {
+            setup: Some(Setup::default()),
+            ..Settings::new(root.path().join("main.nf"))
+        };
+        let (arguments, _, _inputs) = settings.prepare().unwrap();
+        assert_eq!(arguments.executor, None);
     }
 
     #[test]

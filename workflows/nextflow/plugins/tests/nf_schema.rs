@@ -83,6 +83,7 @@ fn to_list_in(directory: &Path, sheet: &str, schema: &str) -> Result<String, Err
         project_dir: &directory,
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     let arguments = vec![Value::string(sheet), Value::string(schema)];
     call("nf-schema", "samplesheetToList", arguments, &mut context).map(|rows| rows.to_string())
@@ -272,6 +273,7 @@ fn validates_schema_values() {
         project_dir: &directory,
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     let mut validate = |arguments: Vec<Value>| {
         call("nf-schema", "validate", arguments, &mut context).map(|errors| errors.to_string())
@@ -343,6 +345,7 @@ fn params_call_in(
         project_dir: &directory,
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     call("nf-schema", name, arguments, &mut context).map(|value| value.to_string())
 }
@@ -465,6 +468,7 @@ fn casts_command_line() {
             project_dir: &directory,
             cli_params: &names,
             workflow: Value::Null,
+            containers: Default::default(),
         };
         call("nf-schema", "validateParameters", arguments, &mut context)
             .map_err(|error| error.to_string())
@@ -719,6 +723,7 @@ fn validates_known_parameters() {
             project_dir: &directory,
             cli_params: &[],
             workflow: Value::Null,
+            containers: Default::default(),
         };
         call("nf-schema", "validateParameters", vec![], &mut context).map(|_| ())
     };
@@ -893,6 +898,7 @@ impl Session {
             project_dir: &folder,
             cli_params: &self.cli,
             workflow: self.workflow.clone(),
+            containers: Default::default(),
         };
         let result = match name {
             "start" => nextflow_plugins::start(&mut context).map(|_| Value::Null),
@@ -1039,6 +1045,7 @@ fn summaries_match_recordings() {
             project_dir: &folder,
             cli_params: &[],
             workflow: session.workflow.clone(),
+            containers: Default::default(),
         };
         let map = call(
             "nf-schema",
@@ -1412,6 +1419,7 @@ fn finds_schema_beside() {
             project_dir: &launch,
             cli_params: &[],
             workflow: Value::Null,
+            containers: Default::default(),
         };
         let arguments = vec![options(&[(
             "parameters_schema",

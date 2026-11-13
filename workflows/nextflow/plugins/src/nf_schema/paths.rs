@@ -461,6 +461,7 @@ mod tests {
             project_dir: "/",
             cli_params: &[],
             workflow: Value::Null,
+            containers: Default::default(),
         };
         let schema = json!({
             "$defs": {"file": {"$anchor": "file", "format": "file-path", "exists": true}},
@@ -492,6 +493,7 @@ mod tests {
             project_dir: &launch,
             cli_params: &[],
             workflow: Value::Null,
+            containers: Default::default(),
         };
         let path = json!({"type": "string", "format": "file-path", "exists": true});
         let reference = json!({"$defs": {"file": path}, "$ref": "#/$defs/file"});

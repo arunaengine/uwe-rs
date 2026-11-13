@@ -84,6 +84,8 @@ pub struct Options {
     pub output_dir: Option<String>,
     /// The container engine, like `docker`, which `workflow.containerEngine` gives.
     pub container_engine: Option<String>,
+    /// The engine and journal folder of the containers that plugins start.
+    pub containers: nextflow_plugins::Containers,
     /// The merged config, with the params of the command line.
     pub config: Config,
     /// The profiles of `-profile`, as `workflow.profile` shows them.
@@ -527,6 +529,7 @@ impl Default for Options {
             simulated: false,
             output_dir: None,
             container_engine: None,
+            containers: Default::default(),
             config: Config::default(),
             profile: "standard".into(),
             project_dir: "/".into(),

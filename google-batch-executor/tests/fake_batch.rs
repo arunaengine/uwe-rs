@@ -325,6 +325,13 @@ async fn cancels_running_jobs() {
             .path
             .ends_with(&format!("/jobs/{id}"))
     );
+    // The fake notes the end of the killed runnable when its thread has waited for it.
+    for _ in 0..3000 {
+        if !fake.running(&id) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     assert!(!fake.running(&id));
 }
 

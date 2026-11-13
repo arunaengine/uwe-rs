@@ -384,6 +384,13 @@ async fn cancels_running_tasks() {
             .map(|request| request.header("authorization")),
         Some("Bearer vm-token")
     );
+    // The fake notes the end of the killed command when its thread has waited for it.
+    for _ in 0..3000 {
+        if !fake.running(&fake.tasks()[0]) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     assert!(!fake.running(&fake.tasks()[0]));
 }
 

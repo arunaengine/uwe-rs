@@ -35,8 +35,9 @@ impl WebServer {
         let (seen, count) = (requests.clone(), served.clone());
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                answer(stream, &files, header.as_ref(), &seen);
+                // Counted before the answer, so that a client that has its answer sees the count.
                 count.fetch_add(1, Ordering::SeqCst);
+                answer(stream, &files, header.as_ref(), &seen);
             }
         });
         WebServer {
@@ -46,7 +47,7 @@ impl WebServer {
         }
     }
 
-    /// How many requests the server answered.
+    /// How many requests the server took.
     pub fn served(&self) -> usize {
         self.served.load(Ordering::SeqCst)
     }

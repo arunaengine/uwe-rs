@@ -83,8 +83,8 @@ pub struct Setup {
     pub variables: config_file::SecretValues,
     /// `[cwl] registry`: where images that CWL tools build go for remote executors.
     pub cwl_registry: Option<String>,
-    /// The config files that `from_files` read, whose presets a run with this setup takes;
-    /// `None` for a setup made otherwise.
+    /// The config files that `from_files` read, whose presets and defaults a run with this
+    /// setup takes; `None` for a setup made otherwise.
     pub config: Option<ConfigFile>,
 }
 
@@ -698,6 +698,11 @@ impl Defaults {
         let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
         Defaults::read(&config).map_err(failed)
+    }
+
+    /// The defaults of config files that were read already, like those of `Setup::from_files`.
+    pub(crate) fn from_config(config: &ConfigFile) -> Result<Defaults, Failure> {
+        Defaults::read(config).map_err(|error| Failure::setup(format!("uwe: {error}")))
     }
 
     fn read(config: &ConfigFile) -> Result<Defaults, ConfigError> {

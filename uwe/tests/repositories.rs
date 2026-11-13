@@ -111,6 +111,10 @@ fn archive(files: &[(&str, &str)]) -> Vec<u8> {
         let mut header = tar::Header::new_gnu();
         header.set_size(text.len() as u64);
         header.set_mode(0o644);
+        if path.ends_with('/') {
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_mode(0o755);
+        }
         header.set_cksum();
         archive
             .append_data(&mut header, format!("checkout/{path}"), text.as_bytes())
@@ -288,6 +292,7 @@ fn refuses_repository_submodules() {
         &[
             ("main.nf", "workflow {}"),
             (".gitmodules", "[submodule \"module\"]\npath = module\n"),
+            ("module/", ""),
         ],
     );
     let (code, text) = command(

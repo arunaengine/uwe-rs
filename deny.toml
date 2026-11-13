@@ -15,6 +15,7 @@ ignore = [
     { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml comes from serde_yaml in rattler_conda_types, which has no release without it. uwe parses only conda environment files that the user supplies." },
     { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is unmaintained without a fixed release. It comes from rattler_package_streaming, whose newest release 0.28.5 still needs it; uwe only unpacks conda packages from the channels a run names." },
     { id = "RUSTSEC-2026-0441", reason = "pin-utils is unmaintained without a fixed release. It comes only through wasmtimer, which rattler_repodata_gateway uses on wasm32, a target uwe does not build." },
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained without a fixed release. It is a compile-time macro crate that wdl-analysis 0.28.0 and wdl-ast 0.27.2, the newest releases, still need; it adds no code that runs." },
 ]
 
 [licenses]

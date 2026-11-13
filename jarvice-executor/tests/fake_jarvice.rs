@@ -191,5 +191,12 @@ async fn cancels_running_jobs() {
     );
     assert!(matches!(ended, Err(ExecutorError::Cancelled)), "{ended:?}");
     assert_eq!(fake.requests("GET /jarvice/shutdown").len(), 1);
+    // The fake notes the end of the killed command when its thread has waited for it.
+    for _ in 0..3000 {
+        if !fake.running(9001) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     assert!(!fake.running(9001));
 }

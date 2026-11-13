@@ -237,5 +237,12 @@ async fn cancels_running_runs() {
     assert_eq!(aborted.len(), 1);
     let name = fake.runs()[0].clone();
     assert_eq!(aborted[0].json()["runId"]["name"], name.as_str());
+    // The fake notes the end of the killed command when its thread has waited for it.
+    for _ in 0..3000 {
+        if !fake.running(&name) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     assert!(!fake.running(&name));
 }

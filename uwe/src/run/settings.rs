@@ -98,6 +98,9 @@ pub struct Settings {
     /// Secret values of this run, by the environment variable each stands for, like a
     /// `{ environment = "NAME" }` secret or `UWE_TES_TOKEN`. They win over the environment.
     pub secrets: SecretValues,
+    /// The static Linux binary of uwe that the image of the CWL JavaScript helper is made
+    /// from, before `UWE_CWL_JS_BINARY` and the running binary, as a host is no uwe binary.
+    pub javascript_binary: Option<PathBuf>,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -148,6 +151,7 @@ impl Default for Settings {
             print: false,
             print_sink: None,
             secrets: SecretValues::default(),
+            javascript_binary: None,
             cli: None,
         }
     }
@@ -247,6 +251,7 @@ impl Settings {
         }
         arguments.secrets = self.secrets;
         arguments.print_sink = self.print_sink;
+        arguments.javascript_binary = self.javascript_binary.or(arguments.javascript_binary);
         arguments.embedded = !cli;
         let mut file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
             let mut values = self.inputs.unwrap_or_else(|| Value::Object(Map::new()));

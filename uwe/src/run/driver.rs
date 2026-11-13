@@ -254,6 +254,7 @@ fn cwl_options(
             let mut javascript =
                 cwl_runtime::JavaScriptSettings::from_binary(engine, cancel.clone());
             javascript.journals = Some(cache_directory().join("containers"));
+            javascript.binary = arguments.javascript_binary.clone();
             javascript
         },
         local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
@@ -401,6 +402,22 @@ pub(crate) fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader, Write};
+
+    #[test]
+    fn passes_javascript_binary() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        std::fs::write(&config, "").unwrap();
+        let mut settings = crate::run::Settings::new(root.path().join("main.cwl"));
+        settings.config_file = Some(config);
+        settings.javascript_binary = Some(root.path().join("uwe-static"));
+        let (arguments, _, _inputs) = settings.prepare().unwrap();
+        let setup = crate::setup::Setup::default();
+        let cancel = workflow_graph::CancellationToken::new();
+        let options = super::cwl_options(&arguments, &setup, &cancel);
+        let expected = root.path().join("uwe-static");
+        assert_eq!(options.javascript.binary, Some(expected));
+    }
 
     #[test]
     fn holds_fetched_workflows() {

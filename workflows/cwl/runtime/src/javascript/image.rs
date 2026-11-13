@@ -21,33 +21,46 @@ const REPOSITORY: &str = "uwe-cwl-js";
 /// running binary, for example on macOS.
 const BINARY_VARIABLE: &str = "UWE_CWL_JS_BINARY";
 
-/// `uwe-cwl-js:<digest>` of the running binary, made with the engine when it lacks it, so
-/// that a new uwe never uses the helper of an old one.
-pub(crate) fn own_image(engine: &str, cancel: &CancellationToken) -> Result<String, String> {
-    remember(engine, cancel, || make_image(engine, cancel))
+/// `uwe-cwl-js:<digest>` of `binary`, else of `UWE_CWL_JS_BINARY`, else of the running
+/// binary, made with the engine when it lacks it, so that a new uwe never uses an old helper.
+pub(crate) fn own_image(
+    engine: &str,
+    binary: Option<&Path>,
+    cancel: &CancellationToken,
+) -> Result<String, String> {
+    let configured = (binary.map(Path::to_path_buf))
+        .or_else(|| std::env::var_os(BINARY_VARIABLE).map(PathBuf::from));
+    let key = match &configured {
+        Some(binary) => format!("{engine}\n{}", binary.display()),
+        None => engine.to_owned(),
+    };
+    remember(&key, cancel, || make_image(engine, configured, cancel))
 }
 
-/// The image of an engine that `make` gives, made once per process. A failure is remembered
-/// too, as making it again would fail the same way, unless the run was cancelled.
+/// The image of an engine and binary that `make` gives, made once per process. A failure is
+/// remembered too, as making it again would fail the same way, unless the run was cancelled.
 fn remember(
-    engine: &str,
+    key: &str,
     cancel: &CancellationToken,
     make: impl FnOnce() -> Result<String, String>,
 ) -> Result<String, String> {
     static KNOWN: Mutex<BTreeMap<String, Result<String, String>>> = Mutex::new(BTreeMap::new());
     let mut known = KNOWN.lock().map_err(|error| error.to_string())?;
-    if let Some(result) = known.get(engine) {
+    if let Some(result) = known.get(key) {
         return result.clone();
     }
     let result = make();
     if result.is_ok() || !cancel.is_cancelled() {
-        known.insert(engine.to_owned(), result.clone());
+        known.insert(key.to_owned(), result.clone());
     }
     result
 }
 
-fn make_image(engine: &str, cancel: &CancellationToken) -> Result<String, String> {
-    let configured = std::env::var_os(BINARY_VARIABLE).map(PathBuf::from);
+fn make_image(
+    engine: &str,
+    configured: Option<PathBuf>,
+    cancel: &CancellationToken,
+) -> Result<String, String> {
     let binary = match &configured {
         Some(binary) => binary.clone(),
         None => std::env::current_exe().map_err(|error| error.to_string())?,
@@ -84,7 +97,7 @@ fn linux_machine(binary: &Path, configured: bool) -> Result<u16, String> {
     let dynamic = interpreter(binary).map_err(|error| error.to_string())?;
     if configured && dynamic.is_some() {
         return Err(format!(
-            "{BINARY_VARIABLE} must name a static Linux binary of uwe, but {shown} needs \
+            "the JavaScript helper needs a static Linux binary of uwe, but {shown} needs \
              the libraries of {}",
             dynamic.unwrap_or_default()
         ));
@@ -95,9 +108,10 @@ fn linux_machine(binary: &Path, configured: bool) -> Result<u16, String> {
 /// How to give the helper a Linux binary or image.
 fn linux_help() -> String {
     format!(
-        "Set {BINARY_VARIABLE} to a static Linux binary of uwe for the architecture of the \
-         container engine (`just release-binary` makes one), or UWE_CWL_JS_IMAGE to a \
-         helper image built with `scripts/cwl-js-image.py`."
+        "Set {BINARY_VARIABLE}, or `javascript_binary` of embedded run settings, to a \
+         static Linux binary of uwe for the architecture of the container engine (`just \
+         release-binary` makes one), or UWE_CWL_JS_IMAGE to a helper image built with \
+         `scripts/cwl-js-image.py`."
     )
 }
 
@@ -318,8 +332,19 @@ mod tests {
         assert_eq!(engine_machine(std::env::consts::ARCH), Some(machine));
         if interpreter(&running).expect("the ELF header").is_some() {
             let error = linux_machine(&running, true).unwrap_err();
-            assert!(error.contains("must name a static Linux binary"), "{error}");
+            assert!(error.contains("needs a static Linux binary"), "{error}");
         }
+    }
+
+    /// A binary from the settings wins over the running one and must be a Linux binary.
+    #[test]
+    fn uses_given_binary() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let binary = folder.path().join("uwe-macos");
+        std::fs::write(&binary, b"\xcf\xfa\xed\xfe\x07\x00\x00\x01 a Mach-O file").expect("writes");
+        let cancel = CancellationToken::new();
+        let error = own_image("test-given", Some(&binary), &cancel).unwrap_err();
+        assert!(error.contains("uwe-macos is not a Linux binary"), "{error}");
     }
 
     /// A failed build is not tried again for the next expression, unless it was cancelled.

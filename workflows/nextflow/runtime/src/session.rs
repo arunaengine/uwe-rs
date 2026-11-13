@@ -54,6 +54,7 @@ impl Session<'_> {
             project_dir: &self.options.project_dir,
             cli_params: &self.options.cli_params,
             workflow,
+            containers: self.options.containers.clone(),
         }
     }
 

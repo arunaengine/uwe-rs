@@ -24,6 +24,7 @@ fn text(name: &str, arguments: Vec<Value>) -> String {
         project_dir: "/",
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     match call("nf-versions", name, arguments, &mut context) {
         Ok(value) => value.to_string(),

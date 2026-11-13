@@ -26,6 +26,8 @@ echo $? >"$status""#;
 pub(crate) struct Call {
     /// The container engine as `UWE_ENGINE` names it; empty for the default.
     pub engine: String,
+    /// The folder of the journals of the container; `None` uses the cache folder of the user.
+    pub journals: Option<PathBuf>,
     pub image: String,
     pub program: String,
     pub arguments: Vec<String>,
@@ -52,6 +54,20 @@ pub(crate) enum Ended {
 /// Runs the call to its end; an error means the container did not run.
 pub(crate) fn run(call: &Call) -> Result<Ended, String> {
     let _ = std::fs::remove_file(&call.status);
+    run_with_limit(&spec(call), &CancellationToken::new(), LIMIT)
+        .map_err(|error| error.to_string())?;
+    let status = std::fs::read_to_string(&call.status)
+        .map_err(|error| format!("the container wrote no exit code: {error}"))?;
+    let _ = std::fs::remove_file(&call.status);
+    match status.trim() {
+        "missing" => Ok(Ended::Missing),
+        code => (code.parse().map(Ended::Exited))
+            .map_err(|_| format!("the container wrote the exit code {code:?}")),
+    }
+}
+
+/// The container of a call, which runs the wrapper.
+fn spec(call: &Call) -> ContainerSpec {
     let text = |path: &PathBuf| path.to_string_lossy().into_owned();
     let mut command = vec![
         "-c".to_owned(),
@@ -65,7 +81,7 @@ pub(crate) fn run(call: &Call) -> Result<Ended, String> {
     command.extend(call.arguments.iter().cloned());
     let mut environment = vec![("HOME".to_owned(), "/tmp".to_owned())];
     environment.extend(call.environment.iter().cloned());
-    let spec = ContainerSpec {
+    ContainerSpec {
         engine: call.engine.clone(),
         name: name(),
         image: call.image.clone(),
@@ -86,16 +102,7 @@ pub(crate) fn run(call: &Call) -> Result<Ended, String> {
         environment,
         memory: None,
         show_stderr: false,
-        journals: None,
-    };
-    run_with_limit(&spec, &CancellationToken::new(), LIMIT).map_err(|error| error.to_string())?;
-    let status = std::fs::read_to_string(&call.status)
-        .map_err(|error| format!("the container wrote no exit code: {error}"))?;
-    let _ = std::fs::remove_file(&call.status);
-    match status.trim() {
-        "missing" => Ok(Ended::Missing),
-        code => (code.parse().map(Ended::Exited))
-            .map_err(|_| format!("the container wrote the exit code {code:?}")),
+        journals: call.journals.clone(),
     }
 }
 
@@ -110,4 +117,34 @@ fn name() -> String {
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uses_run_containers() {
+        let containers = crate::Containers {
+            engine: Some("podman".into()),
+            journals: Some(PathBuf::from("/runs/journals")),
+        };
+        let call = Call {
+            engine: containers.engine(),
+            journals: containers.journals.clone(),
+            image: "python:3".into(),
+            program: "python3".into(),
+            arguments: Vec::new(),
+            folders: Vec::new(),
+            mounts: Vec::new(),
+            workdir: PathBuf::from("/work"),
+            environment: Vec::new(),
+            stdout: PathBuf::from("/work/out"),
+            stderr: PathBuf::from("/work/err"),
+            status: PathBuf::from("/work/status"),
+        };
+        let spec = spec(&call);
+        assert_eq!(spec.engine, "podman");
+        assert_eq!(spec.journals, Some(PathBuf::from("/runs/journals")));
+    }
 }

@@ -37,6 +37,7 @@ fn function(name: &str, arguments: Vec<Value>) -> Result<Value, Error> {
         project_dir: "/",
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     call("nf-fgbio", name, arguments, &mut context)
 }
@@ -51,6 +52,7 @@ fn invoke(object: &Value, name: &str, arguments: Vec<Value>) -> Result<Value, Er
         project_dir: "/",
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     let found = method(object, name, arguments, &mut context)?;
     Ok(found.unwrap_or_else(|| panic!("no method {name}")))

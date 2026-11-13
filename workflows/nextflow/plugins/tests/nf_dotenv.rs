@@ -63,6 +63,7 @@ fn lookup(
         project_dir: &project,
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     let mut text = String::new();
     for key in keys {

@@ -82,6 +82,7 @@ fn with_context<T>(run: impl FnOnce(&mut Context) -> T) -> T {
         project_dir: "/",
         cli_params: &[],
         workflow: Value::Null,
+        containers: Default::default(),
     };
     run(&mut context)
 }

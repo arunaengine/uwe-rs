@@ -33,7 +33,9 @@ mod test_engine;
 pub mod wrapper;
 
 use std::future::Future;
+use std::sync::Arc;
 
+use futures_util::future::BoxFuture;
 pub use tokio_util::sync::CancellationToken;
 
 pub use access::Access;
@@ -67,5 +69,65 @@ pub trait Backend: Send + Sync + 'static {
     /// Waits until the daemons of the run stopped, after their run asked them to stop.
     fn release(&self) -> impl Future<Output = ()> + Send {
         async {}
+    }
+}
+
+/// The object-safe form of [`Backend`], for a backend that a host picks at run time. Every
+/// `Backend` is one, and `Arc<dyn DynBackend>` is a `Backend` again.
+pub trait DynBackend: Send + Sync + 'static {
+    fn pin<'a>(&'a self, image: &'a str) -> BoxFuture<'a, Result<Option<String>, ExecutorError>>;
+
+    fn run<'a>(
+        &'a self,
+        job: Job<'a>,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<Finished, ExecutorError>>;
+
+    fn hold(&self);
+
+    fn release(&self) -> BoxFuture<'_, ()>;
+}
+
+impl<B: Backend> DynBackend for B {
+    fn pin<'a>(&'a self, image: &'a str) -> BoxFuture<'a, Result<Option<String>, ExecutorError>> {
+        Box::pin(Backend::pin(self, image))
+    }
+
+    fn run<'a>(
+        &'a self,
+        job: Job<'a>,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<Finished, ExecutorError>> {
+        Box::pin(Backend::run(self, job, cancel))
+    }
+
+    fn hold(&self) {
+        Backend::hold(self);
+    }
+
+    fn release(&self) -> BoxFuture<'_, ()> {
+        Box::pin(Backend::release(self))
+    }
+}
+
+impl Backend for Arc<dyn DynBackend> {
+    async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
+        DynBackend::pin(&**self, image).await
+    }
+
+    async fn run(
+        &self,
+        job: Job<'_>,
+        cancel: &CancellationToken,
+    ) -> Result<Finished, ExecutorError> {
+        DynBackend::run(&**self, job, cancel).await
+    }
+
+    fn hold(&self) {
+        DynBackend::hold(&**self);
+    }
+
+    async fn release(&self) {
+        DynBackend::release(&**self).await;
     }
 }

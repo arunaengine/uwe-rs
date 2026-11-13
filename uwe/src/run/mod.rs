@@ -8,6 +8,7 @@ mod events;
 mod settings;
 pub(crate) mod support;
 
+pub use backend::HostExecutor;
 pub use config_file::SecretValues;
 pub use events::{Event, Listener, PrintSink, TaskEvent, TaskState};
 pub use executor::orphans;

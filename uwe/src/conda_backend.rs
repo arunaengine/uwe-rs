@@ -290,7 +290,7 @@ impl<B> Remote<B> {
             backend,
             config: setup.conda.clone(),
             engine: setup.engine(),
-            journals: crate::cache_directory().join("containers"),
+            journals: crate::journal_folder(),
             store,
             scratch: scratch.to_owned(),
             holder: Holder::new(run, "Conda image publication"),

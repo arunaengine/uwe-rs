@@ -41,6 +41,9 @@ pub struct Settings {
     pub config_file: Option<PathBuf>,
     /// `None` uses the configured default, then local containers.
     pub executor: Option<String>,
+    /// Runs the tasks with a backend of the host instead of a named `executor`, which must
+    /// then be `None`. The run records it as the executor `host`.
+    pub host_executor: Option<super::HostExecutor>,
     /// Supplied setup skips global configuration loading and defaults.
     pub setup: Option<Setup>,
     pub resume: Option<Resume>,
@@ -84,6 +87,9 @@ pub struct Settings {
     /// The folder of downloads, scratch folders and input digests, like `[cache] folder` of
     /// the config file. Embedded submissions retain their own cache scope.
     pub cache_folder: Option<PathBuf>,
+    /// The folder of the journals of the containers that the run starts on this machine, by
+    /// which uwe finds and removes those it left. `None` uses `containers` in the cache folder.
+    pub journal_folder: Option<PathBuf>,
     /// The run id chosen by the host instead of a new one: 1 to 64 ASCII letters, digits, `-`
     /// or `_`, starting and ending with a letter or digit, and new to the run database.
     pub run_id: Option<String>,
@@ -98,6 +104,9 @@ pub struct Settings {
     /// Secret values of this run, by the environment variable each stands for, like a
     /// `{ environment = "NAME" }` secret or `UWE_TES_TOKEN`. They win over the environment.
     pub secrets: SecretValues,
+    /// The static Linux binary of uwe that the image of the CWL JavaScript helper is made
+    /// from, before `UWE_CWL_JS_BINARY` and the running binary, as a host is no uwe binary.
+    pub javascript_binary: Option<PathBuf>,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -119,6 +128,7 @@ impl Default for Settings {
             configs: Vec::new(),
             config_file: None,
             executor: None,
+            host_executor: None,
             setup: None,
             resume: None,
             cache: true,
@@ -143,11 +153,13 @@ impl Default for Settings {
             database: None,
             store: None,
             cache_folder: None,
+            journal_folder: None,
             run_id: None,
             listener: None,
             print: false,
             print_sink: None,
             secrets: SecretValues::default(),
+            javascript_binary: None,
             cli: None,
         }
     }
@@ -219,6 +231,15 @@ impl Settings {
         arguments.configs = self.configs;
         arguments.config_file = self.config_file;
         arguments.executor = self.executor;
+        if self.host_executor.is_some() {
+            if arguments.executor.is_some() {
+                return Err(Failure::usage(
+                    "uwe: set either `executor` or `host_executor`, not both",
+                ));
+            }
+            arguments.executor = Some(super::backend::HOST.into());
+            arguments.host_executor = self.host_executor;
+        }
         arguments.resume = self.resume;
         arguments.no_cache = !self.cache;
         arguments.no_cache_steps = self.no_cache_steps;
@@ -247,6 +268,7 @@ impl Settings {
         }
         arguments.secrets = self.secrets;
         arguments.print_sink = self.print_sink;
+        arguments.javascript_binary = self.javascript_binary.or(arguments.javascript_binary);
         arguments.embedded = !cli;
         let mut file = if !cli && (self.inputs.is_some() || !self.params.is_empty()) {
             let mut values = self.inputs.unwrap_or_else(|| Value::Object(Map::new()));
@@ -284,6 +306,9 @@ impl Settings {
         }
         if let Some(folder) = self.cache_folder {
             crate::use_cache_folder(folder);
+        }
+        if let Some(folder) = self.journal_folder {
+            super::support::use_journal_folder(folder);
         }
         if let Some(prepared) = prepared {
             let setup = match self.setup.take() {

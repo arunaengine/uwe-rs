@@ -253,7 +253,8 @@ fn cwl_options(
             let engine = setup.engine();
             let mut javascript =
                 cwl_runtime::JavaScriptSettings::from_binary(engine, cancel.clone());
-            javascript.journals = Some(cache_directory().join("containers"));
+            javascript.journals = Some(crate::journal_folder());
+            javascript.binary = arguments.javascript_binary.clone();
             javascript
         },
         local_engine: (arguments.executor.as_deref().unwrap_or("local") == "local")
@@ -335,7 +336,7 @@ pub(crate) fn snakemake(
             image: arguments.python_image.clone(),
             cache: cache_directory().join("python"),
             show_output: true,
-            journals: Some(cache_directory().join("containers")),
+            journals: Some(crate::journal_folder()),
         }),
         storage: setup.storage.clone(),
         cancel: cancel.clone(),
@@ -401,6 +402,44 @@ pub(crate) fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader, Write};
+
+    #[test]
+    fn passes_javascript_binary() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        std::fs::write(&config, "").unwrap();
+        let mut settings = crate::run::Settings::new(root.path().join("main.cwl"));
+        settings.config_file = Some(config);
+        settings.javascript_binary = Some(root.path().join("uwe-static"));
+        let (arguments, _, _inputs) = settings.prepare().unwrap();
+        let setup = crate::setup::Setup::default();
+        let cancel = workflow_graph::CancellationToken::new();
+        let options = super::cwl_options(&arguments, &setup, &cancel);
+        let expected = root.path().join("uwe-static");
+        assert_eq!(options.javascript.binary, Some(expected));
+    }
+
+    #[test]
+    fn uses_journal_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config.toml");
+        std::fs::write(&config, "").unwrap();
+        let setup = crate::setup::Setup::default();
+        let cancel = workflow_graph::CancellationToken::new();
+        for chosen in [None, Some(root.path().join("journals"))] {
+            let _scope = crate::run::support::CacheScope::new(false);
+            let mut settings = crate::run::Settings::new(root.path().join("main.cwl"));
+            settings.config_file = Some(config.clone());
+            settings.cache_folder = Some(root.path().join("cache"));
+            settings.journal_folder = chosen.clone();
+            let (arguments, _, _inputs) = settings.prepare().unwrap();
+            let expected = chosen.unwrap_or_else(|| root.path().join("cache/containers"));
+            let options = super::cwl_options(&arguments, &setup, &cancel);
+            assert_eq!(options.javascript.journals.as_ref(), Some(&expected));
+            let python = super::snakemake(&arguments, &setup, &cancel).python;
+            assert_eq!(python.and_then(|python| python.journals), Some(expected));
+        }
+    }
 
     #[test]
     fn holds_fetched_workflows() {

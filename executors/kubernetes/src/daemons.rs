@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::PathBuf;
+use std::sync::PoisonError;
 
 use executor::daemon::{Check, Daemon};
 use executor::poll::CANCEL_GRACE;
@@ -77,7 +78,10 @@ impl KubernetesBackend {
             // The attempt stays locked until its Job is gone, so no recovery takes it.
             drop(lock);
         });
-        self.daemons.lock().expect("the daemons").push(watcher);
+        self.daemons
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(watcher);
         // A daemon waits with the checks of every pod, like those for a node or an image.
         self.pods.add(name).await;
         let ended = self.wait(name, true, cancel).await;
@@ -106,7 +110,8 @@ impl KubernetesBackend {
 
     /// Waits until every daemon stopped, once their run asked them to.
     pub(crate) async fn release_daemons(&self) {
-        let watchers: Vec<_> = std::mem::take(&mut *self.daemons.lock().expect("the daemons"));
+        let watchers: Vec<_> =
+            std::mem::take(&mut *self.daemons.lock().unwrap_or_else(PoisonError::into_inner));
         for watcher in watchers {
             let _ = watcher.await;
         }

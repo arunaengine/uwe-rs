@@ -187,6 +187,11 @@ pub struct Arguments {
     pub embedded: bool,
     /// Where an embedded run sends what its workflow prints, from `run::Settings.print_sink`.
     pub print_sink: Option<crate::run::PrintSink>,
+    /// The static Linux binary of the CWL JavaScript helper, from
+    /// `run::Settings.javascript_binary`.
+    pub javascript_binary: Option<PathBuf>,
+    /// The backend of an embedding host that runs the tasks, from `run::Settings.host_executor`.
+    pub host_executor: Option<crate::run::HostExecutor>,
 }
 
 /// Which run `-resume` continues.

@@ -35,6 +35,9 @@ pub struct JavaScriptSettings {
     /// Where the engine keeps the journal of the helper container; `None` uses the cache
     /// folder of the user.
     pub journals: Option<std::path::PathBuf>,
+    /// The static Linux binary of uwe that the helper image is made from; `None` uses
+    /// `UWE_CWL_JS_BINARY`, else the running binary.
+    pub binary: Option<std::path::PathBuf>,
     helper: Arc<Mutex<Option<Helper>>>,
     /// Whether the helper runs the image of the running binary, made when it is missing,
     /// instead of `image`.
@@ -48,6 +51,7 @@ impl Default for JavaScriptSettings {
             image: std::env::var("UWE_CWL_JS_IMAGE").unwrap_or_else(|_| "uwe-cwl-js:0.1.0".into()),
             cancel: CancellationToken::new(),
             journals: None,
+            binary: None,
             helper: Arc::default(),
             own: false,
         }
@@ -61,13 +65,17 @@ impl fmt::Debug for JavaScriptSettings {
             .field("engine", &self.engine)
             .field("image", &self.image)
             .field("own", &self.own)
+            .field("binary", &self.binary)
             .finish()
     }
 }
 
 impl PartialEq for JavaScriptSettings {
     fn eq(&self, other: &Self) -> bool {
-        self.engine == other.engine && self.image == other.image && self.own == other.own
+        self.engine == other.engine
+            && self.image == other.image
+            && self.own == other.own
+            && self.binary == other.binary
     }
 }
 
@@ -290,8 +298,11 @@ impl JavaScriptSettings {
     ) -> Result<Value, Failure> {
         // The first build of the image may take longer than an evaluation may.
         let image = match self.own {
-            true => crate::javascript::image::own_image(&self.engine, &self.cancel)
-                .map_err(Failure::Boundary)?,
+            true => {
+                let binary = self.binary.as_deref();
+                crate::javascript::image::own_image(&self.engine, binary, &self.cancel)
+                    .map_err(Failure::Boundary)?
+            }
             false => self.image.clone(),
         };
         let deadline = Instant::now() + TIME_LIMIT;

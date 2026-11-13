@@ -27,7 +27,8 @@ fn uwe(directory: &Path, cache: &Path, arguments: &[&str]) -> (i32, String, Stri
 
 /// The fixtures in `root`, with a job for each and a text file.
 fn fixtures(root: &Path) {
-    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../workflows/cwl/lowering/tests/fixtures");
+    let folder =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../workflows/cwl/lowering/tests/fixtures");
     for entry in std::fs::read_dir(folder).expect("lists the fixtures") {
         let path = entry.expect("an entry").path();
         std::fs::copy(&path, root.join(path.file_name().unwrap())).expect("copies");

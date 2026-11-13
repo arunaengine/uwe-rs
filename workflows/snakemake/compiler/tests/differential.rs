@@ -41,8 +41,7 @@ struct Counts {
     equal: usize,
 }
 
-const LAUNCHES: &str =
-    include_str!("../../runtime/tests/fixtures/run_test_workflows_launches.txt");
+const LAUNCHES: &str = include_str!("../../runtime/tests/fixtures/run_test_workflows_launches.txt");
 
 const SNAKEFILE: &str = r#"
 SAMPLES = ["a", "b"]

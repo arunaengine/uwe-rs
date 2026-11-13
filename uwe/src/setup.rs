@@ -791,7 +791,23 @@ impl Setup {
     pub fn load(arguments: &Arguments) -> Result<Setup, Failure> {
         let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
-        let config = config.with_secrets(arguments.secrets.clone());
+        Setup::read(config.with_secrets(arguments.secrets.clone()))
+    }
+
+    /// Reads only `files`, a later one winning key by key, without the site file and the file
+    /// of the user, for `run::Settings.setup`. `secrets` gives the values of
+    /// `{ environment = "NAME" }` secrets before the environment.
+    pub fn from_files(
+        files: &[PathBuf],
+        secrets: &config_file::SecretValues,
+    ) -> Result<Setup, Failure> {
+        let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
+        let config = ConfigFile::read(files).map_err(failed)?;
+        Setup::read(config.with_secrets(secrets.clone()))
+    }
+
+    fn read(config: ConfigFile) -> Result<Setup, Failure> {
+        let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         config.root().only(SECTIONS).map_err(failed)?;
         let registry = executor::credentials::Registry::from_config(&config).map_err(failed)?;
         let storage = Storage::from_config(&config).map_err(failed)?;
@@ -918,6 +934,31 @@ mod tests {
 
     use super::Executors;
     use task_runner::NetworkRule;
+
+    #[test]
+    fn reads_given_files() {
+        let folder = tempfile::tempdir().unwrap();
+        let (first, second) = (folder.path().join("a.toml"), folder.path().join("b.toml"));
+        let text = "[network]\ndefault = \"none\"\n[executor.local]\nengine = \"podman\"\n\
+                    [executor.tes]\ntoken = { environment = \"UWE_TEST_TOKEN\" }\n";
+        std::fs::write(&first, text).unwrap();
+        std::fs::write(&second, "[executor.local]\nengine = \"docker\"\n").unwrap();
+        let mut secrets = config_file::SecretValues::default();
+        secrets.insert("UWE_TEST_TOKEN", "given").unwrap();
+        let setup = super::Setup::from_files(&[first, second.clone()], &secrets).unwrap();
+        assert!(setup.network.none_by_default);
+        assert_eq!(setup.executors.engine.as_deref(), Some("docker"));
+        let token = setup
+            .executors
+            .tes_token
+            .expect("a token")
+            .reveal()
+            .unwrap();
+        assert_eq!(token, "given");
+        std::fs::write(&second, "[nonsense]\nkey = 1\n").unwrap();
+        let failure = super::Setup::from_files(&[second], &secrets).err().unwrap();
+        assert!(failure.message.contains("nonsense"), "{}", failure.message);
+    }
 
     #[test]
     fn loads_object_staging() {

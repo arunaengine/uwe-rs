@@ -87,6 +87,9 @@ pub struct Settings {
     /// The folder of downloads, scratch folders and input digests, like `[cache] folder` of
     /// the config file. Embedded submissions retain their own cache scope.
     pub cache_folder: Option<PathBuf>,
+    /// The folder of the journals of the containers that the run starts on this machine, by
+    /// which uwe finds and removes those it left. `None` uses `containers` in the cache folder.
+    pub journal_folder: Option<PathBuf>,
     /// The run id chosen by the host instead of a new one: 1 to 64 ASCII letters, digits, `-`
     /// or `_`, starting and ending with a letter or digit, and new to the run database.
     pub run_id: Option<String>,
@@ -150,6 +153,7 @@ impl Default for Settings {
             database: None,
             store: None,
             cache_folder: None,
+            journal_folder: None,
             run_id: None,
             listener: None,
             print: false,
@@ -302,6 +306,9 @@ impl Settings {
         }
         if let Some(folder) = self.cache_folder {
             crate::use_cache_folder(folder);
+        }
+        if let Some(folder) = self.journal_folder {
+            super::support::use_journal_folder(folder);
         }
         if let Some(prepared) = prepared {
             let setup = match self.setup.take() {

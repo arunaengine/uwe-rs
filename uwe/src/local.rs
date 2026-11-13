@@ -30,7 +30,7 @@ pub fn executor(
         format!(
             "cannot reach a Docker or Podman engine: {error}; use `-executor simulator` for a run without containers, or `uwe check-machine` to check the setup"
         )
-    })?.with_journal_root(crate::cache_directory().join("containers"));
+    })?.with_journal_root(crate::journal_folder());
     let backend = LocalContainer::new(engine, scratch.to_owned(), pool(setup));
     let backend = crate::conda_backend::Local {
         backend,

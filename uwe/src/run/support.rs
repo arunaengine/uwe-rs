@@ -25,31 +25,46 @@ pub(crate) fn runner_settings(
 
 thread_local! {
     static CACHE_FOLDER: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+    static JOURNAL_FOLDER: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
-pub(crate) struct CacheScope(Option<PathBuf>);
+pub(crate) struct CacheScope(Option<PathBuf>, Option<PathBuf>);
 
 impl CacheScope {
     pub(crate) fn new(inherit: bool) -> Self {
-        Self(CACHE_FOLDER.with(|folder| {
+        let keep = |folder: &std::cell::RefCell<Option<PathBuf>>| {
             if inherit {
                 folder.borrow().clone()
             } else {
                 folder.replace(None)
             }
-        }))
+        };
+        Self(CACHE_FOLDER.with(keep), JOURNAL_FOLDER.with(keep))
     }
 }
 
 impl Drop for CacheScope {
     fn drop(&mut self) {
         CACHE_FOLDER.with(|folder| folder.replace(self.0.take()));
+        JOURNAL_FOLDER.with(|folder| folder.replace(self.1.take()));
     }
 }
 
 /// Uses this folder within the current command or blocking submission worker.
 pub(crate) fn use_cache_folder(folder: PathBuf) {
     CACHE_FOLDER.with(|current| current.replace(Some(folder)));
+}
+
+/// Keeps the journals of containers in this folder within the current command or worker.
+pub(crate) fn use_journal_folder(folder: PathBuf) {
+    JOURNAL_FOLDER.with(|current| current.replace(Some(folder)));
+}
+
+/// The folder of the journals of the containers that a run starts: `run::Settings
+/// .journal_folder`, else `containers` in the cache folder.
+pub(crate) fn journal_folder() -> PathBuf {
+    let chosen = JOURNAL_FOLDER.with(|folder| folder.borrow().clone());
+    chosen.unwrap_or_else(|| cache_directory().join("containers"))
 }
 
 /// The folder of `[cache] folder` of the config file, else `$XDG_CACHE_HOME/uwe`, else

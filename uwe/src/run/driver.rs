@@ -9,15 +9,19 @@ use crate::{Failure, cache_directory, detect, failure, nextflow, repository};
 use std::path::{Path, PathBuf};
 use workflow_graph::{CancellationToken, Driver, DriverError, Language, Launch};
 
-/// The workflow of a command and its language: `-lang`, else what the target tells.
-pub(crate) fn target_and_language(arguments: &Arguments) -> Result<(PathBuf, Language), Failure> {
+/// The workflow of a command and its language: `-lang`, else what the target tells. Git signs
+/// in with the accounts of `storage`, the storage of the run, else of the config files.
+pub(crate) fn target_and_language(
+    arguments: &Arguments,
+    storage: Option<&storage::Storage>,
+) -> Result<(PathBuf, Language), Failure> {
     let Some(target) = &arguments.target else {
         return Err(Failure::usage(
             "uwe: name a workflow file or a project directory to run",
         ));
     };
     let revision = arguments.revision.as_deref();
-    let target = repository::prepare(target, revision, arguments.latest, arguments)?;
+    let target = repository::prepare(target, revision, arguments.latest, arguments, storage)?;
     let remote = target.to_string_lossy();
     let remote = remote.starts_with("https://") || remote.starts_with("http://");
     let cwl = remote
@@ -155,10 +159,17 @@ pub(crate) fn driver(
                 }),
                 repositories: {
                     // A block fetches its repository as `uwe run <address> -r <commit>` does.
-                    let arguments = arguments.clone();
+                    let (arguments, storage) = (arguments.clone(), setup.storage.clone());
                     wir_runtime::Repositories::new(move |location, commit| {
-                        repository::prepare(Path::new(location), Some(commit), false, &arguments)
-                            .map_err(|failure| DriverError::new(failure.message))
+                        let location = Path::new(location);
+                        repository::prepare(
+                            location,
+                            Some(commit),
+                            false,
+                            &arguments,
+                            Some(&storage),
+                        )
+                        .map_err(|failure| DriverError::new(failure.message))
                     })
                 },
             };

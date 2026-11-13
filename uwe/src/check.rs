@@ -357,7 +357,7 @@ fn language_name(language: Language) -> &'static str {
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
-    let (target, language) = crate::target_and_language(arguments)?;
+    let (target, language) = crate::target_and_language(arguments, None)?;
     let mut launch = crate::launch(arguments, target.clone());
     // The plan goes past the files that are missing, which the check reports.
     launch.simulated = true;

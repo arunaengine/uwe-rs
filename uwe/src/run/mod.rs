@@ -81,7 +81,7 @@ impl RunRequest {
             if let Some(network) = network {
                 setup.network = network;
             }
-            let (target, language) = target_and_language(&arguments)?;
+            let (target, language) = target_and_language(&arguments, Some(&setup.storage))?;
             let launch = launch(&arguments, target);
             let mut driver = driver(
                 language,
@@ -227,7 +227,7 @@ fn execute_with(
     for file in &pinned.files {
         setup.storage.pin(file.clone());
     }
-    let (target, language) = target_and_language(arguments)?;
+    let (target, language) = target_and_language(arguments, Some(&setup.storage))?;
     let run = chosen.unwrap_or_else(run_id);
     // A run compiles its workflow into wir and checks its inputs with the schema of the
     // workflow; a wir document runs as it is.

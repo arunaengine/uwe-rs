@@ -16,7 +16,7 @@ use crate::{Failure, cache_directory, failure};
 /// `uwe lower`: prints the wir document of a CWL, WDL or Argo file, with source locations from the
 /// current folder, and names on standard error the ops that stay native ops.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
-    let (target, language) = crate::target_and_language(arguments)?;
+    let (target, language) = crate::target_and_language(arguments, None)?;
     let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
     let document = match language {
         Language::Wdl => wdl(&target, arguments, &Setup::load(arguments)?, &base)?.document,

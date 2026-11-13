@@ -11,6 +11,34 @@ use crate::{
 };
 use workflow_graph::{Attempt, ExecuteError, Executor, Files, Running, Simulator, TaskId};
 
+/// The executor name that a run with a [`HostExecutor`] records and checks against.
+pub(crate) const HOST: &str = "host";
+
+/// A backend of the embedding host that runs the tasks of a run instead of a named executor.
+/// The run stages, caches and prepares Conda images for it as for a remote executor.
+#[derive(Clone)]
+pub struct HostExecutor(std::sync::Arc<dyn executor::DynBackend>);
+
+impl HostExecutor {
+    /// Wraps a backend, such as `Arc::new(backend)` of any [`executor::Backend`].
+    pub fn new(backend: std::sync::Arc<dyn executor::DynBackend>) -> HostExecutor {
+        HostExecutor(backend)
+    }
+}
+
+impl std::fmt::Debug for HostExecutor {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("HostExecutor")
+    }
+}
+
+/// Two host executors are equal when they share their backend.
+impl PartialEq for HostExecutor {
+    fn eq(&self, other: &HostExecutor) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// Caps task requests and gives tasks without a time the default `time` in seconds, before
 /// backend placement, retaining completion and cleanup ownership.
 pub(crate) fn limited(
@@ -332,6 +360,22 @@ pub(crate) fn executor(
             let store = setup.store(arguments)?;
             let executor = wr::executor(store, &scratch, run, default_image, setup)
                 .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
+            real(executor, arguments, setup, verbose, reuse, pinned, measured)
+        }
+        HOST => {
+            let host = arguments.host_executor.clone().ok_or_else(|| {
+                Failure::usage("uwe: only an embedding host sets the executor `host`")
+            })?;
+            let store = setup.store(arguments)?;
+            let folder = scratch.join(HOST);
+            // The host may run tasks on other machines, so inputs are copied to the store.
+            let backend =
+                crate::conda_backend::Remote::new(host.0, store.clone(), &folder, run, setup);
+            let settings = crate::runner_settings(setup.storage.clone(), true);
+            let mut runner = task_runner::Runner::new(store, backend, run, settings);
+            runner.references(setup.references.clone());
+            let default_image = arguments.default_image.clone();
+            let executor = task_runner::RunnerExecutor::new(runner, default_image);
             real(executor, arguments, setup, verbose, reuse, pinned, measured)
         }
         other => Err(Failure::usage(format!(

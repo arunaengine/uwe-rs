@@ -507,7 +507,7 @@ pub fn blocks(
         Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
             | Some("nomad" | "htcondor" | "pbs")
             | Some("flyte" | "snowflake")
-            | Some("jarvice" | "wr")
+            | Some("jarvice" | "wr" | "host")
     );
     let resume = arguments.resume.is_some();
     // The callbacks and process adapters of the run start in the folder the run starts in.
@@ -618,14 +618,14 @@ pub fn driver(
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
                 | Some("flyte" | "snowflake")
-                | Some("jarvice" | "wr")
+                | Some("jarvice" | "wr" | "host")
         ),
         local_options: !matches!(
             arguments.executor.as_deref(),
             Some("tes" | "slurm" | "kubernetes" | "aws-batch" | "google-batch" | "azure-batch")
                 | Some("nomad" | "htcondor" | "pbs")
                 | Some("flyte" | "snowflake")
-                | Some("jarvice" | "wr")
+                | Some("jarvice" | "wr" | "host")
         ),
         repository: crate::repository::origin(
             arguments.target.as_deref(),

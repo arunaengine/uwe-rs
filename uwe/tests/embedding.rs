@@ -1034,3 +1034,67 @@ async fn delivers_chain_blocks() {
         .collect();
     assert_eq!(recorded, expected, "the run records the files that stay");
 }
+
+/// A backend of the host that ends each task well and keeps the names of its attempts.
+struct HostBackend {
+    scratch: std::path::PathBuf,
+    jobs: std::sync::Mutex<Vec<String>>,
+}
+
+impl executor::Backend for HostBackend {
+    async fn pin(&self, image: &str) -> Result<Option<String>, executor::ExecutorError> {
+        Ok(Some(format!("{image}@sha256:{}", "a".repeat(64))))
+    }
+
+    async fn run(
+        &self,
+        job: executor::Job<'_>,
+        _cancel: &executor::CancellationToken,
+    ) -> Result<executor::Finished, executor::ExecutorError> {
+        self.jobs.lock().unwrap().push(job.name.to_owned());
+        let finished = executor::Finished {
+            exit_code: Some(0),
+            files: Vec::new(),
+            root: self.scratch.join(job.name),
+            usage: None,
+            address: None,
+        };
+        std::fs::create_dir_all(finished.root.join("work"))?;
+        std::fs::create_dir_all(finished.root.join("control"))?;
+        std::fs::write(finished.stdout(), "3\n")?;
+        std::fs::write(finished.root.join("control/exit"), "0\n")?;
+        Ok(finished)
+    }
+}
+
+#[tokio::test]
+async fn runs_host_executor() {
+    let root = tempfile::tempdir().unwrap();
+    let backend = std::sync::Arc::new(HostBackend {
+        scratch: root.path().join("host"),
+        jobs: Default::default(),
+    });
+    for _ in 0..2 {
+        let mut request = request(root.path());
+        request.settings.executor = None;
+        request.settings.cache = true;
+        request.settings.host_executor = Some(uwe::run::HostExecutor::new(backend.clone()));
+        let run = request.run().await.unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        assert!(!run.execution.graph.is_simulated());
+    }
+    // The second run takes the result that the first one cached.
+    assert_eq!(backend.jobs.lock().unwrap().len(), 1);
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    let runs = database.runs(10).unwrap();
+    assert_eq!(runs.len(), 2);
+    assert!(
+        runs.iter()
+            .all(|run| run.executor == "host" && !run.simulated)
+    );
+
+    let mut both = request(root.path());
+    both.settings.host_executor = Some(uwe::run::HostExecutor::new(backend.clone()));
+    let failure = both.run().await.err().unwrap();
+    assert!(failure.message.contains("not both"), "{}", failure.message);
+}

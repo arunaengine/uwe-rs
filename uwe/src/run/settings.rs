@@ -41,6 +41,9 @@ pub struct Settings {
     pub config_file: Option<PathBuf>,
     /// `None` uses the configured default, then local containers.
     pub executor: Option<String>,
+    /// Runs the tasks with a backend of the host instead of a named `executor`, which must
+    /// then be `None`. The run records it as the executor `host`.
+    pub host_executor: Option<super::HostExecutor>,
     /// Supplied setup skips global configuration loading and defaults.
     pub setup: Option<Setup>,
     pub resume: Option<Resume>,
@@ -122,6 +125,7 @@ impl Default for Settings {
             configs: Vec::new(),
             config_file: None,
             executor: None,
+            host_executor: None,
             setup: None,
             resume: None,
             cache: true,
@@ -223,6 +227,15 @@ impl Settings {
         arguments.configs = self.configs;
         arguments.config_file = self.config_file;
         arguments.executor = self.executor;
+        if self.host_executor.is_some() {
+            if arguments.executor.is_some() {
+                return Err(Failure::usage(
+                    "uwe: set either `executor` or `host_executor`, not both",
+                ));
+            }
+            arguments.executor = Some(super::backend::HOST.into());
+            arguments.host_executor = self.host_executor;
+        }
         arguments.resume = self.resume;
         arguments.no_cache = !self.cache;
         arguments.no_cache_steps = self.no_cache_steps;

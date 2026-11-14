@@ -58,9 +58,14 @@ impl RunRequest {
 
     /// Blocking equivalent of `run`. Call outside an async runtime.
     /// Workflow failures are retained in `Run::execution`, together with the partial graph.
-    pub fn run_blocking(self) -> Result<Run, Failure> {
+    pub fn run_blocking(mut self) -> Result<Run, Failure> {
         let quiet = !self.settings.print;
-        execute_with(self.settings, quiet, &Pinned::default(), Some(self.policy))
+        // The pins of the host take the way of the pins of a repeat.
+        let pinned = Pinned {
+            images: std::mem::take(&mut self.settings.pinned_images),
+            ..Pinned::default()
+        };
+        execute_with(self.settings, quiet, &pinned, Some(self.policy))
     }
 
     /// Builds and describes the configured driver without starting tasks or recording a run.

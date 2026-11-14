@@ -1039,10 +1039,14 @@ async fn delivers_chain_blocks() {
 struct HostBackend {
     scratch: std::path::PathBuf,
     jobs: std::sync::Mutex<Vec<String>>,
+    /// The images it was asked to pin, and those its jobs ran.
+    pins: std::sync::Mutex<Vec<String>>,
+    images: std::sync::Mutex<Vec<String>>,
 }
 
 impl executor::Backend for HostBackend {
     async fn pin(&self, image: &str) -> Result<Option<String>, executor::ExecutorError> {
+        self.pins.lock().unwrap().push(image.to_owned());
         Ok(Some(format!("{image}@sha256:{}", "a".repeat(64))))
     }
 
@@ -1052,6 +1056,8 @@ impl executor::Backend for HostBackend {
         _cancel: &executor::CancellationToken,
     ) -> Result<executor::Finished, executor::ExecutorError> {
         self.jobs.lock().unwrap().push(job.name.to_owned());
+        let image = job.spec.image.as_ref().map(|image| image.reference.clone());
+        self.images.lock().unwrap().extend(image);
         let finished = executor::Finished {
             exit_code: Some(0),
             files: Vec::new(),
@@ -1073,6 +1079,8 @@ async fn runs_host_executor() {
     let backend = std::sync::Arc::new(HostBackend {
         scratch: root.path().join("host"),
         jobs: Default::default(),
+        pins: Default::default(),
+        images: Default::default(),
     });
     for _ in 0..2 {
         let mut request = request(root.path());
@@ -1097,4 +1105,44 @@ async fn runs_host_executor() {
     both.settings.host_executor = Some(uwe::run::HostExecutor::new(backend.clone()));
     let failure = both.run().await.err().unwrap();
     assert!(failure.message.contains("not both"), "{}", failure.message);
+}
+
+/// A run takes the digests that the host pins images to; it resolves the other images itself
+/// and records how each one ran, as a repeat reads it.
+#[tokio::test]
+async fn uses_pinned_images() {
+    let root = tempfile::tempdir().unwrap();
+    let backend = std::sync::Arc::new(HostBackend {
+        scratch: root.path().join("host"),
+        jobs: Default::default(),
+        pins: Default::default(),
+        images: Default::default(),
+    });
+    let given = format!("tool@sha256:{}", "b".repeat(64));
+    let resolved = format!("tool:1@sha256:{}", "a".repeat(64));
+    let pins = [
+        std::collections::HashMap::from([("tool:1".to_owned(), given.clone())]),
+        std::collections::HashMap::new(),
+    ];
+    let database = run_database::Database::open(&root.path().join("runs.sqlite")).unwrap();
+    for (pins, ran) in pins.into_iter().zip([&given, &resolved]) {
+        let mut request = request(root.path());
+        request.settings.executor = None;
+        request.settings.default_image = Some("tool:1".into());
+        request.settings.host_executor = Some(uwe::run::HostExecutor::new(backend.clone()));
+        request.settings.pinned_images = pins;
+        let run = request.run().await.unwrap();
+        assert!(run.execution.error.is_none(), "{:?}", run.execution.error);
+        let recorded = database.images(&run.id).unwrap();
+        let recorded: Vec<(&str, &str)> = (recorded.iter())
+            .map(|image| (image.named.as_str(), image.ran.as_str()))
+            .collect();
+        assert_eq!(recorded, [("tool:1", ran.as_str())]);
+    }
+    assert_eq!(*backend.images.lock().unwrap(), [given, resolved]);
+    assert_eq!(
+        *backend.pins.lock().unwrap(),
+        ["tool:1"],
+        "only the image without a pin"
+    );
 }

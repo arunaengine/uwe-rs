@@ -98,7 +98,7 @@ pub(crate) fn report(
             }
         }
     }
-    let ops = match compiled(target, language, (arguments, setup), &base, &run) {
+    let (ops, named) = match compiled(target, language, (arguments, setup), &base, &run) {
         Ok((document, kept)) => from_document(&document, &kept),
         Err(failure) => {
             let kind = match failure.code {
@@ -110,11 +110,11 @@ pub(crate) fn report(
             if !(problems.iter()).any(|problem| message.ends_with(&problem.message)) {
                 problems.push(Problem { kind, message });
             }
-            Vec::new()
+            Default::default()
         }
     };
     let mut parts = match &graph {
-        Some(graph) if !graph.nodes.is_empty() => from_steps(ops, graph),
+        Some(graph) if !graph.nodes.is_empty() => from_steps(ops, &named, graph),
         _ => ops,
     };
     let folder = format!("{}/", base.display());
@@ -162,14 +162,27 @@ fn compiled(
     crate::lower::compiled(target, language, given, base, run)
 }
 
-/// The task, process and native ops of every graph, by the name their source gives them.
-/// Tasks without an origin are the bodies of processes.
-fn from_document(document: &wir::Document, kept: &[(String, String)]) -> Vec<Part> {
+/// The task, process and native ops of every graph, by the name their source gives them,
+/// with the steps the compiler names them by. Tasks without an origin are process bodies.
+fn from_document(
+    document: &wir::Document,
+    kept: &[(String, String)],
+) -> (Vec<Part>, Vec<Vec<String>>) {
     let sources: BTreeMap<&str, &str> = (document.sources.iter())
         .map(|source| (source.id.as_str(), source.location.as_str()))
         .collect();
-    let mut parts: Vec<Part> = Vec::new();
+    // The steps of the calls of each graph, which the task inside it takes.
+    let mut calls: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     for op in document.graphs.iter().flat_map(|graph| &graph.ops) {
+        if let (wir::Kind::Call(call), Some(step)) = (&op.kind, &op.attributes.step) {
+            calls.entry(&call.graph).or_default().push(step.clone());
+        }
+    }
+    let mut parts: Vec<Part> = Vec::new();
+    let mut steps: Vec<Vec<String>> = Vec::new();
+    let ops =
+        (document.graphs.iter()).flat_map(|graph| graph.ops.iter().map(move |op| (graph, op)));
+    for (graph, op) in ops {
         let origin = op.origin.as_ref();
         let (support, images, source) = match &op.kind {
             wir::Kind::Task(task) if origin.is_some() => (
@@ -197,18 +210,34 @@ fn from_document(document: &wir::Document, kept: &[(String, String)]) -> Vec<Par
         let reason = (support == Support::Native)
             .then(|| native_reason(&op.path, kept))
             .flatten();
-        match parts.iter_mut().find(|part| part.name == name) {
-            Some(part) => merge(&mut part.images, images),
-            None => parts.push(Part {
-                name,
-                support,
-                reason,
-                location,
-                images,
-            }),
+        let mut named: Vec<String> = op.attributes.step.iter().cloned().collect();
+        if matches!(op.kind, wir::Kind::Task(_)) {
+            named.extend(
+                calls
+                    .get(graph.name.as_str())
+                    .into_iter()
+                    .flatten()
+                    .cloned(),
+            );
+        }
+        match parts.iter().position(|part| part.name == name) {
+            Some(index) => {
+                merge(&mut parts[index].images, images);
+                merge(&mut steps[index], named);
+            }
+            None => {
+                parts.push(Part {
+                    name,
+                    support,
+                    reason,
+                    location,
+                    images,
+                });
+                steps.push(named);
+            }
         }
     }
-    parts
+    (parts, steps)
 }
 
 /// Why the compiler kept the op at `path` native: its own reason, else the only one given.
@@ -222,7 +251,7 @@ fn native_reason(path: &str, kept: &[(String, String)]) -> Option<String> {
 
 /// The steps of the planned run, named as runs name them, with the images their tasks name
 /// and what the op of each step says; then the ops that match no step.
-fn from_steps(ops: Vec<Part>, graph: &ExecutionGraph) -> Vec<Part> {
+fn from_steps(ops: Vec<Part>, named: &[Vec<String>], graph: &ExecutionGraph) -> Vec<Part> {
     let mut steps: Vec<(&str, Vec<String>)> = Vec::new();
     for task in graph.nodes.iter().map(|node| &node.task) {
         let sidecars = (task.containers.iter()).filter_map(|container| container.image.as_ref());
@@ -240,7 +269,8 @@ fn from_steps(ops: Vec<Part>, graph: &ExecutionGraph) -> Vec<Part> {
     let mut used = vec![false; ops.len()];
     let mut parts = Vec::new();
     for (step, images) in steps {
-        let own = (0..ops.len()).find(|&index| same_step(&ops[index].name, step));
+        let own = by_step(named, step)
+            .or_else(|| (0..ops.len()).find(|&index| same_step(&ops[index].name, step)));
         let block = || (natives.iter().copied()).find(|&index| inside(&ops[index].name, step));
         let first = all_native.then(|| natives[0]);
         let mut part = match own.or_else(block).or(first) {
@@ -266,6 +296,22 @@ fn from_steps(ops: Vec<Part>, graph: &ExecutionGraph) -> Vec<Part> {
     let unused = ops.into_iter().zip(used).filter(|(_, used)| !used);
     parts.extend(unused.map(|(op, _)| op));
     parts
+}
+
+/// The op whose compiler step names the plan step `step`, alone or after the workflows
+/// around it, like `hello` for `main.hello`; the longest such name wins.
+fn by_step(named: &[Vec<String>], step: &str) -> Option<usize> {
+    let mut best: Option<(usize, usize)> = None;
+    for (index, names) in named.iter().enumerate() {
+        for name in names {
+            let rest = step.strip_suffix(name.as_str());
+            let fits = rest.is_some_and(|rest| rest.is_empty() || rest.ends_with('.'));
+            if fits && best.is_none_or(|(length, _)| name.len() > length) {
+                best = Some((name.len(), index));
+            }
+        }
+    }
+    best.map(|(_, index)| index)
 }
 
 /// Marks the parts that an unsupported problem names, else the only native part, which the

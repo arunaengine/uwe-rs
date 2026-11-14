@@ -9,6 +9,7 @@ pub mod edam;
 pub mod finding;
 pub mod graph;
 pub mod parameters;
+pub mod suggest;
 
 pub use conditions::{Evidence, Fact};
 pub use connection::{Check, FormatMatch, Shape, Supply};
@@ -19,3 +20,4 @@ pub use definition::{
 };
 pub use finding::{Aspect, Finding, Fit};
 pub use graph::{Edge, End, Graph, Node, NodeReport, Report};
+pub use suggest::{Ranking, Suggestion};

@@ -1,4 +1,4 @@
-//! Tool definitions in JSON and checks of their connections and graphs through the public API.
+//! Checks of connections, graphs and suggestions through the public API, with JSON tools.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -6,9 +6,10 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value as Json, json};
 use tool_definition::connection::check;
+use tool_definition::suggest::{followers, producers};
 use tool_definition::{
     Aspect, Cardinality, Condition, Definition, Edge, End, Evidence, Fact, Fit, FormatMatch, Graph,
-    InputPort, Node, PortKind, Shape, SortKey, Supply, graph,
+    InputPort, Node, PortKind, Ranking, Shape, SortKey, Supply, graph,
 };
 
 const BAM: &str = "format_2572";
@@ -265,6 +266,75 @@ fn graph_reports_nodes() {
         "{lost:?}"
     );
     assert_eq!(report.edges[1].fit, Fit::DoesNotFit, "{report:?}");
+}
+
+#[test]
+fn suggestions_rank() {
+    let view = tool(json!({
+        "id": "view", "version": "1", "title": "View anything", "curation": "curated",
+        "inputs": [{"name": "any", "kind": "file"}]
+    }));
+    let text = tool(json!({
+        "id": "text", "version": "1", "title": "Text reader",
+        "inputs": [{"name": "text", "kind": "file", "formats": ["format_2330"]}]
+    }));
+    let reads = tool(json!({
+        "id": "reads", "version": "1", "title": "Reads only",
+        "inputs": [{"name": "reads", "kind": "file", "formats": [FASTQ]}]
+    }));
+    let tools = [view, text, caller(), filter(), sort(), reads];
+    let found = followers(&file(&[BAM], Cardinality::One), &tools, &Ranking::default());
+    let order: Vec<(&str, FormatMatch)> = found
+        .iter()
+        .map(|found| (found.tool.as_str(), found.check.format))
+        .collect();
+    assert_eq!(
+        order,
+        [
+            ("samtools-sort", FormatMatch::Exact),
+            ("caller", FormatMatch::Exact),
+            ("filter", FormatMatch::Exact),
+            ("view", FormatMatch::General),
+        ],
+        "curated before imported before unchecked; text and reads do not fit"
+    );
+
+    let ranking = Ranking {
+        operations: Vec::new(),
+        uses: BTreeMap::from([("filter".to_owned(), 9)]),
+    };
+    let wanted = port(json!({"name": "in", "kind": "file", "formats": [BAM]}));
+    let found = producers(&wanted, &tools, &ranking);
+    let order: Vec<(&str, FormatMatch)> = found
+        .iter()
+        .map(|found| (found.tool.as_str(), found.check.format))
+        .collect();
+    assert_eq!(
+        order,
+        [
+            ("samtools-sort", FormatMatch::Exact),
+            ("filter", FormatMatch::Unknown)
+        ],
+        "the filter's output follows an input that takes SAM or BAM"
+    );
+}
+
+#[test]
+fn operations_rank() {
+    let sort = sort();
+    let mut other = caller();
+    other.curation = sort.curation;
+    let ranking = Ranking {
+        operations: vec!["operation_2409".to_owned()],
+        uses: BTreeMap::new(),
+    };
+    let found = followers(&file(&[BAM], Cardinality::One), &[other, sort], &ranking);
+    let order: Vec<&str> = found.iter().map(|found| found.tool.as_str()).collect();
+    assert_eq!(
+        order,
+        ["samtools-sort", "caller"],
+        "sorting is a kind of data handling"
+    );
 }
 
 #[test]

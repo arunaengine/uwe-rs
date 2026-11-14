@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -107,6 +108,9 @@ pub struct Settings {
     /// The static Linux binary of uwe that the image of the CWL JavaScript helper is made
     /// from, before `UWE_CWL_JS_BINARY` and the running binary, as a host is no uwe binary.
     pub javascript_binary: Option<PathBuf>,
+    /// Images as the workflow names them, like `debian:12`, pinned to a digest, like
+    /// `debian@sha256:...`. Tasks run at these digests; the run resolves other images itself.
+    pub pinned_images: HashMap<String, String>,
     // The CLI retains its input syntax and presentation without exposing them to hosts.
     pub(crate) cli: Option<Arguments>,
 }
@@ -160,6 +164,7 @@ impl Default for Settings {
             print_sink: None,
             secrets: SecretValues::default(),
             javascript_binary: None,
+            pinned_images: HashMap::new(),
             cli: None,
         }
     }

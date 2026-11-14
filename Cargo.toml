@@ -46,6 +46,7 @@ members = [
     "task-model",
     "task-runner",
     "executors/tes",
+    "tool-definition",
     "tool-record",
     "workflows/wdl/lowering",
     "workflows/wdl/runtime",
@@ -105,6 +106,7 @@ storage = { path = "storage" }
 task-model = { path = "task-model" }
 task-runner = { path = "task-runner" }
 tes-executor = { path = "executors/tes" }
+tool-definition = { path = "tool-definition" }
 tool-record = { path = "tool-record" }
 wdl-lowering = { path = "workflows/wdl/lowering" }
 wdl-runtime = { path = "workflows/wdl/runtime" }

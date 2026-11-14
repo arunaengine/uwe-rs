@@ -214,3 +214,20 @@ async fn argo_templates() {
         ])
     );
 }
+
+/// Without a value for a required input, the plan stops early; the `else` clause is still
+/// refused.
+#[tokio::test]
+async fn else_without_input() {
+    let otherwise = WDL.replace("Boolean flag = true", "Boolean flag").replace(
+        "    call say\n  }\n",
+        "    call say\n  } else {\n    call say as other\n  }\n",
+    );
+    let report = report(&[("main.wdl", &otherwise)], "main.wdl").await;
+    assert!(!report.runnable(), "{report:#?}");
+    let reason = "main.wdl:11: `else` clauses are not supported";
+    assert_eq!(
+        parts(&report),
+        json!([{"name": "main", "support": "unsupported", "reason": reason, "location": "main.wdl:11"}])
+    );
+}

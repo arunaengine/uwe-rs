@@ -9,7 +9,9 @@ use url::Url;
 use wdl_analysis::types::v1::AstTypeConverter;
 use wdl_analysis::types::{Type, TypeNameResolver};
 use wdl_analysis::{Analyzer, Config, Document, IncrementalChange};
-use wdl_ast::v1::{Ast, CallTarget, TaskDefinition, WorkflowDefinition};
+use wdl_ast::v1::{
+    Ast, CallTarget, ConditionalStatement, TaskDefinition, WorkflowDefinition, WorkflowStatement,
+};
 use wdl_ast::{AstNode, AstToken, Diagnostic, Severity, Span, SupportedVersion, TreeNode};
 use workflow_graph::DriverError;
 
@@ -290,6 +292,58 @@ pub fn place(document: &Document, node: &impl AstNode<wdl_ast::SyntaxNode>) -> S
     match line {
         Some(line) => format!("{path}:{line}"),
         None => path.to_string(),
+    }
+}
+
+/// The refusal of a conditional with `else` clauses, which a run does not support.
+pub fn else_refused(document: &Document, conditional: &ConditionalStatement) -> Option<String> {
+    (conditional.clauses().count() > 1).then(|| {
+        let place = place(document, conditional);
+        format!("{place}: `else` clauses are not supported")
+    })
+}
+
+/// What a run of `unit` refuses where it reaches it, found without values: the `else`
+/// clauses of its workflow and of the workflows it calls.
+pub fn refusals(unit: &Unit) -> Vec<String> {
+    let mut found = Vec::new();
+    if let Callable::Workflow(workflow) = &unit.callable {
+        add_refusals(&unit.document, workflow.statements(), &mut found);
+    }
+    found
+}
+
+fn add_refusals(
+    document: &Document,
+    statements: impl Iterator<Item = WorkflowStatement>,
+    found: &mut Vec<String>,
+) {
+    for statement in statements {
+        match statement {
+            WorkflowStatement::Conditional(conditional) => {
+                if let Some(message) = else_refused(document, &conditional)
+                    && !found.contains(&message)
+                {
+                    found.push(message);
+                }
+                for clause in conditional.clauses() {
+                    add_refusals(document, clause.statements(), found);
+                }
+            }
+            WorkflowStatement::Scatter(scatter) => {
+                add_refusals(document, scatter.statements(), found);
+            }
+            WorkflowStatement::Call(call) => {
+                if let Ok(Unit {
+                    document,
+                    callable: Callable::Workflow(workflow),
+                }) = called(document, &call.target())
+                {
+                    add_refusals(&document, workflow.statements(), found);
+                }
+            }
+            WorkflowStatement::Declaration(_) => {}
+        }
     }
 }
 

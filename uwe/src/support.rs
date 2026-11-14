@@ -89,6 +89,15 @@ pub(crate) fn report(
     let run = crate::run_id();
     let (found, graph) = crate::check::findings(arguments, setup, (target, language), &run, cancel);
     let mut problems = found.problems;
+    // The plan stops at a missing input, so it may not reach what a run refuses later.
+    if language == Language::Wdl {
+        for message in wdl_refusals(target, arguments, setup) {
+            if !(problems.iter()).any(|problem| problem.message == message) {
+                let kind = Kind::Unsupported;
+                problems.push(Problem { kind, message });
+            }
+        }
+    }
     let ops = match compiled(target, language, (arguments, setup), &base, &run) {
         Ok((document, kept)) => from_document(&document, &kept),
         Err(failure) => {
@@ -124,6 +133,15 @@ pub(crate) fn report(
         problems,
         notes: found.notes,
     }
+}
+
+/// What a run of the WDL workflow refuses where it reaches it, found without input values.
+fn wdl_refusals(target: &Path, arguments: &Arguments, setup: &Setup) -> Vec<String> {
+    let options = crate::run::driver::wdl_options(arguments, setup);
+    let entry = arguments.targets.first().map(String::as_str);
+    let document = wdl_runtime::document::load(target, options.imports.as_ref());
+    let unit = document.and_then(|document| wdl_runtime::document::entry(&document, entry));
+    (unit.map(|unit| wdl_runtime::document::refusals(&unit))).unwrap_or_default()
 }
 
 /// The wir document of the workflow and its ops that stay native; a wir document is its own.

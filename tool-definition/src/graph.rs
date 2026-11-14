@@ -28,6 +28,7 @@ pub struct Node {
     pub id: String,
     pub tool: String,
     pub version: String,
+    /// The parameter values; null or absent is checked as no values, `{}`.
     #[serde(default, skip_serializing_if = "Json::is_null")]
     pub parameters: Json,
     /// Inputs fed from outside the graph, like workflow inputs, by input name.
@@ -108,7 +109,11 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
             nodes[at] = Some(report(node, false, findings));
             continue;
         };
-        findings.extend(parameters::check(&definition.parameters, &node.parameters));
+        let values = match &node.parameters {
+            Json::Null => Json::Object(Default::default()),
+            values => values.clone(),
+        };
+        findings.extend(parameters::check(&definition.parameters, &values));
         let mut inputs = BTreeMap::new();
         let mut scatter = false;
         for (name, supply) in &node.given {

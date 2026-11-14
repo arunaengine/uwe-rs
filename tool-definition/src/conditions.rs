@@ -35,16 +35,27 @@ pub enum Evidence {
 }
 
 /// One finding per condition the port needs, decided by the strongest fact about it. When
-/// facts of equal strength disagree, the one that does not hold wins.
+/// facts of equal strength disagree, the one that does not hold wins; unknown evidence warns.
 pub fn check(needs: &[Condition], facts: &[Fact]) -> Vec<Finding> {
     needs
         .iter()
         .map(|need| {
             let deciding = facts
                 .iter()
+                .filter(|fact| fact.evidence != Evidence::Unknown)
                 .filter_map(|fact| answer(need, fact).map(|holds| (holds, fact)))
                 .max_by_key(|(holds, fact)| (fact.evidence.strength(), !holds));
+            let unknown = facts.iter().any(|fact| answer(need, fact).is_some());
             let (fit, reason, evidence) = match deciding {
+                None if unknown => (
+                    Fit::Unknown,
+                    format!(
+                        "only a source of unknown evidence speaks to whether the data {}; \
+                         check the data or assert it",
+                        describe(need)
+                    ),
+                    Evidence::Unknown,
+                ),
                 None => (
                     Fit::Unknown,
                     format!(
@@ -171,6 +182,16 @@ mod tests {
         let findings = check(&need, &facts);
         assert_eq!(findings[0].fit, Fit::DoesNotFit, "{findings:?}");
         assert!(findings[0].reason.contains("version v2"), "{findings:?}");
+    }
+
+    #[test]
+    fn unknown_evidence_warns() {
+        for holds in [true, false] {
+            let facts = [fact(Condition::Indexed, holds, Evidence::Unknown)];
+            let findings = check(&[Condition::Indexed], &facts);
+            assert_eq!(findings[0].fit, Fit::Unknown, "holds {holds}: {findings:?}");
+            assert_eq!(findings[0].evidence, Some(Evidence::Unknown));
+        }
     }
 
     #[test]

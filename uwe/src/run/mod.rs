@@ -98,6 +98,28 @@ impl RunRequest {
         .map_err(|error| Failure::setup(format!("uwe: discovery worker failed: {error}")))?
     }
 
+    /// The support report of the configured workflow: which parts uwe compiles into wir, runs
+    /// as native blocks or refuses, with their images. Like `describe`, it starts no task.
+    pub async fn support(self) -> Result<crate::support::Report, Failure> {
+        let cancel = self.settings.cancel.child_token();
+        let _stop = cancel.clone().drop_guard();
+        tokio::task::spawn_blocking(move || {
+            let _cache = support::CacheScope::new(false);
+            let (arguments, setup, _inputs) = self.settings.prepare()?;
+            let mut setup = match setup {
+                Some(setup) => setup,
+                None => crate::setup::Setup::load(&arguments)?,
+            };
+            let _registry = setup.registry.enter().map_err(Failure::setup)?;
+            setup.storage = setup.storage.session();
+            let (target, language) = target_and_language(&arguments, Some(&setup.storage))?;
+            let given = (target.as_path(), language);
+            Ok(crate::support::report(&arguments, &setup, given, &cancel))
+        })
+        .await
+        .map_err(|error| Failure::setup(format!("uwe: support worker failed: {error}")))?
+    }
+
     /// The TES tasks, Kubernetes Jobs and SLURM jobs that the run `settings.run_id` left, with
     /// what their servers say of them. Changes nothing. The settings give the config file, the
     /// cache and the secrets of the run.

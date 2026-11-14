@@ -52,6 +52,7 @@ mod slurm;
 mod snowflake;
 mod sources;
 mod staging;
+pub mod support;
 mod terminal;
 mod tes;
 mod tracked;

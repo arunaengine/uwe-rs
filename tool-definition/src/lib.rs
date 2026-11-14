@@ -7,6 +7,8 @@ pub mod connection;
 pub mod definition;
 pub mod edam;
 pub mod finding;
+pub mod graph;
+pub mod parameters;
 
 pub use conditions::{Evidence, Fact};
 pub use connection::{Check, FormatMatch, Shape, Supply};
@@ -16,3 +18,4 @@ pub use definition::{
     TestValue, ToolTest, ValueType,
 };
 pub use finding::{Aspect, Finding, Fit};
+pub use graph::{Edge, End, Graph, Node, NodeReport, Report};

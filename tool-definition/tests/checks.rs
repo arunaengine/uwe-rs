@@ -1,4 +1,4 @@
-//! Tool definitions in JSON and checks of their connections through the public API.
+//! Tool definitions in JSON and checks of their connections and graphs through the public API.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use serde_json::{Value as Json, json};
 use tool_definition::connection::check;
 use tool_definition::{
-    Aspect, Cardinality, Condition, Definition, Evidence, Fact, Fit, FormatMatch, InputPort,
-    PortKind, Shape, SortKey, Supply,
+    Aspect, Cardinality, Condition, Definition, Edge, End, Evidence, Fact, Fit, FormatMatch, Graph,
+    InputPort, Node, PortKind, Shape, SortKey, Supply, graph,
 };
 
 const BAM: &str = "format_2572";
@@ -54,6 +54,17 @@ fn caller() -> Definition {
         "inputs": [{"name": "alignments", "kind": "file", "formats": [BAM],
                     "conditions": [{"sorted": "coordinate"}]}],
         "outputs": [{"name": "vcf", "kind": "file", "format": {"terms": ["format_3016"]}}]
+    }))
+}
+
+/// A filter whose output keeps the format of its input, as Galaxy's `format_source`.
+fn filter() -> Definition {
+    tool(json!({
+        "id": "filter", "version": "1", "title": "Filter alignments",
+        "inputs": [{"name": "input", "kind": "file", "formats": [SAM, BAM]}],
+        "parameters": {"type": "object", "properties": {"quality": {"type": "integer"}},
+                       "required": ["quality"]},
+        "outputs": [{"name": "kept", "kind": "file", "format": {"follows": "input"}}]
     }))
 }
 
@@ -164,6 +175,96 @@ fn sorted_output_fits() {
     assert_eq!(found.fit, Fit::Fits, "{found:?}");
     assert_eq!(found.findings[0].evidence, Some(Evidence::Guaranteed));
     assert!(found.findings[0].reason.contains("guarantees"), "{found:?}");
+}
+
+#[test]
+fn follows_input_format() {
+    let node = |id: &str, tool: &Definition, given: BTreeMap<String, Supply>| Node {
+        id: id.to_owned(),
+        tool: tool.id.clone(),
+        version: tool.version.clone(),
+        parameters: json!({"quality": 20}),
+        given,
+    };
+    let edge = |from: &str, output: &str, to: &str, input: &str| Edge {
+        from: End {
+            node: from.to_owned(),
+            port: output.to_owned(),
+        },
+        to: End {
+            node: to.to_owned(),
+            port: input.to_owned(),
+        },
+        facts: Vec::new(),
+    };
+    let tools = [filter(), sort(), caller()];
+    for (given, expected) in [(SAM, Fit::DoesNotFit), (BAM, Fit::Unknown)] {
+        let input = BTreeMap::from([("input".to_owned(), file(&[given], Cardinality::One))]);
+        let graph = Graph {
+            nodes: vec![
+                node("call", &tools[2], BTreeMap::new()),
+                node("filter", &tools[0], input),
+            ],
+            edges: vec![edge("filter", "kept", "call", "alignments")],
+        };
+        let report = graph::check(&graph, &tools);
+        assert_eq!(report.edges[0].fit, expected, "{given}: {report:?}");
+        assert_eq!(report.nodes[1].fit, Fit::Fits, "{report:?}");
+    }
+}
+
+#[test]
+fn graph_reports_nodes() {
+    let tools = [filter(), sort(), caller()];
+    let samples = file(&[SAM], Cardinality::List);
+    let graph: Graph = serde_json::from_value(json!({
+        "nodes": [
+            {"id": "sort", "tool": "samtools-sort", "version": "1.21",
+             "given": {"input": serde_json::to_value(&samples).expect("json")}},
+            {"id": "call", "tool": "caller", "version": "2"},
+            {"id": "filter", "tool": "filter", "version": "1", "parameters": {}},
+            {"id": "lost", "tool": "missing", "version": "0"}
+        ],
+        "edges": [
+            {"from": {"node": "sort", "port": "bam"}, "to": {"node": "call", "port": "alignments"}},
+            {"from": {"node": "sort", "port": "nothing"}, "to": {"node": "filter", "port": "input"}}
+        ]
+    }))
+    .expect("a graph");
+    let report = graph::check(&graph, &tools);
+    assert_eq!(report.fit, Fit::DoesNotFit);
+    let [sorted, call, filter, lost] = report.nodes.as_slice() else {
+        panic!("four nodes: {report:?}");
+    };
+    assert!(sorted.scatter && sorted.fit == Fit::Fits, "{sorted:?}");
+    assert!(
+        call.scatter,
+        "per-sample BAM files map the caller too: {call:?}"
+    );
+    assert_eq!(report.edges[0].fit, Fit::Fits, "{report:?}");
+    let reasons: Vec<&str> = filter
+        .findings
+        .iter()
+        .map(|finding| finding.reason.as_str())
+        .collect();
+    assert_eq!(filter.findings.len(), 2, "{reasons:?}");
+    assert!(
+        reasons.iter().any(|reason| reason.contains("quality")),
+        "{reasons:?}"
+    );
+    assert!(
+        reasons
+            .iter()
+            .any(|reason| reason.contains("input input is not connected")),
+        "{reasons:?}"
+    );
+    assert!(
+        lost.findings[0]
+            .reason
+            .contains("missing version 0 is not known"),
+        "{lost:?}"
+    );
+    assert_eq!(report.edges[1].fit, Fit::DoesNotFit, "{report:?}");
 }
 
 #[test]

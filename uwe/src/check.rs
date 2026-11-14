@@ -7,6 +7,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use input_schema::Severity;
+use serde::{Deserialize, Serialize};
 use workflow_graph::{
     Driver, DriverError, Engine, ExecuteError, ExecutionGraph, Inputs, Language, Simulator,
 };
@@ -20,8 +21,9 @@ use crate::{Failure, cache_directory};
 const NAMED_FILES: usize = 3;
 
 /// How bad a problem is, the worst first.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Kind {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
     /// A feature that uwe does not support: a run stops with exit code 33.
     Unsupported,
     /// A run stops.
@@ -41,18 +43,18 @@ impl fmt::Display for Kind {
 }
 
 /// A problem of the workflow, in the form of every error: where, what, and what to do.
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Problem {
-    kind: Kind,
-    message: String,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Problem {
+    pub kind: Kind,
+    pub message: String,
 }
 
 /// What the check found.
 #[derive(Default)]
-struct Report {
-    problems: Vec<Problem>,
+pub(crate) struct Report {
+    pub(crate) problems: Vec<Problem>,
     /// What the check could not look at, like files at remote addresses.
-    notes: Vec<String>,
+    pub(crate) notes: Vec<String>,
 }
 
 impl Report {
@@ -358,21 +360,39 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let (target, language) = crate::target_and_language(arguments, None)?;
-    let mut launch = crate::launch(arguments, target.clone());
-    // The plan goes past the files that are missing, which the check reports.
-    launch.simulated = true;
-    let run = crate::run_id();
-    let mut report = Report::default();
     let cancel = crate::stop_on_interrupt();
     let _stop = cancel.clone().drop_guard();
-    let graph = match crate::driver(language, &launch, &run, true, arguments, &setup, &cancel) {
+    let run = crate::run_id();
+    let (report, graph) = findings(arguments, &setup, (&target, language), &run, &cancel);
+    let workflow = format!("{} ({})", shown(&target), language_name(language));
+    print!("{}", report.text(&workflow, graph.as_ref()));
+    match report.code() {
+        0 => Ok(()),
+        code => Err(Failure::said(code)),
+    }
+}
+
+/// What would stop a real run of the workflow, found with the simulator as the run `run`, and
+/// the graph of the plan, unless the workflow did not load.
+pub(crate) fn findings(
+    arguments: &Arguments,
+    setup: &Setup,
+    (target, language): (&Path, Language),
+    run: &str,
+    cancel: &workflow_graph::CancellationToken,
+) -> (Report, Option<ExecutionGraph>) {
+    let mut launch = crate::launch(arguments, target.to_owned());
+    // The plan goes past the files that are missing, which the check reports.
+    launch.simulated = true;
+    let mut report = Report::default();
+    let graph = match crate::driver(language, &launch, run, true, arguments, setup, cancel) {
         Ok(mut driver) => plan(
             driver.as_mut(),
-            &target,
-            &run,
+            target,
+            run,
             arguments,
             &mut report,
-            &cancel,
+            cancel,
             setup.conda.is_some(),
         ),
         Err(error) => {
@@ -381,16 +401,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         }
     };
     if language == Language::Nextflow {
-        for warning in crate::nextflow::plugin_warnings(&launch, arguments, &setup) {
+        for warning in crate::nextflow::plugin_warnings(&launch, arguments, setup) {
             report.add(Kind::Warning, warning);
         }
     }
-    let workflow = format!("{} ({})", shown(&target), language_name(language));
-    print!("{}", report.text(&workflow, graph.as_ref()));
-    match report.code() {
-        0 => Ok(()),
-        code => Err(Failure::said(code)),
-    }
+    (report, graph)
 }
 
 /// Whether the simulator finished a task, so that later values come from made-up outputs.

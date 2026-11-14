@@ -23,7 +23,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         Language::Nextflow => {
             let setup = Setup::load(arguments)?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
-            nextflow(arguments, &setup, &target, &base, ("lower", None))?
+            nextflow(arguments, &setup, &target, &base, ("lower", None))?.document
         }
         Language::Snakemake => {
             let setup = Setup::load(arguments)?;
@@ -126,11 +126,11 @@ pub fn document(
             (document, None)
         }
         Language::Nextflow => {
-            let mut document = nextflow(arguments, setup, target, &folder, (run, None))?;
+            let mut document = nextflow(arguments, setup, target, &folder, (run, None))?.document;
             // A compiled pipeline holds the values of its run; one native op holds none.
             if holds_secret(shown(&document)?.as_bytes(), &secrets) {
                 let reason = Some("the values of the run hold a secret");
-                document = nextflow(arguments, setup, target, &folder, (run, reason))?;
+                document = nextflow(arguments, setup, target, &folder, (run, reason))?.document;
                 secret = withheld(&mut document, &secrets);
             }
             (document, None)
@@ -579,6 +579,59 @@ fn pruned(folder: &Path, recorded: &[String]) {
     }
 }
 
+/// The wir document of a workflow as the run `run` compiles it, with source locations from
+/// `base`, and the path and reason of each op that stays a native op.
+pub(crate) fn compiled(
+    target: &Path,
+    language: Language,
+    (arguments, setup): (&Arguments, &Setup),
+    base: &Path,
+    run: &str,
+) -> Result<(wir::Document, Vec<(String, String)>), Failure> {
+    Ok(match language {
+        Language::Wdl => {
+            let lowering = wdl(target, arguments, setup, base)?;
+            let kept = lowering
+                .kept
+                .into_iter()
+                .map(|kept| (kept.path, kept.reason));
+            (lowering.document, kept.collect())
+        }
+        Language::Nextflow => {
+            let compiled = nextflow(arguments, setup, target, base, (run, None))?;
+            let kept = compiled
+                .kept
+                .into_iter()
+                .map(|kept| (kept.path, kept.reason));
+            (compiled.document, kept.collect())
+        }
+        Language::Snakemake => {
+            let compiled = snakemake(target, arguments, setup, run, base)?;
+            let kept = compiled
+                .kept
+                .into_iter()
+                .map(|kept| (kept.path, kept.reason));
+            (compiled.document, kept.collect())
+        }
+        Language::Argo => {
+            let compiled = argo(target, arguments, base)?;
+            let kept = compiled
+                .kept
+                .into_iter()
+                .map(|kept| (kept.path, kept.reason));
+            (compiled.document, kept.collect())
+        }
+        _ => {
+            let lowering = lowered(target, language, (arguments, setup), base)?;
+            let kept = lowering
+                .kept
+                .into_iter()
+                .map(|kept| (kept.path, kept.reason));
+            (lowering.document, kept.collect())
+        }
+    })
+}
+
 fn lowered(
     target: &Path,
     language: Language,
@@ -618,7 +671,7 @@ fn nextflow(
     target: &Path,
     base: &Path,
     (run, native): (&str, Option<&str>),
-) -> Result<wir::Document, Failure> {
+) -> Result<nextflow_compiler::Compilation, Failure> {
     let launch = crate::launch(arguments, target.to_owned());
     // A feature that uwe does not run yet keeps its exit code, as in a run of the driver.
     let compiled = (crate::nextflow::compile(&launch, arguments, setup, base, (run, native)))
@@ -632,7 +685,7 @@ fn nextflow(
             kept.path, kept.reason
         );
     }
-    Ok(compiled.document)
+    Ok(compiled)
 }
 
 /// The wir document that a Snakemake workflow compiles into, planned for the targets, config

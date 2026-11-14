@@ -1,0 +1,2420 @@
+# EDAM 1.25.20260626T1230Z from https://github.com/edamontology/edamontology/releases/download/1.25.20260626T1230Z/EDAM.owl
+# CC BY-SA 4.0, see LICENSE-EDAM. Columns: id, label, parents.
+data_0006	Data	
+data_0582	Ontology	data_2353
+data_0842	Identifier	data_0006
+data_0844	Molecular mass	data_2050
+data_0845	Molecular charge	data_2050
+data_0846	Chemical formula	data_2050
+data_0847	QSAR descriptor	data_2050
+data_0849	Sequence record	data_2044
+data_0850	Sequence set	data_0006
+data_0856	Sequence feature source	data_2914
+data_0857	Sequence search results	data_2080
+data_0858	Sequence signature matches	data_0860 data_1916
+data_0860	Sequence signature data	data_0006
+data_0862	Dotplot	data_0867
+data_0863	Sequence alignment	data_1916
+data_0865	Sequence similarity score	data_1772
+data_0867	Sequence alignment report	data_2048
+data_0870	Sequence distance matrix	data_2855
+data_0871	Phylogenetic character data	data_2523
+data_0872	Phylogenetic tree	data_2523
+data_0874	Comparison matrix	data_2082
+data_0878	Protein secondary structure alignment	data_2366
+data_0880	RNA secondary structure	data_1465
+data_0881	RNA secondary structure alignment	data_2366
+data_0883	Structure	data_0006
+data_0886	Structure alignment	data_1916
+data_0887	Structure alignment report	data_2048
+data_0888	Structure similarity score	data_1772
+data_0889	Structural profile	data_0006
+data_0890	Structural (3D) profile alignment	data_1916
+data_0892	Protein sequence-structure scoring matrix	data_2082
+data_0893	Sequence-structure alignment	data_1916
+data_0896	Protein report	data_2048
+data_0897	Protein property	data_2087
+data_0905	Protein interaction raw data	data_3108
+data_0906	Protein interaction data	data_0897
+data_0907	Protein family report	data_0896
+data_0909	Vmax	data_2024
+data_0910	Km	data_2024
+data_0912	Nucleic acid property	data_2087
+data_0914	Codon usage data	data_0006
+data_0916	Gene report	data_2084
+data_0919	Chromosome report	data_2084
+data_0920	Genotype/phenotype report	data_2048
+data_0924	Sequence trace	data_1234 data_3108
+data_0925	Sequence assembly	data_1234
+data_0926	RH scores	data_3108
+data_0927	Genetic linkage report	data_2084
+data_0928	Gene expression profile	data_2603
+data_0937	Electron density map	data_2537
+data_0938	Raw NMR data	data_2537
+data_0939	CD spectra	data_2537
+data_0940	Volume map	data_3108
+data_0942	2D PAGE image	data_3424
+data_0943	Mass spectrum	data_2536
+data_0944	Peptide mass fingerprint	data_2536 data_2979
+data_0945	Peptide identification	data_0897 data_2979
+data_0949	Workflow metadata	data_2337
+data_0950	Mathematical model	data_0006
+data_0951	Statistical estimate score	data_1772
+data_0954	Database cross-mapping	data_2093
+data_0955	Data index	data_0006
+data_0956	Data index report	data_2048
+data_0957	Database metadata	data_2337
+data_0958	Tool metadata	data_2337
+data_0960	User metadata	data_2337
+data_0962	Small molecule report	data_2085
+data_0963	Cell line report	data_2530
+data_0966	Ontology term	data_0967
+data_0967	Ontology concept data	data_2353
+data_0968	Keyword	data_0006
+data_0970	Citation	data_2526
+data_0971	Article	data_2526 data_3671
+data_0972	Text mining report	data_2048 data_2526
+data_0976	Identifier (by type of entity)	data_0842
+data_0977	Tool identifier	data_0976
+data_0982	Molecule identifier	data_0976
+data_0983	Atom ID	data_0976
+data_0984	Molecule name	data_0982 data_2099
+data_0987	Chromosome name	data_0984 data_2119
+data_0988	Peptide identifier	data_0982
+data_0989	Protein identifier	data_0982
+data_0990	Compound name	data_0984 data_1086
+data_0991	Chemical registry number	data_2894
+data_0993	Drug identifier	data_1086
+data_0994	Amino acid identifier	data_1086
+data_0995	Nucleotide identifier	data_1086
+data_0996	Monosaccharide identifier	data_1086
+data_0997	Chemical name (ChEBI)	data_0990
+data_0998	Chemical name (IUPAC)	data_0990
+data_0999	Chemical name (INN)	data_0990
+data_1000	Chemical name (brand)	data_0990
+data_1001	Chemical name (synonymous)	data_0990
+data_1002	CAS number	data_0991 data_2091 data_2895
+data_1003	Chemical registry number (Beilstein)	data_0991 data_2091
+data_1004	Chemical registry number (Gmelin)	data_0991 data_2091
+data_1005	HET group name	data_0990
+data_1006	Amino acid name	data_0994
+data_1007	Nucleotide code	data_0990 data_0995
+data_1008	Polypeptide chain ID	data_0988
+data_1009	Protein name	data_0984 data_0989
+data_1010	Enzyme identifier	data_0989
+data_1011	EC number	data_2091 data_2321
+data_1012	Enzyme name	data_1009 data_1010
+data_1013	Restriction enzyme name	data_1012
+data_1015	Sequence feature ID	data_3034
+data_1016	Sequence position	data_2534
+data_1017	Sequence range	data_2534
+data_1020	Sequence feature key	data_2914
+data_1021	Sequence feature qualifier	data_2914
+data_1022	Sequence feature label	data_2099 data_2914 data_3034
+data_1023	EMBOSS Uniform Feature Object	data_2099 data_3034
+data_1025	Gene identifier	data_0976
+data_1026	Gene symbol	data_2299
+data_1027	Gene ID (NCBI)	data_1098 data_2091 data_2295
+data_1031	Gene ID (CGD)	data_2091 data_2295
+data_1032	Gene ID (DictyBase)	data_2091 data_2295
+data_1033	Ensembl gene ID	data_2091 data_2295 data_2610
+data_1034	Gene ID (SGD)	data_2091 data_2295 data_2632
+data_1035	Gene ID (GeneDB)	data_2091 data_2295
+data_1036	TIGR identifier	data_2091 data_2109 data_2295
+data_1037	TAIR accession (gene)	data_2295 data_2387
+data_1038	Protein domain ID	data_0976
+data_1039	SCOP domain identifier	data_1038 data_2091
+data_1040	CATH domain ID	data_2700
+data_1041	SCOP concise classification string (sccs)	data_1039
+data_1042	SCOP sunid	data_1039
+data_1043	CATH node ID	data_2700
+data_1044	Kingdom name	data_1868
+data_1045	Species name	data_1868
+data_1046	Strain name	data_2379 data_2909
+data_1047	URI	data_0842
+data_1048	Database ID	data_0976
+data_1049	Directory name	data_2099
+data_1050	File name	data_2099
+data_1051	Ontology name	data_2099 data_2338
+data_1052	URL	data_1047
+data_1053	URN	data_1047
+data_1055	LSID	data_1053
+data_1056	Database name	data_1048 data_2099
+data_1058	Enumerated file name	data_1050
+data_1059	File name extension	data_1050
+data_1060	File base name	data_1050
+data_1061	QSAR descriptor name	data_2099 data_2110
+data_1063	Sequence identifier	data_0976
+data_1064	Sequence set ID	data_0976
+data_1066	Sequence alignment ID	data_0976 data_2091
+data_1068	Phylogenetic tree ID	data_0976
+data_1069	Comparison matrix identifier	data_3036
+data_1070	Structure ID	data_3035
+data_1071	Structural (3D) profile ID	data_0976
+data_1072	Structure alignment ID	data_0976
+data_1073	Amino acid index ID	data_0976 data_3036
+data_1074	Protein interaction ID	data_0976
+data_1075	Protein family identifier	data_0976
+data_1076	Codon usage table name	data_2099 data_2111
+data_1077	Transcription factor identifier	data_0976 data_0989
+data_1078	Experiment annotation ID	data_0976
+data_1079	Electron microscopy model ID	data_0976
+data_1080	Gene expression report ID	data_0976
+data_1081	Genotype and phenotype annotation ID	data_0976
+data_1082	Pathway or network identifier	data_0976
+data_1083	Workflow ID	data_0976
+data_1084	Data resource definition ID	data_0976
+data_1085	Biological model ID	data_0976
+data_1086	Compound identifier	data_0982
+data_1087	Ontology concept ID	data_3025
+data_1088	Article ID	data_0976
+data_1089	FlyBase ID	data_2091 data_2109
+data_1091	WormBase name	data_2099 data_2113
+data_1092	WormBase class	data_2113
+data_1093	Sequence accession	data_1063
+data_1095	EMBOSS Uniform Sequence Address	data_1063 data_2099
+data_1096	Sequence accession (protein)	data_1093
+data_1097	Sequence accession (nucleic acid)	data_1093
+data_1098	RefSeq accession	data_2091 data_2362
+data_1100	PIR identifier	data_1096 data_2091
+data_1102	Gramene primary identifier	data_2915
+data_1103	EMBL/GenBank/DDBJ ID	data_1097 data_2091
+data_1104	Sequence cluster ID (UniGene)	data_1112 data_2091
+data_1105	dbEST accession	data_2091 data_2292 data_2728
+data_1106	dbSNP ID	data_2091 data_2294
+data_1112	Sequence cluster ID	data_1064
+data_1113	Sequence cluster ID (COG)	data_1112 data_2091
+data_1114	Sequence motif identifier	data_0976
+data_1115	Sequence profile ID	data_0976
+data_1116	ELM ID	data_1114
+data_1117	Prosite accession number	data_1114
+data_1118	HMMER hidden Markov model ID	data_1115 data_2091
+data_1119	JASPAR profile ID	data_1115 data_2091
+data_1123	TreeBASE study accession number	data_1068 data_2091
+data_1124	TreeFam accession number	data_1068 data_2091
+data_1126	Comparison matrix name	data_1069 data_2099
+data_1127	PDB ID	data_1070 data_2091
+data_1128	AAindex ID	data_1073 data_2091
+data_1129	BIND accession number	data_1074 data_2091
+data_1130	IntAct accession number	data_1074 data_2091
+data_1131	Protein family name	data_1075 data_2099
+data_1132	InterPro entry name	data_1131
+data_1133	InterPro accession	data_2091 data_2910
+data_1134	InterPro secondary accession	data_1133
+data_1135	Gene3D ID	data_2091 data_2910
+data_1136	PIRSF ID	data_2091 data_2910
+data_1137	PRINTS code	data_2091 data_2910
+data_1138	Pfam accession number	data_2091 data_2910
+data_1139	SMART accession number	data_2091 data_2910
+data_1140	Superfamily hidden Markov model number	data_2091 data_2910
+data_1141	TIGRFam ID	data_2091 data_2910
+data_1142	ProDom accession number	data_2091 data_2910
+data_1143	TRANSFAC accession number	data_2091 data_2911
+data_1144	ArrayExpress accession number	data_1078
+data_1145	PRIDE experiment accession number	data_1078
+data_1146	EMDB ID	data_1079 data_2091
+data_1147	GEO accession number	data_1080 data_2091
+data_1148	GermOnline ID	data_1080 data_2091
+data_1149	EMAGE ID	data_1080 data_2091
+data_1150	Disease ID	data_3667
+data_1151	HGVbase ID	data_1081 data_2091
+data_1153	OMIM ID	data_1081 data_2091
+data_1154	KEGG object identifier	data_2091 data_2109
+data_1155	Pathway ID (reactome)	data_2091 data_2365
+data_1157	Pathway ID (BioCyc)	data_2091 data_2104 data_2365
+data_1158	Pathway ID (INOH)	data_2091 data_2365
+data_1159	Pathway ID (PATIKA)	data_2091 data_2365
+data_1160	Pathway ID (CPDB)	data_2091 data_2365
+data_1161	Pathway ID (Panther)	data_2091 data_2365
+data_1162	MIRIAM identifier	data_2091 data_2902
+data_1163	MIRIAM data type name	data_2253
+data_1164	MIRIAM URI	data_1047 data_2091 data_2902
+data_1165	MIRIAM data type primary name	data_1163
+data_1166	MIRIAM data type synonymous name	data_1163
+data_1167	Taverna workflow ID	data_1083 data_2091
+data_1170	Biological model name	data_1085 data_2099
+data_1171	BioModel ID	data_2091 data_2891
+data_1172	PubChem CID	data_2639 data_2894
+data_1173	ChemSpider ID	data_2091 data_2894
+data_1174	ChEBI ID	data_2091 data_2894
+data_1175	BioPax concept ID	data_1087 data_2091
+data_1176	GO concept ID	data_1087 data_2091
+data_1177	MeSH concept ID	data_1087 data_2091
+data_1178	HGNC concept ID	data_1087 data_2091
+data_1179	NCBI taxonomy ID	data_1087 data_2091 data_2908
+data_1180	Plant Ontology concept ID	data_1087 data_2091
+data_1181	UMLS concept ID	data_1087 data_2091
+data_1182	FMA concept ID	data_1087 data_2091
+data_1183	EMAP concept ID	data_1087 data_2091
+data_1184	ChEBI concept ID	data_1087 data_2091
+data_1185	MGED concept ID	data_1087 data_2091
+data_1186	myGrid concept ID	data_1087 data_2091
+data_1187	PubMed ID	data_1088 data_2091
+data_1188	DOI	data_1088 data_2091
+data_1189	Medline UI	data_1088 data_2091
+data_1190	Tool name	data_0977
+data_1191	Tool name (signature)	data_1190
+data_1192	Tool name (BLAST)	data_1190
+data_1193	Tool name (FASTA)	data_1190
+data_1194	Tool name (EMBOSS)	data_1190
+data_1195	Tool name (EMBASSY package)	data_1190
+data_1201	QSAR descriptor (constitutional)	data_0847
+data_1202	QSAR descriptor (electronic)	data_0847
+data_1203	QSAR descriptor (geometrical)	data_0847
+data_1204	QSAR descriptor (topological)	data_0847
+data_1205	QSAR descriptor (molecular)	data_0847
+data_1233	Sequence set (protein)	data_0850
+data_1234	Sequence set (nucleic acid)	data_0850
+data_1235	Sequence cluster	data_0850
+data_1238	Proteolytic digest	data_1233
+data_1239	Restriction digest	data_1234
+data_1240	PCR primers	data_1234
+data_1245	Sequence cluster (protein)	data_1233 data_1235
+data_1246	Sequence cluster (nucleic acid)	data_1234 data_1235
+data_1249	Sequence length	data_2534
+data_1254	Sequence property	data_2955
+data_1255	Sequence features	data_0006
+data_1259	Sequence complexity report	data_1254
+data_1260	Sequence ambiguity report	data_1254
+data_1261	Sequence composition report	data_1254
+data_1262	Peptide molecular weight hits	data_1233
+data_1263	Base position variability plot	data_1261
+data_1265	Base frequencies table	data_1261 data_2082
+data_1266	Base word frequencies table	data_1261 data_2082
+data_1267	Amino acid frequencies table	data_1261 data_2082
+data_1268	Amino acid word frequencies table	data_1261 data_2082
+data_1270	Feature table	data_1255
+data_1274	Map	data_0006
+data_1276	Nucleic acid features	data_1255
+data_1277	Protein features	data_0896 data_1255
+data_1278	Genetic map	data_1274
+data_1279	Sequence map	data_1280
+data_1280	Physical map	data_1274
+data_1283	Cytogenetic map	data_1280
+data_1284	DNA transduction map	data_1278
+data_1285	Gene map	data_1279
+data_1286	Plasmid map	data_1279
+data_1288	Genome map	data_1279
+data_1289	Restriction map	data_1279 data_2969
+data_1347	Dirichlet distribution	data_0950
+data_1352	Regular expression	data_0006
+data_1353	Sequence motif	data_0860
+data_1354	Sequence profile	data_0860
+data_1355	Protein signature	data_2762
+data_1361	Position frequency matrix	data_2854
+data_1362	Position weight matrix	data_2854
+data_1363	Information content matrix	data_2854
+data_1364	Hidden Markov model	data_0950
+data_1365	Fingerprint	data_2854
+data_1381	Pair sequence alignment	data_0863
+data_1383	Nucleic acid sequence alignment	data_0863
+data_1384	Protein sequence alignment	data_0863
+data_1385	Hybrid sequence alignment	data_0863
+data_1394	Alignment score or penalty	data_1772
+data_1397	Gap opening penalty	data_2137
+data_1398	Gap extension penalty	data_2137
+data_1399	Gap separation penalty	data_2137
+data_1401	Match reward score	data_1394
+data_1402	Mismatch penalty score	data_1394
+data_1403	Drop off score	data_1394
+data_1410	Terminal gap opening penalty	data_1397
+data_1411	Terminal gap extension penalty	data_1398
+data_1412	Sequence identity	data_0865
+data_1413	Sequence similarity	data_0865
+data_1426	Phylogenetic continuous quantitative data	data_0871
+data_1427	Phylogenetic discrete data	data_0871
+data_1428	Phylogenetic character cliques	data_2523
+data_1429	Phylogenetic invariants	data_2523
+data_1439	DNA substitution model	data_0950
+data_1442	Phylogenetic tree distances	data_2523
+data_1444	Phylogenetic character contrasts	data_2523
+data_1448	Comparison matrix (nucleotide)	data_0874
+data_1449	Comparison matrix (amino acid)	data_0874 data_2016
+data_1459	Nucleic acid structure	data_0883
+data_1460	Protein structure	data_0883
+data_1461	Protein-ligand complex	data_1460
+data_1462	Carbohydrate structure	data_0883
+data_1463	Small molecule structure	data_0883
+data_1464	DNA structure	data_1459
+data_1465	RNA structure	data_1459
+data_1466	tRNA structure	data_1465
+data_1467	Protein chain	data_1460
+data_1468	Protein domain	data_1460
+data_1470	C-alpha trace	data_1460
+data_1479	Structure alignment (pair)	data_0886
+data_1481	Protein structure alignment	data_0886
+data_1482	Nucleic acid structure alignment	data_0886
+data_1493	RNA structure alignment	data_1482
+data_1494	Structural transformation matrix	data_2082
+data_1497	Root-mean-square deviation	data_0888
+data_1498	Tanimoto similarity score	data_0888
+data_1499	3D-1D scoring matrix	data_0892
+data_1501	Amino acid index	data_2016 data_2082
+data_1502	Amino acid index (chemical classes)	data_1501
+data_1503	Amino acid pair-wise contact potentials	data_2016
+data_1505	Amino acid index (molecular weight)	data_1501
+data_1506	Amino acid index (hydropathy)	data_1501
+data_1507	Amino acid index (White-Wimley data)	data_1501
+data_1508	Amino acid index (van der Waals radii)	data_1501
+data_1519	Peptide molecular weights	data_0897
+data_1520	Peptide hydrophobic moment	data_2970
+data_1521	Protein aliphatic index	data_2970
+data_1522	Protein sequence hydropathy plot	data_2970
+data_1523	Protein charge plot	data_0897
+data_1524	Protein solubility	data_2970
+data_1525	Protein crystallizability	data_2970
+data_1526	Protein globularity	data_2970
+data_1527	Protein titration curve	data_0897 data_2884
+data_1528	Protein isoelectric point	data_0897
+data_1529	Protein pKa value	data_0897
+data_1530	Protein hydrogen exchange rate	data_0897
+data_1531	Protein extinction coefficient	data_0897
+data_1532	Protein optical density	data_0897
+data_1534	Peptide immunogenicity data	data_0897
+data_1537	Protein structure report	data_0896 data_2085
+data_1539	Protein structural quality report	data_1537
+data_1542	Protein solvent accessibility	data_0897
+data_1544	Ramachandran plot	data_2991
+data_1545	Protein dipole moment	data_0897
+data_1546	Protein distance matrix	data_0906 data_2855
+data_1547	Protein contact map	data_0906
+data_1548	Protein residue 3D cluster	data_0906
+data_1549	Protein hydrogen bonds	data_0906
+data_1566	Protein-ligand interaction report	data_0906
+data_1583	Nucleic acid melting profile	data_2985
+data_1584	Nucleic acid enthalpy	data_2985
+data_1585	Nucleic acid entropy	data_2985
+data_1588	DNA base pair stacking energies data	data_2088
+data_1589	DNA base pair twist angle data	data_2088
+data_1590	DNA base trimer roll angles data	data_2088
+data_1595	Base pairing probability matrix dotplot	data_2088 data_2884
+data_1596	Nucleic acid folding report	data_2084
+data_1597	Codon usage table	data_0914
+data_1598	Genetic code	data_0914
+data_1600	Codon usage bias plot	data_0914
+data_1602	Codon usage fraction difference	data_0914
+data_1621	Pharmacogenomic test report	data_0920
+data_1622	Disease report	data_0920
+data_1636	Heat map	data_2968 data_3768
+data_1667	E-value	data_0951
+data_1668	Z-value	data_0951
+data_1669	P-value	data_0951
+data_1689	Username	data_2101
+data_1690	Password	data_2101
+data_1691	Email address	data_2101
+data_1692	Person name	data_2118
+data_1696	Drug report	data_0962
+data_1707	Phylogenetic tree image	data_2968
+data_1708	RNA secondary structure image	data_2968
+data_1709	Protein secondary structure image	data_3153
+data_1710	Structure image	data_2968
+data_1711	Sequence alignment image	data_2968
+data_1712	Chemical structure image	data_1710
+data_1713	Fate map	data_2968
+data_1714	Microarray spots image	data_2603 data_3424
+data_1731	Ontology concept definition	data_0967
+data_1742	PDB residue number	data_1016
+data_1743	Atomic coordinate	data_1917
+data_1748	PDB atom name	data_1757
+data_1755	Protein atom	data_1460
+data_1756	Protein residue	data_1460
+data_1757	Atom name	data_0983 data_2099
+data_1758	PDB residue name	data_2564
+data_1759	PDB model number	data_3035
+data_1771	Sequence version	data_2534
+data_1772	Score	data_0006
+data_1794	Gene ID (PlasmoDB)	data_2091 data_2295
+data_1795	Gene ID (EcoGene)	data_2091 data_2295
+data_1796	Gene ID (FlyBase)	data_2091 data_2295
+data_1802	Gene ID (Gramene)	data_2091 data_2295
+data_1803	Gene ID (Virginia microbial)	data_2091 data_2295
+data_1804	Gene ID (SGN)	data_2091 data_2295
+data_1805	Gene ID (WormBase)	data_2091 data_2113 data_2295
+data_1807	ORF name	data_2099 data_2795
+data_1855	Clone ID	data_2769
+data_1856	PDB insertion code	data_1016
+data_1857	Atomic occupancy	data_1917
+data_1858	Isotropic B factor	data_1917
+data_1859	Deletion map	data_1283
+data_1860	QTL map	data_1278
+data_1863	Haplotype map	data_1278
+data_1867	Protein fold name	data_2099
+data_1868	Taxon	data_2909
+data_1869	Organism identifier	data_0976
+data_1870	Genus name	data_1868
+data_1872	Taxonomic classification	data_2909
+data_1873	iHOP organism ID	data_2091 data_2908
+data_1874	Genbank common name	data_2909
+data_1875	NCBI taxon	data_1868
+data_1881	Author ID	data_2118
+data_1882	DragonDB author identifier	data_1881
+data_1883	Annotated URI	data_2093
+data_1885	Gene ID (GeneFarm)	data_2091 data_2295
+data_1886	Blattner number	data_2091 data_2295
+data_1891	iHOP symbol	data_2091 data_2109 data_2295 data_2907
+data_1893	Locus ID	data_0976
+data_1895	Locus ID (AGI)	data_1893 data_2091
+data_1896	Locus ID (ASPGD)	data_1893 data_2091
+data_1897	Locus ID (MGG)	data_1893 data_2091
+data_1898	Locus ID (CGD)	data_1893 data_2091
+data_1899	Locus ID (CMR)	data_1893 data_2091
+data_1900	NCBI locus tag	data_1893 data_2091
+data_1901	Locus ID (SGD)	data_1893 data_2091 data_2632
+data_1902	Locus ID (MMP)	data_1893 data_2091
+data_1903	Locus ID (DictyBase)	data_1893 data_2091
+data_1904	Locus ID (EntrezGene)	data_1893 data_2091
+data_1905	Locus ID (MaizeGDB)	data_1893 data_2091
+data_1907	Gene ID (KOME)	data_2091 data_2295
+data_1908	Locus ID (Tropgene)	data_1893 data_2091
+data_1916	Alignment	data_0006
+data_1917	Atomic property	data_2087
+data_2007	UniProt keyword	data_0968
+data_2012	Sequence coordinates	data_0006 data_1016 data_1017
+data_2016	Amino acid property	data_2087
+data_2019	Map data	data_0006
+data_2024	Enzyme kinetics data	data_0897 data_2978
+data_2025	Michaelis Menten plot	data_2024
+data_2026	Hanes Woolf plot	data_2024
+data_2042	Evidence	data_0006
+data_2044	Sequence	data_0006
+data_2048	Report	data_0006
+data_2050	Molecular property (general)	data_2087
+data_2070	Sequence motif (nucleic acid)	data_1353
+data_2071	Sequence motif (protein)	data_1353
+data_2080	Database search results	data_0006
+data_2082	Matrix	data_0006
+data_2084	Nucleic acid report	data_2048
+data_2085	Structure report	data_2048
+data_2087	Molecular property	data_0006
+data_2088	DNA base structural data	data_0912
+data_2091	Accession	data_0842
+data_2093	Data reference	data_0006
+data_2098	Job identifier	data_0976
+data_2099	Name	data_0842
+data_2101	Account authentication	data_2118
+data_2102	KEGG organism code	data_1154 data_2909
+data_2104	BioCyc ID	data_2091 data_2109
+data_2105	Compound ID (BioCyc)	data_2091 data_2104 data_2894
+data_2106	Reaction ID (BioCyc)	data_2091 data_2104 data_2108
+data_2107	Enzyme ID (BioCyc)	data_2091 data_2104 data_2321
+data_2108	Reaction ID	data_0976
+data_2109	Identifier (hybrid)	data_0842
+data_2110	Molecular property identifier	data_0976
+data_2111	Codon usage table ID	data_0976
+data_2112	FlyBase primary identifier	data_1089
+data_2113	WormBase identifier	data_2109
+data_2114	WormBase wormpep ID	data_2091 data_2113 data_2907
+data_2117	Map identifier	data_0976
+data_2118	Person identifier	data_0976
+data_2119	Nucleic acid identifier	data_0982
+data_2127	Genetic code identifier	data_0976
+data_2128	Genetic code name	data_2099 data_2127
+data_2129	File format name	data_2099 data_3358
+data_2131	Operating system name	data_2099
+data_2133	Logical operator	data_2099
+data_2137	Gap penalty	data_1394
+data_2139	Nucleic acid melting temperature	data_2985
+data_2140	Concentration	data_2050
+data_2154	Sequence name	data_1063 data_2099
+data_2160	Fickett testcode plot	data_2884
+data_2161	Sequence similarity plot	data_0867 data_2884
+data_2162	Helical wheel	data_1709
+data_2163	Helical net	data_1709
+data_2165	Protein ionisation curve	data_0897 data_2884
+data_2166	Sequence composition plot	data_1261 data_2884
+data_2167	Nucleic acid density plot	data_1261 data_2884
+data_2168	Sequence trace image	data_2969
+data_2174	FlyBase secondary identifier	data_1089
+data_2190	Sequence checksum	data_2534
+data_2193	Database entry metadata	data_2337
+data_2208	Plasmid identifier	data_2119
+data_2209	Mutation ID	data_2091 data_2538
+data_2216	Codon number	data_1016
+data_2219	Database field name	data_2099
+data_2220	Sequence cluster ID (SYSTERS)	data_1112 data_2091
+data_2223	Ontology metadata	data_2337
+data_2253	Data resource definition name	data_1084 data_2099
+data_2254	OBO file format name	data_2129
+data_2285	Gene ID (MIPS)	data_2091 data_2295
+data_2290	EMBL accession	data_1103
+data_2291	UniProt ID	data_2154
+data_2292	GenBank accession	data_1103
+data_2293	Gramene secondary identifier	data_2915
+data_2294	Sequence variation ID	data_0976
+data_2295	Gene ID	data_1025 data_1893
+data_2297	Gene ID (ECK)	data_1795
+data_2298	Gene ID (HGNC)	data_2091 data_2295
+data_2299	Gene name	data_1025 data_2099
+data_2301	SMILES string	data_0846
+data_2302	STRING ID	data_1074 data_2091
+data_2309	Reaction ID (SABIO-RK)	data_2091 data_2108
+data_2313	Carbohydrate report	data_2085
+data_2314	GI number	data_2091 data_2362
+data_2315	NCBI version	data_2091 data_2362
+data_2316	Cell line name	data_1046
+data_2317	Cell line name (exact)	data_2316
+data_2318	Cell line name (truncated)	data_2316
+data_2319	Cell line name (no punctuation)	data_2316
+data_2320	Cell line name (assonant)	data_2316
+data_2321	Enzyme ID	data_1010 data_2907
+data_2325	REBASE enzyme number	data_2091 data_2321
+data_2326	DrugBank ID	data_2091 data_2895
+data_2327	GI number (protein)	data_2314
+data_2335	Bit score	data_1413
+data_2337	Resource metadata	data_2048
+data_2338	Ontology identifier	data_0976
+data_2339	Ontology concept name	data_2099 data_3025
+data_2340	Genome build identifier	data_2749
+data_2342	Pathway or network name	data_1082
+data_2343	Pathway ID (KEGG)	data_1154 data_2091 data_2365
+data_2344	Pathway ID (NCI-Nature)	data_2091 data_2365
+data_2345	Pathway ID (ConsensusPathDB)	data_2091 data_2365 data_2917
+data_2346	Sequence cluster ID (UniRef)	data_1112 data_2091
+data_2347	Sequence cluster ID (UniRef100)	data_2346
+data_2348	Sequence cluster ID (UniRef90)	data_2346
+data_2349	Sequence cluster ID (UniRef50)	data_2346
+data_2353	Ontology data	data_0006
+data_2354	RNA family report	data_3148
+data_2355	RNA family identifier	data_0976
+data_2356	RFAM accession	data_2091 data_2355
+data_2362	Sequence accession (hybrid)	data_1093
+data_2365	Pathway or network accession	data_1082
+data_2366	Secondary structure alignment	data_1916
+data_2367	ASTD ID	data_1097 data_2091 data_2109
+data_2368	ASTD ID (exon)	data_2367
+data_2369	ASTD ID (intron)	data_2367
+data_2370	ASTD ID (polya)	data_2367
+data_2371	ASTD ID (tss)	data_2367
+data_2373	Spot ID	data_0976
+data_2374	Spot serial number	data_2091 data_2373
+data_2375	Spot ID (HSC-2DPAGE)	data_2091 data_2373
+data_2379	Strain identifier	data_1869
+data_2380	CABRI accession	data_2091 data_2109
+data_2382	Genotype experiment ID	data_0976
+data_2383	EGA accession	data_2091 data_2382
+data_2384	IPI protein ID	data_1096 data_2091
+data_2385	RefSeq accession (protein)	data_1098
+data_2386	EPD ID	data_2091 data_2727
+data_2387	TAIR accession	data_2091 data_2109
+data_2388	TAIR accession (At gene)	data_1037
+data_2389	UniSTS accession	data_1097 data_2091
+data_2390	UNITE accession	data_1097 data_2091
+data_2391	UTR accession	data_1097 data_2091
+data_2392	UniParc accession	data_1096 data_2091
+data_2393	mFLJ/mKIAA number	data_2091 data_2295
+data_2398	Ensembl protein ID	data_2091 data_2610 data_2907
+data_2523	Phylogenetic data	data_0006
+data_2526	Text data	data_0006
+data_2530	Organism report	data_2048
+data_2531	Protocol	data_2048
+data_2534	Sequence attribute	data_0006
+data_2535	Sequence tag profile	data_0928
+data_2536	Mass spectrometry data	data_3108
+data_2537	Protein structure raw data	data_3108
+data_2538	Mutation identifier	data_0976
+data_2563	Amino acid name (single letter)	data_1006
+data_2564	Amino acid name (three letter)	data_1006
+data_2565	Amino acid name (full name)	data_1006
+data_2576	Toxin identifier	data_1086
+data_2578	ArachnoServer ID	data_2091 data_2897
+data_2580	BindingDB Monomer ID	data_2091 data_2894
+data_2582	GO concept ID (biological process)	data_1176
+data_2583	GO concept ID (molecular function)	data_1176
+data_2586	Northern blot image	data_3424
+data_2587	Blot ID	data_0976
+data_2588	BlotBase blot ID	data_2091 data_2587
+data_2589	Hierarchy	data_0006
+data_2591	Brite hierarchy ID	data_2091 data_2891
+data_2593	BRENDA organism ID	data_2091 data_2908
+data_2594	UniGene taxon	data_1868
+data_2595	UTRdb taxon	data_1868
+data_2596	Catalogue ID	data_0976
+data_2597	CABRI catalogue name	data_2099 data_2596
+data_2600	Pathway or network	data_0006
+data_2603	Expression data	data_0006
+data_2605	Compound ID (KEGG)	data_1154 data_2894
+data_2606	RFAM name	data_2099 data_2355
+data_2608	Reaction ID (KEGG)	data_1154 data_2108
+data_2609	Drug ID (KEGG)	data_1154 data_2091 data_2895
+data_2610	Ensembl ID	data_2091 data_2109
+data_2611	ICD identifier	data_1150 data_2091
+data_2612	Sequence cluster ID (CluSTr)	data_1112 data_2091
+data_2613	KEGG Glycan ID	data_1154 data_2091 data_2900
+data_2614	TCDB ID	data_2091 data_2910
+data_2615	MINT ID	data_1074 data_2091
+data_2616	DIP ID	data_1074 data_2091
+data_2617	Signaling Gateway protein ID	data_2091 data_2907
+data_2618	Protein modification ID	data_0976
+data_2619	RESID ID	data_2091 data_2618
+data_2620	RGD ID	data_2091 data_2109
+data_2621	TAIR accession (protein)	data_1096 data_2387
+data_2622	Compound ID (HMDB)	data_2091 data_2894
+data_2625	LIPID MAPS ID	data_2091 data_2905
+data_2626	PeptideAtlas ID	data_2091 data_2906
+data_2628	BioGRID interaction ID	data_1074 data_2091
+data_2629	Enzyme ID (MEROPS)	data_2091 data_2321
+data_2630	Mobile genetic element ID	data_0976
+data_2631	ACLAME ID	data_2091 data_2630
+data_2632	SGD ID	data_2091 data_2109
+data_2633	Book ID	data_0976
+data_2634	ISBN	data_2091 data_2633
+data_2635	Compound ID (3DMET)	data_2091 data_2894
+data_2636	MatrixDB interaction ID	data_1074 data_2091
+data_2637	cPath ID	data_2091 data_2109 data_2365
+data_2638	PubChem bioassay ID	data_0976 data_2639
+data_2639	PubChem ID	data_2091 data_2109
+data_2641	Reaction ID (MACie)	data_2091 data_2108
+data_2642	Gene ID (miRBase)	data_2091 data_2295
+data_2643	Gene ID (ZFIN)	data_2091 data_2295
+data_2644	Reaction ID (Rhea)	data_2091 data_2108
+data_2645	Pathway ID (Unipathway)	data_2091 data_2365
+data_2646	Compound ID (ChEMBL)	data_2091 data_2894
+data_2647	LGICdb identifier	data_2091 data_2907
+data_2648	Reaction kinetics ID (SABIO-RK)	data_2309
+data_2649	PharmGKB ID	data_2091 data_2109
+data_2650	Pathway ID (PharmGKB)	data_2091 data_2365 data_2649
+data_2651	Disease ID (PharmGKB)	data_1150 data_2091 data_2649
+data_2652	Drug ID (PharmGKB)	data_2091 data_2649 data_2895
+data_2653	Drug ID (TTD)	data_2091 data_2895
+data_2654	Target ID (TTD)	data_2091 data_2907
+data_2655	Cell type identifier	data_0976
+data_2656	NeuronDB ID	data_2091 data_2893
+data_2657	NeuroMorpho ID	data_2091 data_2893
+data_2658	Compound ID (ChemIDplus)	data_2091 data_2894
+data_2659	Pathway ID (SMPDB)	data_2091 data_2365
+data_2660	BioNumbers ID	data_2091
+data_2662	T3DB ID	data_2091 data_2897
+data_2663	Carbohydrate identifier	data_1086
+data_2664	GlycomeDB ID	data_2091 data_2900
+data_2665	LipidBank ID	data_2091 data_2905
+data_2666	CDD ID	data_1038 data_2091
+data_2667	MMDB ID	data_1070 data_2091
+data_2668	iRefIndex ID	data_1074 data_2091
+data_2669	ModelDB ID	data_2091 data_2891
+data_2670	Pathway ID (DQCS)	data_2091 data_2365
+data_2700	CATH identifier	data_1038 data_2091
+data_2701	CATH node ID (family)	data_1043
+data_2702	Enzyme ID (CAZy)	data_2091 data_2321
+data_2704	Clone ID (IMAGE)	data_1855 data_2091
+data_2705	GO concept ID (cellular component)	data_1176
+data_2706	Chromosome name (BioCyc)	data_0987
+data_2709	CleanEx entry name	data_1080 data_2091
+data_2710	CleanEx dataset code	data_1078
+data_2711	Genome report	data_2530
+data_2713	Protein ID (CORUM)	data_2091 data_2907
+data_2714	CDD PSSM-ID	data_1115 data_2091
+data_2715	Protein ID (CuticleDB)	data_2091 data_2907
+data_2716	DBD ID	data_2091 data_2911
+data_2717	Oligonucleotide probe annotation	data_3115
+data_2718	Oligonucleotide ID	data_2119 data_2901
+data_2719	dbProbe ID	data_2091 data_2718
+data_2720	Dinucleotide property	data_2088
+data_2721	DiProDB ID	data_2091 data_2718
+data_2723	Protein ID (DisProt)	data_2091 data_2907
+data_2725	Ensembl transcript ID	data_2091 data_2610 data_2769
+data_2727	Promoter ID	data_0976
+data_2728	EST accession	data_1855
+data_2729	COGEME EST ID	data_2091 data_2728
+data_2730	COGEME unisequence ID	data_2091 data_2728
+data_2731	Protein family ID (GeneFarm)	data_2091 data_2910
+data_2732	Family name	data_1868
+data_2736	Sequence feature ID (SwissRegulon)	data_1015 data_2091
+data_2737	FIG ID	data_2091 data_2295
+data_2738	Gene ID (Xenbase)	data_2091 data_2295
+data_2739	Gene ID (Genolist)	data_2091 data_2295
+data_2741	ABS ID	data_2091 data_2727
+data_2742	AraC-XylS ID	data_2091 data_2911
+data_2744	Locus ID (PseudoCAP)	data_1893 data_2091
+data_2745	Locus ID (UTR)	data_1893 data_2091
+data_2746	MonosaccharideDB ID	data_2091 data_2898
+data_2749	Genome identifier	data_0976
+data_2752	GlycoMap ID	data_2091 data_2900
+data_2753	Carbohydrate conformational map	data_3425
+data_2755	Transcription factor name	data_1009 data_1077
+data_2756	TCID	data_2091 data_2907
+data_2757	Pfam domain name	data_1131
+data_2758	Pfam clan ID	data_2091 data_2910
+data_2759	Gene ID (VectorBase)	data_2091 data_2295
+data_2761	UTRSite ID	data_1114
+data_2762	Sequence signature report	data_2048
+data_2764	Protein name (UniProt)	data_1009
+data_2766	HAMAP ID	data_2091 data_2910
+data_2769	Transcript ID	data_2119 data_2901
+data_2770	HIT ID	data_2091 data_2769
+data_2771	HIX ID	data_2091 data_2295
+data_2772	HPA antibody id	data_2091 data_2907
+data_2773	IMGT/HLA ID	data_2091 data_2907
+data_2774	Gene ID (JCVI)	data_2091 data_2295
+data_2775	Kinase name	data_1009
+data_2776	ConsensusPathDB entity ID	data_2091 data_2917
+data_2777	ConsensusPathDB entity name	data_2099 data_2917
+data_2778	CCAP strain number	data_2091 data_2912
+data_2779	Stock number	data_0976
+data_2780	Stock number (TAIR)	data_2091 data_2779
+data_2781	REDIdb ID	data_1097 data_2091
+data_2782	SMART domain name	data_1131
+data_2783	Protein family ID (PANTHER)	data_2091 data_2910
+data_2784	RNAVirusDB ID	data_2091 data_2785
+data_2785	Virus identifier	data_0976
+data_2786	NCBI Genome Project ID	data_2091 data_2903
+data_2787	NCBI genome accession	data_2091 data_2903
+data_2789	Protein ID (TopDB)	data_2091 data_2907
+data_2790	Gel ID	data_0976
+data_2791	Reference map name (SWISS-2DPAGE)	data_2099 data_2790
+data_2792	Protein ID (PeroxiBase)	data_2091 data_2907
+data_2793	SISYPHUS ID	data_1072 data_2091
+data_2794	ORF ID	data_1893 data_2091 data_2795
+data_2795	ORF identifier	data_0976
+data_2796	LINUCS ID	data_2091 data_2900
+data_2797	Protein ID (LGICdb)	data_2091 data_2907
+data_2798	MaizeDB ID	data_2091 data_2728
+data_2799	Gene ID (MfunGD)	data_2091 data_2295
+data_2800	Orpha number	data_1150 data_2091
+data_2802	Protein ID (EcID)	data_2091 data_2907
+data_2803	Clone ID (RefSeq)	data_1098 data_1855
+data_2804	Protein ID (ConoServer)	data_2091 data_2907
+data_2805	GeneSNP ID	data_2091 data_2294
+data_2812	Lipid identifier	data_0982
+data_2835	Gene ID (VBASE2)	data_2091 data_2295
+data_2836	DPVweb ID	data_2091 data_2785
+data_2837	Pathway ID (BioSystems)	data_2091 data_2365
+data_2849	Abstract	data_2526
+data_2850	Lipid structure	data_0883
+data_2851	Drug structure	data_1463
+data_2852	Toxin structure	data_1463
+data_2854	Position-specific scoring matrix	data_1354 data_2082
+data_2855	Distance matrix	data_2082
+data_2856	Structural distance matrix	data_2855
+data_2858	Ontology concept	data_2353
+data_2865	Codon usage bias	data_0914
+data_2870	Radiation hybrid map	data_1280
+data_2872	ID list	data_2093
+data_2873	Phylogenetic gene frequencies data	data_1426
+data_2877	Protein complex	data_1460
+data_2878	Protein structural motif	data_1460
+data_2879	Lipid report	data_2085
+data_2884	Plot	data_0006
+data_2886	Protein sequence record	data_0849 data_2976
+data_2887	Nucleic acid sequence record	data_0849 data_2977
+data_2891	Biological model accession	data_1085
+data_2892	Cell type name	data_2099 data_2655
+data_2893	Cell type accession	data_2655
+data_2894	Compound accession	data_1086 data_2901
+data_2895	Drug accession	data_0993
+data_2896	Toxin name	data_2099 data_2576
+data_2897	Toxin accession	data_2576
+data_2898	Monosaccharide accession	data_0996
+data_2899	Drug name	data_0990 data_0993
+data_2900	Carbohydrate accession	data_2663 data_2901
+data_2901	Molecule accession	data_0982 data_2091
+data_2902	Data resource definition accession	data_1084
+data_2903	Genome accession	data_2749
+data_2904	Map accession	data_2117
+data_2905	Lipid accession	data_2812 data_2901
+data_2906	Peptide ID	data_0988 data_2901
+data_2907	Protein accession	data_0989 data_2901
+data_2908	Organism accession	data_1869
+data_2909	Organism name	data_1869 data_2099
+data_2910	Protein family accession	data_1075
+data_2911	Transcription factor accession	data_1077 data_2907
+data_2912	Strain accession	data_2379 data_2908
+data_2914	Sequence features metadata	data_0006
+data_2915	Gramene identifier	data_1096 data_2091
+data_2916	DDBJ accession	data_1103
+data_2917	ConsensusPathDB identifier	data_2109
+data_2955	Sequence report	data_2048
+data_2956	Protein secondary structure	data_0897
+data_2957	Hopp and Woods plot	data_1534 data_2884
+data_2968	Image	data_0006
+data_2969	Sequence image	data_2955 data_2968
+data_2970	Protein hydropathy data	data_0897
+data_2976	Protein sequence	data_2044
+data_2977	Nucleic acid sequence	data_2044
+data_2978	Reaction data	data_0006
+data_2979	Peptide property	data_2087
+data_2984	Pathway or network report	data_2048
+data_2985	Nucleic acid thermodynamic data	data_0912
+data_2991	Protein geometry data	data_0897
+data_2992	Protein structure image	data_1710 data_3153
+data_2994	Phylogenetic character weights	data_2523
+data_3002	Annotation track	data_1255
+data_3021	UniProt accession	data_1096 data_2091
+data_3022	NCBI genetic code ID	data_2091 data_2127
+data_3025	Ontology concept identifier	data_0976
+data_3028	Taxonomy	data_0006
+data_3029	Protein ID (EMBL/GenBank/DDBJ)	data_2091 data_2907
+data_3034	Sequence feature identifier	data_0976
+data_3035	Structure identifier	data_0976
+data_3036	Matrix identifier	data_0976
+data_3103	ATC code	data_2091 data_2895
+data_3104	UNII	data_1086
+data_3106	System metadata	data_2337
+data_3108	Experimental measurement	data_0006
+data_3110	Raw microarray data	data_3108 data_3117
+data_3111	Processed microarray data	data_3117
+data_3112	Gene expression matrix	data_2082 data_2603
+data_3113	Sample annotation	data_2337
+data_3115	Microarray metadata	data_2603
+data_3117	Microarray hybridisation data	data_2603
+data_3128	Nucleic acid structure report	data_2084 data_2085
+data_3134	Gene transcript report	data_1276
+data_3148	Gene family report	data_2084
+data_3153	Protein image	data_2968
+data_3181	Sequence assembly report	data_0867
+data_3210	Genome index	data_0955
+data_3236	Cytoband position	data_2012
+data_3238	Cell type ontology ID	data_1087 data_2091 data_2893
+data_3241	Kinetic model	data_0950
+data_3264	COSMIC ID	data_2091 data_2294
+data_3265	HGMD ID	data_2091 data_2294
+data_3266	Sequence assembly ID	data_1064
+data_3270	Ensembl gene tree ID	data_1068 data_2091 data_2610
+data_3271	Gene tree	data_0872
+data_3272	Species tree	data_0872
+data_3273	Sample ID	data_0976
+data_3274	MGI accession	data_2091 data_2109
+data_3275	Phenotype name	data_2099
+data_3354	Transition matrix	data_2082
+data_3355	Emission matrix	data_2082
+data_3358	Format identifier	data_0976
+data_3424	Raw image	data_2968
+data_3425	Carbohydrate property	data_2087
+data_3442	MRI image	data_3424
+data_3449	Cell migration track image	data_2968
+data_3451	Rate of association	data_0897
+data_3479	Gene order	data_2082
+data_3483	Spectrum	data_0006
+data_3488	NMR spectrum	data_3483
+data_3492	Nucleic acid signature	data_2762
+data_3494	DNA sequence	data_2977
+data_3495	RNA sequence	data_2977
+data_3498	Sequence variations	data_0006
+data_3505	Bibliography	data_2526
+data_3509	Ontology mapping	data_2093
+data_3546	Image metadata	data_2048
+data_3558	Clinical trial report	data_2048
+data_3567	Reference sample report	data_2048
+data_3568	Gene Expression Atlas Experiment ID	data_1078
+data_3667	Disease identifier	data_0976
+data_3668	Disease name	data_2099 data_3667
+data_3669	Learning material	data_0006
+data_3670	Online course	data_3669
+data_3671	Text	data_2526
+data_3707	Biodiversity data	data_0006 data_3736
+data_3716	Biosafety report	data_2048
+data_3717	Isolation report	data_2048
+data_3718	Pathogenicity report	data_3716
+data_3719	Biosafety classification	data_3716
+data_3720	Geographic location	data_3717
+data_3721	Isolation source	data_3717
+data_3722	Physiology parameter	data_3108
+data_3723	Morphology parameter	data_3108
+data_3724	Cultivation parameter	data_3108
+data_3732	Sequencing metadata name	data_2099
+data_3733	Flow cell identifier	data_3732
+data_3734	Lane identifier	data_3732
+data_3735	Run number	data_3732
+data_3736	Ecological data	data_0006
+data_3737	Alpha diversity data	data_3707
+data_3738	Beta diversity data	data_3707
+data_3739	Gamma diversity data	data_3707
+data_3743	Ordination plot	data_0897 data_2884
+data_3753	Over-representation data	data_0006
+data_3754	GO-term enrichment data	data_3753
+data_3756	Localisation score	data_1772
+data_3757	Unimod ID	data_2091 data_2618
+data_3759	ProteomeXchange ID	data_1078
+data_3768	Clustered expression profiles	data_2603
+data_3769	BRENDA ontology concept ID	data_1087 data_2091
+data_3779	Annotated text	data_2526 data_3671
+data_3786	Query script	data_0006
+data_3805	3D EM Map	data_0883
+data_3806	3D EM Mask	data_0883
+data_3807	EM Movie	data_3424
+data_3808	EM Micrograph	data_3424
+data_3842	Molecular simulation data	data_0006
+data_3856	RNA central ID	data_1097 data_2091
+data_3861	Electronic health record	data_2048
+data_3869	Simulation	data_0006
+data_3870	Trajectory data	data_3869
+data_3871	Forcefield parameters	data_3869
+data_3872	Topology data	data_3869
+data_3905	Histogram	data_2884
+data_3914	Quality control report	data_2048
+data_3917	Count matrix	data_2082
+data_3924	DNA structure alignment	data_1482
+data_3932	Q-value	data_0951
+data_3949	Profile HMM	data_1354 data_1364
+data_3952	Pathway ID (WikiPathways)	data_2091 data_2109 data_2365
+data_3953	Pathway overrepresentation data	data_3753
+data_4022	ORCID Identifier	data_1881
+data_4040	Data management plan	data_0006
+data_4075	RefMet ID	data_2894
+format_1196	SMILES	format_2035 format_2330
+format_1197	InChI	format_2035 format_2330
+format_1198	mf	format_2035 format_2330
+format_1199	InChIKey	format_2035 format_2330
+format_1200	smarts	format_1196
+format_1206	unambiguous pure	format_2094 format_2096
+format_1207	nucleotide	format_2330 format_2571
+format_1208	protein	format_2330 format_2571
+format_1209	consensus	format_2095 format_2097
+format_1210	pure nucleotide	format_1207 format_2094
+format_1211	unambiguous pure nucleotide	format_1206 format_1207
+format_1212	dna	format_1207
+format_1213	rna	format_1207
+format_1214	unambiguous pure dna	format_1206 format_1212
+format_1215	pure dna	format_1210 format_1212
+format_1216	unambiguous pure rna sequence	format_1206 format_1213
+format_1217	pure rna	format_1210 format_1213
+format_1218	unambiguous pure protein	format_1206 format_1208
+format_1219	pure protein	format_1208 format_2094
+format_1248	EMBL feature location	format_2078 format_2330
+format_1295	quicktandem	format_2155 format_2330
+format_1296	Sanger inverted repeats	format_2155 format_2330
+format_1297	EMBOSS repeat	format_2155 format_2330
+format_1316	est2genome format	format_2031 format_2330
+format_1318	restrict format	format_2158 format_2330
+format_1319	restover format	format_2158 format_2330
+format_1320	REBASE restriction sites	format_2158 format_2330
+format_1332	FASTA search results format	format_2066 format_2330
+format_1333	BLAST results	format_2066 format_2330
+format_1334	mspcrunch	format_2066 format_2330
+format_1335	Smith-Waterman format	format_2066 format_2330
+format_1336	dhf	format_2066 format_2330
+format_1337	lhf	format_2066 format_2330
+format_1341	InterPro hits format	format_2066 format_2330
+format_1342	InterPro protein view report format	format_1341
+format_1343	InterPro match table format	format_1341
+format_1349	HMMER Dirichlet prior	format_2074 format_2330
+format_1350	MEME Dirichlet prior	format_2074 format_2330
+format_1351	HMMER emission and transition	format_2075 format_2330
+format_1356	prosite-pattern	format_2068 format_2330
+format_1357	EMBOSS sequence pattern	format_2068 format_2330
+format_1360	meme-motif	format_2068 format_2330
+format_1366	prosite-profile	format_2069 format_2330
+format_1367	JASPAR format	format_2069 format_2330
+format_1369	MEME background Markov model	format_2072 format_2330
+format_1370	HMMER format	format_2072 format_2330
+format_1391	HMMER-aln	format_2200 format_2330 format_2554
+format_1392	DIALIGN format	format_2330 format_2554
+format_1393	daf	format_2330 format_2554
+format_1419	Sequence-MEME profile alignment	format_2014 format_2330
+format_1421	HMMER profile alignment (sequences versus HMMs)	format_2014 format_2330
+format_1422	HMMER profile alignment (HMM versus sequences)	format_2014 format_2330
+format_1423	Phylip distance matrix	format_2067 format_2330
+format_1424	ClustalW dendrogram	format_2330 format_2556
+format_1425	Phylip tree raw	format_2330 format_2556
+format_1430	Phylip continuous quantitative characters	format_2037 format_2330
+format_1432	Phylip character frequencies format	format_2037 format_2330
+format_1433	Phylip discrete states format	format_2038 format_2330
+format_1434	Phylip cliques format	format_2039 format_2330
+format_1435	Phylip tree format	format_2330 format_2556
+format_1436	TreeBASE format	format_2330 format_2556
+format_1437	TreeFam format	format_2330 format_2556
+format_1445	Phylip tree distance format	format_2049 format_2330
+format_1454	dssp	format_2077 format_2330
+format_1455	hssp	format_2077 format_2330
+format_1457	Dot-bracket format	format_2076 format_2330
+format_1458	Vienna local RNA secondary structure format	format_1457 format_2330
+format_1475	PDB database entry format	format_2033
+format_1476	PDB	format_1475 format_2330
+format_1477	mmCIF	format_1475 format_2330
+format_1478	PDBML	format_1475 format_2332
+format_1504	aaindex	format_2017 format_2330
+format_1551	Pcons report format	format_2065 format_2330
+format_1552	ProQ report format	format_2065 format_2330
+format_1582	findkm	format_2027 format_2330
+format_1627	Primer3 primer	format_2061 format_2330
+format_1628	ABI	format_2057 format_2333
+format_1629	mira	format_2057 format_2330
+format_1630	CAF	format_2330 format_2561
+format_1631	EXP	format_2330 format_2561
+format_1632	SCF	format_2057 format_2333
+format_1633	PHD	format_2057 format_2330
+format_1637	dat	format_2058 format_2330
+format_1638	cel	format_2058 format_2330
+format_1639	affymetrix	format_2172 format_2330
+format_1641	affymetrix-exp	format_2056 format_2330
+format_1644	CHP	format_2058 format_2330
+format_1665	Taverna workflow format	format_2032 format_2332
+format_1705	HET group dictionary entry format	format_2030 format_2330
+format_1734	PubMed citation	format_2330 format_2848
+format_1735	Medline Display Format	format_2330 format_2848
+format_1736	CiteXplore-core	format_2330 format_2848
+format_1737	CiteXplore-all	format_2330 format_2848
+format_1739	pmc	format_2020 format_2330
+format_1740	iHOP format	format_2021 format_2331 format_2332
+format_1741	OSCAR format	format_2330 format_2332 format_3780
+format_1861	PlasMapper TextMap	format_2060 format_2330
+format_1910	newick	format_2330 format_2556
+format_1911	TreeCon format	format_2330 format_2556
+format_1912	Nexus format	format_2330 format_2556
+format_1915	Format	
+format_1919	Sequence record format	format_2350
+format_1920	Sequence feature annotation format	format_2350
+format_1921	Alignment format	format_2350
+format_1923	acedb	format_2330 format_2551
+format_1925	codata	format_2330 format_2551
+format_1926	dbid	format_2200
+format_1927	EMBL format	format_2181 format_2206
+format_1928	Staden experiment format	format_2330 format_2551
+format_1929	FASTA	format_2200 format_2554
+format_1930	FASTQ	format_2182
+format_1931	FASTQ-illumina	format_2182
+format_1932	FASTQ-sanger	format_2182
+format_1933	FASTQ-solexa	format_2182
+format_1934	fitch program	format_2330 format_2551
+format_1935	GCG	format_2330 format_3486
+format_1936	GenBank format	format_2205 format_2206
+format_1937	genpept	format_2205
+format_1938	GFF2-seq	format_1974 format_2551
+format_1939	GFF3-seq	format_1975 format_2551
+format_1940	giFASTA format	format_2200
+format_1941	hennig86	format_2330 format_2551
+format_1942	ig	format_2330 format_2551
+format_1943	igstrict	format_2330 format_2551
+format_1944	jackknifer	format_2330 format_2551
+format_1945	mase format	format_2330 format_2551
+format_1946	mega-seq	format_2330 format_2551
+format_1947	GCG MSF	format_3486
+format_1948	nbrf/pir	format_2330
+format_1949	nexus-seq	format_2330 format_2551 format_2554
+format_1950	pdbatom	format_1475 format_2330 format_2551
+format_1951	pdbatomnuc	format_1475 format_2330 format_2551
+format_1952	pdbseqresnuc	format_1475 format_2330 format_2551
+format_1953	pdbseqres	format_1475 format_2330 format_2551
+format_1954	Pearson format	format_2200
+format_1957	raw	format_2330 format_2571
+format_1958	refseqp	format_2330 format_2551
+format_1960	Staden format	format_2330 format_2551
+format_1961	Stockholm format	format_2330 format_2554
+format_1962	strider format	format_2330 format_2551
+format_1963	UniProtKB format	format_2187
+format_1964	plain text format (unformatted)	format_2330
+format_1966	ASN.1 sequence format	format_2330 format_2551
+format_1967	DAS format	format_2332 format_2552
+format_1968	dasdna	format_2332 format_2552
+format_1969	debug-seq	format_2330 format_2551
+format_1970	jackknifernon	format_2330 format_2551
+format_1972	NCBI format	format_2200
+format_1973	nexusnon	format_2330 format_2551 format_2554
+format_1974	GFF2	format_2305
+format_1975	GFF3	format_2305
+format_1978	DASGFF	format_2332 format_2553
+format_1979	debug-feat	format_1920 format_2330
+format_1982	ClustalW format	format_2330 format_2554
+format_1983	debug	format_2330 format_2554
+format_1984	FASTA-aln	format_2200 format_2554
+format_1985	markx0	format_2922
+format_1986	markx1	format_2922
+format_1987	markx10	format_2922
+format_1988	markx2	format_2922
+format_1989	markx3	format_2922
+format_1990	match	format_2330 format_2554
+format_1991	mega	format_2923
+format_1992	meganon	format_2923
+format_1996	pair	format_2554
+format_1997	PHYLIP format	format_2924
+format_1998	PHYLIP sequential	format_2924
+format_1999	scores format	format_2330 format_2554
+format_2000	selex	format_2330 format_2551 format_2554
+format_2001	EMBOSS simple format	format_2330 format_2554
+format_2002	srs format	format_2330 format_2554
+format_2003	srspair	format_2330 format_2920
+format_2004	T-Coffee format	format_2330 format_2554
+format_2005	TreeCon-seq	format_2330 format_2551 format_2554
+format_2006	Phylogenetic tree format	format_2350
+format_2013	Biological pathway or network format	format_2350
+format_2014	Sequence-profile alignment format	format_2350
+format_2017	Amino acid index format	format_3033
+format_2020	Article format	format_2350
+format_2021	Text mining report format	format_2350
+format_2027	Enzyme kinetics report format	format_2350
+format_2030	Chemical data format	format_2350
+format_2031	Gene annotation format	format_2350
+format_2032	Workflow format	format_2350
+format_2033	Tertiary structure format	format_2350
+format_2035	Chemical formula format	format_2350
+format_2036	Phylogenetic character data format	format_2350
+format_2037	Phylogenetic continuous quantitative character format	format_2036
+format_2038	Phylogenetic discrete states format	format_2036
+format_2039	Phylogenetic tree report (cliques) format	format_2036
+format_2040	Phylogenetic tree report (invariants) format	format_2036
+format_2049	Phylogenetic tree report (tree distances) format	format_2350
+format_2052	Protein family report format	format_2350
+format_2054	Protein interaction format	format_2350
+format_2055	Sequence assembly format	format_2350
+format_2056	Microarray experiment data format	format_3167
+format_2057	Sequence trace format	format_1919
+format_2058	Gene expression report format	format_2350
+format_2060	Map format	format_2350
+format_2061	Nucleic acid features (primers) format	format_2350
+format_2062	Protein report format	format_2350
+format_2064	3D-1D scoring matrix format	format_3033
+format_2065	Protein structure report (quality evaluation) format	format_2350
+format_2066	Database hits (sequence) format	format_2350
+format_2067	Sequence distance matrix format	format_2350
+format_2068	Sequence motif format	format_2350
+format_2069	Sequence profile format	format_2350
+format_2072	Hidden Markov model format	format_2069
+format_2074	Dirichlet distribution format	format_2350
+format_2075	HMM emission and transition counts format	format_2350
+format_2076	RNA secondary structure format	format_2350
+format_2077	Protein secondary structure format	format_2350
+format_2078	Sequence range format	format_2350
+format_2094	pure	format_2330 format_2571
+format_2095	unpure	format_2330 format_2571
+format_2096	unambiguous sequence	format_2330 format_2571
+format_2097	ambiguous	format_2330 format_2571
+format_2155	Sequence features (repeats) format	format_2350
+format_2158	Nucleic acid features (restriction sites) format	format_2350
+format_2170	Sequence cluster format	format_2350
+format_2171	Sequence cluster format (protein)	format_2170
+format_2172	Sequence cluster format (nucleic acid)	format_2170
+format_2181	EMBL-like (text)	format_2330 format_2543
+format_2182	FASTQ-like format (text)	format_2330 format_2545
+format_2183	EMBLXML	format_2204
+format_2184	cdsxml	format_2204
+format_2185	INSDSeq	format_2204
+format_2186	geneseq	format_2181
+format_2187	UniProt-like (text)	format_2330 format_2547
+format_2194	medline	format_2020 format_2330
+format_2195	Ontology format	format_2350
+format_2196	OBO format	format_2195
+format_2197	OWL format	format_2195 format_2376
+format_2200	FASTA-like (text)	format_2330 format_2546
+format_2204	EMBL format (XML)	format_2558
+format_2205	GenBank-like format (text)	format_2330 format_2559
+format_2206	Sequence feature table format (text)	format_2548
+format_2304	STRING entry format (XML)	format_2054 format_2332
+format_2305	GFF	format_2206 format_2330
+format_2306	GTF	format_2305
+format_2310	FASTA-HTML	format_2331 format_2546
+format_2311	EMBL-HTML	format_2331 format_2543
+format_2330	Textual format	format_1915
+format_2331	HTML	format_1915
+format_2332	XML	format_1915
+format_2333	Binary format	format_1915
+format_2350	Format (by type of data)	format_1915
+format_2352	BioXSD (XML)	format_1919 format_1920 format_2332 format_2555 format_2571
+format_2376	RDF format	format_1915 format_2195 format_3748
+format_2532	GenBank-HTML	format_2331 format_2559
+format_2543	EMBL-like format	format_1919
+format_2545	FASTQ-like format	format_2057
+format_2546	FASTA-like	format_1919
+format_2547	uniprotkb-like format	format_1919 format_2548
+format_2548	Sequence feature table format	format_1920
+format_2549	OBO	format_2196 format_2330
+format_2550	OBO-XML	format_2196 format_2332
+format_2551	Sequence record format (text)	format_1919
+format_2552	Sequence record format (XML)	format_1919
+format_2553	Sequence feature table format (XML)	format_2548
+format_2554	Alignment format (text)	format_1921
+format_2555	Alignment format (XML)	format_1921
+format_2556	Phylogenetic tree format (text)	format_2006
+format_2557	Phylogenetic tree format (XML)	format_2006
+format_2558	EMBL-like (XML)	format_2332 format_2543
+format_2559	GenBank-like format	format_1919
+format_2561	Sequence assembly format (text)	format_2055
+format_2566	completely unambiguous	format_2330 format_2571
+format_2567	completely unambiguous pure	format_2094 format_2566
+format_2568	completely unambiguous pure nucleotide	format_1207 format_2567
+format_2569	completely unambiguous pure dna	format_1212 format_2567
+format_2570	completely unambiguous pure rna sequence	format_1213 format_2567
+format_2571	Raw sequence format	format_2350
+format_2572	BAM	format_2057 format_2333 format_2920
+format_2573	SAM	format_2057 format_2330 format_2920
+format_2585	SBML	format_2013 format_2332
+format_2607	completely unambiguous pure protein	format_1208 format_2567
+format_2848	Bibliographic reference format	format_2350
+format_2919	Sequence annotation track format	format_1920
+format_2920	Alignment format (pair only)	format_1921
+format_2921	Sequence variation annotation format	format_2350
+format_2922	markx0 variant	format_2330 format_2554
+format_2923	mega variant	format_2330 format_2551 format_2554
+format_2924	Phylip format variant	format_2330 format_2551 format_2554
+format_3000	AB1	format_2057 format_2333
+format_3001	ACE	format_2055 format_2330
+format_3003	BED	format_2330 format_2919
+format_3004	bigBed	format_2333 format_2919
+format_3005	WIG	format_2330 format_2919
+format_3006	bigWig	format_2333 format_2919
+format_3007	PSL	format_2330 format_2919 format_2920
+format_3008	MAF	format_2330 format_2554 format_2919
+format_3009	2bit	format_2333 format_2571
+format_3010	.nib	format_2333 format_2571
+format_3011	genePred	format_2330 format_2919
+format_3012	pgSnp	format_2330 format_2919
+format_3013	axt	format_2330 format_2920
+format_3014	LAV	format_2330 format_2920
+format_3015	Pileup	format_2330 format_2920
+format_3016	VCF	format_2330 format_2921
+format_3017	SRF	format_2057 format_2333
+format_3018	ZTR	format_2057 format_2333
+format_3019	GVF	format_1975 format_2921
+format_3020	BCF	format_2333 format_2921
+format_3033	Matrix format	format_2350
+format_3097	Protein domain classification format	format_2350
+format_3098	Raw SCOP domain classification format	format_3097
+format_3099	Raw CATH domain classification format	format_3097
+format_3100	CATH domain report format	format_3097
+format_3155	SBRML	format_2332 format_3166
+format_3156	BioPAX	format_2013
+format_3157	EBI Application Result XML	format_2066 format_2332 format_2920
+format_3158	PSI MI XML (MIF)	format_2054 format_2332
+format_3159	phyloXML	format_2332 format_2557
+format_3160	NeXML	format_2332 format_2557
+format_3161	MAGE-ML	format_2058 format_2332
+format_3162	MAGE-TAB	format_2058 format_3475
+format_3163	GCDML	format_2332 format_3167
+format_3164	GTrack	format_2206 format_2330 format_2919
+format_3166	Biological pathway or network report format	format_2350
+format_3167	Experiment annotation format	format_2350
+format_3235	Cytoband format	format_2078 format_2330
+format_3239	CopasiML	format_2013 format_2332 format_3166
+format_3240	CellML	format_2013 format_2332
+format_3242	PSI MI TAB (MITAB)	format_2054 format_2330
+format_3243	PSI-PAR	format_3158
+format_3244	mzML	format_2332 format_3245
+format_3245	Mass spectrometry data format	format_2350
+format_3246	TraML	format_2332 format_3245
+format_3247	mzIdentML	format_2332 format_3245
+format_3248	mzQuantML	format_2332 format_3245
+format_3249	GelML	format_2332 format_3167
+format_3250	spML	format_2332 format_3167
+format_3252	OWL Functional Syntax	format_2197 format_2330
+format_3253	Manchester OWL Syntax	format_2197 format_2330
+format_3254	KRSS2 Syntax	format_2195 format_2330
+format_3255	Turtle	format_2330 format_2376
+format_3256	N-Triples	format_2330 format_2376
+format_3257	Notation3	format_2330 format_2376
+format_3261	RDF/XML	format_2332 format_2376
+format_3262	OWL/XML	format_2197 format_2332
+format_3281	A2M	format_2200 format_2554
+format_3284	SFF	format_2057 format_2333
+format_3285	MAP	format_3288
+format_3286	PED	format_3288
+format_3287	Individual genetic data format	format_2350
+format_3288	PED/MAP	format_2330 format_3287
+format_3309	CT	format_2076 format_2330
+format_3310	SS	format_2076 format_2330
+format_3311	RNAML	format_1921 format_2076 format_2332
+format_3312	GDE	format_2330 format_2551
+format_3313	BLC	format_2554
+format_3326	Data index format	format_2350
+format_3327	BAI	format_2333 format_3326
+format_3328	HMMER2	format_1370
+format_3329	HMMER3	format_1370
+format_3330	PO	format_2554
+format_3331	BLAST XML results format	format_1333 format_2332
+format_3462	CRAM	format_2333 format_2920
+format_3464	JSON	format_1915 format_3750
+format_3466	EPS	format_3696
+format_3467	GIF	format_2333
+format_3468	xls	format_2332 format_3507
+format_3475	TSV	format_3751
+format_3477	Cytoscape input file format	format_2058 format_2330
+format_3484	ebwt	format_2333 format_3326
+format_3485	RSF	format_3486
+format_3486	GCG format variant	format_2330 format_2551 format_2554
+format_3487	BSML	format_2332 format_2552
+format_3491	ebwtl	format_2333 format_3326
+format_3499	Ensembl variation file format	format_2330 format_2921
+format_3506	docx	format_2332 format_3507
+format_3507	Document format	format_2350
+format_3508	PDF	format_2333 format_3507
+format_3547	Image format	format_2350
+format_3548	DICOM format	format_2333 format_3547
+format_3549	nii	format_2333 format_3547
+format_3550	mhd	format_2330 format_3547
+format_3551	nrrd	format_2330 format_3547
+format_3554	R file format	format_2330
+format_3555	SPSS	format_2330
+format_3556	MHTML	format_2331
+format_3578	IDAT	format_2058 format_2333
+format_3579	JPG	format_2333 format_3547
+format_3580	rcc	format_2058 format_2330
+format_3581	arff	format_2330
+format_3582	afg	format_2330 format_2561
+format_3583	bedgraph	format_2330 format_2919
+format_3584	bedstrict	format_3003
+format_3585	bed6	format_3584
+format_3586	bed12	format_3584
+format_3587	chrominfo	format_2330 format_3003
+format_3588	customtrack	format_2330 format_2919
+format_3589	csfasta	format_2200 format_2554
+format_3590	HDF5	format_2333 format_3867
+format_3591	TIFF	format_2333 format_3547
+format_3592	BMP	format_2333 format_3547
+format_3593	im	format_2333 format_3547
+format_3594	pcd	format_2333 format_3547
+format_3595	pcx	format_2333 format_3547
+format_3596	ppm	format_2333 format_3547
+format_3597	psd	format_2333 format_3547
+format_3598	xbm	format_2333 format_3547
+format_3599	xpm	format_2333 format_3547
+format_3600	rgb	format_2333 format_3547
+format_3601	pbm	format_2333 format_3547
+format_3602	pgm	format_2333 format_3547
+format_3603	PNG	format_2333 format_3547
+format_3604	SVG	format_2332 format_3547
+format_3605	rast	format_2333 format_3547
+format_3606	Sequence quality report format (text)	format_2350
+format_3607	qual	format_2182 format_2330 format_3606
+format_3608	qualsolexa	format_1933 format_3607
+format_3609	qualillumina	format_1931 format_3607
+format_3610	qualsolid	format_3607
+format_3611	qual454	format_3607
+format_3612	ENCODE peak format	format_3585
+format_3613	ENCODE narrow peak format	format_3612
+format_3614	ENCODE broad peak format	format_3612
+format_3615	bgzip	format_2333 format_3547
+format_3616	tabix	format_2333 format_3326
+format_3617	Graph format	format_2350
+format_3618	xgmml	format_3617
+format_3619	sif	format_2013
+format_3620	xlsx	format_2333 format_3507
+format_3621	SQLite format	format_2333
+format_3622	Gemini SQLite format	format_2921 format_3621
+format_3624	snpeffdb	format_2333 format_3326
+format_3626	MAT	format_3033
+format_3650	NetCDF	format_2333 format_3245 format_3867
+format_3651	MGF	format_3245
+format_3652	dta	format_3245
+format_3653	pkl	format_3245
+format_3654	mzXML	format_3245
+format_3655	pepXML	format_2332 format_3245
+format_3657	GPML	format_2013 format_2332
+format_3665	K-mer countgraph	format_2333 format_3617
+format_3681	mzTab	format_2330 format_3245
+format_3682	imzML metadata file	format_2332 format_3245
+format_3683	qcML	format_2332 format_3167 format_3245
+format_3684	PRIDE XML	format_2332 format_3167 format_3245
+format_3685	SED-ML	format_2332 format_3167
+format_3686	COMBINE OMEX	format_2013 format_2333 format_3167
+format_3687	ISA-Tab	format_2330 format_3167
+format_3688	SBtab	format_2013 format_2330
+format_3689	BCML	format_2013 format_2332
+format_3690	BDML	format_2332
+format_3691	BEL	format_2330
+format_3692	SBGN-ML	format_2013 format_2332
+format_3693	AGP	format_2055 format_2330
+format_3696	PS	format_2330
+format_3698	SRA format	format_2333
+format_3699	VDB	format_2333
+format_3701	Sequin format	format_2206
+format_3702	MSF	format_3245
+format_3706	Biodiversity data format	format_2350
+format_3708	ABCD format	format_3706
+format_3709	GCT/Res format	format_2058 format_2330
+format_3710	WIFF format	format_2333 format_3245
+format_3711	X!Tandem XML	format_2332 format_3245
+format_3712	Thermo RAW	format_2333 format_3245
+format_3713	Mascot .dat file	format_2330 format_3245
+format_3714	MaxQuant APL peaklist format	format_2330 format_3245
+format_3725	SBOL	format_2332
+format_3726	PMML	format_2332
+format_3727	OME-TIFF	format_2333 format_3547
+format_3728	LocARNA PP	format_2330
+format_3729	dbGaP format	format_2330
+format_3746	BIOM format	format_2330 format_3706
+format_3747	protXML	format_2332 format_3245
+format_3748	Linked data format	format_2350
+format_3749	JSON-LD	format_2376 format_3464 format_3748
+format_3750	YAML	format_1915
+format_3751	DSV	format_2330
+format_3752	CSV	format_3751
+format_3758	SEQUEST .out file	format_2330 format_3245
+format_3764	idXML	format_2332 format_3245
+format_3765	KNIME datatable format	format_2032
+format_3770	UniProtKB XML	format_2332 format_2547 format_2552
+format_3771	UniProtKB RDF	format_2376 format_2547
+format_3772	BioJSON (BioXSD)	format_1919 format_1920 format_1921 format_2571 format_3464
+format_3773	BioYAML	format_1919 format_1920 format_1921 format_2571 format_3750
+format_3774	BioJSON (Jalview)	format_1920 format_1921 format_3464
+format_3775	GSuite	format_1920 format_2330
+format_3776	BTrack	format_1920 format_2333 format_2548 format_2919
+format_3777	MCPD	format_2330 format_3706
+format_3780	Annotated text format	format_2350
+format_3781	PubAnnotation format	format_3464 format_3780
+format_3782	BioC	format_2332 format_3780
+format_3783	PubTator format	format_2330 format_3780
+format_3784	Open Annotation format	format_2376 format_3749 format_3780
+format_3785	BioNLP Shared Task format	format_2330 format_3780
+format_3787	Query language	format_2350
+format_3788	SQL	format_2330
+format_3789	XQuery	format_2330
+format_3790	SPARQL	format_2330
+format_3804	xsd	format_2332
+format_3811	XMFA	format_2200 format_2554
+format_3812	GEN	format_2330 format_2919
+format_3813	SAMPLE file format	format_2330
+format_3814	SDF	format_2030 format_2330
+format_3815	Molfile	format_2030 format_2330
+format_3816	Mol2	format_2030 format_2330
+format_3817	latex	format_2330 format_3507
+format_3818	ELAND format	format_2330 format_2561
+format_3819	Relaxed PHYLIP Interleaved	format_2924
+format_3820	Relaxed PHYLIP Sequential	format_2924
+format_3821	VisML	format_2013 format_2332
+format_3822	GML	format_2013 format_2330
+format_3823	FASTG	format_2330 format_2561
+format_3824	NMR data format	format_2350
+format_3825	nmrML	format_2332 format_3824
+format_3826	proBAM	format_2057 format_2333 format_2920
+format_3827	proBED	format_2330 format_2919
+format_3828	Raw microarray data format	format_2350
+format_3829	GPR	format_2330 format_3828
+format_3830	ARB	format_1921 format_2333
+format_3832	consensusXML	format_2332 format_3245
+format_3833	featureXML	format_2332 format_3245
+format_3834	mzData	format_2332 format_3245
+format_3835	TIDE TXT	format_2332 format_3245
+format_3836	BLAST XML v2 results format	format_1333 format_2332
+format_3838	pptx	format_2332 format_3547
+format_3839	ibd	format_2333 format_3245
+format_3841	NLP format	format_2350
+format_3843	BEAST	format_2332 format_2552
+format_3844	Chado-XML	format_2332 format_2552
+format_3845	HSAML	format_2332 format_2555
+format_3846	InterProScan XML	format_2332 format_3097
+format_3847	KGML	format_2013 format_2332
+format_3848	PubMed XML	format_2332 format_2848
+format_3849	MSAML	format_1921 format_2333
+format_3850	OrthoXML	format_2031 format_2332 format_2552
+format_3851	PSDML	format_1920 format_2332
+format_3852	SeqXML	format_2332 format_2552
+format_3853	UniParc XML	format_1920 format_2332
+format_3854	UniRef XML	format_1920 format_2332
+format_3857	CWL	format_2032 format_3750
+format_3858	Waters RAW	format_2333 format_3245
+format_3859	JCAMP-DX	format_2330 format_3245
+format_3862	NLP annotation format	format_3841
+format_3863	NLP corpus format	format_3862
+format_3864	mirGFF3	format_1975 format_3865
+format_3865	RNA annotation format	format_2350
+format_3866	Trajectory format	format_2350
+format_3867	Trajectory format (binary)	format_3866
+format_3868	Trajectory format (text)	format_3866
+format_3873	HDF	format_2333 format_3867
+format_3874	PCAzip	format_2333 format_3867
+format_3875	XTC	format_2333 format_3867
+format_3876	TNG	format_2333 format_3867
+format_3877	XYZ	format_2033 format_2330 format_3868
+format_3878	mdcrd	format_2033 format_2330 format_3868
+format_3879	Topology format	format_2350
+format_3880	GROMACS top	format_2033 format_2330 format_3879
+format_3881	AMBER top	format_2033 format_2330 format_3879
+format_3882	PSF	format_2033 format_2330 format_3879
+format_3883	GROMACS itp	format_2033 format_2330 format_3879 format_3884
+format_3884	FF parameter format	format_2350
+format_3885	BinPos	format_2333 format_3867
+format_3886	RST	format_2033 format_2330 format_3868
+format_3887	CHARMM rtf	format_2033 format_2330 format_3879
+format_3888	AMBER frcmod	format_2330 format_3884
+format_3889	AMBER off	format_2330 format_3884
+format_3906	NMReDATA	format_2330 format_3824
+format_3909	BpForms	format_2035 format_2330 format_2571
+format_3910	trr	format_2033 format_2330 format_3868
+format_3911	msh	format_2333 format_2571
+format_3913	Loom	format_2058 format_3590
+format_3915	Zarr	format_2058 format_2333 format_3033
+format_3916	MTX	format_2058 format_2330 format_3033
+format_3951	BcForms	format_2030 format_2062 format_2330
+format_3956	N-Quads	format_2330 format_2376
+format_3969	Vega	format_3464 format_3547
+format_3970	Vega-lite	format_3464 format_3547
+format_3971	NeuroML	format_2013 format_2332
+format_3972	BNGL	format_2013 format_2330
+format_3973	Docker image	format_2333
+format_3975	GFA 1	format_2330 format_2561
+format_3976	GFA 2	format_2330 format_2561
+format_3977	ObjTables	format_3620
+format_3978	CONTIG	format_2330 format_2551
+format_3979	WEGO	format_2031 format_3475
+format_3980	RPKM	format_2058 format_3475
+format_3981	TAR format	format_2333
+format_3982	CHAIN	format_2330 format_2920
+format_3983	NET	format_1920 format_2330
+format_3984	QMAP	format_1920 format_2330
+format_3985	gxformat2	format_2032 format_2330
+format_3986	WMV	format_2333 format_3547
+format_3987	ZIP format	format_2333
+format_3988	LSM	format_2333 format_3547
+format_3989	GZIP format	format_2333
+format_3990	AVI	format_2333 format_3547
+format_3991	TrackDB	format_2333 format_2919
+format_3992	CIGAR format	format_2330 format_2920
+format_3993	Stereolithography format	format_2333 format_3547
+format_3994	U3D	format_2333 format_3547
+format_3995	Texture file format	format_2333 format_3547
+format_3996	Python script	format_2032 format_2330
+format_3997	MPEG-4	format_2333 format_3547
+format_3998	Perl script	format_2032 format_2330
+format_3999	R script	format_2032 format_2330
+format_4000	R markdown	format_2032 format_2330
+format_4002	pickle	format_2333
+format_4003	NumPy format	format_2333
+format_4004	SimTools repertoire file format	format_2333
+format_4005	Configuration file format	format_2330
+format_4006	Zstandard format	format_2333
+format_4007	MATLAB script	format_2032 format_2330
+format_4015	PEtab	format_3475
+format_4018	gVCF	format_3016
+format_4023	cml	format_2030 format_2332
+format_4024	cif	format_2030
+format_4025	BioSimulators format for the specifications of biosimulation tools	format_3464
+format_4026	BioSimulators standard for command-line interfaces for biosimulation tools	format_2330
+format_4035	PQR	format_1475 format_2330
+format_4036	PDBQT	format_1475 format_2330
+format_4039	MSP	format_2330 format_3245
+format_4041	maDMP	format_3464
+format_4048	Nextflow	format_2032 format_2330
+format_4049	Snakemake	format_2032 format_2330
+format_4050	SDRF	format_3167 format_3475
+format_4058	mzTab-M	format_2330 format_3245
+format_4059	mzTab-L	format_4058
+format_4066	ISA-Tab Investigation file	format_3687
+format_4067	ISA-Tab Study file	format_3475 format_3687
+format_4068	ISA-Tab Assay file	format_3475 format_3687
+format_4069	ISA-JSON	format_3167 format_3464
+format_4070	mwTab	format_2330 format_3167
+format_4071	MHD	format_3167 format_3464
+format_4072	MHD announcement	format_4071
+format_4073	MetaboLights MAF	format_2330 format_3167
+operation_0004	Operation	
+operation_0224	Query and retrieval	operation_2409
+operation_0226	Annotation	operation_0004
+operation_0227	Indexing	operation_0004
+operation_0230	Sequence generation	operation_2403 operation_3429
+operation_0231	Sequence editing	operation_2403 operation_3096
+operation_0232	Sequence merging	operation_0231
+operation_0233	Sequence conversion	operation_0231 operation_3434
+operation_0234	Sequence complexity calculation	operation_0236
+operation_0235	Sequence ambiguity calculation	operation_0236
+operation_0236	Sequence composition calculation	operation_2403 operation_3438
+operation_0237	Repeat sequence analysis	operation_2403
+operation_0238	Sequence motif discovery	operation_0253 operation_2404
+operation_0239	Sequence motif recognition	operation_0253 operation_2404
+operation_0240	Sequence motif comparison	operation_2404 operation_2451
+operation_0244	Simulation analysis	operation_0250
+operation_0245	Structural motif discovery	operation_2406 operation_3092
+operation_0246	Protein domain recognition	operation_2406 operation_3092
+operation_0247	Protein architecture analysis	operation_2406
+operation_0248	Residue interaction calculation	operation_0250
+operation_0249	Protein geometry calculation	operation_0250
+operation_0250	Protein property calculation	operation_2423 operation_3438
+operation_0252	Peptide immunogenicity prediction	operation_0250 operation_1777
+operation_0253	Sequence feature detection	operation_2403 operation_2423
+operation_0256	Sequence feature comparison	operation_2403 operation_2424
+operation_0258	Sequence alignment analysis	operation_2403
+operation_0259	Sequence alignment comparison	operation_0258 operation_2424
+operation_0260	Sequence alignment conversion	operation_3081 operation_3434
+operation_0262	Nucleic acid property calculation	operation_3438
+operation_0264	Alternative splicing prediction	operation_2499
+operation_0265	Frameshift detection	operation_3195 operation_3227
+operation_0266	Vector sequence detection	operation_0415
+operation_0267	Protein secondary structure prediction	operation_2416 operation_2423 operation_2479 operation_3092
+operation_0268	Protein super-secondary structure prediction	operation_0267
+operation_0269	Transmembrane protein prediction	operation_0267 operation_0270
+operation_0270	Transmembrane protein analysis	operation_2945
+operation_0272	Residue contact prediction	operation_0250 operation_2479
+operation_0276	Protein interaction network analysis	operation_2949 operation_3927
+operation_0278	RNA secondary structure prediction	operation_0415 operation_0475 operation_2439
+operation_0279	Nucleic acid folding analysis	operation_0475 operation_2426 operation_2481
+operation_0282	Genetic mapping	operation_0283 operation_2520
+operation_0283	Linkage analysis	operation_2478
+operation_0284	Codon usage table generation	operation_0286 operation_3429
+operation_0285	Codon usage table comparison	operation_0286 operation_2998
+operation_0286	Codon usage analysis	operation_2478
+operation_0287	Base position variability plotting	operation_0286 operation_0564
+operation_0288	Sequence word comparison	operation_2451
+operation_0289	Sequence distance matrix generation	operation_2451 operation_3429
+operation_0290	Sequence redundancy removal	operation_2451
+operation_0291	Sequence clustering	operation_2451 operation_3429 operation_3432
+operation_0292	Sequence alignment	operation_2403 operation_2451 operation_2928
+operation_0294	Structure-based sequence alignment	operation_0292
+operation_0295	Structure alignment	operation_2480 operation_2483 operation_2928
+operation_0296	Sequence profile generation	operation_0258 operation_3429
+operation_0297	3D profile generation	operation_2480 operation_3429
+operation_0300	Sequence profile alignment	operation_0292
+operation_0302	Protein threading	operation_0303
+operation_0303	Fold recognition	operation_2406 operation_2479 operation_2928 operation_2997 operation_3092
+operation_0305	Literature search	operation_2421
+operation_0306	Text mining	operation_2423 operation_2945
+operation_0307	Virtual PCR	operation_2478
+operation_0308	PCR primer design	operation_2419
+operation_0309	Microarray probe design	operation_2419 operation_2430
+operation_0310	Sequence assembly	operation_2478
+operation_0313	Expression profile clustering	operation_0315 operation_3432
+operation_0314	Gene expression profiling	operation_2495
+operation_0315	Expression profile comparison	operation_2495
+operation_0319	Protein secondary structure assignment	operation_0320
+operation_0320	Protein structure assignment	operation_2406 operation_2423
+operation_0321	Protein structure validation	operation_2406 operation_2428
+operation_0322	Molecular model refinement	operation_2425 operation_2480
+operation_0323	Phylogenetic inference	operation_0324 operation_3429
+operation_0324	Phylogenetic analysis	operation_2945
+operation_0325	Phylogenetic tree comparison	operation_0324 operation_2424
+operation_0326	Phylogenetic tree editing	operation_0324 operation_3096
+operation_0327	Phylogenetic footprinting	operation_0323
+operation_0331	Variant effect prediction	operation_2423
+operation_0334	Enzyme kinetics calculation	operation_0250
+operation_0335	Data formatting	operation_2409
+operation_0336	Format validation	operation_2428
+operation_0337	Visualisation	operation_0004
+operation_0338	Sequence database search	operation_2403 operation_2421
+operation_0339	Structure database search	operation_2421
+operation_0346	Sequence similarity search	operation_0338 operation_0339 operation_2451
+operation_0349	Sequence database search (by property)	operation_0338
+operation_0360	Structural similarity search	operation_0339 operation_2483
+operation_0361	Sequence annotation	operation_0226
+operation_0362	Genome annotation	operation_0361 operation_3918
+operation_0363	Reverse complement	operation_0230
+operation_0364	Random sequence generation	operation_0230
+operation_0365	Restriction digest	operation_0230 operation_0262
+operation_0366	Protein sequence cleavage	operation_0230
+operation_0367	Sequence mutation and randomisation	operation_0231
+operation_0368	Sequence masking	operation_0231
+operation_0369	Sequence cutting	operation_0231
+operation_0370	Restriction site creation	operation_0231
+operation_0371	DNA translation	operation_0233
+operation_0372	DNA transcription	operation_0233
+operation_0379	Repeat sequence detection	operation_0237 operation_0415
+operation_0380	Repeat sequence organisation analysis	operation_0236 operation_0237
+operation_0384	Accessible surface calculation	operation_3351
+operation_0386	Protein dipole moment calculation	operation_0250
+operation_0387	Molecular surface calculation	operation_3351
+operation_0389	Protein-nucleic acid interaction analysis	operation_1777
+operation_0390	Protein peeling	operation_0246
+operation_0391	Protein distance matrix calculation	operation_2950
+operation_0392	Contact map calculation	operation_0391
+operation_0393	Residue cluster calculation	operation_2950
+operation_0394	Hydrogen bond calculation	operation_0248
+operation_0396	Ramachandran plot calculation	operation_0249
+operation_0398	Protein molecular weight calculation	operation_0250
+operation_0399	Protein extinction coefficient calculation	operation_0250
+operation_0400	Protein pKa calculation	operation_0250
+operation_0402	Protein titration curve plotting	operation_0337 operation_0400
+operation_0403	Protein isoelectric point calculation	operation_0400
+operation_0404	Protein hydrogen exchange rate calculation	operation_0400
+operation_0405	Protein hydrophobic region calculation	operation_2574
+operation_0406	Protein aliphatic index calculation	operation_2574
+operation_0407	Protein hydrophobic moment plotting	operation_0564 operation_2574
+operation_0408	Protein globularity prediction	operation_2574
+operation_0409	Protein solubility prediction	operation_2574
+operation_0410	Protein crystallizability prediction	operation_2574
+operation_0415	Nucleic acid feature detection	operation_2423 operation_2478
+operation_0416	Epitope mapping	operation_2429 operation_3092
+operation_0417	Post-translational modification site prediction	operation_3092
+operation_0418	Protein signal peptide detection	operation_1777 operation_3092
+operation_0420	Nucleic acids-binding site prediction	operation_2575
+operation_0422	Protein cleavage site prediction	operation_3092
+operation_0427	Transposon prediction	operation_0415
+operation_0428	PolyA signal detection	operation_0415
+operation_0429	Quadruplex formation site detection	operation_0415
+operation_0430	CpG island and isochore detection	operation_0415
+operation_0431	Restriction site recognition	operation_0415
+operation_0432	Nucleosome position prediction	operation_0415
+operation_0433	Splice site prediction	operation_2499
+operation_0435	Operon prediction	operation_2454
+operation_0436	Coding region prediction	operation_2454
+operation_0437	SECIS element prediction	operation_2454
+operation_0438	Transcriptional regulatory element prediction	operation_2454
+operation_0439	Translation initiation site prediction	operation_0436
+operation_0440	Promoter prediction	operation_0438
+operation_0441	cis-regulatory element prediction	operation_0438
+operation_0443	trans-regulatory element prediction	operation_0438
+operation_0444	S/MAR prediction	operation_0438
+operation_0445	Transcription factor binding site prediction	operation_0440
+operation_0446	Exonic splicing enhancer prediction	operation_0440
+operation_0447	Sequence alignment validation	operation_0258 operation_2428
+operation_0448	Sequence alignment analysis (conservation)	operation_0258
+operation_0449	Sequence alignment analysis (site correlation)	operation_0258 operation_3465
+operation_0450	Chimera detection	operation_2478
+operation_0451	Recombination detection	operation_2478
+operation_0452	Indel detection	operation_3227
+operation_0455	Nucleic acid thermodynamic property calculation	operation_0262
+operation_0456	Nucleic acid melting profile plotting	operation_0262 operation_0337
+operation_0457	Nucleic acid stitch profile plotting	operation_0456
+operation_0458	Nucleic acid melting curve plotting	operation_0456
+operation_0459	Nucleic acid probability profile plotting	operation_0456
+operation_0460	Nucleic acid temperature profile plotting	operation_0456
+operation_0461	Nucleic acid curvature calculation	operation_0262
+operation_0463	miRNA target prediction	operation_0443
+operation_0464	tRNA gene prediction	operation_2454
+operation_0465	siRNA binding specificity prediction	operation_0443
+operation_0468	Protein secondary structure prediction (helices)	operation_0267
+operation_0469	Protein secondary structure prediction (turns)	operation_0267
+operation_0470	Protein secondary structure prediction (coils)	operation_0267
+operation_0471	Disulfide bond prediction	operation_3092
+operation_0474	Protein structure prediction	operation_2406 operation_2423 operation_2479
+operation_0475	Nucleic acid structure prediction	operation_2423 operation_2481
+operation_0476	Ab initio structure prediction	operation_0474
+operation_0477	Protein modelling	operation_0474 operation_2426
+operation_0478	Molecular docking	operation_1777 operation_2480
+operation_0479	Backbone modelling	operation_0477
+operation_0480	Side chain modelling	operation_0477
+operation_0481	Loop modelling	operation_0477
+operation_0482	Protein-ligand docking	operation_0478
+operation_0483	RNA inverse folding	operation_3095
+operation_0484	SNP detection	operation_3227
+operation_0485	Radiation Hybrid Mapping	operation_2944
+operation_0487	Haplotype mapping	operation_0282
+operation_0488	Linkage disequilibrium calculation	operation_0283
+operation_0489	Genetic code prediction	operation_0286 operation_2423
+operation_0490	Dot plot plotting	operation_0288 operation_0564
+operation_0491	Pairwise sequence alignment	operation_0292
+operation_0492	Multiple sequence alignment	operation_0292
+operation_0495	Local alignment	operation_0292
+operation_0496	Global alignment	operation_0292
+operation_0499	Tree-based sequence alignment	operation_0292
+operation_0502	RNA secondary structure alignment	operation_2439 operation_3429
+operation_0503	Pairwise structure alignment	operation_0295
+operation_0504	Multiple structure alignment	operation_0295
+operation_0509	Local structure alignment	operation_0295
+operation_0510	Global structure alignment	operation_0295
+operation_0523	Mapping assembly	operation_0310
+operation_0524	De-novo assembly	operation_0310
+operation_0525	Genome assembly	operation_0310 operation_3918
+operation_0526	EST assembly	operation_0310
+operation_0527	Sequence tag mapping	operation_0226 operation_2520
+operation_0531	Heat map generation	operation_0571 operation_3429
+operation_0533	Expression profile pathway mapping	operation_2429 operation_2495 operation_3928
+operation_0538	Phylogenetic inference (data centric)	operation_0323
+operation_0539	Phylogenetic inference (method centric)	operation_0323
+operation_0540	Phylogenetic inference (from molecular sequences)	operation_0538 operation_2403
+operation_0541	Phylogenetic inference (from continuous quantitative characters)	operation_0538
+operation_0542	Phylogenetic inference (from gene frequencies)	operation_0538
+operation_0543	Phylogenetic inference (from polymorphism data)	operation_0538
+operation_0544	Species tree construction	operation_0323
+operation_0545	Phylogenetic inference (parsimony methods)	operation_0539
+operation_0546	Phylogenetic inference (minimum distance methods)	operation_0539
+operation_0547	Phylogenetic inference (maximum likelihood and Bayesian methods)	operation_0539
+operation_0548	Phylogenetic inference (quartet methods)	operation_0539
+operation_0549	Phylogenetic inference (AI methods)	operation_0539
+operation_0550	DNA substitution modelling	operation_0286 operation_2426
+operation_0551	Phylogenetic tree topology analysis	operation_0324
+operation_0552	Phylogenetic tree bootstrapping	operation_0324 operation_2428
+operation_0553	Gene tree construction	operation_0323
+operation_0554	Allele frequency distribution analysis	operation_0324
+operation_0555	Consensus tree construction	operation_0323 operation_0325
+operation_0556	Phylogenetic sub/super tree construction	operation_0325
+operation_0557	Phylogenetic tree distances calculation	operation_0325
+operation_0558	Phylogenetic tree annotation	operation_0226
+operation_0560	DNA vaccine design	operation_3095
+operation_0564	Sequence visualisation	operation_0337 operation_2403
+operation_0566	Sequence cluster visualisation	operation_0337
+operation_0567	Phylogenetic tree visualisation	operation_0324 operation_0337
+operation_0570	Structure visualisation	operation_0337 operation_2480
+operation_0571	Expression data visualisation	operation_0337 operation_2495
+operation_0573	Map drawing	operation_0337
+operation_0575	Restriction map drawing	operation_0573
+operation_0578	Plasmid map drawing	operation_0573
+operation_0579	Operon drawing	operation_0573
+operation_1777	Protein function prediction	operation_2423 operation_2945
+operation_1778	Protein function comparison	operation_1777 operation_2997
+operation_1781	Gene regulatory network analysis	operation_2495 operation_3927
+operation_1812	Data parsing	operation_2409
+operation_1816	Surface rendering	operation_0570 operation_3351
+operation_1829	Cysteine bridge detection	operation_1850
+operation_1830	Free cysteine detection	operation_1850
+operation_1831	Metal-bound cysteine detection	operation_0248 operation_1850
+operation_1834	Protein-metal contact calculation	operation_0248
+operation_1836	Residue bump detection	operation_0321
+operation_1839	Salt bridge calculation	operation_0248
+operation_1843	Residue packing validation	operation_0321
+operation_1844	Protein geometry validation	operation_0321
+operation_1850	Protein cysteine and disulfide bond assignment	operation_0320
+operation_2008	siRNA duplex prediction	operation_0443
+operation_2089	Sequence alignment refinement	operation_0258 operation_2425
+operation_2121	Sequence file editing	operation_0231 operation_2403
+operation_2233	Representative sequence identification	operation_2451
+operation_2238	Statistical calculation	operation_3438
+operation_2239	3D-1D scoring matrix generation	operation_0250 operation_3429
+operation_2241	Transmembrane protein visualisation	operation_0270 operation_0570
+operation_2284	Nucleic acid density plotting	operation_0236 operation_0564
+operation_2403	Sequence analysis	operation_2945
+operation_2404	Sequence motif analysis	operation_2403
+operation_2406	Protein structure analysis	operation_2480
+operation_2409	Data handling	operation_0004
+operation_2415	Protein folding analysis	operation_2406 operation_2426
+operation_2416	Protein secondary structure analysis	operation_2406
+operation_2419	Primer and probe design	operation_2423 operation_3095
+operation_2421	Database search	operation_0224
+operation_2422	Data retrieval	operation_0224 operation_3908
+operation_2423	Prediction and recognition	operation_0004
+operation_2424	Comparison	operation_0004
+operation_2425	Optimisation and refinement	operation_0004
+operation_2426	Modelling and simulation	operation_0004
+operation_2428	Validation	operation_0004
+operation_2429	Mapping	operation_0004
+operation_2430	Design	operation_0004
+operation_2436	Gene-set enrichment analysis	operation_2495 operation_3501
+operation_2437	Gene regulatory network prediction	operation_2423 operation_2495 operation_3927
+operation_2439	RNA secondary structure analysis	operation_2481
+operation_2441	RNA structure prediction	operation_0475
+operation_2442	DNA structure prediction	operation_0475
+operation_2451	Sequence comparison	operation_2403 operation_2424
+operation_2454	Gene prediction	operation_2478
+operation_2464	Protein-protein binding site prediction	operation_2575
+operation_2474	Protein architecture comparison	operation_0247 operation_2997
+operation_2475	Protein architecture recognition	operation_0247 operation_2423 operation_2996
+operation_2476	Molecular dynamics	operation_2423 operation_2426 operation_2480
+operation_2478	Nucleic acid sequence analysis	operation_2403
+operation_2479	Protein sequence analysis	operation_2403
+operation_2480	Structure analysis	operation_2945
+operation_2481	Nucleic acid structure analysis	operation_2480
+operation_2483	Structure comparison	operation_2424 operation_2480
+operation_2485	Helical wheel drawing	operation_0570
+operation_2486	Topology diagram drawing	operation_0570
+operation_2487	Protein structure comparison	operation_2406 operation_2483 operation_2997
+operation_2488	Protein secondary structure comparison	operation_2416 operation_2997
+operation_2489	Subcellular localisation prediction	operation_1777
+operation_2492	Protein interaction prediction	operation_2949
+operation_2495	Expression analysis	operation_2945
+operation_2499	Splicing analysis	operation_2423 operation_2426 operation_2454
+operation_2510	DNA back-translation	operation_0233
+operation_2518	Nucleic acid structure comparison	operation_2481 operation_2483 operation_2998
+operation_2520	DNA mapping	operation_2429
+operation_2574	Protein hydropathy calculation	operation_0250
+operation_2575	Binding site prediction	operation_1777 operation_3092
+operation_2844	Structure clustering	operation_3432
+operation_2871	Sequence tagged site (STS) mapping	operation_2944
+operation_2928	Alignment	operation_0004 operation_3429
+operation_2929	Protein fragment weight comparison	operation_0398 operation_2930
+operation_2930	Protein property comparison	operation_2997
+operation_2935	Clustering profile plotting	operation_0571
+operation_2937	Proximity map plotting	operation_0571
+operation_2938	Dendrogram visualisation	operation_0571
+operation_2939	Principal component visualisation	operation_0337
+operation_2940	Scatter plot plotting	operation_0337
+operation_2942	Treemap visualisation	operation_0571
+operation_2943	Box-Whisker plot plotting	operation_0337
+operation_2944	Physical mapping	operation_2520
+operation_2945	Data analysis	operation_0004
+operation_2949	Protein-protein interaction analysis	operation_1777
+operation_2950	Residue distance calculation	operation_0248
+operation_2962	Codon usage bias calculation	operation_0286
+operation_2964	Codon usage fraction calculation	operation_0286
+operation_2990	Classification	operation_0004
+operation_2995	Sequence classification	operation_2403 operation_2990
+operation_2996	Structure classification	operation_2480 operation_2990
+operation_2997	Protein comparison	operation_2424
+operation_2998	Nucleic acid comparison	operation_2424
+operation_3080	Structure editing	operation_3096
+operation_3081	Sequence alignment editing	operation_3096
+operation_3092	Protein feature detection	operation_2423 operation_2479
+operation_3094	Protein interaction network prediction	operation_2949 operation_3927
+operation_3095	Nucleic acid design	operation_2430 operation_2478
+operation_3096	Data editing	operation_2409
+operation_3180	Sequence assembly validation	operation_2428 operation_3218
+operation_3182	Genome alignment	operation_0292 operation_3918
+operation_3183	Localised reassembly	operation_0310
+operation_3184	Sequence assembly visualisation	operation_0564
+operation_3185	Base-calling	operation_0230
+operation_3186	Bisulfite mapping	operation_2944 operation_3204
+operation_3187	Sequence contamination filtering	operation_3218
+operation_3192	Sequence trimming	operation_0369
+operation_3194	Genome feature comparison	operation_0256 operation_3918
+operation_3195	Sequencing error detection	operation_2451
+operation_3196	Genotyping	operation_3197
+operation_3197	Genetic variation analysis	operation_2945
+operation_3198	Read mapping	operation_2944 operation_3921
+operation_3199	Split read mapping	operation_3198
+operation_3200	DNA barcoding	operation_2478
+operation_3203	Chromatogram visualisation	operation_0337
+operation_3204	Methylation analysis	operation_2478
+operation_3206	Whole genome methylation analysis	operation_3204 operation_3918
+operation_3207	Gene methylation analysis	operation_3204
+operation_3208	Genome visualisation	operation_0564 operation_3918
+operation_3209	Genome comparison	operation_2451 operation_3918
+operation_3211	Genome indexing	operation_0227 operation_3918
+operation_3214	Spectral analysis	operation_2945
+operation_3215	Peak detection	operation_3214
+operation_3216	Scaffolding	operation_0310 operation_3429
+operation_3217	Scaffold gap completion	operation_3216
+operation_3218	Sequencing quality control	operation_2428 operation_2478
+operation_3219	Read pre-processing	operation_3218 operation_3921
+operation_3221	Species frequency estimation	operation_2478
+operation_3222	Peak calling	operation_0415
+operation_3223	Differential gene expression profiling	operation_0314
+operation_3225	Variant classification	operation_2995 operation_3197
+operation_3226	Variant prioritisation	operation_3197
+operation_3227	Variant calling	operation_2478 operation_3197
+operation_3228	Structural variation detection	operation_3197
+operation_3229	Exome assembly	operation_0310
+operation_3230	Read depth analysis	operation_3921
+operation_3232	Gene expression QTL analysis	operation_2495
+operation_3233	Copy number estimation	operation_3961
+operation_3237	Primer removal	operation_0369
+operation_3258	Transcriptome assembly	operation_0310
+operation_3267	Sequence coordinate conversion	operation_3434
+operation_3278	Document similarity calculation	operation_3437
+operation_3279	Document clustering	operation_3432 operation_3437
+operation_3280	Named-entity and concept recognition	operation_3907
+operation_3282	ID mapping	operation_2424 operation_2429
+operation_3283	Anonymisation	operation_2409
+operation_3348	Sequence checksum generation	operation_3429
+operation_3349	Bibliography generation	operation_3429
+operation_3350	Protein quaternary structure prediction	operation_2423
+operation_3351	Molecular surface analysis	operation_2480
+operation_3352	Ontology comparison	operation_2424
+operation_3357	Format detection	operation_2409
+operation_3359	Splitting	operation_2409
+operation_3429	Generation	operation_0004
+operation_3431	Data deposition	operation_2409
+operation_3432	Clustering	operation_0004
+operation_3434	Conversion	operation_0004
+operation_3435	Standardisation and normalisation	operation_2238
+operation_3436	Aggregation	operation_2409
+operation_3437	Article comparison	operation_2424
+operation_3438	Calculation	operation_0004
+operation_3443	Image analysis	operation_2945
+operation_3445	Diffraction data analysis	operation_2480
+operation_3446	Cell migration analysis	operation_3443
+operation_3447	Diffraction data reduction	operation_3445
+operation_3450	Neurite measurement	operation_3443
+operation_3453	Diffraction data integration	operation_3445
+operation_3454	Phasing	operation_3445
+operation_3455	Molecular replacement	operation_0322
+operation_3456	Rigid body refinement	operation_0322
+operation_3457	Single particle analysis	operation_2480 operation_3443
+operation_3458	Single particle alignment and classification	operation_2990 operation_3457
+operation_3459	Functional clustering	operation_0291
+operation_3460	Taxonomic classification	operation_2995
+operation_3461	Virulence prediction	operation_2403 operation_2423
+operation_3463	Expression correlation analysis	operation_0315 operation_3465
+operation_3465	Correlation	operation_0004
+operation_3469	RNA structure covariance model generation	operation_2439 operation_3429
+operation_3472	k-mer counting	operation_0236
+operation_3478	Phylogenetic reconstruction	operation_0323
+operation_3480	Probabilistic data generation	operation_3429
+operation_3481	Probabilistic sequence generation	operation_0230 operation_3480
+operation_3482	Antimicrobial resistance prediction	operation_2403 operation_2423
+operation_3501	Enrichment analysis	operation_2945
+operation_3502	Chemical similarity enrichment	operation_3501
+operation_3503	Incident curve plotting	operation_0337
+operation_3504	Variant pattern analysis	operation_3197
+operation_3552	Microscope image visualisation	operation_0337
+operation_3553	Image annotation	operation_0226
+operation_3557	Imputation	operation_2238
+operation_3559	Ontology visualisation	operation_0337
+operation_3560	Maximum occurrence analysis	operation_0321
+operation_3561	Database comparison	operation_2424 operation_2429
+operation_3563	RNA-seq read count analysis	operation_3680
+operation_3564	Chemical redundancy removal	operation_2483
+operation_3565	RNA-seq time series data analysis	operation_3680
+operation_3566	Simulated gene expression data generation	operation_2426
+operation_3625	Relation extraction	operation_0306
+operation_3627	Mass spectra calibration	operation_3214
+operation_3628	Chromatographic alignment	operation_3214
+operation_3629	Deisotoping	operation_3214
+operation_3630	Protein quantification	operation_3214 operation_3799
+operation_3631	Peptide identification	operation_3214
+operation_3632	Isotopic distributions calculation	operation_3438
+operation_3633	Retention time prediction	operation_3438
+operation_3634	Label-free quantification	operation_3630
+operation_3635	Labeled quantification	operation_3630
+operation_3636	MRM/SRM	operation_3630
+operation_3637	Spectral counting	operation_3634
+operation_3638	SILAC	operation_3635
+operation_3639	iTRAQ	operation_3635
+operation_3640	18O labeling	operation_3635
+operation_3641	TMT-tag	operation_3635
+operation_3642	Stable isotope dimethyl labelling	operation_3635
+operation_3643	Tag-based peptide identification	operation_3631
+operation_3644	de Novo sequencing	operation_0230 operation_3631
+operation_3645	PTM identification	operation_3631
+operation_3646	Peptide database search	operation_2421 operation_3631
+operation_3647	Blind peptide database search	operation_3646
+operation_3649	Target-Decoy	operation_2428 operation_3646
+operation_3658	Statistical inference	operation_2238
+operation_3659	Regression analysis	operation_2238
+operation_3660	Metabolic network modelling	operation_3927 operation_3928
+operation_3661	SNP annotation	operation_0361
+operation_3662	Ab-initio gene prediction	operation_2454
+operation_3663	Homology-based gene prediction	operation_2454
+operation_3664	Statistical modelling	operation_2238
+operation_3666	Molecular surface comparison	operation_2483 operation_3351
+operation_3672	Gene functional annotation	operation_0361
+operation_3675	Variant filtering	operation_3218
+operation_3677	Differential binding analysis	operation_0415
+operation_3680	RNA-Seq analysis	operation_2495 operation_3921
+operation_3694	Mass spectrum visualisation	operation_0337
+operation_3695	Data filtering	operation_2409
+operation_3703	Reference identification	operation_3197
+operation_3704	Ion counting	operation_3634
+operation_3705	Isotope-coded protein label	operation_3635
+operation_3715	Metabolic labeling	operation_3635
+operation_3730	Cross-assembly	operation_0310
+operation_3731	Sample comparison	operation_2424
+operation_3741	Differential protein expression profiling	operation_0314 operation_2997
+operation_3744	Multiple sample visualisation	operation_0337
+operation_3745	Ancestral reconstruction	operation_0324
+operation_3755	PTM localisation	operation_3645
+operation_3760	Service management	operation_0004
+operation_3761	Service discovery	operation_3760
+operation_3762	Service composition	operation_3760
+operation_3763	Service invocation	operation_3760
+operation_3766	Weighted correlation network analysis	operation_3927
+operation_3767	Protein identification	operation_2423 operation_3214
+operation_3778	Text annotation	operation_0226
+operation_3791	Collapsing methods	operation_3197
+operation_3792	miRNA expression analysis	operation_2495
+operation_3793	Read summarisation	operation_3921
+operation_3795	In vitro selection	operation_3095
+operation_3797	Rarefaction	operation_3438
+operation_3798	Read binning	operation_3921
+operation_3799	Quantification	operation_0004
+operation_3800	RNA-Seq quantification	operation_3799
+operation_3801	Spectral library search	operation_3631
+operation_3802	Data sorting	operation_2409
+operation_3803	Natural product identification	operation_3214
+operation_3809	DMR identification	operation_3204
+operation_3840	Multilocus sequence typing	operation_3196
+operation_3860	Spectrum calculation	operation_0250 operation_3214
+operation_3890	Trajectory visualization	operation_0570
+operation_3891	Essential dynamics	operation_0244 operation_2481
+operation_3893	Forcefield parameterisation	operation_2426
+operation_3894	DNA profiling	operation_2478
+operation_3896	Active site prediction	operation_2575
+operation_3897	Ligand-binding site prediction	operation_2575
+operation_3898	Metal-binding site prediction	operation_2575
+operation_3899	Protein-protein docking	operation_0478
+operation_3900	DNA-binding protein prediction	operation_0389
+operation_3901	RNA-binding protein prediction	operation_0389
+operation_3902	RNA binding site prediction	operation_0420
+operation_3903	DNA binding site prediction	operation_0420
+operation_3904	Protein disorder prediction	operation_2423 operation_3092
+operation_3907	Information extraction	operation_0306
+operation_3908	Information retrieval	operation_0306
+operation_3918	Genome analysis	operation_2478
+operation_3919	Methylation calling	operation_3204
+operation_3920	DNA testing	operation_2478
+operation_3921	Sequence read processing	operation_2478
+operation_3925	Network visualisation	operation_0337 operation_3927
+operation_3926	Pathway visualisation	operation_0337 operation_3928
+operation_3927	Network analysis	operation_2945
+operation_3928	Pathway analysis	operation_2945
+operation_3929	Metabolic pathway prediction	operation_2423 operation_3928
+operation_3933	Demultiplexing	operation_3921
+operation_3935	Dimensionality reduction	operation_3438
+operation_3936	Feature selection	operation_3935
+operation_3937	Feature extraction	operation_3935
+operation_3938	Virtual screening	operation_0482 operation_4009
+operation_3942	Tree dating	operation_0324
+operation_3946	Ecological modelling	operation_0286 operation_2426
+operation_3947	Phylogenetic tree reconciliation	operation_0325
+operation_3950	Selection detection	operation_2478
+operation_3960	Principal component analysis	operation_2238
+operation_3961	Copy number variation detection	operation_3228
+operation_3962	Deletion detection	operation_3961
+operation_3963	Duplication detection	operation_3961
+operation_3964	Complex CNV detection	operation_3961
+operation_3965	Amplification detection	operation_3961
+operation_3968	Adhesin prediction	operation_2429 operation_3092
+operation_4008	Protein design	operation_2430
+operation_4009	Small molecule design	operation_2430
+operation_4031	Power test	operation_2238
+operation_4032	DNA modification prediction	operation_0415
+operation_4033	Disease transmission analysis	operation_2426 operation_2945 operation_3664
+operation_4034	Multiple testing correction	operation_2238
+operation_4042	Data management planning	operation_0004
+operation_4043	Data digitisation	operation_2409
+operation_4074	Compound identification	operation_3214
+topic_0003	Topic	
+topic_0077	Nucleic acids	topic_3307
+topic_0078	Proteins	topic_3307
+topic_0080	Sequence analysis	topic_3307
+topic_0081	Structure analysis	topic_3307
+topic_0082	Structure prediction	topic_0081
+topic_0084	Phylogeny	topic_3299 topic_3307
+topic_0085	Functional genomics	topic_0622 topic_1775
+topic_0089	Ontology and terminology	topic_0605
+topic_0091	Bioinformatics	topic_0605
+topic_0092	Data visualisation	topic_3316
+topic_0097	Nucleic acid structure analysis	topic_0077 topic_0081
+topic_0099	RNA	topic_0077
+topic_0102	Mapping	topic_0080
+topic_0108	Protein expression	topic_0078
+topic_0114	Gene structure	topic_3321
+topic_0121	Proteomics	topic_3391
+topic_0122	Structural genomics	topic_0622 topic_1317
+topic_0123	Protein properties	topic_0078
+topic_0128	Protein interactions	topic_0078 topic_0602
+topic_0130	Protein folding, stability and design	topic_2814
+topic_0140	Protein targeting and localisation	topic_0108
+topic_0152	Carbohydrates	topic_0081
+topic_0153	Lipidomics	topic_0081 topic_3172
+topic_0154	Small molecules	topic_0081
+topic_0157	Sequence composition, complexity and repeats	topic_0080
+topic_0160	Sequence sites, features and motifs	topic_3307
+topic_0166	Protein structural motifs and surfaces	topic_2814
+topic_0176	Molecular dynamics	topic_0082 topic_3892
+topic_0194	Phylogenomics	topic_0080 topic_0622
+topic_0196	Sequence assembly	topic_0080
+topic_0199	Genetic variation	topic_0622 topic_3321
+topic_0202	Pharmacology	topic_3344
+topic_0203	Gene expression	topic_3321
+topic_0204	Gene regulation	topic_0203
+topic_0208	Pharmacogenomics	topic_0202 topic_0622
+topic_0209	Medicinal chemistry	topic_3336 topic_3371
+topic_0218	Natural language processing	topic_3068 topic_3316
+topic_0219	Data curation and archival	topic_3071
+topic_0593	NMR	topic_1317 topic_3382
+topic_0601	Protein modifications	topic_0108
+topic_0602	Molecular interactions, pathways and networks	topic_3307
+topic_0605	Informatics	topic_0003
+topic_0607	Laboratory information management	topic_0605
+topic_0610	Ecology	topic_3855 topic_4019
+topic_0611	Electron microscopy	topic_1317 topic_3382
+topic_0621	Model organisms	topic_3070
+topic_0622	Genomics	topic_3391
+topic_0623	Gene and protein families	topic_0078 topic_3321
+topic_0625	Genotype and phenotype	topic_3053
+topic_0632	Probes and primers	topic_0080
+topic_0634	Pathology	topic_3303
+topic_0637	Taxonomy	topic_3299
+topic_0654	DNA	topic_0077
+topic_0659	Functional, regulatory and non-coding RNA	topic_0099 topic_0114
+topic_0736	Protein folds and structural domains	topic_2814
+topic_0749	Transcription factors and regulatory sites	topic_0078 topic_0203 topic_3125
+topic_0769	Workflows	topic_3071
+topic_0780	Plant biology	topic_3070
+topic_0781	Virology	topic_3070
+topic_0797	Comparative genomics	topic_0622
+topic_0798	Mobile genetic elements	topic_0114
+topic_0804	Immunology	topic_3344
+topic_0820	Membrane and lipoproteins	topic_0078
+topic_0821	Enzymes	topic_0078
+topic_1317	Structural biology	topic_3070
+topic_1775	Function analysis	topic_3307
+topic_2229	Cell biology	topic_3070
+topic_2258	Cheminformatics	topic_0605
+topic_2259	Systems biology	topic_3070
+topic_2269	Statistics and probability	topic_3315
+topic_2275	Molecular modelling	topic_0082
+topic_2533	DNA mutation	topic_0199 topic_0654
+topic_2640	Oncology	topic_3303
+topic_2814	Protein structure analysis	topic_0078 topic_0081
+topic_2815	Human biology	topic_3070
+topic_2828	X-ray diffraction	topic_1317 topic_3382
+topic_2830	Immunoproteins and antigens	topic_0623 topic_0804
+topic_2840	Toxicology	topic_3303 topic_3377
+topic_2885	DNA polymorphism	topic_0199 topic_0654
+topic_3047	Molecular biology	topic_3070
+topic_3050	Biodiversity	topic_0610
+topic_3053	Genetics	topic_3070
+topic_3055	Quantitative genetics	topic_0625
+topic_3056	Population genetics	topic_3053
+topic_3063	Medical informatics	topic_0605
+topic_3064	Developmental biology	topic_3070
+topic_3065	Embryology	topic_3064
+topic_3067	Anatomy	topic_3344
+topic_3068	Literature and language	topic_0003
+topic_3070	Biology	topic_4019
+topic_3071	Data management	topic_0003
+topic_3077	Data acquisition	topic_0003
+topic_3120	Protein variants	topic_0108
+topic_3125	DNA binding sites	topic_0654 topic_3511
+topic_3127	DNA replication and recombination	topic_0654
+topic_3168	Sequencing	topic_3077
+topic_3169	ChIP-seq	topic_3168 topic_3656
+topic_3170	RNA-Seq	topic_3168
+topic_3172	Metabolomics	topic_3391
+topic_3173	Epigenomics	topic_0622 topic_3295
+topic_3174	Metagenomics	topic_0610 topic_0622
+topic_3175	Structural variation	topic_0199 topic_0654
+topic_3176	DNA packaging	topic_0654
+topic_3179	ChIP-on-chip	topic_3656
+topic_3277	Sample collections	topic_3344
+topic_3292	Biochemistry	topic_3070 topic_3314
+topic_3293	Phylogenetics	topic_0080 topic_0084
+topic_3295	Epigenetics	topic_3053
+topic_3297	Biotechnology	topic_3070
+topic_3298	Phenomics	topic_0625 topic_3299 topic_3391
+topic_3299	Evolutionary biology	topic_3070
+topic_3300	Physiology	topic_3303
+topic_3301	Microbiology	topic_3070
+topic_3302	Parasitology	topic_3344
+topic_3303	Medicine	topic_4019
+topic_3304	Neurobiology	topic_3344
+topic_3305	Public health and epidemiology	topic_3303
+topic_3306	Biophysics	topic_3070 topic_3318
+topic_3307	Computational biology	topic_4019
+topic_3308	Transcriptomics	topic_0203 topic_0622
+topic_3314	Chemistry	topic_0003
+topic_3315	Mathematics	topic_0003
+topic_3316	Computer science	topic_0003
+topic_3318	Physics	topic_0003
+topic_3320	RNA splicing	topic_0099 topic_0203
+topic_3321	Molecular genetics	topic_3053 topic_3307
+topic_3322	Respiratory medicine	topic_3303
+topic_3324	Infectious disease	topic_0634
+topic_3325	Rare diseases	topic_0634
+topic_3332	Computational chemistry	topic_3314 topic_3316
+topic_3334	Neurology	topic_3303
+topic_3335	Cardiology	topic_3303
+topic_3336	Drug discovery	topic_3314 topic_3376
+topic_3337	Biobank	topic_3277
+topic_3338	Mouse clinic	topic_3277
+topic_3339	Microbial collection	topic_3277
+topic_3340	Cell culture collection	topic_3277
+topic_3341	Clone library	topic_3277
+topic_3342	Translational medicine	topic_3303
+topic_3343	Compound libraries and screening	topic_3336
+topic_3344	Biomedical science	topic_4019
+topic_3345	Data identity and mapping	topic_3071
+topic_3360	Biomarkers	topic_3070
+topic_3365	Data architecture, analysis and design	topic_3071
+topic_3366	Data integration and warehousing	topic_3071
+topic_3368	Biomaterials	topic_3297
+topic_3369	Chemical biology	topic_3070 topic_3371
+topic_3370	Analytical chemistry	topic_3314
+topic_3371	Synthetic chemistry	topic_3314
+topic_3372	Software engineering	topic_3316
+topic_3373	Drug development	topic_3376
+topic_3374	Biotherapeutics	topic_3376
+topic_3375	Drug metabolism	topic_3376
+topic_3376	Medicines research and development	topic_3344
+topic_3377	Safety sciences	topic_3376
+topic_3378	Pharmacovigilance	topic_3377
+topic_3379	Preclinical and clinical studies	topic_3376 topic_3678
+topic_3382	Imaging	topic_3077
+topic_3383	Bioimaging	topic_3382
+topic_3384	Medical imaging	topic_3382
+topic_3385	Light microscopy	topic_3382
+topic_3386	Laboratory animal science	topic_3344
+topic_3387	Marine biology	topic_3070
+topic_3388	Molecular medicine	topic_3342
+topic_3390	Nutritional science	topic_3344
+topic_3391	Omics	topic_4019
+topic_3393	Quality affairs	topic_3376
+topic_3394	Regulatory affairs	topic_3376
+topic_3395	Regenerative medicine	topic_3344
+topic_3396	Systems medicine	topic_3303
+topic_3397	Veterinary medicine	topic_3303
+topic_3398	Bioengineering	topic_3297
+topic_3399	Geriatric medicine	topic_3303
+topic_3400	Allergy, clinical immunology and immunotherapeutics	topic_3303
+topic_3401	Pain medicine	topic_3303
+topic_3402	Anaesthesiology	topic_3303
+topic_3403	Critical care medicine	topic_3303
+topic_3404	Dermatology	topic_3303
+topic_3405	Dentistry	topic_3303
+topic_3406	Ear, nose and throat medicine	topic_3303
+topic_3407	Endocrinology and metabolism	topic_3303
+topic_3408	Haematology	topic_3303
+topic_3409	Gastroenterology	topic_3303
+topic_3410	Gender medicine	topic_3303
+topic_3411	Gynaecology and obstetrics	topic_3303
+topic_3412	Hepatic and biliary medicine	topic_3303
+topic_3414	Trauma medicine	topic_3303
+topic_3415	Medical toxicology	topic_3303
+topic_3416	Musculoskeletal medicine	topic_3303
+topic_3417	Ophthalmology	topic_3303
+topic_3418	Paediatrics	topic_3303
+topic_3419	Psychiatry	topic_3303
+topic_3420	Reproductive health	topic_3303
+topic_3421	Surgery	topic_3303
+topic_3422	Urology and nephrology	topic_3303
+topic_3423	Complementary medicine	topic_3303
+topic_3444	MRI	topic_3382
+topic_3448	Neutron diffraction	topic_1317 topic_3382
+topic_3452	Tomography	topic_3382
+topic_3473	Data mining	topic_3316
+topic_3474	Machine learning	topic_3316
+topic_3489	Database management	topic_0605
+topic_3500	Zoology	topic_3070
+topic_3510	Protein sites, features and motifs	topic_0078 topic_0160
+topic_3511	Nucleic acid sites, features and motifs	topic_0077 topic_0160
+topic_3512	Gene transcripts	topic_0099 topic_0114
+topic_3516	Genotyping experiment	topic_3077
+topic_3517	GWAS study	topic_3678
+topic_3518	Microarray experiment	topic_3077
+topic_3519	PCR experiment	topic_3077
+topic_3520	Proteomics experiment	topic_3077
+topic_3523	RNAi experiment	topic_3077
+topic_3524	Simulation experiment	topic_3077
+topic_3534	Protein binding sites	topic_3510
+topic_3538	Protein disordered structure	topic_2814
+topic_3542	Protein secondary structure	topic_2814
+topic_3569	Applied mathematics	topic_3315
+topic_3570	Pure mathematics	topic_3315
+topic_3571	Data governance	topic_3071
+topic_3572	Data quality management	topic_3071
+topic_3573	Freshwater biology	topic_3070
+topic_3574	Human genetics	topic_3053
+topic_3575	Tropical medicine	topic_3303
+topic_3576	Medical biotechnology	topic_3297
+topic_3577	Personalised medicine	topic_3303
+topic_3656	Immunoprecipitation experiment	topic_3077
+topic_3673	Whole genome sequencing	topic_3168
+topic_3674	Methylated DNA immunoprecipitation	topic_3656
+topic_3676	Exome sequencing	topic_3168
+topic_3678	Experimental design and studies	topic_0003
+topic_3679	Animal study	topic_3386 topic_3678
+topic_3697	Microbial ecology	topic_0610 topic_3301
+topic_3794	RNA immunoprecipitation	topic_3656
+topic_3796	Population genomics	topic_0622
+topic_3810	Agricultural science	topic_3070
+topic_3837	Metagenomic sequencing	topic_3168
+topic_3855	Environmental sciences	topic_0003
+topic_3892	Biomolecular simulation	topic_3307
+topic_3895	Synthetic biology	topic_3070 topic_3297
+topic_3912	Genetic engineering	topic_3053 topic_3297
+topic_3922	Proteogenomics	topic_0622
+topic_3923	Genome resequencing	topic_3168
+topic_3930	Immunogenetics	topic_0804 topic_3053
+topic_3931	Chemometrics	topic_2258
+topic_3934	Cytometry	topic_3077
+topic_3939	Metabolic engineering	topic_3297
+topic_3940	Chromosome conformation capture	topic_3077
+topic_3941	Metatranscriptomics	topic_0203 topic_3308
+topic_3943	Paleogenomics	topic_0622
+topic_3944	Cladistics	topic_0080 topic_0084
+topic_3945	Molecular evolution	topic_0625 topic_3299 topic_3391
+topic_3948	Immunoinformatics	topic_0605 topic_0804
+topic_3954	Echography	topic_3382
+topic_3955	Fluxomics	topic_3391
+topic_3957	Protein interaction experiment	topic_3077
+topic_3958	Copy number variation	topic_3175
+topic_3959	Cytogenetics	topic_3321
+topic_3966	Vaccinology	topic_3376
+topic_3967	Immunomics	topic_3391
+topic_3974	Epistasis	topic_0625
+topic_4010	Open science	topic_0003
+topic_4011	Data rescue	topic_3071
+topic_4012	FAIR data	topic_3071 topic_4010
+topic_4013	Antimicrobial resistance	topic_3301 topic_3324
+topic_4014	Electroencephalography	topic_3300 topic_3382
+topic_4016	Electrocardiography	topic_3300 topic_3382
+topic_4017	Cryogenic electron microscopy	topic_0611
+topic_4019	Biosciences	topic_0003
+topic_4020	Carbon cycle	topic_0610 topic_3314 topic_3318 topic_3855
+topic_4021	Multiomics	topic_3391
+topic_4027	Ribosome Profiling	topic_3308
+topic_4028	Single-cell sequencing	topic_3168
+topic_4029	Acoustics	topic_3318
+topic_4030	Microfluidics	topic_3292 topic_3297 topic_3318
+topic_4037	Genomic imprinting	topic_3295
+topic_4038	Metabarcoding	topic_0080 topic_3697
+topic_4044	Data protection	topic_3071
+topic_4045	Cybersecurity	topic_0605
+topic_4046	Version control	topic_0605
+topic_4047	Software management	topic_0605
+topic_4051	ChIP-exo	topic_3168
+topic_4052	Hi-C	topic_3940
+topic_4053	ATAC-seq	topic_3940
+topic_4054	miRNA silencing	topic_3523
+topic_4055	siRNA experiment	topic_3523
+topic_4056	Long-read sequencing	topic_3168
+topic_4057	Short-read sequencing	topic_3168
+topic_4060	Metaproteomics	topic_0121
+topic_4061	Bisulfite sequencing	topic_3168
+topic_4062	Bulk RNA barcoding and sequencing	topic_3170
+topic_4063	DNase sequencing	topic_3168 topic_3940
+topic_4064	MicroRNA sequencing	topic_3170
+topic_4065	Exposomics	topic_3391 topic_3855

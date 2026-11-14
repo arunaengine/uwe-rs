@@ -1,0 +1,13 @@
+# Manifest of tool-definition, the tool definitions of a tool library and their checks.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+# edam.tsv holds EDAM ontology data under CC BY-SA 4.0, see LICENSE-EDAM.
+
+[package]
+name = "tool-definition"
+description = "Tool definitions of a tool library, with the EDAM hierarchy and the checks of how their ports connect"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true

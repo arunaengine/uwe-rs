@@ -1,0 +1,14 @@
+EDAM ontology data in edam.tsv
+
+edam.tsv holds the class ids, labels and subclass relations of the data, format, operation
+and topic branches of EDAM, release 1.25.20260626T1230Z, reduced from the release file
+https://github.com/edamontology/edamontology/releases/download/1.25.20260626T1230Z/EDAM.owl
+by edam.py. Deprecated classes are left out.
+
+EDAM: the ontology of data analysis and management, https://edamontology.org
+Copyright (c) the EDAM contributors, https://github.com/edamontology/edamontology
+
+The EDAM data is licensed under the Creative Commons Attribution-ShareAlike 4.0
+International License (CC BY-SA 4.0), https://creativecommons.org/licenses/by-sa/4.0/
+Changes: reduced to ids, labels and parent classes; nothing else is changed.
+edam.tsv is shared under the same license. This license does not cover the code of the crate.

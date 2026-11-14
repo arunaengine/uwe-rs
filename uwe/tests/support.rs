@@ -214,3 +214,45 @@ async fn argo_templates() {
         ])
     );
 }
+
+/// Without a value for a required input, the plan stops early; the `else` clause is still
+/// refused.
+#[tokio::test]
+async fn else_without_input() {
+    let otherwise = WDL.replace("Boolean flag = true", "Boolean flag").replace(
+        "    call say\n  }\n",
+        "    call say\n  } else {\n    call say as other\n  }\n",
+    );
+    let report = report(&[("main.wdl", &otherwise)], "main.wdl").await;
+    assert!(!report.runnable(), "{report:#?}");
+    let reason = "main.wdl:11: `else` clauses are not supported";
+    assert_eq!(
+        parts(&report),
+        json!([{"name": "main", "support": "unsupported", "reason": reason, "location": "main.wdl:11"}])
+    );
+}
+
+/// A call alias names the step; the native task keeps its reason under that name.
+#[tokio::test]
+async fn wdl_call_aliases() {
+    let make = "task make {\n  command <<< echo z > z >>>\n  runtime { container: \
+                \"alpine:3.21\" }\n  output { File out = \"z\" }\n}\n";
+    let workflow = WDL
+        .replace("task say", &format!("{make}\ntask say"))
+        .replace(
+            "  input { Boolean flag = true }\n  if (flag) {\n    call say\n  }\n",
+            "  call say as hello\n  call make\n",
+        );
+    let report = report(&[("main.wdl", &workflow)], "main.wdl").await;
+    assert!(report.runnable(), "{report:#?}");
+    assert_eq!(
+        parts(&report),
+        json!([
+            {"name": "main.hello", "support": "native",
+             "reason": "output out reads files that the task makes",
+             "location": "main.wdl", "images": ["debian:stable-slim"]},
+            {"name": "main.make", "support": "compiled", "location": "main.wdl",
+             "images": ["alpine:3.21"]}
+        ])
+    );
+}

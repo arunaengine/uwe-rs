@@ -80,11 +80,8 @@ impl Run {
                 Ok(tasks)
             }
             WorkflowStatement::Conditional(conditional) => {
-                if conditional.clauses().count() > 1 {
-                    return Err(DriverError::unsupported(format!(
-                        "{}: `else` clauses are not supported",
-                        document::place(&document, &conditional)
-                    )));
+                if let Some(message) = document::else_refused(&document, &conditional) {
+                    return Err(DriverError::unsupported(message));
                 }
                 let clause = conditional.if_clause();
                 let body: Vec<WorkflowStatement> = clause.statements().collect();

@@ -269,6 +269,33 @@ fn graph_reports_nodes() {
 }
 
 #[test]
+fn absent_parameters_empty() {
+    let schema = |required: Json| {
+        json!({"type": "object", "properties": {"level": {"type": "integer"}},
+               "required": required})
+    };
+    let optional = tool(json!({
+        "id": "optional", "version": "1", "title": "Optional", "parameters": schema(json!([]))
+    }));
+    let required = tool(json!({
+        "id": "required", "version": "1", "title": "Required",
+        "parameters": schema(json!(["level"]))
+    }));
+    let graph: Graph = serde_json::from_value(json!({
+        "nodes": [{"id": "a", "tool": "optional", "version": "1"},
+                  {"id": "b", "tool": "required", "version": "1"}],
+        "edges": []
+    }))
+    .expect("a graph");
+    let report = graph::check(&graph, &[optional, required]);
+    assert_eq!(report.nodes[0].fit, Fit::Fits, "{report:?}");
+    let findings = &report.nodes[1].findings;
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert_eq!(findings[0].aspect, Aspect::Parameter);
+    assert!(findings[0].reason.contains("level"), "{findings:?}");
+}
+
+#[test]
 fn suggestions_rank() {
     let view = tool(json!({
         "id": "view", "version": "1", "title": "View anything", "curation": "curated",

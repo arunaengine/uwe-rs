@@ -264,8 +264,8 @@ fn format_match(given: &[String], taken: &[String]) -> (FormatMatch, Option<Stri
     }
 }
 
-/// Equal or more general taken terms fit, unknown terms give unknown. Generic FASTQ leaves the
-/// quality encoding open, so it and each FASTQ variant fit each other; the variants stay apart.
+/// Equal or more general taken terms fit, unknown terms give unknown. Each FASTQ variant fits
+/// generic FASTQ; generic FASTQ into a variant is unknown, the variants stay apart.
 fn pair_match(given: &str, taken: &str) -> FormatMatch {
     const FASTQ: &str = "format_1930";
     const VARIANTS: [&str; 3] = ["format_1931", "format_1932", "format_1933"];
@@ -275,12 +275,9 @@ fn pair_match(given: &str, taken: &str) -> FormatMatch {
         FormatMatch::Exact
     } else if !edam.contains(given) || !edam.contains(taken) {
         FormatMatch::Unknown
-    } else if edam.is_kind(given, taken)
-        || (given == FASTQ && VARIANTS.contains(&taken))
-        || (taken == FASTQ && VARIANTS.contains(&given))
-    {
+    } else if edam.is_kind(given, taken) || (taken == FASTQ && VARIANTS.contains(&given)) {
         FormatMatch::General
-    } else if edam.is_kind(taken, given) {
+    } else if edam.is_kind(taken, given) || (given == FASTQ && VARIANTS.contains(&taken)) {
         FormatMatch::Unknown
     } else {
         FormatMatch::Mismatch
@@ -305,8 +302,12 @@ mod tests {
         );
         assert_eq!(
             pair_match("format_1930", "format_1932"),
-            FormatMatch::General
+            FormatMatch::Unknown
         );
+        let (found, reason) =
+            format_match(&["format_1930".to_owned()], &["format_1933".to_owned()]);
+        assert_eq!(found, FormatMatch::Unknown);
+        assert!(reason.is_some_and(|reason| reason.contains("may still fit")));
         assert_eq!(
             pair_match("format_1931", "format_1932"),
             FormatMatch::Mismatch

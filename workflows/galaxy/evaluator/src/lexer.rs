@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn closed_directive_keeps_line() {
+    fn closed_directive_inline() {
         let found = tokens("a #if $x# b #end if# c\n").expect("tokens");
         let expected = [
             text("a "),

@@ -263,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn calls_methods_without_parentheses() {
+    fn autocalls_bare_methods() {
         let tool = tool(
             "<tool id=\"t\"><command>$v.upper ${v.upper()} $sec.inner</command><inputs>\
              <param name=\"v\" type=\"text\" value=\"ab\"/><section name=\"sec\">\
@@ -274,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn errors_name_tool_line() {
+    fn errors_name_line() {
         let unknown = tool("<tool id=\"t\">\n<inputs/>\n<command>a\n$missing</command></tool>");
         let error = render(&unknown, &Job::default()).expect_err("an unknown name");
         let text = error.to_string();

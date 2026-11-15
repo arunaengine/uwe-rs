@@ -12,10 +12,9 @@ use tool_definition::{
 
 use crate::tool::{Input, Param, ParamKind, Test, Tool, truthy};
 
-/// The definition of `tool`. `formats` maps Galaxy datatypes to EDAM formats; a port with a
-/// datatype it lacks takes every format. The Galaxy expectations of each test stay in
-/// `tool.tests`, in the same order: `Expected` cannot hold them yet, so the tests carry inputs
-/// only and are never evaluated without the tool.
+/// The definition of `tool`; `formats` maps Galaxy datatypes to EDAM formats, others take any.
+/// Galaxy expectations stay in `tool.tests`, in the same order: `Expected` cannot hold them yet,
+/// so these tests carry inputs only and are never evaluated without the tool.
 pub fn convert(
     tool: &Tool,
     formats: &BTreeMap<String, String>,

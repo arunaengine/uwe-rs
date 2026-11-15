@@ -2473,6 +2473,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "galaxy-parser"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.42.0",
+ "regex",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tool-definition",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,5 +1,5 @@
 //! Splits a Cheetah template into text, placeholders and directives, with Cheetah's rules for
-//! the whitespace and line ends around directives.
+//! the whitespace and line ends around directives and comments.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -105,6 +105,10 @@ impl Lexer<'_> {
                 self.at += 2;
             } else if rest.starts_with('$') && placeholder_start(&rest[1..]) {
                 self.placeholder()?;
+            } else if rest.starts_with("##") {
+                self.comment();
+            } else if rest.starts_with("#*") {
+                self.block_comment();
             } else if let Some(name) = rest.strip_prefix('#').and_then(directive_name) {
                 self.directive(name)?;
             } else {
@@ -208,6 +212,48 @@ impl Lexer<'_> {
         Ok(())
     }
 
+    fn comment(&mut self) {
+        let clear = self.line_clear();
+        if clear {
+            self.trim_before();
+        }
+        self.at = self.end_of_line();
+        if clear {
+            self.eat_line_end();
+        }
+    }
+
+    fn block_comment(&mut self) {
+        let clear = self.line_clear();
+        let first_end = self.end_of_line();
+        let mut depth = 0;
+        while self.at < self.text.len() {
+            let rest = &self.text[self.at..];
+            if rest.starts_with("#*") {
+                depth += 1;
+                self.at += 2;
+            } else if rest.starts_with("*#") {
+                depth -= 1;
+                self.at += 2;
+                if depth == 0 {
+                    break;
+                }
+            } else {
+                self.at += rest.chars().next().map_or(1, char::len_utf8);
+            }
+        }
+        let eol = self.end_of_line();
+        if self.text[self.at..eol].trim().is_empty() {
+            self.at = eol;
+            if clear {
+                self.eat_line_end();
+            }
+        }
+        if clear && (self.at >= self.text.len() || self.at > first_end) {
+            self.trim_before();
+        }
+    }
+
     fn directive(&mut self, name: &str) -> Result<(), Error> {
         let line = self.line();
         let clear = self.line_clear();
@@ -254,6 +300,9 @@ impl Lexer<'_> {
             line,
             short,
         });
+        if name == "raw" && !short {
+            self.raw(line)?;
+        }
         Ok(())
     }
 
@@ -275,6 +324,22 @@ impl Lexer<'_> {
             self.eat_line_end();
         }
         clear && (self.at >= self.text.len() || self.at > first_end)
+    }
+
+    /// The text of a `#raw` block, up to its `#end raw`, which stays for the parser.
+    fn raw(&mut self, line: usize) -> Result<(), Error> {
+        let Some(found) = self.text[self.at..].find("#end raw") else {
+            return Err(Error::template(line, "#raw without #end raw".to_owned()));
+        };
+        let body = self.text[self.at..self.at + found].to_owned();
+        self.at += found;
+        if !body.is_empty() {
+            self.tokens.push(Token::Text(body));
+        }
+        if self.line_clear() {
+            self.trim_before();
+        }
+        Ok(())
     }
 }
 
@@ -422,6 +487,13 @@ mod tests {
         Token::Text(text.to_owned())
     }
 
+    fn placeholder(expression: &str, line: usize) -> Token {
+        Token::Placeholder {
+            expression: expression.to_owned(),
+            line,
+        }
+    }
+
     #[test]
     fn directive_lines_vanish() {
         let found = tokens("a\n  #if $x:\n  b\n  #end if\nc").expect("tokens");
@@ -449,6 +521,21 @@ mod tests {
     }
 
     #[test]
+    fn comments_and_escapes() {
+        let found =
+            tokens("a ## note\n## whole\n\\$x \\#if $y.z(1)[0] ${a.b}\n#* multi\nline *#\nd")
+                .expect("tokens");
+        let expected = [
+            text("a \n$x #if "),
+            placeholder("$y.z(1)[0]", 3),
+            text(" "),
+            placeholder("$a.b", 3),
+            text("\nd"),
+        ];
+        assert_eq!(found, expected);
+    }
+
+    #[test]
     fn short_form_closes() {
         let found = tokens("#if $x: yes\nnext").expect("tokens");
         let expected = [
@@ -458,5 +545,25 @@ mod tests {
             text("next"),
         ];
         assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn shell_text_stays() {
+        let shell = "#!/bin/sh\n# comment\n#end-of-x \\${GALAXY_SLOTS:-1} $1\n";
+        let found = tokens(shell).expect("tokens");
+        assert_eq!(
+            found,
+            [text(
+                "#!/bin/sh\n# comment\n#end-of-x ${GALAXY_SLOTS:-1} $1\n"
+            )]
+        );
+        let raw = tokens("#raw\n$a #if\n#end raw\nz").expect("tokens");
+        let expected = [
+            directive("raw", "", 1, false),
+            text("$a #if\n"),
+            directive("end", "raw", 3, false),
+            text("z"),
+        ];
+        assert_eq!(raw, expected);
     }
 }

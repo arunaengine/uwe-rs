@@ -32,6 +32,10 @@ pub fn render(tool: &Tool, job: &Job) -> Result<Rendered, Error> {
     let created =
         outputs::created(tool, job, &mut interpreter).map_err(|error| named("outputs", error))?;
     let mut context = vec![(FOLLOW.to_owned(), Value::builtin(FOLLOW, follow))];
+    // Template macros come first, so inputs of the same name win, as in Galaxy's param dict.
+    for (name, text) in &tool.templates {
+        context.push((name.clone(), Value::str(text.as_str())));
+    }
     context.extend(values::wrapped(tool, job).map_err(|error| named("inputs", error))?);
     for output in &tool.outputs {
         let path = job.outputs.get(&output.name).map(String::as_str);
@@ -299,6 +303,20 @@ mod tests {
             rendered.command.as_deref(),
             Some("cmd c.txt"),
             "the #set stays in its file"
+        );
+    }
+
+    #[test]
+    fn binds_template_macros() {
+        let tool = tool(
+            "<tool id=\"t\"><macros><template name=\"greeting\">hi 'x'</template></macros>\
+             <command>$greeting</command></tool>",
+        );
+        let rendered = render(&tool, &Job::default()).expect("renders");
+        assert_eq!(
+            rendered.command.as_deref(),
+            Some("hi 'x'"),
+            "template text is not sanitized"
         );
     }
 

@@ -28,6 +28,8 @@ pub struct Tool {
     /// From the `detect_errors` attribute of the command, like `exit_code`.
     pub detect_errors: Option<String>,
     pub configfiles: Vec<Configfile>,
+    /// The `<template>` macros by name with their text, which Galaxy binds as template values.
+    pub templates: Vec<(String, String)>,
     pub requirements: Vec<Requirement>,
     pub containers: Vec<Container>,
     pub stdio: Stdio,
@@ -300,6 +302,13 @@ fn tool(root: &Element, file: &str) -> Result<Tool, Error> {
             .and_then(|c| c.attribute("detect_errors"))
             .map(str::to_owned),
         configfiles,
+        templates: (root.child("macros").iter())
+            .flat_map(|macros| macros.children.iter())
+            .map(|template| {
+                let name = template.attribute("name").unwrap_or_default();
+                (name.to_owned(), template.text.clone())
+            })
+            .collect(),
         requirements: (requirements.iter())
             .flat_map(|r| r.named("requirement"))
             .map(|requirement| Requirement {
@@ -675,6 +684,17 @@ mod tests {
         );
         assert!(!found[2].optional, "the regex refuses \"\"");
         assert!(found[3].optional, "a multiple select is optional");
+    }
+
+    #[test]
+    fn keeps_template_macros() {
+        let text = r#"<tool id="t"><macros><template name="greeting">hello @WHO@</template>
+            <token name="@WHO@">you</token></macros><command>$greeting</command></tool>"#;
+        let tool = parse(text, "t.xml", &mut |_| unreachable!("no imports")).expect("a tool");
+        assert_eq!(
+            tool.templates,
+            [("greeting".to_owned(), "hello you".to_owned())]
+        );
     }
 
     #[test]

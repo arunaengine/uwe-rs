@@ -495,4 +495,67 @@ mod tests {
             "below 23.0 an inferred optional text is \"\""
         );
     }
+
+    #[test]
+    fn number_rows() {
+        let param = r#"<param name="v" type="integer" optional="true"/>"#;
+        let compared = [
+            "str(v)", "bool(v)", "v == ''", "v == 5", "v == '5'", "v > 3", "3 < v",
+        ];
+        let five = shown(param, "25.1", json!({"v": 5}), &[], &compared);
+        assert_eq!(
+            five,
+            ["5", "True", "False", "True", "False", "True", "True"]
+        );
+        let zero = shown(
+            param,
+            "25.1",
+            json!({"v": 0}),
+            &[],
+            &["str(v)", "bool(v)", "v == ''"],
+        );
+        assert_eq!(zero, ["0", "False", "False"]);
+        let absent = shown(
+            param,
+            "25.1",
+            json!({}),
+            &[],
+            &["str(v)", "bool(v)", "v == ''"],
+        );
+        assert_eq!(absent, ["", "False", "True"]);
+        let float = r#"<param name="v" type="float"/>"#;
+        let quarter = shown(
+            float,
+            "25.1",
+            json!({"v": 0.25}),
+            &[],
+            &["str(v)", "float(v) * 2"],
+        );
+        assert_eq!(quarter, ["0.25", "0.5"]);
+        let nothing = shown(
+            float,
+            "25.1",
+            json!({"v": 0.0}),
+            &[],
+            &["str(v)", "bool(v)"],
+        );
+        assert_eq!(nothing, ["0.0", "False"]);
+    }
+
+    #[test]
+    fn boolean_rows() {
+        let param = r#"<param name="v" type="boolean" truevalue="--yes" falsevalue="--no" optional="true"/>"#;
+        let compared = ["str(v)", "bool(v)", "v == '--yes'", "v == 'true'"];
+        let row = |value: Json| shown(param, "26.2", value, &[], &compared);
+        assert_eq!(row(json!({"v": true})), ["--yes", "True", "True", "True"]);
+        assert_eq!(
+            row(json!({"v": false})),
+            ["--no", "False", "False", "False"]
+        );
+        assert_eq!(
+            row(json!({})),
+            ["--no", "False", "False", "False"],
+            "absent is unchecked"
+        );
+    }
 }

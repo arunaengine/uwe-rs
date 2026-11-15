@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod macros;
+pub mod tool;
 pub mod xml;
 
 /// Why a tool could not be read.

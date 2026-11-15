@@ -1,0 +1,498 @@
+//! Tier 1 Galaxy values in templates: params, selects and datasets as python-evaluator objects
+//! with Galaxy's printed forms, truth values and comparisons, and the raw values of filters.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::any::Any;
+use std::collections::BTreeMap;
+
+use galaxy_parser::tool::{Input as Declared, Param, ParamKind, Tool, at_least, truthy};
+use python_evaluator::interpreter::Operator;
+use python_evaluator::{Error as Python, Interpreter, Native, Value};
+use serde_json::Value as Json;
+
+use crate::Error;
+use crate::sanitize::Sanitizer;
+
+/// What one run of a tool gets: raw parameter values, files, and where outputs go.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Job {
+    /// Raw values nested like the inputs: sections and conditionals as objects. Missing
+    /// values take the defaults of their params.
+    pub parameters: Json,
+    /// The files of data inputs by path, like `adv|control_sgrna`; a missing path is absent.
+    pub datasets: BTreeMap<String, Vec<DataFile>>,
+    /// The paths of the outputs by name.
+    pub outputs: BTreeMap<String, String>,
+    /// The paths where the configfiles are written, by name.
+    pub configfiles: BTreeMap<String, String>,
+    pub tool_directory: String,
+}
+
+/// A file given to a data input, with its Galaxy datatype and name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DataFile {
+    pub path: String,
+    pub ext: String,
+    pub name: String,
+}
+
+/// Galaxy's `InputValueWrapper`: text, integer, float, boolean, hidden and color params.
+pub struct Input {
+    kind: ParamKind,
+    raw: Value,
+    optional: bool,
+    truevalue: String,
+    falsevalue: String,
+    rgb: bool,
+    sanitizer: Option<Sanitizer>,
+}
+
+/// The template values of `tool`'s inputs for `job`, by top-level name.
+pub fn wrapped(tool: &Tool, job: &Job) -> Result<Vec<(String, Value)>, Error> {
+    walk(tool, job, &tool.inputs, &job.parameters, "", false)
+}
+
+/// The raw values that output filters see: Python dicts, numbers, text, booleans, lists, and
+/// datasets, by top-level name.
+pub fn raw(tool: &Tool, job: &Job) -> Result<Vec<(String, Value)>, Error> {
+    walk(tool, job, &tool.inputs, &job.parameters, "", true)
+}
+
+fn walk(
+    tool: &Tool,
+    job: &Job,
+    inputs: &[Declared],
+    given: &Json,
+    prefix: &str,
+    raw: bool,
+) -> Result<Vec<(String, Value)>, Error> {
+    let mut values = Vec::new();
+    for input in inputs {
+        match input {
+            Declared::Param(param) => {
+                let path = format!("{prefix}{}", param.name);
+                values.push((
+                    param.name.clone(),
+                    leaf(tool, job, param, &given[&param.name], &path, raw)?,
+                ));
+            }
+            Declared::Section(section) => {
+                let inner = format!("{prefix}{}|", section.name);
+                let entries = walk(
+                    tool,
+                    job,
+                    &section.inputs,
+                    &given[&section.name],
+                    &inner,
+                    raw,
+                )?;
+                values.push((section.name.clone(), Value::dict_of(entries)));
+            }
+            Declared::Repeat(repeat) => {
+                let mut items = Vec::new();
+                let given_items = given[&repeat.name].as_array().cloned().unwrap_or_default();
+                for (index, item) in given_items.iter().enumerate() {
+                    let inner = format!("{prefix}{}_{index}|", repeat.name);
+                    items.push(Value::dict_of(walk(
+                        tool,
+                        job,
+                        &repeat.inputs,
+                        item,
+                        &inner,
+                        raw,
+                    )?));
+                }
+                values.push((repeat.name.clone(), Value::list(items)));
+            }
+            Declared::Conditional(conditional) => {
+                let inner = format!("{prefix}{}|", conditional.name);
+                let given = &given[&conditional.name];
+                let test = &conditional.test;
+                let chosen = match &given[&test.name] {
+                    Json::Null => test.initial(tool.profile.as_deref()),
+                    value => value.clone(),
+                };
+                let case_name = galaxy_parser::definition::case_value(test, &chosen);
+                let Some(index) = (conditional.cases.iter())
+                    .position(|case| Some(case.value.as_str()) == case_name.as_deref())
+                else {
+                    return Err(Error::Input(format!(
+                        "the conditional {} has no case for {chosen}",
+                        conditional.name
+                    )));
+                };
+                let path = format!("{inner}{}", test.name);
+                let mut entries = vec![(
+                    test.name.clone(),
+                    leaf(tool, job, test, &chosen, &path, raw)?,
+                )];
+                entries.extend(walk(
+                    tool,
+                    job,
+                    &conditional.cases[index].inputs,
+                    given,
+                    &inner,
+                    raw,
+                )?);
+                entries.push(("__current_case__".to_owned(), Value::Int(index as i64)));
+                values.push((conditional.name.clone(), Value::dict_of(entries)));
+            }
+        }
+    }
+    Ok(values)
+}
+
+fn leaf(
+    tool: &Tool,
+    job: &Job,
+    param: &Param,
+    given: &Json,
+    path: &str,
+    raw: bool,
+) -> Result<Value, Error> {
+    let profile = tool.profile.as_deref();
+    let value = match given {
+        Json::Null => python(&param.initial(profile)),
+        given => python(given),
+    };
+    let sanitizer = || Sanitizer::of(param, tool.sanitize);
+    Ok(match &param.kind {
+        ParamKind::Data => {
+            let given = job.datasets.get(path).map_or(0, Vec::len);
+            return Err(Error::Input(format!(
+                "the data input {path} with {given} files is not supported yet"
+            )));
+        }
+        ParamKind::Collection | ParamKind::Other(_) => {
+            return Err(Error::Input(format!(
+                "the input {path} of type {:?} is not supported yet",
+                param.kind
+            )));
+        }
+        _ if raw => value,
+        ParamKind::Select => {
+            return Err(Error::Input(format!(
+                "the select {path} is not supported yet"
+            )));
+        }
+        kind => {
+            // Below profile 23.0 an absent text param whose optionality is inferred is "".
+            let legacy = param.optional_inferred && !at_least(profile, "23.0");
+            let raw_value = match value {
+                Value::None if *kind == ParamKind::Text && legacy => Value::str(""),
+                other => other,
+            };
+            Value::native(Input {
+                kind: kind.clone(),
+                raw: raw_value,
+                optional: param.optional,
+                truevalue: param.truevalue.clone(),
+                falsevalue: param.falsevalue.clone(),
+                rgb: param.rgb,
+                sanitizer: sanitizer(),
+            })
+        }
+    })
+}
+
+/// A JSON value as a Python value.
+pub fn python(value: &Json) -> Value {
+    match value {
+        Json::Null => Value::None,
+        Json::Bool(value) => Value::Bool(*value),
+        Json::Number(number) => match number.as_i64() {
+            Some(integer) => Value::Int(integer),
+            None => Value::Float(number.as_f64().unwrap_or(f64::NAN)),
+        },
+        Json::String(text) => Value::str(text.as_str()),
+        Json::Array(items) => Value::list(items.iter().map(python).collect()),
+        Json::Object(entries) => Value::dict_of(
+            entries
+                .iter()
+                .map(|(key, value)| (key.clone(), python(value))),
+        ),
+    }
+}
+
+/// Python's truth value of a plain value.
+fn truth(value: &Value) -> bool {
+    match value.plain() {
+        Value::None => false,
+        Value::Bool(value) => *value,
+        Value::Int(value) => *value != 0,
+        Value::Float(value) => *value != 0.0,
+        Value::Str(text) => !text.is_empty(),
+        Value::List(items) => !items.borrow().is_empty(),
+        _ => true,
+    }
+}
+
+fn swapped(operator: Operator, reflected: bool) -> Operator {
+    match (operator, reflected) {
+        (Operator::Lt, true) => Operator::Gt,
+        (Operator::Gt, true) => Operator::Lt,
+        (Operator::LtE, true) => Operator::GtE,
+        (Operator::GtE, true) => Operator::LtE,
+        (operator, _) => operator,
+    }
+}
+
+fn parse_float(text: &str) -> Result<f64, Python> {
+    text.trim()
+        .parse::<f64>()
+        .map_err(|_| Python::value_error(format!("could not convert string to float: '{text}'")))
+}
+
+impl Input {
+    /// `to_param_dict_string`: what the template prints.
+    fn printed(&self, interpreter: &mut Interpreter) -> Result<String, Python> {
+        let text = match (&self.kind, self.raw.plain()) {
+            (ParamKind::Boolean, _) => {
+                let checked = match self.raw.plain() {
+                    Value::Bool(value) => *value,
+                    Value::None => false,
+                    other => truthy(&interpreter.to_str(other)?),
+                };
+                return Ok(if checked {
+                    self.truevalue.clone()
+                } else {
+                    self.falsevalue.clone()
+                });
+            }
+            (ParamKind::Color, Value::Str(color)) if self.rgb => {
+                let digits = color.trim_start_matches('#');
+                let channel = |at: usize| {
+                    digits
+                        .get(at..at + 2)
+                        .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+                };
+                return match (channel(0), channel(2), channel(4)) {
+                    (Some(red), Some(green), Some(blue)) => Ok(format!("({red}, {green}, {blue})")),
+                    _ => Err(Python::value_error(format!(
+                        "Failed to convert '{color}' to RGB."
+                    ))),
+                };
+            }
+            (ParamKind::Color, value) => return interpreter.to_str(value),
+            (_, Value::None) => String::new(),
+            (_, value) => interpreter.to_str(value)?,
+        };
+        Ok(match &self.sanitizer {
+            Some(sanitizer) => sanitizer.apply(&text),
+            None => text,
+        })
+    }
+
+    /// `_get_cast_values`: the wrapper cast by its type, beside the other side unchanged.
+    fn cast(&self, interpreter: &mut Interpreter, other: &Value) -> Result<Value, Python> {
+        if let (ParamKind::Boolean, Some(text)) = (&self.kind, other.as_str()) {
+            if text == self.truevalue || text == self.falsevalue {
+                return Ok(Value::str(self.printed(interpreter)?));
+            }
+            return Ok(Value::Bool(truth(&self.raw)));
+        }
+        if self.optional && self.raw.is_none() {
+            return Ok(match other.as_str() {
+                Some(_) => Value::str(self.printed(interpreter)?),
+                None => Value::None,
+            });
+        }
+        Ok(match self.kind {
+            ParamKind::Integer => Value::Int(parse_float(&self.printed(interpreter)?)? as i64),
+            ParamKind::Float => Value::Float(parse_float(&self.printed(interpreter)?)?),
+            ParamKind::Boolean => Value::Bool(truth(&self.raw)),
+            _ => Value::str(self.printed(interpreter)?),
+        })
+    }
+
+    /// The other side of a comparison with a boolean against text that is not its true or
+    /// false value: Galaxy's `string_as_bool`.
+    fn other_side(&self, other: &Value) -> Value {
+        match (&self.kind, other.as_str()) {
+            (ParamKind::Boolean, Some(text))
+                if text != self.truevalue && text != self.falsevalue =>
+            {
+                Value::Bool(truthy(text))
+            }
+            _ => other.clone(),
+        }
+    }
+}
+
+impl Native for Input {
+    fn type_name(&self) -> &str {
+        "InputValueWrapper"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        interpreter: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Python> {
+        match name {
+            "value" => Ok(Some(self.raw.clone())),
+            _ => interpreter.get_attribute(&self.raw, name).map(Some),
+        }
+    }
+
+    fn truthy(&self) -> Option<bool> {
+        Some(truth(&self.raw))
+    }
+
+    fn to_str(&self, interpreter: &mut Interpreter) -> Result<Option<String>, Python> {
+        self.printed(interpreter).map(Some)
+    }
+
+    fn iterate(&self, interpreter: &mut Interpreter) -> Result<Option<Vec<Value>>, Python> {
+        Ok(Some(vec![Value::str(self.printed(interpreter)?)]))
+    }
+
+    fn contains(
+        &self,
+        interpreter: &mut Interpreter,
+        item: &Value,
+    ) -> Result<Option<bool>, Python> {
+        let printed = Value::str(self.printed(interpreter)?);
+        interpreter.equals(item, &printed).map(Some)
+    }
+
+    fn binary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Python> {
+        let operator = swapped(operator, reflected);
+        if !matches!(
+            operator,
+            Operator::Eq
+                | Operator::NotEq
+                | Operator::Lt
+                | Operator::LtE
+                | Operator::Gt
+                | Operator::GtE
+        ) {
+            return Ok(None);
+        }
+        let this = self.cast(interpreter, other)?;
+        let that = self.other_side(other);
+        let equal = interpreter.equals(&this, &that)?;
+        let mut greater = || -> Result<bool, Python> {
+            let result = interpreter.binary(Operator::Gt, &this, &that)?;
+            interpreter.truthy(&result)
+        };
+        let result = match operator {
+            Operator::Eq => equal,
+            Operator::NotEq => !equal,
+            Operator::Gt => greater()?,
+            Operator::Lt => !greater()? && !equal,
+            Operator::GtE => greater()? || equal,
+            _ => !greater()?,
+        };
+        Ok(Some(Value::Bool(result)))
+    }
+
+    fn unary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: &str,
+    ) -> Result<Option<Value>, Python> {
+        let mut number =
+            || -> Result<f64, Python> { parse_float(&self.printed(&mut *interpreter)?) };
+        match operator {
+            "int" => Ok(Some(Value::Int(number()? as i64))),
+            "float" => Ok(Some(Value::Float(number()?))),
+            _ => Ok(None),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use python_evaluator::LocalHost;
+    use serde_json::json;
+
+    use super::*;
+
+    /// The text of each Python expression over the values of params declared in `inputs`.
+    fn shown(
+        inputs: &str,
+        profile: &str,
+        parameters: Json,
+        files: &[(&str, &[&str])],
+        expressions: &[&str],
+    ) -> Vec<String> {
+        let xml = format!("<tool id=\"t\" profile=\"{profile}\"><inputs>{inputs}</inputs></tool>");
+        let tool = galaxy_parser::tool::parse(&xml, "t.xml", &mut |_| unreachable!("no imports"))
+            .expect("a tool");
+        let mut job = Job {
+            parameters,
+            ..Job::default()
+        };
+        for (path, names) in files {
+            let files = (names.iter())
+                .map(|name| DataFile {
+                    path: (*name).to_owned(),
+                    ext: "txt".to_owned(),
+                    name: (*name).to_owned(),
+                })
+                .collect();
+            job.datasets.insert((*path).to_owned(), files);
+        }
+        let mut interpreter = Interpreter::new(Rc::new(LocalHost::new("/")));
+        let globals = interpreter.new_globals("values", None);
+        for (name, value) in wrapped(&tool, &job).expect("values") {
+            globals.set(&name, value);
+        }
+        (expressions.iter())
+            .map(|expression| {
+                let value = interpreter
+                    .eval_text(expression, &globals)
+                    .expect(expression);
+                interpreter.to_str(&value).expect("text")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn text_rows() {
+        let param = r#"<param name="v" type="text" optional="true"/>"#;
+        let row = |value: Json| {
+            shown(
+                param,
+                "25.1",
+                value,
+                &[],
+                &["str(v)", "bool(v)", "v == ''", "v.value is None"],
+            )
+        };
+        assert_eq!(
+            row(json!({"v": "it's"})),
+            ["it__sq__s", "True", "False", "False"]
+        );
+        assert_eq!(row(json!({"v": ""})), ["", "False", "True", "False"]);
+        assert_eq!(row(json!({})), ["", "False", "True", "True"]);
+        let inferred = r#"<param name="v" type="text"/>"#;
+        let legacy = shown(
+            inferred,
+            "22.05",
+            json!({}),
+            &[],
+            &["str(v)", "v.value is None"],
+        );
+        assert_eq!(
+            legacy,
+            ["", "False"],
+            "below 23.0 an inferred optional text is \"\""
+        );
+    }
+}

@@ -58,6 +58,17 @@ pub struct Select {
     sanitizer: Option<Sanitizer>,
 }
 
+/// Galaxy's `DatasetFilenameWrapper`, or its `NoneDataset` when there is no file.
+pub struct Dataset {
+    file: Option<DataFile>,
+    ext: String,
+}
+
+/// Galaxy's `DatasetListWrapper` of a data input with `multiple="true"`.
+pub struct DatasetList {
+    items: Vec<Value>,
+}
+
 /// The template values of `tool`'s inputs for `job`, by top-level name.
 pub fn wrapped(tool: &Tool, job: &Job) -> Result<Vec<(String, Value)>, Error> {
     walk(tool, job, &tool.inputs, &job.parameters, "", false)
@@ -169,10 +180,29 @@ fn leaf(
     let sanitizer = || Sanitizer::of(param, tool.sanitize);
     Ok(match &param.kind {
         ParamKind::Data => {
-            let given = job.datasets.get(path).map_or(0, Vec::len);
-            return Err(Error::Input(format!(
-                "the data input {path} with {given} files is not supported yet"
-            )));
+            let files = job.datasets.get(path);
+            let one = |file: Option<&DataFile>| {
+                Value::native(Dataset {
+                    file: file.cloned(),
+                    ext: file.map_or_else(|| "data".to_owned(), |file| file.ext.clone()),
+                })
+            };
+            match (files, param.multiple, raw) {
+                (None, _, true) => Value::None,
+                (Some(files), false, true) => {
+                    files.first().map_or(Value::None, |file| one(Some(file)))
+                }
+                (Some(files), true, true) => {
+                    Value::list(files.iter().map(|file| one(Some(file))).collect())
+                }
+                (None, true, false) => Value::native(DatasetList {
+                    items: vec![one(None)],
+                }),
+                (Some(files), true, false) => Value::native(DatasetList {
+                    items: files.iter().map(|file| one(Some(file))).collect(),
+                }),
+                (files, false, false) => one(files.and_then(|files| files.first())),
+            }
         }
         ParamKind::Collection | ParamKind::Other(_) => {
             return Err(Error::Input(format!(
@@ -228,6 +258,18 @@ pub fn python(value: &Json) -> Value {
                 .map(|(key, value)| (key.clone(), python(value))),
         ),
     }
+}
+
+/// An output for the template: its path, or an empty dataset when it is not created.
+pub fn output(path: Option<&str>, format: Option<&str>) -> Value {
+    Value::native(Dataset {
+        file: path.map(|path| DataFile {
+            path: path.to_owned(),
+            ext: format.unwrap_or("data").to_owned(),
+            name: String::new(),
+        }),
+        ext: format.unwrap_or("data").to_owned(),
+    })
 }
 
 /// Python's truth value of a plain value.
@@ -572,6 +614,104 @@ impl Native for Select {
     }
 }
 
+impl Native for Dataset {
+    fn type_name(&self) -> &str {
+        match self.file {
+            Some(_) => "DatasetFilenameWrapper",
+            None => "NoneDataset",
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Python> {
+        let Some(file) = &self.file else {
+            return Ok(Some(match name {
+                "ext" | "extension" => Value::str(self.ext.as_str()),
+                "dbkey" => Value::str("?"),
+                _ => Value::str("None"),
+            }));
+        };
+        Ok(Some(match name {
+            "ext" | "extension" | "file_ext" => Value::str(file.ext.as_str()),
+            "name" | "element_identifier" => Value::str(file.name.as_str()),
+            "file_name" => Value::str(file.path.as_str()),
+            _ => return Err(Python::unsupported(format!("the dataset attribute {name}"))),
+        }))
+    }
+
+    fn truthy(&self) -> Option<bool> {
+        Some(self.file.is_some())
+    }
+
+    fn to_str(&self, _: &mut Interpreter) -> Result<Option<String>, Python> {
+        Ok(Some(self.file.as_ref().map_or_else(
+            || "None".to_owned(),
+            |file| file.path.clone(),
+        )))
+    }
+}
+
+impl Native for DatasetList {
+    fn type_name(&self) -> &str {
+        "DatasetListWrapper"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn truthy(&self) -> Option<bool> {
+        Some(self.items.iter().any(truth_of))
+    }
+
+    fn length(&self) -> Option<usize> {
+        Some(self.items.len())
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Python> {
+        Ok(Some(self.items.clone()))
+    }
+
+    fn get_item(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        key: &Value,
+    ) -> Result<Option<Value>, Python> {
+        let length = self.items.len() as i64;
+        let Some(index) = key.as_int() else {
+            return Err(Python::type_error("list indices must be integers"));
+        };
+        let at = if index < 0 { index + length } else { index };
+        match usize::try_from(at).ok().and_then(|at| self.items.get(at)) {
+            Some(item) => Ok(Some(item.clone())),
+            None => Err(Python::index_error("list index out of range")),
+        }
+    }
+
+    fn to_str(&self, interpreter: &mut Interpreter) -> Result<Option<String>, Python> {
+        let mut texts = Vec::new();
+        for item in &self.items {
+            texts.push(interpreter.to_str(item)?);
+        }
+        Ok(Some(texts.join(",")))
+    }
+}
+
+fn truth_of(value: &Value) -> bool {
+    value
+        .as_native::<Dataset>()
+        .is_some_and(|dataset| dataset.file.is_some())
+}
+
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
@@ -748,6 +888,26 @@ mod tests {
                 "True",
                 "Nothing selected."
             ]
+        );
+    }
+
+    #[test]
+    fn dataset_rows() {
+        let params = r#"<param name="v" type="data" optional="true"/>
+            <param name="l" type="data" multiple="true" optional="true"/>"#;
+        let compared = ["str(v)", "bool(v)", "str(l)", "bool(l)", "len(l)"];
+        let row = |files: &[(&str, &[&str])]| shown(params, "25.1", json!({}), files, &compared);
+        let given = row(&[("v", &["in/a.txt"]), ("l", &["p1", "p2"])]);
+        assert_eq!(given, ["in/a.txt", "True", "p1,p2", "True", "2"]);
+        assert_eq!(
+            row(&[("l", &[])]),
+            ["None", "False", "", "False", "0"],
+            "empty list"
+        );
+        assert_eq!(
+            row(&[]),
+            ["None", "False", "None", "False", "1"],
+            "absent becomes [None]"
         );
     }
 }

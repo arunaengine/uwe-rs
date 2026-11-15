@@ -286,6 +286,16 @@ mod tests {
     }
 
     #[test]
+    fn digits_end_names() {
+        let tool = tool(
+            "<tool id=\"t\"><command>$prefix.1.fastq</command><inputs>\
+             <param name=\"prefix\" type=\"text\" value=\"reads\"/></inputs></tool>",
+        );
+        let rendered = render(&tool, &Job::default()).expect("renders");
+        assert_eq!(rendered.command.as_deref(), Some("reads.1.fastq"));
+    }
+
+    #[test]
     fn templates_keep_assignments() {
         let tool = tool(
             "<tool id=\"t\"><command>$mode $cfg</command><configfiles>\

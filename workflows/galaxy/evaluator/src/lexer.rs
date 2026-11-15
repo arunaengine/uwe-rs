@@ -384,7 +384,7 @@ pub struct Chunk {
 /// The lookup chunks of the Cheetah name at `start` and where it ends, as Cheetah's
 /// `getCheetahVarNameChunks`; `None` when a bracket is not closed.
 pub fn chunks(text: &str, start: usize) -> Option<(Vec<Chunk>, usize)> {
-    let word = |at: usize| text[at..].starts_with(|c: char| c == '_' || c.is_alphanumeric());
+    let word = |at: usize| text[at..].starts_with(|c: char| c == '_' || c.is_alphabetic());
     let mut chunks = Vec::new();
     let mut at = start;
     loop {

@@ -117,7 +117,7 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
         let mut inputs = BTreeMap::new();
         let mut scatter = false;
         for (name, supply) in &node.given {
-            let Some(port) = definition.input(name) else {
+            let Some(port) = declared(definition, name, &values) else {
                 let reason = format!("the tool has no input {name}");
                 findings.push(Finding::new(Aspect::Connection, Fit::DoesNotFit, reason));
                 continue;
@@ -131,7 +131,7 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
             if edge.to.node != node.id {
                 continue;
             }
-            let Some(port) = definition.input(&edge.to.port) else {
+            let Some(port) = declared(definition, &edge.to.port, &values) else {
                 edges[number] = Some(broken(format!("the tool has no input {}", edge.to.port)));
                 continue;
             };
@@ -236,6 +236,23 @@ fn resolved(
             Some((output.name.clone(), supply))
         })
         .collect()
+}
+
+/// The declaration of input `name` that the parameter values choose. Cases of a Galaxy
+/// conditional may declare one input each; the first whose condition holds wins.
+fn declared<'a>(definition: &'a Definition, name: &str, values: &Json) -> Option<&'a InputPort> {
+    let mut ports = definition.inputs.iter().filter(|port| port.name == name);
+    let first = ports.next()?;
+    let holds = |port: &&InputPort| {
+        (port.active_when.as_ref())
+            .is_none_or(|condition| parameters::check(condition, values).is_empty())
+    };
+    Some(
+        std::iter::once(first)
+            .chain(ports)
+            .find(holds)
+            .unwrap_or(first),
+    )
 }
 
 /// The finding of a required input without a connection. An input with a condition is required

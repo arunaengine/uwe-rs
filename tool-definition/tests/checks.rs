@@ -453,3 +453,38 @@ fn branch_input_required() {
     );
     assert!(definition.inputs[0].active_when.is_some());
 }
+
+#[test]
+fn chosen_case_input() {
+    let case = |layout: &str, default: bool| {
+        let mut condition = json!({"properties": {"mode": {"properties": {
+            "layout": {"const": layout}}, "required": ["layout"]}}, "required": ["mode"]});
+        if default {
+            condition =
+                json!({"properties": {"mode": {"properties": {"layout": {"const": layout}}}}});
+        }
+        condition
+    };
+    let tool = tool(json!({
+        "id": "cases", "version": "1", "title": "Cases",
+        "inputs": [{"name": "mode|reads", "kind": "file", "formats": [FASTQ],
+                    "active_when": case("fastq", true)},
+                   {"name": "mode|reads", "kind": "file", "formats": [FASTA],
+                    "active_when": case("fasta", false)}],
+        "parameters": {"type": "object"}
+    }));
+    let supply = serde_json::to_value(file(&[FASTA], Cardinality::One)).expect("json");
+    let graph: Graph = serde_json::from_value(json!({
+        "nodes": [{"id": "n", "tool": "cases", "version": "1",
+                   "parameters": {"mode": {"layout": "fasta"}},
+                   "given": {"mode|reads": supply}}],
+        "edges": []
+    }))
+    .expect("a graph");
+    let report = graph::check(&graph, &[tool]);
+    assert_eq!(
+        report.nodes[0].fit,
+        Fit::Fits,
+        "the fasta case takes FASTA: {report:?}"
+    );
+}

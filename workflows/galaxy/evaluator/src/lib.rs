@@ -5,6 +5,7 @@
 
 pub mod lexer;
 pub mod parser;
+pub mod sanitize;
 
 /// Why a template could not be rendered.
 #[derive(Debug, thiserror::Error)]

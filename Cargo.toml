@@ -10,6 +10,7 @@ members = [
     "workflows/argo/runtime",
     "executors/aws-batch",
     "executors/azure-batch",
+    "workflows/galaxy/evaluator",
     "conda-environment",
     "config-file",
     "content-store",
@@ -71,6 +72,7 @@ argo-parser = { path = "workflows/argo/parser" }
 argo-runtime = { path = "workflows/argo/runtime" }
 aws-batch-executor = { path = "executors/aws-batch" }
 azure-batch-executor = { path = "executors/azure-batch" }
+cheetah-evaluator = { path = "workflows/galaxy/evaluator" }
 conda-environment = { path = "conda-environment" }
 config-file = { path = "config-file" }
 content-store = { path = "content-store" }

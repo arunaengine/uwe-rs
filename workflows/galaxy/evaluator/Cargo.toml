@@ -1,0 +1,21 @@
+# Manifest of cheetah-evaluator, which renders the Cheetah templates of Galaxy tools in Rust.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "cheetah-evaluator"
+description = "Cheetah templates and Galaxy values of Galaxy tools, rendered without Python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+galaxy-parser.workspace = true
+python-evaluator.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tool-definition.workspace = true

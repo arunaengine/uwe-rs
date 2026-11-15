@@ -95,7 +95,7 @@ fn walk(
                 let path = format!("{prefix}{}", param.name);
                 values.push((
                     param.name.clone(),
-                    leaf(tool, job, param, &given[&param.name], &path, raw)?,
+                    leaf(tool, job, param, given.get(&param.name), &path, raw)?,
                 ));
             }
             Declared::Section(section) => {
@@ -130,9 +130,9 @@ fn walk(
                 let inner = format!("{prefix}{}|", conditional.name);
                 let given = &given[&conditional.name];
                 let test = &conditional.test;
-                let chosen = match &given[&test.name] {
-                    Json::Null => test.initial(tool.profile.as_deref()),
-                    value => value.clone(),
+                let chosen = match given.get(&test.name) {
+                    None => test.initial(tool.profile.as_deref()),
+                    Some(value) => value.clone(),
                 };
                 let case_name = galaxy_parser::definition::case_value(test, &chosen);
                 let Some(index) = (conditional.cases.iter())
@@ -146,7 +146,7 @@ fn walk(
                 let path = format!("{inner}{}", test.name);
                 let mut entries = vec![(
                     test.name.clone(),
-                    leaf(tool, job, test, &chosen, &path, raw)?,
+                    leaf(tool, job, test, Some(&chosen), &path, raw)?,
                 )];
                 entries.extend(walk(
                     tool,
@@ -168,14 +168,15 @@ fn leaf(
     tool: &Tool,
     job: &Job,
     param: &Param,
-    given: &Json,
+    given: Option<&Json>,
     path: &str,
     raw: bool,
 ) -> Result<Value, Error> {
     let profile = tool.profile.as_deref();
+    // A missing value takes the default; an explicit null clears it.
     let value = match given {
-        Json::Null => python(&param.initial(profile)),
-        given => python(given),
+        None => python(&param.initial(profile)),
+        Some(given) => python(given),
     };
     let sanitizer = || Sanitizer::of(param, tool.sanitize);
     Ok(match &param.kind {
@@ -889,6 +890,19 @@ mod tests {
                 "Nothing selected."
             ]
         );
+    }
+
+    #[test]
+    fn null_clears_default() {
+        let param = r#"<param name="s" type="select" optional="true">
+            <option value="a"/><option value="b" selected="true"/></param>"#;
+        let row = |value: Json| shown(param, "25.1", value, &[], &["str(s)", "bool(s)"]);
+        assert_eq!(
+            row(json!({})),
+            ["b", "True"],
+            "a missing value takes the default"
+        );
+        assert_eq!(row(json!({"s": null})), ["None", "False"], "null clears it");
     }
 
     #[test]

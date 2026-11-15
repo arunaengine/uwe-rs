@@ -120,6 +120,11 @@ fn mageck_definition() {
         parameters::check(&definition.parameters, &values).is_empty(),
         "test values fit the schema"
     );
+    let cleared = json!({"control_id": null, "adv": {"norm_method": null, "fdr_threshold": null}});
+    assert!(
+        parameters::check(&definition.parameters, &cleared).is_empty(),
+        "optional params take null"
+    );
     let wrong = json!({"adv": {"fdr_threshold": 2.0, "norm_method": "mean"}});
     assert_eq!(parameters::check(&definition.parameters, &wrong).len(), 2);
 }

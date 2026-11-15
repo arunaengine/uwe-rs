@@ -310,6 +310,13 @@ fn param_schema(param: &Param, profile: Option<&str>) -> Option<Json> {
     if param.kind == ParamKind::Select && param.multiple {
         schema = json!({"type": "array", "items": schema});
     }
+    if param.optional {
+        if let Some(kind) = schema["type"].as_str() {
+            schema["type"] = json!([kind, "null"]);
+        } else if let Some(values) = schema["enum"].as_array_mut() {
+            values.push(Json::Null);
+        }
+    }
     for (key, bound) in [("minimum", &param.min), ("maximum", &param.max)] {
         let number = bound
             .as_deref()

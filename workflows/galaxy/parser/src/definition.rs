@@ -1,4 +1,4 @@
-//! Converts a Galaxy tool into a tool definition: data ports, parameter schema and outputs.
+//! Converts a Galaxy tool into a tool definition: data ports, parameter schema, outputs, tests.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -7,13 +7,15 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value as Json, json};
 use tool_definition::{
     Cardinality, Citation, Curation, Definition, InputPort, OutputFormat, OutputPort, PortKind,
-    Source,
+    Source, TestValue, ToolTest,
 };
 
-use crate::tool::{Input, Param, ParamKind, Tool};
+use crate::tool::{Input, Param, ParamKind, Test, Tool, truthy};
 
 /// The definition of `tool`. `formats` maps Galaxy datatypes to EDAM formats; a port with a
-/// datatype it lacks takes every format.
+/// datatype it lacks takes every format. The Galaxy expectations of each test stay in
+/// `tool.tests`, in the same order: `Expected` cannot hold them yet, so the tests carry inputs
+/// only and are never evaluated without the tool.
 pub fn convert(
     tool: &Tool,
     formats: &BTreeMap<String, String>,
@@ -82,7 +84,14 @@ pub fn convert(
             })
             .collect(),
         resources: Default::default(),
-        tests: Vec::new(),
+        tests: (tool.tests.iter().enumerate())
+            .map(|(at, test)| ToolTest {
+                name: format!("test {}", at + 1),
+                inputs: test_inputs(tool, test),
+                outputs: BTreeMap::new(),
+                results: BTreeMap::new(),
+            })
+            .collect(),
         curation: Curation::Unchecked,
     }
 }
@@ -323,4 +332,130 @@ fn param_schema(param: &Param, profile: Option<&str>) -> Option<Json> {
         default => schema["default"] = default,
     }
     Some(schema)
+}
+
+/// The inputs of a test by path, typed by their params. A conditional whose test param is not
+/// given gets the first case with a given param, as Galaxy's test runner chooses.
+fn test_inputs(tool: &Tool, test: &Test) -> BTreeMap<String, TestValue> {
+    let mut inputs = BTreeMap::new();
+    let mut params = BTreeMap::new();
+    collect(&tool.inputs, "", &mut params);
+    for given in &test.params {
+        let found = params
+            .get(given.path.as_str())
+            .map(|param| (given.path.clone(), *param))
+            .or_else(|| {
+                let leaf = format!("|{}", given.path);
+                let mut matching = params
+                    .iter()
+                    .filter(|(path, _)| path.ends_with(&leaf) || **path == given.path);
+                match (matching.next(), matching.next()) {
+                    (Some((path, param)), None) => Some((path.clone(), *param)),
+                    _ => None,
+                }
+            });
+        let value = given.value.clone().unwrap_or_default();
+        let (path, typed) = match found {
+            Some((path, param)) => (path, typed_value(param, &value)),
+            None => (given.path.clone(), TestValue::Value(Json::String(value))),
+        };
+        inputs.insert(path, typed);
+    }
+    infer_cases(&tool.inputs, "", &mut inputs);
+    inputs
+}
+
+fn collect<'a>(inputs: &'a [Input], prefix: &str, found: &mut BTreeMap<String, &'a Param>) {
+    for input in inputs {
+        match input {
+            Input::Param(param) => {
+                found.insert(format!("{prefix}{}", param.name), param);
+            }
+            Input::Section(section) => collect(
+                &section.inputs,
+                &format!("{prefix}{}|", section.name),
+                found,
+            ),
+            Input::Repeat(repeat) => collect(
+                &repeat.inputs,
+                &format!("{prefix}{}_0|", repeat.name),
+                found,
+            ),
+            Input::Conditional(conditional) => {
+                let inner = format!("{prefix}{}|", conditional.name);
+                found.insert(
+                    format!("{inner}{}", conditional.test.name),
+                    &conditional.test,
+                );
+                for case in &conditional.cases {
+                    collect(&case.inputs, &inner, found);
+                }
+            }
+        }
+    }
+}
+
+fn infer_cases(inputs: &[Input], prefix: &str, given: &mut BTreeMap<String, TestValue>) {
+    for input in inputs {
+        match input {
+            Input::Param(_) => {}
+            Input::Section(section) => infer_cases(
+                &section.inputs,
+                &format!("{prefix}{}|", section.name),
+                given,
+            ),
+            Input::Repeat(_) => {}
+            Input::Conditional(conditional) => {
+                let inner = format!("{prefix}{}|", conditional.name);
+                let test = format!("{inner}{}", conditional.test.name);
+                if !given.contains_key(&test) {
+                    let mut names = BTreeMap::new();
+                    let chosen = conditional.cases.iter().find(|case| {
+                        names.clear();
+                        collect(&case.inputs, &inner, &mut names);
+                        names.keys().any(|name| given.contains_key(name))
+                    });
+                    if let Some(case) = chosen {
+                        given.insert(test, typed_value(&conditional.test, &case.value));
+                    }
+                }
+                for case in &conditional.cases {
+                    infer_cases(&case.inputs, &inner, given);
+                }
+            }
+        }
+    }
+}
+
+/// A test value as the raw value of its param.
+fn typed_value(param: &Param, value: &str) -> TestValue {
+    let split = || -> Vec<String> {
+        value
+            .split(',')
+            .map(|part| part.trim().to_owned())
+            .collect()
+    };
+    match param.kind {
+        ParamKind::Data | ParamKind::Collection if param.multiple && value.contains(',') => {
+            TestValue::Files(split())
+        }
+        ParamKind::Data | ParamKind::Collection => TestValue::File(value.to_owned()),
+        ParamKind::Integer => TestValue::Value(
+            value
+                .trim()
+                .parse::<i64>()
+                .map_or(Json::String(value.to_owned()), Json::from),
+        ),
+        ParamKind::Float => TestValue::Value(
+            value
+                .trim()
+                .parse::<f64>()
+                .map_or(Json::String(value.to_owned()), Json::from),
+        ),
+        ParamKind::Boolean if value == param.truevalue => TestValue::Value(Json::Bool(true)),
+        ParamKind::Boolean if value == param.falsevalue => TestValue::Value(Json::Bool(false)),
+        ParamKind::Boolean => TestValue::Value(Json::Bool(truthy(value))),
+        ParamKind::Select if param.multiple => TestValue::Value(Json::from(split())),
+        _ => TestValue::Value(Json::String(value.to_owned())),
+    }
 }

@@ -7,8 +7,8 @@ use std::path::Path;
 
 use galaxy_parser::definition::convert;
 use galaxy_parser::tool::{self, Input, Tool};
-use serde_json::json;
-use tool_definition::{Cardinality, Definition, parameters};
+use serde_json::{Value as Json, json};
+use tool_definition::{Cardinality, Definition, TestValue, parameters};
 
 fn fixture(name: &str) -> Tool {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -99,6 +99,21 @@ fn mageck_definition() {
             .output("gene_summary")
             .is_some_and(|output| output.created_when.is_none())
     );
+    let first = &definition.tests[0].inputs;
+    assert_eq!(
+        first.get("sampleids|sample_select"),
+        Some(&TestValue::Value(json!("treated"))),
+        "inferred case"
+    );
+    assert_eq!(
+        first.get("count_table"),
+        Some(&TestValue::File("in.test.sample.txt".to_owned()))
+    );
+    let second = &definition.tests[1].inputs;
+    assert_eq!(
+        second.get("out|normcounts"),
+        Some(&TestValue::Value(Json::Bool(true)))
+    );
     let values = json!({"sampleids": {"sample_select": "control", "day0_label": "d0"},
                         "out": {"normcounts": true}, "adv": {"fdr_threshold": 0.1}});
     assert!(
@@ -145,10 +160,10 @@ fn get_hrun_macros() {
     let names: Vec<&str> = tool.requirements.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(names, ["pyfaidx", "pyvcf", "samtools"]);
     assert_eq!(tool.requirements[0].version.as_deref(), Some("0.5.9.2"));
-    let params: Vec<&str> = tool.tests[0]
-        .params
-        .iter()
-        .map(|p| p.path.as_str())
-        .collect();
-    assert_eq!(params, ["in_vcf", "reference"]);
+    let definition = convert(&tool, &BTreeMap::new(), None);
+    let inputs = &definition.tests[0].inputs;
+    assert_eq!(
+        inputs.get("in_vcf"),
+        Some(&TestValue::File("in.vcf".to_owned()))
+    );
 }

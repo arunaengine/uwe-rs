@@ -31,11 +31,8 @@ pub fn render(tool: &Tool, job: &Job) -> Result<Rendered, Error> {
     let mut interpreter = interpreter();
     let created =
         outputs::created(tool, job, &mut interpreter).map_err(|error| named("outputs", error))?;
-    let globals = interpreter.new_globals("__cheetah__", None);
-    globals.set(FOLLOW, Value::builtin(FOLLOW, follow));
-    for (name, value) in values::wrapped(tool, job).map_err(|error| named("inputs", error))? {
-        globals.set(&name, value);
-    }
+    let mut context = vec![(FOLLOW.to_owned(), Value::builtin(FOLLOW, follow))];
+    context.extend(values::wrapped(tool, job).map_err(|error| named("inputs", error))?);
     for output in &tool.outputs {
         let path = job.outputs.get(&output.name).map(String::as_str);
         let made = created.contains(&output.name);
@@ -46,24 +43,22 @@ pub fn render(tool: &Tool, job: &Job) -> Result<Rendered, Error> {
             ));
         }
         let value = values::output(path.filter(|_| made), output.format.as_deref());
-        globals.set(&output.name, value);
+        context.push((output.name.clone(), value));
     }
     for (name, path) in &job.configfiles {
-        globals.set(name, Value::str(path.as_str()));
+        context.push((name.clone(), Value::str(path.as_str())));
     }
-    globals.set(
-        "__tool_directory__",
-        Value::str(job.tool_directory.as_str()),
-    );
+    let directory = Value::str(job.tool_directory.as_str());
+    context.push(("__tool_directory__".to_owned(), directory));
     let mut configfiles = Vec::new();
     for configfile in &tool.configfiles {
-        let text = template(&configfile.template, &mut interpreter, &globals)
+        let text = template(&configfile.template, &mut interpreter, &context)
             .map_err(|error| named(&format!("configfile {}", configfile.name), error))?;
         configfiles.push((configfile.name.clone(), text));
     }
     let command = match &tool.command {
         Some(command) => Some(command_line(
-            &template(command, &mut interpreter, &globals)
+            &template(command, &mut interpreter, &context)
                 .map_err(|error| named("command", error))?,
         )),
         None => None,
@@ -90,16 +85,21 @@ pub fn interpreter() -> Interpreter {
     Interpreter::new(Rc::new(Closed))
 }
 
-/// Renders the template of a tool part; lines in errors count from the tool file.
+/// Renders the template of a tool part in its own scope over the shared `context`, so that its
+/// `#set` stays its own, as each Galaxy template is a separate Cheetah template.
 fn template(
     template: &Template,
     interpreter: &mut Interpreter,
-    globals: &Rc<Scope>,
+    context: &[(String, Value)],
 ) -> Result<String, Error> {
     let shift = |error: Error| error.shifted(template.line.saturating_sub(1));
     let nodes = parser::parse(&template.text).map_err(shift)?;
+    let globals = interpreter.new_globals("__cheetah__", None);
+    for (name, value) in context {
+        globals.set(name, value.clone());
+    }
     let mut out = String::new();
-    nodes_into(&nodes, interpreter, globals, &mut out).map_err(shift)?;
+    nodes_into(&nodes, interpreter, &globals, &mut out).map_err(shift)?;
     Ok(out)
 }
 
@@ -278,6 +278,27 @@ mod tests {
         assert_eq!(
             rendered.command.as_deref(),
             Some("A,B 7 A ['a', 'b'][0].upper")
+        );
+    }
+
+    #[test]
+    fn templates_keep_assignments() {
+        let tool = tool(
+            "<tool id=\"t\"><command>$mode $cfg</command><configfiles>\
+             <configfile name=\"cfg\">#set $mode = 'config'\n$mode</configfile></configfiles>\
+             <inputs><param name=\"mode\" type=\"text\" value=\"cmd\"/></inputs></tool>",
+        );
+        let mut job = Job::default();
+        job.configfiles.insert("cfg".to_owned(), "c.txt".to_owned());
+        let rendered = render(&tool, &job).expect("renders");
+        assert_eq!(
+            rendered.configfiles,
+            [("cfg".to_owned(), "config".to_owned())]
+        );
+        assert_eq!(
+            rendered.command.as_deref(),
+            Some("cmd c.txt"),
+            "the #set stays in its file"
         );
     }
 

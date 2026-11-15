@@ -1,4 +1,4 @@
-//! The typed model of a Galaxy tool: identity, inputs tree and templates.
+//! The typed model of a Galaxy tool: inputs tree, outputs, templates, requirements and tests.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -23,10 +23,15 @@ pub struct Tool {
     /// Whether text and select values are sanitized, from `<options sanitize>`.
     pub sanitize: bool,
     pub inputs: Vec<Input>,
+    pub outputs: Vec<Output>,
     pub command: Option<Template>,
     /// From the `detect_errors` attribute of the command, like `exit_code`.
     pub detect_errors: Option<String>,
     pub configfiles: Vec<Configfile>,
+    pub requirements: Vec<Requirement>,
+    pub containers: Vec<Container>,
+    pub stdio: Stdio,
+    pub tests: Vec<Test>,
 }
 
 /// A Cheetah template with the line of its element, for errors.
@@ -76,6 +81,7 @@ pub struct Param {
     pub min: Option<String>,
     pub max: Option<String>,
     pub rgb: bool,
+    pub sanitizer: Option<Sanitizer>,
     pub line: usize,
 }
 
@@ -98,6 +104,31 @@ pub struct SelectOption {
     pub value: String,
     pub label: String,
     pub selected: bool,
+}
+
+/// A `<sanitizer>`: only its last `<valid>` and `<mapping>` count, as in Galaxy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sanitizer {
+    pub sanitize: bool,
+    pub invalid: String,
+    pub valid: Option<Rules>,
+    pub mapping: Option<Rules>,
+}
+
+/// A preset set of characters or mappings, changed by `add` and `remove` actions in order.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Rules {
+    pub initial: String,
+    pub actions: Vec<Action>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Action {
+    pub add: bool,
+    pub preset: Option<String>,
+    pub value: Option<String>,
+    pub source: Option<String>,
+    pub target: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -126,6 +157,64 @@ pub struct Repeat {
     pub name: String,
     pub title: Option<String>,
     pub inputs: Vec<Input>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Output {
+    pub name: String,
+    /// `data` or `collection`.
+    pub kind: String,
+    pub format: Option<String>,
+    pub format_source: Option<String>,
+    pub from_work_dir: Option<String>,
+    pub label: Option<String>,
+    /// Python expressions over the raw parameter values; all must hold.
+    pub filters: Vec<String>,
+    /// `<change_format>` rules: input name, value and format.
+    pub changes: Vec<(String, String, String)>,
+    pub line: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Requirement {
+    pub kind: String,
+    pub name: String,
+    pub version: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Container {
+    pub kind: String,
+    pub image: String,
+}
+
+/// The `<stdio>` rules, each kept as its attributes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Stdio {
+    pub exit_codes: Vec<Vec<(String, String)>>,
+    pub regexes: Vec<Vec<(String, String)>>,
+}
+
+/// A `<test>`. Expectations stay as their expanded elements, so none is lost before uwe can
+/// check it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Test {
+    pub line: usize,
+    /// Attributes like `expect_num_outputs` and `expect_failure`.
+    pub attributes: Vec<(String, String)>,
+    pub params: Vec<TestParam>,
+    pub outputs: Vec<Element>,
+    /// Other checks, like `assert_command`, `assert_stdout` and `output_collection`.
+    pub checks: Vec<Element>,
+}
+
+/// A test param by its path, like `out|normcounts`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TestParam {
+    pub path: String,
+    pub value: Option<String>,
+    pub ftype: Option<String>,
+    pub element: Element,
 }
 
 /// Reads the tool at `path`, with the macro files beside it.
@@ -179,10 +268,17 @@ fn tool(root: &Element, file: &str) -> Result<Tool, Error> {
             template: template(configfile),
         });
     }
+    let requirements = root.child("requirements");
     let inputs = match root.child("inputs") {
         Some(inputs) => inputs_of(inputs, file)?,
         None => Vec::new(),
     };
+    let outputs = root.child("outputs").map(outputs_of).unwrap_or_default();
+    let tests = (root.child("tests").iter())
+        .flat_map(|tests| tests.named("test"))
+        .map(test_of)
+        .collect();
+    let stdio = root.child("stdio").map(stdio_of).unwrap_or_default();
     Ok(Tool {
         name: root.attribute("name").unwrap_or_default().to_owned(),
         version: root.attribute("version").unwrap_or("1.0.0").to_owned(),
@@ -204,8 +300,29 @@ fn tool(root: &Element, file: &str) -> Result<Tool, Error> {
             .and_then(|c| c.attribute("detect_errors"))
             .map(str::to_owned),
         configfiles,
+        requirements: (requirements.iter())
+            .flat_map(|r| r.named("requirement"))
+            .map(|requirement| Requirement {
+                kind: requirement
+                    .attribute("type")
+                    .unwrap_or("package")
+                    .to_owned(),
+                name: requirement.content().trim().to_owned(),
+                version: requirement.attribute("version").map(str::to_owned),
+            })
+            .collect(),
+        containers: (requirements.iter())
+            .flat_map(|r| r.named("container"))
+            .map(|container| Container {
+                kind: container.attribute("type").unwrap_or_default().to_owned(),
+                image: container.content().trim().to_owned(),
+            })
+            .collect(),
         id,
         inputs,
+        outputs,
+        stdio,
+        tests,
     })
 }
 
@@ -329,6 +446,7 @@ fn param(element: &Element, file: &str) -> Result<Param, Error> {
         min: attribute("min"),
         max: attribute("max"),
         rgb: element.attribute("rgb").is_some_and(truthy),
+        sanitizer: element.child("sanitizer").map(sanitizer),
         line: element.line,
         argument,
         name,
@@ -351,6 +469,123 @@ fn accepts_empty(element: &Element) -> bool {
         };
         passes != negate
     })
+}
+
+fn sanitizer(element: &Element) -> Sanitizer {
+    let rules = |name: &str| {
+        element.named(name).last().map(|rules| Rules {
+            initial: rules.attribute("initial").unwrap_or("default").to_owned(),
+            actions: (rules.children.iter())
+                .filter(|action| action.name == "add" || action.name == "remove")
+                .map(|action| Action {
+                    add: action.name == "add",
+                    preset: action.attribute("preset").map(str::to_owned),
+                    value: action.attribute("value").map(str::to_owned),
+                    source: action.attribute("source").map(str::to_owned),
+                    target: action.attribute("target").map(str::to_owned),
+                })
+                .collect(),
+        })
+    };
+    Sanitizer {
+        sanitize: element.attribute("sanitize").is_none_or(truthy),
+        invalid: element.attribute("invalid_char").unwrap_or("X").to_owned(),
+        valid: rules("valid"),
+        mapping: rules("mapping"),
+    }
+}
+
+fn outputs_of(outputs: &Element) -> Vec<Output> {
+    (outputs.children.iter())
+        .filter(|output| output.name == "data" || output.name == "collection")
+        .map(|output| {
+            let attribute = |name: &str| output.attribute(name).map(str::to_owned);
+            Output {
+                name: attribute("name").unwrap_or_default(),
+                kind: output.name.clone(),
+                format: attribute("format"),
+                format_source: attribute("format_source"),
+                from_work_dir: attribute("from_work_dir"),
+                label: attribute("label"),
+                filters: (output.named("filter"))
+                    .map(|filter| filter.content().trim().to_owned())
+                    .collect(),
+                changes: (output.child("change_format").iter())
+                    .flat_map(|change| change.named("when"))
+                    .map(|when| {
+                        let value =
+                            |name: &str| when.attribute(name).unwrap_or_default().to_owned();
+                        (value("input"), value("value"), value("format"))
+                    })
+                    .collect(),
+                line: output.line,
+            }
+        })
+        .collect()
+}
+
+fn stdio_of(stdio: &Element) -> Stdio {
+    let rules = |name: &str| {
+        (stdio.named(name))
+            .map(|rule| rule.attributes.clone())
+            .collect()
+    };
+    Stdio {
+        exit_codes: rules("exit_code"),
+        regexes: rules("regex"),
+    }
+}
+
+fn test_of(test: &Element) -> Test {
+    let mut params = Vec::new();
+    let mut outputs = Vec::new();
+    let mut checks = Vec::new();
+    test_params(test, "", &mut params);
+    for child in &test.children {
+        match child.name.as_str() {
+            "param" | "conditional" | "section" | "repeat" => {}
+            "output" => outputs.push(child.clone()),
+            _ => checks.push(child.clone()),
+        }
+    }
+    Test {
+        line: test.line,
+        attributes: test.attributes.clone(),
+        params,
+        outputs,
+        checks,
+    }
+}
+
+/// The params of a test, with the paths of the conditionals, sections and repeats they are in.
+fn test_params(parent: &Element, prefix: &str, params: &mut Vec<TestParam>) {
+    let mut repeats: Vec<(String, usize)> = Vec::new();
+    for child in &parent.children {
+        let name = child.attribute("name").unwrap_or_default();
+        match child.name.as_str() {
+            "param" => params.push(TestParam {
+                path: format!("{prefix}{name}"),
+                value: child.attribute("value").map(str::to_owned),
+                ftype: child.attribute("ftype").map(str::to_owned),
+                element: child.clone(),
+            }),
+            "conditional" | "section" => test_params(child, &format!("{prefix}{name}|"), params),
+            "repeat" => {
+                let index = match repeats.iter_mut().find(|(known, _)| known == name) {
+                    Some(entry) => {
+                        entry.1 += 1;
+                        entry.1
+                    }
+                    None => {
+                        repeats.push((name.to_owned(), 0));
+                        0
+                    }
+                };
+                test_params(child, &format!("{prefix}{name}_{index}|"), params);
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Param {

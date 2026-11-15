@@ -4,9 +4,14 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod lexer;
+pub mod outputs;
 pub mod parser;
+pub mod render;
 pub mod sanitize;
 pub mod values;
+
+pub use render::{Rendered, render};
+pub use values::{DataFile, Job};
 
 /// Why a template could not be rendered.
 #[derive(Debug, thiserror::Error)]
@@ -33,5 +38,20 @@ pub enum Error {
 impl Error {
     pub(crate) fn template(line: usize, message: String) -> Error {
         Error::Template { line, message }
+    }
+
+    /// The same error with its line moved by `lines`, from the template to the tool file.
+    pub(crate) fn shifted(self, lines: usize) -> Error {
+        match self {
+            Error::Template { line, message } => Error::Template {
+                line: line + lines,
+                message,
+            },
+            Error::Python { line, source } => Error::Python {
+                line: line + lines,
+                source,
+            },
+            other => other,
+        }
     }
 }

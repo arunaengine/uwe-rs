@@ -128,6 +128,10 @@ pub struct InputPort {
     /// Data conditions the port needs, like sorting by coordinate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<Condition>,
+    /// A JSON Schema over the parameter values: the input is used only when they meet it, like a
+    /// data input in one branch of a Galaxy conditional. None means always.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_when: Option<Json>,
 }
 
 /// An output of the tool.
@@ -147,6 +151,10 @@ pub struct OutputPort {
     /// Data conditions every result of this output meets, like sorting by coordinate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub guarantees: Vec<Condition>,
+    /// A Python expression over the raw parameter values, as a Galaxy output filter: the output
+    /// is created only when it is true. None means always.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_when: Option<String>,
 }
 
 /// What a port carries: `"file"`, `"directory"` or `{"value": "integer"}`.

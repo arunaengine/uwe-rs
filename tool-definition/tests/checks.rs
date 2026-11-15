@@ -403,3 +403,53 @@ fn definition_round_trip() {
     }));
     assert!(unknown.is_err(), "unknown fields are refused");
 }
+
+/// A tool whose reads input is used only in its paired branch, as in a Galaxy conditional.
+fn branched() -> Definition {
+    tool(json!({
+        "id": "branched", "version": "1", "title": "Branched",
+        "inputs": [{"name": "mode|mates", "kind": "file",
+                    "active_when": {"properties": {"mode": {"properties": {
+                        "layout": {"const": "paired"}}, "required": ["layout"]}},
+                                    "required": ["mode"]}}],
+        "parameters": {"type": "object"},
+        "outputs": [{"name": "log", "kind": "file", "created_when": "keep['log'] is True"}]
+    }))
+}
+
+#[test]
+fn branch_input_required() {
+    let graph: Graph = serde_json::from_value(json!({
+        "nodes": [
+            {"id": "single", "tool": "branched", "version": "1",
+             "parameters": {"mode": {"layout": "single"}}},
+            {"id": "paired", "tool": "branched", "version": "1",
+             "parameters": {"mode": {"layout": "paired"}}},
+            {"id": "unset", "tool": "branched", "version": "1"}
+        ],
+        "edges": []
+    }))
+    .expect("a graph");
+    let report = graph::check(&graph, &[branched()]);
+    let [single, paired, unset] = report.nodes.as_slice() else {
+        panic!("three nodes: {report:?}");
+    };
+    assert_eq!(
+        single.fit,
+        Fit::Fits,
+        "the other branch needs no mates: {single:?}"
+    );
+    assert_eq!(paired.fit, Fit::DoesNotFit, "{paired:?}");
+    assert!(
+        paired.findings[0].reason.contains("mode|mates"),
+        "{paired:?}"
+    );
+    assert_eq!(unset.fit, Fit::Unknown, "no parameters yet: {unset:?}");
+    assert_eq!(unset.findings[0].aspect, Aspect::Connection, "{unset:?}");
+    let definition = branched();
+    assert_eq!(
+        definition.outputs[0].created_when.as_deref(),
+        Some("keep['log'] is True")
+    );
+    assert!(definition.inputs[0].active_when.is_some());
+}

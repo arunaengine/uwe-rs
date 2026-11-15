@@ -9,7 +9,7 @@ use serde_json::Value as Json;
 
 use crate::conditions::Fact;
 use crate::connection::{self, Check, FormatMatch, Supply};
-use crate::definition::Definition;
+use crate::definition::{Definition, InputPort};
 use crate::finding::{Aspect, Finding, Fit, worst};
 use crate::parameters;
 
@@ -151,8 +151,7 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
         }
         for port in &definition.inputs {
             if port.required && port.default.is_none() && !inputs.contains_key(&port.name) {
-                let reason = format!("the required input {} is not connected", port.name);
-                findings.push(Finding::new(Aspect::Connection, Fit::DoesNotFit, reason));
+                findings.extend(unconnected(port, &node.parameters, &values));
             }
         }
         outputs[at] = Some(resolved(definition, &inputs, scatter));
@@ -237,6 +236,28 @@ fn resolved(
             Some((output.name.clone(), supply))
         })
         .collect()
+}
+
+/// The finding of a required input without a connection. An input with a condition is required
+/// only when the parameters meet it, and unknown while the node has no parameters yet.
+fn unconnected(port: &InputPort, given: &Json, values: &Json) -> Option<Finding> {
+    let fit = match &port.active_when {
+        None => Fit::DoesNotFit,
+        Some(_) if given.is_null() => Fit::Unknown,
+        Some(condition) => match parameters::check(condition, values).first() {
+            None => Fit::DoesNotFit,
+            Some(finding) if finding.fit == Fit::Unknown => Fit::Unknown,
+            Some(_) => return None,
+        },
+    };
+    let reason = match fit {
+        Fit::Unknown => format!(
+            "the input {} is required for some parameter values, which are not known yet",
+            port.name
+        ),
+        _ => format!("the required input {} is not connected", port.name),
+    };
+    Some(Finding::new(Aspect::Connection, fit, reason))
 }
 
 fn broken(reason: String) -> Check {

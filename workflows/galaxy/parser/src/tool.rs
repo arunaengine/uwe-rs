@@ -1,0 +1,736 @@
+//! The typed model of a Galaxy tool: inputs tree, outputs, templates, requirements and tests.
+// Copyright (c) 2026 The uwe Contributors
+// SPDX-License-Identifier: MIT or Apache-2.0
+
+use std::path::Path;
+
+use serde_json::Value as Json;
+
+use crate::Error;
+use crate::xml::{self, Element};
+
+/// A tool after macro expansion. Text is kept as the XML gives it; values are typed when used.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tool {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub profile: Option<String>,
+    pub description: Option<String>,
+    pub license: Option<String>,
+    pub biotools: Option<String>,
+    pub dois: Vec<String>,
+    /// Whether text and select values are sanitized, from `<options sanitize>`.
+    pub sanitize: bool,
+    pub inputs: Vec<Input>,
+    pub outputs: Vec<Output>,
+    pub command: Option<Template>,
+    /// From the `detect_errors` attribute of the command, like `exit_code`.
+    pub detect_errors: Option<String>,
+    pub configfiles: Vec<Configfile>,
+    /// The `<template>` macros by name with their text, which Galaxy binds as template values.
+    pub templates: Vec<(String, String)>,
+    pub requirements: Vec<Requirement>,
+    pub containers: Vec<Container>,
+    pub stdio: Stdio,
+    pub tests: Vec<Test>,
+}
+
+/// A Cheetah template with the line of its element, for errors.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Template {
+    pub text: String,
+    pub line: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Configfile {
+    pub name: String,
+    pub filename: Option<String>,
+    pub template: Template,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Input {
+    Param(Param),
+    Conditional(Conditional),
+    Section(Section),
+    Repeat(Repeat),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Param {
+    pub name: String,
+    pub kind: ParamKind,
+    pub label: Option<String>,
+    pub help: Option<String>,
+    pub argument: Option<String>,
+    pub optional: bool,
+    /// A text param without an `optional` attribute whose validators accept "".
+    pub optional_inferred: bool,
+    /// The `value` attribute.
+    pub value: Option<String>,
+    pub multiple: bool,
+    pub options: Vec<SelectOption>,
+    /// Options that come from a data table, a dataset or code, which tier 1 cannot list.
+    pub dynamic: bool,
+    pub separator: String,
+    pub truevalue: String,
+    pub falsevalue: String,
+    pub checked: Option<bool>,
+    /// The Galaxy datatypes a data param takes.
+    pub formats: Vec<String>,
+    pub min: Option<String>,
+    pub max: Option<String>,
+    pub rgb: bool,
+    pub sanitizer: Option<Sanitizer>,
+    pub line: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ParamKind {
+    Text,
+    Integer,
+    Float,
+    Boolean,
+    Select,
+    Hidden,
+    Color,
+    Data,
+    Collection,
+    Other(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectOption {
+    pub value: String,
+    pub label: String,
+    pub selected: bool,
+}
+
+/// A `<sanitizer>`: only its last `<valid>` and `<mapping>` count, as in Galaxy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sanitizer {
+    pub sanitize: bool,
+    pub invalid: String,
+    pub valid: Option<Rules>,
+    pub mapping: Option<Rules>,
+}
+
+/// A preset set of characters or mappings, changed by `add` and `remove` actions in order.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Rules {
+    pub initial: String,
+    pub actions: Vec<Action>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Action {
+    pub add: bool,
+    pub preset: Option<String>,
+    pub value: Option<String>,
+    pub source: Option<String>,
+    pub target: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Conditional {
+    pub name: String,
+    pub test: Param,
+    pub cases: Vec<Case>,
+}
+
+/// A `<when>` of a conditional.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Case {
+    pub value: String,
+    pub inputs: Vec<Input>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Section {
+    pub name: String,
+    pub title: Option<String>,
+    pub inputs: Vec<Input>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Repeat {
+    pub name: String,
+    pub title: Option<String>,
+    pub inputs: Vec<Input>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Output {
+    pub name: String,
+    /// `data` or `collection`.
+    pub kind: String,
+    pub format: Option<String>,
+    pub format_source: Option<String>,
+    pub from_work_dir: Option<String>,
+    pub label: Option<String>,
+    /// Python expressions over the raw parameter values; all must hold.
+    pub filters: Vec<String>,
+    /// `<change_format>` rules: input name, value and format.
+    pub changes: Vec<(String, String, String)>,
+    pub line: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Requirement {
+    pub kind: String,
+    pub name: String,
+    pub version: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Container {
+    pub kind: String,
+    pub image: String,
+}
+
+/// The `<stdio>` rules, each kept as its attributes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Stdio {
+    pub exit_codes: Vec<Vec<(String, String)>>,
+    pub regexes: Vec<Vec<(String, String)>>,
+}
+
+/// A `<test>`. Expectations stay as their expanded elements, so none is lost before uwe can
+/// check it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Test {
+    pub line: usize,
+    /// Attributes like `expect_num_outputs` and `expect_failure`.
+    pub attributes: Vec<(String, String)>,
+    pub params: Vec<TestParam>,
+    pub outputs: Vec<Element>,
+    /// Other checks, like `assert_command`, `assert_stdout` and `output_collection`.
+    pub checks: Vec<Element>,
+}
+
+/// A test param by its path, like `out|normcounts`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TestParam {
+    pub path: String,
+    pub value: Option<String>,
+    pub ftype: Option<String>,
+    pub element: Element,
+}
+
+/// Reads the tool at `path`, with the macro files beside it.
+pub fn load(path: &Path) -> Result<Tool, Error> {
+    let folder = path.parent().unwrap_or(Path::new("."));
+    let file = path.display().to_string();
+    let text = std::fs::read_to_string(path).map_err(|source| Error::Import {
+        path: file.clone(),
+        source,
+    })?;
+    parse(&text, &file, &mut |import| {
+        let path = folder.join(import);
+        std::fs::read_to_string(&path).map_err(|source| Error::Import {
+            path: path.display().to_string(),
+            source,
+        })
+    })
+}
+
+/// Reads a tool from its text; `load` reads the macro files it imports.
+pub fn parse(
+    text: &str,
+    file: &str,
+    load: &mut dyn FnMut(&str) -> Result<String, Error>,
+) -> Result<Tool, Error> {
+    let mut root = xml::read(text, file)?;
+    crate::macros::expand(&mut root, load)?;
+    if root.name != "tool" {
+        return Err(Error::Document {
+            file: file.to_owned(),
+            line: root.line,
+            message: format!("the root element is <{}>, not <tool>", root.name),
+        });
+    }
+    tool(&root, file)
+}
+
+fn tool(root: &Element, file: &str) -> Result<Tool, Error> {
+    let text = |element: Option<&Element>| element.map(|found| found.content().trim().to_owned());
+    let id = root.attribute("id").unwrap_or_default().to_owned();
+    let command = root.child("command");
+    let mut configfiles = Vec::new();
+    for configfile in root
+        .child("configfiles")
+        .iter()
+        .flat_map(|c| c.named("configfile"))
+    {
+        configfiles.push(Configfile {
+            name: configfile.attribute("name").unwrap_or_default().to_owned(),
+            filename: configfile.attribute("filename").map(str::to_owned),
+            template: template(configfile),
+        });
+    }
+    let requirements = root.child("requirements");
+    let inputs = match root.child("inputs") {
+        Some(inputs) => inputs_of(inputs, file)?,
+        None => Vec::new(),
+    };
+    let outputs = root.child("outputs").map(outputs_of).unwrap_or_default();
+    let tests = (root.child("tests").iter())
+        .flat_map(|tests| tests.named("test"))
+        .map(test_of)
+        .collect();
+    let stdio = root.child("stdio").map(stdio_of).unwrap_or_default();
+    Ok(Tool {
+        name: root.attribute("name").unwrap_or_default().to_owned(),
+        version: root.attribute("version").unwrap_or("1.0.0").to_owned(),
+        profile: root.attribute("profile").map(str::to_owned),
+        license: root.attribute("license").map(str::to_owned),
+        description: text(root.child("description")).filter(|found| !found.is_empty()),
+        biotools: (root.child("xrefs").iter())
+            .flat_map(|xrefs| xrefs.named("xref"))
+            .find(|xref| xref.attribute("type") == Some("bio.tools"))
+            .map(|xref| xref.content().trim().to_owned()),
+        dois: (root.child("citations").iter())
+            .flat_map(|citations| citations.named("citation"))
+            .filter(|citation| citation.attribute("type") == Some("doi"))
+            .map(|citation| citation.content().trim().to_owned())
+            .collect(),
+        sanitize: (root.child("options").and_then(|o| o.attribute("sanitize"))).is_none_or(truthy),
+        command: command.map(template),
+        detect_errors: command
+            .and_then(|c| c.attribute("detect_errors"))
+            .map(str::to_owned),
+        configfiles,
+        templates: (root.child("macros").iter())
+            .flat_map(|macros| macros.children.iter())
+            .map(|template| {
+                let name = template.attribute("name").unwrap_or_default();
+                (name.to_owned(), template.text.clone())
+            })
+            .collect(),
+        requirements: (requirements.iter())
+            .flat_map(|r| r.named("requirement"))
+            .map(|requirement| Requirement {
+                kind: requirement
+                    .attribute("type")
+                    .unwrap_or("package")
+                    .to_owned(),
+                name: requirement.content().trim().to_owned(),
+                version: requirement.attribute("version").map(str::to_owned),
+            })
+            .collect(),
+        containers: (requirements.iter())
+            .flat_map(|r| r.named("container"))
+            .map(|container| Container {
+                kind: container.attribute("type").unwrap_or_default().to_owned(),
+                image: container.content().trim().to_owned(),
+            })
+            .collect(),
+        id,
+        inputs,
+        outputs,
+        stdio,
+        tests,
+    })
+}
+
+fn template(element: &Element) -> Template {
+    Template {
+        text: element.content(),
+        line: element.line,
+    }
+}
+
+fn inputs_of(parent: &Element, file: &str) -> Result<Vec<Input>, Error> {
+    let mut inputs = Vec::new();
+    for element in &parent.children {
+        let input = match element.name.as_str() {
+            "param" => Input::Param(param(element, file)?),
+            "conditional" => {
+                let Some(test) = element.child("param") else {
+                    return Err(Error::Document {
+                        file: file.to_owned(),
+                        line: element.line,
+                        message: "a conditional without a test param".to_owned(),
+                    });
+                };
+                let mut cases = Vec::new();
+                for case in element.named("when") {
+                    cases.push(Case {
+                        value: case.attribute("value").unwrap_or_default().to_owned(),
+                        inputs: inputs_of(case, file)?,
+                    });
+                }
+                Input::Conditional(Conditional {
+                    name: element.attribute("name").unwrap_or_default().to_owned(),
+                    test: param(test, file)?,
+                    cases,
+                })
+            }
+            "section" => Input::Section(Section {
+                name: element.attribute("name").unwrap_or_default().to_owned(),
+                title: element.attribute("title").map(str::to_owned),
+                inputs: inputs_of(element, file)?,
+            }),
+            "repeat" => Input::Repeat(Repeat {
+                name: element.attribute("name").unwrap_or_default().to_owned(),
+                title: element.attribute("title").map(str::to_owned),
+                inputs: inputs_of(element, file)?,
+            }),
+            _ => continue,
+        };
+        inputs.push(input);
+    }
+    Ok(inputs)
+}
+
+fn param(element: &Element, file: &str) -> Result<Param, Error> {
+    let attribute = |name: &str| element.attribute(name).map(str::to_owned);
+    let argument = attribute("argument");
+    let name = match (attribute("name"), &argument) {
+        (Some(name), _) => name,
+        (None, Some(argument)) => argument.trim_start_matches('-').replace('-', "_"),
+        (None, None) => {
+            return Err(Error::Document {
+                file: file.to_owned(),
+                line: element.line,
+                message: "a param without a name or argument".to_owned(),
+            });
+        }
+    };
+    let kind = match element.attribute("type").unwrap_or_default() {
+        "text" => ParamKind::Text,
+        "integer" => ParamKind::Integer,
+        "float" => ParamKind::Float,
+        "boolean" => ParamKind::Boolean,
+        "select" => ParamKind::Select,
+        "hidden" => ParamKind::Hidden,
+        "color" => ParamKind::Color,
+        "data" => ParamKind::Data,
+        "data_collection" => ParamKind::Collection,
+        other => ParamKind::Other(other.to_owned()),
+    };
+    let multiple = element.attribute("multiple").is_some_and(truthy);
+    let given = element.attribute("optional");
+    let (optional, optional_inferred) = match (&kind, given) {
+        (_, Some(given)) => (truthy(given), false),
+        (ParamKind::Text, None) => {
+            let empty = accepts_empty(element);
+            (empty, empty)
+        }
+        (ParamKind::Select, None) => (multiple, false),
+        (_, None) => (false, false),
+    };
+    let options = element
+        .named("option")
+        .map(|option| SelectOption {
+            value: option.attribute("value").unwrap_or_default().to_owned(),
+            label: option.content().trim().to_owned(),
+            selected: option.attribute("selected").is_some_and(truthy),
+        })
+        .collect();
+    let dynamic =
+        element.child("options").is_some() || element.attribute("dynamic_options").is_some();
+    Ok(Param {
+        kind,
+        label: attribute("label"),
+        help: attribute("help")
+            .or_else(|| element.child("help").map(|h| h.content().trim().to_owned())),
+        optional,
+        optional_inferred,
+        value: attribute("value"),
+        multiple,
+        options,
+        dynamic,
+        separator: attribute("separator").unwrap_or_else(|| ",".to_owned()),
+        truevalue: attribute("truevalue").unwrap_or_else(|| "true".to_owned()),
+        falsevalue: attribute("falsevalue").unwrap_or_else(|| "false".to_owned()),
+        checked: element.attribute("checked").map(truthy),
+        formats: (element.attribute("format").unwrap_or_default().split(','))
+            .map(str::trim)
+            .filter(|format| !format.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        min: attribute("min"),
+        max: attribute("max"),
+        rgb: element.attribute("rgb").is_some_and(truthy),
+        sanitizer: element.child("sanitizer").map(sanitizer),
+        line: element.line,
+        argument,
+        name,
+    })
+}
+
+/// Whether the static validators of a text param accept "", which makes it optional.
+fn accepts_empty(element: &Element) -> bool {
+    element.named("validator").all(|validator| {
+        let negate = validator.attribute("negate").is_some_and(truthy);
+        let passes = match validator.attribute("type").unwrap_or_default() {
+            "regex" => regex::Regex::new(&format!("^(?:{})", validator.content()))
+                .is_ok_and(|pattern| pattern.is_match("")),
+            "length" => validator
+                .attribute("min")
+                .and_then(|min| min.parse::<f64>().ok())
+                .is_none_or(|min| min <= 0.0),
+            "empty_field" | "in_range" | "expression" => false,
+            _ => return true,
+        };
+        passes != negate
+    })
+}
+
+fn sanitizer(element: &Element) -> Sanitizer {
+    let rules = |name: &str| {
+        element.named(name).last().map(|rules| Rules {
+            initial: rules.attribute("initial").unwrap_or("default").to_owned(),
+            actions: (rules.children.iter())
+                .filter(|action| action.name == "add" || action.name == "remove")
+                .map(|action| Action {
+                    add: action.name == "add",
+                    preset: action.attribute("preset").map(str::to_owned),
+                    value: action.attribute("value").map(str::to_owned),
+                    source: action.attribute("source").map(str::to_owned),
+                    target: action.attribute("target").map(str::to_owned),
+                })
+                .collect(),
+        })
+    };
+    Sanitizer {
+        sanitize: element.attribute("sanitize").is_none_or(truthy),
+        invalid: element.attribute("invalid_char").unwrap_or("X").to_owned(),
+        valid: rules("valid"),
+        mapping: rules("mapping"),
+    }
+}
+
+fn outputs_of(outputs: &Element) -> Vec<Output> {
+    (outputs.children.iter())
+        .filter(|output| output.name == "data" || output.name == "collection")
+        .map(|output| {
+            let attribute = |name: &str| output.attribute(name).map(str::to_owned);
+            Output {
+                name: attribute("name").unwrap_or_default(),
+                kind: output.name.clone(),
+                format: attribute("format"),
+                format_source: attribute("format_source"),
+                from_work_dir: attribute("from_work_dir"),
+                label: attribute("label"),
+                filters: (output.named("filter"))
+                    .map(|filter| filter.content().trim().to_owned())
+                    .collect(),
+                changes: (output.child("change_format").iter())
+                    .flat_map(|change| change.named("when"))
+                    .map(|when| {
+                        let value =
+                            |name: &str| when.attribute(name).unwrap_or_default().to_owned();
+                        (value("input"), value("value"), value("format"))
+                    })
+                    .collect(),
+                line: output.line,
+            }
+        })
+        .collect()
+}
+
+fn stdio_of(stdio: &Element) -> Stdio {
+    let rules = |name: &str| {
+        (stdio.named(name))
+            .map(|rule| rule.attributes.clone())
+            .collect()
+    };
+    Stdio {
+        exit_codes: rules("exit_code"),
+        regexes: rules("regex"),
+    }
+}
+
+fn test_of(test: &Element) -> Test {
+    let mut params = Vec::new();
+    let mut outputs = Vec::new();
+    let mut checks = Vec::new();
+    test_params(test, "", &mut params);
+    for child in &test.children {
+        match child.name.as_str() {
+            "param" | "conditional" | "section" | "repeat" => {}
+            "output" => outputs.push(child.clone()),
+            _ => checks.push(child.clone()),
+        }
+    }
+    Test {
+        line: test.line,
+        attributes: test.attributes.clone(),
+        params,
+        outputs,
+        checks,
+    }
+}
+
+/// The params of a test, with the paths of the conditionals, sections and repeats they are in.
+fn test_params(parent: &Element, prefix: &str, params: &mut Vec<TestParam>) {
+    let mut repeats: Vec<(String, usize)> = Vec::new();
+    for child in &parent.children {
+        let name = child.attribute("name").unwrap_or_default();
+        match child.name.as_str() {
+            "param" => params.push(TestParam {
+                path: format!("{prefix}{name}"),
+                value: child.attribute("value").map(str::to_owned),
+                ftype: child.attribute("ftype").map(str::to_owned),
+                element: child.clone(),
+            }),
+            "conditional" | "section" => test_params(child, &format!("{prefix}{name}|"), params),
+            "repeat" => {
+                let index = match repeats.iter_mut().find(|(known, _)| known == name) {
+                    Some(entry) => {
+                        entry.1 += 1;
+                        entry.1
+                    }
+                    None => {
+                        repeats.push((name.to_owned(), 0));
+                        0
+                    }
+                };
+                test_params(child, &format!("{prefix}{name}_{index}|"), params);
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Param {
+    /// The raw value of the param when nothing is given, as Galaxy's `get_initial_value`;
+    /// null for none. `profile` is the tool's profile.
+    pub fn initial(&self, profile: Option<&str>) -> Json {
+        match self.kind {
+            ParamKind::Text | ParamKind::Hidden => {
+                self.value.clone().map_or(Json::Null, Json::String)
+            }
+            ParamKind::Integer => (self.value.as_deref())
+                .and_then(|value| value.trim().parse::<i64>().ok())
+                .map_or(Json::Null, Json::from),
+            ParamKind::Float => (self.value.as_deref())
+                .and_then(|value| value.trim().parse::<f64>().ok())
+                .map_or(Json::Null, Json::from),
+            ParamKind::Boolean => match self.checked {
+                None if self.optional && at_least(profile, "26.2") => Json::Null,
+                checked => Json::Bool(checked.unwrap_or(false)),
+            },
+            ParamKind::Color => {
+                Json::String((self.value.as_deref()).unwrap_or("#000000").to_lowercase())
+            }
+            ParamKind::Select if self.dynamic => Json::Null,
+            ParamKind::Select => {
+                let selected: Vec<Json> = (self.options.iter())
+                    .filter(|option| option.selected)
+                    .map(|option| Json::String(option.value.clone()))
+                    .collect();
+                match (selected.first(), self.multiple) {
+                    (None, false) if !self.optional => (self.options.first())
+                        .map_or(Json::Null, |option| Json::String(option.value.clone())),
+                    (None, _) => Json::Null,
+                    (Some(first), false) => first.clone(),
+                    (Some(_), true) => Json::Array(selected),
+                }
+            }
+            ParamKind::Data | ParamKind::Collection | ParamKind::Other(_) => Json::Null,
+        }
+    }
+}
+
+/// Whether a profile is at least `version`, comparing dotted numbers; no profile is older.
+pub fn at_least(profile: Option<&str>, version: &str) -> bool {
+    let numbers = |text: &str| -> Vec<u64> {
+        text.split('.')
+            .map(|part| part.parse().unwrap_or(0))
+            .collect()
+    };
+    profile.is_some_and(|profile| numbers(profile) >= numbers(version))
+}
+
+/// Galaxy's `string_as_bool`.
+pub fn truthy(text: &str) -> bool {
+    matches!(text.to_lowercase().as_str(), "true" | "yes" | "on" | "1")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn params(inputs: &str, profile: &str) -> Vec<Param> {
+        let text = format!("<tool id=\"t\" profile=\"{profile}\"><inputs>{inputs}</inputs></tool>");
+        let tool = parse(&text, "t.xml", &mut |_| unreachable!("no imports")).expect("a tool");
+        (tool.inputs.into_iter())
+            .map(|input| match input {
+                Input::Param(param) => param,
+                other => panic!("a param, not {other:?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn names_and_optionality() {
+        let found = params(
+            r#"<param argument="--count-table" type="data" format="tabular,txt"/>
+            <param name="free" type="text"/>
+            <param name="checked" type="text"><validator type="regex">^[\w,]+$</validator></param>
+            <param name="choice" type="select" multiple="true"><option value="a"/></param>"#,
+            "25.1",
+        );
+        assert_eq!(found[0].name, "count_table");
+        assert_eq!(found[0].formats, ["tabular", "txt"]);
+        assert!(
+            found[1].optional && found[1].optional_inferred,
+            "no validator accepts \"\""
+        );
+        assert!(!found[2].optional, "the regex refuses \"\"");
+        assert!(found[3].optional, "a multiple select is optional");
+    }
+
+    #[test]
+    fn keeps_template_macros() {
+        let text = r#"<tool id="t"><macros><template name="greeting">hello @WHO@</template>
+            <token name="@WHO@">you</token></macros><command>$greeting</command></tool>"#;
+        let tool = parse(text, "t.xml", &mut |_| unreachable!("no imports")).expect("a tool");
+        assert_eq!(
+            tool.templates,
+            [("greeting".to_owned(), "hello you".to_owned())]
+        );
+    }
+
+    #[test]
+    fn initial_values() {
+        let found = params(
+            r#"<param name="t" type="text" value="x"/>
+            <param name="i" type="integer" value="5"/>
+            <param name="f" type="float" optional="true"/>
+            <param name="b" type="boolean" checked="yes"/>
+            <param name="o" type="boolean" optional="true"/>
+            <param name="s" type="select"><option value="a"/><option value="b"/></param>
+            <param name="m" type="select" optional="true"><option value="a"/><option value="b" selected="true"/></param>
+            <param name="c" type="color"/>"#,
+            "26.2",
+        );
+        let initial: Vec<Json> = found
+            .iter()
+            .map(|param| param.initial(Some("26.2")))
+            .collect();
+        assert_eq!(
+            initial,
+            [
+                Json::from("x"),
+                Json::from(5),
+                Json::Null,
+                Json::Bool(true),
+                Json::Null,
+                Json::from("a"),
+                Json::from("b"),
+                Json::from("#000000")
+            ]
+        );
+        assert_eq!(
+            found[4].initial(Some("25.1")),
+            Json::Bool(false),
+            "unset before 26.2"
+        );
+    }
+}

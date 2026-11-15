@@ -1,0 +1,7 @@
+These files are copied unchanged from galaxyproject/tools-iuc at commit
+e1504af1b986cd80764c6f616a099f139980905f, under the MIT licence in tools_iuc_license.txt:
+
+mageck_test.xml    tools/mageck/mageck_test.xml
+mageck_macros.xml  tools/mageck/mageck_macros.xml
+get_hrun.xml       tools/get_hrun/get_hrun.xml
+macros.xml         tools/get_hrun/macros.xml

@@ -10,6 +10,7 @@ members = [
     "workflows/argo/runtime",
     "executors/aws-batch",
     "executors/azure-batch",
+    "workflows/galaxy/evaluator",
     "conda-environment",
     "config-file",
     "content-store",
@@ -18,6 +19,7 @@ members = [
     "workflows/cwl/runtime",
     "executors/executor",
     "executors/flyte",
+    "workflows/galaxy/parser",
     "executors/google-batch",
     "executors/htcondor",
     "input-schema",
@@ -70,6 +72,7 @@ argo-parser = { path = "workflows/argo/parser" }
 argo-runtime = { path = "workflows/argo/runtime" }
 aws-batch-executor = { path = "executors/aws-batch" }
 azure-batch-executor = { path = "executors/azure-batch" }
+cheetah-evaluator = { path = "workflows/galaxy/evaluator" }
 conda-environment = { path = "conda-environment" }
 config-file = { path = "config-file" }
 content-store = { path = "content-store" }
@@ -78,6 +81,7 @@ cwl-parser = { path = "workflows/cwl/parser" }
 cwl-runtime = { path = "workflows/cwl/runtime" }
 executor = { path = "executors/executor" }
 flyte-executor = { path = "executors/flyte" }
+galaxy-parser = { path = "workflows/galaxy/parser" }
 google-batch-executor = { path = "executors/google-batch" }
 htcondor-executor = { path = "executors/htcondor" }
 input-schema = { path = "input-schema" }
@@ -203,6 +207,8 @@ opendal-service-azblob = { version = "0.59.4", default-features = false }
 opendal-service-gcs = { version = "0.59.4", default-features = false }
 # A throwaway CA and certificate for tests of TLS servers with their own CA, like wr; tests only.
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
+# Reads Galaxy tool XML with the text and tails of its elements.
+quick-xml = "0.42.0"
 regex = "1.13.1"
 regex-syntax = "0.8.11"
 rattler_conda_types = "0.58.1"

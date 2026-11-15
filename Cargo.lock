@@ -1091,6 +1091,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cheetah-evaluator"
+version = "0.1.0"
+dependencies = [
+ "galaxy-parser",
+ "python-evaluator",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tool-definition",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2470,6 +2481,17 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "galaxy-parser"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.42.0",
+ "regex",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tool-definition",
 ]
 
 [[package]]

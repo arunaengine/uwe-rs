@@ -48,6 +48,16 @@ pub struct Input {
     sanitizer: Option<Sanitizer>,
 }
 
+/// Galaxy's `SelectToolParameterWrapper`.
+pub struct Select {
+    name: String,
+    raw: Value,
+    multiple: bool,
+    separator: String,
+    options: Vec<(String, String)>,
+    sanitizer: Option<Sanitizer>,
+}
+
 /// The template values of `tool`'s inputs for `job`, by top-level name.
 pub fn wrapped(tool: &Tool, job: &Job) -> Result<Vec<(String, Value)>, Error> {
     walk(tool, job, &tool.inputs, &job.parameters, "", false)
@@ -171,11 +181,16 @@ fn leaf(
             )));
         }
         _ if raw => value,
-        ParamKind::Select => {
-            return Err(Error::Input(format!(
-                "the select {path} is not supported yet"
-            )));
-        }
+        ParamKind::Select => Value::native(Select {
+            name: param.name.clone(),
+            raw: value,
+            multiple: param.multiple,
+            separator: param.separator.clone(),
+            options: (param.options.iter())
+                .map(|option| (option.value.clone(), option.label.clone()))
+                .collect(),
+            sanitizer: sanitizer(),
+        }),
         kind => {
             // Below profile 23.0 an absent text param whose optionality is inferred is "".
             let legacy = param.optional_inferred && !at_least(profile, "23.0");
@@ -414,6 +429,149 @@ impl Native for Input {
     }
 }
 
+impl Select {
+    fn printed(&self, interpreter: &mut Interpreter) -> Result<String, Python> {
+        let clean = |text: String| match &self.sanitizer {
+            Some(sanitizer) => sanitizer.apply(&text),
+            None => text,
+        };
+        match self.raw.plain() {
+            Value::None => Ok("None".to_owned()),
+            Value::List(items) if items.borrow().is_empty() => Ok("None".to_owned()),
+            Value::List(_) if !self.multiple => Err(Python::new(
+                "Exception",
+                "multiple values provided but parameter is not expecting multiple values",
+            )),
+            Value::List(items) => {
+                let items = items.borrow().clone();
+                let mut texts = Vec::new();
+                for item in &items {
+                    texts.push(clean(interpreter.to_str(item)?));
+                }
+                Ok(texts.join(&self.separator))
+            }
+            other => Ok(clean(interpreter.to_str(other)?)),
+        }
+    }
+
+    fn selected(&self) -> Vec<String> {
+        match self.raw.plain() {
+            Value::List(items) => items
+                .borrow()
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_owned))
+                .collect(),
+            Value::Str(text) => vec![text.to_string()],
+            _ => Vec::new(),
+        }
+    }
+}
+
+impl Native for Select {
+    fn type_name(&self) -> &str {
+        "SelectToolParameterWrapper"
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn get_attribute(
+        &self,
+        _: &mut Interpreter,
+        _: &Value,
+        name: &str,
+    ) -> Result<Option<Value>, Python> {
+        let selected = self.selected();
+        Ok(Some(match name {
+            "value" => self.raw.clone(),
+            "name" => Value::str(self.name.as_str()),
+            "multiple" => Value::Bool(self.multiple),
+            "separator" => Value::str(self.separator.as_str()),
+            "value_label" => {
+                let labels: Vec<&str> = (self.options.iter())
+                    .filter(|(value, _)| selected.contains(value))
+                    .map(|(_, label)| label.as_str())
+                    .collect();
+                match labels.is_empty() {
+                    true => Value::str("Nothing selected."),
+                    false => Value::str(labels.join("\n")),
+                }
+            }
+            "fields" => {
+                return Err(Python::unsupported(
+                    "the fields of a select, which need data tables",
+                ));
+            }
+            _ => return Ok(None),
+        }))
+    }
+
+    fn truthy(&self) -> Option<bool> {
+        Some(truth(&self.raw))
+    }
+
+    fn to_str(&self, interpreter: &mut Interpreter) -> Result<Option<String>, Python> {
+        self.printed(interpreter).map(Some)
+    }
+
+    fn iterate(&self, _: &mut Interpreter) -> Result<Option<Vec<Value>>, Python> {
+        if !self.multiple {
+            return Err(Python::new(
+                "Exception",
+                "Tried to iterate over a non-multiple parameter.",
+            ));
+        }
+        match self.raw.plain() {
+            Value::List(items) => Ok(Some(items.borrow().clone())),
+            _ => Err(Python::type_error("'NoneType' object is not iterable")),
+        }
+    }
+
+    fn contains(
+        &self,
+        interpreter: &mut Interpreter,
+        item: &Value,
+    ) -> Result<Option<bool>, Python> {
+        let items = self.iterate(interpreter)?.unwrap_or_default();
+        for known in &items {
+            if interpreter.equals(item, known)? {
+                return Ok(Some(true));
+            }
+        }
+        Ok(Some(false))
+    }
+
+    fn binary(
+        &self,
+        interpreter: &mut Interpreter,
+        operator: Operator,
+        other: &Value,
+        reflected: bool,
+    ) -> Result<Option<Value>, Python> {
+        let equal = |interpreter: &mut Interpreter| -> Result<bool, Python> {
+            let Some(text) = other.as_str() else {
+                return Ok(false);
+            };
+            let empty = match self.raw.plain() {
+                Value::None => true,
+                Value::List(items) => items.borrow().is_empty(),
+                _ => false,
+            };
+            Ok((text.is_empty() && empty) || self.printed(interpreter)? == text)
+        };
+        Ok(match (operator, reflected) {
+            (Operator::Eq, _) => Some(Value::Bool(equal(interpreter)?)),
+            (Operator::NotEq, _) => Some(Value::Bool(!equal(interpreter)?)),
+            (Operator::Add, false) => {
+                let tail = interpreter.to_str(other)?;
+                Some(Value::str(format!("{}{tail}", self.printed(interpreter)?)))
+            }
+            _ => None,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
@@ -556,6 +714,40 @@ mod tests {
             row(json!({})),
             ["--no", "False", "False", "False"],
             "absent is unchecked"
+        );
+    }
+
+    #[test]
+    fn select_rows() {
+        let params = r#"<param name="v" type="select" optional="true"><option value="a b">A B</option><option value="c'd">C D</option></param>
+            <param name="m" type="select" multiple="true" separator=" "><option value="x"/><option value="y"/></param>"#;
+        let compared = [
+            "str(v)",
+            "bool(v)",
+            "v == ''",
+            "str(m)",
+            "bool(m)",
+            "m == ''",
+            "v.value_label",
+        ];
+        let row = |value: Json| shown(params, "25.1", value, &[], &compared);
+        let given = row(json!({"v": "c'd", "m": ["x", "y"]}));
+        assert_eq!(
+            given,
+            ["c__sq__d", "True", "False", "x y", "True", "False", "C D"]
+        );
+        let empty = row(json!({"m": []}));
+        assert_eq!(
+            empty,
+            [
+                "None",
+                "False",
+                "True",
+                "None",
+                "False",
+                "True",
+                "Nothing selected."
+            ]
         );
     }
 }

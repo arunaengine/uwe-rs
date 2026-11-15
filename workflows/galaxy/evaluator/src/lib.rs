@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub mod lexer;
+pub mod parser;
 
 /// Why a template could not be rendered.
 #[derive(Debug, thiserror::Error)]

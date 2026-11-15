@@ -321,6 +321,16 @@ mod tests {
     }
 
     #[test]
+    fn formats_param_numbers() {
+        let tool = tool(
+            "<tool id=\"t\"><command>#set $arg = '%d/%.2f' % ($count, $count)\n$arg</command>\
+             <inputs><param name=\"count\" type=\"integer\" value=\"3\"/></inputs></tool>",
+        );
+        let rendered = render(&tool, &Job::default()).expect("renders");
+        assert_eq!(rendered.command.as_deref(), Some("3/3.00"));
+    }
+
+    #[test]
     fn autocalls_bare_methods() {
         let tool = tool(
             "<tool id=\"t\"><command>$v.upper ${v.upper()} $sec.inner</command><inputs>\

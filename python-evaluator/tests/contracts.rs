@@ -6,7 +6,9 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use python_evaluator::{Command, CommandOutcome, Error, Host, Interpreter, LocalHost, Stat};
+use python_evaluator::{
+    Command, CommandOutcome, Error, Host, Interpreter, LocalHost, Native, Stat, Value,
+};
 
 fn evaluate(code: &str) -> Result<String, Error> {
     let host = Rc::new(LocalHost::new(std::env::temp_dir()));
@@ -349,4 +351,37 @@ fn rejects_subprocess_options() {
             assert!(host.commands.borrow().is_empty());
         }
     }
+}
+
+/// A native number like Galaxy's param wrappers: only conversion hooks, no number type.
+struct Count;
+
+impl Native for Count {
+    fn type_name(&self) -> &str {
+        "Count"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn unary(&self, _: &mut Interpreter, operator: &str) -> Result<Option<Value>, Error> {
+        Ok(match operator {
+            "int" => Some(Value::Int(7)),
+            "float" => Some(Value::Float(7.5)),
+            _ => None,
+        })
+    }
+}
+
+#[test]
+fn formats_native_numbers() {
+    let mut interpreter = Interpreter::new(Rc::new(LocalHost::new("/")));
+    let globals = interpreter.new_globals("formats", None);
+    globals.set("count", Value::native(Count));
+    let text = "'%d|%03i|%.1f|%e' % (count, count, count, count)";
+    let value = interpreter.eval_text(text, &globals).expect("formats");
+    assert_eq!(value.as_str(), Some("7|007|7.5|7.500000e+00"));
+    let hex = interpreter.eval_text("'%x' % count", &globals);
+    assert!(hex.is_err(), "%x needs __index__, which the object lacks");
 }

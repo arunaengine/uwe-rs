@@ -899,10 +899,18 @@ pub fn percent_format(
                 pad(&text, &spec, '>')
             }
             'd' | 'i' | 'u' | 'x' | 'X' | 'o' => {
-                let number = match value.plain() {
-                    Value::Float(number) => crate::number::float_to_int(*number)?,
-                    other if crate::number::is_number(other) => other.clone(),
-                    other => {
+                // CPython's %d converts other numbers with __int__; %x and %o need __index__.
+                let converted = match value.plain() {
+                    Value::Native(object) if matches!(kind, 'd' | 'i' | 'u') => {
+                        object.unary(interpreter, "int")?
+                    }
+                    _ => None,
+                };
+                let number = match (converted, value.plain()) {
+                    (Some(number), _) => number,
+                    (None, Value::Float(number)) => crate::number::float_to_int(*number)?,
+                    (None, other) if crate::number::is_number(other) => other.clone(),
+                    (None, other) => {
                         return Err(Error::type_error(format!(
                             "%{kind} format: a real number is required, not {}",
                             types::type_name(other)
@@ -913,7 +921,11 @@ pub fn percent_format(
                 format_int(&number, &spec)?
             }
             'e' | 'E' | 'f' | 'F' | 'g' | 'G' => {
-                let number = to_f64(&value).ok_or_else(|| {
+                let converted = match (to_f64(&value), value.plain()) {
+                    (None, Value::Native(object)) => object.unary(interpreter, "float")?,
+                    _ => None,
+                };
+                let number = to_f64(converted.as_ref().unwrap_or(&value)).ok_or_else(|| {
                     Error::type_error(format!(
                         "must be real number, not {}",
                         types::type_name(&value)

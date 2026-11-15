@@ -176,7 +176,7 @@ fn leaf(
     // A missing value takes the default; an explicit null clears it.
     let value = match given {
         None => python(&param.initial(profile)),
-        Some(given) => python(given),
+        Some(given) => typed(&param.kind, python(given)),
     };
     let sanitizer = || Sanitizer::of(param, tool.sanitize);
     Ok(match &param.kind {
@@ -258,6 +258,17 @@ pub fn python(value: &Json) -> Value {
                 .iter()
                 .map(|(key, value)| (key.clone(), python(value))),
         ),
+    }
+}
+
+/// A given number as its param's type, like Galaxy's `int()` and `float()` in `to_python`.
+fn typed(kind: &ParamKind, value: Value) -> Value {
+    match (kind, value) {
+        (ParamKind::Float, Value::Int(number)) => Value::Float(number as f64),
+        (ParamKind::Integer, Value::Float(number)) if number.is_finite() => {
+            Value::Int(number as i64)
+        }
+        (_, value) => value,
     }
 }
 
@@ -890,6 +901,31 @@ mod tests {
                 "Nothing selected."
             ]
         );
+    }
+
+    #[test]
+    fn numbers_follow_kind() {
+        let params = r#"<param name="f" type="float"/><param name="i" type="integer"/>"#;
+        let given = json!({"f": 1, "i": 2.0});
+        let printed = shown(params, "25.1", given.clone(), &[], &["str(f)", "str(i)"]);
+        assert_eq!(
+            printed,
+            ["1.0", "2"],
+            "Galaxy casts a float param with float()"
+        );
+        let xml = format!("<tool id=\"t\"><inputs>{params}</inputs></tool>");
+        let tool = galaxy_parser::tool::parse(&xml, "t.xml", &mut |_| unreachable!("no imports"))
+            .expect("a tool");
+        let job = Job {
+            parameters: given,
+            ..Job::default()
+        };
+        let raw = raw(&tool, &job).expect("raw values");
+        assert!(
+            matches!(raw[0].1, Value::Float(number) if number == 1.0),
+            "filters see a float"
+        );
+        assert!(matches!(raw[1].1, Value::Int(2)), "filters see an int");
     }
 
     #[test]

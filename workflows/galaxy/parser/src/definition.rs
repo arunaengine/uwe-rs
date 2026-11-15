@@ -242,7 +242,8 @@ fn object(inputs: &[Input], profile: Option<&str>) -> Json {
         match input {
             Input::Param(param) => {
                 if let Some(schema) = param_schema(param, profile) {
-                    let needed = matches!(param.kind, ParamKind::Integer | ParamKind::Float)
+                    let kinds = [ParamKind::Text, ParamKind::Integer, ParamKind::Float];
+                    let needed = kinds.contains(&param.kind)
                         && !param.optional
                         && param.initial(profile).is_null();
                     if needed {
@@ -252,7 +253,11 @@ fn object(inputs: &[Input], profile: Option<&str>) -> Json {
                 }
             }
             Input::Section(section) => {
-                properties.insert(section.name.clone(), object(&section.inputs, profile));
+                let schema = object(&section.inputs, profile);
+                if schema.get("required").is_some() {
+                    required.push(Json::String(section.name.clone()));
+                }
+                properties.insert(section.name.clone(), schema);
             }
             Input::Repeat(repeat) => {
                 let items = object(&repeat.inputs, profile);
@@ -271,10 +276,14 @@ fn object(inputs: &[Input], profile: Option<&str>) -> Json {
                 let cases: Vec<Json> = (conditional.cases.iter())
                     .map(|case| {
                         let mut when = json!({"properties": {&test.name: {"const": when_value(test, &case.value)}}});
+                        let then = object(&case.inputs, profile);
                         if default.as_deref() != Some(case.value.as_str()) {
                             when["required"] = json!([test.name]);
+                        } else if then.get("required").is_some() {
+                            // The default case applies when the conditional is not given.
+                            required.push(Json::String(conditional.name.clone()));
                         }
-                        json!({"if": when, "then": object(&case.inputs, profile)})
+                        json!({"if": when, "then": then})
                     })
                     .collect();
                 if !cases.is_empty() {

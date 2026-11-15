@@ -120,13 +120,32 @@ fn mageck_definition() {
         parameters::check(&definition.parameters, &values).is_empty(),
         "test values fit the schema"
     );
-    let cleared = json!({"control_id": null, "adv": {"norm_method": null, "fdr_threshold": null}});
+    let treated = json!({"sample_select": "treated", "treatment_id": "a"});
+    let cleared = json!({"sampleids": treated, "control_id": null,
+                         "adv": {"norm_method": null, "fdr_threshold": null}});
     assert!(
         parameters::check(&definition.parameters, &cleared).is_empty(),
         "optional params take null"
     );
-    let wrong = json!({"adv": {"fdr_threshold": 2.0, "norm_method": "mean"}});
+    let wrong = json!({"sampleids": treated, "adv": {"fdr_threshold": 2.0, "norm_method": "mean"}});
     assert_eq!(parameters::check(&definition.parameters, &wrong).len(), 2);
+    let reasons = |values: Json| -> Vec<String> {
+        (parameters::check(&definition.parameters, &values).into_iter())
+            .map(|finding| finding.reason)
+            .collect()
+    };
+    let nothing = reasons(json!({}));
+    assert!(
+        nothing.iter().any(|reason| reason.contains("sampleids")),
+        "{nothing:?}"
+    );
+    let default_case = reasons(json!({"sampleids": {}}));
+    assert!(
+        default_case
+            .iter()
+            .any(|reason| reason.contains("treatment_id")),
+        "the default case needs treatment_id: {default_case:?}"
+    );
 }
 
 #[test]

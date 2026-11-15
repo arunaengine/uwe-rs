@@ -263,6 +263,25 @@ mod tests {
     }
 
     #[test]
+    fn follows_lookup_chunks() {
+        let tool = tool(
+            "<tool id=\"t\"><command>$v.strip.upper() $rep[0].n ${v.split(',')[0].upper()} \
+             $v.split(',')[0].upper</command><inputs><param name=\"v\" type=\"text\" value=\"a,b\"/>\
+             <repeat name=\"rep\"><param name=\"n\" type=\"integer\"/></repeat></inputs></tool>",
+        );
+        let job = Job {
+            parameters: serde_json::json!({"rep": [{"n": 7}]}),
+            ..Job::default()
+        };
+        let rendered = render(&tool, &job).expect("renders");
+        // Cheetah ends a placeholder after a call that a subscript follows; the rest is text.
+        assert_eq!(
+            rendered.command.as_deref(),
+            Some("A,B 7 A ['a', 'b'][0].upper")
+        );
+    }
+
+    #[test]
     fn autocalls_bare_methods() {
         let tool = tool(
             "<tool id=\"t\"><command>$v.upper ${v.upper()} $sec.inner</command><inputs>\

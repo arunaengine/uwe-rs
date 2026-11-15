@@ -225,23 +225,26 @@ pub fn python(expression: &str, line: usize) -> Result<String, Error> {
             out.push_str(&text[at..end]);
             at = end;
         } else if c == '$' && rest[1..].starts_with(|c: char| c == '_' || c.is_alphabetic()) {
-            let first_end = lexer::identifier_end(text, at + 1);
-            let mut end = first_end;
-            while text[end..].starts_with('.')
-                && text[end + 1..].starts_with(|c: char| c == '_' || c.is_alphabetic())
-            {
-                end = lexer::identifier_end(text, end + 1);
-            }
-            let path = text[first_end..end].trim_start_matches('.');
-            let autocall = if text[end..].starts_with('(') {
-                "False"
-            } else {
-                "True"
+            let Some((chunks, end)) = lexer::chunks(text, at + 1) else {
+                return Err(Error::template(
+                    line,
+                    format!("an unclosed bracket in {text}"),
+                ));
             };
-            out.push_str(&format!(
-                "{FOLLOW}({}, {path:?}, {autocall})",
-                &text[at + 1..first_end]
-            ));
+            let mut lookup = String::new();
+            for (number, chunk) in chunks.iter().enumerate() {
+                let autocall = if chunk.autocall { "True" } else { "False" };
+                let (object, path) = match (number, chunk.path.split_once('.')) {
+                    (0, Some((first, path))) => (first.to_owned(), path),
+                    (0, None) => (chunk.path.clone(), ""),
+                    _ => (lookup, chunk.path.as_str()),
+                };
+                lookup = format!("{FOLLOW}({object}, {path:?}, {autocall})");
+                if !chunk.rest.is_empty() {
+                    lookup.push_str(&python(&chunk.rest, line)?);
+                }
+            }
+            out.push_str(&lookup);
             at = end;
         } else if c == '$' {
             return Err(Error::template(
@@ -303,14 +306,30 @@ mod tests {
     fn translates_names() {
         let python = python("$x.y.z == 'a$b' and len($l) > 0 and $f.g(1)[0]", 1).expect("python");
         let expected = format!(
-            "{} == 'a$b' and len({}) > 0 and {FOLLOW}(f, \"g\", False)(1)[0]",
+            "{} == 'a$b' and len({}) > 0 and {FOLLOW}({}, \"g\", False)(1)[0]",
             follow("x", "y.z"),
-            follow("l", "")
+            follow("l", ""),
+            follow("f", "")
         );
         assert_eq!(python, expected, "strings keep their $");
         let set = parse("#set $n = $m + 1\n").expect("parses");
         let statement = format!("n = {} + 1", follow("m", ""));
         assert_eq!(set, [Node::Set { statement, line: 1 }]);
+    }
+
+    #[test]
+    fn splits_lookup_chunks() {
+        let called = python("$a.b.c(1)", 1).expect("python");
+        let expected = format!("{FOLLOW}({}, \"c\", False)(1)", follow("a", "b"));
+        assert_eq!(called, expected, "the names before a call keep autocalling");
+        let indexed = python("$a[0].b", 1).expect("python");
+        assert_eq!(
+            indexed,
+            format!("{FOLLOW}({}[0], \"b\", True)", follow("a", ""))
+        );
+        let after_call = python("$a.b().c", 1).expect("python");
+        let inner = format!("{FOLLOW}({}, \"b\", False)()", follow("a", ""));
+        assert_eq!(after_call, format!("{FOLLOW}({inner}, \"c\", True)"));
     }
 
     #[test]

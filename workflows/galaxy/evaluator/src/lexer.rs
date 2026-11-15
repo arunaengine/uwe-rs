@@ -201,9 +201,11 @@ impl Lexer<'_> {
                 }
             }
             _ => {
-                let end = name_chain(self.text, start).ok_or_else(|| {
-                    Error::template(line, "a placeholder with an unclosed bracket".to_owned())
-                })?;
+                let end = chunks(self.text, start)
+                    .map(|(_, end)| end)
+                    .ok_or_else(|| {
+                        Error::template(line, "a placeholder with an unclosed bracket".to_owned())
+                    })?;
                 self.at = end;
                 format!("${}", &self.text[start..end])
             }
@@ -370,21 +372,55 @@ fn directive_name(rest: &str) -> Option<&'static str> {
         .max_by_key(|name| name.len())
 }
 
-/// The end of a Cheetah name chain at `start`: an identifier, then `.name`, `(...)` and
-/// `[...]` parts; `None` when a bracket is not closed.
-pub fn name_chain(text: &str, start: usize) -> Option<usize> {
-    let mut at = identifier_end(text, start);
+/// One NameMapper lookup of a Cheetah name: a dotted path, whether methods on it are called,
+/// and the call arguments or subscript right after it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Chunk {
+    pub path: String,
+    pub autocall: bool,
+    pub rest: String,
+}
+
+/// The lookup chunks of the Cheetah name at `start` and where it ends, as Cheetah's
+/// `getCheetahVarNameChunks`; `None` when a bracket is not closed.
+pub fn chunks(text: &str, start: usize) -> Option<(Vec<Chunk>, usize)> {
+    let word = |at: usize| text[at..].starts_with(|c: char| c == '_' || c.is_alphanumeric());
+    let mut chunks = Vec::new();
+    let mut at = start;
     loop {
-        let rest = &text[at..];
-        if let Some(after) = rest.strip_prefix('.')
-            && after.starts_with(|c: char| c == '_' || c.is_alphabetic())
-        {
-            at = identifier_end(text, at + 1);
-        } else if let Some(open @ ('(' | '[')) = rest.chars().next() {
-            at = closing(text, at, open)? + 1;
-        } else {
-            return Some(at);
+        if text[at..].starts_with('.') && word(at + 1) {
+            at += 1;
+        } else if !word(at) {
+            return Some((chunks, at));
         }
+        let begin = at;
+        at = identifier_end(text, at);
+        while text[at..].starts_with('.') && word(at + 1) {
+            at = identifier_end(text, at + 1);
+        }
+        let mut path = text[begin..at].to_owned();
+        let (mut autocall, mut rest) = (true, String::new());
+        if let Some(open @ ('(' | '[')) = text[at..].chars().next() {
+            let close = closing(text, at, open)?;
+            rest = text[at..=close].to_owned();
+            at = close + 1;
+            // Only the last name takes the call or subscript; the names before it keep autocall.
+            if let Some(period) = path.rfind('.') {
+                let last = path.split_off(period);
+                chunks.push(Chunk {
+                    path,
+                    autocall: true,
+                    rest: String::new(),
+                });
+                path = last[1..].to_owned();
+            }
+            autocall = open == '[';
+        }
+        chunks.push(Chunk {
+            path,
+            autocall,
+            rest,
+        });
     }
 }
 
@@ -527,8 +563,8 @@ mod tests {
                 .expect("tokens");
         let expected = [
             text("a \n$x #if "),
-            placeholder("$y.z(1)[0]", 3),
-            text(" "),
+            placeholder("$y.z(1)", 3),
+            text("[0] "),
             placeholder("$a.b", 3),
             text("\nd"),
         ];

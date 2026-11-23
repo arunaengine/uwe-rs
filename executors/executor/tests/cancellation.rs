@@ -107,14 +107,20 @@ fn serve(
             .unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let mut first = String::new();
-        reader.read_line(&mut first).unwrap();
+        if reader.read_line(&mut first).unwrap_or(0) == 0 {
+            continue;
+        }
         if first.starts_with("STOP ") {
             break;
         }
         let mut length = 0;
+        let mut closed = false;
         loop {
             let mut line = String::new();
-            reader.read_line(&mut line).unwrap();
+            if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                closed = true;
+                break;
+            }
             if line == "\r\n" {
                 break;
             }
@@ -122,7 +128,9 @@ fn serve(
                 length = value.trim().parse().unwrap();
             }
         }
-        reader.read_exact(&mut vec![0; length]).unwrap();
+        if closed || reader.read_exact(&mut vec![0; length]).is_err() {
+            continue;
+        }
         if first.contains("/attach?") {
             stream.write_all(b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n").unwrap();
             held.push(stream);
@@ -169,12 +177,11 @@ fn serve(
 
 fn reply(stream: &mut UnixStream, status: u16, body: &str) {
     let body = if status == 204 { "" } else { body };
-    write!(
+    let _ = write!(
         stream,
         "HTTP/1.1 {status} Reply\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
-    )
-    .unwrap();
+    );
 }
 
 fn probe(socket: &Path, helper: bool) {

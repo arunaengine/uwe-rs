@@ -289,6 +289,7 @@ debug = "line-tables-only"
 [profile.test]
 debug = false
 strip = "symbols"
+incremental = false
 
 [profile.dev.package."*"]
 debug = false

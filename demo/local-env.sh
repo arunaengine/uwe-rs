@@ -53,12 +53,31 @@ Then the complex ones:
   uwe run cwl/scatter-workflow.cwl cwl/scatter-job.yml
   uwe run argo/dag-diamond.yaml
 
+Then WDL, Galaxy, wir and steps of every language in one workflow:
+
+  uwe run wdl/hello.wdl -output-dir results
+  uwe run galaxy/pipeline.ga -inputs galaxy/inputs.json -output-dir results
+  uwe run wir/hello.wir.yaml --name uwe -output-dir results
+  uwe tool list -tools tools                  # one tool in each language
+  uwe run composed/polyglot.uwe.yaml --text composed/greetings.txt -output-dir results
+
+Then one step of a workflow on its own, and the cache across workflows:
+
+  uwe tool extract snakemake/Snakefile -save results/tools
+  uwe tool run tools/number.smk --text composed/greetings.txt -output-dir results
+  uwe run shared-cache/pipeline.nf -no-network -output-dir results
+  uwe tool run shared-cache/pipeline.nf --text shared-cache/input.txt -no-network -output-dir results
+
 Then look at a run:
 
   uwe runs                                    # the runs, newest first
   uwe time <run>                              # where the time went
   uwe page <run>                              # the live page of a run
+  uwe why <run> 1                             # why a task ran or came from the cache
+  uwe compare <run> <run>                     # what differs between two runs
+  uwe export <run> -output results/crate      # a run as an RO-Crate
   uwe graph snakemake/Snakefile -format svg > graph.svg
+  uwe serve --tools tools --workflows . --open  # the studio, with the GA4GH WES API
 
 Each run writes report.html here; open it in a browser.
 EOF

@@ -1,0 +1,36 @@
+# Greets a name in one container task and shouts the greeting in a second one, written in wir.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+wir_version: "0.1"
+sources: []
+graphs:
+  - name: hello
+    inputs:
+      - name: name
+        type: string
+        default: world
+    outputs:
+      - name: shouted
+        type: {file: {}}
+    ops:
+      - path: greet
+        kind:
+          task:
+            image: debian:stable-slim
+            command: [echo, Hello, {input: name}]
+            captures: [{output: greeting, from: stdout}]
+        inputs: [{name: name, type: string}]
+        outputs: [{name: greeting, type: {file: {}}}]
+      - path: shout
+        kind:
+          task:
+            image: debian:stable-slim
+            command: [sh, -c, 'tr a-z A-Z < "$1"', shout, {input: greeting}]
+            captures: [{output: shouted, from: stdout}]
+        inputs: [{name: greeting, type: {file: {}}}]
+        outputs: [{name: shouted, type: {file: {}}}]
+    edges:
+      - {from: {port: name}, to: {op: greet, port: name}}
+      - {from: {op: greet, port: greeting}, to: {op: shout, port: greeting}}
+      - {from: {op: shout, port: shouted}, to: {port: shouted}}
+entry: hello

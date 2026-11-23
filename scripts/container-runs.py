@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "uwe/tests/fixtures"
 IMAGE = "debian:stable-slim@sha256:eb593cf2c358cacef45ca0a424bbc7d30cfa3466265fc2662b9466a0ca6ba1c5"
 TIMEOUT = 60
+CASES = ("snakemake", "nextflow", "cwl", "argo", "wdl", "galaxy", "composed", "deconstructed",
+         "shared-cache", "failure", "tes", "cancel", "simulator")
 
 
 def main():
@@ -39,7 +41,7 @@ def main():
             with proxy(root) as socket:
                 environment = dict(os.environ, XDG_CONFIG_HOME=str(root / "config"),
                                    UWE_SITE_CONFIG="", DOCKER_HOST=f"unix://{socket}")
-                for name in ("snakemake", "nextflow", "cwl", "argo", "failure", "tes", "cancel", "simulator"):
+                for name in CASES:
                     begin = time.monotonic()
                     try:
                         exercise(binary, root, environment, name)
@@ -51,7 +53,7 @@ def main():
         finally:
             for container in owned(root):
                 docker("rm", "--force", container)
-    print(f"Container runs: {8 - len(failures)} passed, {len(failures)} failed "
+    print(f"Container runs: {len(CASES) - len(failures)} passed, {len(failures)} failed "
           f"({time.monotonic() - started:.2f}s)", flush=True)
     return bool(failures)
 
@@ -60,6 +62,12 @@ def exercise(binary, root, environment, name):
     folder = root / name
     folder.mkdir()
     environment = dict(environment, XDG_CACHE_HOME=str(folder / "cache"))
+    if name == "deconstructed":
+        deconstructed(binary, folder, environment)
+        return
+    if name == "shared-cache":
+        shared_cache(binary, folder, environment)
+        return
     source, count = prepare(folder, name)
     command = [str(binary), "run", str(source), "-no-network", "-max-pending", "2",
                "-default-image", IMAGE, "-output-dir", str(folder / "results")]
@@ -67,6 +75,10 @@ def exercise(binary, root, environment, name):
         command.append("hello/all.txt")
     if name == "cwl":
         command += ["-inputs", str(folder / "job.json")]
+    if name == "galaxy":
+        command += ["-inputs", str(folder / "inputs.json")]
+    if name == "composed":
+        command += ["--text", str(folder / "composed/greetings.txt")]
     if name == "tes":
         tes_failure(command, folder, environment)
         return
@@ -116,7 +128,88 @@ def exercise(binary, root, environment, name):
         print("  resume: all 4 tasks reused, no containers started", flush=True)
 
 
+def deconstructed(binary, folder, environment):
+    """Run one step of each of three multi-step workflows on its own with `uwe tool run`."""
+    copy_demo("tools", folder / "tools")
+    (folder / "nextflow").mkdir()
+    shutil.copyfile(ROOT / "demo/nextflow/main.nf", folder / "nextflow/main.nf")
+    (folder / "nextflow/nextflow.config").write_text(
+        (ROOT / "demo/nextflow/nextflow.config").read_text().replace("quay.io/nextflow/bash", IMAGE))
+    (folder / "input.txt").write_text("hello world\nhola mundo\n")
+    steps = [
+        # A Snakemake rule with wildcards: its sample comes from the name of the input file.
+        (["tools/number.smk", "--text", "input.txt"], "numbered.txt",
+         "# input\n     1\thello world\n     2\thola mundo\n"),
+        # A Nextflow process without an image of its own: the nextflow.config beside it has one.
+        (["nextflow/main.nf", "--greeting", "Hola"], None, '"output_1": "Hola world!\\n"'),
+        # An Argo container template, which takes its file input as an artifact.
+        (["tools/reverse.yaml", "--text", "input.txt"], "reversed.txt",
+         "hola mundo\nhello world\n"),
+    ]
+    for words, produced, expected in steps:
+        since = time.time()
+        results = folder / "results" / Path(words[0]).stem
+        command = [str(binary), "tool", "run", *words, "-no-network", "-output-dir", str(results)]
+        code, output = execute(command, folder, environment, False)
+        assert code == 0, output
+        run, tasks, attempts, _ = recorded(folder)
+        assert run[1] == "succeeded" and len(tasks) == 1, (run, tasks, output)
+        assert attempts == [(0, None, IMAGE)], (attempts, output)
+        assert len(starts(since, run[0])) == 1, "the step did not start a real container"
+        summary(output, "Done in", 1, 1, 0, 0)
+        if produced is None:
+            assert expected in output, output
+            continue
+        found = [path for path in results.rglob(produced) if ".snakemake" not in path.parts]
+        assert len(found) == 1, (found, output)
+        assert found[0].read_text() == expected, (found[0].read_text(), output)
+
+
+def shared_cache(binary, folder, environment):
+    """Run a pipeline, then its process on its own, which takes the result from the cache."""
+    copy_demo("shared-cache", folder)
+    since = time.time()
+    command = [str(binary), "run", "pipeline.nf", "-no-network", "-output-dir", str(folder / "first")]
+    code, output = execute(command, folder, environment, False)
+    first, tasks, attempts, _ = recorded(folder)
+    assert code == 0 and first[1] == "succeeded", output
+    assert tasks == [("COUNT", "succeeded")] and attempts == [(0, None, IMAGE)], (tasks, attempts)
+    assert len(starts(since, first[0])) == 1, "the pipeline did not start a real container"
+    summary(output, "Done in", 1, 1, 0, 0)
+    since = time.time()
+    command = [str(binary), "tool", "run", "pipeline.nf", "--text", "input.txt", "-no-network",
+               "-output-dir", str(folder / "second")]
+    code, output = execute(command, folder, environment, False)
+    second, tasks, attempts, _ = recorded(folder)
+    assert code == 0 and second[1] == "succeeded" and second[0] != first[0], output
+    assert len(tasks) == 1 and attempts[0][1] in (first[0], "cache"), (tasks, attempts, output)
+    assert not starts(since, second[0]), "the step started a container"
+    summary(output, "Done in", 1, 0, 1, 0)
+    assert (folder / "second/count.txt").read_text().strip() == "5", output
+    print("  shared cache: the step took the result of the pipeline, no container started",
+          flush=True)
+
+
+def copy_demo(name, target):
+    """Copy a demo folder, with the pinned image for every Debian image it names."""
+    target.mkdir(parents=True, exist_ok=True)
+    for path in (ROOT / "demo" / name).iterdir():
+        if path.is_file():
+            (target / path.name).write_text(path.read_text().replace("debian:stable-slim", IMAGE))
+
+
 def prepare(folder, name):
+    if name == "wdl":
+        source = folder / "hello.wdl"
+        source.write_text((ROOT / "demo/wdl/hello.wdl").read_text().replace("debian:stable-slim", IMAGE))
+        return source, 1
+    if name == "galaxy":
+        copy_demo("galaxy", folder)
+        return folder / "pipeline.ga", 2
+    if name == "composed":
+        copy_demo("tools", folder / "tools")
+        copy_demo("composed", folder / "composed")
+        return folder / "composed/polyglot.uwe.yaml", 6
     if name == "snakemake":
         source = folder / "hello.smk"
         source.write_text((ROOT / "demo/snakemake/hello.smk").read_text()
@@ -207,6 +300,15 @@ def outputs(folder, name, logs):
         expected = sorted(f"sha256:{hashlib.sha256(line).hexdigest()}" for line in
                           (FIXTURES / f"{name}_stdout.txt").read_bytes().splitlines(keepends=True))
         assert sorted(logs) == expected, (logs, expected)
+    elif name == "wdl":
+        found = list((folder / "results").rglob("greeting.txt"))
+        assert len(found) == 1 and found[0].read_text() == "Hello, world\n", found
+    elif name == "galaxy":
+        table = (folder / "results/summary/summary.tabular").read_text()
+        assert table == "lines\twords\n3\t7\n", table
+    elif name == "composed":
+        report = (folder / "results/summary/report/summary.txt").read_text()
+        assert report == "lines 2\nwords 7\n", report
     elif name == "cwl":
         found = sorted((folder / "results").glob("*.txt"))
         assert [path.name for path in found] == ["first.txt", "second.txt"], found

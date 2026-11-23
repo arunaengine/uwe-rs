@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!-- Counts the lines and words of a text into a table with a header line. -->
+<!-- Copyright (c) 2026 The uwe Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+<tool id="count_lines" name="Count lines and words" version="1.0" profile="22.05">
+    <description>of a text, as a table</description>
+    <requirements>
+        <container type="docker">debian:stable-slim</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        awk '{ words += NF } END { printf "lines\twords\n%d\t%d\n", NR, words }' '$input' > '$summary'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt" label="Text to count"/>
+    </inputs>
+    <outputs>
+        <data name="summary" format="tabular" label="Line and word counts"/>
+    </outputs>
+    <help>Writes one header line and one line with the counts, separated by a tab.</help>
+</tool>

@@ -1,0 +1,54 @@
+{
+    "a_galaxy_workflow": "true",
+    "format-version": "0.1",
+    "name": "Filter and count",
+    "annotation": "Drops blank lines and comments from a text, then counts its lines and words.",
+    "steps": {
+        "0": {
+            "id": 0,
+            "type": "data_input",
+            "label": "text",
+            "name": "Input dataset",
+            "annotation": "The text to filter and count.",
+            "tool_state": "{\"optional\": false, \"format\": [\"txt\"]}",
+            "input_connections": {},
+            "inputs": [{"name": "text", "description": ""}],
+            "workflow_outputs": []
+        },
+        "1": {
+            "id": 1,
+            "type": "parameter_input",
+            "label": "skip",
+            "name": "Input parameter",
+            "annotation": "Lines that start with this text are dropped.",
+            "tool_state": "{\"parameter_type\": \"text\", \"optional\": false, \"default\": \"#\"}",
+            "input_connections": {},
+            "workflow_outputs": []
+        },
+        "2": {
+            "id": 2,
+            "type": "tool",
+            "label": "filter",
+            "tool_id": "filter_lines",
+            "tool_version": "1.0",
+            "tool_state": "{\"input\": {\"__class__\": \"ConnectedValue\"}, \"skip\": {\"__class__\": \"ConnectedValue\"}}",
+            "input_connections": {
+                "input": {"id": 0, "output_name": "output"},
+                "skip": {"id": 1, "output_name": "output"}
+            },
+            "workflow_outputs": [{"label": "filtered", "output_name": "output"}]
+        },
+        "3": {
+            "id": 3,
+            "type": "tool",
+            "label": "count",
+            "tool_id": "count_lines",
+            "tool_version": "1.0",
+            "tool_state": "{\"input\": {\"__class__\": \"ConnectedValue\"}}",
+            "input_connections": {
+                "input": {"id": 2, "output_name": "output"}
+            },
+            "workflow_outputs": [{"label": "summary", "output_name": "summary"}]
+        }
+    }
+}

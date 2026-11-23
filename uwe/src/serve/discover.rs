@@ -59,7 +59,7 @@ fn workflow(path: &Path) -> Option<WorkflowEntry> {
     let composed = crate::tools::composed::is_composed(path);
     let likely = composed
         || matches!(lower.as_str(), "main.nf" | "snakefile")
-        || [".cwl", ".wdl", ".ga", ".wir.json", ".wir.yaml"]
+        || [".cwl", ".wdl", ".ga", ".smk", ".wir.json", ".wir.yaml"]
             .iter()
             .any(|end| lower.ends_with(end))
         || (lower.ends_with(".yaml") || lower.ends_with(".yml")) && argo(path);
@@ -160,5 +160,19 @@ mod tests {
         found.clear();
         candidates(&project, 0, (&mut found, &mut seen));
         assert!(found.is_empty(), "a folder is searched once");
+    }
+
+    #[test]
+    fn lists_snakemake_files() {
+        let root = tempfile::tempdir().unwrap();
+        let rule = "rule greet:\n    output: \"hello.txt\"\n    shell: \"echo hi > {output}\"\n";
+        std::fs::write(root.path().join("hello.smk"), rule).unwrap();
+        std::fs::write(root.path().join("notes.txt"), "not a workflow\n").unwrap();
+        let found = workflows(&[root.path().to_owned()], None);
+        let names: Vec<(&str, Option<&str>)> = (found.iter())
+            .filter(|entry| entry.preset.is_none())
+            .map(|entry| (entry.name.as_str(), entry.language.as_deref()))
+            .collect();
+        assert_eq!(names, [("hello.smk", Some("snakemake"))]);
     }
 }

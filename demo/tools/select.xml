@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!-- Keeps the lines of a text that hold a pattern, in any case, as a Galaxy tool. -->
+<!-- Copyright (c) 2026 The uwe Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+<tool id="select_lines" name="Select lines" version="1.0" profile="22.05">
+    <description>that hold a pattern</description>
+    <requirements>
+        <container type="docker">debian:stable-slim</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        grep -i -F -e '$pattern' '$input' > '$output' || test \$? -eq 1
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt" label="Text to search"/>
+        <param name="pattern" type="text" value="mon" label="Text that a kept line holds"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt" label="Selected lines"/>
+    </outputs>
+    <help>Keeps every line that holds the pattern; upper and lower case count the same.</help>
+</tool>

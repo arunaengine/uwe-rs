@@ -1,0 +1,49 @@
+# Runs one step of each language that uwe reads, one after the other, on a text.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+uwe_version: "1"
+name: polyglot
+description: >-
+  Turns a text into capital letters (Nextflow), sorts it (CWL), numbers it (Snakemake), keeps the
+  lines with a pattern (Galaxy), reverses them (Argo) and counts lines and words (WDL).
+tools:
+  - ../tools
+inputs:
+  text:
+    type: file
+    format: format_2330
+    description: The text to work on, one greeting per line.
+  pattern:
+    type: string
+    default: mon
+    description: The lines that hold this text, in any case, are kept.
+steps:
+  upper:
+    tool: upper
+    in:
+      text: text
+  sort:
+    tool: sort
+    in:
+      text: upper/upper
+  number:
+    tool: number
+    in:
+      text: sort/sorted
+  select:
+    tool: select_lines
+    in:
+      input: number/numbered
+      pattern: pattern
+  reverse:
+    tool: reverse
+    in:
+      text: select/output
+  summary:
+    tool: summarize
+    in:
+      text: reverse/reversed
+outputs:
+  report:
+    from: summary/report
+    description: The numbers of lines and words that are left.

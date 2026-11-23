@@ -54,6 +54,11 @@ container. On a laptop or workstation every task is a Docker container: see
 | `cwl/scatter-workflow.cwl` | the first scatter workflow of the user guide | the same, `src/_includes/cwl/workflows/` |
 | `argo/hello-world.yaml`, `argo/dag-diamond.yaml` | two of Argo's examples | [argoproj/argo-workflows](https://github.com/argoproj/argo-workflows) v4.1.4, b5b4d665, `examples/` |
 | `wdl/hello.wdl`, `wdl/scatter.wdl`, `wdl/conditional.wdl` | a task, a scatter and a conditional, written for this demo | this repository |
+| `galaxy/pipeline.ga` | a Galaxy workflow of two tool steps, `galaxy/filter_lines.xml` and `galaxy/count_lines.xml`, with a sample text | this repository |
+| `tools/` | one small tool in each language: a Nextflow process, a Snakemake rule, a CWL tool, a Galaxy tool, an Argo template and a WDL task | this repository |
+| `composed/polyglot.uwe.yaml` | a composed workflow that runs the six tools of `tools/` one after the other | this repository |
+| `shared-cache/pipeline.nf` | a pipeline of one process whose result a run of that process alone takes from the cache | this repository |
+| `wir/hello.wir.yaml` | two container tasks written directly in wir | this repository |
 
 The files are copies of the originals. The few changes are listed below, with the reason.
 
@@ -265,6 +270,77 @@ The second run of each comes from the cache, as on the cluster. Snakemake again 
 while its results are there: `rm -r snakemake/{mapped_reads,sorted_reads,calls,plots}` first.
 nf-core/demo takes 7 of its 8 tasks from the cache without `-resume` here: Docker images are
 pinned to their digests. MultiQC runs again, as its input holds the time of the run.
+
+### More examples
+
+These run in `demo/` too, each in a few seconds with `debian:stable-slim`. `-output-dir results`
+keeps their files in `results/`, which git ignores.
+
+WDL, Galaxy and wir:
+
+```sh
+uwe run wdl/hello.wdl -output-dir results
+uwe run galaxy/pipeline.ga -inputs galaxy/inputs.json -output-dir results
+uwe run wir/hello.wir.yaml --name uwe -output-dir results
+```
+
+The Galaxy workflow drops the blank lines and the comment of `galaxy/sample.txt`, then writes
+`results/summary/summary.tabular` with 3 lines and 7 words. The wir document greets the name in
+one task and writes `HELLO UWE` in the next.
+
+Steps of different languages in one workflow. `uwe tool list` reads the tools of every file of a
+folder, `uwe tool check` checks that the steps fit together by their EDAM formats, and the run
+starts one container per step:
+
+```sh
+uwe tool list -tools tools
+uwe tool check composed/polyglot.uwe.yaml
+uwe run composed/polyglot.uwe.yaml --text composed/greetings.txt -output-dir results
+```
+
+The text goes through a Nextflow process, a CWL tool, a Snakemake rule, a Galaxy tool, an Argo
+template and a WDL task; `results/summary/report/summary.txt` says `lines 2` and `words 7`.
+
+One step of a workflow on its own. `uwe tool extract` lists the steps of a file, and `-save`
+writes each as a tool definition that a library folder holds. `uwe tool run` runs one step with
+its inputs as `--<name> <value>`; `<file>#<step>` or `-entry <step>` picks the step of a file
+with several:
+
+```sh
+uwe tool extract snakemake/Snakefile
+uwe tool extract snakemake/Snakefile -save results/tools
+uwe tool run tools/number.smk --text composed/greetings.txt -output-dir results
+uwe tool run nextflow/main.nf --greeting Hola
+```
+
+The Snakemake rule has wildcards in its file patterns. Run alone, it reads its input from the
+command line, writes `results/number/numbered.txt`, and takes its `sample` wildcard from
+the name of the input file. The Nextflow process has no image of its own: it takes the one of
+the `nextflow.config` beside it, as in its pipeline.
+
+The cache across workflows. The second command runs the process of the pipeline on its own,
+and takes its result from the cache instead of starting a container:
+
+```sh
+uwe run shared-cache/pipeline.nf -no-network -output-dir results
+uwe tool run shared-cache/pipeline.nf --text shared-cache/input.txt -no-network -output-dir results
+uwe why <run> 1                                 # the run of the second command
+```
+
+The second run ends with `1 task, 0 ran, 1 from the cache`, and `uwe why` says that the cache of
+the store had its result. Results are shared between runs of the same language: a Snakemake rule
+describes its job in its own way, with another command line, folder and variables, so it does
+not take the result of a Nextflow process that runs the same command.
+
+The studio, the WES API, RO-Crate and comparisons:
+
+```sh
+uwe serve --tools tools --workflows . --open    # the launcher, the explorer and the combiner
+uwe serve --workflows . --port 8080 &
+curl http://127.0.0.1:8080/ga4gh/wes/v1/service-info
+uwe export <run> -output results/crate          # the run as an RO-Crate
+uwe compare <run> <run>                         # what differs between two runs
+```
 
 ### Times on a laptop
 

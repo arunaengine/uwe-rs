@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!-- Drops the blank lines of a text and the lines that start with a marker, like comments. -->
+<!-- Copyright (c) 2026 The uwe Contributors -->
+<!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
+<tool id="filter_lines" name="Filter lines" version="1.0" profile="22.05">
+    <description>without blank lines and comments</description>
+    <requirements>
+        <container type="docker">debian:stable-slim</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        awk -v skip='$skip' 'NF && index($0, skip) != 1' '$input' > '$output'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt" label="Text to filter"/>
+        <param name="skip" type="text" value="#" label="Drop the lines that start with this text">
+            <sanitizer>
+                <valid initial="default">
+                    <add value="#"/>
+                </valid>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt" label="Filtered text"/>
+    </outputs>
+    <help>Keeps every line that is not blank and does not start with the marker.</help>
+</tool>

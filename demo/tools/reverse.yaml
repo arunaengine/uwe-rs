@@ -1,0 +1,25 @@
+# Reverses the order of the lines of a text, as a container template of Argo Workflows.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: reverse
+spec:
+  entrypoint: reverse
+  templates:
+    - name: reverse
+      inputs:
+        artifacts:
+          - name: text
+            path: /tmp/in/text.txt
+      container:
+        image: debian:stable-slim
+        command: [sh, -c]
+        args: ["tac /tmp/in/text.txt > /tmp/reversed.txt"]
+      outputs:
+        artifacts:
+          - name: reversed
+            path: /tmp/reversed.txt
+            archive:
+              none: {}

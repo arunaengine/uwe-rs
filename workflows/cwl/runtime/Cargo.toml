@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "cwl-runtime"
 description = "Values, expressions, command lines, workflows and scatter for CWL, as a workflow-graph driver"
 version.workspace = true
@@ -35,3 +36,7 @@ workflow-graph.workspace = true
 
 [dev-dependencies]
 config-file.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

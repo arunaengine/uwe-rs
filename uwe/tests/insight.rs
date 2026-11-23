@@ -7,7 +7,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 
-mod common;
+use super::common;
 
 const SCRIPT: &str = r#"
 process UPPER {

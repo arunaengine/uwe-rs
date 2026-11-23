@@ -9,9 +9,8 @@ use std::time::Duration;
 
 use workflow_graph::{ExecuteError, Launch, Simulator, execute_with};
 
-mod order;
-#[path = "../../parser/tests/records/mod.rs"]
-mod records;
+use super::order;
+use super::records;
 
 const REJECTED: &str = include_str!("../../parser/tests/fixtures/test-workflows/rejected.txt");
 /// Documents that cwltool rejects but the loader reads; they are left out like those of

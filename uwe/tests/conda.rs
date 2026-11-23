@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-mod common;
+use super::common;
 
 /// The repodata of one small channel for linux-64, and its empty `noarch`.
 fn repodata(cache: &Path) {

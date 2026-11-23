@@ -13,9 +13,8 @@ use cwl_parser::{Loader, Node, Value, yaml};
 use cwl_runtime::{CwlDriver, Options};
 use workflow_graph::{ExecuteError, Launch, Simulator, execute_with};
 
-mod order;
-#[path = "../../parser/tests/records/mod.rs"]
-mod records;
+use super::order;
+use super::records;
 
 const REJECTED: &str = include_str!("../../parser/tests/fixtures/test-workflows/rejected.txt");
 /// Documents that cwltool rejects but the loader reads; like those of `REJECTED`, they have no

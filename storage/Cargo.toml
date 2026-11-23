@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "storage"
 description = "Storage providers: S3 and S3-compatible services, Google Cloud Storage, Azure Blob Storage, HTTPS, FTP, local folders, GA4GH DRS, Synapse, iRODS and OCI Object Storage"
 version.workspace = true
@@ -40,3 +41,7 @@ tokio = { workspace = true, features = ["sync", "time"] }
 tokio-rustls.workspace = true
 tracing.workspace = true
 webpki-root-certs.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

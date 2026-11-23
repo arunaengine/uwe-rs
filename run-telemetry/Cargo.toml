@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "run-telemetry"
 description = "Exports a run of the run database as OpenTelemetry traces in the OTLP JSON format, to a file and to an OTLP HTTP endpoint"
 version.workspace = true
@@ -24,3 +25,7 @@ tokio = { workspace = true, features = ["time"] }
 [dev-dependencies]
 tempfile.workspace = true
 workflow-graph.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

@@ -9,7 +9,8 @@ use uwe::{CancellationToken, Resume, RunRequest, run::Settings, setup::Setup};
 /// so that no test writes into the cache folder of the user.
 fn cache_folder() -> std::path::PathBuf {
     static EMPTIED: std::sync::Once = std::sync::Once::new();
-    let folder = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("embedding-cache");
+    let name = format!("embedding-cache-{}", std::process::id());
+    let folder = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     EMPTIED.call_once(|| {
         let _ = std::fs::remove_dir_all(&folder);
     });
@@ -585,7 +586,7 @@ fn keeps_stdout_free() {
     for language in ["nextflow", "cwl"] {
         for print in [false, true] {
             let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-            command.args(["--exact", "keeps_stdout_free", "--nocapture"]);
+            command.args(["--exact", "embedding::keeps_stdout_free", "--nocapture"]);
             command.env("UWE_EMBEDDED_LANGUAGE", language);
             if print {
                 command.env("UWE_EMBEDDED_PRINT", "1");
@@ -643,7 +644,7 @@ fn prints_to_sink() {
         return;
     }
     let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-    command.args(["--exact", "prints_to_sink", "--nocapture"]);
+    command.args(["--exact", "embedding::prints_to_sink", "--nocapture"]);
     let output = command.env("UWE_EMBEDDED_SINK", "1").output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -808,7 +809,11 @@ fn confines_callback_writes() {
     if std::env::var_os("UWE_EMBEDDED_CALLBACK").is_none() {
         let folder = tempfile::tempdir().unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "confines_callback_writes", "--nocapture"])
+            .args([
+                "--exact",
+                "embedding::confines_callback_writes",
+                "--nocapture",
+            ])
             .env("UWE_EMBEDDED_CALLBACK", "1")
             .current_dir(folder.path())
             .output()
@@ -850,7 +855,7 @@ fn launches_own_folder() {
     if std::env::var_os("UWE_EMBEDDED_LAUNCH").is_none() {
         let folder = tempfile::tempdir().unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "launches_own_folder", "--nocapture"])
+            .args(["--exact", "embedding::launches_own_folder", "--nocapture"])
             .env("UWE_EMBEDDED_LAUNCH", "1")
             .current_dir(folder.path())
             .output()
@@ -928,7 +933,7 @@ fn keeps_user_cache() {
     let user = root.path().join("user");
     std::fs::create_dir(&user).unwrap();
     let output = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "keeps_user_cache", "--nocapture"])
+        .args(["--exact", "embedding::keeps_user_cache", "--nocapture"])
         .env("UWE_EMBEDDED_CACHE", root.path())
         // The helper image that `just test` builds, as the test binary makes none.
         .env(

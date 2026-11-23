@@ -12,7 +12,7 @@ use nextflow_evaluator::interpreter::{Error, Host};
 use nextflow_evaluator::value::Value;
 use nextflow_runtime::{Loader, Options, Run};
 
-use crate::servers::{Recorder, http, mail_parts, masked, smtp};
+use self::servers::{Recorder, http, mail_parts, masked, smtp};
 
 /// The settings of the probe runs, `configs/common.config` of the recording.
 const COMMON: &str = "manifest {\n    name = 'nf-core/probe'\n    version = '1.0.0'\n    \

@@ -15,7 +15,7 @@ use nextflow_evaluator::value::{PathValue, Value};
 use nextflow_runtime::driver::{Nextflow, Settings};
 use workflow_graph::{Driver, Launch};
 
-mod targets;
+use super::targets;
 
 const FIXTURE: &str = "tests/fixtures/inputs_test_workflows.txt";
 
@@ -127,7 +127,12 @@ fn child(target: &Path, project: &Path, outcome: &Path) -> String {
         command
             .arg("120")
             .arg(std::env::current_exe().expect("the test binary"))
-            .args(["--exact", "describe_one", "--ignored", "--nocapture"])
+            .args([
+                "--exact",
+                "inputs_test_workflows::describe_one",
+                "--ignored",
+                "--nocapture",
+            ])
             .args(["--test-threads", "1"])
             .env("INPUTS_TARGET", target)
             .env("INPUTS_OUTCOME", outcome)

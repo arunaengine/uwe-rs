@@ -8,7 +8,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-mod common;
+use super::common;
 
 /// Runs the binary in `folder`, with its cache there; its exit code, output and errors.
 fn uwe(folder: &Path, words: &[&str]) -> (i32, String, String) {

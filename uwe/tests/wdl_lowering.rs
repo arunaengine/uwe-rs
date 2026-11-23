@@ -8,7 +8,7 @@ use std::path::Path;
 use run_database::Database;
 use serde_json::{Value as Json, json};
 
-mod common;
+use super::common;
 
 const WORKFLOW: &str = r#"version 1.1
 workflow check {

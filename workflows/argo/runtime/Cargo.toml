@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "argo-runtime"
 description = "Template resolution, substitution, expressions and the node state machine for Argo Workflows"
 version.workspace = true
@@ -29,3 +30,7 @@ zip.workspace = true
 run-database.workspace = true
 task-model.workspace = true
 task-runner.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

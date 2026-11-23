@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "content-store"
 description = "Content-addressed cache directory on a local file system or in S3"
 version.workspace = true
@@ -25,3 +26,7 @@ tokio = { workspace = true, features = ["sync", "time"] }
 
 [dev-dependencies]
 rustix.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

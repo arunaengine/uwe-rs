@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::Path;
 
-mod common;
+use super::common;
 
 /// The token of the private server, which only the environment of uwe holds.
 const TOKEN: &str = "token-of-the-test-4417";

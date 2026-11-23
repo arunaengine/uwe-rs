@@ -3,9 +3,8 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-mod common;
-#[path = "common/fake.rs"]
-mod fake;
+use super::common;
+use super::fake;
 
 use std::path::Path;
 use std::process::Command;
@@ -28,7 +27,12 @@ fn run(script: &str, fake: &Fake, name: &str) -> (tempfile::TempDir, bool) {
     )
     .expect("writes the config");
     let child = Command::new(std::env::current_exe().expect("this test binary"))
-        .args(["--exact", "child_run", "--ignored", "--test-threads=1"])
+        .args([
+            "--exact",
+            "nf_biffix::child_run",
+            "--ignored",
+            "--test-threads=1",
+        ])
         .current_dir(folder)
         .env("BIFFIX_RUN_ID", "run-demo-0001")
         .env("BIFFIX_INGEST_URL", format!("{}/ingest", fake.address))
@@ -184,7 +188,12 @@ fn maps_images() {
     )
     .expect("writes the config");
     let child = Command::new(std::env::current_exe().expect("this test binary"))
-        .args(["--exact", "child_run", "--ignored", "--test-threads=1"])
+        .args([
+            "--exact",
+            "nf_biffix::child_run",
+            "--ignored",
+            "--test-threads=1",
+        ])
         .current_dir(folder)
         .env("BIFFIX_IMAGE_MAP_FILE", folder.join("image-map.json"))
         .env("BIFFIX_TEST_RUN", "biffix_images")

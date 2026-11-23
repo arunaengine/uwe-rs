@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "nextflow-runtime"
 description = "Module loading, the dataflow network, operators and processes to tasks for Nextflow"
 version.workspace = true
@@ -28,3 +29,11 @@ workflow-graph.workspace = true
 
 [dev-dependencies]
 flate2.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[test]]
+name = "split_memory"
+path = "tests/split_memory.rs"

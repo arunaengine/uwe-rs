@@ -52,8 +52,9 @@ fn check_removal(test: &str, helper: bool, status: u16) {
     let server = std::thread::spawn(move || {
         serve(listener, control, requested, released, status);
     });
+    let target = format!("cancellation::{test}");
     let mut child = Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", test, "--nocapture"])
+        .args(["--exact", &target, "--nocapture"])
         .env("UWE_CANCEL_ENGINE", &socket)
         .env("XDG_CACHE_HOME", folder.path().join("cache"))
         .stdout(Stdio::piped())

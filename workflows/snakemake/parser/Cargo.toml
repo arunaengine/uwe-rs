@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "snakemake-parser"
 description = "Parser and syntax tree for Snakefiles, with the Python parts parsed by ruff"
 version.workspace = true
@@ -16,3 +17,7 @@ ruff_python_ast.workspace = true
 ruff_python_parser.workspace = true
 ruff_text_size.workspace = true
 thiserror.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

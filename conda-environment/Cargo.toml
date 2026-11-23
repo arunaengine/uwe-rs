@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "conda-environment"
 description = "Conda environment files, rattler match specs, resolvo locks and cached HTTPS acquisition"
 version.workspace = true
@@ -36,3 +37,7 @@ tempfile.workspace = true
 bollard.workspace = true
 futures-util.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

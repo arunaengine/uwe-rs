@@ -287,7 +287,7 @@ mod tests {
                     (true, false) => ("404 Not Found", ""),
                 };
                 let answer = format!(
-                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
                 let _ = stream.write_all(answer.as_bytes());

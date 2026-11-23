@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-mod common;
+use super::common;
 
 const SCRIPT: &str = r#"
 process UPPER {

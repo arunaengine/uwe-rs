@@ -9,7 +9,7 @@ use uwe::RunRequest;
 use uwe::hosted::Isolation;
 use uwe::run::Settings;
 
-mod common;
+use super::common;
 
 /// A variable of the service process that no workflow may read.
 const SERVICE: &str = "UWE_TEST_SERVICE_TOKEN";
@@ -545,8 +545,9 @@ fn in_child(test: &str, folder: Option<&Path>) {
     let config = tempfile::tempdir().unwrap();
     let mut command = std::process::Command::new(std::env::current_exe().unwrap());
     command.current_dir(folder.unwrap_or(config.path()));
+    let target = format!("isolation::{test}");
     let output = command
-        .args(["--exact", test, "--nocapture", "--test-threads=1"])
+        .args(["--exact", &target, "--nocapture", "--test-threads=1"])
         .env(CHILD, "1")
         .env("UWE_SITE_CONFIG", "")
         .env("XDG_CONFIG_HOME", config.path())

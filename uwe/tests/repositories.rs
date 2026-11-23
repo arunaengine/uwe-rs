@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-mod common;
+use super::common;
 
 const FIRST: &str = "0123456789abcdef0123456789abcdef01234567";
 const SECOND: &str = "89abcdef0123456789abcdef0123456789abcdef";

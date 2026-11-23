@@ -12,7 +12,7 @@ use conda_environment::{BuiltImage, Environment, ImagePreparation};
 use content_store::Store;
 use serde_json::{Value, json};
 
-mod common;
+use super::common;
 
 fn request(stream: &mut impl Read) -> (String, String) {
     let mut reader = BufReader::new(stream);
@@ -277,7 +277,7 @@ async fn submits_conda_digest() {
     let image = json!({"Id":receipt.image_id(),"Os":"linux","Architecture":"amd64","Config":{"Labels":{
         "org.uwe.conda.preparation":preparation.digest(),"org.uwe.conda.base":preparation.base(),"org.uwe.conda.recipe":preparation.recipe_digest()
     }}}).to_string();
-    let pushing = crate::engine(
+    let pushing = self::engine(
         root,
         vec![
             ("/json".into(), image.clone()),

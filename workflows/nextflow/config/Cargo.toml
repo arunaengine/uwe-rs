@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "nextflow-config"
 description = "Nextflow config files: includes, profiles, params and process selectors"
 version.workspace = true
@@ -17,3 +18,7 @@ nextflow-parser.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use workflow_graph::{EdgeKind, ExecutionGraph, Language, SIMULATION, StepGraph};
 
-mod common;
+use super::common;
 
 /// Two processes: `SHOUT` reads the file that `GREET` makes.
 const PIPELINE: &str = r#"

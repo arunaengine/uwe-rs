@@ -285,5 +285,31 @@ zip = { version = "9.8.2", default-features = false, features = ["deflate"] }
 [profile.dev]
 debug = "line-tables-only"
 
+# Keep test binaries compact so workspace test runs do not exhaust disk space.
+[profile.test]
+debug = false
+strip = "symbols"
+
 [profile.dev.package."*"]
+debug = false
+
+# Keep debug tests fast when hashing binaries or streaming large compressed fixtures.
+[profile.dev.package.sha2]
+opt-level = 3
+debug = false
+
+[profile.dev.package.crc32fast]
+opt-level = 3
+debug = false
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+debug = false
+
+[profile.dev.package.zlib-rs]
+opt-level = 3
+debug = false
+
+[profile.dev.package.flate2]
+opt-level = 3
 debug = false

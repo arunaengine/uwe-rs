@@ -1,0 +1,8 @@
+# Nextest profile settings for bounded parallel test runs in CI.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 3 }
+leak-timeout = "1s"

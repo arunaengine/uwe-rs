@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "run-page"
 description = "The web page of uwe: the graph, the tasks, the logs and the outputs of each run, live"
 version.workspace = true
@@ -28,3 +29,7 @@ workflow-graph.workspace = true
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json"] }
 tempfile.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

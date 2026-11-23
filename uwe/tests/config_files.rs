@@ -5,7 +5,7 @@
 use std::path::Path;
 use std::process::Command;
 
-mod common;
+use super::common;
 
 const SCRIPT: &str = "workflow { }\n";
 

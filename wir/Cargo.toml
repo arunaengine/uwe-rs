@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "wir"
 description = "Workflow intermediate representation: one typed graph format for CWL, Nextflow, Snakemake, Argo and WDL"
 version.workspace = true
@@ -18,3 +19,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 jsonschema.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "task-runner"
 description = "Runs task requests: cache lookups, staging, backends and results"
 version.workspace = true
@@ -33,3 +34,7 @@ config-file.workspace = true
 futures-util.workspace = true
 opendal.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

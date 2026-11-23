@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-mod common;
+use super::common;
 
 /// A run of the probe pipeline with these params, with its error and what it printed. The
 /// probe's twelve-second pause in `OOM` is left out: uwe does not scan task logs.

@@ -150,8 +150,8 @@ workflowhub-test-workflows:
 # Parses the nf-core test workflows, compares the result with `nextflow lint`, and lowers every
 # module.
 test-workflows-test:
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-parser --test test_workflows -- --ignored
-	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test test_workflows -- --ignored
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-parser --test integration test_workflows:: -- --ignored
+	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" cargo test --release --locked -p nextflow-evaluator --test integration test_workflows:: -- --ignored
 
 # Records `nextflow config -flat -profile test` of every nf-core pipeline for the config test, four
 # pipelines at a time.
@@ -168,14 +168,14 @@ config-oracle:
 config-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
 	UWE_CONFIG_ORACLE="${UWE_CONFIG_ORACLE:-$HOME/.cache/uwe/oracle/config}" \
-	cargo test --release --locked -p uwe --test config_test_workflows -- --ignored
+	cargo test --release --locked -p uwe --test integration config_test_workflows:: -- --ignored
 
 # Runs every nf-core pipeline and every Nextflow workflow of WorkflowHub of the test workflows
 # with the simulator and compares the outcomes.
 run-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
 	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nextflow-workflowhub}" \
-	cargo test --release --locked -p uwe --test run_test_workflows -- --ignored
+	cargo test --release --locked -p uwe --test integration run_test_workflows:: -- --ignored
 
 # Describes the inputs of every Nextflow workflow and CWL document of the test workflows as a run
 # does before its first task (decision 24), without network and without running a task, and
@@ -184,8 +184,8 @@ run-test-workflows-test:
 inputs-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
 	WORKFLOWHUB_TEST_WORKFLOWS="${WORKFLOWHUB_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nextflow-workflowhub}" \
-	cargo test --release --locked -p uwe --test inputs_test_workflows -- --ignored --exact describes_workflow_inputs
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test inputs_test_workflows -- --ignored
+	cargo test --release --locked -p uwe --test integration -- --ignored --exact inputs_test_workflows::describes_workflow_inputs
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test integration inputs_test_workflows:: -- --ignored
 
 # Records the stub scripts of the pipelines in uwe/tests/fixtures/oracle/stub with Nextflow
 # and Docker; give the pipelines as arguments, like `just stub-oracle demo`.
@@ -195,7 +195,7 @@ stub-oracle +pipelines:
 # Runs the recorded pipelines with -stub and the simulator and compares the task scripts.
 stub-test-workflows-test:
 	NF_CORE_TEST_WORKFLOWS="${NF_CORE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/nf-core-text}" \
-	cargo test --release --locked -p uwe --test stub_test_workflows -- --ignored
+	cargo test --release --locked -p uwe --test integration stub_test_workflows:: -- --ignored
 
 # Fetches the text-only CWL test workflows at the revisions the CWL test-workflows test expects.
 cwl-test-workflows:
@@ -279,7 +279,7 @@ cwl-test-workflows:
 
 # Loads all CWL test workflows and compares the result with `cwltool --validate`.
 cwl-test-workflows-test:
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-parser --test test_workflows -- --ignored
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-parser --test integration test_workflows:: -- --ignored
 
 # Fetches the data files of the CWL conformance tests (inputs like `whale.txt`), which the
 # text-only test workflows leave out, into a folder of their own, so that the test workflows stay
@@ -326,17 +326,17 @@ cwl-conformance-data:
 cwl-conformance-test:
 	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" \
 	CWL_CONFORMANCE_DATA="${CWL_CONFORMANCE_DATA:-$HOME/.cache/uwe/test-workflows/cwl-conformance-data}" \
-	cargo test --release --locked -p cwl-runtime --test conformance -- --ignored
+	cargo test --release --locked -p cwl-runtime --test integration conformance:: -- --ignored
 
 # Builds the execution graph of every CWL test workflow that cwltool validates, with
 # placeholder inputs, and compares the outcomes with the recorded ones.
 cwl-graph-test-workflows-test:
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test graph_test_workflows -- --ignored
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test integration graph_test_workflows:: -- --ignored
 
 # Runs the real-world CWL test workflows with their example job files, with the
 # simulator, and compares the outcomes with workflows/cwl/runtime/tests/fixtures/job_test_workflows.txt.
 cwl-job-test-workflows-test:
-	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test job_test_workflows -- --ignored
+	CWL_TEST_WORKFLOWS="${CWL_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/cwl}" cargo test --release --locked -p cwl-runtime --test integration job_test_workflows:: -- --ignored
 
 # Extracts the examples of the WDL 1.2.1 specification into `<name>.wdl` files with their
 # inputs, outputs and test config, beside the data files of the WDL 1.1 tests, which they use.
@@ -382,7 +382,7 @@ wdl-spec-tests:
 # simulator, and compares the counts with the recorded ones; `just wdl-spec-tests` fetches them.
 wdl-conformance-test:
 	WDL_SPEC_TESTS="${WDL_SPEC_TESTS:-$HOME/.cache/uwe/test-workflows/wdl-spec}" \
-	cargo test --release --locked -p wdl-lowering --test conformance -- --ignored
+	cargo test --release --locked -p wdl-lowering --test integration conformance:: -- --ignored
 
 # Fetches the text-only Snakemake test workflows at the commits their test expects.
 snakemake-test-workflows:
@@ -466,12 +466,12 @@ snakemake-test-workflows-data:
 
 # Parses all Snakemake test workflows and compares the result with Snakemake's parser.py.
 snakemake-test-workflows-test:
-	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-parser --test test_workflows -- --ignored --nocapture
+	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-parser --test integration test_workflows:: -- --ignored --nocapture
 
 # Runs every Snakemake test workflow with the simulator and compares the outcomes
 # with workflows/snakemake/runtime/tests/fixtures/run_test_workflows.txt; `UPDATE_FIXTURE=1` rewrites the fixture.
 snakemake-run-test-workflows-test:
-	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test run_test_workflows -- --ignored --exact matches_recorded_workflows
+	SNAKEMAKE_TEST_WORKFLOWS="${SNAKEMAKE_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/snakemake}" cargo test --release --locked -p snakemake-runtime --test integration -- --ignored --exact run_test_workflows::matches_recorded_workflows
 
 # Fetches the text-only Argo test workflows at the commits the Argo test-workflows test
 # expects. The checkouts keep their `.git`, which marks the repository whose templates a workflow
@@ -510,12 +510,12 @@ argo-test-workflows:
 # the others as Argo does when they are created, and compares the outcomes with
 # workflows/argo/runtime/tests/fixtures/test-workflows/outcomes.txt.
 argo-test-workflows-test:
-	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test test_workflows -- --ignored --nocapture
+	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-runtime --test integration test_workflows:: -- --ignored --nocapture
 
 # Compiles every Argo test workflow into wir, runs it natively and compiled on the simulator,
 # and compares the counts with the recorded ones; `ARGO_TEST=1` prints each outcome.
 argo-compiler-test:
-	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-compiler --test conformance -- --ignored --nocapture
+	ARGO_TEST_WORKFLOWS="${ARGO_TEST_WORKFLOWS:-$HOME/.cache/uwe/test-workflows/argo}" cargo test --release --locked -p argo-compiler --test integration conformance:: -- --ignored --nocapture
 
 # Runs Funnel (a GA4GH TES server) from ~/.cache/uwe/tools/funnel in the foreground, at
 # http://localhost:18000, with the config of the TES tests: tasks get a memory limit and no
@@ -530,7 +530,7 @@ funnel-server:
 # Runs the TES tests against the server from `just funnel-server`. The S3 transfer test also
 # needs UWE_TES_STAGING_ROOT and UWE_S3_ENDPOINT for a bucket the worker reaches; else it is skipped.
 tes-test:
-	UWE_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test funnel -- --ignored \
+	UWE_TES_SERVER=http://localhost:18000 cargo test -p tes-executor --test integration funnel:: -- --ignored \
 		$([ -n "${UWE_TES_STAGING_ROOT:-}" ] || echo --skip transfers_s3_outputs)
 
 # Qualifies object staging with isolated MinIO, Funnel and Docker, then removes its resources.
@@ -554,7 +554,7 @@ s3-server:
 s3-test:
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
 	UWE_S3_BUCKET=uwe-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
-	cargo test -p content-store --test store -- --ignored
+	cargo test -p content-store --test integration store:: -- --ignored
 	AWS_ACCESS_KEY_ID=rustfsadmin AWS_SECRET_ACCESS_KEY=rustfsadmin AWS_REGION=us-east-1 \
 	UWE_S3_BUCKET=uwe-test UWE_S3_ENDPOINT=http://127.0.0.1:9000 \
 	UWE_STAGING_STORAGE='storage.test = { type = "s3", prefixes = ["s3://uwe-test/"], endpoint = "http://127.0.0.1:9000", region = "us-east-1", access_key_id = "rustfsadmin", secret_access_key = "rustfsadmin" }' \
@@ -627,6 +627,6 @@ storage-test:
 	}
 	serve inputs 9100 "$UWE_TEST_INPUTS_KEY" "$UWE_TEST_INPUTS_SECRET" inputs
 	serve store 9101 "$UWE_TEST_STORE_KEY" "$UWE_TEST_STORE_SECRET" cache
-	cargo test --locked -p storage --test s3 -- --ignored
-	cargo test --locked -p storage --test quilt -- --ignored
-	cargo test --locked -p uwe --test storage -- --ignored
+	cargo test --locked -p storage --test integration s3:: -- --ignored
+	cargo test --locked -p storage --test integration quilt:: -- --ignored
+	cargo test --locked -p uwe --test integration storage:: -- --ignored

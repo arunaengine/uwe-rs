@@ -6,7 +6,7 @@ use std::path::Path;
 
 use run_database::{Database, SourceKind};
 
-mod common;
+use super::common;
 
 use common::WebServer;
 

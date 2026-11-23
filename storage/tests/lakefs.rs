@@ -3,8 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-#[path = "common/service.rs"]
-mod service;
+use super::service;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

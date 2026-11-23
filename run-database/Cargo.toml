@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "run-database"
 description = "The run database: every run, task, attempt, file, edge, log and event in one SQLite file"
 version.workspace = true
@@ -23,3 +24,7 @@ workflow-graph.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

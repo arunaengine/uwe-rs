@@ -13,86 +13,119 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: source-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
-  source:
+  format:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        check: [format, clippy, tests, doctests, deny]
+    timeout-minutes: 10
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-11-03
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install pinned toolchains
-        run: |
-          rustup toolchain install 1.99.1 --profile minimal
-          rustup toolchain install nightly-2026-11-03 --profile minimal --component rustfmt,clippy
-      - name: Fetch locked dependencies
-        if: matrix.check != 'format'
-        run: cargo +1.99.1 fetch --locked
+      - name: Install pinned rustfmt
+        run: rustup toolchain install nightly-2026-11-03 --profile minimal --component rustfmt
       - name: Formatting
-        if: matrix.check == 'format'
-        run: cargo +nightly-2026-11-03 fmt --all -- --check
+        run: cargo fmt --all -- --check
       - name: Style
-        if: matrix.check == 'format'
         run: |
           python3 scripts/dev/check_style_tests.py
           python3 -I -m unittest discover -s scripts/tests
           python3 scripts/dev/check_style.py
-      - name: Clippy
-        if: matrix.check == 'clippy'
-        run: cargo +nightly-2026-11-03 clippy --offline --locked --workspace --all-targets --all-features -j 2 -- -D warnings
-      - name: Build native CWL JavaScript helper
-        if: matrix.check == 'tests'
-        run: |
-          docker info
-          cargo +1.99.1 build --offline --locked -p uwe -j 2
-          python3 scripts/cwl-js-image.py target/debug/uwe
-      - name: Workspace tests
-        if: matrix.check == 'tests'
-        run: cargo +1.99.1 test --offline --locked --workspace --all-targets --all-features -j 2
-      - name: Package container run binary
-        if: matrix.check == 'tests'
-        run: |
-          mkdir -p target/container-runs
-          cp target/debug/uwe target/container-runs/uwe
-          strip target/container-runs/uwe
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: matrix.check == 'tests'
-        with:
-          name: container-run-binary
-          path: target/container-runs/
-          if-no-files-found: error
-          retention-days: 1
-      - name: Dependency policy
-        if: matrix.check == 'deny'
-        run: |
-          cargo +1.99.1 install --locked cargo-deny --version 0.20.2
-          cargo +1.99.1 deny --locked check
-      - name: Doctests
-        if: matrix.check == 'doctests'
-        run: cargo +1.99.1 test --offline --locked --workspace --all-features --doc -j 2
 
-  container-runs:
-    needs: source
+  deny:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.1
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - name: Install pinned toolchain and cargo-deny
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          version=0.20.2
+          archive="cargo-deny-${version}-x86_64-unknown-linux-musl.tar.gz"
+          curl --fail --location --retry 3 \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/${version}/${archive}" \
+            -o "/tmp/${archive}"
+          printf '%s  %s\n' \
+            "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f" \
+            "/tmp/${archive}" | sha256sum --check --strict
+          tar -xzf "/tmp/${archive}" -C /tmp
+          install -m 755 "/tmp/cargo-deny-${version}-x86_64-unknown-linux-musl/cargo-deny" \
+            "${HOME}/.cargo/bin/cargo-deny"
+      - name: Dependency policy
+        run: cargo deny --locked check
+
+  clippy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-11-03
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: container-run-binary
-          path: target/container-runs/
-      - name: Pull the single pinned image
+          persist-credentials: false
+      - name: Install pinned clippy
+        run: rustup toolchain install nightly-2026-11-03 --profile minimal --component clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: clippy
+      - name: Fetch locked dependencies
+        run: cargo fetch --locked
+      - name: Clippy
+        run: cargo clippy --offline --locked --workspace --all-targets --all-features -- -D warnings
+
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.1
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_DEV_STRIP: symbols
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install toolchain, mold linker and cargo-nextest
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y mold
+          rustup toolchain install 1.99.1 --profile minimal
+          version=0.9.152
+          archive="cargo-nextest-${version}-x86_64-unknown-linux-gnu.tar.gz"
+          curl --fail --location --retry 3 \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${version}/${archive}" \
+            -o "/tmp/${archive}"
+          printf '%s  %s\n' \
+            "d039b43c3e0958441b6ad0a39c8884d018b3d2e8fb9928f209074b1100b5e17a" \
+            "/tmp/${archive}" | sha256sum --check --strict
+          tar -xzf "/tmp/${archive}" -C "${HOME}/.cargo/bin" cargo-nextest
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: tests
+      - name: Fetch locked dependencies
+        run: cargo fetch --locked
+      - name: Build native CWL JavaScript helper
         run: |
           docker info
-          image=$(python3 -I -c 'import runpy; print(runpy.run_path("scripts/container-runs.py")["IMAGE"])')
-          docker pull "$image"
+          cargo build --offline --locked -p uwe --all-features
+          python3 scripts/cwl-js-image.py target/debug/uwe
+      - name: Workspace tests
+        run: cargo nextest run --config-file .github/scripts/nextest.toml --profile ci --offline --locked --workspace --all-targets --all-features
+      - name: Doctests
+        run: cargo test --offline --locked --workspace --all-features --doc
       - name: Container runs
         run: |
-          chmod +x target/container-runs/uwe
-          nice -n 19 python3 -I scripts/container-runs.py target/container-runs/uwe
+          image=$(python3 -I -c 'import runpy; print(runpy.run_path("scripts/container-runs.py")["IMAGE"])')
+          docker pull "$image"
+          nice -n 19 python3 -I scripts/container-runs.py target/debug/uwe

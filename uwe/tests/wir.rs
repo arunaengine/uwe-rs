@@ -9,7 +9,7 @@ use run_database::Database;
 use serde_json::{Value as Json, json};
 use workflow_graph::{Reuse, Task};
 
-mod common;
+use super::common;
 
 /// Runs the binary in `directory` with the cache folder `cache`, without network for its
 /// tasks, so that they may share stored results; its exit code and what it printed.

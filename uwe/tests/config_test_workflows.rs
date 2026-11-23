@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use fancy_regex::Regex;
 
-mod common;
+use super::common;
 
 fn directory(variable: &str) -> PathBuf {
     PathBuf::from(std::env::var(variable).unwrap_or_else(|_| panic!("{variable} is not set")))

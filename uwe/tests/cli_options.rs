@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-mod common;
+use super::common;
 
 #[test]
 fn rejects_misplaced_options() {
@@ -163,7 +163,7 @@ fn reconciles_stopped_owner() {
     let dead = root.path().join("dead.sqlite");
     assert!(
         std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "leaves_running_owner"])
+            .args(["--exact", "cli_options::leaves_running_owner"])
             .env("UWE_RECONCILE_DATABASE", &dead)
             .status()
             .unwrap()

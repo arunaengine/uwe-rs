@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-mod common;
+use super::common;
 
 /// A process with an image, so that a real run only needs its executor.
 const PIPELINE: &str = "process A {\n    container 'debian:stable-slim'\n    output:\n    \

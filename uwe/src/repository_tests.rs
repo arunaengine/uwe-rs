@@ -105,25 +105,35 @@ fn asks_for_git() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let server = std::thread::spawn(move || {
+        let mut seen = Vec::new();
         for _ in 0..2 {
             let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut first = String::new();
+            reader.read_line(&mut first).unwrap();
             let mut line = String::new();
-            BufReader::new(&stream).read_line(&mut line).unwrap();
+            while reader.read_line(&mut line).is_ok_and(|count| count > 2) {
+                line.clear();
+            }
             // Only the repository answers as Git; the plain file is not found below it.
-            let answer = if line.contains("/team/tools/pipeline/info/refs") {
-                "HTTP/1.1 200 OK\r\nContent-Type: application/x-git-upload-pack-advertisement\r\nContent-Length: 0\r\n\r\n"
+            let answer = if first.contains("/team/tools/pipeline/info/refs") {
+                "HTTP/1.1 200 OK\r\nContent-Type: application/x-git-upload-pack-advertisement\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             } else {
-                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             };
             stream.write_all(answer.as_bytes()).unwrap();
+            let _ = stream.flush();
+            seen.push(first);
         }
+        seen
     });
     let runtime = workflow_graph::runtime().unwrap();
     let git = format!("http://{address}/team/tools/pipeline");
     let file = format!("http://{address}/team/tools/Snakefile");
     assert!(runtime.block_on(speaks_git(&git, None)));
     assert!(!runtime.block_on(speaks_git(&file, None)));
-    server.join().unwrap();
+    let seen = server.join().unwrap();
+    assert_eq!(seen.len(), 2);
 }
 
 #[test]

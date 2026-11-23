@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use fancy_regex::Regex;
 use workflow_graph::ExecutionGraph;
 
-mod common;
-mod targets;
+use super::common;
+use super::targets;
 
 /// Why each pipeline that fails cannot run, with the output of Nextflow, recorded by
 /// `fixtures/run_evidence.py`.

@@ -4,7 +4,7 @@
 
 use run_database::Database;
 
-mod common;
+use super::common;
 
 const WORKFLOW: &str = r#"apiVersion: argoproj.io/v1alpha1
 kind: Workflow

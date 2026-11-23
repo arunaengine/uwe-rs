@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "snakemake-runtime"
 description = "Evaluation of Snakefiles, planning of the job graph and the Snakemake driver"
 version.workspace = true
@@ -39,3 +40,7 @@ run-database.workspace = true
 task-runner.workspace = true
 tempfile.workspace = true
 zip.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

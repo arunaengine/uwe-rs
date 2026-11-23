@@ -11,7 +11,7 @@ use uwe::tools::{ToolLibrary, composed, lower};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{Launch, Simulator, execute};
 
-mod common;
+use super::common;
 
 const SORT: &str = r#"#!/usr/bin/env cwl-runner
 cwlVersion: v1.2

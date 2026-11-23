@@ -300,7 +300,7 @@ fn child(name: &str, folder: &Path, outcome: &Path) -> String {
         ])
         .args([
             "--exact",
-            "run_one",
+            "run_test_workflows::run_one",
             "--ignored",
             "--nocapture",
             "--test-threads",

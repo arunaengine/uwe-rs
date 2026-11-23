@@ -550,7 +550,10 @@ mod tests {
                     line.clear();
                 }
                 let body = "process A { script: 'true' }\n";
-                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
                 let mut stream = stream;
                 let _ = stream.write_all(format!("{head}{body}").as_bytes());
             }

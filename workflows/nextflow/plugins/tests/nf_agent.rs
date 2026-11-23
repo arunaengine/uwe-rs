@@ -3,8 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-#[path = "common/fake.rs"]
-mod fake;
+use super::fake;
 
 use std::cell::RefCell;
 use std::path::Path;

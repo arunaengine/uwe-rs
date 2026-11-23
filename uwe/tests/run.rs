@@ -7,7 +7,7 @@ use std::process::Command;
 
 use workflow_graph::SIMULATION;
 
-mod common;
+use super::common;
 
 const SCRIPT: &str = r#"
 process UPPER {

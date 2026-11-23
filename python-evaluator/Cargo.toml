@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "python-evaluator"
 description = "An interpreter for a Python subset over the ruff syntax tree, with stand-ins for library modules"
 version.workspace = true
@@ -27,3 +28,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

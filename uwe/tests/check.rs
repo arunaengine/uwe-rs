@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-mod common;
+use super::common;
 
 /// Writes the files into a new folder.
 fn folder(files: &[(&str, &str)]) -> tempfile::TempDir {

@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-mod common;
+use super::common;
 
 /// Runs `uwe check-machine` in `directory` with its own cache and no container engine, and
 /// gives the exit code and standard output.

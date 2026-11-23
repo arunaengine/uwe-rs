@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-mod common;
+use super::common;
 
 /// A module as nf-core writes them: one process, vendored into each pipeline that uses it. It
 /// prints the count to both streams, so that tasks on other data have logs of their own.

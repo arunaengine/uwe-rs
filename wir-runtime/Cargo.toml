@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "wir-runtime"
 description = "Runs wir documents in uwe: native blocks of other languages as child drivers, and task ops"
 version.workspace = true
@@ -37,3 +38,7 @@ wdl-analysis = "0.28.1"
 wdl-ast = "0.27.3"
 wir.workspace = true
 workflow-graph.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-mod common;
+use super::common;
 
 /// A step that asks for 4 GB and writes the memory limit of its container.
 const SCRIPT: &str = r#"

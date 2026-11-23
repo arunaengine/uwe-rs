@@ -3,8 +3,6 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 // The futures of attempts nest deeply, deeper than the default limit lets the compiler check.
-#![recursion_limit = "256"]
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

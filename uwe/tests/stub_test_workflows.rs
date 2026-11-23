@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use workflow_graph::ExecutionGraph;
 
-mod common;
+use super::common;
 
 /// The name of a task as a file name, as `record.sh` makes it.
 fn file_name(task: &str) -> String {

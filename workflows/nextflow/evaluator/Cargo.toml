@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "nextflow-evaluator"
 description = "Values, lowering and the interpreter for the Groovy subset of Nextflow"
 version.workspace = true
@@ -28,3 +29,11 @@ regex-syntax.workspace = true
 tempfile.workspace = true
 unicode-normalization = "0.1.26"
 uuid = { version = "1.29.3", features = ["v4"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[test]]
+name = "split_memory"
+path = "tests/split_memory.rs"

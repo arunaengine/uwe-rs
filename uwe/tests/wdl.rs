@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-mod common;
+use super::common;
 
 /// Runs uwe in a folder with its own cache; gives the exit code, stdout and both streams.
 fn uwe(directory: &Path, arguments: &[&str]) -> (i32, String, String) {

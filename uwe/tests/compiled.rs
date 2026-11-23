@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value as Json;
 
-mod common;
+use super::common;
 
 /// Runs `uwe lower Snakefile` on a Snakefile in a folder of its own; its exit code, what it
 /// printed on standard output, and on standard error.

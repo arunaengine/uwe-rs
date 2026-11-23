@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-mod common;
+use super::common;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -1476,7 +1476,7 @@ fn shares_process_downloads() {
     let downloads = tempfile::tempdir().unwrap();
     let start = || {
         std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "download_process"])
+            .args(["--exact", "providers::download_process"])
             .env("UWE_TEST_DOWNLOAD", &address)
             .env("UWE_TEST_DOWNLOADS", downloads.path())
             .spawn()
@@ -1592,7 +1592,7 @@ async fn recovers_download_owner() {
         .join(storage.download_name(&address).unwrap())
         .with_extension("lock");
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "download_owner", "--nocapture"])
+        .args(["--exact", "providers::download_owner", "--nocapture"])
         .env("UWE_TEST_OWNER", lock)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

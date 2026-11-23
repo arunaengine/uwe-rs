@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "executor"
 description = "The task wrapper, the result manifest and the backends that run tasks"
 version.workspace = true
@@ -35,3 +36,7 @@ webpki-root-certs.workspace = true
 [dev-dependencies]
 tar.workspace = true
 tokio = { workspace = true, features = ["process", "time", "sync", "rt"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

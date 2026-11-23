@@ -114,7 +114,11 @@ const CHILD: &str = "NF_PLUGINS_ENVIRONMENT_CHILD";
 fn observers_read_run() {
     if std::env::var_os(CHILD).is_none() {
         let output = std::process::Command::new(std::env::current_exe().expect("the test"))
-            .args(["--exact", "observers_read_run", "--test-threads=1"])
+            .args([
+                "--exact",
+                "catalogue::observers_read_run",
+                "--test-threads=1",
+            ])
             .env(CHILD, "1")
             .env("TOWER_ACCESS_TOKEN", "process-token")
             .output()

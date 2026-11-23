@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "cwl-parser"
 description = "Schema Salad preprocessing, typed model and loader for CWL documents"
 version.workspace = true
@@ -21,3 +22,7 @@ tempfile.workspace = true
 
 [dev-dependencies]
 config-file.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

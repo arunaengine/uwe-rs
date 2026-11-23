@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "run-crate"
 description = "Exports a run of the run database as a Workflow Run RO-Crate of the Provenance Run Crate profile"
 version.workspace = true
@@ -23,3 +24,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 workflow-graph.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

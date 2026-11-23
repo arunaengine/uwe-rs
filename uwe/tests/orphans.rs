@@ -132,7 +132,7 @@ fn stops_left_jobs() {
             std::env::var("PATH").unwrap_or_default()
         );
         let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "stops_left_jobs", "--nocapture"])
+            .args(["--exact", "orphans::stops_left_jobs", "--nocapture"])
             .env(CHILD, root.path())
             .env("PATH", path)
             .env("UWE_SITE_CONFIG", "")

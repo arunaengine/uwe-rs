@@ -346,8 +346,9 @@ fn nextflow(folder: &Path, server: &Server, secrets: SecretValues) -> RunRequest
 /// its output holds no secret value.
 fn in_child(test: &str) {
     let config = tempfile::tempdir().unwrap();
+    let target = format!("secrets::{test}");
     let output = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", test, "--nocapture", "--test-threads=1"])
+        .args(["--exact", &target, "--nocapture", "--test-threads=1"])
         .env(CHILD, "1")
         .env("UWE_SITE_CONFIG", "")
         .env("XDG_CONFIG_HOME", config.path())

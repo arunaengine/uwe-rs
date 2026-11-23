@@ -9,7 +9,7 @@ use std::process::Command;
 use serde_json::Value as Json;
 use workflow_graph::{ExecutionGraph, Task, TaskId};
 
-mod common;
+use super::common;
 
 /// The pipelines of the comparison.
 const PIPELINES: &[&str] = &["demo", "fetchngs"];

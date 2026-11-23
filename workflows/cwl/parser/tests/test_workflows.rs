@@ -9,7 +9,7 @@ use std::sync::Arc;
 use cwl_parser::source::Web;
 use cwl_parser::{Loader, Node, Value, yaml};
 
-mod records;
+use super::records;
 
 const REJECTED: &str = include_str!("fixtures/test-workflows/rejected.txt");
 const DIFFERENCES: &str = include_str!("fixtures/test-workflows/differences.txt");

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT or Apache-2.0
 
 [package]
+autotests = false
 name = "uwe"
 description = "Runs Nextflow, Snakemake, CWL, Argo, WDL and Galaxy workflows in containers with a shared, content-addressed cache"
 version.workspace = true
@@ -84,3 +85,7 @@ rcgen.workspace = true
 rusqlite.workspace = true
 sha2.workspace = true
 tokio-rustls.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

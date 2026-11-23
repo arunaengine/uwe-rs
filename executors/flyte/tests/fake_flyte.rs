@@ -69,6 +69,7 @@ fn backend(folder: &Path, fake: &FakeFlyte, sha256: Option<&str>) -> FlyteBacken
         max_outputs: 4,
         credentials: false,
         cleanup: true,
+        multipart: None,
     };
     let project = Project {
         org: "lab".into(),

@@ -41,6 +41,7 @@ impl Backend for Waiting {
             files: Vec::new(),
             root,
             usage: None,
+            receipts: Vec::new(),
         })
     }
 }

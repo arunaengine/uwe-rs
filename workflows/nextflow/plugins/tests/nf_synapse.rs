@@ -64,7 +64,7 @@ fn scope_reaches_storage() {
     })
     .expect("an activated plugin");
     assert!(observers.is_empty());
-    let storage = storage::Storage::default().blocking();
+    let storage = scoped(&config);
     let found = storage.stat("syn://syn100").expect("a stat");
     assert!(found.expect("an entity").directory);
     let lines = server.join().expect("the server");
@@ -74,4 +74,10 @@ fn scope_reaches_storage() {
         lines.iter().any(|line| line.eq_ignore_ascii_case(token)),
         "{lines:?}"
     );
+}
+
+/// The storage of a run of `config`, with the plugin scopes of the config.
+fn scoped(config: &Config) -> storage::Blocking {
+    let scopes = catalogue::scopes(config, &|name| std::env::var(name).ok()).expect("scopes");
+    storage::Storage::default().with_scopes(scopes).blocking()
 }

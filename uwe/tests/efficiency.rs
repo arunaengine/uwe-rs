@@ -143,7 +143,7 @@ fn groups_keep_results() {
         .expect("opens the run database");
     let workflow = directory.join("main.nf").to_string_lossy().into_owned();
     let run = database
-        .last_run(&workflow, true)
+        .last_run(&workflow, true, None)
         .expect("reads")
         .expect("a run");
     for task in database.tasks(&run.id).expect("reads the tasks") {
@@ -314,7 +314,9 @@ fn routes_near_inputs() {
         sites: vec![task_runner::Site {
             name: "there".into(),
             near: vec![there.to_string_lossy().into_owned()],
+            ..task_runner::Site::default()
         }],
+        ..task_runner::SiteRule::default()
     };
     let runtime = workflow_graph::runtime().expect("a runtime");
     let running: Vec<_> = [&here, &here, &there, &there]

@@ -9,10 +9,13 @@ use std::time::{Duration, Instant, SystemTime};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use task_model::Digest;
-use workflow_graph::{Edge, EdgeKind, Event, Language, Observer, Outcome, Task, TaskId, Verdict};
+use workflow_graph::{
+    Edge, EdgeKind, Event, ExecuteError, Language, Observer, Outcome, Task, TaskId, Verdict,
+};
 
 use crate::fingerprint::{fingerprint, input_states};
 use crate::pinned::{RemoteFile, Source};
+use crate::store::{Change, RunStore};
 use crate::{DatabaseError, now};
 
 /// The longest text of a standard output or error that the database keeps, in bytes. A longer
@@ -56,10 +59,22 @@ pub struct RunStart {
 /// Records one run. A failed write does not stop the run: the recorder keeps the first error,
 /// skips later writes, and [`Recorder::close`] returns the error.
 pub struct Recorder {
-    writer: Arc<Mutex<Writer>>,
+    target: Target,
     run: String,
     /// Stops the thread that commits, and waits for it.
     flusher: Option<(mpsc::Sender<()>, JoinHandle<()>)>,
+}
+
+/// Where a recorder writes: its own SQLite connection, or a store of the host.
+enum Target {
+    Sqlite(Arc<Mutex<Writer>>),
+    Store {
+        store: Arc<dyn RunStore>,
+        error: Option<DatabaseError>,
+        committed: Option<mpsc::SyncSender<()>>,
+        /// Whether this recorder ended the run, which a store may then refuse notes for.
+        ended: bool,
+    },
 }
 
 /// The connection and the open transaction, shared with the thread that commits.
@@ -71,55 +86,20 @@ struct Writer {
     batch: Option<Instant>,
     error: Option<DatabaseError>,
     committed: Option<mpsc::SyncSender<()>>,
+    /// Whether this writer ended the run, which then still takes its last notes.
+    ended: bool,
 }
 
 impl Recorder {
     pub(crate) fn start(connection: Connection, run: &RunStart) -> Result<Self, DatabaseError> {
-        let lineage = match &run.resumes {
-            Some(resumed) => connection
-                .query_row("SELECT lineage FROM runs WHERE id = ?1", [resumed], |row| {
-                    row.get::<_, String>(0)
-                })
-                .optional()?
-                .ok_or_else(|| DatabaseError::UnknownRun(resumed.clone()))?,
-            None => run.id.clone(),
-        };
-        let identity = crate::runs::process_identity(std::process::id());
-        connection.execute(
-            "INSERT INTO runs (id, lineage, resumes, workflow, language, revision, arguments,
-                parameters, executor, simulated, store, process, started, state, program, launch,
-                workflow_folder, repeats, process_host, process_boot, process_start)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'running', ?14, ?15,
-                ?16, ?17, ?18, ?19, ?20)",
-            params![
-                run.id,
-                lineage,
-                run.resumes,
-                run.workflow,
-                run.language.to_string(),
-                run.revision,
-                serde_json::to_string(&run.arguments)?,
-                serde_json::to_string(&run.parameters)?,
-                run.executor,
-                run.simulated,
-                run.store,
-                std::process::id(),
-                now(),
-                run.program,
-                run.launch,
-                run.workflow_folder,
-                run.repeats,
-                identity.as_ref().map(|identity| &identity.0),
-                identity.as_ref().map(|identity| &identity.1),
-                identity.as_ref().map(|identity| &identity.2),
-            ],
-        )?;
+        begin(&connection, run)?;
         let writer = Arc::new(Mutex::new(Writer {
             connection,
             sequence: 0,
             batch: None,
             error: None,
             committed: None,
+            ended: false,
         }));
         let (stop, stopped) = mpsc::channel::<()>();
         let shared = Arc::clone(&writer);
@@ -131,9 +111,24 @@ impl Recorder {
                 }
             })?;
         Ok(Recorder {
-            writer,
+            target: Target::Sqlite(writer),
             run: run.id.clone(),
             flusher: Some((stop, thread)),
+        })
+    }
+
+    /// Records a run in a store of the host, which gets each change as it comes.
+    pub fn with_store(store: Arc<dyn RunStore>, run: &RunStart) -> Result<Self, DatabaseError> {
+        store.begin(run)?;
+        Ok(Recorder {
+            target: Target::Store {
+                store,
+                error: None,
+                committed: None,
+                ended: false,
+            },
+            run: run.id.clone(),
+            flusher: None,
         })
     }
 
@@ -145,7 +140,10 @@ impl Recorder {
     /// A bounded notification queue for committed data; notifications may coalesce.
     pub fn commits(&mut self) -> mpsc::Receiver<()> {
         let (sender, receiver) = mpsc::sync_channel(1);
-        lock(&self.writer).committed = Some(sender);
+        match &mut self.target {
+            Target::Sqlite(writer) => lock(writer).committed = Some(sender),
+            Target::Store { committed, .. } => *committed = Some(sender),
+        }
         receiver
     }
 
@@ -153,289 +151,40 @@ impl Recorder {
     /// whose attempt failed may be asked for again, to retry it: its row takes the new
     /// description and inputs, and keeps the time it was first asked for.
     pub fn requested(&mut self, task: &Task, edges: &[Edge]) {
-        self.write(|connection, run, sequence| {
-            let states = input_states(task);
-            let time = now();
-            connection
-                .prepare_cached(
-                    "INSERT INTO tasks (run, id, step, name, description, fingerprint, requested,
-                        state)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'waiting')
-                     ON CONFLICT (run, id) DO UPDATE SET name = excluded.name,
-                        description = excluded.description, fingerprint = excluded.fingerprint,
-                        state = 'waiting'",
-                )?
-                .execute(params![
-                    run,
-                    task.id.0,
-                    task.step,
-                    task.name,
-                    serde_json::to_string(task).map_err(to_sqlite)?,
-                    fingerprint(task, &states),
-                    time,
-                ])?;
-            connection
-                .prepare_cached(
-                    "DELETE FROM files WHERE run = ?1 AND task = ?2 AND role = 'input'",
-                )?
-                .execute(params![run, task.id.0])?;
-            let mut insert = connection.prepare_cached(
-                "INSERT INTO files (run, task, attempt, role, path, location, directory, digest,
-                    size)
-                 VALUES (?1, ?2, NULL, 'input', ?3, ?4, ?5, ?6, ?7)",
-            )?;
-            for (input, state) in task.inputs.iter().zip(&states) {
-                let (location, digest, size) = match &input.content {
-                    Some(content) => (
-                        "",
-                        Some(Digest::sha256(content.as_bytes()).to_string()),
-                        Some(content.len() as u64),
-                    ),
-                    None => (
-                        input.source.as_str(),
-                        None,
-                        state.filter(|_| !input.directory).map(|state| state.size),
-                    ),
-                };
-                insert.execute(params![
-                    run,
-                    task.id.0,
-                    input.path,
-                    location,
-                    input.directory,
-                    digest,
-                    size
-                ])?;
-            }
-            let mut insert = connection.prepare_cached(
-                "INSERT INTO edges (run, source, target, kind, path) VALUES (?1, ?2, ?3, ?4, ?5)",
-            )?;
-            for edge in edges {
-                let (kind, path) = match &edge.kind {
-                    EdgeKind::File { path } => ("file", Some(path.as_str())),
-                    EdgeKind::Order => ("order", None),
-                };
-                insert.execute(params![run, edge.from.0, edge.to.0, kind, path])?;
-            }
-            event(connection, run, sequence, "requested", Some(task.id), None)
-        });
+        self.record(Change::Requested { task, edges });
     }
 
     /// The executor got an attempt of a task.
     pub fn started(&mut self, task: TaskId, attempt: u32) {
-        self.write(|connection, run, sequence| {
-            connection
-                .prepare_cached(
-                    "INSERT INTO attempts (run, task, number, started) VALUES (?1, ?2, ?3, ?4)",
-                )?
-                .execute(params![run, task.0, attempt, now()])?;
-            connection
-                .prepare_cached("UPDATE tasks SET state = 'running' WHERE run = ?1 AND id = ?2")?
-                .execute(params![run, task.0])?;
-            event(
-                connection,
-                run,
-                sequence,
-                "started",
-                Some(task),
-                Some(attempt),
-            )
-        });
+        self.record(Change::Started { task, attempt });
     }
 
     /// An attempt of a task ended. With `retried`, the engine runs the task again, so the task
     /// is still running.
     pub fn finished(&mut self, outcome: &Outcome, attempt: u32, retried: bool) {
-        self.write(|connection, run, sequence| {
-            let task = outcome.id.0;
-            // The executor knows the times best; a result from the cache ran nowhere.
-            let time = |at: Option<SystemTime>| at.map(milliseconds);
-            let reused = outcome.cached.then_some("cache");
-            let usage = outcome.usage.unwrap_or_default();
-            // SQLite keeps whole numbers as signed 64 bits.
-            let clamp = |value: u64| i64::try_from(value).unwrap_or(i64::MAX);
-            connection
-                .prepare_cached(
-                    "UPDATE attempts SET ended = ?4, exit_code = ?5, retried = ?6, image = ?7,
-                        reused = COALESCE(?8, reused), started = COALESCE(?9, started),
-                        cpu_usec = ?10, memory_peak = ?11, read_bytes = ?12, write_bytes = ?13,
-                        accepted = ?14
-                     WHERE run = ?1 AND task = ?2 AND number = ?3",
-                )?
-                .execute(params![
-                    run,
-                    task,
-                    attempt,
-                    time(outcome.ended).unwrap_or_else(now),
-                    outcome.exit_code,
-                    retried,
-                    outcome.image,
-                    reused,
-                    time(outcome.started),
-                    usage.cpu_usec.map(clamp),
-                    usage.memory_peak.map(clamp),
-                    usage.read_bytes.map(clamp),
-                    usage.write_bytes.map(clamp),
-                    outcome.accepted,
-                ])?;
-            let cancelled = outcome.error == Some(workflow_graph::TaskError::Cancelled);
-            let state = match (retried, outcome.exit_code, outcome.accepted) {
-                (true, _, _) => "running",
-                // A task that the stop of the run ended did not fail; the run ended first.
-                _ if cancelled => "stopped",
-                (false, _, Some(false)) => "failed",
-                (false, _, Some(true)) => "succeeded",
-                (false, 0, _) => "succeeded",
-                (false, _, _) => "failed",
-            };
-            connection
-                .prepare_cached("UPDATE tasks SET state = ?3 WHERE run = ?1 AND id = ?2")?
-                .execute(params![run, task, state])?;
-            let mut insert = connection.prepare_cached(
-                "INSERT INTO files (run, task, attempt, role, path, location, directory, digest,
-                    size)
-                 VALUES (?1, ?2, ?3, 'output', ?4, ?5, ?6, ?7, ?8)",
-            )?;
-            for file in &outcome.files {
-                // The executor knows size and digest best; the simulator tells neither.
-                let size = file.size.or_else(|| {
-                    std::fs::metadata(&file.location)
-                        .ok()
-                        .filter(|metadata| metadata.is_file())
-                        .map(|metadata| metadata.len())
-                });
-                insert.execute(params![
-                    run,
-                    task,
-                    attempt,
-                    file.path,
-                    file.location,
-                    file.directory,
-                    file.digest,
-                    size
-                ])?;
-            }
-            let mut update = connection.prepare_cached(
-                "UPDATE files SET digest = ?4
-                 WHERE run = ?1 AND task = ?2 AND role = 'input' AND attempt IS NULL AND path = ?3",
-            )?;
-            for (path, digest) in &outcome.inputs {
-                update.execute(params![run, task, path, digest])?;
-            }
-            if let Some(check) = &outcome.reproducibility {
-                let (verdict, differing, exit_code) = match &check.verdict {
-                    Verdict::Same => ("same", &[][..], None),
-                    Verdict::Differs { paths } => ("differs", &paths[..], None),
-                    Verdict::Failed { exit_code } => ("failed", &[][..], Some(*exit_code)),
-                };
-                connection
-                    .prepare_cached(
-                        "INSERT OR REPLACE INTO checks (run, task, attempt, earlier, verdict,
-                            differing, exit_code)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    )?
-                    .execute(params![
-                        run,
-                        task,
-                        attempt,
-                        check.earlier_run,
-                        verdict,
-                        serde_json::to_string(differing).map_err(to_sqlite)?,
-                        exit_code
-                    ])?;
-            }
-            // The other containers of a task that runs several have streams of their own,
-            // named after the container, like `prepare/stdout`.
-            let mut streams = vec![
-                ("stdout".to_owned(), &outcome.stdout, outcome.stdout_log.as_ref()),
-                ("stderr".to_owned(), &outcome.stderr, outcome.stderr_log.as_ref()),
-            ];
-            // The streams of the main container, the first, are those of the task.
-            for container in outcome.containers.iter().skip(1) {
-                streams.push((format!("{}/stdout", container.name), &container.stdout, container.stdout_log.as_ref()));
-                streams.push((format!("{}/stderr", container.name), &container.stderr, container.stderr_log.as_ref()));
-            }
-            for (stream, text, retained) in streams {
-                if text.is_empty() && retained.is_none() {
-                    continue;
-                }
-                connection
-                    .prepare_cached(
-                        "INSERT INTO logs (run, task, attempt, stream, digest, size, text, location)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    )?
-                    .execute(params![
-                        run,
-                        task,
-                        attempt,
-                        stream,
-                        retained.map_or_else(|| Digest::sha256(text.as_bytes()).to_string(), |log| log.digest.clone()),
-                        retained.map_or(text.len() as u64, |log| log.size),
-                        tail(text),
-                        retained.map(|log| &log.location)
-                    ])?;
-            }
-            event(
-                connection,
-                run,
-                sequence,
-                "finished",
-                Some(outcome.id),
-                Some(attempt),
-            )
+        self.record(Change::Finished {
+            outcome,
+            attempt,
+            retried,
         });
     }
 
     /// The driver's native output checks accepted or rejected an exact finished attempt.
     pub fn validated(&mut self, task: TaskId, attempt: u32, accepted: bool) {
-        self.write(|connection, run, sequence| {
-            connection
-                .prepare_cached(
-                    "UPDATE attempts SET accepted = ?4
-                     WHERE run = ?1 AND task = ?2 AND number = ?3",
-                )?
-                .execute(params![run, task.0, attempt, accepted])?;
-            connection
-                .prepare_cached(
-                    "UPDATE tasks SET state = CASE
-                        WHEN ?4 AND EXISTS (
-                            SELECT 1 FROM attempts
-                            WHERE run = ?1 AND task = ?2 AND number = ?3
-                                AND exit_code IS NOT NULL AND retried = 0
-                        ) THEN 'succeeded' ELSE 'failed' END
-                     WHERE run = ?1 AND id = ?2 AND ?3 = (
-                        SELECT MAX(number) FROM attempts WHERE run = ?1 AND task = ?2
-                     )",
-                )?
-                .execute(params![run, task.0, attempt, accepted])?;
-            event(
-                connection,
-                run,
-                sequence,
-                "validated",
-                Some(task),
-                Some(attempt),
-            )
+        self.record(Change::Validated {
+            task,
+            attempt,
+            accepted,
         });
     }
 
     /// The result of an attempt came from elsewhere, not from running it: `source` is `cache`
     /// for the store, or the id of the earlier run that a resumed run took it from.
     pub fn reused(&mut self, task: TaskId, attempt: u32, source: &str) {
-        self.write(|connection, run, sequence| {
-            connection
-                .prepare_cached(
-                    "UPDATE attempts SET reused = ?4 WHERE run = ?1 AND task = ?2 AND number = ?3",
-                )?
-                .execute(params![run, task.0, attempt, source])?;
-            event(
-                connection,
-                run,
-                sequence,
-                "reused",
-                Some(task),
-                Some(attempt),
-            )
+        self.record(Change::Reused {
+            task,
+            attempt,
+            source,
         });
     }
 
@@ -443,142 +192,71 @@ impl Recorder {
     /// real data can have more or fewer tasks there. `kind` is `content`, `wildcard` or
     /// `checkpoint`.
     pub fn marked(&mut self, task: TaskId, kind: &str, reason: &str) {
-        self.write(|connection, run, sequence| {
-            connection
-                .prepare_cached(
-                    "INSERT INTO markers (run, task, kind, reason) VALUES (?1, ?2, ?3, ?4)",
-                )?
-                .execute(params![run, task.0, kind, reason])?;
-            event(connection, run, sequence, "marked", Some(task), None)
-        });
+        self.record(Change::Marked { task, kind, reason });
     }
 
     /// The inputs of the run (decision 24): the JSON Schema of the inputs of its workflow and the
     /// values that the run checked against it. They are no event of the engine.
     pub fn inputs(&mut self, schema: &serde_json::Value, values: &serde_json::Value) {
-        self.update(|connection, run| {
-            connection.execute(
-                "UPDATE runs SET input_schema = ?2, inputs = ?3 WHERE id = ?1",
-                params![run, schema.to_string(), values.to_string()],
-            )?;
-            Ok(())
-        });
+        self.record(Change::Inputs { schema, values });
     }
 
     /// The wir document that the run compiled its workflow into, with its digest.
     pub fn document(&mut self, path: &str, digest: &str) {
-        self.update(|connection, run| {
-            connection.execute(
-                "UPDATE runs SET document = ?2, document_digest = ?3 WHERE id = ?1",
-                params![run, path, digest],
-            )?;
-            Ok(())
-        });
+        self.record(Change::Document { path, digest });
+    }
+
+    /// The cache namespace of the tenant that the run runs for; `None` keeps the shared one.
+    /// It comes before the tasks, so that no result of the run is ever in another namespace.
+    pub fn cache_namespace(&mut self, namespace: Option<&str>) {
+        if let Some(namespace) = namespace {
+            self.record(Change::CacheNamespace(namespace));
+        }
     }
 
     /// The JSON Schema of the outputs of the workflow of the run.
     pub fn outputs(&mut self, schema: &serde_json::Value) {
-        self.update(|connection, run| {
-            connection.execute(
-                "UPDATE runs SET output_schema = ?2 WHERE id = ?1",
-                params![run, schema.to_string()],
-            )?;
-            Ok(())
-        });
+        self.record(Change::Outputs { schema });
     }
 
     /// The files that make up the workflow of the run and the files that its command line
     /// names, by their digests.
     pub fn sources(&mut self, sources: &[Source]) {
-        self.update(|connection, run| {
-            let mut insert = connection.prepare_cached(
-                "INSERT INTO sources (run, kind, path, digest, size, executable) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            )?;
-            for source in sources {
-                insert.execute(params![
-                    run,
-                    source.kind.name(),
-                    source.path,
-                    source.digest,
-                    source.size,
-                    source.executable
-                ])?;
-            }
-            Ok(())
-        });
+        self.record(Change::Sources(sources));
     }
 
     /// The remote files that the run read, by their digests. A file that is noted twice keeps
     /// what was noted last.
     pub fn remote_files(&mut self, files: &[RemoteFile]) {
-        self.update(|connection, run| {
-            let mut insert = connection.prepare_cached(
-                "INSERT OR REPLACE INTO remote_files (run, address, digest, size, fetched, version)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            )?;
-            for file in files {
-                insert.execute(params![
-                    run,
-                    file.address,
-                    file.digest,
-                    file.size,
-                    file.fetched,
-                    file.version
-                ])?;
-            }
-            Ok(())
-        });
+        self.record(Change::RemoteFiles(files));
     }
 
     /// A result of the run went to `target`. A target that gets a result twice keeps the last.
     pub fn delivered(&mut self, target: &str, location: &str) {
-        self.update(|connection, run| {
-            connection
-                .prepare_cached(
-                    "INSERT OR REPLACE INTO deliveries (run, target, location) VALUES (?1, ?2, ?3)",
-                )?
-                .execute(params![run, target, location])?;
-            Ok(())
-        });
-    }
-
-    /// Runs one write that is no event of the engine, in the open transaction, as events are
-    /// written: many rows, like the sources of a run, then take one commit, not one each,
-    /// which counts where each commit waits for the file system of a cluster.
-    fn update(&mut self, action: impl FnOnce(&Connection, &str) -> rusqlite::Result<()>) {
-        lock(&self.writer).update(&self.run, action);
+        self.record(Change::Delivered { target, location });
     }
 
     /// The run replays one task of an earlier run. It is no event of the engine.
     pub fn replays(&mut self, run: &str, task: u64) {
-        self.update(|connection, id| {
-            connection.execute(
-                "UPDATE runs SET replays = ?2, replays_task = ?3 WHERE id = ?1",
-                params![id, run, task],
-            )?;
-            Ok(())
-        });
+        self.record(Change::Replays { run, task });
     }
 
     /// The run ended, with the error that stopped it if one did. Tasks that did not finish are
     /// marked as stopped, and everything is committed.
     pub fn ended(&mut self, error: Option<&str>) {
-        self.write(|connection, run, sequence| {
-            let state = if error.is_some() {
-                "failed"
-            } else {
-                "succeeded"
-            };
-            connection.execute(
-                "UPDATE runs SET ended = ?2, state = ?3, error = ?4 WHERE id = ?1",
-                params![run, now(), state, error],
-            )?;
-            connection.execute(
-                "UPDATE tasks SET state = 'stopped'
-                 WHERE run = ?1 AND state IN ('waiting', 'running')",
-                [run],
-            )?;
-            event(connection, run, sequence, "ended", None, None)
+        self.record(Change::Ended {
+            error,
+            stopped: false,
+        });
+        self.commit();
+    }
+
+    /// The run ended as the engine says: a run that was cancelled is stopped, not failed.
+    pub fn finish(&mut self, error: Option<&ExecuteError>) {
+        let message = error.map(ToString::to_string);
+        self.record(Change::Ended {
+            error: message.as_deref(),
+            stopped: matches!(error, Some(ExecuteError::Cancelled)),
         });
         self.commit();
     }
@@ -586,19 +264,58 @@ impl Recorder {
     /// Commits what is left and returns the first error of any write.
     pub fn close(mut self) -> Result<(), DatabaseError> {
         self.stop();
-        match lock(&self.writer).error.take() {
-            Some(error) => Err(error),
-            None => Ok(()),
+        match &mut self.target {
+            Target::Sqlite(writer) => lock(writer).error.take().map_or(Ok(()), Err),
+            Target::Store { error, .. } => error.take().map_or(Ok(()), Err),
         }
     }
 
-    /// Runs one write, with the connection, the run id and the number of its event.
-    fn write(&mut self, action: impl FnOnce(&Connection, &str, i64) -> rusqlite::Result<()>) {
-        lock(&self.writer).write(&self.run, action);
+    /// Writes one change: an event of the engine takes the next event number, and other
+    /// changes, like the many sources of a run, join the open transaction, which counts where
+    /// each commit waits for the file system of a cluster.
+    fn record(&mut self, change: Change<'_>) {
+        let ending = matches!(change, Change::Ended { .. });
+        match &mut self.target {
+            Target::Sqlite(writer) if change.event() => {
+                let mut writer = lock(writer);
+                writer.write(&self.run, |connection, run, sequence| {
+                    write(connection, run, sequence, &change)
+                });
+                writer.ended |= ending && writer.error.is_none();
+            }
+            Target::Sqlite(writer) => {
+                lock(writer).update(&self.run, |connection, run| {
+                    write(connection, run, 0, &change)
+                });
+            }
+            Target::Store {
+                store,
+                error,
+                committed,
+                ended,
+            } => {
+                if error.is_some() {
+                    return;
+                }
+                match store.apply(&self.run, change) {
+                    Ok(()) => {
+                        *ended |= ending;
+                        if let Some(sender) = committed {
+                            let _ = sender.try_send(());
+                        }
+                    }
+                    // A run that this recorder stopped itself is whole without its last notes.
+                    Err(DatabaseError::Stopped(_)) if *ended => {}
+                    Err(failed) => *error = Some(failed),
+                }
+            }
+        }
     }
 
     fn commit(&mut self) {
-        lock(&self.writer).commit();
+        if let Target::Sqlite(writer) = &self.target {
+            lock(writer).commit();
+        }
     }
 
     /// Stops the thread that commits and commits what is left.
@@ -608,7 +325,10 @@ impl Recorder {
             let _ = thread.join();
         }
         self.commit();
-        lock(&self.writer).committed.take();
+        match &mut self.target {
+            Target::Sqlite(writer) => drop(lock(writer).committed.take()),
+            Target::Store { committed, .. } => drop(committed.take()),
+        }
     }
 }
 
@@ -674,7 +394,8 @@ impl Writer {
                 |row| row.get::<_, bool>(0),
             );
             match stopped {
-                Ok(false) => {}
+                // A run that this writer stopped itself still takes its last notes.
+                Ok(stopped) if !stopped || self.ended => {}
                 result => {
                     let _ = self.connection.execute_batch("ROLLBACK");
                     self.error = Some(match result {
@@ -738,8 +459,461 @@ impl Observer for Recorder {
                 accepted,
             } => self.validated(task, attempt, accepted),
             Event::Marked { task, marker } => self.marked(task, marker.kind.name(), &marker.reason),
-            Event::Ended { error } => self.ended(error.map(ToString::to_string).as_deref()),
+            Event::Ended { error } => self.finish(error),
             Event::Delivered { delivery } => self.delivered(&delivery.target, &delivery.location),
+        }
+    }
+}
+
+/// Adds the row of a new run, in the lineage of the run it resumes.
+pub(crate) fn begin(connection: &Connection, run: &RunStart) -> Result<(), DatabaseError> {
+    let lineage = match &run.resumes {
+        Some(resumed) => connection
+            .query_row("SELECT lineage FROM runs WHERE id = ?1", [resumed], |row| {
+                row.get::<_, String>(0)
+            })
+            .optional()?
+            .ok_or_else(|| DatabaseError::UnknownRun(resumed.clone()))?,
+        None => run.id.clone(),
+    };
+    let identity = crate::runs::process_identity(std::process::id());
+    connection.execute(
+        "INSERT INTO runs (id, lineage, resumes, workflow, language, revision, arguments,
+            parameters, executor, simulated, store, process, started, state, program, launch,
+            workflow_folder, repeats, process_host, process_boot, process_start)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'running', ?14, ?15,
+            ?16, ?17, ?18, ?19, ?20)",
+        params![
+            run.id,
+            lineage,
+            run.resumes,
+            run.workflow,
+            run.language.to_string(),
+            run.revision,
+            serde_json::to_string(&run.arguments)?,
+            serde_json::to_string(&run.parameters)?,
+            run.executor,
+            run.simulated,
+            run.store,
+            std::process::id(),
+            now(),
+            run.program,
+            run.launch,
+            run.workflow_folder,
+            run.repeats,
+            identity.as_ref().map(|identity| &identity.0),
+            identity.as_ref().map(|identity| &identity.1),
+            identity.as_ref().map(|identity| &identity.2),
+        ],
+    )?;
+    Ok(())
+}
+/// Writes one change of the run `run` on the connection; an event of the engine takes the
+/// number `sequence`.
+pub(crate) fn write(
+    connection: &Connection,
+    run: &str,
+    sequence: i64,
+    change: &Change<'_>,
+) -> rusqlite::Result<()> {
+    match *change {
+        Change::Requested { task, edges } => {
+            let states = input_states(task);
+            let time = now();
+            connection
+                .prepare_cached(
+                    "INSERT INTO tasks (run, id, step, name, description, fingerprint, requested,
+                    state)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'waiting')
+                 ON CONFLICT (run, id) DO UPDATE SET name = excluded.name,
+                    description = excluded.description, fingerprint = excluded.fingerprint,
+                    state = 'waiting'",
+                )?
+                .execute(params![
+                    run,
+                    task.id.0,
+                    task.step,
+                    task.name,
+                    serde_json::to_string(task).map_err(to_sqlite)?,
+                    fingerprint(task, &states),
+                    time,
+                ])?;
+            connection
+                .prepare_cached(
+                    "DELETE FROM files WHERE run = ?1 AND task = ?2 AND role = 'input'",
+                )?
+                .execute(params![run, task.id.0])?;
+            let mut insert = connection.prepare_cached(
+                "INSERT INTO files (run, task, attempt, role, path, location, directory, digest,
+                size)
+             VALUES (?1, ?2, NULL, 'input', ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            for (input, state) in task.inputs.iter().zip(&states) {
+                let (location, digest, size) = match &input.content {
+                    Some(content) => (
+                        "",
+                        Some(Digest::sha256(content.as_bytes()).to_string()),
+                        Some(content.len() as u64),
+                    ),
+                    None => (
+                        input.source.as_str(),
+                        None,
+                        state.filter(|_| !input.directory).map(|state| state.size),
+                    ),
+                };
+                insert.execute(params![
+                    run,
+                    task.id.0,
+                    input.path,
+                    location,
+                    input.directory,
+                    digest,
+                    size
+                ])?;
+            }
+            let mut insert = connection.prepare_cached(
+                "INSERT INTO edges (run, source, target, kind, path) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for edge in edges {
+                let (kind, path) = match &edge.kind {
+                    EdgeKind::File { path } => ("file", Some(path.as_str())),
+                    EdgeKind::Order => ("order", None),
+                };
+                insert.execute(params![run, edge.from.0, edge.to.0, kind, path])?;
+            }
+            event(connection, run, sequence, "requested", Some(task.id), None)
+        }
+        Change::Started { task, attempt } => {
+            connection
+                .prepare_cached(
+                    "INSERT INTO attempts (run, task, number, started) VALUES (?1, ?2, ?3, ?4)",
+                )?
+                .execute(params![run, task.0, attempt, now()])?;
+            connection
+                .prepare_cached("UPDATE tasks SET state = 'running' WHERE run = ?1 AND id = ?2")?
+                .execute(params![run, task.0])?;
+            event(
+                connection,
+                run,
+                sequence,
+                "started",
+                Some(task),
+                Some(attempt),
+            )
+        }
+        Change::Finished {
+            outcome,
+            attempt,
+            retried,
+        } => {
+            let task = outcome.id.0;
+            // The executor knows the times best; a result from the cache ran nowhere.
+            let time = |at: Option<SystemTime>| at.map(milliseconds);
+            let reused = outcome.cached.then_some("cache");
+            let usage = outcome.usage.unwrap_or_default();
+            // SQLite keeps whole numbers as signed 64 bits.
+            let clamp = |value: u64| i64::try_from(value).unwrap_or(i64::MAX);
+            connection
+                .prepare_cached(
+                    "UPDATE attempts SET ended = ?4, exit_code = ?5, retried = ?6, image = ?7,
+                    reused = COALESCE(?8, reused), started = COALESCE(?9, started),
+                    cpu_usec = ?10, memory_peak = ?11, read_bytes = ?12, write_bytes = ?13,
+                    accepted = ?14
+                 WHERE run = ?1 AND task = ?2 AND number = ?3",
+                )?
+                .execute(params![
+                    run,
+                    task,
+                    attempt,
+                    time(outcome.ended).unwrap_or_else(now),
+                    outcome.exit_code,
+                    retried,
+                    outcome.image,
+                    reused,
+                    time(outcome.started),
+                    usage.cpu_usec.map(clamp),
+                    usage.memory_peak.map(clamp),
+                    usage.read_bytes.map(clamp),
+                    usage.write_bytes.map(clamp),
+                    outcome.accepted,
+                ])?;
+            let cancelled = outcome.error == Some(workflow_graph::TaskError::Cancelled);
+            let state = match (retried, outcome.exit_code, outcome.accepted) {
+                (true, _, _) => "running",
+                // A task that the stop of the run ended did not fail; the run ended first.
+                _ if cancelled => "stopped",
+                (false, _, Some(false)) => "failed",
+                (false, _, Some(true)) => "succeeded",
+                (false, 0, _) => "succeeded",
+                (false, _, _) => "failed",
+            };
+            connection
+                .prepare_cached("UPDATE tasks SET state = ?3 WHERE run = ?1 AND id = ?2")?
+                .execute(params![run, task, state])?;
+            let mut insert = connection.prepare_cached(
+                "INSERT INTO files (run, task, attempt, role, path, location, directory, digest,
+                size)
+             VALUES (?1, ?2, ?3, 'output', ?4, ?5, ?6, ?7, ?8)",
+            )?;
+            for file in &outcome.files {
+                // The executor knows size and digest best; the simulator tells neither.
+                let size = file.size.or_else(|| {
+                    std::fs::metadata(&file.location)
+                        .ok()
+                        .filter(|metadata| metadata.is_file())
+                        .map(|metadata| metadata.len())
+                });
+                insert.execute(params![
+                    run,
+                    task,
+                    attempt,
+                    file.path,
+                    file.location,
+                    file.directory,
+                    file.digest,
+                    size
+                ])?;
+            }
+            let mut update = connection.prepare_cached(
+                "UPDATE files SET digest = ?4
+             WHERE run = ?1 AND task = ?2 AND role = 'input' AND attempt IS NULL AND path = ?3",
+            )?;
+            for (path, digest) in &outcome.inputs {
+                update.execute(params![run, task, path, digest])?;
+            }
+            if let Some(check) = &outcome.reproducibility {
+                let (verdict, differing, exit_code) = match &check.verdict {
+                    Verdict::Same => ("same", &[][..], None),
+                    Verdict::Differs { paths } => ("differs", &paths[..], None),
+                    Verdict::Failed { exit_code } => ("failed", &[][..], Some(*exit_code)),
+                };
+                connection
+                    .prepare_cached(
+                        "INSERT OR REPLACE INTO checks (run, task, attempt, earlier, verdict,
+                        differing, exit_code)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    )?
+                    .execute(params![
+                        run,
+                        task,
+                        attempt,
+                        check.earlier_run,
+                        verdict,
+                        serde_json::to_string(differing).map_err(to_sqlite)?,
+                        exit_code
+                    ])?;
+            }
+            // The other containers of a task that runs several have streams of their own,
+            // named after the container, like `prepare/stdout`.
+            let mut streams = vec![
+                (
+                    "stdout".to_owned(),
+                    &outcome.stdout,
+                    outcome.stdout_log.as_ref(),
+                ),
+                (
+                    "stderr".to_owned(),
+                    &outcome.stderr,
+                    outcome.stderr_log.as_ref(),
+                ),
+            ];
+            // The streams of the main container, the first, are those of the task.
+            for container in outcome.containers.iter().skip(1) {
+                streams.push((
+                    format!("{}/stdout", container.name),
+                    &container.stdout,
+                    container.stdout_log.as_ref(),
+                ));
+                streams.push((
+                    format!("{}/stderr", container.name),
+                    &container.stderr,
+                    container.stderr_log.as_ref(),
+                ));
+            }
+            for (stream, text, retained) in streams {
+                if text.is_empty() && retained.is_none() {
+                    continue;
+                }
+                connection
+                .prepare_cached(
+                    "INSERT INTO logs (run, task, attempt, stream, digest, size, text, location)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                )?
+                .execute(params![
+                    run,
+                    task,
+                    attempt,
+                    stream,
+                    retained.map_or_else(|| Digest::sha256(text.as_bytes()).to_string(), |log| log.digest.clone()),
+                    retained.map_or(text.len() as u64, |log| log.size),
+                    tail(text),
+                    retained.map(|log| &log.location)
+                ])?;
+            }
+            event(
+                connection,
+                run,
+                sequence,
+                "finished",
+                Some(outcome.id),
+                Some(attempt),
+            )
+        }
+        Change::Validated {
+            task,
+            attempt,
+            accepted,
+        } => {
+            connection
+                .prepare_cached(
+                    "UPDATE attempts SET accepted = ?4
+                 WHERE run = ?1 AND task = ?2 AND number = ?3",
+                )?
+                .execute(params![run, task.0, attempt, accepted])?;
+            connection
+                .prepare_cached(
+                    "UPDATE tasks SET state = CASE
+                    WHEN ?4 AND EXISTS (
+                        SELECT 1 FROM attempts
+                        WHERE run = ?1 AND task = ?2 AND number = ?3
+                            AND exit_code IS NOT NULL AND retried = 0
+                    ) THEN 'succeeded' ELSE 'failed' END
+                 WHERE run = ?1 AND id = ?2 AND ?3 = (
+                    SELECT MAX(number) FROM attempts WHERE run = ?1 AND task = ?2
+                 )",
+                )?
+                .execute(params![run, task.0, attempt, accepted])?;
+            event(
+                connection,
+                run,
+                sequence,
+                "validated",
+                Some(task),
+                Some(attempt),
+            )
+        }
+        Change::Reused {
+            task,
+            attempt,
+            source,
+        } => {
+            connection
+                .prepare_cached(
+                    "UPDATE attempts SET reused = ?4 WHERE run = ?1 AND task = ?2 AND number = ?3",
+                )?
+                .execute(params![run, task.0, attempt, source])?;
+            event(
+                connection,
+                run,
+                sequence,
+                "reused",
+                Some(task),
+                Some(attempt),
+            )
+        }
+        Change::Marked { task, kind, reason } => {
+            connection
+                .prepare_cached(
+                    "INSERT INTO markers (run, task, kind, reason) VALUES (?1, ?2, ?3, ?4)",
+                )?
+                .execute(params![run, task.0, kind, reason])?;
+            event(connection, run, sequence, "marked", Some(task), None)
+        }
+        Change::Inputs { schema, values } => {
+            connection.execute(
+                "UPDATE runs SET input_schema = ?2, inputs = ?3 WHERE id = ?1",
+                params![run, schema.to_string(), values.to_string()],
+            )?;
+            Ok(())
+        }
+        Change::Document { path, digest } => {
+            connection.execute(
+                "UPDATE runs SET document = ?2, document_digest = ?3 WHERE id = ?1",
+                params![run, path, digest],
+            )?;
+            Ok(())
+        }
+        Change::CacheNamespace(namespace) => {
+            connection.execute(
+                "UPDATE runs SET cache_namespace = ?2 WHERE id = ?1",
+                params![run, namespace],
+            )?;
+            Ok(())
+        }
+        Change::Outputs { schema } => {
+            connection.execute(
+                "UPDATE runs SET output_schema = ?2 WHERE id = ?1",
+                params![run, schema.to_string()],
+            )?;
+            Ok(())
+        }
+        Change::Sources(sources) => {
+            let mut insert = connection.prepare_cached(
+            "INSERT INTO sources (run, kind, path, digest, size, executable) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )?;
+            for source in sources {
+                insert.execute(params![
+                    run,
+                    source.kind.name(),
+                    source.path,
+                    source.digest,
+                    source.size,
+                    source.executable
+                ])?;
+            }
+            Ok(())
+        }
+        Change::RemoteFiles(files) => {
+            let mut insert = connection.prepare_cached(
+                "INSERT OR REPLACE INTO remote_files (run, address, digest, size, fetched, version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
+            for file in files {
+                insert.execute(params![
+                    run,
+                    file.address,
+                    file.digest,
+                    file.size,
+                    file.fetched,
+                    file.version
+                ])?;
+            }
+            Ok(())
+        }
+        Change::Delivered { target, location } => {
+            connection
+                .prepare_cached(
+                    "INSERT OR REPLACE INTO deliveries (run, target, location) VALUES (?1, ?2, ?3)",
+                )?
+                .execute(params![run, target, location])?;
+            Ok(())
+        }
+        Change::Replays {
+            run: replayed,
+            task,
+        } => {
+            connection.execute(
+                "UPDATE runs SET replays = ?2, replays_task = ?3 WHERE id = ?1",
+                params![run, replayed, task],
+            )?;
+            Ok(())
+        }
+        Change::Ended { error, stopped } => {
+            let state = match (stopped, error) {
+                (true, _) => "stopped",
+                (false, Some(_)) => "failed",
+                (false, None) => "succeeded",
+            };
+            connection.execute(
+                "UPDATE runs SET ended = ?2, state = ?3, error = ?4 WHERE id = ?1",
+                params![run, now(), state, error],
+            )?;
+            connection.execute(
+                "UPDATE tasks SET state = 'stopped'
+             WHERE run = ?1 AND state IN ('waiting', 'running')",
+                [run],
+            )?;
+            event(connection, run, sequence, "ended", None, None)
         }
     }
 }
@@ -792,6 +966,15 @@ fn to_sqlite(error: serde_json::Error) -> rusqlite::Error {
 mod tests {
     use super::*;
 
+    impl Recorder {
+        fn writer(&self) -> &Mutex<Writer> {
+            match &self.target {
+                Target::Sqlite(writer) => writer,
+                Target::Store { .. } => panic!("a recorder of a store has no connection"),
+            }
+        }
+    }
+
     #[test]
     fn commits_sources_atomically() {
         let folder = tempfile::tempdir().expect("a folder");
@@ -827,7 +1010,7 @@ mod tests {
             .collect();
         recorder.sources(&sources);
         // The rows wait in the open transaction for one commit.
-        assert!(!lock(&recorder.writer).connection.is_autocommit());
+        assert!(!lock(recorder.writer()).connection.is_autocommit());
         assert_eq!(committed.try_recv(), Err(mpsc::TryRecvError::Empty));
         recorder.close().expect("commits");
         committed.recv().expect("committed data");
@@ -872,7 +1055,7 @@ mod tests {
             let mut recorder = crate::Database::open(&path)
                 .and_then(|database| database.record(&start))
                 .expect("records");
-            lock(&recorder.writer)
+            lock(recorder.writer())
                 .connection
                 .execute_batch(&format!(
                     "CREATE TRIGGER reject_requested_event BEFORE INSERT ON events

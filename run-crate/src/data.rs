@@ -37,6 +37,42 @@ pub(crate) enum Placed {
     Absent,
 }
 
+/// A described file under its persistent address, when the host gives one: the address becomes
+/// its `@id` and `contentUrl`.
+pub(crate) fn persistent(placed: Placed, uri: Option<String>) -> Placed {
+    match (placed, uri) {
+        (
+            Placed::Described {
+                digest, size, id, ..
+            },
+            Some(uri),
+        ) => Placed::Described {
+            // A directory keeps its trailing slash, as a Dataset id has one.
+            id: match id.ends_with('/') && !uri.ends_with('/') {
+                true => format!("{uri}/"),
+                false => uri.clone(),
+            },
+            url: uri,
+            digest,
+            size,
+        },
+        (Placed::Remote { .. }, Some(uri)) => Placed::Remote { url: uri },
+        (placed, _) => placed,
+    }
+}
+
+/// A file or directory described at its local location, under an id from its digest, which
+/// [`persistent`] replaces by the address of the host.
+pub(crate) fn described(location: &str, directory: bool, digest: Digest, size: u64) -> Placed {
+    let slash = if directory { "/" } else { "" };
+    Placed::Described {
+        id: format!("#data/{}{slash}", digest.hex()),
+        url: format!("file://{}", crate::ids::encode(location)),
+        digest,
+        size,
+    }
+}
+
 pub(crate) struct Data {
     /// The `data` directory of the crate.
     directory: PathBuf,
@@ -141,13 +177,7 @@ impl Data {
                 (recorded.unwrap_or(computed), size.unwrap_or(bytes))
             }
         };
-        let slash = if directory { "/" } else { "" };
-        let placed = Placed::Described {
-            id: format!("#data/{}{slash}", digest.hex()),
-            url: format!("file://{}", crate::ids::encode(location)),
-            digest,
-            size,
-        };
+        let placed = described(location, directory, digest, size);
         self.placed.insert(key, placed.clone());
         Ok(placed)
     }
@@ -226,6 +256,7 @@ impl Data {
     /// The digest of the manifest of a directory, as the store computes it, and the size of its
     /// files; copies the directory to `copy` on the way when given.
     fn walk_tree(source: &Path, copy: Option<&Path>) -> Result<(Digest, u64), CrateError> {
+        let root = source.canonicalize()?;
         let mut entries = Vec::new();
         let mut size = 0;
         let mut pending = vec![(source.to_owned(), String::new())];
@@ -240,9 +271,10 @@ impl Data {
                 } else {
                     format!("{prefix}/{name}")
                 };
-                if entry.file_type()?.is_dir() {
+                let kind = entry.file_type()?;
+                if kind.is_dir() {
                     pending.push((entry.path(), relative));
-                } else if entry.file_type()?.is_symlink() && !entry.path().is_file() {
+                } else if kind.is_symlink() && !entry.path().is_file() {
                     let link = std::fs::read_link(entry.path())?;
                     let mut depth = Path::new(&relative)
                         .parent()
@@ -280,6 +312,14 @@ impl Data {
                         path: relative,
                         target: target.to_owned(),
                     });
+                } else if kind.is_symlink() && !entry.path().canonicalize()?.starts_with(&root) {
+                    // A link to a file counts as that file, as the store copies it, but a file
+                    // outside the directory is no part of the run to copy into the crate.
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("the directory link {relative} leads out of the directory"),
+                    )
+                    .into());
                 } else if entry.path().is_file() {
                     let mut file = File::open(entry.path())?;
                     let (digest, bytes) = match copy.map(|copy| copy.join(&relative)) {
@@ -335,7 +375,10 @@ pub(crate) fn copy_hashed(
 }
 
 /// Writes bytes to `output` and returns their digest and size.
-fn hash_into(source: &mut dyn Read, output: &mut dyn Write) -> Result<(Digest, u64), CrateError> {
+pub(crate) fn hash_into(
+    source: &mut dyn Read,
+    output: &mut dyn Write,
+) -> Result<(Digest, u64), CrateError> {
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; 1 << 20];
     let mut size = 0;
@@ -348,7 +391,7 @@ fn hash_into(source: &mut dyn Read, output: &mut dyn Write) -> Result<(Digest, u
         output.write_all(&buffer[..read])?;
         size += read as u64;
     }
-    Ok((Digest::from_sha256(&hasher.finalize()), size))
+    Ok((Digest::from_sha256(hasher.finalize().into()), size))
 }
 
 fn executable(path: &Path) -> bool {
@@ -359,6 +402,41 @@ fn executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refuses_escaping_links() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = root.path().join("private.txt");
+        std::fs::write(&outside, "private").unwrap();
+        let source = root.path().join("source");
+        std::fs::create_dir_all(source.join("inner")).unwrap();
+        std::fs::write(source.join("inner/a.txt"), "a").unwrap();
+        std::os::unix::fs::symlink("a.txt", source.join("inner/near")).unwrap();
+        let mut data = Data::new(&root.path().join("crate"));
+        let placed = data.place(source.to_str().unwrap()).unwrap();
+        assert!(matches!(
+            placed,
+            Placed::Copied {
+                directory: true,
+                ..
+            }
+        ));
+        std::os::unix::fs::symlink(&outside, source.join("inner/far")).unwrap();
+        let mut data = Data::new(&root.path().join("other"));
+        assert!(data.place(source.to_str().unwrap()).is_err());
+        assert!(Data::walk_tree(&source, None).is_err());
+        // The refused copy may have left a part of the folder, never the file outside it.
+        let mut pending = vec![root.path().join("other")];
+        while let Some(folder) = pending.pop() {
+            for entry in std::fs::read_dir(folder).into_iter().flatten() {
+                let path = entry.unwrap().path();
+                match path.is_dir() {
+                    true => pending.push(path),
+                    false => assert_ne!(std::fs::read(&path).unwrap(), b"private", "{path:?}"),
+                }
+            }
+        }
+    }
 
     #[test]
     fn replaces_corrupt_exports() {

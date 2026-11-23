@@ -10,7 +10,7 @@ use input_schema::Property;
 use run_database::{Database, RemoteFile, Run, Source, SourceKind};
 use serde_json::{Value, json};
 
-use crate::data::{Data, Placed, copy_hashed};
+use crate::data::{Data, Placed, hash_into, persistent};
 use crate::entities::one_or_many;
 use crate::formal::formal_parameter;
 use crate::ids::{encode, time};
@@ -80,7 +80,7 @@ pub(crate) fn gather(
                     pinned.changed.push(source);
                     continue;
                 }
-                match copy_checked(&from, &directory.join(&id), &source.digest)? {
+                match copy_checked(&from, &directory.join(&id), Some(&source.digest))? {
                     true => {
                         use std::os::unix::fs::PermissionsExt;
                         std::fs::set_permissions(
@@ -104,6 +104,7 @@ pub(crate) fn gather(
                 if options.describe_data {
                     let size = Some(source.size);
                     let placed = data.describe(&source.path, false, Some(&source.digest), size)?;
+                    let placed = persistent(placed, options.persistent(&source.path));
                     if matches!(placed, Placed::Described { .. }) {
                         pinned.named.push((placed, source));
                     }
@@ -120,21 +121,26 @@ pub(crate) fn gather(
     Ok(pinned)
 }
 
-/// Copies a file to `target` when its content has the digest `expected`; false, and no copy,
-/// when it has other content now or is gone.
-pub(crate) fn copy_checked(from: &Path, target: &Path, expected: &str) -> Result<bool, CrateError> {
+/// Copies a file to `target` through a temporary file beside it, which replaces `target` only
+/// when its content has the digest `expected`, if one is given. False when it has other
+/// content now or is gone; `target`, like the file of an earlier export, then stays as it was.
+pub(crate) fn copy_checked(
+    from: &Path,
+    target: &Path,
+    expected: Option<&str>,
+) -> Result<bool, CrateError> {
     let Ok(mut source) = File::open(from) else {
         return Ok(false);
     };
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
+    let folder = target.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(folder)?;
+    let mut part = tempfile::NamedTempFile::new_in(folder)?;
+    let (digest, _) = hash_into(&mut source, part.as_file_mut())?;
+    if expected.is_some_and(|expected| digest.to_string() != expected) {
+        return Ok(false);
     }
-    let (digest, _) = copy_hashed(&mut source, target)?;
-    if digest.to_string() == expected {
-        return Ok(true);
-    }
-    std::fs::remove_file(target)?;
-    Ok(false)
+    part.persist(target).map_err(|error| error.error)?;
+    Ok(true)
 }
 
 impl Pinned {

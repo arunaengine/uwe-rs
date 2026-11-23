@@ -165,6 +165,7 @@ impl ObjectStage {
                 files: Vec::new(),
                 root: root.into(),
                 usage: None,
+                receipts: Vec::new(),
             });
         }
         let mut outputs: BTreeMap<String, (Option<u64>, Option<String>)> = BTreeMap::new();
@@ -194,6 +195,7 @@ impl ObjectStage {
             files: Vec::new(),
             root: root.into(),
             usage: None,
+            receipts: Vec::new(),
         };
         for (location, (size, version)) in outputs {
             let relative = location

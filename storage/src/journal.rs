@@ -19,7 +19,8 @@ use crate::error::local;
 pub struct Fetched {
     /// The address, with a password that it holds hidden.
     pub address: String,
-    /// The local copy that the process read.
+    /// The local copy that the process read; empty for a file that the workers read where
+    /// it lies, of which this machine has no copy.
     pub copy: PathBuf,
     /// `sha256:<hex>` of the content.
     pub digest: String,

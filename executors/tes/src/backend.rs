@@ -8,6 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use executor::orphans::Orphan;
 use executor::poll::{CANCEL_GRACE, Poll, REQUEST_GRACE, WaitError};
 use executor::registry::{self, ImageConfigs};
 use executor::{Backend, ExecutorError, Finished, Job, wrapper};
@@ -55,6 +56,25 @@ pub struct TesBackend {
 impl Backend for TesBackend {
     async fn pin(&self, image: &str) -> Result<Option<String>, ExecutorError> {
         registry::pin(image).await
+    }
+
+    /// The server of object-store staging reads each input from its URL itself.
+    fn direct_sources(&self) -> bool {
+        self.staging.is_some()
+    }
+
+    /// The server reads a URL without headers, so an input that needs them is staged.
+    fn supports_direct(&self, reference: &storage::DirectRef) -> bool {
+        self.staging.is_some() && reference.headers.is_empty()
+    }
+
+    /// The tasks of the journals of this server; [`TesBackend::report_run`] names its peers.
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        self.report_run(run, &[self]).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        self.stop_run(run, &[self]).await
     }
 
     async fn run(
@@ -108,9 +128,12 @@ impl Backend for TesBackend {
                     .into(),
             ));
         }
-        if job.placement.offline {
+        if job.placement.offline && self.settings.network_tag.is_none() {
             return Err(ExecutorError::Unsupported(
-                "the TES executor cannot run a task without network".into(),
+                "the TES executor cannot run a task without network unless \
+                 `network_isolation = true` in `[executor.tes]` attests that the server cuts \
+                 tasks with its network tag off the network"
+                    .into(),
             ));
         }
         if job.placement.accelerators.iter().any(|gpu| gpu.count > 0) {
@@ -242,6 +265,11 @@ impl TesBackend {
             ));
         }
         task.tags.extend(self.settings.tags.clone());
+        if let Some((name, value)) =
+            (self.settings.network_tag.as_ref()).filter(|_| job.placement.offline)
+        {
+            task.tags.insert(name.clone(), value.clone());
+        }
         platform(&mut task, job, self.settings.platform);
         if let Some(tag) = &self.settings.idempotency_tag {
             task.tags.insert(tag.clone(), attempt_key);
@@ -325,6 +353,7 @@ impl TesBackend {
                 files: Vec::new(),
                 usage: executor::Usage::of(root),
                 root: root.to_owned(),
+                receipts: Vec::new(),
             });
         }
         let log = status.logs.last().and_then(|log| log.logs.last());
@@ -1274,6 +1303,8 @@ mod tests {
             }],
             directories: vec!["made".into()],
             stdin: None,
+            direct: Vec::new(),
+            live: None,
         };
         let placement = Placement {
             cpus: 2,

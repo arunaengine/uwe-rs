@@ -12,8 +12,8 @@ use std::time::Instant;
 use serde_json::{Map, Value as Json, json};
 use wir::{Document, Effect, Kind, Language as Dialect, Native, Status};
 use workflow_graph::{
-    CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Language,
-    Launch, Note, Outcome, Reuse, Task, TaskId,
+    CancellationToken, Delivery, DeliveryMode, Driver, DriverError, ExecuteError, Files, Inputs,
+    Language, Launch, Note, Outcome, Reuse, Task, TaskId,
 };
 
 use crate::adapter::{self, Adapters, Changes, Ending, TaskCall};
@@ -48,6 +48,14 @@ pub struct Settings {
     pub snakemake: snakemake::Options,
     /// The options of WDL blocks. A block never prints its outputs.
     pub wdl: wdl_runtime::Options,
+    /// The options of Galaxy blocks, like the folders of the tools of workflow steps.
+    pub galaxy: galaxy_runtime::Options,
+    /// More JSON Schema keywords of the inputs and outputs of the entry graph, by port name,
+    /// like the descriptions and EDAM formats of a composed workflow.
+    pub annotations: BTreeMap<String, Map<String, Json>>,
+    /// The folder that relative locations of the document start from, when uwe wrote the
+    /// document elsewhere, like the JSON of a composed workflow; else the folder of the file.
+    pub base: Option<PathBuf>,
     /// Whether a real run prints the outputs of its graph, as JSON.
     pub print: bool,
     /// How the run fetches the repository of a source with a `git:` digest.
@@ -131,6 +139,9 @@ impl Default for Settings {
             nextflow: nextflow::Options::default(),
             snakemake: snakemake::Options::default(),
             wdl: wdl_runtime::Options::default(),
+            galaxy: galaxy_runtime::Options::default(),
+            annotations: BTreeMap::new(),
+            base: None,
             print: true,
             repositories: Repositories::default(),
             print_sink: Printer::default(),
@@ -221,6 +232,14 @@ pub struct WirDriver {
     file_area: PathBuf,
     /// The deliveries of the file effects of stream ops.
     published: crate::publishing::Deliveries,
+    /// The native blocks that failed and run again on the next advance, by node.
+    retrying: Vec<usize>,
+    /// How often each native block ran again after it failed, by node.
+    retried: HashMap<usize, u32>,
+    /// The inputs file as the last check of the inputs read it.
+    checked: Option<Json>,
+    /// The inputs file that admission took, which the run starts from without reading it again.
+    admitted: Option<Json>,
 }
 
 impl WirDriver {
@@ -238,7 +257,8 @@ impl WirDriver {
             )));
         }
         let target = std::path::absolute(&launch.target).unwrap_or(launch.target.clone());
-        let base = target.parent().unwrap_or(Path::new("/")).to_owned();
+        let folder = target.parent().unwrap_or(Path::new("/")).to_owned();
+        let base = settings.base.clone().unwrap_or(folder);
         let mut document = document;
         let ports = (document.graphs.iter_mut()).flat_map(|graph| {
             let inner = graph.ops.iter_mut().flat_map(|op| op.inputs.iter_mut());
@@ -294,6 +314,10 @@ impl WirDriver {
             scope_run,
             file_area: PathBuf::new(),
             published: Default::default(),
+            retrying: Vec::new(),
+            retried: HashMap::new(),
+            checked: None,
+            admitted: None,
         }
         .checked()
     }
@@ -328,6 +352,17 @@ impl WirDriver {
         let mut tasks = Vec::new();
         let mut passes = 0;
         self.stepping = false;
+        // A block runs again with the values it started with; tasks that succeeded before
+        // answer from the cache, as a resumed run of the block would.
+        for at in std::mem::take(&mut self.retrying) {
+            let node = self.progress.node(at);
+            if let (State::Running(bound), Kind::Native(native)) =
+                (&self.progress.states[at], &node.op.kind)
+            {
+                let (bound, native) = (bound.clone(), native.clone());
+                tasks.extend(self.start_native(at, &native, bound)?);
+            }
+        }
         while !self.ended {
             let draining = self.draining();
             if let Some((at, bound)) = self.progress.next(draining) {
@@ -353,6 +388,7 @@ impl WirDriver {
                 provider: self.files.as_deref(),
                 remote: Some(&self.settings.cwl.remote),
                 roots: self.settings.roots.as_ref(),
+                environment: self.settings.snakemake.settings.environment.as_deref(),
                 deliveries: &self.published,
                 inputs: &self.given,
                 nextflow: &self.scope_run,
@@ -407,6 +443,7 @@ impl WirDriver {
             provider: self.files.as_deref(),
             remote: Some(&self.settings.cwl.remote),
             roots: self.settings.roots.as_ref(),
+            environment: self.settings.snakemake.settings.environment.as_deref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -547,6 +584,7 @@ impl WirDriver {
                     provider: self.files.as_deref(),
                     remote: Some(&self.settings.cwl.remote),
                     roots: self.settings.roots.as_ref(),
+                    environment: self.settings.snakemake.settings.environment.as_deref(),
                     deliveries: &self.published,
                     inputs: &self.given,
                     nextflow: &self.scope_run,
@@ -605,6 +643,7 @@ impl WirDriver {
                 provider: self.files.as_deref(),
                 remote: Some(&self.settings.cwl.remote),
                 roots: self.settings.roots.as_ref(),
+                environment: self.settings.snakemake.settings.environment.as_deref(),
                 deliveries: &self.published,
                 inputs: &self.given,
                 nextflow: &self.scope_run,
@@ -664,6 +703,7 @@ impl WirDriver {
             provider: self.files.as_deref(),
             remote: Some(&self.settings.cwl.remote),
             roots: self.settings.roots.as_ref(),
+            environment: self.settings.snakemake.settings.environment.as_deref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -732,7 +772,19 @@ impl WirDriver {
         let configs = (native.configs.iter())
             .map(|id| self.locate(id))
             .collect::<Result<Vec<_>, _>>()?;
-        let folder = self.job_folder()?.join(&path);
+        // The job and output folders of the op stay below their roots, also through links that
+        // are there, before any file of the op is written.
+        let segments: Vec<&str> = path.split('/').collect();
+        let confined = |root: &Path| -> Result<PathBuf, DriverError> {
+            let failed = |error: std::io::Error| DriverError::new(format!("op {path}: {error}"));
+            let place = workflow_graph::files::place(root, &segments).map_err(failed)?;
+            if !root.to_string_lossy().contains("://") {
+                let roots = workflow_graph::Roots::new([root.to_owned()]);
+                roots.check(&place).map_err(failed)?;
+            }
+            Ok(place)
+        };
+        let folder = confined(&self.job_folder()?)?;
         let (job, values) = match native.language {
             Dialect::Nextflow => (folder.join("params.json"), nextflow::params(&bound)),
             // A Snakemake config file and an Argo parameter file take the values of params.
@@ -748,10 +800,18 @@ impl WirDriver {
                 cwl::to_cwl(Json::Object(bound.clone())),
             ),
         };
-        // The params of a run with secret inputs reach a Nextflow block in memory, as no file
-        // may hold them.
-        let held =
-            native.language == Dialect::Nextflow && !self.settings.secret_inputs.0.is_empty();
+        // No job file holds a secret: the params of a run with secret inputs reach a Nextflow
+        // block in memory, as a job with a secret reaches a Galaxy block. Others refuse it.
+        let secrets = &self.settings.secret_inputs;
+        let held = match native.language {
+            Dialect::Nextflow => !secrets.0.is_empty(),
+            Dialect::Galaxy => secrets.found_in(&values),
+            _ if secrets.found_in(&values) => {
+                let message = format!("op {path}: this block cannot take secret inputs yet");
+                return Err(DriverError::unsupported(message));
+            }
+            _ => false,
+        };
         let written = std::fs::create_dir_all(&folder).and_then(|()| match held {
             true => Ok(()),
             false => std::fs::write(&job, values.to_string()),
@@ -759,7 +819,7 @@ impl WirDriver {
         written.map_err(|error| {
             DriverError::new(format!("cannot write {}: {error}", job.display()))
         })?;
-        let output = self.output_root().join(&path);
+        let output = confined(&self.output_root())?;
         let mut launch = Launch {
             target,
             inputs: (!held).then_some(job),
@@ -847,7 +907,24 @@ impl WirDriver {
                 let message = format!("op {path}: WDL blocks take no profiles or configs");
                 return Err(DriverError::unsupported(message));
             }
-            Dialect::Wdl => wdl::block(&launch, &self.settings.wdl)?,
+            // A WDL block of an isolated run reads files where the run may.
+            Dialect::Wdl => {
+                let mut options = self.settings.wdl.clone();
+                options.roots = options.roots.or_else(|| self.settings.roots.clone());
+                wdl::block(&launch, &options)?
+            }
+            Dialect::Galaxy if !launch.profiles.is_empty() => {
+                let message = format!("op {path}: Galaxy blocks take no profiles");
+                return Err(DriverError::unsupported(message));
+            }
+            // Configs of a Galaxy block name folders of the tools of its workflow steps.
+            Dialect::Galaxy => {
+                let mut driver = crate::galaxy::block(&launch, &self.settings.galaxy)?;
+                if held {
+                    driver.use_inputs(values)?;
+                }
+                driver
+            }
         });
         child.prepare(
             self.files.clone(),
@@ -905,14 +982,24 @@ impl WirDriver {
         // A simulated CWL block reads made-up files, which can leave an output null.
         let lenient = self.launch.simulated
             && matches!(&node.op.kind, Kind::Native(native) if native.language == Dialect::Cwl);
+        let formats = self.progress.formats.as_deref();
         let result = match finished {
-            Ok(Some(Json::Object(results))) => typed(&results, &node.op.outputs, defs, lenient)
-                .map_err(|port| format!("op {path}: output {port} does not fit its type")),
+            Ok(Some(Json::Object(results))) => {
+                typed(&results, &node.op.outputs, (defs, formats), lenient)
+                    .map_err(|port| format!("op {path}: output {port} does not fit its type"))
+            }
             Ok(_) => Err(format!("op {path}: the block gave no results")),
             Err(error) => Err(format!("op {path}: {}", error.message)),
         };
+        let retries = node.op.attributes.retry.unwrap_or(0);
+        let retried = self.retried.get(&at).copied().unwrap_or(0);
         match result {
             Ok(values) => self.progress.end(at, Status::Succeeded, values, None),
+            Err(message) if retried < retries => {
+                tracing::warn!("uwe: {message}; the block runs again");
+                self.retried.insert(at, retried + 1);
+                self.retrying.push(at);
+            }
             Err(message) => self
                 .progress
                 .end(at, Status::Failed, Map::new(), Some(message)),
@@ -1073,7 +1160,9 @@ impl WirDriver {
                         .filter(|port| !empty.contains(&port.name))
                         .cloned()
                         .collect();
-                    match typed(&values, &ports, &self.document.types, false) {
+                    let formats = self.progress.formats.clone();
+                    let defs = (&self.document.types[..], formats.as_deref());
+                    match typed(&values, &ports, defs, false) {
                         Ok(values) => {
                             (self.progress).end_with(at, Status::Succeeded, values, empty);
                         }
@@ -1089,7 +1178,9 @@ impl WirDriver {
                         .cloned()
                         .partition(|port| values.contains_key(&port.name));
                     let empty = empty.into_iter().map(|port| port.name).collect();
-                    match typed(&values, &given, &self.document.types, false) {
+                    let formats = self.progress.formats.clone();
+                    let defs = (&self.document.types[..], formats.as_deref());
+                    match typed(&values, &given, defs, false) {
                         Ok(values) => {
                             (self.progress).end_with(at, Status::Skipped, values, empty);
                         }
@@ -1195,6 +1286,7 @@ impl WirDriver {
             provider: self.files.as_deref(),
             remote: Some(&self.settings.cwl.remote),
             roots: self.settings.roots.as_ref(),
+            environment: self.settings.snakemake.settings.environment.as_deref(),
             deliveries: &self.published,
             inputs: &self.given,
             nextflow: &self.scope_run,
@@ -1276,6 +1368,26 @@ impl WirDriver {
         }
     }
 
+    /// The input ports of the entry graph as a launch gives them: a stream input as the array
+    /// of its items.
+    fn given_ports(&self) -> Vec<wir::Port> {
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        let ports = entry.map_or(&[][..], |graph| graph.inputs.as_slice());
+        (ports.iter())
+            .map(|port| match port.flow.is_value() {
+                true => port.clone(),
+                false => wir::Port {
+                    r#type: wir::Type::Array(wir::ArrayType {
+                        items: Box::new(port.r#type.clone()),
+                        nonempty: false,
+                    }),
+                    flow: wir::Flow::Value,
+                    ..port.clone()
+                },
+            })
+            .collect()
+    }
+
     /// Hands an engine call that names a task to the child that owns the task.
     fn owner(&self, task: TaskId) -> Result<usize, DriverError> {
         (self.owners.get(&task).copied())
@@ -1295,25 +1407,16 @@ impl Driver for WirDriver {
         let ports = entry
             .map(|graph| graph.inputs.as_slice())
             .unwrap_or_default();
-        // A stream input is given as the array of its items.
-        let given: Vec<wir::Port> = (ports.iter())
-            .map(|port| match port.flow.is_value() {
-                true => port.clone(),
-                false => wir::Port {
-                    r#type: wir::Type::Array(wir::ArrayType {
-                        items: Box::new(port.r#type.clone()),
-                        nonempty: false,
-                    }),
-                    flow: wir::Flow::Value,
-                    ..port.clone()
-                },
-            })
-            .collect();
+        let given = self.given_ports();
         let remote = &self.settings.cwl.remote;
         let formats = self.progress.formats.clone();
+        let file = match self.admitted.take() {
+            Some(file) => Some(file),
+            None => inputs::file(&self.launch)?,
+        };
         let (secret, types) = (&self.settings.secret_inputs, &self.document.types);
         let mut values = inputs::read(
-            &self.launch,
+            (&self.launch, file),
             secret,
             &given,
             types,
@@ -1540,7 +1643,8 @@ impl Driver for WirDriver {
             match (wdl, &mut results) {
                 (true, Json::Object(outputs)) => {
                     for (name, value) in outputs.iter_mut() {
-                        let folder = root.join(name);
+                        let folder = workflow_graph::files::place(&root, &[name])
+                            .map_err(|error| DriverError::new(format!("output {name}: {error}")))?;
                         wdl_layout(value, (&root, &folder), &mut planned, &mut places)
                             .map_err(DriverError::new)?;
                     }
@@ -1642,11 +1746,74 @@ impl Driver for WirDriver {
         self.results.clone()
     }
 
+    /// The inputs of the entry graph from the types of its ports. Secret inputs count as
+    /// given, and their values stay out.
+    fn inputs(&mut self) -> Result<Option<Inputs>, DriverError> {
+        let file = inputs::file(&self.launch)?;
+        self.checked.clone_from(&file);
+        self.shown(file).map(Some)
+    }
+
+    /// Keeps the inputs file that admission checked, with the File metadata that the checked
+    /// values leave out, so that the run starts from it and never from a later version.
+    fn use_inputs(&mut self, values: Json) -> Result<(), DriverError> {
+        let file = match self.checked.take() {
+            Some(file) => Some(file),
+            None => inputs::file(&self.launch)?,
+        };
+        if self.shown(file.clone())?.values != values {
+            return Err(DriverError::new(
+                "the wir driver cannot apply normalized input values",
+            ));
+        }
+        self.admitted = file;
+        Ok(())
+    }
+
+    fn outputs(&mut self) -> Result<Option<Json>, DriverError> {
+        let entry = (self.document.graphs.iter()).find(|graph| graph.name == self.document.entry);
+        let ports = entry.map_or(&[][..], |graph| graph.outputs.as_slice());
+        let (defs, annotations) = (&self.document.types, &self.settings.annotations);
+        let schema = crate::schema::outputs(&self.document.entry, ports, defs, annotations);
+        Ok(Some(schema))
+    }
+
     /// A failure that no dependency waits for stops new ops unless the run keeps going; a
     /// block that drains stops new tasks of the whole run, as it would alone.
     fn draining(&self) -> bool {
         (!self.progress.failures.is_empty() && !self.launch.keep_going)
             || self.children.iter().any(|(_, child)| child.draining())
+    }
+}
+
+impl WirDriver {
+    /// The inputs of the entry graph with the values of an inputs file. A secret input that
+    /// the host holds in memory is given and required by no schema, and no value shows it.
+    fn shown(&self, file: Option<Json>) -> Result<Inputs, DriverError> {
+        let ports = self.given_ports();
+        let defs = &self.document.types;
+        let given = inputs::given((&self.launch, file), &ports, defs)?;
+        let secret = &self.settings.secret_inputs.0;
+        let values: Map<String, Json> = (given.into_iter())
+            .filter(|(name, _)| !secret.contains_key(name))
+            .map(|(name, value)| (name, crate::schema::plain(value)))
+            .collect();
+        let title = &self.document.entry;
+        let annotations = &self.settings.annotations;
+        let mut schema = crate::schema::inputs(title, &ports, defs, annotations);
+        if let Some(Json::Array(required)) = schema.get_mut("required") {
+            required.retain(|name| name.as_str().is_none_or(|name| !secret.contains_key(name)));
+        }
+        Ok(Inputs {
+            schema,
+            values: Json::Object(values),
+            base: std::env::current_dir().unwrap_or_default(),
+            read: None,
+            // A simulated run without values makes up those of required inputs.
+            assumes_values: self.launch.simulated && self.launch.inputs.is_none(),
+            advisory: false,
+            ignored: secret.keys().cloned().collect(),
+        })
     }
 }
 
@@ -1675,21 +1842,34 @@ fn mark(task: &mut Task, node: &Node, prefixed: bool) {
     if let Some(place) = &node.op.attributes.place {
         task.site = Some(place.clone());
     }
+    // The time of a native op caps each task of its block, below the limit of its language.
+    if let (Kind::Native(_), Some(limit)) = (&node.op.kind, node.op.attributes.time) {
+        let own = task.resources.time_seconds;
+        task.resources.time_seconds = Some(own.map_or(limit, |own| own.min(limit)));
+    }
 }
 
 /// The values of the output ports in `results`, widened to their types; else the name of a
-/// port whose value does not fit. A `lenient` run gives a null output a made-up value.
+/// port whose value does not fit, by the formats of the run as its inputs are. A `lenient` run
+/// gives a null output a made-up value.
 fn typed(
     results: &Map<String, Json>,
     ports: &[wir::Port],
-    defs: &[wir::TypeDef],
+    (defs, formats): (&[wir::TypeDef], Option<&crate::formats::FormatCheck>),
     lenient: bool,
 ) -> Result<Map<String, Json>, String> {
     (ports.iter())
         .map(|port| {
             let value = results.get(&port.name).cloned().unwrap_or_default();
             let value = widen(value, &port.r#type, defs);
-            match wir::fits(&value, &port.r#type, defs) {
+            let fits = match formats {
+                None => wir::fits(&value, &port.r#type, defs),
+                Some(check) => {
+                    let formats = |found: &str, wanted: &str| check.matches(found, wanted);
+                    wir::fits_with(&value, &port.r#type, defs, &formats)
+                }
+            };
+            match fits {
                 true => Ok((port.name.clone(), value)),
                 false if lenient && value.is_null() => {
                     let made = crate::expr::placeholder(&port.r#type, &port.name, defs);
@@ -1790,14 +1970,19 @@ fn deliver(
                     .or_else(|| location.rsplit('/').next())
                     .unwrap_or("output");
                 let inside = local.starts_with(root);
+                // A basename like `../outside` never leads out of the output folder.
+                let placed = |names: &[&str]| {
+                    workflow_graph::files::place(root, names)
+                        .map_err(|error| format!("the output file {name:?}: {error}"))
+                };
                 let mut place = match inside {
                     true => local.clone(),
-                    false => root.join(name),
+                    false => placed(&[name])?,
                 };
                 // As the CWL driver does, a later file of a taken name goes to a numbered folder.
                 let mut number = 2;
                 while !inside && places.get(&place).is_some_and(|other| *other != local) {
-                    place = root.join(format!("{name}-{number}")).join(name);
+                    place = placed(&[&format!("{name}-{number}"), name])?;
                     number += 1;
                 }
                 if let Some(other) = places.insert(place.clone(), local.clone())
@@ -1858,4 +2043,22 @@ fn nested(deliveries: &[Delivery], places: &BTreeMap<PathBuf, PathBuf>) -> Resul
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refuses_escaping_basenames() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let root = folder.path().join("out");
+        let file =
+            serde_json::json!({"class": "File", "location": "/store/a", "basename": "../outside"});
+        let (mut value, mut deliveries, mut places) = (file, Vec::new(), BTreeMap::new());
+        let error = deliver(&mut value, &root, &mut deliveries, &mut places).expect_err("escapes");
+        assert!(error.contains("is not a plain file name"), "{error}");
+        assert!(deliveries.is_empty() && places.is_empty());
+        assert!(!folder.path().join("outside").exists());
+    }
 }

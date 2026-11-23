@@ -37,5 +37,5 @@ pub use request::{identity, request};
 pub use runner::{
     ContainerResult, Prepared, Runner, RunnerError, Settings, StoredFile, TaskResult,
 };
-pub use sites::{Site, SiteRule, Sites};
+pub use sites::{Site, SiteRule, Sites, input_endpoints};
 pub use staging::CONTENTS;

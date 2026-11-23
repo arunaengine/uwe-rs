@@ -91,6 +91,7 @@ fn backend(
         max_outputs: 4,
         credentials: false,
         cleanup: true,
+        multipart: None,
     };
     let scratch = folder.join("scratch");
     let mut backend =

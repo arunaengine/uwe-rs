@@ -6,14 +6,14 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value as Json, json};
 use tool_definition::{
-    Cardinality, Citation, Curation, Definition, InputPort, OutputFormat, OutputPort, PortKind,
-    Source, TestValue, ToolTest,
+    Cardinality, Citation, Curation, Definition, Image, InputPort, OutputFormat, OutputPort,
+    PortKind, Source, TestValue, ToolTest,
 };
 
 use crate::tool::{Input, Param, ParamKind, Test, Tool, truthy};
 
 /// The definition of `tool`; `formats` maps Galaxy datatypes to EDAM formats, others take any.
-/// Galaxy expectations stay in `tool.tests`, in the same order: `Expected` cannot hold them yet,
+/// `tool_definition::formats::datatypes()` is a table of common datatypes. Galaxy expectations stay in `tool.tests`, in the same order: `Expected` cannot hold them yet,
 /// so these tests carry inputs only and are never evaluated without the tool.
 pub fn convert(
     tool: &Tool,
@@ -23,7 +23,7 @@ pub fn convert(
     let profile = tool.profile.as_deref();
     let mut inputs = Vec::new();
     ports(&tool.inputs, "", &[], formats, profile, &mut inputs);
-    let parameters = match object(&tool.inputs, profile) {
+    let parameters = match object(&tool.inputs, profile, false) {
         schema if schema["properties"].as_object().is_some_and(Map::is_empty) => Json::Null,
         schema => schema,
     };
@@ -33,7 +33,7 @@ pub fn convert(
         title: tool.name.clone(),
         description: tool.description.clone(),
         source,
-        image: None,
+        image: image(tool),
         license: tool.license.clone(),
         authors: Vec::new(),
         citations: (tool.dois.iter())
@@ -45,6 +45,7 @@ pub fn convert(
         biotools: tool.biotools.clone(),
         operations: Vec::new(),
         topics: Vec::new(),
+        keywords: Vec::new(),
         inputs,
         parameters,
         outputs: tool
@@ -79,6 +80,8 @@ pub fn convert(
                                 .join(" and "),
                         ),
                     },
+                    optional: false,
+                    schema: Json::Null,
                 }
             })
             .collect(),
@@ -93,6 +96,23 @@ pub fn convert(
             .collect(),
         curation: Curation::Unchecked,
     }
+}
+
+/// The container image of the tool: its first Docker container, with the digest it pins.
+pub fn image(tool: &Tool) -> Option<Image> {
+    let container = (tool.containers.iter())
+        .find(|container| container.kind == "docker" && !container.image.is_empty())?;
+    let digest = (container.image.split_once('@')).map(|(_, digest)| digest.to_owned());
+    Some(Image {
+        name: container.image.clone(),
+        digest,
+    })
+}
+
+/// The JSON Schema (draft 2020-12) of the inputs of a job of `tool`: the parameters nested as
+/// in the tool, and each data input as a path, or an array of paths for several files.
+pub fn inputs_schema(tool: &Tool) -> Json {
+    object(&tool.inputs, tool.profile.as_deref(), true)
 }
 
 /// One branch test on the way to an input: the path of the conditional, its test param, the
@@ -233,17 +253,18 @@ fn terms(datatypes: &[String], formats: &BTreeMap<String, String>) -> Vec<String
     mapped
 }
 
-/// The schema of the non-data params of a group: sections as objects, repeats as arrays, and
-/// each case of a conditional as an `if` and `then`.
-fn object(inputs: &[Input], profile: Option<&str>) -> Json {
+/// The schema of the params of a group: sections as objects, repeats as arrays, and each case
+/// of a conditional as an `if` and `then`. Data params are paths when `data` holds.
+fn object(inputs: &[Input], profile: Option<&str>, data: bool) -> Json {
     let mut properties = Map::new();
     let mut required = Vec::new();
     for input in inputs {
         match input {
             Input::Param(param) => {
-                if let Some(schema) = param_schema(param, profile) {
+                if let Some(schema) = param_schema(param, profile, data) {
                     let kinds = [ParamKind::Text, ParamKind::Integer, ParamKind::Float];
-                    let needed = kinds.contains(&param.kind)
+                    let files = [ParamKind::Data, ParamKind::Collection];
+                    let needed = (kinds.contains(&param.kind) || files.contains(&param.kind))
                         && !param.optional
                         && param.initial(profile).is_null();
                     if needed {
@@ -253,14 +274,14 @@ fn object(inputs: &[Input], profile: Option<&str>) -> Json {
                 }
             }
             Input::Section(section) => {
-                let schema = object(&section.inputs, profile);
+                let schema = object(&section.inputs, profile, data);
                 if schema.get("required").is_some() {
                     required.push(Json::String(section.name.clone()));
                 }
                 properties.insert(section.name.clone(), schema);
             }
             Input::Repeat(repeat) => {
-                let items = object(&repeat.inputs, profile);
+                let items = object(&repeat.inputs, profile, data);
                 properties.insert(
                     repeat.name.clone(),
                     json!({"type": "array", "items": items}),
@@ -269,14 +290,14 @@ fn object(inputs: &[Input], profile: Option<&str>) -> Json {
             Input::Conditional(conditional) => {
                 let test = &conditional.test;
                 let mut schema = json!({"type": "object", "properties": {}});
-                if let Some(test_schema) = param_schema(test, profile) {
+                if let Some(test_schema) = param_schema(test, profile, data) {
                     schema["properties"][&test.name] = test_schema;
                 }
                 let default = case_value(test, &test.initial(profile));
                 let cases: Vec<Json> = (conditional.cases.iter())
                     .map(|case| {
                         let mut when = json!({"properties": {&test.name: {"const": when_value(test, &case.value)}}});
-                        let then = object(&case.inputs, profile);
+                        let then = object(&case.inputs, profile, data);
                         if default.as_deref() != Some(case.value.as_str()) {
                             when["required"] = json!([test.name]);
                         } else if then.get("required").is_some() {
@@ -300,15 +321,19 @@ fn object(inputs: &[Input], profile: Option<&str>) -> Json {
     schema
 }
 
-fn param_schema(param: &Param, profile: Option<&str>) -> Option<Json> {
+fn param_schema(param: &Param, profile: Option<&str>, data: bool) -> Option<Json> {
     let values = || -> Vec<Json> {
         (param.options.iter())
             .map(|option| Json::String(option.value.clone()))
             .collect()
     };
+    let path = json!({"type": "string", "format": "file-path"});
     let mut schema = match param.kind {
-        ParamKind::Data | ParamKind::Collection => return None,
-        ParamKind::Text | ParamKind::Hidden | ParamKind::Color => json!({"type": "string"}),
+        ParamKind::Data | ParamKind::Collection if !data => return None,
+        ParamKind::Data if !param.multiple => path,
+        ParamKind::Data | ParamKind::Collection => json!({"type": "array", "items": path}),
+        ParamKind::Text | ParamKind::Hidden => json!({"type": "string"}),
+        ParamKind::Color => json!({"type": "string", "pattern": "^#([0-9a-fA-F]{3}){1,2}$"}),
         ParamKind::Integer => json!({"type": "integer"}),
         ParamKind::Float => json!({"type": "number"}),
         ParamKind::Boolean => json!({"type": "boolean"}),

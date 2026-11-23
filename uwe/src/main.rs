@@ -29,22 +29,36 @@ fn main() -> ExitCode {
             }
         };
     }
-    let Some((command, rest)) = arguments.split_first() else {
+    let Some((first, words)) = arguments.split_first() else {
         eprintln!("{USAGE}");
         return ExitCode::from(cli::USAGE);
     };
-    if matches!(command.as_str(), "help" | "-help" | "--help") {
-        return exit(match rest {
+    if matches!(first.as_str(), "help" | "-help" | "--help") {
+        return exit(match words {
             [] => {
                 println!("{USAGE}");
                 Ok(())
             }
-            [command] => cli::help(command)
+            [group] if cli::group_help(group).is_some() => {
+                println!("{}", cli::group_help(group).unwrap_or_default());
+                Ok(())
+            }
+            [command] | [command, _] => cli::help(&words.join(" "))
+                .or_else(|error| match words.len() {
+                    1 => Err(error),
+                    _ => cli::help(command),
+                })
                 .map(|text| println!("{text}"))
                 .map_err(Failure::usage),
             _ => Err(Failure::usage("use `uwe help [command]`")),
         });
     }
+    // Grouped commands, like `uwe runs show <run>`, are the commands they stand for.
+    let (command, rest) = match cli::ungroup(first, words) {
+        Ok(found) => found,
+        Err(message) => return exit(Err(Failure::usage(format!("{message}; {HELP}")))),
+    };
+    let (command, rest) = (&command, rest.as_slice());
     if matches!(command.as_str(), "-version" | "--version" | "version") && rest.is_empty() {
         println!("{}", env!("UWE_IDENTITY"));
         return ExitCode::SUCCESS;
@@ -99,10 +113,21 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe graph <workflow file or directory> [-format json|dot|summary|svg] [-view tasks|steps]
                      [-direction down|right] [-fold <n>] [options]
        uwe check <workflow file or directory> [-default-image <image>] [options]
-       uwe check-machine [-executor <executor>] [-store <folder or address>]
+       uwe check-machine [-executor <executor>] [-store <folder or address>] [-json]
+       uwe doctor [-executor <executor>] [-store <folder or address>] [-json]
        uwe config [<project>] [-profile <names>] [-c <config>] [--<param> <value>]
-       uwe runs
-       uwe page [<run>] [-address <ip>] [-port <number>]
+       uwe runs [list] [-json]
+       uwe runs show <run> [-json] | logs <run> [<task>] | cancel <run>
+       uwe runs compare|export|repeat|why|time|report|changes|reconcile|resume|replay <run> ...
+       uwe tool [list] [-tools <folder>]... [-json]
+       uwe tool inspect <id> [<version>] | extract <file> | check <composed workflow>
+       uwe tool suggest <words> | record ... | lower <file>
+       uwe cache clean [options] | digest <path> [-json]
+       uwe page [<run>] [-address <ip>] [-port <number>] [-tools <folder>] [-workflows <folder>]
+       uwe serve [-address <ip>] [-port <number>] [-token <token>] [-tools <folder>]...
+                     [-workflows <folder>]... [-open]
+       uwe init [<folder>] [-name <name>]
+       uwe completions bash|zsh|fish
        uwe export <run> [-output <folder>] [-license <url>]
        uwe why <run> <task>
        uwe origin <file>
@@ -128,8 +153,13 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe version
        uwe help [command]
 
+Every option also takes the POSIX spelling `--name` or `--name=value`. A command with
+workflow parameters takes it before `--` only: after `--`, as without `--`, each
+`--<param> <value>` is a workflow parameter.
+
 options:
   -help                               lists the options of this command
+  -json                               inspection commands write JSON instead of text
   -version, --version                 prints the crate version
   -v, -verbose                        enables debug logging on stderr; UWE_LOG sets the
                                       filter otherwise (default: warn)

@@ -72,6 +72,7 @@ pub async fn finish(
         files,
         usage: executor::Usage::of(&root),
         root,
+        receipts: Vec::new(),
     })
 }
 

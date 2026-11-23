@@ -14,7 +14,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
 use crate::oci_key::Signer;
-use crate::web::{network, open, origin_client, upload_client};
+use crate::web::{Clients, network, open};
 use crate::{Downloaded, Entry, Metadata, Written};
 
 /// What an OCI client signs in with. Unset values come from the environment and the OCI
@@ -59,10 +59,11 @@ pub(crate) struct Oci {
     endpoint: String,
     signer: Signer,
     namespace: tokio::sync::OnceCell<String>,
+    clients: Clients,
 }
 
 impl Oci {
-    pub fn new(options: Options) -> Result<Oci, Problem> {
+    pub fn new(options: Options, clients: &Clients) -> Result<Oci, Problem> {
         let signer = Signer::find(&options).map_err(Problem::fixed)?;
         let endpoint = (options.endpoint.clone()).unwrap_or_else(|| {
             format!("https://objectstorage.{}.oraclecloud.com", signer.region())
@@ -71,6 +72,7 @@ impl Oci {
             endpoint: endpoint.trim_end_matches('/').to_owned(),
             signer,
             namespace: tokio::sync::OnceCell::new(),
+            clients: clients.clone(),
         })
     }
 
@@ -268,8 +270,8 @@ impl Oci {
             ("host", host),
         ];
         let client = match &request {
-            Request::File { .. } => upload_client().map_err(Problem::fixed)?,
-            _ => origin_client().map_err(Problem::fixed)?,
+            Request::File { .. } => &self.clients.upload,
+            _ => &self.clients.origin,
         };
         let mut builder = client.request(method, &url).header("date", date);
         match request {

@@ -269,6 +269,25 @@ fn graph_reports_nodes() {
 }
 
 #[test]
+fn refuses_duplicate_nodes() {
+    let graph: Graph = serde_json::from_value(json!({
+        "nodes": [{"id": "sort", "tool": "samtools-sort", "version": "1.21",
+                   "given": {"input": serde_json::to_value(file(&[BAM], Cardinality::One)).expect("json")}},
+                  {"id": "sort", "tool": "caller", "version": "2"}],
+        "edges": []
+    }))
+    .expect("a graph");
+    let report = graph::check(&graph, &[sort(), caller()]);
+    assert_eq!(report.fit, Fit::DoesNotFit);
+    for node in &report.nodes {
+        let found = (node.findings.iter()).any(|finding| {
+            finding.fit == Fit::DoesNotFit && finding.reason.contains("id sort too")
+        });
+        assert!(found, "{node:?}");
+    }
+}
+
+#[test]
 fn absent_parameters_empty() {
     let schema = |required: Json| {
         json!({"type": "object", "properties": {"level": {"type": "integer"}},

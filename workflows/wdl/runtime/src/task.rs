@@ -40,6 +40,21 @@ pub struct Settings {
     pub image: String,
     pub simulated: bool,
     pub files: Arc<dyn Files>,
+    /// The folders whose files the expressions of an isolated run read.
+    pub roots: Option<workflow_graph::Roots>,
+}
+
+impl Settings {
+    /// The local path of a location, through the files of the run; an isolated run reads
+    /// only in its folders, also where the files of the run keep a location.
+    fn local(&self, location: &str) -> Result<std::path::PathBuf, Error> {
+        let failed = |error: std::io::Error| Error::failed(format!("{location}: {error}"));
+        let local = self.files.local(location).map_err(failed)?;
+        if let Some(roots) = &self.roots {
+            roots.check_read(&local).map_err(failed)?;
+        }
+        Ok(local)
+    }
 }
 
 /// A task that was asked for, with what it needs to read its outputs once it ran.
@@ -355,7 +370,7 @@ impl Environment for Frame {
             .source(file)
             .cloned()
             .unwrap_or_else(|| file.to_owned());
-        read_location(&*self.settings.files, &source)
+        read_location(&self.settings, &source)
     }
 
     fn write(&mut self, content: String) -> Result<Value, Error> {
@@ -369,20 +384,18 @@ impl Environment for Frame {
             .source(file)
             .cloned()
             .unwrap_or_else(|| file.to_owned());
-        size_location(&*self.settings.files, &source)
+        size_location(&self.settings, &source)
     }
 }
 
 /// The text of a file at a location: a local path, or a file of the store.
-pub fn read_location(files: &dyn Files, location: &str) -> Result<String, Error> {
-    let local = files
-        .local(location)
-        .map_err(|error| Error::failed(format!("{location}: {error}")))?;
+pub fn read_location(settings: &Settings, location: &str) -> Result<String, Error> {
+    let local = settings.local(location)?;
     std::fs::read_to_string(&local).map_err(|error| Error::failed(format!("{location}: {error}")))
 }
 
 /// The size of a file or directory at a location, in bytes.
-pub fn size_location(files: &dyn Files, location: &str) -> Result<u64, Error> {
+pub fn size_location(settings: &Settings, location: &str) -> Result<u64, Error> {
     fn total(path: &std::path::Path) -> std::io::Result<u64> {
         let metadata = std::fs::metadata(path)?;
         if !metadata.is_dir() {
@@ -394,8 +407,6 @@ pub fn size_location(files: &dyn Files, location: &str) -> Result<u64, Error> {
         }
         Ok(sum)
     }
-    let local = files
-        .local(location)
-        .map_err(|error| Error::failed(format!("{location}: {error}")))?;
+    let local = settings.local(location)?;
     total(&local).map_err(|error| Error::failed(format!("{location}: {error}")))
 }

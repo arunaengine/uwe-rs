@@ -164,6 +164,9 @@ type ResolvedImages = HashMap<(String, String), Arc<OnceCell<ResolvedImage>>>;
 #[derive(Debug, Default)]
 pub struct ImageConfigs {
     known: Mutex<ResolvedImages>,
+    /// The registry settings of the run, which every request of these configs uses, also on
+    /// the threads and tasks of other runs; `None` uses those of the caller's scope.
+    registry: Option<crate::credentials::Registry>,
 }
 
 impl ImageConfigs {
@@ -182,7 +185,14 @@ impl ImageConfigs {
             .collect();
         ImageConfigs {
             known: Mutex::new(known),
+            registry: None,
         }
+    }
+
+    /// The same configs, whose registry requests use the credentials of `registry`.
+    pub fn with_registry(mut self, registry: crate::credentials::Registry) -> ImageConfigs {
+        self.registry = Some(registry);
+        self
     }
 
     /// The config of an image, from its registry the first time.
@@ -216,9 +226,11 @@ impl ImageConfigs {
                 .or_default()
                 .clone()
         };
-        let config = cell
-            .get_or_try_init(|| resolve_for(reference, Some(&platform)))
-            .await?;
+        let resolve = resolve_for(reference, Some(&platform));
+        let config = match &self.registry {
+            Some(registry) => cell.get_or_try_init(|| registry.scope(resolve)).await?,
+            None => cell.get_or_try_init(|| resolve).await?,
+        };
         Ok(config.clone())
     }
 }
@@ -373,7 +385,8 @@ async fn request(
         engine: parsed.registry.clone(),
         message,
     };
-    let client = crate::http::client().map_err(failed)?;
+    // The request goes through the web proxy of the run whose image it is.
+    let client = crate::credentials::client().map_err(failed)?;
     let send = |auth: Option<HeaderValue>| {
         let mut request = (client.request(method.clone(), url))
             .header(ACCEPT, accept)
@@ -397,7 +410,7 @@ async fn request(
         }
         let scheme = challenge.split_whitespace().next().unwrap_or_default();
         let auth = if scheme.eq_ignore_ascii_case("Bearer") {
-            let token = token(client, &challenge, credentials.credential.as_ref())
+            let token = token(&client, &challenge, credentials.credential.as_ref())
                 .await
                 .map_err(|message| failed(format!("{message}{}", credentials.hint())))?;
             Some(bearer(&token).map_err(failed)?)

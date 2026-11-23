@@ -132,6 +132,30 @@ fn hides_secret_values() {
 }
 
 #[test]
+fn hides_credential_options() {
+    let tool = parsed("tool --password hunter2 --api-key abc --DB_TOKEN t --author me --threads 4");
+    let defaults: Vec<(&str, bool)> = (tool.inputs.iter())
+        .map(|input| (input.id.as_str(), input.default.is_some()))
+        .collect();
+    assert_eq!(
+        defaults,
+        [
+            ("password", false),
+            ("api_key", false),
+            ("db_token", false),
+            ("author", true),
+            ("threads", true)
+        ]
+    );
+    let text = tool.render();
+    let definition = serde_json::to_string(&tool.to_definition()).unwrap();
+    for secret in ["hunter2", "abc", "\"t\""] {
+        assert!(!text.contains(secret), "{text}");
+        assert!(!definition.contains(secret), "{definition}");
+    }
+}
+
+#[test]
 fn finds_local_paths() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("data.json"), "{}").unwrap();

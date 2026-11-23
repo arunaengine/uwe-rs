@@ -298,16 +298,44 @@ fn reads_task_graph() {
 }
 
 #[test]
+fn separates_cache_namespaces() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("runs.sqlite");
+    for (id, namespace) in [("shared", None), ("tenant", Some("project:a"))] {
+        let database = Database::open(&path).expect("opens");
+        let mut recorder = database.record(&start(id, None)).expect("starts");
+        recorder.cache_namespace(namespace);
+        recorder.ended(None);
+        recorder.close().expect("closes");
+    }
+    let database = Database::open(&path).expect("opens again");
+    let last = |namespace| {
+        let run = database.last_run("/work/main.nf", false, namespace);
+        run.expect("finds").map(|run| run.id)
+    };
+    assert_eq!(last(None).as_deref(), Some("shared"));
+    assert_eq!(last(Some("project:a")).as_deref(), Some("tenant"));
+    assert_eq!(last(Some("project:b")), None);
+    let namespace = database.cache_namespace("tenant").expect("reads");
+    assert_eq!(namespace.as_deref(), Some("project:a"));
+    assert_eq!(database.cache_namespace("shared").expect("reads"), None);
+}
+
+#[test]
 fn resumes_completed_lineage() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("runs.sqlite");
     record(&path, directory.path()).expect("records the run");
     let database = Database::open(&path).expect("opens again");
-    let last = database.last_run("/work/main.nf", false).expect("finds");
+    let last = database
+        .last_run("/work/main.nf", false, None)
+        .expect("finds");
     assert_eq!(last.map(|run| run.id), Some("run-1".to_owned()));
     // The run was simulated, so there is no real run to resume.
     assert_eq!(
-        database.last_run("/work/main.nf", true).expect("finds"),
+        database
+            .last_run("/work/main.nf", true, None)
+            .expect("finds"),
         None
     );
 
@@ -603,6 +631,7 @@ fn migrates_run_inputs() {
              ALTER TABLE attempts DROP COLUMN accepted; DROP INDEX events_task;
              ALTER TABLE logs DROP COLUMN location;
              ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             ALTER TABLE runs DROP COLUMN cache_namespace;
              PRAGMA user_version = 1;",
         )
         .expect("goes back to version 1");
@@ -735,6 +764,7 @@ fn migrates_legacy_ownership() {
         ALTER TABLE sources DROP COLUMN executable; DROP INDEX events_task;
         ALTER TABLE logs DROP COLUMN location;
         UPDATE runs SET process = 4294967295; ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             ALTER TABLE runs DROP COLUMN cache_namespace;
              PRAGMA user_version = 6;",
         )
         .expect("old recorded row");
@@ -771,6 +801,7 @@ fn migrates_compiled_documents() {
     connection
         .execute_batch(
             "ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             ALTER TABLE runs DROP COLUMN cache_namespace;
              PRAGMA user_version = 9;",
         )
         .expect("makes a version nine database");
@@ -782,7 +813,7 @@ fn migrates_compiled_documents() {
     assert_eq!(run("native").document, None);
     assert_eq!(
         database
-            .last_run_below("/home/u/.cache/uwe/scratch/lowered/0123-", false)
+            .last_run_below("/home/u/.cache/uwe/scratch/lowered/0123-", false, None)
             .expect("finds")
             .map(|found| found.id),
         Some("compiled".into())
@@ -825,6 +856,7 @@ fn migrates_attempt_acceptance() {
             ALTER TABLE sources DROP COLUMN executable; DROP INDEX events_task;
             ALTER TABLE logs DROP COLUMN location;
             ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             ALTER TABLE runs DROP COLUMN cache_namespace;
              PRAGMA user_version = 7;",
         )
         .expect("makes a version seven database");
@@ -1257,9 +1289,16 @@ fn stops_cancelled_tasks() {
         ..Outcome::default()
     };
     recorder.finished(&stopped, 1, false);
-    recorder.ended(Some("the run was stopped"));
-    drop(recorder);
+    recorder.finish(Some(&workflow_graph::ExecuteError::Cancelled));
+    // The run that the recorder stopped still takes what it read, after its end.
+    recorder.remote_files(&[]);
+    recorder.close().expect("records the whole run");
     let database = Database::open(&path).expect("opens");
     let tasks = database.tasks("run-1").expect("lists tasks");
     assert_eq!(tasks[0].state, "stopped");
+    let run = database.run("run-1").expect("reads").expect("the run");
+    assert_eq!(
+        (run.state.as_str(), run.error.as_deref()),
+        ("stopped", Some("the run was stopped"))
+    );
 }

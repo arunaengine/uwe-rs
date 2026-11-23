@@ -195,3 +195,30 @@ fn writes_run_blocks() {
     let found = found.map(|(cid, size)| (cid.to_string(), size));
     assert_eq!(found, Some((BAM_A.to_owned(), 6)));
 }
+
+/// A copy of a block whose bytes do not hash to its CID is skipped for a good one, and is an
+/// error when no store has a good one.
+#[test]
+fn skips_corrupt_blocks() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let completion = Cid::parse(COMPLETION).expect("a CID");
+    let name = completion.to_string();
+    let blocks = folder
+        .path()
+        .join(format!("blocks/{}", &name[name.len() - 2..]));
+    std::fs::create_dir_all(&blocks).expect("a folder");
+    std::fs::write(blocks.join(&name), [0xa0]).expect("a block");
+    let bad = folder.path().to_string_lossy().into_owned();
+    let lab = recorded().to_string_lossy().into_owned();
+    let options = |stores: Vec<(String, String)>| storage::cas::Options {
+        stores,
+        resolve: Vec::new(),
+        writable: None,
+    };
+    let both = options(vec![("bad".into(), bad.clone()), ("lab".into(), lab)]);
+    let node = both.block(&completion).expect("a read").expect("the block");
+    assert_eq!(node.get("status").and_then(Node::text), Some("succeeded"));
+    let error = options(vec![("bad".into(), bad)]).block(&completion);
+    let error = error.expect_err("only other bytes").to_string();
+    assert!(error.contains("other bytes"), "{error}");
+}

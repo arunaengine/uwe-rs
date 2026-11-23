@@ -66,6 +66,8 @@ fn staging(sources: &Path) -> Staging {
         ],
         directories: vec!["made".into()],
         stdin: Some(sources.join("stdin")),
+        direct: Vec::new(),
+        live: None,
     }
 }
 
@@ -163,6 +165,7 @@ async fn folder_round_trip() {
         max_outputs: 8,
         credentials: false,
         cleanup: false,
+        multipart: None,
     };
     round_trip(&stage).await;
 }
@@ -176,6 +179,7 @@ async fn cleans_attempts() {
         max_outputs: 8,
         credentials: false,
         cleanup: false,
+        multipart: None,
     };
     let planned = round_trip(&stage).await;
     let sent = format!("{}/", planned.prefix);
@@ -211,6 +215,7 @@ async fn uploads_binary_once() {
         max_outputs: 1,
         credentials: true,
         cleanup: false,
+        multipart: None,
     };
     let binary = binary(sources.path(), b"static binary\n");
     let object = folder.path().join(layout::content(&binary.digest));
@@ -240,6 +245,7 @@ async fn refuses_unplaceable_inputs() {
         max_outputs: 1,
         credentials: false,
         cleanup: false,
+        multipart: None,
     };
     let spec = spec();
     let placement = Placement::default();
@@ -288,6 +294,7 @@ fn s3_stage(name: &str, credentials: bool) -> RemoteStage {
         max_outputs: 8,
         credentials,
         cleanup: false,
+        multipart: None,
     }
 }
 
@@ -308,6 +315,7 @@ fn configured_stage(root: &str) -> RemoteStage {
         max_outputs: 8,
         credentials: false,
         cleanup: false,
+        multipart: None,
     }
 }
 

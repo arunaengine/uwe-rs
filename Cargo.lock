@@ -2099,6 +2099,7 @@ dependencies = [
  "content-store",
  "futures-util",
  "reqwest",
+ "rustix 1.1.6",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2490,8 +2491,22 @@ dependencies = [
  "quick-xml 0.42.0",
  "regex",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tool-definition",
+]
+
+[[package]]
+name = "galaxy-runtime"
+version = "0.1.0"
+dependencies = [
+ "cheetah-evaluator",
+ "galaxy-parser",
+ "regex",
+ "serde_json",
+ "tempfile",
+ "tool-definition",
+ "workflow-graph",
 ]
 
 [[package]]
@@ -4451,6 +4466,7 @@ dependencies = [
  "opendal",
  "serde_json",
  "sha2 0.11.0",
+ "storage",
  "task-model",
  "tempfile",
  "tokio",
@@ -8236,6 +8252,7 @@ dependencies = [
  "config-file",
  "content-store",
  "executor",
+ "futures-util",
  "opendal",
  "run-database",
  "rusqlite",
@@ -8551,6 +8568,7 @@ name = "tool-definition"
 version = "0.1.0"
 dependencies = [
  "jsonschema",
+ "saphyr",
  "serde",
  "serde_json",
 ]
@@ -8561,8 +8579,10 @@ version = "0.1.0"
 dependencies = [
  "cwl-parser",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.21",
+ "tool-definition",
 ]
 
 [[package]]
@@ -8883,6 +8903,8 @@ dependencies = [
  "flate2",
  "flyte-executor",
  "futures-util",
+ "galaxy-parser",
+ "galaxy-runtime",
  "gix",
  "google-batch-executor",
  "hmac 0.13.0",
@@ -8914,6 +8936,7 @@ dependencies = [
  "sha2 0.11.0",
  "slurm-executor",
  "snakemake-compiler",
+ "snakemake-parser",
  "snakemake-runtime",
  "snowflake-executor",
  "storage",
@@ -8924,6 +8947,7 @@ dependencies = [
  "tes-executor",
  "tokio",
  "tokio-rustls",
+ "tool-definition",
  "tool-record",
  "tracing",
  "tracing-subscriber",
@@ -9485,6 +9509,7 @@ dependencies = [
  "cwl-parser",
  "cwl-runtime",
  "flate2",
+ "galaxy-runtime",
  "indexmap 2.14.2",
  "input-schema",
  "nextflow-evaluator",
@@ -9497,6 +9522,7 @@ dependencies = [
  "snakemake-runtime",
  "storage",
  "tempfile",
+ "tool-definition",
  "tracing",
  "wdl-analysis",
  "wdl-ast",

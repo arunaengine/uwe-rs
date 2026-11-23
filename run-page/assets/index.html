@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- The page of uwe: every run of the run database, and one run live. -->
+<!-- The page of uwe: the runs of the run database, one run live, the launcher and the combiner. -->
 <!-- Copyright (c) 2026 The uwe Contributors -->
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 <html lang="en">
@@ -9,6 +9,7 @@
 <title>uwe</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/page.css">
+<link rel="stylesheet" href="/studio.css">
 <script src="/page.js" defer></script>
 <script src="/graph.js" defer></script>
 <script src="/camera.js" defer></script>
@@ -16,10 +17,18 @@
 <script src="/time.js" defer></script>
 <script src="/compare.js" defer></script>
 <script src="/run.js" defer></script>
+<script src="/schema_form.js" defer></script>
+<script src="/launch.js" defer></script>
+<script src="/canvas.js" defer></script>
+<script src="/composed.js" defer></script>
+<script src="/explorer.js" defer></script>
+<script src="/inspector.js" defer></script>
+<script src="/composer.js" defer></script>
 </head>
 <body>
 <header class="bar">
   <a class="brand" href="/">uwe</a>
+  <nav id="tabs" class="tabs" aria-label="views" hidden></nav>
   <nav id="trail"></nav>
   <span id="live" class="live" hidden>live</span>
 </header>

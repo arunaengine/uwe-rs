@@ -34,6 +34,16 @@ pub(crate) async fn log(
     let Some(log) = log else {
         return Ok(text(String::new()));
     };
+    // The copy that the store keeps by digest comes first: a recorded location may have been
+    // replaced since the run.
+    if !log.whole
+        && let (Some(store), Ok(digest)) = (store, log.digest.parse::<Digest>())
+    {
+        let path = FilePath::new(&store).join(content_store::layout::content(&digest));
+        if path.is_file() {
+            return send(&path, None).await;
+        }
+    }
     if !log.whole
         && let Some(location) = &log.location
     {
@@ -44,14 +54,6 @@ pub(crate) async fn log(
             return Err(Failure::not_found(
                 "the full log is retained in the remote store",
             ));
-        }
-    }
-    if !log.whole
-        && let (Some(store), Ok(digest)) = (store, log.digest.parse::<Digest>())
-    {
-        let path = FilePath::new(&store).join(content_store::layout::content(&digest));
-        if path.is_file() {
-            return send(&path, None).await;
         }
     }
     Ok(text(log.text))
@@ -114,15 +116,15 @@ pub(crate) async fn file(
             let plain = relative
                 .components()
                 .all(|part| matches!(part, Component::Normal(_)));
-            let target = location.join(relative);
-            // A link inside the folder must not lead out of it either.
-            let inside = match (target.canonicalize(), location.canonicalize()) {
-                (Ok(target), Ok(root)) => target.starts_with(root),
-                _ => false,
+            // A link inside the folder must not lead out of it either; the file that was
+            // checked is the one sent.
+            let target = match (
+                location.join(relative).canonicalize(),
+                location.canonicalize(),
+            ) {
+                (Ok(target), Ok(root)) if plain && target.starts_with(&root) => target,
+                _ => return Err(Failure::bad_request("the path must stay inside the folder")),
             };
-            if !plain || !inside {
-                return Err(Failure::bad_request("the path must stay inside the folder"));
-            }
             send(&target, relative.to_str()).await
         }
         None => Ok(Json(listing(&location)?).into_response()),

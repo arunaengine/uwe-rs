@@ -80,6 +80,7 @@ impl Header<'_> {
             Language::Argo => "Argo",
             Language::Wdl => "WDL",
             Language::Wir => "wir",
+            Language::Galaxy => "Galaxy",
         };
         format!(
             "uwe {}: running {} ({language}) on {}, run {}",

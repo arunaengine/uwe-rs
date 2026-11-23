@@ -707,6 +707,7 @@ mod tests {
             files: Vec::new(),
             usage: None,
             address: None,
+            receipts: Vec::new(),
         };
         let files = super::parse("file //tmp/result\ndirectory .\n").unwrap();
         assert_eq!(

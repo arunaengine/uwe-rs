@@ -37,6 +37,9 @@ pub struct Definition {
     /// EDAM topics of the tool.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub topics: Vec<String>,
+    /// Free words that describe the tool, like the keywords of an nf-core module.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<InputPort>,
     /// The JSON Schema (draft 2020-12) of the parameter values, with their conditions such as
@@ -68,6 +71,8 @@ pub struct Source {
 #[serde(rename_all = "snake_case")]
 pub enum SourceKind {
     NfCore,
+    /// A Nextflow process outside an nf-core module.
+    Nextflow,
     Snakemake,
     Cwl,
     Wdl,
@@ -155,6 +160,12 @@ pub struct OutputPort {
     /// is created only when it is true. None means always.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_when: Option<String>,
+    /// The output may be null, like a CWL output of type `File?`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
+    /// The JSON Schema of the values of a value output, like the fields of a record.
+    #[serde(default, skip_serializing_if = "Json::is_null")]
+    pub schema: Json,
 }
 
 /// What a port carries: `"file"`, `"directory"` or `{"value": "integer"}`.

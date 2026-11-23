@@ -3,12 +3,14 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use indexmap::IndexSet;
-use python_evaluator::{Args, Dict, Interpreter, Key, LocalHost, Value};
+use python_evaluator::{Args, Dict, Host, Interpreter, Key, LocalHost, Stat, Value};
 use serde_json::{Map, Value as Json, json};
+use workflow_graph::Roots;
 
 /// Python code with the library that runs before it.
 pub struct Code<'c> {
@@ -18,8 +20,8 @@ pub struct Code<'c> {
 
 impl Code<'_> {
     /// The value of the code as an expression, with `values` as its globals.
-    pub fn value(&self, values: &Map<String, Json>, base: &Path) -> Result<Json, String> {
-        let (mut interpreter, globals) = self.prepared(values, base)?;
+    pub fn value(&self, values: &Map<String, Json>, host: Rc<dyn Host>) -> Result<Json, String> {
+        let (mut interpreter, globals) = self.prepared(values, host)?;
         let result = interpreter
             .eval_text(self.code, &globals)
             .map_err(|error| error.to_string())?;
@@ -31,9 +33,9 @@ impl Code<'_> {
         &self,
         values: &Map<String, Json>,
         arguments: &[Json],
-        base: &Path,
+        host: Rc<dyn Host>,
     ) -> Result<Json, String> {
-        let (mut interpreter, globals) = self.prepared(values, base)?;
+        let (mut interpreter, globals) = self.prepared(values, host)?;
         let callable = interpreter
             .eval_text(self.code, &globals)
             .map_err(|error| error.to_string())?;
@@ -48,9 +50,9 @@ impl Code<'_> {
     fn prepared(
         &self,
         values: &Map<String, Json>,
-        base: &Path,
+        host: Rc<dyn Host>,
     ) -> Result<(Interpreter, Rc<python_evaluator::Scope>), String> {
-        let mut interpreter = Interpreter::new(Rc::new(LocalHost::new(base)));
+        let mut interpreter = Interpreter::new(host);
         let globals = interpreter.new_globals("wir", None);
         for (name, value) in values {
             globals.set(name, to_value(value));
@@ -62,6 +64,91 @@ impl Code<'_> {
                 .map_err(|error| error.to_string())?;
         }
         Ok((interpreter, globals))
+    }
+}
+
+/// The host of Python code that starts in `base`. In an isolated run, which has `roots`, the
+/// code reads and lists only the folders of the run and sees its environment, not uwe's.
+pub fn host(
+    base: &Path,
+    roots: Option<&Roots>,
+    environment: Option<&[(String, String)]>,
+) -> Rc<dyn Host> {
+    let local = LocalHost::new(base);
+    match roots {
+        None => Rc::new(local),
+        Some(roots) => Rc::new(Confined {
+            local,
+            roots: roots.clone(),
+            environment: environment.unwrap_or_default().to_vec(),
+        }),
+    }
+}
+
+/// A host of an isolated run: the local host within the folders of the run. Writes stay in
+/// memory as with the local host.
+struct Confined {
+    local: LocalHost,
+    roots: Roots,
+    environment: Vec<(String, String)>,
+}
+
+impl Host for Confined {
+    fn cwd(&self) -> PathBuf {
+        self.local.cwd()
+    }
+
+    fn set_cwd(&self, path: &Path) {
+        self.local.set_cwd(path);
+    }
+
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        self.roots.check_read(path)?;
+        self.local.read(path)
+    }
+
+    fn stat(&self, path: &Path) -> Option<Stat> {
+        self.roots.check_read(path).ok()?;
+        self.local.stat(path)
+    }
+
+    fn is_symlink(&self, path: &Path) -> bool {
+        self.roots.check_read(path).is_ok() && self.local.is_symlink(path)
+    }
+
+    fn canonicalize(&self, path: &Path) -> PathBuf {
+        match self.roots.check_read(path) {
+            Ok(()) => self.local.canonicalize(path),
+            Err(_) => path.to_owned(),
+        }
+    }
+
+    fn list(&self, path: &Path) -> io::Result<Vec<String>> {
+        self.roots.check_list(path)?;
+        self.local.list(path)
+    }
+
+    fn write(&self, path: &Path, data: &[u8], append: bool) -> io::Result<()> {
+        self.roots.check(path)?;
+        self.local.write(path, data, append)
+    }
+
+    fn make_dir(&self, path: &Path) -> io::Result<()> {
+        self.roots.check(path)?;
+        self.local.make_dir(path)
+    }
+
+    fn remove(&self, path: &Path) -> io::Result<()> {
+        self.roots.check(path)?;
+        self.local.remove(path)
+    }
+
+    fn print(&self, text: &str) {
+        self.local.print(text);
+    }
+
+    fn environment(&self) -> Vec<(String, String)> {
+        self.environment.clone()
     }
 }
 
@@ -164,13 +251,16 @@ mod tests {
 
     #[test]
     fn python_callbacks() {
-        let base = Path::new("/data");
+        let base = || host(Path::new("/data"), None, None);
         let scaled = Code {
             code: "lambda x: x * factor",
             library: &[],
         };
         let values = Map::from_iter([("factor".into(), json!(3))]);
-        assert_eq!(scaled.call(&values, &[json!(7)], base).unwrap(), json!(21));
+        assert_eq!(
+            scaled.call(&values, &[json!(7)], base()).unwrap(),
+            json!(21)
+        );
         let library = vec!["def label(sample, n):\n    return f'{sample}-{n}'\n".to_owned()];
         let labelled = Code {
             code: "label",
@@ -178,7 +268,7 @@ mod tests {
         };
         assert_eq!(
             labelled
-                .call(&Map::new(), &[json!("a"), json!(2)], base)
+                .call(&Map::new(), &[json!("a"), json!(2)], base())
                 .unwrap(),
             json!("a-2")
         );
@@ -187,14 +277,14 @@ mod tests {
             library: &[],
         };
         let values = Map::from_iter([("inputs".into(), json!({"names": ["b", "a"]}))]);
-        assert_eq!(expression.value(&values, base).unwrap(), json!("A"));
+        assert_eq!(expression.value(&values, base()).unwrap(), json!("A"));
         let file = json!({"class": "File", "location": "/data/a.txt"});
         let path = Code {
             code: "lambda f: f.endswith('.txt')",
             library: &[],
         };
         assert_eq!(
-            path.call(&Map::new(), &[file], base).unwrap(),
+            path.call(&Map::new(), &[file], base()).unwrap(),
             json!(true),
             "a File is its path"
         );
@@ -203,22 +293,54 @@ mod tests {
             library: &[],
         };
         assert_eq!(
-            set.call(&Map::new(), &[json!([1, 1, 2])], base).unwrap(),
+            set.call(&Map::new(), &[json!([1, 1, 2])], base()).unwrap(),
             json!({"class": "Set", "items": [1, 2]})
         );
         let function = Code {
             code: "lambda: (lambda y: y)",
             library: &[],
         };
-        let error = function.call(&Map::new(), &[], base).unwrap_err();
+        let error = function.call(&Map::new(), &[], base()).unwrap_err();
         assert!(error.contains("cannot cross a port"), "{error}");
         assert!(
             Code {
                 code: "lambda x:",
                 library: &[]
             }
-            .call(&Map::new(), &[], base)
+            .call(&Map::new(), &[], base())
             .is_err()
+        );
+    }
+
+    #[test]
+    fn confines_isolated_code() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let run = folder.path().join("run");
+        std::fs::create_dir_all(&run).expect("a run folder");
+        std::fs::write(run.join("in.txt"), "inside").expect("a file of the run");
+        std::fs::write(folder.path().join("secret.txt"), "outside").expect("another file");
+        let roots = Roots::new([run.clone()]);
+        let environment = [("SAMPLE".to_owned(), "a".to_owned())];
+        let confined = || host(&run, Some(&roots), Some(&environment));
+        let library = vec!["import os".to_owned()];
+        let evaluate = |code: String| {
+            let code = Code {
+                code: &code,
+                library: &library,
+            };
+            code.value(&Map::new(), confined())
+        };
+        let read = |path: &Path| evaluate(format!("open('{}').read()", path.display()));
+        assert_eq!(read(&run.join("in.txt")), Ok(json!("inside")));
+        let refused = read(&folder.path().join("secret.txt")).expect_err("outside the run");
+        assert!(refused.contains("PermissionError"), "{refused}");
+        let listed = evaluate(format!("os.listdir('{}')", folder.path().display()));
+        assert!(listed.is_err(), "{listed:?}");
+        let names = evaluate("sorted(os.environ)".to_owned());
+        assert_eq!(
+            names,
+            Ok(json!(["SAMPLE"])),
+            "only the environment of the run"
         );
     }
 }

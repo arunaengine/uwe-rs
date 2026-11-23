@@ -1,4 +1,4 @@
-//! Lists recorded runs and exports their historical files as RO-Crates.
+//! Lists and shows recorded runs, their logs, stops them, and exports their files as RO-Crates.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -17,7 +17,8 @@ const LISTED: u32 = 50;
 /// The run database of the command: `-database`, else `runs.sqlite` in the cache directory,
 /// next to the default store.
 pub fn database_path(arguments: &Arguments) -> PathBuf {
-    (arguments.database.clone()).unwrap_or_else(|| cache_directory().join(run_database::FILE_NAME))
+    let cache = (arguments.cache_folder.clone()).unwrap_or_else(cache_directory);
+    (arguments.database.clone()).unwrap_or_else(|| cache.join(run_database::FILE_NAME))
 }
 
 pub fn open(arguments: &Arguments) -> Result<Database, Failure> {
@@ -70,13 +71,257 @@ pub fn reconcile(arguments: &Arguments) -> Result<(), Failure> {
     Ok(())
 }
 
-/// `uwe runs`: the latest runs, one line each.
+/// `uwe runs`: the latest runs, one line each, or with `-json` as a JSON list.
 pub fn list(arguments: &Arguments) -> Result<(), Failure> {
     let runs = open(arguments)?
         .runs(LISTED)
         .map_err(|error| failure(error.to_string()))?;
-    print!("{}", table(&runs));
+    match arguments.json {
+        true => print_json(&runs)?,
+        false => print!("{}", table(&runs)),
+    }
     Ok(())
+}
+
+/// Prints a value as JSON, with passwords in addresses hidden, as the page shows them.
+fn print_json<T: serde::Serialize>(value: &T) -> Result<(), Failure> {
+    let shown = run_database::public_json(value).map_err(|error| failure(error.to_string()))?;
+    let text = serde_json::to_string_pretty(&shown).map_err(|error| failure(error.to_string()))?;
+    println!("{text}");
+    Ok(())
+}
+
+/// The one run that a command names, like `uwe runs show <run>`.
+fn named(arguments: &Arguments, usage: &str) -> Result<String, Failure> {
+    (arguments.target.as_deref())
+        .filter(|run| !run.as_os_str().is_empty())
+        .map(|run| run.to_string_lossy().into_owned())
+        .ok_or_else(|| Failure::usage(format!("uwe: use `{usage}`")))
+}
+
+/// `uwe runs show <run>`: the run and its tasks, or with `-json` also its input values.
+pub fn show(arguments: &Arguments) -> Result<(), Failure> {
+    let id = named(arguments, "uwe runs show <run>")?;
+    if !arguments.targets.is_empty() {
+        return Err(Failure::usage("uwe: use `uwe runs show <run>`"));
+    }
+    let database = open(arguments)?;
+    let broken = |error: DatabaseError| failure(error.to_string());
+    let run = (database.run(&id).map_err(broken)?)
+        .ok_or_else(|| failure(format!("uwe: there is no run {id}")))?;
+    let tasks = database.tasks(&id).map_err(broken)?;
+    if arguments.json {
+        let inputs = database.run_inputs(&id).map_err(broken)?;
+        let values = inputs.map(|inputs| inputs.values);
+        return print_json(&serde_json::json!({"run": run, "tasks": tasks, "inputs": values}));
+    }
+    let executor = if run.simulated {
+        "simulated"
+    } else {
+        run.executor.as_str()
+    };
+    let mut text = String::new();
+    let mut fact = |name: &str, value: &str| {
+        if !value.is_empty() {
+            let _ = writeln!(
+                text,
+                "{name:<10} {}",
+                run_database::redact_public_text(value)
+            );
+        }
+    };
+    fact("run", &run.id);
+    fact("workflow", &run.workflow);
+    fact("language", &run.language);
+    fact("executor", executor);
+    fact("state", &run.state);
+    fact("started", &local_time(run.started));
+    fact("ended", &run.ended.map(local_time).unwrap_or_default());
+    fact("error", run.error.as_deref().unwrap_or_default());
+    let _ = writeln!(
+        text,
+        "\n{:>6} {:<9} {:>8} {:>5} {:>10}  NAME",
+        "TASK", "STATE", "ATTEMPTS", "EXIT", "TIME"
+    );
+    for task in &tasks {
+        let state = match (&task.reused, task.state.as_str()) {
+            (Some(_), "succeeded") => "reused",
+            (_, state) => state,
+        };
+        let time = match (task.started, task.ended) {
+            (Some(started), Some(ended)) => format!("{:.1}s", (ended - started) as f64 / 1000.0),
+            _ => String::new(),
+        };
+        let exit = task
+            .exit_code
+            .map(|code| code.to_string())
+            .unwrap_or_default();
+        let _ = writeln!(
+            text,
+            "{:>6} {:<9} {:>8} {:>5} {:>10}  {}",
+            task.id, state, task.attempts, exit, time, task.name
+        );
+    }
+    print!("{text}");
+    Ok(())
+}
+
+/// `uwe runs logs <run> [<task>]`: the standard output and error of the last attempt of the
+/// task, or of every task that ran.
+pub fn logs(arguments: &Arguments) -> Result<(), Failure> {
+    let usage = "uwe runs logs <run> [<task>]";
+    let id = named(arguments, usage)?;
+    let chosen: Option<u64> = match arguments.targets.as_slice() {
+        [] => None,
+        [task] => Some(
+            task.parse()
+                .map_err(|_| Failure::usage(format!("uwe: use `{usage}`")))?,
+        ),
+        _ => return Err(Failure::usage(format!("uwe: use `{usage}`"))),
+    };
+    let database = open(arguments)?;
+    let broken = |error: DatabaseError| failure(error.to_string());
+    if database.run(&id).map_err(broken)?.is_none() {
+        return Err(failure(format!("uwe: there is no run {id}")));
+    }
+    let tasks = database.tasks(&id).map_err(broken)?;
+    let shown: Vec<_> = (tasks.iter())
+        .filter(|task| chosen.is_none_or(|chosen| task.id == chosen))
+        .filter(|task| task.attempts > 0)
+        .collect();
+    if let (Some(task), true) = (chosen, shown.is_empty()) {
+        return Err(failure(format!(
+            "uwe: task {task} of run {id} has no attempt"
+        )));
+    }
+    let mut printed = false;
+    for task in shown {
+        for stream in ["stdout", "stderr"] {
+            let Some(log) = database
+                .log(&id, task.id, task.attempts, stream)
+                .map_err(broken)?
+            else {
+                continue;
+            };
+            let part = match log.whole {
+                true => String::new(),
+                false => format!(", the last {} of {} bytes", log.text.len(), log.size),
+            };
+            printed = true;
+            println!("== task {} {} ({stream}{part}) ==", task.id, task.name);
+            print!("{}", log.text);
+            if !log.text.ends_with('\n') {
+                println!();
+            }
+        }
+    }
+    if !printed {
+        eprintln!("uwe: the tasks of run {id} wrote no output");
+    }
+    Ok(())
+}
+
+/// Whether a process is a uwe command that runs one workflow, which Ctrl-C stops alone.
+fn own_process(process: u32) -> bool {
+    let Ok(line) = std::fs::read(format!("/proc/{process}/cmdline")) else {
+        return false;
+    };
+    let words: Vec<String> = (line.split(|byte| *byte == 0))
+        .map(|word| String::from_utf8_lossy(word).into_owned())
+        .collect();
+    single_run(&words)
+}
+
+/// Whether a command line is a uwe command that runs one workflow, like `uwe run` or `uwe
+/// runs repeat`; `uwe serve` and the hosts of runs run many.
+fn single_run(words: &[String]) -> bool {
+    let program = words
+        .first()
+        .map(|word| word.rsplit('/').next().unwrap_or(word));
+    let words: Vec<&str> = words.iter().skip(1).map(String::as_str).collect();
+    let single = |command: &str| matches!(command, "repeat" | "replay" | "resume");
+    program == Some("uwe")
+        && match words.as_slice() {
+            ["run", ..] => true,
+            [command, ..] if single(command) => true,
+            ["runs", command, ..] => single(command),
+            _ => false,
+        }
+}
+
+/// `uwe runs cancel <run>`: interrupts the uwe process of a running run on this machine, as
+/// Ctrl-C does, and stops the remote jobs that the run left, waiting until their servers agree.
+pub fn cancel(arguments: &Arguments) -> Result<(), Failure> {
+    let id = named(arguments, "uwe runs cancel <run>")?;
+    let database = open(arguments)?;
+    let broken = |error: DatabaseError| failure(error.to_string());
+    let run = (database.run(&id).map_err(broken)?)
+        .ok_or_else(|| failure(format!("uwe: there is no run {id}")))?;
+    if run.state == "running"
+        && let Some(owner) = database.owner(&id).map_err(broken)?
+        && let Some(process) = run_database::local_process(&owner)
+    {
+        // A server or host process owns all of its runs; interrupting it would stop them all.
+        if !own_process(process) {
+            return Err(failure(format!(
+                "uwe: process {process} of run {id} is no `uwe run` of its own, like `uwe serve`; \
+                 stop the run there, like with `POST /api/runs/{id}/cancel`"
+            )));
+        }
+        let pid = (rustix::process::Pid::from_raw(process as i32))
+            .ok_or_else(|| failure(format!("uwe: run {id} has no process")))?;
+        rustix::process::kill_process(pid, rustix::process::Signal::INT)
+            .map_err(|error| failure(format!("uwe: cannot stop process {process}: {error}")))?;
+        println!("uwe: asked process {process} of run {id} to stop");
+    } else if run.state == "running" {
+        println!("uwe: run {id} does not run on this machine; only its remote jobs stop");
+    }
+    let settings = crate::run::Settings {
+        run_id: Some(id.clone()),
+        config_file: arguments.config_file.clone(),
+        executor: arguments.executor.clone(),
+        store: arguments.store.clone(),
+        cache_folder: arguments.cache_folder.clone(),
+        ..crate::run::Settings::default()
+    };
+    let runtime = workflow_graph::runtime().map_err(|error| failure(error.to_string()))?;
+    let stopped = runtime.block_on(crate::RunRequest::new(settings).stop_tasks())?;
+    let mut open = 0;
+    for orphan in &stopped {
+        let (line, ended) = stop_line(orphan);
+        println!("{line}");
+        open += usize::from(!ended);
+    }
+    if run.state != "running" && stopped.is_empty() {
+        println!("uwe: run {id} has {} and left no remote jobs", run.state);
+    }
+    if open > 0 {
+        return Err(failure(format!(
+            "uwe: {open} remote jobs of run {id} did not stop for sure; `uwe runs cancel {id}` \
+             tries again"
+        )));
+    }
+    Ok(())
+}
+
+/// The line of a remote job that a stop asked to end, with why when it may not have ended,
+/// and whether its server confirmed that it ended.
+fn stop_line(orphan: &executor::orphans::Orphan) -> (String, bool) {
+    use executor::orphans::Outcome;
+    let id = orphan.id.as_deref().unwrap_or("-");
+    let (outcome, reason) = match &orphan.outcome {
+        Outcome::Ended => ("ended", None),
+        Outcome::Canceled => ("canceled", None),
+        Outcome::Running => ("running", Some("the server says it still runs")),
+        Outcome::Unclear(reason) => ("unclear", Some(reason.as_str())),
+        Outcome::Kept(reason) => ("kept", Some(reason.as_str())),
+        Outcome::Failed(reason) => ("failed", Some(reason.as_str())),
+    };
+    let line = match reason {
+        Some(reason) => format!("{} {id} {outcome}: {reason}", orphan.attempt),
+        None => format!("{} {id} {outcome}", orphan.attempt),
+    };
+    (line, reason.is_none())
 }
 
 /// The runs as a table with a header line.
@@ -441,6 +686,7 @@ fn main_file(run: &Run, database: &Database) -> Result<PathBuf, Failure> {
         "cwl" => Language::Cwl,
         "wdl" => Language::Wdl,
         "wir" => Language::Wir,
+        "galaxy" => Language::Galaxy,
         _ => Language::Argo,
     };
     let paths: std::collections::BTreeSet<PathBuf> = match run.workflow_folder.as_deref() {
@@ -515,7 +761,7 @@ pub fn resume(arguments: &Arguments) -> Result<(), Failure> {
             }
         }
     }
-    let folder = crate::run::driver::resume_folder(&run);
+    let folder = crate::run::driver::resume_folder(&crate::cache_directory(), &run);
     request
         .write(&folder)
         .map_err(|error| failure(format!("uwe: cannot leave the request: {error}")))?;
@@ -529,6 +775,62 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+
+    #[test]
+    fn spares_host_processes() {
+        // The test binary stands for a host that embeds uwe and owns runs of its own.
+        assert!(!own_process(std::process::id()));
+        assert!(!own_process(u32::MAX));
+        let line = |words: &[&str]| {
+            words
+                .iter()
+                .map(|word| word.to_string())
+                .collect::<Vec<_>>()
+        };
+        for single in [
+            line(&["/usr/bin/uwe", "run", "main.nf"]),
+            line(&["uwe", "repeat", "run-1"]),
+            line(&["uwe", "runs", "repeat", "run-1"]),
+            line(&["uwe", "runs", "replay", "run-1", "3"]),
+            line(&["uwe", "runs", "resume", "run-1"]),
+        ] {
+            assert!(single_run(&single), "{single:?}");
+        }
+        for many in [
+            line(&["uwe", "serve"]),
+            line(&["uwe", "page"]),
+            line(&["uwe", "runs", "cancel", "run-1"]),
+            line(&["uwe", "runs"]),
+            line(&["python", "run"]),
+        ] {
+            assert!(!single_run(&many), "{many:?}");
+        }
+    }
+
+    #[test]
+    fn reports_open_stops() {
+        use executor::orphans::{Orphan, Outcome};
+        let orphan = |outcome| Orphan {
+            attempt: "run-1-2-1".into(),
+            id: Some("job-7".into()),
+            state: None,
+            outcome,
+        };
+        let canceled = stop_line(&orphan(Outcome::Canceled));
+        assert_eq!(canceled, ("run-1-2-1 job-7 canceled".into(), true));
+        assert!(stop_line(&orphan(Outcome::Ended)).1);
+        for (outcome, said) in [
+            (
+                Outcome::Failed("403 forbidden".into()),
+                "failed: 403 forbidden",
+            ),
+            (Outcome::Unclear("no answer".into()), "unclear: no answer"),
+            (Outcome::Kept("held by uwe".into()), "kept: held by uwe"),
+        ] {
+            let (line, ended) = stop_line(&orphan(outcome));
+            assert!(!ended && line.ends_with(said), "{line}");
+        }
+    }
 
     #[test]
     fn preserves_historical_exports() {

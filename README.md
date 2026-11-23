@@ -47,6 +47,7 @@ So far it looks like it can. A Snakemake rule and a Nextflow process that run th
 | [CWL](https://www.commonwl.org) | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
 | [Argo Workflows](https://argoproj.github.io/workflows/) | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
 | [WDL](https://openwdl.org) 1.0 to 1.2 | Tasks, workflows, calls of tasks and subworkflows, imports, scatter, `if`, structs, `runtime` and `requirements`, and most of the standard library. Parsing and type checks use Sprocket's `wdl-analysis`; expressions are evaluated by uwe. |
+| [Galaxy](https://galaxyproject.org) | Tool XML with macros and Cheetah commands rendered in Rust, sections, conditionals, repeats, collections as lists and output filters, and `.ga` workflows of tool steps with dataset and parameter inputs. See [Tools and composed workflows](docs/tools.md). |
 | [wir](wir/README.md) | The workflow intermediate representation of uwe: graphs of container `task` ops, `call` ops and `native` ops that run whole CWL documents and Nextflow pipelines with the cache keys of their own runs. See [Running wir documents](docs/wir.md). |
 
 Each language is a native subset, not a wrapper around the original engine. `uwe check` tells you before a run whether a workflow uses something uwe does not support.
@@ -80,22 +81,23 @@ Conda environments are solved in Rust (rattler and resolvo) and turned into cont
 
 ### Runs and provenance
 
-- Every run is recorded in a local SQLite database. `uwe runs` lists them.
+- Every run is recorded in a local SQLite database. `uwe runs` lists them, `uwe runs show <run>` shows one with its tasks, `uwe runs logs <run> [<task>]` prints what its tasks wrote, and `uwe runs cancel <run>` stops a run of `uwe run` on this machine, as Ctrl-C does, and the remote jobs that a run left. A run of `uwe serve` stops on its page or through its API.
 - `uwe changes <run>` shows which workflow files, inputs and images changed since a run. `uwe repeat <run>` runs it again with its kept workflow files and inputs, and with the recorded image digests where it has them.
 - `uwe why` explains why a task ran. `uwe origin` tells where a result came from.
 - `uwe page` opens a local web page with all runs. `uwe run -page` shows the run live while it runs.
+- `uwe serve` serves the same page as a studio: it starts workflows from a form, combines tools into a workflow on a canvas, and offers a GA4GH WES API, see [Tools and composed workflows](docs/tools.md#the-studio).
 - `uwe export` writes an RO-Crate. `uwe time`, `uwe compare` and `uwe report` show where the time went and how two runs differ. `uwe compare -report diff.html` writes the comparison as an HTML, JSON (`.json`) or Markdown (`.md`) report, and `-fail-on-change` ends with exit code 3 when the runs differ.
 
 ### Checks before a run
 
 - `uwe check <workflow>` finds problems before any task starts: unsupported features, broken references, missing files and tasks without an image. It plans with made-up data, so it cannot see tasks that only real data creates, and it does not fetch remote inputs.
-- `uwe check-machine` checks the container engine, the store and the executor setup.
+- `uwe doctor` (or `uwe check-machine`) checks the container engine, the store and the executor setup; `--json` writes the report as JSON.
 - `uwe check-order <workflow>` finds steps whose results depend on which task finished first.
 - `uwe inputs` and `uwe outputs` print the inputs and outputs of any workflow as JSON Schema. Every run checks its inputs against that schema.
 
 ### Recording tools
 
-- `uwe record [-name <name>] [-image <image>] -- <command ...>` runs a command once in the current folder and writes it there as a CWL CommandLineTool, `<name>.cwl`. Words that name a file or folder become `File` and `Directory` inputs, other values typed inputs with the recorded value as default, and `>` and `2>` become `stdout` and `stderr`. The files and folders that the run writes become the outputs, with EDAM formats for common file endings. `-image` adds a `DockerRequirement` hint. Quote `|`, `>` and `2>` so that your shell passes them on. A failed command writes nothing. The recorder comes from [SciWIn](https://github.com/fairagro/sciwin).
+- `uwe record [-name <name>] [-image <image>] [-format cwl|tool|both] -- <command ...>` runs a command once in the current folder and writes it there as a CWL CommandLineTool, `<name>.cwl`, as a tool definition, `<name>.tool.json` (`-format tool`), or both. Words that name a file or folder become `File` and `Directory` inputs, other values typed inputs with the recorded value as default, and `>` and `2>` become `stdout` and `stderr`. The files and folders that the run writes become the outputs, with EDAM formats for common file endings. `-image` adds a `DockerRequirement` hint. Quote `|`, `>` and `2>` so that your shell passes them on. A failed command writes nothing. The recorder comes from [SciWIn](https://github.com/fairagro/sciwin).
 
 ## Install
 
@@ -116,12 +118,27 @@ Add `$HOME/.local/bin` to your `PATH` if it is not there yet.
 From the root of the checkout:
 
 ```sh
-uwe check-machine
+uwe doctor
 uwe run demo/snakemake/hello.smk
 uwe runs
 ```
 
-The example uses a Debian image and writes greetings to `demo/snakemake/hello/`. `uwe help` lists all commands, and `uwe run -help` lists all run options.
+The example uses a Debian image and writes greetings to `demo/snakemake/hello/`. `uwe help` lists all commands, and `uwe run -help` lists all run options. `uwe init` writes a starter composed workflow with one tool into the current folder.
+
+## Commands and options
+
+Inspection commands are grouped: `uwe runs [list|show|logs|cancel|compare|export|repeat|why|time|report|changes|reconcile|resume|replay]`, `uwe tool [list|inspect|extract|record|check|suggest|lower]` and `uwe cache [clean|digest]`. The flat commands, like `uwe compare` and `uwe clean`, keep working. `uwe runs`, `uwe tool`, `uwe doctor` and `uwe cache digest` write JSON with `--json`, and `uwe completions bash|zsh|fish` prints a completion script:
+
+```sh
+source <(uwe completions bash)
+```
+
+Every option takes `-name`, as Nextflow users type it, and the POSIX spelling `--name` or `--name=value`. A command with workflow parameters, like `uwe run`, takes the POSIX spelling before `--` only, so that `--name value` without `--` stays a workflow parameter as before:
+
+```sh
+uwe run main.nf --profile test --resume -- --input samples.csv
+uwe run main.nf -profile test -resume --input samples.csv
+```
 
 ## Running workflows
 
@@ -202,6 +219,12 @@ uwe page
 
 `uwe check` finds problems before any task starts. `uwe inputs` lists the inputs of a workflow. `uwe runs` lists recorded runs, and `uwe page` shows them in the browser.
 
+```sh
+uwe serve --tools ~/tools --workflows ~/pipelines --open
+```
+
+`uwe serve` adds the launcher, the task explorer and the combiner to the page, and the GA4GH WES API at `/ga4gh/wes/v1`.
+
 ## Documentation
 
 | Page | Read it when |
@@ -213,6 +236,7 @@ uwe page
 | [Workflow presets and installed references](docs/presets.md) | You offer fixed workflows and reference data to users |
 | [Embedding uwe in a service](docs/embedding.md) | You start runs from your own Rust service |
 | [Running wir documents](docs/wir.md) | You run a graph in the intermediate representation of uwe |
+| [Tools and composed workflows](docs/tools.md) | You run Galaxy tools, compose tools of several languages in a `.uwe.yaml` file, or use `uwe serve` |
 | [Operating uwe](docs/operations.md) | You back up, restore or upgrade uwe for a team |
 | [The demo](demo/README.md) | You want to try every language on a laptop or a cluster |
 | [Contributing](CONTRIBUTING.md) | You change the code |

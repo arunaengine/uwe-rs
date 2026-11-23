@@ -19,6 +19,21 @@ const INTERPRETERS: &[&str] = &["python", "python3", "R", "Rscript", "node", "ja
 const MODIFIERS: &[&str] = &["-e", "-m"];
 /// A positional value with one of these words may be a secret: it gets no default.
 const SECRETS: &[&str] = &["sql", "postgres", "mysql", "password"];
+/// Words of option names whose values are credentials: a recorded tool keeps no default of them.
+const CREDENTIALS: &[&str] = &[
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "token",
+    "api-key",
+    "apikey",
+    "auth",
+    "credential",
+    "credentials",
+    "private-key",
+    "access-key",
+];
 
 /// The tool of a command line, without outputs. `folder` is where the command runs, so
 /// words that name a file or folder there become `File` and `Directory` inputs.
@@ -138,7 +153,7 @@ fn inputs(words: &[&str], folder: &Path) -> Vec<Input> {
                 Input {
                     id: slug(word),
                     kind,
-                    default: Some(default(value, kind)),
+                    default: (!credential(word)).then(|| default(value, kind)),
                     binding: Binding::Prefix(word.to_owned()),
                 }
             }
@@ -153,6 +168,18 @@ fn inputs(words: &[&str], folder: &Path) -> Vec<Input> {
         index += 1;
     }
     inputs
+}
+
+/// Whether an option names a credential, like `--password`, `--api-key` or `--auth_token`.
+fn credential(option: &str) -> bool {
+    let name = option
+        .trim_start_matches('-')
+        .to_lowercase()
+        .replace('_', "-");
+    let words: Vec<&str> = name.split('-').collect();
+    let pairs = words.windows(2).map(|pair| pair.join("-"));
+    let mut names = words.iter().map(|word| (*word).to_owned()).chain(pairs);
+    names.any(|known| CREDENTIALS.contains(&known.as_str()))
 }
 
 /// Whether a word is an option name. Negative numbers like `-5` are values.

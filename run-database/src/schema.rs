@@ -8,12 +8,12 @@ use crate::DatabaseError;
 
 /// The version of the schema that this build writes. SQLite keeps it in `PRAGMA user_version`.
 /// A change to the tables adds a step to [`MIGRATIONS`] and raises this number.
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 11;
 
 /// The steps from each version to the next: the first creates version 1 in an empty file.
 const MIGRATIONS: [&str; VERSION as usize] = [
     VERSION_1, VERSION_2, VERSION_3, VERSION_4, VERSION_5, VERSION_6, VERSION_7, VERSION_8,
-    VERSION_9, VERSION_10,
+    VERSION_9, VERSION_10, VERSION_11,
 ];
 
 /// Version 1. Times are milliseconds since the Unix epoch (UTC). Text in JSON is marked as such.
@@ -287,6 +287,12 @@ ALTER TABLE runs ADD COLUMN document TEXT;
 ALTER TABLE runs ADD COLUMN document_digest TEXT;
 UPDATE runs SET document = workflow
     WHERE language = 'wir' AND workflow LIKE '%/scratch/lowered/%.wir.json';
+";
+
+/// Version 11: the cache namespace of the tenant that a run ran for. Earlier runs keep NULL,
+/// the shared namespace, which a resume of a tenant never reads.
+const VERSION_11: &str = "
+ALTER TABLE runs ADD COLUMN cache_namespace TEXT;
 ";
 
 /// Brings the schema of a database to [`VERSION`]: creates it in a new file, and runs the

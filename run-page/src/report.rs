@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 
-use run_database::{Database, DatabaseError, Delivered, Log};
+use run_database::{DatabaseError, Delivered, Log, RunReader};
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 use workflow_graph::render::{Direction, FOLD, Options, View};
@@ -38,13 +38,13 @@ struct Data {
 }
 
 /// The report of a run as one HTML file, or `None` when the database has no such run.
-pub fn report(database: &Database, run: &str) -> Result<Option<String>, DatabaseError> {
+pub fn report(database: &dyn RunReader, run: &str) -> Result<Option<String>, DatabaseError> {
     report_with_files(database, run, &LocalFiles)
 }
 
 /// Resolves deferred log locations through the request's configured storage providers.
 pub fn report_with_files(
-    database: &Database,
+    database: &dyn RunReader,
     run: &str,
     files: &dyn Files,
 ) -> Result<Option<String>, DatabaseError> {
@@ -141,7 +141,7 @@ pub fn log_tail(log: &mut Log, files: &dyn Files, limit: usize) -> io::Result<()
         }
     }
     if size != log.size
-        || task_model::Digest::from_sha256(&hasher.finalize()).as_str() != log.digest
+        || task_model::Digest::from_sha256(hasher.finalize().into()).as_str() != log.digest
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,

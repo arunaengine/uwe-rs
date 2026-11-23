@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 pub(crate) mod backend;
+mod context;
 pub(crate) mod driver;
 mod events;
 mod settings;
@@ -10,7 +11,8 @@ pub(crate) mod support;
 
 pub use backend::HostExecutor;
 pub use config_file::SecretValues;
-pub use events::{Event, Listener, PrintSink, TaskEvent, TaskState};
+pub use context::{HostRuns, HostStorage, RunContext};
+pub use events::{Event, Listener, LogStream, PrintSink, TaskEvent, TaskState};
 pub use executor::orphans;
 pub use settings::Settings;
 pub use task_runner::NetworkRule;
@@ -27,6 +29,18 @@ use crate::{
 use run_database::Recorder;
 use run_page::Server;
 use workflow_graph::{Engine, Execution, Order, RunOptions};
+
+/// The description of a workflow from a driver that plans it and starts no task.
+fn described(
+    arguments: &Arguments,
+    setup: &crate::setup::Setup,
+    (target, language): (std::path::PathBuf, Language),
+    cancel: &workflow_graph::CancellationToken,
+) -> Result<Description, Failure> {
+    let launch = launch(arguments, setup, target);
+    let mut driver = driver(language, &launch, &run_id(), true, arguments, setup, cancel)?;
+    application::describe(driver.as_mut()).map_err(|error| failure(error.to_string()))
+}
 
 /// A workflow submission using embedding settings and the shared CLI execution path.
 /// Strict admission checks typed JSON without CLI coercion or simulated assumptions.
@@ -70,34 +84,15 @@ impl RunRequest {
 
     /// Builds and describes the configured driver without starting tasks or recording a run.
     /// Native planning can still read files and use configured container helpers.
-    pub async fn describe(mut self) -> Result<Description, Failure> {
+    pub async fn describe(self) -> Result<Description, Failure> {
         let cancel = self.settings.cancel.child_token();
         let _stop = cancel.clone().drop_guard();
         tokio::task::spawn_blocking(move || {
             let _cache = support::CacheScope::new(false);
-            let network = self.settings.network.take();
-            let (arguments, setup, _inputs) = self.settings.prepare()?;
-            let mut setup = match setup {
-                Some(setup) => setup,
-                None => crate::setup::Setup::load(&arguments)?,
-            };
+            let (arguments, setup, _inputs) = self.ready()?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
-            setup.storage = setup.storage.session();
-            if let Some(network) = network {
-                setup.network = network;
-            }
-            let (target, language) = target_and_language(&arguments, Some(&setup.storage))?;
-            let launch = launch(&arguments, target);
-            let mut driver = driver(
-                language,
-                &launch,
-                &run_id(),
-                true,
-                &arguments,
-                &setup,
-                &cancel,
-            )?;
-            application::describe(driver.as_mut()).map_err(|error| failure(error.to_string()))
+            let (target, language) = target_and_language(&arguments, &setup)?;
+            described(&arguments, &setup, (target, language), &cancel)
         })
         .await
         .map_err(|error| Failure::setup(format!("uwe: discovery worker failed: {error}")))?
@@ -110,14 +105,9 @@ impl RunRequest {
         let _stop = cancel.clone().drop_guard();
         tokio::task::spawn_blocking(move || {
             let _cache = support::CacheScope::new(false);
-            let (arguments, setup, _inputs) = self.settings.prepare()?;
-            let mut setup = match setup {
-                Some(setup) => setup,
-                None => crate::setup::Setup::load(&arguments)?,
-            };
+            let (arguments, setup, _inputs) = self.ready()?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
-            setup.storage = setup.storage.session();
-            let (target, language) = target_and_language(&arguments, Some(&setup.storage))?;
+            let (target, language) = target_and_language(&arguments, &setup)?;
             let given = (target.as_path(), language);
             Ok(crate::support::report(&arguments, &setup, given, &cancel))
         })
@@ -125,9 +115,55 @@ impl RunRequest {
         .map_err(|error| Failure::setup(format!("uwe: support worker failed: {error}")))?
     }
 
-    /// The TES tasks, Kubernetes Jobs and SLURM jobs that the run `settings.run_id` left, with
-    /// what their servers say of them. Changes nothing. The settings give the config file, the
-    /// cache and the secrets of the run.
+    /// `describe` and `support` together, which find the setup and the workflow once.
+    pub(crate) async fn overview(self) -> Result<(Description, crate::support::Report), Failure> {
+        let cancel = self.settings.cancel.child_token();
+        let _stop = cancel.clone().drop_guard();
+        tokio::task::spawn_blocking(move || {
+            let _cache = support::CacheScope::new(false);
+            let (arguments, setup, _inputs) = self.ready()?;
+            let _registry = setup.registry.enter().map_err(Failure::setup)?;
+            let (target, language) = target_and_language(&arguments, &setup)?;
+            let given = (target.clone(), language);
+            let description = described(&arguments, &setup, given, &cancel)?;
+            let given = (target.as_path(), language);
+            let report = crate::support::report(&arguments, &setup, given, &cancel);
+            Ok((description, report))
+        })
+        .await
+        .map_err(|error| Failure::setup(format!("uwe: discovery worker failed: {error}")))?
+    }
+
+    /// The arguments and the setup of the settings, with the folders, the storage providers
+    /// of the host and the network rule in place, as describing a workflow needs them.
+    fn ready(
+        mut self,
+    ) -> Result<
+        (
+            Arguments,
+            crate::setup::Setup,
+            Option<tempfile::NamedTempFile>,
+        ),
+        Failure,
+    > {
+        let network = self.settings.network.take();
+        let hosts = std::mem::take(&mut self.settings.host_storage);
+        let (arguments, setup, inputs) = self.settings.prepare()?;
+        let mut setup = match setup {
+            Some(setup) => setup,
+            None => crate::setup::Setup::load(&arguments)?,
+        };
+        setup.use_folders(&arguments);
+        setup.storage = HostStorage::added(&hosts, &setup.storage.session());
+        if let Some(network) = network {
+            setup.network = network;
+        }
+        Ok((arguments, setup, inputs))
+    }
+
+    /// The remote jobs that the run `settings.run_id` left on any remote executor, with what
+    /// their servers say of them. Changes nothing. The settings give the config file, the
+    /// cache, the journal store and the secrets of the run.
     pub async fn remote_tasks(self) -> Result<Vec<orphans::Orphan>, Failure> {
         let settings = self.settings;
         tokio::task::spawn_blocking(move || remote_tasks(settings, false))
@@ -146,8 +182,9 @@ impl RunRequest {
     }
 }
 
-/// The remote tasks of the run of `settings`, found with the config and cache that a run with
-/// these settings uses, and stopped with `stop`.
+/// The remote tasks of the run of `settings`, found with the config, cache and journal store
+/// that a run with these settings uses, and stopped with `stop`. Each remote executor with a
+/// journal of the run builds its backend, which reports or stops its jobs.
 fn remote_tasks(settings: Settings, stop: bool) -> Result<Vec<orphans::Orphan>, Failure> {
     let _cache = support::CacheScope::new(false);
     let run = (settings.run_id.clone())
@@ -162,21 +199,48 @@ fn remote_tasks(settings: Settings, stop: bool) -> Result<Vec<orphans::Orphan>, 
         executor: settings.executor,
         store: settings.store,
         secrets: settings.secrets,
+        cache_folder: cache.clone(),
+        host_executor: settings.host_executor,
         ..Arguments::default()
     };
-    let setup = match settings.setup {
+    let mut setup = match settings.setup {
         Some(setup) => setup,
         None => {
             crate::setup::Defaults::load(&arguments)?.apply("run", &mut arguments)?;
             crate::setup::Setup::load(&arguments)?
         }
     };
+    setup.use_folders(&arguments);
     if let Some(folder) = cache {
         crate::use_cache_folder(folder);
     }
-    let mut found = crate::tes::orphans(&arguments, &setup, &run, stop)?;
-    found.extend(crate::kubernetes::orphans(&arguments, &setup, &run, stop)?);
-    found.extend(crate::slurm::orphans(&arguments, &setup, &run, stop)?);
+    if settings.journal_store.is_some() {
+        setup.journal_store = settings.journal_store;
+    }
+    let failed = |error: executor::ExecutorError| Failure::setup(format!("uwe: {error}"));
+    let store = setup.context().journal_store;
+    // TES, Kubernetes and SLURM keep their journals beside their files in the scratch folder.
+    let files = executor::FileJournal::new(setup.cache_directory().join("scratch"));
+    let runtime = workflow_graph::runtime().map_err(|error| failure(format!("uwe: {error}")))?;
+    let mut found = Vec::new();
+    let names = (backend::REMOTE.iter().copied())
+        .chain(arguments.host_executor.is_some().then_some(backend::HOST));
+    for name in names {
+        // Without a journal no server needs to answer.
+        let journaled = |store: &dyn executor::JournalStore| store.list(name, &run);
+        if name != backend::HOST
+            && journaled(store.as_ref()).map_err(failed)?.is_empty()
+            && journaled(&files).map_err(failed)?.is_empty()
+        {
+            continue;
+        }
+        let backend = backend::dynamic(name, &arguments, &setup, &run)?;
+        let answer = match stop {
+            true => runtime.block_on(backend.stop_orphans(&run)),
+            false => runtime.block_on(backend.orphans(&run)),
+        };
+        found.extend(answer.map_err(failed)?);
+    }
     Ok(found)
 }
 
@@ -223,17 +287,25 @@ fn execute_with(
         settings::check_id(id)?;
     }
     let pool = settings.local_pool.clone();
+    let hosts = std::mem::take(&mut settings.host_storage);
+    let journals = settings.journal_store.take();
     let (mut arguments, setup, _inputs) = settings.prepare()?;
     if network.is_some() {
         arguments.no_network = false;
     }
     let arguments = &arguments;
     // A second insert of the id would fail too, but only after the workflow was fetched.
-    if let Some(id) = &chosen
-        && crate::runs::open(arguments)?
-            .run(id)
+    let known = |id: &str| -> Result<bool, Failure> {
+        let found = match &arguments.run_store {
+            Some(host) => host.0.run(id),
+            None => crate::runs::open(arguments)?.run(id),
+        };
+        Ok(found
             .map_err(|error| Failure::setup(format!("uwe: {error}")))?
-            .is_some()
+            .is_some())
+    };
+    if let Some(id) = &chosen
+        && known(id)?
     {
         return Err(Failure::usage(format!(
             "uwe: a run with the id {id} is already in the run database"
@@ -246,19 +318,24 @@ fn execute_with(
     if pool.is_some() {
         setup.local_pool = pool;
     }
+    if journals.is_some() {
+        setup.journal_store = journals;
+    }
     setup.variables = arguments.secrets.clone();
+    setup.use_folders(arguments);
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
-    setup.storage = setup.storage.session();
+    setup.storage = HostStorage::added(&hosts, &setup.storage.session());
     // A repeat reads the remote files of the run it repeats as they were, also when the
     // workflow compiles.
     for file in &pinned.files {
         setup.storage.pin(file.clone());
     }
-    let (target, language) = target_and_language(arguments, Some(&setup.storage))?;
+    let (target, language) = target_and_language(arguments, &setup)?;
     let run = chosen.unwrap_or_else(run_id);
     // A run compiles its workflow into wir and checks its inputs with the schema of the
-    // workflow; a wir document runs as it is.
-    let source = (language != Language::Wir).then(|| (launch(arguments, target.clone()), language));
+    // workflow; a wir document and a Galaxy tool or workflow run as they are.
+    let direct = matches!(language, Language::Wir | Language::Galaxy);
+    let source = (!direct).then(|| (launch(arguments, &setup, target.clone()), language));
     // The run records the workflow and the command line that the user gave.
     let given = arguments;
     let converted;
@@ -300,7 +377,7 @@ fn execute_with(
     };
     let private: Vec<crate::lower::Values> = private;
     let target = &target;
-    let launch = launch(arguments, target.clone());
+    let launch = launch(arguments, &setup, target.clone());
     // The config of a Nextflow pipeline can pick the executor and the store of its run.
     let (first, written) = match &source {
         Some((launch, language)) => (launch, *language),
@@ -381,6 +458,10 @@ fn execute_with(
         if arguments.forceall {
             words.push("-forceall".into());
         }
+        // A host turns the network off through the setup; a repeat of the run must too.
+        if setup.network.none_by_default && !words.iter().any(|word| word == "-no-network") {
+            words.push("-no-network".into());
+        }
         words
     });
     let started = record::Started {
@@ -406,7 +487,8 @@ fn execute_with(
         true => Some(page::start(arguments, &format!("/runs/{run}"))?),
         false => None,
     };
-    let telemetry = if real {
+    // Live traces read the run database file, which a run in a store of the host lacks.
+    let telemetry = if real && arguments.run_store.is_none() {
         setup
             .telemetry
             .as_ref()
@@ -414,6 +496,10 @@ fn execute_with(
     } else {
         None
     };
+    if let Some(listener) = &listener {
+        let feed = events::live(listener, &run, &arguments.secrets);
+        setup.live = Some(feed.map_err(|error| Failure::setup(format!("uwe: {error}")))?);
+    }
     tell(Event::Started {
         run: run.clone(),
         time: events::milliseconds(std::time::SystemTime::now()),
@@ -467,6 +553,9 @@ fn execute_with(
                 }
                 admission.inputs
             }
+            // The values of a compiled document come from its compile, as its language reads
+            // them; a document that runs as it is checks them with its schema.
+            None if source.is_some() => None,
             None => inputs::check(driver.as_mut(), started.simulated, quiet)?,
         };
         if let Some(inputs) = inputs {
@@ -604,7 +693,7 @@ fn execute_with(
         tracing::warn!("uwe: the store does not keep the remote files of the run: {message}");
     }
     if strict {
-        recorder.ended(execution.error.as_ref().map(ToString::to_string).as_deref());
+        recorder.finish(execution.error.as_ref());
     }
     if let Err(failure) = close_checked(recorder, strict) {
         tell(events::ended(&run, Some(&failure.message)));

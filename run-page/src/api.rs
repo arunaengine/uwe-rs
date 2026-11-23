@@ -12,13 +12,13 @@ use axum::http::StatusCode;
 use axum::http::header;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::get;
-use run_database::{Database, DatabaseError, Log, MarkerRow, Run, TaskDetail, TaskRow};
+use axum::routing::{get, post};
+use run_database::{DatabaseError, Log, MarkerRow, Run, RunReader, TaskDetail, TaskRow};
 use serde::{Deserialize, Serialize};
 use workflow_graph::TaskId;
 use workflow_graph::render::{Direction, FOLD, Format, Options, State as Shown, View, render};
 
-use crate::{Failure, Shared, assets, files, live, query};
+use crate::{Failure, Shared, assets, composer, files, launch, live, query, wes};
 
 /// How many runs the list of runs shows.
 const RUNS: u32 = 200;
@@ -29,7 +29,10 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/runs/{run}", get(assets::page))
         .route("/runs/{run}/tasks/{task}", get(assets::page))
         .route("/compare/{first}/{second}", get(assets::page))
+        .route("/launch", get(assets::page))
+        .route("/compose", get(assets::page))
         .route("/page.css", get(assets::style))
+        .route("/studio.css", get(assets::studio_style))
         .route("/icon.svg", get(assets::icon))
         .route("/page.js", get(assets::script))
         .route("/run.js", get(assets::run_script))
@@ -38,7 +41,21 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/boxes.js", get(assets::boxes_script))
         .route("/time.js", get(assets::time_script))
         .route("/compare.js", get(assets::compare_script))
-        .route("/api/runs", get(runs))
+        .route("/schema_form.js", get(assets::form_script))
+        .route("/launch.js", get(assets::launch_script))
+        .route("/canvas.js", get(assets::canvas_script))
+        .route("/composed.js", get(assets::composed_script))
+        .route("/explorer.js", get(assets::explorer_script))
+        .route("/inspector.js", get(assets::inspector_script))
+        .route("/composer.js", get(assets::composer_script))
+        .route("/api/capabilities", get(launch::capabilities))
+        .route("/api/workflows", get(launch::workflows))
+        .route("/api/workflows/describe", post(launch::describe))
+        .route("/api/workflows/validate", post(launch::validate))
+        .route("/api/runs", get(runs).post(launch::start))
+        .route("/api/runs/{run}/cancel", post(launch::cancel))
+        .route("/api/runs/{run}/repeat", post(launch::repeat))
+        .route("/api/runs/{run}/logs/stream", get(launch::stream))
         .route("/api/runs/{run}", get(run))
         .route("/api/runs/{run}/events", get(live::events))
         .route("/api/runs/{run}/graph.svg", get(graph))
@@ -54,11 +71,20 @@ pub(crate) fn router(state: Shared) -> Router {
             "/api/runs/{run}/tasks/{task}/{role}/{index}",
             get(files::file),
         )
+        .merge(composer::routes())
+        .merge(wes::routes())
         .layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .with_state(state)
 }
 
 async fn authenticate(State(state): State<Shared>, request: Request, next: Next) -> Response {
+    if cross_site(&request) {
+        return (
+            StatusCode::FORBIDDEN,
+            "a page of another site cannot change runs here",
+        )
+            .into_response();
+    }
     let Some(token) = &state.token else {
         return next.run(request).await;
     };
@@ -109,8 +135,28 @@ async fn authenticate(State(state): State<Shared>, request: Request, next: Next)
     response
 }
 
+/// Whether a browser asks to change something for a page of another origin. A loopback page
+/// has no token, so any site could send such a request through the browser of its user. A
+/// client without `Origin` is no browser, and a bearer token needs the consent of the server.
+fn cross_site(request: &Request) -> bool {
+    let headers = request.headers();
+    if request.method().is_safe() || headers.contains_key(header::AUTHORIZATION) {
+        return false;
+    }
+    let Some(origin) = headers.get(header::ORIGIN) else {
+        return false;
+    };
+    let host = headers
+        .get(header::HOST)
+        .and_then(|host| host.to_str().ok());
+    let origin = origin.to_str().ok().and_then(|origin| {
+        (origin.strip_prefix("http://")).or_else(|| origin.strip_prefix("https://"))
+    });
+    !matches!((origin, host), (Some(origin), Some(host)) if origin.eq_ignore_ascii_case(host))
+}
+
 async fn runs(State(state): State<Shared>) -> Result<Json<serde_json::Value>, Failure> {
-    let allowed = state.runs.clone();
+    let allowed = state.allowed();
     public(
         &query(&state, move |database| {
             let Some(allowed) = allowed else {
@@ -128,7 +174,7 @@ async fn runs(State(state): State<Shared>) -> Result<Json<serde_json::Value>, Fa
     )
 }
 
-fn public<T: Serialize>(value: &T) -> Result<Json<serde_json::Value>, Failure> {
+pub(crate) fn public<T: Serialize>(value: &T) -> Result<Json<serde_json::Value>, Failure> {
     run_database::public_json(value)
         .map(Json)
         .map_err(|error| DatabaseError::Json(error).into())
@@ -157,7 +203,10 @@ async fn run(
 }
 
 /// The first view of a run, or `None` when the database has no such run.
-pub(crate) fn run_view(database: &Database, id: &str) -> Result<Option<RunView>, DatabaseError> {
+pub(crate) fn run_view(
+    database: &dyn RunReader,
+    id: &str,
+) -> Result<Option<RunView>, DatabaseError> {
     // The sequence first: an event that comes while the rest is read is sent again.
     let sequence = database.last_event(id)?;
     let Some(run) = database.run(id)? else {
@@ -201,7 +250,7 @@ async fn task(
 
 /// A task with its logs, or `None` when the run has no such task.
 pub(crate) fn task_view(
-    database: &Database,
+    database: &dyn RunReader,
     id: &str,
     task: u64,
 ) -> Result<Option<TaskView>, DatabaseError> {
@@ -327,7 +376,7 @@ async fn graph(
 /// The picture of the graph of a run with the states of its tasks, or `None` when the database
 /// has no such run.
 pub(crate) fn picture(
-    database: &Database,
+    database: &dyn RunReader,
     id: &str,
     mut options: Options,
 ) -> Result<Option<String>, DatabaseError> {

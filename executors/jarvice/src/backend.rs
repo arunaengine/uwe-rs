@@ -12,11 +12,15 @@ use base64::Engine;
 use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
+use executor::orphans::{self, JobState, Orphan, RemoteJobs};
 use executor::process::Mount;
 use executor::registry::{self, ImageConfigs};
 use executor::remote::RemoteStage;
 use executor::wrapper::{Folders, MANIFEST, STDERR, TIMED_OUT, quote, timed, wrapper};
-use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job, place};
+use executor::{
+    Access, Backend, BoxFuture, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job,
+    Journals, attempts, place,
+};
 use serde_json::json;
 use task_model::{Placement, TaskSpec};
 use tokio::io::AsyncWriteExt;
@@ -58,6 +62,8 @@ pub struct JarviceBackend {
     pub staging_time: Duration,
     /// The entrypoints and default commands of images, for tasks without a command.
     pub configs: ImageConfigs,
+    /// Where the jobs of running attempts are noted, so that a later process finds them.
+    pub journals: Option<Journals>,
     held: AtomicBool,
 }
 
@@ -104,6 +110,7 @@ impl JarviceBackend {
             upload,
             staging_time: Duration::from_secs(30 * 60),
             configs: ImageConfigs::default(),
+            journals: None,
             held: AtomicBool::new(false),
         })
     }
@@ -116,6 +123,14 @@ impl Backend for JarviceBackend {
 
     fn hold(&self) {
         self.held.store(true, Ordering::Relaxed);
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::report(self, self.journals.as_ref(), run).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::stop(self, self.journals.as_ref(), run).await
     }
 
     async fn run(
@@ -377,6 +392,7 @@ impl JarviceBackend {
         if cancel.is_cancelled() || self.held.load(Ordering::Relaxed) {
             return Err(ExecutorError::Cancelled);
         }
+        let _held = attempts::hold(self.journals.as_ref(), self, job.name)?;
         // A submission is not tried again, as a job whose answer is lost would run unwatched.
         let submitted = self.client.submit(&body).await.map_err(api)?;
         tracing::debug!(
@@ -384,10 +400,11 @@ impl JarviceBackend {
             attempt = job.name,
             "JARVICE job submitted"
         );
-        let status = self
-            .wait(&submitted, job.placement.time_seconds, cancel)
-            .await?;
-        Ok((submitted, status))
+        let id = format!("{}/{}", submitted.number, submitted.name);
+        attempts::note(self.journals.as_ref(), self, job.name, &id).await?;
+        let status = (self.wait(&submitted, job.placement.time_seconds, cancel)).await;
+        attempts::settle(self.journals.as_ref(), self, job.name, &id, &status).await;
+        Ok((submitted, status?))
     }
 
     /// Polls the job until it ended, and ends it when `cancel` fires, when JARVICE fails to
@@ -495,6 +512,7 @@ impl JarviceBackend {
             files,
             usage: executor::Usage::of(&root),
             root,
+            receipts: Vec::new(),
         })
     }
 
@@ -549,6 +567,47 @@ fn machine(message: impl Into<String>) -> ExecutorError {
     ExecutorError::Engine {
         engine: "JARVICE".into(),
         message: message.into(),
+    }
+}
+
+/// The job that a journal names as `<number>/<name>`.
+fn submitted(id: &str) -> Result<Submitted, String> {
+    let (number, name) = id
+        .split_once('/')
+        .ok_or("the journal names no JARVICE job")?;
+    let number = number
+        .parse()
+        .map_err(|_| "the journal names no JARVICE job number")?;
+    Ok(Submitted {
+        name: name.to_owned(),
+        number,
+    })
+}
+
+/// What JARVICE says of a job that a journal names, and its end.
+impl RemoteJobs for JarviceBackend {
+    fn state<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<JobState>, String>> {
+        Box::pin(async move {
+            let status = self.client.status(&submitted(id)?).await;
+            Ok(status
+                .map_err(|error| error.to_string())?
+                .map(|status| JobState {
+                    ended: ENDED.contains(&status.as_str()),
+                    state: status,
+                }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            let job = submitted(id)?;
+            self.stop(&job).await;
+            Ok(())
+        })
+    }
+
+    fn scope(&self) -> String {
+        format!("{} user {}", self.client.address, self.client.username)
     }
 }
 

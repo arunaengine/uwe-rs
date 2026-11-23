@@ -363,6 +363,12 @@ fn exports_historical_workflows() {
     );
     std::fs::write(&kept, "replacement workflow").expect("replaces kept bytes");
     assert!(export(&database, "fixture-run", &root.path().join("bad"), &options).is_err());
+    // A failed export into the folder of an earlier one leaves its workflow as it was.
+    assert!(export(&database, "fixture-run", &output, &options).is_err());
+    assert_eq!(
+        std::fs::read_to_string(output.join("main.nf")).expect("reads"),
+        WORKFLOW
+    );
     options.sources.clear();
     assert!(
         export(
@@ -772,4 +778,23 @@ fn files_below(folder: &Path) -> Vec<PathBuf> {
         }
     }
     files
+}
+
+/// A crate in the folder of the workflow would replace the workflow with itself.
+#[test]
+fn keeps_source_workflow() {
+    let root = tempfile::tempdir().expect("a directory");
+    let database = record(root.path());
+    let workflow = root.path().join("main.nf");
+    std::fs::write(&workflow, WORKFLOW).expect("writes the workflow");
+    let options = Options {
+        workflow: workflow.clone(),
+        ..Options::default()
+    };
+    let error = export(&database, "fixture-run", root.path(), &options).expect_err("refuses");
+    assert!(
+        matches!(error, run_crate::CrateError::Overwrite(_)),
+        "{error}"
+    );
+    assert_eq!(std::fs::read_to_string(&workflow).expect("reads"), WORKFLOW);
 }

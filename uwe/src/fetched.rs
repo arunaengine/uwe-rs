@@ -38,7 +38,11 @@ pub fn rows(fetched: &[Fetched]) -> Vec<RemoteFile> {
 /// Keeps the contents of the remote files that a run read in its store, where it does not
 /// have them yet.
 pub async fn keep(store: &Store, fetched: &[Fetched]) -> Result<(), String> {
-    for file in fetched {
+    // The workers read a file without a copy where it lies; only its record stays.
+    for file in fetched
+        .iter()
+        .filter(|file| !file.copy.as_os_str().is_empty())
+    {
         let digest: task_model::Digest = (file.digest.parse()).map_err(|_| {
             format!(
                 "the digest {} of {} is not valid",

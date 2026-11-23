@@ -125,7 +125,7 @@ pub(crate) fn report(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned());
     refuse(&mut parts, &problems, shown.unwrap_or_default());
-    let launch = crate::launch(arguments, target.to_owned());
+    let launch = crate::launch(arguments, setup, target.to_owned());
     let _ = std::fs::remove_dir_all(launch.scratch.join("launch").join(&run));
     Report {
         language,
@@ -153,10 +153,9 @@ fn compiled(
     run: &str,
 ) -> Result<(wir::Document, Vec<(String, String)>), Failure> {
     if language == Language::Wir {
-        let text = std::fs::read_to_string(target)
-            .map_err(|error| Failure::new(format!("uwe: {}: {error}", target.display())))?;
-        let document = wir::parse(&text)
-            .map_err(|error| Failure::new(format!("uwe: {}: {error}", target.display())))?;
+        let generated = crate::lower::generated_folder(given.1);
+        let document = crate::tools::document(target, base, &generated)
+            .map_err(|error| Failure::new(format!("uwe: {error}")))?;
         return Ok((document, Vec::new()));
     }
     crate::lower::compiled(target, language, given, base, run)

@@ -295,6 +295,99 @@ fn sign(
     Ok(headers)
 }
 
+/// A URL that sends the request without credentials until `expires` seconds after `time`: the
+/// Signature Version 4 of its method, path, query and host goes in its query, as presigned S3
+/// requests carry it. The body stays unsigned, so a part or a list of parts may follow.
+pub fn presign(
+    request: &Request,
+    keys: &Keys,
+    time: std::time::SystemTime,
+    expires: u64,
+) -> Result<String, String> {
+    // Signature Version 4 takes from one second to seven days.
+    if !(1..=604_800).contains(&expires) {
+        return Err(format!(
+            "a presigned request lasts 1 to 604800 seconds, not {expires}"
+        ));
+    }
+    let time = jiff::Timestamp::try_from(time).map_err(|error| error.to_string())?;
+    let uri: http::Uri = request
+        .url
+        .parse()
+        .map_err(|error: http::uri::InvalidUri| error.to_string())?;
+    let scheme = uri.scheme_str().ok_or("the address has no scheme")?;
+    let host = (uri.authority().ok_or("the address has no host")?).as_str();
+    let utc = time.to_zoned(jiff::tz::TimeZone::UTC);
+    let (stamp, day) = (
+        utc.strftime("%Y%m%dT%H%M%SZ").to_string(),
+        utc.strftime("%Y%m%d").to_string(),
+    );
+    let scope = format!("{day}/{}/{}/aws4_request", request.region, request.service);
+    let mut query: Vec<(String, String)> = (uri.query().unwrap_or_default().split('&'))
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| pair.split_once('=').unwrap_or((pair, "")))
+        .map(|(key, value)| (decoded(key), decoded(value)))
+        .collect();
+    let signing = [
+        "x-amz-algorithm",
+        "x-amz-credential",
+        "x-amz-date",
+        "x-amz-expires",
+        "x-amz-signedheaders",
+        "x-amz-security-token",
+        "x-amz-signature",
+    ];
+    if let Some((key, _)) =
+        (query.iter()).find(|(key, _)| signing.contains(&key.to_ascii_lowercase().as_str()))
+    {
+        return Err(format!(
+            "the address has the signing parameter {key} already"
+        ));
+    }
+    query.extend([
+        ("X-Amz-Algorithm".into(), "AWS4-HMAC-SHA256".into()),
+        ("X-Amz-Credential".into(), format!("{}/{scope}", keys.id)),
+        ("X-Amz-Date".into(), stamp.clone()),
+        ("X-Amz-Expires".into(), expires.to_string()),
+        ("X-Amz-SignedHeaders".into(), "host".into()),
+    ]);
+    if let Some(token) = &keys.token {
+        query.push(("X-Amz-Security-Token".into(), token.clone()));
+    }
+    // The canonical query sorts by the encoded name, then by the encoded value.
+    let mut query: Vec<(String, String)> = (query.iter())
+        .map(|(key, value)| (encoded(key, true), encoded(value, true)))
+        .collect();
+    query.sort();
+    let query: Vec<String> = (query.iter())
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect();
+    let query = query.join("&");
+    let path = match encoded(&decoded(uri.path()), false) {
+        path if path.is_empty() => "/".to_owned(),
+        path => path,
+    };
+    let method = request.method.to_ascii_uppercase();
+    let canonical = format!("{method}\n{path}\n{query}\nhost:{host}\n\nhost\nUNSIGNED-PAYLOAD");
+    let text = format!(
+        "AWS4-HMAC-SHA256\n{stamp}\n{scope}\n{}",
+        hex(&Sha256::digest(canonical.as_bytes()))
+    );
+    let mut key = format!("AWS4{}", keys.secret).into_bytes();
+    for part in [
+        day.as_str(),
+        &request.region,
+        &request.service,
+        "aws4_request",
+    ] {
+        key = hmac(&key, part.as_bytes())?;
+    }
+    let signature = hex(&hmac(&key, text.as_bytes())?);
+    Ok(format!(
+        "{scheme}://{host}{path}?{query}&X-Amz-Signature={signature}"
+    ))
+}
+
 fn hmac(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
     let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(key).map_err(|e| e.to_string())?;
     mac.update(data);
@@ -398,6 +491,52 @@ mod tests {
         let headers = run(signed(request, keys(), Some(time))).expect("signs");
         let found = headers.iter().find(|(name, _)| name == "authorization");
         found.expect("an authorization").1.clone()
+    }
+
+    /// The example of "Authenticating Requests: Using Query Parameters" in the Amazon S3 API
+    /// reference, and a request whose own query is signed too.
+    #[test]
+    fn presigns_aws_example() {
+        let Credentials::Keys(keys) = keys() else {
+            unreachable!("example keys")
+        };
+        let request = |url: &str, method: &str| Request {
+            service: "s3".into(),
+            region: "us-east-1".into(),
+            method: method.into(),
+            url: url.into(),
+            headers: Vec::new(),
+            body: Vec::new(),
+        };
+        let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_369_353_600);
+        let get = request("https://examplebucket.s3.amazonaws.com/test.txt", "GET");
+        let url = presign(&get, &keys, time, 86_400).expect("presigns");
+        assert!(
+            url.starts_with("https://examplebucket.s3.amazonaws.com/test.txt?X-Amz-Algorithm=")
+        );
+        assert!(url.ends_with(
+            "&X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"
+        ));
+        let part = request(
+            "http://127.0.0.1:9000/bucket/key?partNumber=2&uploadId=a%2Fb",
+            "PUT",
+        );
+        let url = presign(&part, &keys, time, 60).expect("presigns");
+        assert!(url.contains("partNumber=2&uploadId=a%2Fb"), "{url}");
+        // A name that starts another sorts by itself first, not by the text after it.
+        let prefixed = request("http://127.0.0.1:9000/bucket/key?a-b=1&a=2", "GET");
+        let url = presign(&prefixed, &keys, time, 60).expect("presigns");
+        assert!(url.contains("?X-Amz-Algorithm="), "{url}");
+        assert!(url.contains("&a=2&a-b=1"), "{url}");
+        for expires in [0, 604_801] {
+            assert!(presign(&get, &keys, time, expires).is_err(), "{expires}");
+        }
+        assert!(presign(&get, &keys, time, 604_800).is_ok());
+        let signed = request(
+            "https://examplebucket.s3.amazonaws.com/a?x-amz-date=1",
+            "GET",
+        );
+        assert!(presign(&signed, &keys, time, 60).is_err());
     }
 
     /// The examples of "Signature calculations for the Authorization header: transferring

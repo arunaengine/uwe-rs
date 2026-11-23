@@ -23,7 +23,7 @@ use crate::public::PublicBuckets;
 use crate::quilt::{self, Quilt};
 use crate::settings::{self, Kind, ProviderSettings};
 use crate::synapse::{self, Synapse};
-use crate::web::Web;
+use crate::web::{Clients, Web};
 use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
 /// Where a provider comes from.
@@ -217,31 +217,62 @@ pub(crate) struct Connection {
 }
 
 impl Connection {
-    /// Makes the client of a provider, and reads its secrets.
-    pub fn open(source: &Source, guard: Option<&Guard>) -> Result<Connection, StorageError> {
+    /// Makes the client of a provider, which sends its web requests through `proxy`, and
+    /// reads its secrets.
+    pub fn open(
+        source: &Source,
+        guard: Option<&Guard>,
+        proxy: Option<&str>,
+        scopes: &crate::Scopes,
+    ) -> Result<Connection, StorageError> {
         let failed = |problem: Problem| StorageError::Unsupported(problem.message);
+        let clients = &Clients::of(proxy).map_err(StorageError::Unsupported)?;
         let mut secrets = Revealed::default();
         let backend = match source {
-            Source::Web => Backend::Web(web(guard).map_err(failed)?),
+            Source::Web => Backend::Web(web(guard, clients, proxy).map_err(failed)?),
             Source::PublicBuckets => {
-                Backend::PublicBuckets(PublicBuckets::new(web(guard).map_err(failed)?))
+                let web = web(guard, clients, proxy).map_err(failed)?;
+                Backend::PublicBuckets(PublicBuckets::new(web))
             }
             Source::Files => Backend::Folder(Folder {
                 root: PathBuf::from("/"),
             }),
             Source::Ftp => Backend::Ftp(Ftp::public(guard.cloned())),
-            Source::Drs => Backend::Drs(Drs::new(drs::scope()).map_err(failed)?),
-            Source::Synapse => Backend::Synapse(Synapse::new(synapse::scope()).map_err(failed)?),
-            Source::Irods => Backend::Irods(Irods::new(irods::scope()).map_err(failed)?),
-            Source::Oci => Backend::Oci(Oci::new(oci::scope()).map_err(failed)?),
-            Source::Lakefs => Backend::Lakefs(Lakefs::new(lakefs::scope()).map_err(failed)?),
-            Source::Lamin => Backend::Lamin(Lamin::new(lamin::scope()).map_err(failed)?),
-            Source::Quilt => Backend::Quilt(Quilt::new(quilt::environment()).map_err(failed)?),
-            Source::Cas => Backend::Cas(Cas::new(cas::scope()).map_err(failed)?),
+            Source::Drs => {
+                let options = scopes.drs.clone().unwrap_or_else(drs::scope);
+                Backend::Drs(Drs::new(options, clients).map_err(failed)?)
+            }
+            Source::Synapse => {
+                let options = scopes.synapse.clone().unwrap_or_else(synapse::scope);
+                Backend::Synapse(Synapse::new(options, clients).map_err(failed)?)
+            }
+            Source::Irods => {
+                let options = scopes.irods.clone().unwrap_or_else(irods::scope);
+                Backend::Irods(Irods::new(options).map_err(failed)?)
+            }
+            Source::Oci => {
+                let options = scopes.oci.clone().unwrap_or_else(oci::scope);
+                Backend::Oci(Oci::new(options, clients).map_err(failed)?)
+            }
+            Source::Lakefs => {
+                let options = scopes.lakefs.clone().unwrap_or_else(lakefs::scope);
+                Backend::Lakefs(Lakefs::new(options, clients).map_err(failed)?)
+            }
+            Source::Lamin => {
+                let options = scopes.lamin.clone().unwrap_or_else(lamin::scope);
+                Backend::Lamin(Lamin::new(options, clients).map_err(failed)?)
+            }
+            Source::Quilt => {
+                Backend::Quilt(Quilt::new(quilt::environment(), clients).map_err(failed)?)
+            }
+            Source::Cas => {
+                let options = scopes.cas.clone().unwrap_or_else(cas::scope);
+                Backend::Cas(Cas::new(options, clients).map_err(failed)?)
+            }
             Source::Configured(settings) => match &settings.kind {
                 Kind::S3(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
-                    Backend::Objects(Objects::new(service).map_err(failed)?)
+                    Backend::Objects(Objects::new(service, clients).map_err(failed)?)
                 }
                 Kind::GoogleCloudStorage(gcs) => {
                     let service = Service::GoogleCloudStorage {
@@ -250,7 +281,7 @@ impl Connection {
                         token: secrets.reveal(&gcs.token)?,
                         anonymous: gcs.anonymous,
                     };
-                    Backend::Objects(Objects::new(service).map_err(failed)?)
+                    Backend::Objects(Objects::new(service, clients).map_err(failed)?)
                 }
                 Kind::AzureBlobStorage(azure) => {
                     let endpoint = match (&azure.endpoint, &azure.account) {
@@ -264,11 +295,11 @@ impl Connection {
                         key: secrets.reveal(&azure.key)?,
                         sas_token: secrets.reveal(&azure.sas_token)?,
                     };
-                    Backend::Objects(Objects::new(service).map_err(failed)?)
+                    Backend::Objects(Objects::new(service, clients).map_err(failed)?)
                 }
                 Kind::Https(https) => {
                     let headers = headers(https, &settings.origin, &mut secrets)?;
-                    Backend::Web(Web::with_headers(headers).map_err(failed)?)
+                    Backend::Web(Web::with_headers(headers, clients))
                 }
                 Kind::Ftp(ftp) => {
                     let password = secrets.reveal(&ftp.password)?;
@@ -286,14 +317,14 @@ impl Connection {
                         protocol: settings.access_protocol.clone(),
                         plain_http: settings.plain_http.clone(),
                     };
-                    Backend::Drs(Drs::new(options).map_err(failed)?)
+                    Backend::Drs(Drs::new(options, clients).map_err(failed)?)
                 }
                 Kind::Synapse(settings) => {
                     let options = synapse::Options {
                         endpoint: settings.endpoint.clone(),
                         token: secrets.reveal(&settings.token)?,
                     };
-                    Backend::Synapse(Synapse::new(options).map_err(failed)?)
+                    Backend::Synapse(Synapse::new(options, clients).map_err(failed)?)
                 }
                 Kind::Irods(settings) => {
                     let options = irods::Options {
@@ -317,7 +348,7 @@ impl Connection {
                         private_key: secrets.reveal(&settings.private_key)?,
                         endpoint: settings.endpoint.clone(),
                     };
-                    Backend::Oci(Oci::new(options).map_err(failed)?)
+                    Backend::Oci(Oci::new(options, clients).map_err(failed)?)
                 }
                 Kind::Lakefs(settings) => {
                     let options = lakefs::Options {
@@ -328,7 +359,7 @@ impl Connection {
                         branch_source: settings.branch_source.clone(),
                         timeout: None,
                     };
-                    Backend::Lakefs(Lakefs::new(options).map_err(failed)?)
+                    Backend::Lakefs(Lakefs::new(options, clients).map_err(failed)?)
                 }
                 Kind::Cas(settings) => {
                     let options = cas::Options {
@@ -336,11 +367,11 @@ impl Connection {
                         resolve: settings.resolve.clone(),
                         writable: settings.writable.clone(),
                     };
-                    Backend::Cas(Cas::new(options).map_err(failed)?)
+                    Backend::Cas(Cas::new(options, clients).map_err(failed)?)
                 }
                 Kind::Quilt(s3) => {
                     let service = s3_service(s3, settings, &mut secrets)?;
-                    Backend::Quilt(Quilt::new(service).map_err(failed)?)
+                    Backend::Quilt(Quilt::new(service, clients).map_err(failed)?)
                 }
                 Kind::Lamin(settings) => {
                     let options = lamin::Options {
@@ -349,7 +380,7 @@ impl Connection {
                         anon_key: secrets.reveal(&settings.anon_key)?,
                         hub_credentials: settings.hub_credentials,
                     };
-                    Backend::Lamin(Lamin::new(options).map_err(failed)?)
+                    Backend::Lamin(Lamin::new(options, clients).map_err(failed)?)
                 }
             },
         };
@@ -573,9 +604,9 @@ fn headers(
 }
 
 /// The web client of public addresses, kept to public hosts for a confined run.
-fn web(guard: Option<&Guard>) -> Result<Web, Problem> {
+fn web(guard: Option<&Guard>, clients: &Clients, proxy: Option<&str>) -> Result<Web, Problem> {
     match guard {
-        Some(guard) => Web::guarded(guard.clone()),
-        None => Web::public(),
+        Some(guard) => Web::guarded(guard.clone(), proxy),
+        None => Ok(Web::public(clients)),
     }
 }

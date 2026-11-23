@@ -336,7 +336,9 @@ fn excludes_replay_resume() {
     let replay = database.run("replay").expect("reads").expect("the replay");
     assert_eq!(replay.replays.as_deref(), Some("original"));
     assert_eq!(replay.replays_task, Some(1));
-    let last = database.last_run("/work/main.nf", true).expect("reads");
+    let last = database
+        .last_run("/work/main.nf", true, None)
+        .expect("reads");
     assert_eq!(last.map(|run| run.id).as_deref(), Some("original"));
     let before = database.run_before("replay").expect("reads");
     assert_eq!(before.as_deref(), Some("original"));

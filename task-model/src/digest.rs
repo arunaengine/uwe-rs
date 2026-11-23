@@ -26,11 +26,12 @@ impl Digest {
     pub fn sha256(bytes: &[u8]) -> Self {
         let mut hasher = Sha256::new();
         hasher.update(bytes);
-        Self::from_sha256(&hasher.finalize())
+        Self::from_sha256(hasher.finalize().into())
     }
 
-    /// Wraps a finished SHA-256 hash, for callers that hash streams themselves.
-    pub fn from_sha256(hash: &[u8]) -> Self {
+    /// Wraps a finished SHA-256 hash, for callers that hash streams themselves; it has 32 bytes,
+    /// so that the digest always has its 64 digits.
+    pub fn from_sha256(hash: [u8; 32]) -> Self {
         let mut text = String::with_capacity(SHA256_PREFIX.len() + 64);
         text.push_str(SHA256_PREFIX);
         for byte in hash {

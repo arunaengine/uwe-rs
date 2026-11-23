@@ -277,7 +277,7 @@ impl Environment for Results<'_> {
         let location = self
             .location(file)
             .ok_or_else(|| Error::failed(format!("the task did not make {file}")))?;
-        read_location(&*self.settings.files, &location)
+        read_location(self.settings, &location)
     }
 
     fn glob(&mut self, pattern: &str) -> Result<Vec<String>, Error> {
@@ -310,6 +310,6 @@ impl Environment for Results<'_> {
         let location = self
             .location(file)
             .ok_or_else(|| Error::failed(format!("the task did not make {file}")))?;
-        size_location(&*self.settings.files, &location)
+        size_location(self.settings, &location)
     }
 }

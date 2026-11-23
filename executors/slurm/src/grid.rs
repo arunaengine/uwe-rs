@@ -10,12 +10,13 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use executor::manifest::parse;
+use executor::orphans::{self, JobState, Orphan, RemoteJobs};
 use executor::poll::{CANCEL_GRACE, Poll};
 use executor::registry::{self, ImageConfigs};
 use executor::wrapper::{MANIFEST, STDERR};
 use executor::{
-    Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, Job, Staging, containers,
-    place,
+    Access, Backend, BoxFuture, CONTROL, ContainerRun, ExecutorError, Finished, Job, Journals,
+    Staging, attempts, containers, place,
 };
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -47,9 +48,10 @@ pub trait Scheduler: Send + Sync + 'static {
     /// The file of the job's output in the control folder of an attempt, like `pbs.log`.
     const LOG: &'static str;
 
-    /// The lines that the job script gets after its first line, like `#PBS` options.
-    fn head(&self, _submission: &Submission<'_>) -> String {
-        String::new()
+    /// The lines that the job script gets after its first line, like `#PBS` options, or why
+    /// the options of the task cannot be written there.
+    fn head(&self, _submission: &Submission<'_>) -> Result<String, String> {
+        Ok(String::new())
     }
 
     /// Submits the job script of an attempt and gives the id of its job.
@@ -117,6 +119,8 @@ pub struct GridBackend<S> {
     pub staging_time: Duration,
     pub proxy: Option<String>,
     pub configs: ImageConfigs,
+    /// Where the jobs of running attempts are noted, so that a later process finds them.
+    pub journals: Option<Journals>,
     queue: Queue,
 }
 
@@ -150,6 +154,7 @@ impl<S: Scheduler> GridBackend<S> {
             staging_time: Duration::from_secs(5 * 60),
             proxy: None,
             configs: ImageConfigs::default(),
+            journals: None,
             queue: Queue::default(),
         }
     }
@@ -201,6 +206,42 @@ impl<S: Scheduler + std::fmt::Debug> Backend for GridBackend<S> {
         }
         let _ = tokio::fs::remove_file(engine_marker(&root)).await;
         result
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::report(self, self.journals.as_ref(), run).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::stop(self, self.journals.as_ref(), run).await
+    }
+}
+
+/// What the scheduler tells of a job that a journal names, and its removal.
+impl<S: Scheduler> RemoteJobs for GridBackend<S> {
+    fn state<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<JobState>, String>> {
+        Box::pin(async move {
+            let mut states = self.scheduler.states(&[id.to_owned()]).await?;
+            Ok(states.remove(id).map(|state| match state {
+                State::Active => JobState {
+                    state: "active".into(),
+                    ended: false,
+                },
+                State::Held(reason) => JobState {
+                    state: format!("held: {reason}"),
+                    ended: false,
+                },
+                State::Ended(state) => JobState { state, ended: true },
+            }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(self.scheduler.remove(id))
+    }
+
+    fn scope(&self) -> String {
+        format!("{} {}", S::NAME, self.scratch.display())
     }
 }
 
@@ -352,18 +393,20 @@ impl<S: Scheduler> GridBackend<S> {
             proxy: self.proxy.as_deref(),
         };
         let (first, rest) = script.split_once('\n').unwrap_or((&script, ""));
-        let head = self.scheduler.head(&submission);
+        let head = (self.scheduler.head(&submission)).map_err(ExecutorError::Unsupported)?;
         tokio::fs::write(&path, format!("{first}\n{head}{rest}")).await?;
         // The node reads the wrapper and the inputs as soon as the job starts.
         let synced = root.to_owned();
         tokio::task::spawn_blocking(move || sync_files(&synced))
             .await
             .map_err(|error| std::io::Error::other(error.to_string()))??;
+        let _held = attempts::hold(self.journals.as_ref(), self, job.name)?;
         // A submission is not cut short, as a job whose id is lost would run unwatched.
         let id = (self.scheduler.submit(&submission).await).map_err(|message| {
             machine::<S>(format!("{} did not take the job: {message}", S::NAME))
         })?;
         tracing::debug!(job = id, attempt = job.name, "submitted {} job", S::NAME);
+        attempts::note(self.journals.as_ref(), self, job.name, &id).await?;
         self.queue.add(&id).await;
         let prefix = staged.as_ref().map(|staged| staged.prefix.as_str());
         let ended = self.wait(&id, &control, prefix, cancel).await;
@@ -371,6 +414,7 @@ impl<S: Scheduler> GridBackend<S> {
             Ok(Ended::Done(_) | Ended::Stopped(_)) => self.settle(&id).await,
             _ => self.stop(&id).await,
         }
+        attempts::settle(self.journals.as_ref(), self, job.name, &id, &ended).await;
         self.queue.remove(&id).await;
         let ended = ended?;
         if let (Some(remote), Some(prefix)) = (&self.remote, prefix) {
@@ -602,6 +646,7 @@ impl<S: Scheduler> GridBackend<S> {
             files,
             usage: executor::Usage::of(&root),
             root,
+            receipts: Vec::new(),
         };
         if shared {
             finished.collect_outputs(job.spec, job.staging)?;
@@ -762,6 +807,71 @@ mod tests {
         async fn remove(&self, _: &str) -> Result<(), String> {
             Ok(())
         }
+    }
+
+    /// A queue of jobs by id, whose removal ends them.
+    #[derive(Debug, Default)]
+    struct Removable(std::sync::Mutex<HashMap<String, State>>);
+
+    impl Scheduler for Removable {
+        const NAME: &'static str = "Removable";
+        const LOG: &'static str = "removable.log";
+
+        async fn submit(&self, _: &Submission<'_>) -> Result<String, String> {
+            Err("no submissions".into())
+        }
+
+        async fn states(&self, ids: &[String]) -> Result<HashMap<String, State>, String> {
+            let jobs = self.0.lock().unwrap();
+            Ok((ids.iter())
+                .filter_map(|id| Some((id.clone(), jobs.get(id)?.clone())))
+                .collect())
+        }
+
+        async fn remove(&self, id: &str) -> Result<(), String> {
+            let ended = State::Ended("removed".into());
+            self.0.lock().unwrap().insert(id.to_owned(), ended);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn removes_orphaned_jobs() {
+        use executor::orphans::Outcome;
+        use executor::{JournalStore, MemoryJournal};
+
+        let scheduler = Removable::default();
+        scheduler
+            .0
+            .lock()
+            .unwrap()
+            .insert("17".into(), State::Active);
+        let folder = tempfile::tempdir().unwrap();
+        let mut backend = GridBackend::new(
+            scheduler,
+            folder.path().into(),
+            Container::Apptainer("apptainer".into()),
+        );
+        let memory = MemoryJournal::new();
+        let journals = Journals::new(std::sync::Arc::new(memory.clone()), "pbs", "run");
+        let scope = serde_json::json!({"scope": RemoteJobs::scope(&backend)});
+        journals
+            .submitted("run-A-1-1", "17", scope.clone())
+            .unwrap();
+        journals.submitted("run-B-1-1", "18", scope).unwrap();
+        backend.journals = Some(journals);
+        let found = backend.orphans("run").await.unwrap();
+        assert_eq!(found[0].outcome, Outcome::Running);
+        assert_eq!(
+            found[1].outcome,
+            Outcome::Ended,
+            "the queue no longer knows it"
+        );
+        let stopped = backend.stop_orphans("run").await.unwrap();
+        assert_eq!(stopped[0].outcome, Outcome::Canceled);
+        assert_eq!(stopped[0].state.as_deref(), Some("removed"));
+        assert_eq!(stopped[1].outcome, Outcome::Ended);
+        assert!(memory.list("pbs", "run").unwrap().is_empty());
     }
 
     #[tokio::test]

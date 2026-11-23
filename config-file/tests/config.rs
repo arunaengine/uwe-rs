@@ -295,3 +295,25 @@ fn requires_named_file() {
     );
     assert!(ConfigFile::default().section("storage").unwrap().is_none());
 }
+
+#[test]
+fn debug_hides_values() {
+    let config = parse(
+        "[storage.lab]\nkind = \"s3\"\nsecret_key = \"plain-secret-key\"\n\
+         [page]\ntoken = \"page-token-value\"\n",
+    )
+    .unwrap();
+    let shown = format!("{config:?}");
+    assert!(
+        shown.contains("storage") && shown.contains("page"),
+        "{shown}"
+    );
+    let storage = config.section("storage").unwrap().expect("the section");
+    let table = storage.table("lab").unwrap().expect("the table");
+    let listed = format!("{table:?}");
+    assert!(listed.contains("secret_key"), "{listed}");
+    for shown in [shown, listed] {
+        assert!(!shown.contains("plain-secret-key"), "{shown}");
+        assert!(!shown.contains("page-token-value"), "{shown}");
+    }
+}

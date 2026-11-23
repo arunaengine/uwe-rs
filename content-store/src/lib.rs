@@ -7,11 +7,13 @@ pub mod layout;
 mod lease;
 mod local;
 mod objects;
+mod retention;
 mod store;
 mod transfer;
 
 pub use lease::{Holder, LEASE_TIME, Lease, LeaseInventory};
 pub use objects::{FileIdentity, Inventory, Object};
+pub use retention::{EPOCH, Epoch, GcPolicy, LEAST_GRACE, RetentionDelegate};
 pub use store::{
     EntrySnapshot, S3Options, Store, StoreError, StoredDirectory, StoredOutput, hash_file,
 };

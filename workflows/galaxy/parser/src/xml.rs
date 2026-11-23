@@ -24,12 +24,14 @@ pub fn read(text: &str, file: &str) -> Result<Element, Error> {
     let mut reader = quick_xml::Reader::from_str(text);
     let mut open: Vec<Element> = Vec::new();
     let mut root = None;
+    // Counts the lines of the bytes read since the last event only, not from the start again.
+    let (mut line, mut counted) = (1, 0);
     loop {
-        let at = reader.buffer_position() as usize;
-        let line = 1 + text.as_bytes()[..at.min(text.len())]
-            .iter()
+        let at = (reader.buffer_position() as usize).clamp(counted, text.len());
+        line += (text.as_bytes()[counted..at].iter())
             .filter(|byte| **byte == b'\n')
             .count();
+        counted = at;
         let failed = |source| Error::Xml {
             file: file.to_owned(),
             line,

@@ -67,7 +67,7 @@ impl Scheduler for Pbs {
     const NAME: &'static str = "PBS";
     const LOG: &'static str = JOB_LOG;
 
-    fn head(&self, submission: &Submission<'_>) -> String {
+    fn head(&self, submission: &Submission<'_>) -> Result<String, String> {
         head(submission, self)
     }
 

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use task_model::{Placement, TaskSpec};
+use task_model::{Digest, Placement, TaskSpec};
 
 use crate::manifest::{Collected, ManifestError, parse};
 use crate::wrapper::{END, EXIT, MANIFEST, ROOT, START, STDERR, STDOUT, USAGE};
@@ -18,6 +18,9 @@ pub const WORK: &str = "work";
 pub const CONTROL: &str = "control";
 pub const HOME: &str = "home";
 pub(crate) const MOUNTS: &str = "mounts";
+/// The control file where a remote stager lists the outputs that it put into the content store
+/// itself, as a JSON list of [`OutputReceipt`]s.
+pub const RECEIPTS: &str = "receipts";
 
 /// One attempt of a task.
 #[derive(Clone, Copy, Debug)]
@@ -57,6 +60,44 @@ pub struct Staging {
     pub directories: Vec<String>,
     /// The local file that the task reads on standard input.
     pub stdin: Option<PathBuf>,
+    /// Input files that the workers fetch where they lie; only a backend whose
+    /// [`crate::Backend::direct_sources`] says so gets them.
+    pub direct: Vec<DirectSource>,
+    /// Where a backend that can sends the output and resource use of the attempt while it runs.
+    pub live: Option<crate::live::LiveSink>,
+}
+
+/// An input file that the worker of a remote backend fetches itself, so that its bytes never
+/// pass through this machine. A host backend decides from it where the task runs best.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectSource {
+    /// A path relative to the work directory, or an absolute path inside the container.
+    pub path: String,
+    /// The address of the input as the workflow named it, like `aruna://object/<id>`; a file
+    /// of a directory input has the directory's address with its path appended.
+    pub source: String,
+    /// The verified digest of its content, which the worker checks.
+    pub digest: Digest,
+    pub size: u64,
+    pub executable: bool,
+    /// Where the worker reads it.
+    pub reference: storage::DirectRef,
+    /// The endpoints that hold the bytes, the nearest first, as the storage provider says.
+    pub endpoints: Vec<String>,
+}
+
+/// An output that the worker or its stager put into the content store of the run itself, so
+/// that its bytes never pass through this machine.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputReceipt {
+    /// The path of the output as the task named it, as in [`Finished::files`].
+    pub path: String,
+    pub digest: Digest,
+    pub size: u64,
+    /// Where the stager put it: a location of the store, like the one of its content, or an
+    /// address that records where else it went.
+    pub location: String,
 }
 
 /// What a task left behind in its scratch directory.
@@ -73,6 +114,9 @@ pub struct Finished {
     pub usage: Option<Usage>,
     /// Where other tasks reach a daemon task that is ready; it runs on until it is stopped.
     pub address: Option<String>,
+    /// The outputs that the backend put into the content store itself, which the runner
+    /// records without reading their bytes.
+    pub receipts: Vec<OutputReceipt>,
 }
 
 /// What a task used, as the cgroup of its container counted it.
@@ -188,7 +232,24 @@ impl Finished {
             files,
             usage: Usage::of(&root),
             root,
+            receipts: Vec::new(),
         })
+    }
+
+    /// Reads the receipts that a stager left in the control folder after a success, for the
+    /// output files of the manifest. Only a backend whose own stager writes them calls this,
+    /// as the task can write a receipt into its control folder as well.
+    pub fn read_receipts(&mut self) -> Result<(), ExecutorError> {
+        let text = std::fs::read_to_string(self.root.join(CONTROL).join(RECEIPTS)).ok();
+        if let (Some(0), Some(text)) = (self.exit_code, text) {
+            self.receipts = receipts(&text, &self.files)?;
+        }
+        Ok(())
+    }
+
+    /// The receipt of an output file that the backend put into the content store itself.
+    pub fn receipt(&self, path: &str) -> Option<&OutputReceipt> {
+        self.receipts.iter().find(|receipt| receipt.path == path)
     }
 
     /// The file that captured standard output.
@@ -200,6 +261,25 @@ impl Finished {
     pub fn stderr(&self) -> PathBuf {
         self.root.join(CONTROL).join(STDERR)
     }
+}
+
+/// The receipts of a stager, each for one output file of the manifest.
+fn receipts(text: &str, files: &[Collected]) -> Result<Vec<OutputReceipt>, ExecutorError> {
+    let invalid = |why: &str| ExecutorError::Unsupported(format!("invalid output receipts: {why}"));
+    let receipts: Vec<OutputReceipt> =
+        serde_json::from_str(text).map_err(|error| invalid(&error.to_string()))?;
+    for receipt in &receipts {
+        let listed = (files.iter()).any(|file| !file.directory && file.path == receipt.path);
+        if !listed || receipt.location.is_empty() {
+            return Err(invalid("a receipt names no output file of the manifest"));
+        }
+        let location = &receipt.location;
+        let escapes = location.starts_with('/') || location.split('/').any(|part| part == "..");
+        if !location.contains("://") && escapes {
+            return Err(invalid("a receipt names a location outside the store"));
+        }
+    }
+    Ok(receipts)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -260,6 +340,45 @@ mod usage_tests {
     }
 
     #[test]
+    fn reads_output_receipts() {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let control = root.path().join(CONTROL);
+        std::fs::create_dir_all(&control).expect("makes the folder");
+        std::fs::write(control.join(EXIT), "0\n").expect("writes");
+        std::fs::write(control.join(MANIFEST), "file out.bam\ndirectory logs\n").expect("writes");
+        let digest = Digest::sha256(b"bam");
+        let receipt =
+            format!(r#"[{{"path":"out.bam","digest":"{digest}","size":3,"location":"cas/x"}}]"#);
+        std::fs::write(control.join(RECEIPTS), &receipt).expect("writes");
+        let read = |root: &std::path::Path| {
+            let mut finished = Finished::from_control(root.to_owned())?;
+            finished.read_receipts().map(|_| finished)
+        };
+        // The control folder alone, which the task can write, gives no receipts.
+        let finished = Finished::from_control(root.path().to_owned()).expect("a result");
+        assert!(finished.receipts.is_empty());
+        let finished = read(root.path()).expect("a result");
+        let found = finished.receipt("out.bam").expect("a receipt");
+        assert_eq!((&found.digest, found.size), (&digest, 3));
+        assert!(finished.receipt("logs").is_none());
+        // A receipt must name an output file of the manifest.
+        let stray = receipt.replace("out.bam", "logs");
+        std::fs::write(control.join(RECEIPTS), stray).expect("writes");
+        assert!(read(root.path()).is_err());
+        // A location outside the store is refused.
+        for place in ["/etc/passwd", "cas/../../x", ".."] {
+            let outside = receipt.replace("cas/x", place);
+            std::fs::write(control.join(RECEIPTS), outside).expect("writes");
+            assert!(read(root.path()).is_err(), "{place}");
+        }
+        // A failed task gives no receipts.
+        std::fs::write(control.join(RECEIPTS), &receipt).expect("writes");
+        std::fs::write(control.join(EXIT), "1\n").expect("writes");
+        let failed = read(root.path()).expect("a result");
+        assert!(failed.receipts.is_empty());
+    }
+
+    #[test]
     fn reads_control_times() {
         let root = tempfile::tempdir().expect("a temporary directory");
         let control = root.path().join(CONTROL);
@@ -270,6 +389,7 @@ mod usage_tests {
             files: Vec::new(),
             root: root.path().to_owned(),
             usage: None,
+            receipts: Vec::new(),
         };
         assert_eq!(finished.tool_times(), None);
         std::fs::write(control.join(START), "1700000000.250000\n").expect("writes");

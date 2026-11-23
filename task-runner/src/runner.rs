@@ -105,8 +105,6 @@ pub enum RunnerError {
     /// A local input of the task is not there.
     #[error("the input {} does not exist", .0.display())]
     Missing(PathBuf),
-    #[error("the input {0} is a remote directory, which uwe cannot read yet")]
-    Remote(String),
     /// A lookup of the cache cannot know a remote input that no run downloaded yet.
     #[error("the input {0} is not downloaded yet")]
     NotDownloaded(String),
@@ -120,13 +118,16 @@ pub enum RunnerError {
     /// Only a file or directory of this machine can be changed in place.
     #[error("the input {0} is not on this machine, so a task cannot change it where it is")]
     NotInPlace(String),
+    /// The backend says that it put an output into the store, which the store does not hold.
+    #[error("the store does not hold the output {0} with the digest and size of its receipt")]
+    Receipt(String),
 }
 
 impl RunnerError {
     /// Whether the cause is a feature that the runner does not support yet.
     pub fn unsupported(&self) -> bool {
         match self {
-            RunnerError::Remote(_) | RunnerError::NotInPlace(_) => true,
+            RunnerError::NotInPlace(_) => true,
             RunnerError::Executor(ExecutorError::Unsupported(_)) => true,
             RunnerError::Storage(error) => error.unsupported(),
             _ => false,
@@ -176,6 +177,26 @@ pub(crate) enum Source {
     InPlace(PathBuf),
     /// A declared input that already lies in a folder that the task sees where it is.
     Present,
+    /// A remote file, or the files and empty folders of a remote directory, that the workers
+    /// of the backend fetch where they lie, by their verified digests.
+    Direct {
+        files: Vec<Passed>,
+        empty: Vec<String>,
+    },
+}
+
+/// A file of a remote input that the worker fetches where it lies.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Passed {
+    /// The path below a directory input; empty for a file input.
+    pub(crate) relative: String,
+    /// The address of the file, as [`executor::DirectSource::source`] gives it.
+    pub(crate) source: String,
+    pub(crate) digest: Digest,
+    pub(crate) size: u64,
+    pub(crate) executable: bool,
+    pub(crate) reference: storage::DirectRef,
+    pub(crate) endpoints: Vec<String>,
 }
 
 /// A task request, with where the content of each input comes from.
@@ -194,10 +215,15 @@ pub struct Prepared {
     pub(crate) reuse: bool,
     /// The private copies of its inputs, which go with the last clone of the request.
     pub(crate) snapshots: Snapshots,
+    /// Where the backend sends the output and resource use of the attempt while it runs.
+    pub(crate) live: Option<executor::LiveSink>,
 }
 
 /// An image pinned to its digest once per run, or `None` without one.
 type Pinned = OnceCell<Option<String>>;
+
+/// The start of the key of a pin that the run was given, which counts for every site.
+const GIVEN: &str = "given\0";
 
 /// The runner of a run. Its clones share the backend, so that tasks run at the same time.
 pub struct Runner<B> {
@@ -223,11 +249,15 @@ pub struct Runner<B> {
     /// The runs of the lineage that a resumed run continues, whose results answer tasks of
     /// images without a digest too.
     lineage: Arc<BTreeSet<String>>,
+    /// The cache namespace of the tenant of the run; empty keeps the shared one.
+    pub(crate) tenant: String,
     /// The input snapshots of daemons, which run on after their result until the run
     /// releases them.
     pub(crate) daemon_inputs: Arc<Mutex<Vec<Snapshots>>>,
     /// The registry settings of the run, which the backend uses wherever its work goes on.
     pub(crate) registry: Option<executor::credentials::Registry>,
+    /// Where the attempts of the run send their output and resource use while they run.
+    pub(crate) live: Option<executor::LiveFeed>,
 }
 
 /// Whose turn it is to run a task whose key another run may run at the same moment.
@@ -255,8 +285,10 @@ impl<B> Clone for Runner<B> {
             slots: self.slots,
             verbose_groups: self.verbose_groups,
             lineage: self.lineage.clone(),
+            tenant: self.tenant.clone(),
             daemon_inputs: self.daemon_inputs.clone(),
             registry: self.registry.clone(),
+            live: self.live.clone(),
         }
     }
 }
@@ -279,8 +311,10 @@ impl<B: Backend> Runner<B> {
             slots: std::thread::available_parallelism().map_or(1, usize::from),
             verbose_groups: false,
             lineage: Arc::default(),
+            tenant: String::new(),
             daemon_inputs: Arc::default(),
             registry: None,
+            live: None,
         }
     }
 
@@ -306,6 +340,12 @@ impl<B: Backend> Runner<B> {
         self.check = share;
     }
 
+    /// Keeps the cache entries of the run within the namespace of a tenant of a host, like
+    /// `project:42`, apart from those of other tenants; `None` keeps the shared namespace.
+    pub fn cache_namespace(&mut self, tenant: Option<&str>) {
+        self.tenant = tenant.map(crate::request::tenant).unwrap_or_default();
+    }
+
     /// Pins images to the digests given, instead of asking the engine or the registry, as a
     /// repeat of a run pins them to the digests that the run ran at.
     pub fn pin_images(&self, images: &HashMap<String, String>) {
@@ -315,14 +355,20 @@ impl<B: Backend> Runner<B> {
             .unwrap_or_else(|poison| poison.into_inner());
         for (image, digest) in images {
             let known = Pinned::new_with(Some(Some(digest.clone())));
-            pinned.insert(image.clone(), Arc::new(known));
+            pinned.insert(format!("{GIVEN}{image}"), Arc::new(known));
         }
     }
 
     /// The image pinned to its digest where it has one, found once per run.
     pub async fn pin(&self, image: &str) -> Result<String, RunnerError> {
+        self.pin_at(image, None).await
+    }
+
+    /// The image pinned by the backend of the site `site`, found once per run and site. A pin
+    /// that the run was given, as a repeat is, counts for every site.
+    pub async fn pin_at(&self, image: &str, site: Option<&str>) -> Result<String, RunnerError> {
         if task_model::conda_image(image) {
-            let pinned = self.scoped(self.backend.pin(image)).await?;
+            let pinned = self.scoped(self.backend.pin_at(image, site)).await?;
             return Ok(pinned.unwrap_or_else(|| image.to_owned()));
         }
         let cell = {
@@ -330,9 +376,15 @@ impl<B: Backend> Runner<B> {
                 .pinned
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner());
-            pinned.entry(image.to_owned()).or_default().clone()
+            let key = match site {
+                Some(site) => format!("{image}\0{site}"),
+                None => image.to_owned(),
+            };
+            let given = pinned.get(&format!("{GIVEN}{image}")).cloned();
+            given.unwrap_or_else(|| pinned.entry(key).or_default().clone())
         };
-        let digest = (cell.get_or_try_init(|| self.scoped(self.backend.pin(image)))).await?;
+        let pinned = || self.scoped(self.backend.pin_at(image, site));
+        let digest = cell.get_or_try_init(pinned).await?;
         Ok(digest.clone().unwrap_or_else(|| image.to_owned()))
     }
 
@@ -386,6 +438,11 @@ impl<B: Backend> Runner<B> {
             references: &self.references,
             mode: Mode::Run,
             snapshots: Snapshots::new(&self.settings, &self.run),
+            direct: match self.backend.direct_sources() {
+                true => crate::inputs::Direct::Backend(&*self.backend),
+                false => crate::inputs::Direct::Never,
+            },
+            tenant: &self.tenant,
         }
     }
 

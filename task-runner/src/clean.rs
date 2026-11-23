@@ -6,7 +6,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use content_store::{FileIdentity, Holder, Lease, Object, Store};
+use content_store::{
+    Epoch, FileIdentity, GcPolicy, Holder, Lease, Object, RetentionDelegate, Store,
+};
 use task_model::Digest;
 
 use crate::RunnerError;
@@ -87,6 +89,13 @@ impl Maintenance {
         match &self._lease {
             Some(lease) => Ok(lease.check().await?),
             None => Ok(()),
+        }
+    }
+
+    /// Gives the gate back and waits until the store shows it free.
+    pub async fn release(self) {
+        if let Some(lease) = self._lease {
+            lease.release().await;
         }
     }
 }
@@ -347,4 +356,212 @@ pub async fn apply_guarded(
     removed.leases = store.remove_free_leases().await?;
     guard.check().await?;
     Ok(removed)
+}
+
+/// Collects the garbage of a shared store, like S3, whose leases expire, in two phases. The
+/// mark takes the next epoch of the store and marks only what no run refers to and was written
+/// before the grace window; the sweep checks the lease and the epoch before each batch.
+#[derive(Clone)]
+pub struct RemoteGc {
+    pub policy: GcPolicy,
+    /// Takes the objects instead of deleting them, for hosts with retention rules of their own.
+    pub delegate: Option<std::sync::Arc<dyn RetentionDelegate>>,
+}
+
+impl std::fmt::Debug for RemoteGc {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (formatter.debug_struct("RemoteGc"))
+            .field("policy", &self.policy)
+            .field("delegate", &self.delegate.is_some())
+            .finish()
+    }
+}
+
+/// Why a sweep stopped before it removed all that its mark found.
+fn interrupted(message: &str) -> RunnerError {
+    std::io::Error::new(std::io::ErrorKind::Interrupted, message.to_owned()).into()
+}
+
+impl RemoteGc {
+    pub fn new(policy: GcPolicy) -> RemoteGc {
+        RemoteGc {
+            policy,
+            delegate: None,
+        }
+    }
+
+    /// Takes the maintenance gate of the store, then marks and sweeps as of `now`.
+    pub async fn collect(
+        &self,
+        store: &Store,
+        keep: &Keep,
+        scratch: &Path,
+        now: SystemTime,
+    ) -> Result<Removed, RunnerError> {
+        let guard = maintenance(store).await?;
+        let collected = self
+            .collect_guarded(store, keep, scratch, &guard, now)
+            .await;
+        guard.release().await;
+        collected
+    }
+
+    /// Marks and sweeps under the maintenance gate that `guard` holds.
+    pub async fn collect_guarded(
+        &self,
+        store: &Store,
+        keep: &Keep,
+        scratch: &Path,
+        guard: &Maintenance,
+        now: SystemTime,
+    ) -> Result<Removed, RunnerError> {
+        if guard.store != store_name(store) || !guard.alone {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "remote collection needs the maintenance gate of its own store",
+            )
+            .into());
+        }
+        guard.check().await?;
+        // Runs share the shared layer of a store in layers, with its leases, epoch and objects;
+        // its folder in front is a cache of this machine that `evict_front` empties.
+        let shared = store.shared().unwrap_or(store);
+        let holder = Holder::new("maintenance", "remote collection");
+        let epoch = shared
+            .advance_epoch(&format!("{}:{}", holder.host, holder.process))
+            .await?;
+        // The runs that read the store when the mark began; a run that begins later may reuse
+        // an old object that the mark found unused, so the sweep stops when one shows.
+        let readers = shared.held_leases("runs/").await?;
+        // Nothing written within the grace window goes, whether or not a run refers to it.
+        let cutoff = self.policy.cutoff(now);
+        let keep = Keep {
+            active_since: Some(keep.active_since.map_or(cutoff, |since| since.min(cutoff))),
+            ..keep.clone()
+        };
+        let report = scan(shared, &keep, scratch).await?;
+        let sweep = Sweep {
+            store: shared,
+            guard,
+            epoch: &epoch,
+            readers: &readers,
+        };
+        let mut removed = Removed::default();
+        let mut batch = Vec::new();
+        let mut cursor = 0;
+        while let Some((id, entry, recent)) = report.next_entry(cursor)? {
+            cursor = id;
+            let objects = report.entry_objects(id)?;
+            let remove = report.sql(|db| {
+                db.query_row("SELECT remove FROM entries WHERE id=?1", [id], |row| {
+                    row.get::<_, bool>(0)
+                })
+            })?;
+            let old = (objects.iter()).all(|object| self.policy.expired(object, now));
+            if remove && !recent && old && !objects.is_empty() {
+                batch.push(Swept::Entry(entry, objects));
+            }
+            if batch.len() >= self.policy.batch {
+                self.sweep(&sweep, &mut batch, &mut removed).await?;
+            }
+        }
+        cursor = 0;
+        while let Some((id, object)) = report.next_object(cursor)? {
+            cursor = id;
+            if self.policy.expired(&object, now) {
+                batch.push(Swept::Object(object));
+            }
+            if batch.len() >= self.policy.batch {
+                self.sweep(&sweep, &mut batch, &mut removed).await?;
+            }
+        }
+        self.sweep(&sweep, &mut batch, &mut removed).await?;
+        Ok(removed)
+    }
+
+    /// Removes one batch after checking that the gate and the epoch are still this
+    /// collection's and that no run began since the mark, and checks the gate again after it.
+    async fn sweep(
+        &self,
+        sweep: &Sweep<'_>,
+        batch: &mut Vec<Swept>,
+        removed: &mut Removed,
+    ) -> Result<(), RunnerError> {
+        let Sweep {
+            store,
+            guard,
+            epoch,
+            readers,
+        } = *sweep;
+        if batch.is_empty() {
+            return Ok(());
+        }
+        guard
+            .check()
+            .await
+            .map_err(|_| interrupted("the maintenance lease was lost; the sweep stopped"))?;
+        if store.epoch().await?.as_ref() != Some(epoch) {
+            return Err(interrupted(
+                "another collection began a newer epoch; the sweep stopped",
+            ));
+        }
+        let now = store.held_leases("runs/").await?;
+        if now.iter().any(|holder| !readers.contains(holder)) {
+            return Err(interrupted(
+                "a run began to read the store after the mark; the sweep stopped",
+            ));
+        }
+        let swept = std::mem::take(batch);
+        match &self.delegate {
+            Some(delegate) => {
+                let mut objects = Vec::new();
+                for item in &swept {
+                    match item {
+                        Swept::Entry(_, entry) => objects.extend(entry.iter().cloned()),
+                        Swept::Object(object) => objects.push(object.clone()),
+                    }
+                }
+                let taken = delegate.release(store, &objects).await?;
+                let entries = (swept.iter()).filter(|item| matches!(item, Swept::Entry(..)));
+                removed.results += entries.count();
+                removed.objects += taken;
+            }
+            None => {
+                for item in &swept {
+                    match item {
+                        Swept::Entry(entry, objects) => {
+                            let deleted = store
+                                .remove_entry_observed(&entry.namespace, &entry.key, objects)
+                                .await?;
+                            removed.results += usize::from(deleted);
+                        }
+                        Swept::Object(object) => {
+                            removed.objects += usize::from(store.remove_observed(object).await?);
+                        }
+                    }
+                }
+            }
+        }
+        guard
+            .check()
+            .await
+            .map_err(|_| interrupted("the maintenance lease was lost; the sweep stopped"))?;
+        Ok(())
+    }
+}
+
+/// Where a sweep removes, and what each of its batches checks first.
+#[derive(Clone, Copy)]
+struct Sweep<'a> {
+    store: &'a Store,
+    guard: &'a Maintenance,
+    epoch: &'a Epoch,
+    /// The holders of the run leases when the mark began.
+    readers: &'a [Holder],
+}
+
+/// What one batch of a sweep removes.
+enum Swept {
+    Entry(EntryToRemove, Vec<Object>),
+    Object(Object),
 }

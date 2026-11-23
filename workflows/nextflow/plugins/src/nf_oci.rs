@@ -6,26 +6,15 @@ use nextflow_config::Config;
 use nextflow_evaluator::value::Value;
 
 use crate::catalogue::{Kind, Plugin, State};
-use crate::observer::Observer;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     scopes: &["oci"],
-    observer: Some(activate),
     ..Plugin::new("nf-oci", Kind::FileSystem, State::Implemented)
 };
 
-/// Hands the `oci` scope to the provider that serves `oci://` paths; the plugin hears no run
-/// events.
-fn activate(
-    config: &Config,
-    _: &std::path::Path,
-    _: &crate::catalogue::Environment,
-) -> Result<Option<Box<dyn Observer>>, String> {
-    storage::oci::use_scope(options(config));
-    Ok(None)
-}
-
-fn options(config: &Config) -> storage::oci::Options {
+/// The options of the `oci` scope for the provider that serves `oci://` paths of the run; the
+/// plugin hears no run events.
+pub(crate) fn options(config: &Config) -> storage::oci::Options {
     let text = |key| {
         (config.get(&["oci", key]))
             .filter(|value| !matches!(value, Value::Null))

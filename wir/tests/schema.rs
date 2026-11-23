@@ -40,6 +40,7 @@ fn schema_matches_parser() {
         ]}}),
         json!({"call": {"graph": "g"}}),
         json!({"native": {"source": "s", "language": "argo"}}),
+        json!({"native": {"source": "s", "language": "galaxy", "entry": "tool"}}),
         json!({"native": {"source": "s", "language": "nextflow", "entry": "w",
             "profiles": ["test"], "configs": ["c"]}}),
         json!({"expr": {"language": "js", "code": "1 + 1"}}),

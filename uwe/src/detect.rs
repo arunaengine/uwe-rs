@@ -14,9 +14,9 @@ const SNAKEFILES: [&str; 4] = [
     "workflow/snakefile",
 ];
 
-/// Detects Nextflow projects, Snakefiles and CWL, Argo, WDL or wir documents.
-/// CWL uses `cwlVersion`; Argo uses `apiVersion: argoproj.io`; WDL files end with `.wdl`;
-/// wir is JSON with `wir_version`.
+/// Detects Nextflow projects, Snakefiles and CWL, Argo, WDL, Galaxy or wir documents by their
+/// names and top-level keys, like `cwlVersion`, `<tool>` and `a_galaxy_workflow` of Galaxy,
+/// and `wir_version` of wir in JSON or YAML; a composed `.uwe.yaml` is wir too.
 pub fn language(target: &Path) -> Result<Language, String> {
     let shown = target.display();
     if target.is_dir() {
@@ -53,9 +53,13 @@ pub fn language(target: &Path) -> Result<Language, String> {
         Some("cwl") => return Ok(Language::Cwl),
         Some("wdl") => return Ok(Language::Wdl),
         _ if name == "Snakefile" || name == "snakefile" => return Ok(Language::Snakemake),
+        _ if crate::tools::composed::is_composed(target) => return Ok(Language::Wir),
         _ => {}
     }
     let text = std::fs::read_to_string(target).map_err(|error| format!("{shown}: {error}"))?;
+    if galaxy_runtime::is_tool(&text) || galaxy_runtime::is_workflow(&text) {
+        return Ok(Language::Galaxy);
+    }
     let found = json_language(&text).or_else(|| yaml_language(&text));
     found.ok_or(format!(
         "cannot tell the language of {shown}; choose one with `-lang`"
@@ -72,7 +76,9 @@ pub fn main_file(target: &Path, language: Language) -> Option<PathBuf> {
     let (names, extension): (&[&str], &str) = match language {
         Language::Nextflow => (&["main.nf"], "nf"),
         Language::Snakemake => (&SNAKEFILES, "smk"),
-        Language::Cwl | Language::Argo | Language::Wdl | Language::Wir => return None,
+        Language::Cwl | Language::Argo | Language::Wdl | Language::Wir | Language::Galaxy => {
+            return None;
+        }
     };
     if let Some(name) = names.iter().find(|name| target.join(name).is_file()) {
         return Some(target.join(name));
@@ -127,6 +133,7 @@ fn yaml_language(text: &str) -> Option<Language> {
         match key {
             "cwlVersion" => return Some(Language::Cwl),
             "apiVersion" if value.starts_with("argoproj.io/") => return Some(Language::Argo),
+            "wir_version" | "uwe_version" => return Some(Language::Wir),
             _ => {}
         }
     }
@@ -179,6 +186,17 @@ mod tests {
         assert_eq!(file("template.json", argo), Ok(Language::Argo));
         let wir = r#"{"wir_version": "0.1", "graphs": [], "entry": "main"}"#;
         assert_eq!(file("run.wir.json", wir), Ok(Language::Wir));
+        let yaml = "wir_version: \"0.1\"\ngraphs: []\nentry: main\n";
+        assert_eq!(file("run.wir.yaml", yaml), Ok(Language::Wir));
+        assert_eq!(file("qc.uwe.yaml", ""), Ok(Language::Wir));
+        let composed = "# composed\nuwe_version: \"1\"\nsteps: {}\n";
+        assert_eq!(file("qc.yml", composed), Ok(Language::Wir));
+        let tool =
+            "<?xml version=\"1.0\"?>\n<tool id=\"t\" name=\"T\"><command>true</command></tool>";
+        assert_eq!(file("t.xml", tool), Ok(Language::Galaxy));
+        let galaxy = r#"{"a_galaxy_workflow": "true", "steps": {}}"#;
+        assert_eq!(file("flow.ga", galaxy), Ok(Language::Galaxy));
+        assert!(file("other.xml", "<toolbox/>").is_err());
         let other = "apiVersion: v1\nkind: ConfigMap\n";
         assert!(file("map.yaml", other).is_err());
         assert!(file("job.json", r#"{"reads": "a.fq"}"#).is_err());

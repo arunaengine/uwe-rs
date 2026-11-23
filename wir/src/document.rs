@@ -119,6 +119,8 @@ pub enum Language {
     Snakemake,
     Argo,
     Wdl,
+    /// A Galaxy tool XML file or a Galaxy workflow (`.ga`).
+    Galaxy,
 }
 
 /// A named graph: boundary ports, ops and the edges between them. A run, a `call` or a

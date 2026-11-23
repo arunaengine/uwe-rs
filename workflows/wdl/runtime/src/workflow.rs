@@ -450,7 +450,7 @@ impl Environment for Scope<'_> {
     }
 
     fn read(&mut self, file: &str) -> Result<String, Error> {
-        task::read_location(&*self.run.settings.files, file)
+        task::read_location(&self.run.settings, file)
     }
 
     fn write(&mut self, content: String) -> Result<Value, Error> {
@@ -463,6 +463,6 @@ impl Environment for Scope<'_> {
     }
 
     fn size(&mut self, file: &str) -> Result<u64, Error> {
-        task::size_location(&*self.run.settings.files, file)
+        task::size_location(&self.run.settings, file)
     }
 }

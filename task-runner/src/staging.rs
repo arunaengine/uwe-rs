@@ -7,7 +7,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use content_store::layout;
-use executor::{Backend, Staged, Staging};
+use executor::{Backend, DirectSource, Staged, Staging};
 use task_model::{Digest, FileKind, TreeEntry};
 
 use crate::inputs::Snapshots;
@@ -24,7 +24,10 @@ impl<B: Backend> Runner<B> {
     /// directories.
     pub(crate) async fn stage(&self, prepared: &Prepared) -> Result<Staging, RunnerError> {
         let spec = &prepared.request.spec;
-        let mut staging = Staging::default();
+        let mut staging = Staging {
+            live: prepared.live.clone(),
+            ..Staging::default()
+        };
         let mut verified = HashMap::new();
         for (input, source) in spec.inputs.iter().zip(&prepared.sources) {
             let directory = input.kind == FileKind::Directory;
@@ -40,6 +43,30 @@ impl<B: Backend> Runner<B> {
                 Source::Local(path) => staging.inputs.push(staged(path.clone(), false)),
                 // The folder that the task sees in place holds it already.
                 Source::Present => {}
+                // The workers fetch each file where it lies, by its digest.
+                Source::Direct { files, empty } => {
+                    let base = input.path.trim_end_matches('/');
+                    for file in files {
+                        let path = match file.relative.is_empty() {
+                            true => input.path.clone(),
+                            false => format!("{base}/{}", file.relative),
+                        };
+                        staging.direct.push(DirectSource {
+                            path,
+                            source: file.source.clone(),
+                            digest: file.digest.clone(),
+                            size: file.size,
+                            executable: file.executable,
+                            reference: file.reference.clone(),
+                            endpoints: file.endpoints.clone(),
+                        });
+                    }
+                    if directory {
+                        staging.directories.push(base.to_owned());
+                        let empty = empty.iter().map(|path| format!("{base}/{path}"));
+                        staging.directories.extend(empty);
+                    }
+                }
                 Source::InPlace(path) => staging.inputs.push(Staged {
                     path: input.path.clone(),
                     source: path.clone(),

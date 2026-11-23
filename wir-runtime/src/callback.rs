@@ -90,7 +90,7 @@ impl Callbacks {
                     code: &closure.code,
                     library: &closure.library,
                 };
-                code.call(&captures, arguments, context.base)
+                code.call(&captures, arguments, context.python())
             }
             ExprLanguage::Javascript => {
                 let code = (closure.code.as_str(), closure.library.as_slice());
@@ -193,6 +193,7 @@ mod tests {
             provider: None,
             remote: None,
             roots: None,
+            environment: None,
             deliveries: &Default::default(),
             inputs: &Default::default(),
             nextflow: &Default::default(),
@@ -264,6 +265,7 @@ mod tests {
             provider: None,
             remote: None,
             roots: None,
+            environment: None,
             deliveries: &Default::default(),
             inputs: &Default::default(),
             nextflow: &Default::default(),

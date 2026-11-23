@@ -188,7 +188,9 @@ const MOST_PAGES: usize = 100;
 pub struct Client {
     /// The address of the API, like `http://localhost:8000/ga4gh/tes/v1`.
     base: String,
-    http: &'static reqwest::Client,
+    http: reqwest::Client,
+    /// The client for a key in a header, which follows no redirect to another origin.
+    origin: reqwest::Client,
     /// A bearer token for the server, when it needs one.
     token: Option<String>,
     basic: Option<(String, String)>,
@@ -232,13 +234,15 @@ impl Client {
             true => server.to_owned(),
             false => format!("{server}/ga4gh/tes/v1"),
         };
-        let http = executor::http::client().map_err(|message| TesError::Request {
+        let clients = storage::Clients::of(storage::config_proxy());
+        let clients = clients.map_err(|message| TesError::Request {
             url: base.clone(),
             message,
         })?;
         Ok(Client {
             base,
-            http,
+            http: clients.plain,
+            origin: clients.origin,
             token,
             basic: None,
             api_key: None,
@@ -246,6 +250,14 @@ impl Client {
             polling: Arc::new(tokio::sync::Semaphore::new(16)),
             history: Default::default(),
         })
+    }
+
+    /// This client, sending its requests through the web proxy of its run, or directly for
+    /// `None`, unless the environment names a proxy, whatever proxy the process uses.
+    pub fn with_proxy(mut self, proxy: Option<&str>) -> Result<Self, String> {
+        let clients = storage::Clients::of(proxy)?;
+        (self.http, self.origin) = (clients.plain, clients.origin);
+        Ok(self)
     }
 
     pub fn with_basic(mut self, user: String, password: String) -> Self {
@@ -423,13 +435,8 @@ impl Client {
         }
         // reqwest keeps a key header on a redirect to another host; this client stops there.
         let http = match &self.api_key {
-            Some((_, _, true)) => {
-                storage::origin_client().map_err(|message| TesError::Request {
-                    url: url.to_owned(),
-                    message,
-                })?
-            }
-            _ => self.http,
+            Some((_, _, true)) => &self.origin,
+            _ => &self.http,
         };
         let response = http.execute(request).await.map_err(failed)?;
         let status = response.status();

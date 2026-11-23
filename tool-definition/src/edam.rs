@@ -8,6 +8,10 @@ use std::sync::OnceLock;
 /// Ids, labels and parents of the data, format, operation and topic branches; see LICENSE-EDAM.
 const DATA: &str = include_str!("../edam.tsv");
 
+/// The location of EDAM as an ontology of formats; runs match its terms by the embedded release
+/// instead of reading the file.
+pub const ONTOLOGY: &str = "http://edamontology.org/EDAM.owl";
+
 /// The classes of one EDAM release, read once from the embedded data.
 #[derive(Debug)]
 pub struct Hierarchy {
@@ -61,6 +65,11 @@ impl Hierarchy {
             terms.insert(id, Term { label, parents });
         }
         Hierarchy { release, terms }
+    }
+
+    /// The ids of all terms, in no order.
+    pub fn terms(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.terms.keys().copied()
     }
 
     /// The release tag, like `1.25.20260626T1230Z`.

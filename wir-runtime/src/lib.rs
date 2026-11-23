@@ -18,6 +18,7 @@ mod engine;
 mod expr;
 mod flows;
 mod formats;
+mod galaxy;
 mod groovy;
 mod grouping;
 mod inputs;
@@ -37,6 +38,7 @@ mod python;
 mod reducing;
 mod regions;
 mod routing;
+mod schema;
 mod selecting;
 pub mod snakemake;
 #[allow(dead_code, reason = "the stream ops of the next commits use it")]

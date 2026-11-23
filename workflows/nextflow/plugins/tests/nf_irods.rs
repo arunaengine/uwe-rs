@@ -58,7 +58,7 @@ fn scope_reaches_storage() {
     })
     .expect("an activated plugin");
     assert!(observers.is_empty());
-    let storage = storage::Storage::default().blocking();
+    let storage = scoped(&config);
     let error = storage
         .stat("irods:///tempZone/home/rods/a.txt")
         .expect_err("a hang-up");
@@ -74,9 +74,15 @@ fn scope_reaches_storage() {
         std::env::var(name).ok()
     })
     .expect("an activated plugin");
-    let storage = storage::Storage::default().blocking();
+    let storage = scoped(&config);
     let error = storage
         .stat("irods:///tempZone/a.txt")
         .expect_err("an unknown policy");
     assert!(error.to_string().contains("CS_NEG_MAYBE"), "{error}");
+}
+
+/// The storage of a run of `config`, with the plugin scopes of the config.
+fn scoped(config: &Config) -> storage::Blocking {
+    let scopes = catalogue::scopes(config, &|name| std::env::var(name).ok()).expect("scopes");
+    storage::Storage::default().with_scopes(scopes).blocking()
 }

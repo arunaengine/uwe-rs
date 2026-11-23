@@ -22,6 +22,12 @@ pub const RECORDS: &[&str] = &[
     INDEX,
     EXECUTABLES,
 ];
+/// The records that a stager may give back besides those of the wrapper: the receipts of the
+/// outputs that it put into the content store, and which output files went up in parts.
+pub const STAGED: &[&str] = &[crate::job::RECEIPTS, LARGE];
+/// The control file that names the multipart object of each large output file, one
+/// `<number> <slot>` per line, as `large/<slot>` below the attempt prefix holds it.
+pub const LARGE: &str = "large";
 /// The control file that names the path of each numbered output file, one `<number> <path>`
 /// per line.
 pub const INDEX: &str = "objects";
@@ -58,7 +64,7 @@ pub fn capture(script: &str, transfer: &str) -> Result<String, ExecutorError> {
 pub fn target(root: &Path, relative: &str, records: &[&str]) -> Option<PathBuf> {
     if let Some(name) = relative
         .strip_prefix("control/")
-        .filter(|name| records.contains(name))
+        .filter(|name| records.contains(name) || STAGED.contains(name))
     {
         return Some(root.join(CONTROL).join(name));
     }
@@ -106,7 +112,9 @@ pub async fn arrange(finished: &Finished) -> Result<(), ExecutorError> {
     for file in &finished.files {
         if file.directory {
             tokio::fs::create_dir_all(finished.local_path(&file.path)).await?;
-        } else if !finished.local_path(&file.path).is_file() {
+        } else if !finished.local_path(&file.path).is_file()
+            && finished.receipt(&file.path).is_none()
+        {
             return Err(failed("an output of the manifest is missing"));
         }
     }
@@ -177,6 +185,7 @@ mod tests {
             files: manifest::parse("file out/a.txt\ndirectory empty\n").unwrap(),
             root: root.to_owned(),
             usage: None,
+            receipts: Vec::new(),
         };
         arrange(&finished).await.unwrap();
         assert_eq!(std::fs::read(root.join("work/out/a.txt")).unwrap(), b"out");

@@ -23,8 +23,25 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-lakefs", Kind::FileSystem, State::Implemented)
 };
 
-/// Hands the `lakefs` scope to the provider of `lakefs://` paths. With `autoCreateBranch` or
-/// `autoCommit` and a `lakefs://` `outputDir`, an observer makes and commits its branch.
+/// The options of the `lakefs` scope, which the provider of `lakefs://` paths of the run uses.
+pub(crate) fn options(config: &Config) -> storage::lakefs::Options {
+    let text = |key| {
+        (config.get(&["lakefs", key]))
+            .filter(|value| !matches!(value, Value::Null))
+            .map(|value| value.to_string())
+    };
+    storage::lakefs::Options {
+        endpoint: text("apiUrl"),
+        access_key: text("accessKey"),
+        secret_key: text("secretKey"),
+        create_branches: text("autoCreateBranch").is_some_and(|text| text == "true"),
+        branch_source: text("autoCreateBranchSource"),
+        timeout: text("readTimeout").and_then(|text| duration(&text)),
+    }
+}
+
+/// With `autoCreateBranch` or `autoCommit` and a `lakefs://` `outputDir`, an observer makes
+/// and commits its branch with the `lakefs` scope of the run.
 fn activate(
     config: &Config,
     _: &std::path::Path,
@@ -42,15 +59,8 @@ fn activate(
              presigned addresses"
         );
     }
-    let create = flag("autoCreateBranch");
-    storage::lakefs::use_scope(storage::lakefs::Options {
-        endpoint: text("apiUrl"),
-        access_key: text("accessKey"),
-        secret_key: text("secretKey"),
-        create_branches: create,
-        branch_source: text("autoCreateBranchSource"),
-        timeout: text("readTimeout").and_then(|text| duration(&text)),
-    });
+    let lakefs = options(config);
+    let create = lakefs.create_branches;
     let output = (config.get(&["outputDir"]))
         .map(|value| value.to_string())
         .filter(|output| output.starts_with("lakefs://"));
@@ -59,6 +69,7 @@ fn activate(
         .filter(|_| create || commit)
         .map(|output| -> Box<dyn Observer> {
             Box::new(Branch {
+                lakefs,
                 output,
                 create,
                 commit,
@@ -68,14 +79,15 @@ fn activate(
 }
 
 /// `lakefsCommit(path, message)`: commits the branch of the path and returns the commit id.
-fn call(name: &str, arguments: Vec<Value>, _: &mut Context) -> Result<Value, Error> {
+fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Value, Error> {
     let thrown = |message: String| Error::Thrown {
         exception: Rc::new(Exception::illegal_argument(message)),
         span: Default::default(),
     };
     match (name, arguments.as_slice()) {
         ("lakefsCommit", [path, message]) => {
-            let id = storage::lakefs::commit(&path.to_string(), &message.to_string());
+            let lakefs = options(context.config);
+            let id = lakefs.commit(&path.to_string(), &message.to_string());
             id.map(|id| Value::string(id.as_str()))
                 .map_err(|error| thrown(error.to_string()))
         }
@@ -91,6 +103,7 @@ fn call(name: &str, arguments: Vec<Value>, _: &mut Context) -> Result<Value, Err
 
 /// The branch of `outputDir`: made when the run starts, committed when it succeeds.
 struct Branch {
+    lakefs: storage::lakefs::Options,
     output: String,
     create: bool,
     commit: bool,
@@ -108,14 +121,14 @@ impl Observer for Branch {
                     None => format!("Run {}", start.run_name),
                 });
                 if self.create
-                    && let Err(error) = storage::lakefs::create_branch(&self.output)
+                    && let Err(error) = self.lakefs.create_branch(&self.output)
                 {
                     tracing::warn!("{error}");
                 }
             }
             Event::RunEnded(end) if end.success && self.commit => {
                 let message = self.message.clone().unwrap_or_default();
-                if let Err(error) = storage::lakefs::commit(&self.output, &message) {
+                if let Err(error) = self.lakefs.commit(&self.output, &message) {
                     tracing::warn!("{error}");
                 }
             }

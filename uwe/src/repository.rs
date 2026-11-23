@@ -397,7 +397,7 @@ pub(crate) fn prepare(
     let Some(repository) = Repository::parse(&target.to_string_lossy())? else {
         return Ok(target.to_owned());
     };
-    let cache = crate::cache_directory();
+    let cache = (arguments.cache_folder.clone()).unwrap_or_else(crate::cache_directory);
     let accounts = || git_accounts(arguments, storage);
     let runtime = workflow_graph::runtime().map_err(|error| Failure::setup(error.to_string()))?;
     if repository.host == Host::Git {

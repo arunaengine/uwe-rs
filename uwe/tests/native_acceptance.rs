@@ -66,6 +66,7 @@ impl Backend for Fake {
             }],
             root,
             usage: None,
+            receipts: Vec::new(),
         })
     }
 }

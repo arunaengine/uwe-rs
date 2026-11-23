@@ -83,6 +83,17 @@ fn paths_are_unique() {
             .iter()
             .any(|e| e.problem == Problem::BadName("steps/head two".into()))
     );
+    for path in ["..", "../outside", "steps/./head", "."] {
+        let mut document = base();
+        document["graphs"][0]["ops"][1]["path"] = json!(path);
+        let found = problems(document);
+        assert!(
+            found
+                .iter()
+                .any(|e| e.problem == Problem::BadName(path.into())),
+            "{path}"
+        );
+    }
 }
 
 #[test]

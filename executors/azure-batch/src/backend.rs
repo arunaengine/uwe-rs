@@ -10,10 +10,14 @@ use std::time::{Duration, Instant};
 use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
+use executor::orphans::{self, JobState, Orphan, RemoteJobs};
 use executor::registry::{self, ImageConfigs};
 use executor::remote::RemoteStage;
 use executor::wrapper::{Folders, wrapper};
-use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job};
+use executor::{
+    Access, Backend, BoxFuture, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job,
+    Journals, attempts,
+};
 use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
 
@@ -54,6 +58,8 @@ pub struct AzureBackend {
     /// The entrypoints and default commands of images, for tasks without a command.
     pub configs: ImageConfigs,
     jobs: Jobs,
+    /// Where the jobs of running attempts are noted, so that a later process finds them.
+    pub journals: Option<Journals>,
     held: AtomicBool,
 }
 
@@ -89,6 +95,7 @@ impl AzureBackend {
             pool_check: Duration::from_secs(60),
             configs: ImageConfigs::default(),
             jobs: Jobs::default(),
+            journals: None,
             held: AtomicBool::new(false),
         })
     }
@@ -101,6 +108,14 @@ impl Backend for AzureBackend {
 
     fn hold(&self) {
         self.held.store(true, Ordering::Relaxed);
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::report(self, self.journals.as_ref(), run).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::stop(self, self.journals.as_ref(), run).await
     }
 
     async fn run(
@@ -274,6 +289,7 @@ impl AzureBackend {
         if cancel.is_cancelled() || self.held.load(Ordering::Relaxed) {
             return Err(ExecutorError::Cancelled);
         }
+        let _held = attempts::hold(self.journals.as_ref(), self, job.name)?;
         let added = self.client.create_task(&batch_job, &body).await;
         added.map_err(api)?;
         tracing::debug!(
@@ -281,7 +297,12 @@ impl AzureBackend {
             task = task_id,
             "[AZURE BATCH] added the task"
         );
-        let ended = self.wait(&batch_job, &task_id, &pool, cancel).await?;
+        // The journal names a task by its job and itself.
+        let id = format!("{batch_job}/{task_id}");
+        attempts::note(self.journals.as_ref(), self, job.name, &id).await?;
+        let ended = self.wait(&batch_job, &task_id, &pool, cancel).await;
+        attempts::settle(self.journals.as_ref(), self, job.name, &id, &ended).await;
+        let ended = ended?;
         let collected =
             executor::remote::patiently(|| self.stage.collect(&planned.prefix, local, RECORDS))
                 .await;
@@ -427,4 +448,38 @@ fn helper_file(url: String) -> Download {
 
 fn text(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+/// What Azure Batch says of a task that a journal names as `<job>/<task>`, and its termination.
+impl RemoteJobs for AzureBackend {
+    fn state<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<JobState>, String>> {
+        Box::pin(async move {
+            let (job, task) = id
+                .split_once('/')
+                .ok_or("the journal names no Azure task")?;
+            let seen = self.client.task(job, task).await;
+            Ok(seen
+                .map_err(|error| error.to_string())?
+                .map(|seen| JobState {
+                    ended: crate::outcome::ended(&seen).is_some(),
+                    state: seen["state"].as_str().unwrap_or_default().to_owned(),
+                }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            let (job, task) = id
+                .split_once('/')
+                .ok_or("the journal names no Azure task")?;
+            self.client
+                .terminate(job, task)
+                .await
+                .map_err(|error| error.to_string())
+        })
+    }
+
+    fn scope(&self) -> String {
+        format!("{} account {}", self.client.endpoint, self.client.account)
+    }
 }

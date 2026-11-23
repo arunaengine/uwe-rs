@@ -111,7 +111,7 @@ pub fn fingerprint(task: &Task, states: &[Option<InputState>]) -> String {
             None => hasher.update("\n-"),
         }
     }
-    Digest::from_sha256(&hasher.finalize()).to_string()
+    Digest::from_sha256(hasher.finalize().into()).to_string()
 }
 
 #[cfg(test)]

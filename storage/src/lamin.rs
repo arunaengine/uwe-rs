@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::error::Problem;
 use crate::objects::{Objects, Service};
-use crate::web::{Web, network, origin_client};
+use crate::web::{Clients, Web, network};
 use crate::{Downloaded, Entry, Metadata};
 
 /// What a LaminDB client signs in with. Unset values come from the environment.
@@ -62,6 +62,7 @@ pub(crate) struct Lamin {
     instances: tokio::sync::Mutex<HashMap<String, Value>>,
     /// The client of each storage root.
     roots: Mutex<HashMap<String, Arc<Root>>>,
+    clients: Clients,
 }
 
 /// Where an artifact lives: the address of its file or folder, and its record.
@@ -87,7 +88,7 @@ struct Address<'a> {
 }
 
 impl Lamin {
-    pub fn new(options: Options) -> Result<Lamin, Problem> {
+    pub fn new(options: Options, clients: &Clients) -> Result<Lamin, Problem> {
         let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
         let hub = (options.hub)
             .or_else(|| variable("SUPABASE_API_URL"))
@@ -100,6 +101,7 @@ impl Lamin {
             token: tokio::sync::OnceCell::new(),
             instances: tokio::sync::Mutex::new(HashMap::new()),
             roots: Mutex::new(HashMap::new()),
+            clients: clients.clone(),
         })
     }
 
@@ -239,7 +241,7 @@ impl Lamin {
             "{api}/instances/{instance_id}/modules/core/{model}/{id}?schema_id={schema}&\
              include_foreign_keys=true"
         );
-        let client = origin_client().map_err(Problem::fixed)?;
+        let client = &self.clients.origin;
         let request = (client.post(url))
             .bearer_auth(self.token().await?)
             .header(ACCEPT, "application/json")
@@ -297,7 +299,7 @@ impl Lamin {
     }
 
     async fn hub_post(&self, function: &str, bearer: &str, body: Value) -> Result<Value, Problem> {
-        let client = origin_client().map_err(Problem::fixed)?;
+        let client = &self.clients.origin;
         let url = format!("{}/functions/v1/{function}", self.hub);
         let request = (client.post(url))
             .bearer_auth(bearer)
@@ -321,25 +323,31 @@ impl Lamin {
             return Ok(found);
         }
         let made = match crate::address::scheme(root) {
-            Some("http" | "https") => Root::Web(Web::public()?),
-            Some("gs") => Root::Objects(Objects::new(Service::GoogleCloudStorage {
-                endpoint: None,
-                credential_file: None,
-                token: None,
-                anonymous: false,
-            })?),
+            Some("http" | "https") => Root::Web(Web::public(&self.clients)),
+            Some("gs") => Root::Objects(Objects::new(
+                Service::GoogleCloudStorage {
+                    endpoint: None,
+                    credential_file: None,
+                    token: None,
+                    anonymous: false,
+                },
+                &self.clients,
+            )?),
             Some("s3") => {
                 let keys = match self.hub_credentials {
                     true => Some(self.session(root).await?),
                     false => None,
                 };
-                Root::Objects(Objects::new(Service::S3 {
-                    endpoint: None,
-                    region: region.to_owned(),
-                    virtual_host: true,
-                    keys,
-                    anonymous: false,
-                })?)
+                Root::Objects(Objects::new(
+                    Service::S3 {
+                        endpoint: None,
+                        region: region.to_owned(),
+                        virtual_host: true,
+                        keys,
+                        anonymous: false,
+                    },
+                    &self.clients,
+                )?)
             }
             _ => {
                 return Err(Problem::fixed(format!(

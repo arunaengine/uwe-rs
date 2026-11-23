@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use content_store::{Store, StoredOutput, layout};
 use executor::manifest::Collected;
-use executor::{Finished, Staging};
+use executor::{Finished, OutputReceipt, Staging};
 use task_model::{Digest, Tree, TreeEntry};
 
 use crate::runner::at;
@@ -32,6 +32,9 @@ pub(crate) async fn store_outputs(
     // Resolve and copy links before moving any file that another output may link to.
     for collected in &finished.files {
         layout::output(run, task, attempt, &collected.path)?;
+        if !collected.directory && finished.receipt(&collected.path).is_some() {
+            continue;
+        }
         let local = finished.local_path(&collected.path);
         scratch.checked(&local).await?;
         if collected.directory {
@@ -83,6 +86,19 @@ pub(crate) async fn store_outputs(
             .find_map(|(base, tree)| file_in(tree, base, path))
         {
             file
+        } else if let Some(receipt) = finished.receipt(path) {
+            let (digest, size, kept) = promoted(store, receipt).await?;
+            stored.push((
+                path,
+                StoredFile {
+                    path: path.to_owned(),
+                    digest,
+                    size,
+                    location: kept,
+                    directory: false,
+                },
+            ));
+            continue;
         } else {
             let local = place.scratch.prepared(&finished.local_path(path))?;
             let output = store.adopt_output(run, task, attempt, path, &local).await?;
@@ -126,6 +142,24 @@ pub(crate) async fn store_outputs(
         containers: Vec::new(),
         address: finished.address.clone(),
     })
+}
+
+/// An output that the backend put into the store itself: its digest, its size, and where the
+/// store keeps it. The store must hold content of that digest and size; its bytes stay there.
+/// The place is the one of that content, never the location that the receipt names.
+async fn promoted(
+    store: &Store,
+    receipt: &OutputReceipt,
+) -> Result<(Digest, u64, String), RunnerError> {
+    let held = store.content_size(&receipt.digest).await?;
+    if held != Some(receipt.size) {
+        return Err(RunnerError::Receipt(receipt.path.clone()));
+    }
+    Ok((
+        receipt.digest.clone(),
+        receipt.size,
+        layout::content(&receipt.digest),
+    ))
 }
 
 /// Stores the captured streams of the containers of a task that runs several by their
@@ -548,6 +582,7 @@ mod tests {
                 .collect(),
             root: scratch,
             usage: None,
+            receipts: Vec::new(),
         }
     }
 

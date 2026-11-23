@@ -23,7 +23,7 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let setup = crate::setup::Setup::load(arguments)?;
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let files =
-        task_runner::StorageFiles::new(&setup.storage, crate::cache_directory().join("downloads"));
+        task_runner::StorageFiles::new(&setup.storage, setup.cache_directory().join("downloads"));
     let output =
         (arguments.output.clone()).unwrap_or_else(|| PathBuf::from(format!("{run}-report.html")));
     let size = write(&database, &run, &output, Some(&files))?;

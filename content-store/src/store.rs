@@ -630,7 +630,7 @@ impl Store {
             file.write_all(&bytes).await.map_err(at(target))?;
             offset = end;
         }
-        let actual = Digest::from_sha256(&hasher.finalize());
+        let actual = Digest::from_sha256(hasher.finalize().into());
         if &actual != digest {
             if addressed(location) {
                 let _ = source.repair(location, digest).await;
@@ -1067,7 +1067,7 @@ async fn repair_object(
             hasher.update(&bytes);
             offset = end;
         }
-        if Digest::from_sha256(&hasher.finalize()) != *digest {
+        if Digest::from_sha256(hasher.finalize().into()) != *digest {
             operator.delete_with(location).if_match(tag).await?;
         }
         Ok(())
@@ -1101,7 +1101,7 @@ async fn hash_object(operator: &Operator, location: &str) -> Result<(Digest, u64
         hasher.update(&bytes);
         offset += bytes.len() as u64;
     }
-    Ok((Digest::from_sha256(&hasher.finalize()), offset))
+    Ok((Digest::from_sha256(hasher.finalize().into()), offset))
 }
 
 /// How long one read of a file may take before uwe opens the file again. On CephFS a read of
@@ -1156,7 +1156,7 @@ async fn hash_patiently(
         hasher.update(&buffer[..read]);
         size += read as u64;
     }
-    Ok((Digest::from_sha256(&hasher.finalize()), size))
+    Ok((Digest::from_sha256(hasher.finalize().into()), size))
 }
 
 /// Opens a file again and reads its first byte at offset 0, which takes nothing from a

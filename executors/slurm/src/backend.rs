@@ -258,6 +258,17 @@ impl Backend for SlurmBackend {
         registry::pin(image).await
     }
 
+    async fn orphans(&self, run: &str) -> Result<Vec<executor::orphans::Orphan>, ExecutorError> {
+        self.report_run(run).await
+    }
+
+    async fn stop_orphans(
+        &self,
+        run: &str,
+    ) -> Result<Vec<executor::orphans::Orphan>, ExecutorError> {
+        self.stop_run(run).await
+    }
+
     async fn run(
         &self,
         job: Job<'_>,
@@ -1868,6 +1879,7 @@ async fn finish(
         files,
         usage: executor::Usage::of(&root),
         root,
+        receipts: Vec::new(),
     };
     if shared {
         finished.collect_outputs(spec, staging)?;
@@ -2042,6 +2054,7 @@ mod tests {
                 max_outputs: 1,
                 credentials: false,
                 cleanup: true,
+                multipart: None,
             },
             helper: crate::Helper::Path("/bin/false".into()),
             folder: None,

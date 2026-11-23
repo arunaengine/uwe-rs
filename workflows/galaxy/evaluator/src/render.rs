@@ -13,6 +13,9 @@ use crate::parser::{self, FOLLOW, Node};
 use crate::values::{self, Job};
 use crate::{Error, outputs};
 
+/// The most bytes that one template may render to, so that huge values fail cleanly.
+const RENDERED_BYTES: usize = 64 << 20;
+
 /// A rendered job: the command line, the configfile texts by name, and the created outputs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rendered {
@@ -124,6 +127,11 @@ fn nodes_into(
                         line: *line,
                         source,
                     })?;
+                    if out.len().saturating_add(text.len()) > RENDERED_BYTES {
+                        let limit = RENDERED_BYTES >> 20;
+                        let message = format!("the rendered text is longer than {limit} MiB");
+                        return Err(Error::template(*line, message));
+                    }
                     out.push_str(&text);
                 }
             }
@@ -283,6 +291,16 @@ mod tests {
             rendered.command.as_deref(),
             Some("A,B 7 A ['a', 'b'][0].upper")
         );
+    }
+
+    #[test]
+    fn limits_rendered_text() {
+        let long = tool("<tool id=\"t\"><command>#set $x = 'a' * 60000000\n$x$x</command></tool>");
+        let error = render(&long, &Job::default()).expect_err("too long");
+        assert!(error.to_string().contains("longer than 64 MiB"), "{error}");
+        let large = tool("<tool id=\"t\"><command>${'a' * 10**10}</command></tool>");
+        let error = render(&large, &Job::default()).expect_err("too large");
+        assert!(error.to_string().contains("MemoryError"), "{error}");
     }
 
     #[test]

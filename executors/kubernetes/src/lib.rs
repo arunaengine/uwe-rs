@@ -7,6 +7,7 @@ mod cluster;
 pub mod cws;
 mod daemons;
 mod manifest;
+mod network;
 mod options;
 mod orphans;
 mod pods;
@@ -17,6 +18,7 @@ pub use cluster::Cluster;
 pub use manifest::{
     DOWNLOAD_IMAGE, FOLDERS, Helper, LABEL, Limits, RUN, SharedVolume, Volumes, job, job_name,
 };
+pub use network::{Isolation, JOB, Peer};
 pub use options::{PRIVILEGED, PodOptions};
 pub use pods::{Look, Pods};
 pub use staging::{Kubedal, PodStaging, Via};

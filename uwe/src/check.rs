@@ -350,6 +350,7 @@ fn language_name(language: Language) -> &'static str {
         Language::Argo => "Argo",
         Language::Wdl => "WDL",
         Language::Wir => "wir",
+        Language::Galaxy => "Galaxy",
     }
 }
 
@@ -359,7 +360,7 @@ fn language_name(language: Language) -> &'static str {
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
-    let (target, language) = crate::target_and_language(arguments, None)?;
+    let (target, language) = crate::target_and_language(arguments, &setup)?;
     let cancel = crate::stop_on_interrupt();
     let _stop = cancel.clone().drop_guard();
     let run = crate::run_id();
@@ -381,7 +382,7 @@ pub(crate) fn findings(
     run: &str,
     cancel: &workflow_graph::CancellationToken,
 ) -> (Report, Option<ExecutionGraph>) {
-    let mut launch = crate::launch(arguments, target.to_owned());
+    let mut launch = crate::launch(arguments, setup, target.to_owned());
     // The plan goes past the files that are missing, which the check reports.
     launch.simulated = true;
     let mut report = Report::default();

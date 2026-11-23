@@ -39,7 +39,7 @@ fn scope_reaches_storage() {
     })
     .expect("an activated plugin");
     assert!(observers.is_empty());
-    let storage = storage::Storage::default().blocking();
+    let storage = scoped(&config);
     let error = storage
         .stat("drs://127.0.0.1:9/object")
         .expect_err("no token");
@@ -51,9 +51,15 @@ fn scope_reaches_storage() {
         std::env::var(name).ok()
     })
     .expect("an activated plugin");
-    let storage = storage::Storage::default().blocking();
+    let storage = scoped(&config);
     let error = storage
         .stat("drs://127.0.0.1:9/object")
         .expect_err("an unknown login");
     assert!(error.to_string().contains("'kerberos'"), "{error}");
+}
+
+/// The storage of a run of `config`, with the plugin scopes of the config.
+fn scoped(config: &Config) -> storage::Blocking {
+    let scopes = catalogue::scopes(config, &|name| std::env::var(name).ok()).expect("scopes");
+    storage::Storage::default().with_scopes(scopes).blocking()
 }

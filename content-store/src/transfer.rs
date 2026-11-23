@@ -142,7 +142,7 @@ impl Store {
         file.flush().await?;
         drop(file);
         temporary.persist(target).map_err(|error| error.error)?;
-        Ok((Digest::from_sha256(&hash.finalize()), size))
+        Ok((Digest::from_sha256(hash.finalize().into()), size))
     }
 }
 

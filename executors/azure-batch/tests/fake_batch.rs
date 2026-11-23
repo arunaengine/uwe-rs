@@ -72,6 +72,7 @@ fn backend(folder: &Path, fake: &FakeAzure, credentials: Credentials) -> AzureBa
         max_outputs: 4,
         credentials: false,
         cleanup: true,
+        multipart: None,
     };
     let mut backend = AzureBackend::new(client, settings, folder.join("scratch"), stage, None)
         .expect("a backend");

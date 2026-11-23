@@ -116,6 +116,23 @@ impl Catalogue {
         })
     }
 
+    /// The configured workflow presets: their names, sources and languages.
+    pub fn presets(&self) -> impl Iterator<Item = (&str, &Path, Option<Language>)> {
+        (self.workflows.iter())
+            .map(|(name, workflow)| (name.as_str(), workflow.source.as_path(), workflow.language))
+    }
+
+    /// The inputs that a run of a preset may set, and the executor that it runs on by default;
+    /// `None` without such a preset.
+    pub fn editable(&self, name: &str) -> Option<(Vec<String>, Option<String>)> {
+        let workflow = self.workflows.get(name)?;
+        let inputs = (workflow.overrides.iter())
+            .filter(|input| !workflow.references.contains_key(*input))
+            .cloned()
+            .collect();
+        Some((inputs, workflow.executor.clone()))
+    }
+
     /// Lists configured selections without hashing installations or loading workflow code.
     pub fn list(&self) -> Value {
         json!({

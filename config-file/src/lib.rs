@@ -32,7 +32,7 @@ pub const SITE_FOLDER: &str = "/etc/uwe";
 pub const SITE_FILE_VARIABLE: &str = "UWE_SITE_CONFIG";
 
 /// The merged settings of the config files.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ConfigFile {
     /// The top-level entries, whose tables are the sections.
     entries: BTreeMap<String, Node>,
@@ -41,6 +41,18 @@ pub struct ConfigFile {
     files: Vec<PathBuf>,
     /// The values that its environment secrets take first.
     secrets: SecretValues,
+}
+
+/// Shows the files and the names of the sections, never a value, which may be a secret.
+impl std::fmt::Debug for ConfigFile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ConfigFile")
+            .field("files", &self.files)
+            .field("sections", &self.entries.keys().collect::<Vec<_>>())
+            .field("secrets", &self.secrets)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for ConfigFile {

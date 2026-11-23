@@ -325,3 +325,15 @@ fn confines_reference_files() {
             .is_err()
     );
 }
+
+#[test]
+fn lists_editable_inputs() {
+    let fixture = Fixture::new();
+    let catalogue = fixture.parse(&fixture.config()).unwrap();
+    let editable = catalogue.editable("demo");
+    assert_eq!(
+        editable,
+        Some((vec!["threads".to_owned()], Some("simulator".to_owned())))
+    );
+    assert_eq!(catalogue.editable("missing"), None);
+}

@@ -83,8 +83,13 @@ impl Guard {
         Ok(())
     }
 
-    /// The builder with these rules for names and redirects. Proxy hosts may be private.
-    pub fn client(&self, builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    /// The builder with these rules for names and redirects. Proxy hosts may be private, like
+    /// the host of `proxy`, the web proxy of the storage.
+    pub fn client(
+        &self,
+        builder: reqwest::ClientBuilder,
+        proxy: Option<&str>,
+    ) -> reqwest::ClientBuilder {
         let mut allowed: Vec<String> = self.allowed.to_vec();
         let names = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"];
         for name in names.into_iter().chain(["ALL_PROXY", "all_proxy"]) {
@@ -92,7 +97,7 @@ impl Guard {
             let url = proxy.and_then(|proxy| reqwest::Url::parse(&proxy).ok());
             allowed.extend(url.and_then(|url| url.host_str().map(plain)));
         }
-        let proxy = crate::web::config_proxy().and_then(|proxy| reqwest::Url::parse(proxy).ok());
+        let proxy = proxy.and_then(|proxy| reqwest::Url::parse(proxy).ok());
         allowed.extend(proxy.and_then(|url| url.host_str().map(plain)));
         let resolver = Resolver {
             allowed: allowed.into(),

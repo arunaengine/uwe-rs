@@ -5,23 +5,25 @@
 use crate::arguments::Arguments;
 use crate::hosted::Isolation;
 use crate::setup::Setup;
-use crate::{Failure, cache_directory, detect, failure, nextflow, repository};
+use crate::{Failure, detect, failure, nextflow, repository};
 use std::path::{Path, PathBuf};
+use storage::Storage;
 use workflow_graph::{CancellationToken, Driver, DriverError, Language, Launch};
 
 /// The workflow of a command and its language: `-lang`, else what the target tells. Git signs
-/// in with the accounts of `storage`, the storage of the run, else of the config files.
+/// in with the accounts of the storage of the run, which also fetches a workflow on the web.
 pub(crate) fn target_and_language(
     arguments: &Arguments,
-    storage: Option<&storage::Storage>,
+    setup: &Setup,
 ) -> Result<(PathBuf, Language), Failure> {
+    let storage = &setup.storage;
     let Some(target) = &arguments.target else {
         return Err(Failure::usage(
             "uwe: name a workflow file or a project directory to run",
         ));
     };
     let revision = arguments.revision.as_deref();
-    let target = repository::prepare(target, revision, arguments.latest, arguments, storage)?;
+    let target = repository::prepare(target, revision, arguments.latest, arguments, Some(storage))?;
     let remote = target.to_string_lossy();
     let remote = remote.starts_with("https://") || remote.starts_with("http://");
     let cwl = remote
@@ -34,10 +36,8 @@ pub(crate) fn target_and_language(
                     .unwrap_or_default()
                     .ends_with(".cwl")));
     let target = if remote && !cwl {
-        fetch_workflow(
-            &target.to_string_lossy(),
-            &cache_directory().join("downloads"),
-        )?
+        let downloads = setup.cache_directory().join("downloads");
+        fetch_workflow(&target.to_string_lossy(), storage, &downloads)?
     } else {
         target
     };
@@ -64,17 +64,17 @@ pub(crate) fn target_and_language(
     Ok((target, language))
 }
 
-/// A copy of a workflow file on the web. The storage that fetched it holds the downloads
-/// until the process ends, so that `uwe clean` leaves the file alone while the run reads it.
-fn fetch_workflow(url: &str, downloads: &Path) -> Result<PathBuf, Failure> {
-    static FETCHING: std::sync::OnceLock<storage::Storage> = std::sync::OnceLock::new();
-    let storage = FETCHING.get_or_init(storage::Storage::default);
+/// A copy of a workflow file on the web, fetched through the storage of the run, with its
+/// accounts, proxy and isolation. That storage holds the downloads while the run lasts, so that
+/// `uwe clean` leaves the file alone while the run reads it.
+fn fetch_workflow(url: &str, storage: &Storage, downloads: &Path) -> Result<PathBuf, Failure> {
     (storage.blocking().fetch(url, downloads)).map_err(|error| failure(error.to_string()))
 }
 
-/// Where `uwe resume` leaves its requests for the suspended Argo steps of a run.
-pub(crate) fn resume_folder(run: &str) -> PathBuf {
-    cache_directory().join("scratch").join("resume").join(run)
+/// Where `uwe resume` leaves its requests for the suspended Argo steps of a run, in the cache
+/// folder `cache`.
+pub(crate) fn resume_folder(cache: &Path, run: &str) -> PathBuf {
+    cache.join("scratch").join("resume").join(run)
 }
 
 /// The isolation of a run, with its output folder among the folders that workflow code may
@@ -90,7 +90,7 @@ pub(crate) fn isolation(arguments: &Arguments, setup: &Setup) -> Option<Isolatio
 pub(crate) fn shared_folders(arguments: &Arguments, setup: &Setup) -> Vec<PathBuf> {
     let store = setup.store_location(arguments);
     let store = (!store.contains("://")).then(|| PathBuf::from(store));
-    [cache_directory()].into_iter().chain(store).collect()
+    [setup.cache_directory()].into_iter().chain(store).collect()
 }
 
 /// The driver of a language.
@@ -115,12 +115,21 @@ pub(crate) fn driver(
             snakemake_runtime::driver_with_options(launch, settings, options)
         }
         Language::Cwl => {
-            let downloads = cache_directory().join("downloads");
+            let downloads = setup.cache_directory().join("downloads");
             let options = cwl_options(arguments, setup, cancel);
             cwl_runtime::driver_with_options(launch, &setup.storage, downloads, options)
         }
         Language::Argo => argo_runtime::driver_with(launch, argo_services(run, setup)),
-        Language::Wdl => wdl_runtime::driver_with(launch, wdl_options(arguments, setup)),
+        Language::Wdl => {
+            // The expressions of an isolated run read files where its workflow code may.
+            let mut options = wdl_options(arguments, setup);
+            options.roots = isolation(arguments, setup).map(|isolation| {
+                let shared = shared_folders(arguments, setup);
+                let own = isolation.launch.clone();
+                nextflow::run_roots(&launch.target, launch, (&isolation, &shared), own)
+            });
+            wdl_runtime::driver_with(launch, options)
+        }
         Language::Wir => {
             let mut settings = wir_runtime::Settings {
                 // Only a block that is the whole run hears `uwe resume`, whose requests name
@@ -133,6 +142,9 @@ pub(crate) fn driver(
                     run: snakemake_options(arguments, setup, run),
                 },
                 wdl: wdl_options(arguments, setup),
+                galaxy: galaxy_options(arguments),
+                annotations: Default::default(),
+                base: None,
                 print: !arguments.no_print,
                 print_sink: {
                     let secrets = arguments.secrets.clone();
@@ -152,8 +164,8 @@ pub(crate) fn driver(
                 // File ops reach what the code of the workflow reaches.
                 roots: isolation(arguments, setup).map(|isolation| {
                     let workflow = arguments.target.clone().unwrap_or(launch.target.clone());
-                    let own =
-                        (isolation.launch.clone()).or_else(|| arguments.embedded.then(|| own(run)));
+                    let own = (isolation.launch.clone())
+                        .or_else(|| arguments.embedded.then(|| own(setup, run)));
                     let shared = shared_folders(arguments, setup);
                     nextflow::run_roots(&workflow, launch, (&isolation, &shared), own)
                 }),
@@ -175,9 +187,35 @@ pub(crate) fn driver(
             };
             wir_runtime::snakemake::register(&mut settings.adapters, settings.snakemake.clone());
             wir_runtime::nextflow::register(&mut settings.adapters, settings.nextflow.clone());
-            let downloads = cache_directory().join("downloads");
+            let downloads = setup.cache_directory().join("downloads");
+            // A composed workflow or a wir document in YAML runs as the JSON document of it.
+            let folder = setup.cache_directory().join("scratch").join("composed");
+            let prepared =
+                crate::tools::prepare(&launch.target, &folder).map_err(DriverError::new)?;
+            let launch = match prepared {
+                Some(prepared) => {
+                    settings.base = Some(prepared.base);
+                    settings.annotations = prepared.annotations;
+                    &Launch {
+                        target: prepared.path,
+                        ..launch.clone()
+                    }
+                }
+                None => launch,
+            };
             wir_runtime::driver(launch, settings.with_storage(&setup.storage, downloads))
         }
+        Language::Galaxy => galaxy_runtime::driver_with(launch, galaxy_options(arguments)),
+    }
+}
+
+/// The options of Galaxy runs, and of the Galaxy blocks of wir runs.
+fn galaxy_options(arguments: &Arguments) -> galaxy_runtime::Options {
+    let defaults = galaxy_runtime::Options::default();
+    galaxy_runtime::Options {
+        image: arguments.default_image.clone().unwrap_or(defaults.image),
+        tools: defaults.tools,
+        print: !arguments.no_print,
     }
 }
 
@@ -221,7 +259,7 @@ fn argo_services(run: &str, setup: &Setup) -> argo_runtime::Services {
         policy: setup.argo_policy.clone(),
         locks: setup.argo_locks.clone(),
         endpoints,
-        resume: Some(resume_folder(run)),
+        resume: Some(resume_folder(&setup.cache_directory(), run)),
         git: Some(argo_runtime::GitClient(std::sync::Arc::new(git))),
     }
 }
@@ -233,13 +271,14 @@ pub(crate) fn wdl_options(arguments: &Arguments, setup: &Setup) -> wdl_runtime::
             .unwrap_or_else(|| wdl_runtime::task::DEFAULT_IMAGE.into()),
         print: !arguments.no_print,
         imports: setup.isolation.is_some().then(|| wdl_imports(setup)),
+        roots: None,
     }
 }
 
 /// Reads each document at a web address that a WDL document of an isolated run imports
 /// through the storage of the run, which refuses an address the run may not reach.
 fn wdl_imports(setup: &Setup) -> wdl_runtime::document::Imports {
-    let downloads = cache_directory().join("downloads");
+    let downloads = setup.cache_directory().join("downloads");
     let storage = setup.storage.blocking();
     wdl_runtime::document::Imports::new(move |url| {
         let copy = storage
@@ -264,7 +303,7 @@ fn cwl_options(
             let engine = setup.engine();
             let mut javascript =
                 cwl_runtime::JavaScriptSettings::from_binary(engine, cancel.clone());
-            javascript.journals = Some(crate::journal_folder());
+            javascript.journals = Some(setup.journal_folder());
             javascript.binary = arguments.javascript_binary.clone();
             javascript
         },
@@ -283,7 +322,7 @@ fn cwl_options(
                 setup.slurm_container(arguments),
                 "apptainer" | "singularity"
             ))
-        .then(crate::cwl_archives),
+        .then(|| crate::cwl_archives(&setup.cache_directory())),
         print: !arguments.no_print,
         ..cwl_runtime::Options::default()
     }
@@ -309,8 +348,8 @@ pub(crate) fn snakemake_options(
         // An isolated or embedded run without a launch folder of the host starts in one of its
         // own, or that of the run it resumes, never in the working directory of the process.
         workdir: match &setup.isolation {
-            Some(isolation) => Some(isolation.launch.clone().unwrap_or_else(|| own(run))),
-            None => arguments.embedded.then(|| own(run)),
+            Some(isolation) => Some(isolation.launch.clone().unwrap_or_else(|| own(setup, run))),
+            None => arguments.embedded.then(|| own(setup, run)),
         },
         directory: arguments.workdir.clone(),
         planning: arguments.planning,
@@ -318,8 +357,12 @@ pub(crate) fn snakemake_options(
 }
 
 /// The launch folder of its own of the run `run`.
-fn own(run: &str) -> PathBuf {
-    cache_directory().join("scratch").join("launch").join(run)
+fn own(setup: &Setup, run: &str) -> PathBuf {
+    setup
+        .cache_directory()
+        .join("scratch")
+        .join("launch")
+        .join(run)
 }
 
 /// Whether the executor sees the folders of this machine at their paths, so that Snakemake
@@ -327,7 +370,9 @@ fn own(run: &str) -> PathBuf {
 fn shared_workdir(arguments: &Arguments, setup: &Setup) -> bool {
     match arguments.executor.as_deref().unwrap_or("local") {
         "local" => true,
-        "slurm" => setup.executors.slurm_staging.mode == crate::staging::Mode::SharedPath,
+        "slurm" => {
+            setup.executors.slurm_staging.mode == crate::executors::staging::Mode::SharedPath
+        }
         _ => false,
     }
 }
@@ -345,9 +390,9 @@ pub(crate) fn snakemake(
         python: Some(snakemake_runtime::PythonContainers {
             engine: setup.engine(),
             image: arguments.python_image.clone(),
-            cache: cache_directory().join("python"),
+            cache: setup.cache_directory().join("python"),
             show_output: true,
-            journals: Some(crate::journal_folder()),
+            journals: Some(setup.journal_folder()),
         }),
         storage: setup.storage.clone(),
         cancel: cancel.clone(),
@@ -387,8 +432,9 @@ fn snakemake_git(setup: &Setup) -> snakemake_runtime::GitClient {
     snakemake_runtime::GitClient(std::sync::Arc::new(checkout))
 }
 
-/// What the command line asks to run, in the terms all languages share.
-pub(crate) fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
+/// What the command line asks to run, in the terms all languages share, with the scratch
+/// folder of the run of `setup`.
+pub(crate) fn launch(arguments: &Arguments, setup: &Setup, target: PathBuf) -> Launch {
     Launch {
         target,
         params: arguments.params.clone(),
@@ -400,7 +446,7 @@ pub(crate) fn launch(arguments: &Arguments, target: PathBuf) -> Launch {
         omit_from: arguments.omit_from.clone(),
         forcerun: arguments.forcerun.clone(),
         forceall: arguments.forceall,
-        scratch: cache_directory().join("scratch"),
+        scratch: setup.cache_directory().join("scratch"),
         output_dir: arguments.output_dir.clone(),
         stub: arguments.stub,
         // The simulator makes up the outputs of tasks, so its runs also assume that the
@@ -435,7 +481,6 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let config = root.path().join("config.toml");
         std::fs::write(&config, "").unwrap();
-        let setup = crate::setup::Setup::default();
         let cancel = workflow_graph::CancellationToken::new();
         for chosen in [None, Some(root.path().join("journals"))] {
             let _scope = crate::run::support::CacheScope::new(false);
@@ -444,11 +489,52 @@ mod tests {
             settings.cache_folder = Some(root.path().join("cache"));
             settings.journal_folder = chosen.clone();
             let (arguments, _, _inputs) = settings.prepare().unwrap();
+            let mut setup = crate::setup::Setup::default();
+            setup.use_folders(&arguments);
             let expected = chosen.unwrap_or_else(|| root.path().join("cache/containers"));
-            let options = super::cwl_options(&arguments, &setup, &cancel);
-            assert_eq!(options.javascript.journals.as_ref(), Some(&expected));
-            let python = super::snakemake(&arguments, &setup, &cancel).python;
-            assert_eq!(python.and_then(|python| python.journals), Some(expected));
+            // Another thread, like one of the workers of the run, sees the same folders.
+            let (setup, arguments, cancel) = (&setup, &arguments, &cancel);
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    let options = super::cwl_options(arguments, setup, cancel);
+                    assert_eq!(options.javascript.journals.as_ref(), Some(&expected));
+                    let python = super::snakemake(arguments, setup, cancel).python;
+                    assert_eq!(
+                        python.and_then(|python| python.journals),
+                        Some(expected.clone())
+                    );
+                });
+            });
+        }
+    }
+
+    /// Two runs of one thread with other cache folders keep their own folders and downloads.
+    #[test]
+    fn separates_run_folders() {
+        let root = tempfile::tempdir().unwrap();
+        let mut setups = Vec::new();
+        for name in ["one", "two"] {
+            let arguments = crate::arguments::Arguments {
+                cache_folder: Some(root.path().join(name)),
+                ..Default::default()
+            };
+            let mut setup = crate::setup::Setup::default();
+            setup.use_folders(&arguments);
+            setups.push(setup);
+        }
+        for (setup, name) in setups.iter().zip(["one", "two"]) {
+            let context = setup.context();
+            assert_eq!(context.cache_folder, root.path().join(name));
+            assert_eq!(
+                context.downloads(),
+                root.path().join(name).join("downloads")
+            );
+            assert_eq!(
+                setup.journal_folder(),
+                root.path().join(name).join("containers")
+            );
+            let launch = super::launch(&Default::default(), setup, "main.nf".into());
+            assert_eq!(launch.scratch, root.path().join(name).join("scratch"));
         }
     }
 
@@ -471,10 +557,15 @@ mod tests {
         });
         let downloads = tempfile::tempdir().unwrap();
         let url = format!("http://{address}/main.nf");
-        let copy = super::fetch_workflow(&url, downloads.path()).unwrap();
+        let storage = storage::Storage::default().with_proxy(None);
+        let copy = super::fetch_workflow(&url, &storage, downloads.path()).unwrap();
         assert!(copy.is_file());
         // Clean-up cannot take the downloads alone while the run may read the file.
         let alone = storage::hold_downloads(downloads.path()).unwrap();
         assert!(alone.is_none(), "the run holds its downloads");
+        // The storage of the run holds them until the run ends.
+        drop(storage);
+        let alone = storage::hold_downloads(downloads.path()).unwrap();
+        assert!(alone.is_some(), "the downloads go free with the run");
     }
 }

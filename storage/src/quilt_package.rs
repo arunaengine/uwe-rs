@@ -76,7 +76,9 @@ pub fn record(address: &str, physical: &str, file: &Path) -> Result<(), StorageE
             size,
             hash: quilt::file_hash(&file).await.map_err(failed)?,
         };
-        let objects = Arc::new(Objects::new(quilt::environment()).map_err(failed)?);
+        let clients = crate::web::Clients::process().map_err(Problem::fixed);
+        let objects = Objects::new(quilt::environment(), clients.map_err(failed)?);
+        let objects = Arc::new(objects.map_err(failed)?);
         quilt::remember(&parsed.bucket, &parsed.package, item, &objects);
         Ok(())
     })
@@ -156,7 +158,10 @@ fn taken(address: &Address) -> Result<(Vec<Entry>, Arc<Objects>), Problem> {
     *written = others;
     let objects = match mine.first() {
         Some(kept) => kept.objects.clone(),
-        None => Arc::new(Objects::new(quilt::environment())?),
+        None => {
+            let clients = crate::web::Clients::process().map_err(Problem::fixed)?;
+            Arc::new(Objects::new(quilt::environment(), clients)?)
+        }
     };
     Ok((mine.into_iter().map(|kept| kept.item).collect(), objects))
 }

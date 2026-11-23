@@ -19,6 +19,7 @@ pub struct Lookup {
     settings: Settings,
     references: crate::References,
     network: NetworkRule,
+    tenant: String,
 }
 
 impl Lookup {
@@ -28,7 +29,13 @@ impl Lookup {
             settings,
             references: crate::References::default(),
             network: NetworkRule::default(),
+            tenant: String::new(),
         }
+    }
+
+    /// Looks in the cache namespace of a tenant, as [`crate::Runner::cache_namespace`] does.
+    pub fn cache_namespace(&mut self, tenant: Option<&str>) {
+        self.tenant = tenant.map(crate::request::tenant).unwrap_or_default();
     }
 
     /// Decides the network of each task as the run that executes it would.
@@ -58,6 +65,8 @@ impl Lookup {
             references: &self.references,
             mode: Mode::Look,
             snapshots: Snapshots::new(&self.settings, "lookup"),
+            direct: crate::inputs::Direct::Any,
+            tenant: &self.tenant,
         };
         let task = with_network(std::sync::Arc::new(task.clone()), &self.network);
         let Ok(prepared) = prepare(&inputs, &task, image.clone()).await else {

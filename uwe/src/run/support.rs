@@ -6,18 +6,20 @@ use crate::failure::{Failure, INTERRUPTED};
 use std::path::PathBuf;
 use workflow_graph::{CancellationToken, Execution, ExecutionGraph, SIMULATION};
 
-/// Downloads remote inputs once and caches digests of unchanged local files.
-/// `import_inputs` also stores local bytes for executors on other machines.
+/// Downloads remote inputs once and caches digests of unchanged local files, in the folders
+/// and with the storage of the run of `context`. `import_inputs` also stores local bytes for
+/// executors on other machines.
 pub(crate) fn runner_settings(
-    storage: storage::Storage,
+    context: &super::RunContext,
     import_inputs: bool,
 ) -> task_runner::Settings {
-    let cache = cache_directory();
-    let digests = cache.join(task_runner::DigestCache::FILE_NAME);
+    let digests = context
+        .cache_folder
+        .join(task_runner::DigestCache::FILE_NAME);
     task_runner::Settings {
-        downloads: cache.join("downloads"),
+        downloads: context.downloads(),
         import_inputs,
-        storage,
+        storage: context.storage.clone(),
         // Without the cache of digests, inputs are read as before; it only saves time.
         digests: task_runner::DigestCache::open(&digests).ok(),
     }
@@ -81,9 +83,9 @@ pub(crate) fn cache_directory() -> PathBuf {
 }
 
 /// Where CWL images that tools build are saved as archives for SLURM with Apptainer, named by
-/// their image ID.
-pub(crate) fn cwl_archives() -> PathBuf {
-    cache_directory().join("cwl-images")
+/// their image ID, in the cache folder `cache`.
+pub(crate) fn cwl_archives(cache: &std::path::Path) -> PathBuf {
+    cache.join("cwl-images")
 }
 
 /// A run id from the clock, the process id and 32 random bits. The random bits keep ids apart

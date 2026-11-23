@@ -26,7 +26,7 @@
     "path": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$" },
     "count": { "type": "integer", "minimum": 0 },
     "names": { "type": "array", "items": { "$ref": "#/$defs/name" } },
-    "language": { "enum": ["cwl", "nextflow", "snakemake", "argo", "wdl"] },
+    "language": { "enum": ["cwl", "nextflow", "snakemake", "argo", "wdl", "galaxy"] },
     "source": {
       "type": "object",
       "additionalProperties": false,

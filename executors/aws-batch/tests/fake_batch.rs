@@ -80,6 +80,7 @@ fn backend(folder: &Path, fake: &FakeBatch) -> BatchBackend {
         max_outputs: 4,
         credentials: false,
         cleanup: true,
+        multipart: None,
     };
     let mut backend = BatchBackend::new(client, settings, folder.join("scratch"), stage, None)
         .expect("a backend");
@@ -447,4 +448,54 @@ async fn stops_unschedulable_jobs() {
         "{ended:?}"
     );
     assert_eq!(fake.requests("submitjob").len(), 1);
+}
+
+/// Jobs that the journals of a run name, as a process that ended left them: a report tells
+/// their state, a stop terminates them, and the job of an attempt that runs on stays.
+#[tokio::test]
+async fn stops_orphaned_jobs() {
+    use executor::orphans::Outcome;
+    use executor::{JournalStore, Journals, MemoryJournal};
+
+    let folder = tempfile::tempdir().expect("a folder");
+    let fake = FakeBatch::start(&folder.path().join("fake"));
+    fake.unschedulable();
+    let mut backend = backend(folder.path(), &fake);
+    let memory = MemoryJournal::new();
+    let journals = Journals::new(std::sync::Arc::new(memory.clone()), "aws-batch", "run");
+    backend.journals = Some(journals.clone());
+    for attempt in ["run-A-1-1", "run-B-1-1"] {
+        let body = json!({"jobName": attempt, "jobQueue": "q", "jobDefinition": "d"});
+        let answer = backend
+            .client
+            .batch("submitjob", &body)
+            .await
+            .expect("submits");
+        let id = answer["jobId"].as_str().expect("an id");
+        let scope = executor::orphans::RemoteJobs::scope(&backend);
+        journals
+            .submitted(attempt, id, json!({"scope": scope}))
+            .expect("notes");
+    }
+    let found = backend.orphans("run").await.expect("a report");
+    let states: Vec<_> = (found.iter())
+        .map(|orphan| (orphan.state.as_deref(), &orphan.outcome))
+        .collect();
+    assert_eq!(states, [(Some("RUNNABLE"), &Outcome::Running); 2]);
+    let held = journals.hold("run-B-1-1").expect("holds");
+    let stopped = backend.stop_orphans("run").await.expect("a stop");
+    assert_eq!(stopped[0].outcome, Outcome::Canceled);
+    assert_eq!(stopped[0].state.as_deref(), Some("FAILED"));
+    assert!(
+        matches!(&stopped[1].outcome, Outcome::Kept(_)),
+        "{stopped:?}"
+    );
+    assert_eq!(fake.requests("terminatejob").len(), 1);
+    assert_eq!(memory.list("aws-batch", "run").unwrap(), ["run-B-1-1"]);
+    drop(held);
+    assert_eq!(
+        backend.stop_orphans("run").await.unwrap()[0].outcome,
+        Outcome::Canceled
+    );
+    assert!(memory.list("aws-batch", "run").unwrap().is_empty());
 }

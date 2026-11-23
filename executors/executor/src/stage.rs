@@ -82,6 +82,12 @@ fn place_with(
     owned: &mut bool,
 ) -> std::io::Result<Vec<Mount>> {
     check(cancel)?;
+    if !staging.direct.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "this machine cannot place inputs that only remote workers fetch",
+        ));
+    }
     for path in staging
         .inputs
         .iter()
@@ -577,6 +583,8 @@ mod tests {
             ],
             directories: vec!["/made/empty".into(), "/made/empty/deeper".into()],
             stdin: None,
+            direct: Vec::new(),
+            live: None,
         };
         let root = folder.path().join("scratch").join("task");
         let mounts = place(&root, &staging).expect("places");

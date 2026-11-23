@@ -9,12 +9,24 @@ use crate::node::{Node, Value};
 use crate::{ConfigError, Origin, Secret, SecretValues};
 
 /// A table of settings and its full name, like `storage.lab`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Table<'a> {
     name: String,
     entries: &'a BTreeMap<String, Node>,
     origin: &'a Origin,
     secrets: &'a SecretValues,
+}
+
+/// Shows the name, the keys and where the table starts, never a value.
+impl std::fmt::Debug for Table<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Table")
+            .field("name", &self.name)
+            .field("keys", &self.entries.keys().collect::<Vec<_>>())
+            .field("origin", &self.origin)
+            .finish_non_exhaustive()
+    }
 }
 
 /// The key that names the environment variable of a secret.

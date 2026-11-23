@@ -4,23 +4,32 @@
 
 mod api;
 mod assets;
+mod composer;
 mod files;
+mod launch;
 mod live;
 mod report;
+mod studio;
+mod wes;
 
 use std::collections::BTreeSet;
 use std::future::IntoFuture;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use run_database::{Database, DatabaseError};
+use run_database::{Database, DatabaseError, RunStore, SqliteStore};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 pub use report::{LOG_TAIL, log_tail, report, report_with_files};
+pub use studio::{
+    Capabilities, ComposerRequest, Described, ExportFormat, ExportRequest, Exported, ImportRequest,
+    LaunchRequest, Launched, Phase, Profiles, Refusal, Reply, ResumeFrom, RunStarted, ScanRequest,
+    Studio, SuggestMode, SuggestRequest, ToolFilter, WorkflowEntry,
+};
 
 /// Where the page serves and what it reads.
 #[derive(Clone)]
@@ -99,9 +108,60 @@ impl Server {
         Self::start_with(settings, Some(runs))
     }
 
+    /// Serves the runs of a store of the host instead of the database file of `settings`,
+    /// for these run IDs only when `runs` names them.
+    pub fn start_store(
+        settings: &Settings,
+        store: Arc<dyn RunStore>,
+        runs: Option<BTreeSet<String>>,
+    ) -> Result<Server, PageError> {
+        if runs.is_some() && settings.token.is_none() {
+            return Err(PageError::TokenRequired);
+        }
+        Self::serve(settings, || Ok(store), runs, None)
+    }
+
+    /// Serves the runs, and lets the page start, follow and stop runs and compose tools
+    /// through `studio`. Without `store` it reads the database file of `settings`. The runs
+    /// that the page starts join `runs`, when it names some.
+    pub fn start_studio(
+        settings: &Settings,
+        store: Option<Arc<dyn RunStore>>,
+        studio: Arc<dyn Studio>,
+        runs: Option<BTreeSet<String>>,
+    ) -> Result<Server, PageError> {
+        if runs.is_some() && settings.token.is_none() {
+            return Err(PageError::TokenRequired);
+        }
+        let open = || -> Result<Arc<dyn RunStore>, PageError> {
+            match store {
+                Some(store) => Ok(store),
+                None => Ok(Arc::new(SqliteStore::new(Database::open(
+                    &settings.database,
+                )?))),
+            }
+        };
+        Self::serve(settings, open, runs, Some(studio))
+    }
+
     fn start_with(
         settings: &Settings,
         runs: Option<BTreeSet<String>>,
+    ) -> Result<Server, PageError> {
+        let open = || -> Result<Arc<dyn RunStore>, PageError> {
+            Ok(Arc::new(SqliteStore::new(Database::open(
+                &settings.database,
+            )?)))
+        };
+        Self::serve(settings, open, runs, None)
+    }
+
+    /// Checks the token, then opens the store and serves it.
+    fn serve(
+        settings: &Settings,
+        open: impl FnOnce() -> Result<Arc<dyn RunStore>, PageError>,
+        runs: Option<BTreeSet<String>>,
+        studio: Option<Arc<dyn Studio>>,
     ) -> Result<Server, PageError> {
         if let Some(token) = &settings.token {
             if token.is_empty()
@@ -114,7 +174,7 @@ impl Server {
         } else if !settings.address.is_loopback() {
             return Err(PageError::TokenRequired);
         }
-        let database = Database::open(&settings.database)?;
+        let store = open()?;
         let address = SocketAddr::new(settings.address, settings.port);
         let listener =
             TcpListener::bind(address).map_err(|error| PageError::Listen { address, error })?;
@@ -128,10 +188,12 @@ impl Server {
             .map_err(PageError::Start)?;
         let handle = runtime.handle().clone();
         let state = Arc::new(State {
-            database: Mutex::new(database),
+            store,
             stop: CancellationToken::new(),
             token: settings.token.clone(),
             runs,
+            launched: Mutex::new(BTreeSet::new()),
+            studio,
         });
         let (stop, stopped) = oneshot::channel();
         let thread = std::thread::Builder::new()
@@ -193,17 +255,49 @@ impl Server {
     }
 }
 
-/// What every request shares: one connection to the database.
+/// What every request shares: the store of the runs, and the studio of the host, if any.
 pub(crate) struct State {
-    database: Mutex<Database>,
+    store: Arc<dyn RunStore>,
     stop: CancellationToken,
     token: Option<String>,
     runs: Option<BTreeSet<String>>,
+    /// The runs that the page started, which a page for some runs only shows too.
+    launched: Mutex<BTreeSet<String>>,
+    studio: Option<Arc<dyn Studio>>,
 }
 
 impl State {
     fn permits(&self, run: &str) -> bool {
-        self.runs.as_ref().is_none_or(|runs| runs.contains(run))
+        self.runs.as_ref().is_none_or(|runs| {
+            runs.contains(run)
+                || self
+                    .launched
+                    .lock()
+                    .is_ok_and(|launched| launched.contains(run))
+        })
+    }
+
+    /// The runs that this page may show, or `None` for every run of the store.
+    fn allowed(&self) -> Option<BTreeSet<String>> {
+        let mut runs = self.runs.clone()?;
+        if let Ok(launched) = self.launched.lock() {
+            runs.extend(launched.iter().cloned());
+        }
+        Some(runs)
+    }
+
+    /// Lets a page for some runs show a run that it started; any other page shows it already.
+    pub(crate) fn admit(&self, run: &str) {
+        if self.runs.is_some()
+            && let Ok(mut launched) = self.launched.lock()
+        {
+            launched.insert(run.to_owned());
+        }
+    }
+
+    /// The studio of the host; a page without one only shows runs.
+    pub(crate) fn studio(&self) -> Result<&dyn Studio, Failure> {
+        (self.studio.as_deref()).ok_or_else(|| Failure::not_found("this page starts no runs"))
     }
 
     pub(crate) fn authorize(&self, run: &str) -> Result<(), Failure> {
@@ -220,18 +314,12 @@ pub(crate) type Shared = Arc<State>;
 /// Runs a query of the database on a thread for blocking work.
 pub(crate) async fn query<T: Send + 'static>(
     state: &Shared,
-    work: impl FnOnce(&Database) -> Result<T, Failure> + Send + 'static,
+    work: impl FnOnce(&dyn run_database::RunReader) -> Result<T, Failure> + Send + 'static,
 ) -> Result<T, Failure> {
     let state = state.clone();
-    tokio::task::spawn_blocking(move || {
-        let database = state
-            .database
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        work(&database)
-    })
-    .await
-    .map_err(|error| Failure::internal(error.to_string()))?
+    tokio::task::spawn_blocking(move || work(state.store.as_ref()))
+        .await
+        .map_err(|error| Failure::internal(error.to_string()))?
 }
 
 /// Why a request failed, as an HTTP status and a plain message.
@@ -256,6 +344,14 @@ impl Failure {
         }
     }
 
+    /// The request does not fit the state of the run, like stopping a run that has ended.
+    pub(crate) fn conflict(message: impl Into<String>) -> Self {
+        Failure {
+            status: StatusCode::CONFLICT,
+            message: message.into(),
+        }
+    }
+
     pub(crate) fn internal(message: impl Into<String>) -> Self {
         Failure {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -267,6 +363,15 @@ impl Failure {
 impl From<DatabaseError> for Failure {
     fn from(error: DatabaseError) -> Self {
         Failure::internal(error.to_string())
+    }
+}
+
+impl From<Refusal> for Failure {
+    fn from(refusal: Refusal) -> Self {
+        Failure {
+            status: refusal.status,
+            message: refusal.message,
+        }
     }
 }
 

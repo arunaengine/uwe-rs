@@ -1,0 +1,63 @@
+{
+    "a_galaxy_workflow": "true",
+    "format-version": "0.1",
+    "name": "Annotate and count",
+    "annotation": "Annotates indels with their homopolymer context and counts the lines.",
+    "steps": {
+        "0": {
+            "id": 0,
+            "type": "data_input",
+            "label": "variants",
+            "name": "Input dataset",
+            "tool_state": "{\"optional\": false, \"format\": [\"vcf\"]}",
+            "input_connections": {},
+            "inputs": [{"name": "variants", "description": ""}],
+            "workflow_outputs": []
+        },
+        "1": {
+            "id": 1,
+            "type": "data_input",
+            "label": "reference",
+            "name": "Input dataset",
+            "tool_state": "{\"optional\": false}",
+            "input_connections": {},
+            "inputs": [{"name": "reference", "description": ""}],
+            "workflow_outputs": []
+        },
+        "2": {
+            "id": 2,
+            "type": "parameter_input",
+            "label": "with_header",
+            "name": "Input parameter",
+            "tool_state": "{\"parameter_type\": \"boolean\", \"optional\": false, \"default\": false}",
+            "input_connections": {},
+            "workflow_outputs": []
+        },
+        "3": {
+            "id": 3,
+            "type": "tool",
+            "label": "annotate",
+            "tool_id": "toolshed.g2.bx.psu.edu/repos/iuc/get_hrun/get_hrun/1.0+galaxy0",
+            "tool_version": "1.0+galaxy0",
+            "tool_state": "{\"in_vcf\": {\"__class__\": \"ConnectedValue\"}, \"reference\": {\"__class__\": \"ConnectedValue\"}, \"__page__\": null, \"__rerun_remap_job_id__\": null}",
+            "input_connections": {
+                "in_vcf": {"id": 0, "output_name": "output"},
+                "reference": {"id": 1, "output_name": "output"}
+            },
+            "workflow_outputs": [{"label": "annotated", "output_name": "out_vcf"}]
+        },
+        "4": {
+            "id": 4,
+            "type": "tool",
+            "label": "count",
+            "tool_id": "count_lines",
+            "tool_version": "1.0",
+            "tool_state": "{\"input\": \"{\\\"__class__\\\": \\\"ConnectedValue\\\"}\", \"header\": \"{\\\"__class__\\\": \\\"ConnectedValue\\\"}\"}",
+            "input_connections": {
+                "input": {"id": 3, "output_name": "out_vcf"},
+                "header": {"id": 2, "output_name": "output"}
+            },
+            "workflow_outputs": [{"label": "lines", "output_name": "output"}]
+        }
+    }
+}

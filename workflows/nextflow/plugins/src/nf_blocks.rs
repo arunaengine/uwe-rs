@@ -29,18 +29,9 @@ pub(crate) const PLUGIN: Plugin = Plugin {
 const USAGE: &str = "`fromStore` takes `selection: <address>`, or `run: <ref>` with `output: \
                      <name>`; optionally `where: [...]` and `records: true`.";
 
-/// Hands the stores of the `cas` scope to the `cas://` provider, checks `outputDir`, and
-/// makes the observer that writes the blocks of the run.
-fn activate(
-    config: &Config,
-    _: &std::path::Path,
-    environment: &crate::catalogue::Environment,
-) -> Result<Option<Box<dyn Observer>>, String> {
-    let text = |path: &[&str]| {
-        (config.get(path))
-            .filter(|value| !matches!(value, Value::Null))
-            .map(|value| value.to_string())
-    };
+/// The stores of the `cas` scope, the order reads look in, and the store of
+/// `lineage.store.location` that writes go to, for the `cas://` provider of the run.
+pub(crate) fn stores(config: &Config) -> Result<storage::cas::Options, String> {
     let mut stores = Vec::new();
     if let Some(table) = config.get(&["cas", "stores"]) {
         for (alias, store) in crate::nf_schema::entries(&table) {
@@ -61,11 +52,37 @@ fn activate(
             stores.push((alias, location));
         }
     }
-    let lineage = text(&["lineage", "store", "location"]);
-    let writable = lineage
-        .as_deref()
-        .and_then(|location| location.strip_prefix("cas://"));
-    let Some(writable) = writable.map(|alias| alias.trim_end_matches('/').to_owned()) else {
+    let lineage = (config.get(&["lineage", "store", "location"]))
+        .filter(|value| !matches!(value, Value::Null))
+        .map(|value| value.to_string());
+    let writable = (lineage.as_deref())
+        .and_then(|location| location.strip_prefix("cas://"))
+        .map(|alias| alias.trim_end_matches('/').to_owned());
+    let resolve = match config.get(&["cas", "resolve"]) {
+        Some(Value::List(list)) => list.borrow().items.iter().map(Value::to_string).collect(),
+        _ => Vec::new(),
+    };
+    Ok(storage::cas::Options {
+        stores,
+        resolve,
+        writable,
+    })
+}
+
+/// Checks the stores of the `cas` scope and `outputDir`, and makes the observer that writes
+/// the blocks of the run into the stores of its own config.
+fn activate(
+    config: &Config,
+    _: &std::path::Path,
+    environment: &crate::catalogue::Environment,
+) -> Result<Option<Box<dyn Observer>>, String> {
+    let text = |path: &[&str]| {
+        (config.get(path))
+            .filter(|value| !matches!(value, Value::Null))
+            .map(|value| value.to_string())
+    };
+    let cas = stores(config)?;
+    let Some(writable) = cas.writable.clone() else {
         return Err("nf-blocks needs lineage.store.location = 'cas://<alias>'".to_owned());
     };
     match text(&["outputDir"]) {
@@ -79,10 +96,6 @@ fn activate(
             ));
         }
     }
-    let resolve = match config.get(&["cas", "resolve"]) {
-        Some(Value::List(list)) => list.borrow().items.iter().map(Value::to_string).collect(),
-        _ => Vec::new(),
-    };
     let signer = text(&["cas", "asserted_by"])
         .map(|name| (name, "cas.asserted_by"))
         .or_else(|| {
@@ -101,16 +114,11 @@ fn activate(
             "anonymous".to_owned()
         }
     };
-    let locations: Vec<String> = stores
-        .iter()
+    let locations: Vec<String> = (cas.stores.iter())
         .map(|(_, location)| location.clone())
         .collect();
-    storage::cas::use_scope(storage::cas::Options {
-        stores,
-        resolve,
-        writable: Some(writable.clone()),
-    });
     Ok(Some(Box::new(Lineage {
+        cas,
         writable,
         asserted_by,
         pipeline: text(&["cas", "pipeline"]),
@@ -122,6 +130,8 @@ fn activate(
 
 /// Collects what the run made, and writes its blocks when it ends.
 struct Lineage {
+    /// The stores of the run, which its blocks go to.
+    cas: storage::cas::Options,
     writable: String,
     asserted_by: String,
     pipeline: Option<String>,
@@ -167,7 +177,7 @@ impl Lineage {
     /// then its Store Log entry, so that the entry never names a missing block.
     fn finish(&self, end: &End) -> Result<(), String> {
         let start = self.start.as_ref().ok_or("the run did not start")?;
-        let put = |node: &Node| storage::cas::put_block(node).map_err(|error| error.to_string());
+        let put = |node: &Node| self.cas.put_block(node).map_err(|error| error.to_string());
         let signed = || ("asserted_by", Node::Text(self.asserted_by.clone()));
         let manifest = put(&self.manifest(start))?;
         let mut collections = Vec::new();
@@ -181,7 +191,10 @@ impl Lineage {
                 .iter()
                 .filter(|target| target.starts_with(&prefix))
             {
-                let found = storage::cas::coordinate(target).map_err(|error| error.to_string())?;
+                let found = self
+                    .cas
+                    .coordinate(target)
+                    .map_err(|error| error.to_string())?;
                 let Some((content, size)) = found else {
                     continue;
                 };
@@ -271,7 +284,7 @@ impl Lineage {
             ("item_lineage", Node::Link(lineage)),
             ("possibly_incomplete", Node::Bool(false)),
         ]))?;
-        storage::cas::put_log("run", &completion).map_err(|error| error.to_string())
+        (self.cas.put_log("run", &completion)).map_err(|error| error.to_string())
     }
 
     fn manifest(&self, start: &Start) -> Node {
@@ -347,7 +360,9 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
             .collect(),
         _ => Vec::new(),
     };
+    let cas = stores(context.config).map_err(thrown)?;
     let found = items(
+        &cas,
         &reference.to_string(),
         pipeline.as_deref(),
         &output.to_string(),
@@ -363,18 +378,19 @@ fn call(name: &str, arguments: Vec<Value>, context: &mut Context) -> Result<Valu
     Ok(Value::list(values))
 }
 
-/// The items of an output of a run, with their CIDs and values.
+/// The items of an output of a run in the stores `cas`, with their CIDs and values.
 fn items(
+    cas: &storage::cas::Options,
     reference: &str,
     pipeline: Option<&str>,
     output: &str,
 ) -> Result<Vec<(Cid, Node)>, String> {
     let read = |cid: &Cid| {
-        (storage::cas::block(cid).map_err(|error| error.to_string()))?
+        (cas.block(cid).map_err(|error| error.to_string()))?
             .ok_or_else(|| format!("the block {cid} is in no store"))
     };
     let kind = |node: &Node| node.get("kind").and_then(Node::text).map(str::to_owned);
-    let runs = || storage::cas::runs().map_err(|error| error.to_string());
+    let runs = || cas.runs().map_err(|error| error.to_string());
     let completion = match reference {
         "latest" => {
             let pipeline =

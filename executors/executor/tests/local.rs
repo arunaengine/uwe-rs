@@ -165,6 +165,46 @@ fn runs_container_task() {
 
 #[test]
 #[ignore = "needs Docker and the debian:stable-slim image"]
+fn streams_live_output() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let executor = executor(root.path());
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let kept = seen.clone();
+    let mut staged = staging(vec![stage(
+        root.path(),
+        ".command.sh",
+        "echo first\nsleep 3\necho second\necho warning >&2\n",
+    )]);
+    staged.live = Some(executor::LiveSink::new(move |live| {
+        kept.lock().unwrap().push(live);
+    }));
+    let finished = run(
+        &executor,
+        "task-live",
+        &spec(Some("debian:stable-slim"), &[]),
+        &staged,
+    )
+    .expect("runs");
+    assert_eq!(finished.exit_code, Some(0));
+    let seen = seen.lock().unwrap();
+    let text = |wanted: executor::LogStream| -> String {
+        (seen.iter())
+            .filter_map(|live| match live {
+                executor::Live::Log { stream, chunk } if *stream == wanted => Some(chunk.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(text(executor::LogStream::Stdout), "first\nsecond\n");
+    assert_eq!(text(executor::LogStream::Stderr), "warning\n");
+    let usage = seen.iter().any(|live| {
+        matches!(live, executor::Live::Usage { memory_bytes: Some(bytes), .. } if *bytes > 0)
+    });
+    assert!(usage, "the container's memory while it ran: {seen:?}");
+}
+
+#[test]
+#[ignore = "needs Docker and the debian:stable-slim image"]
 fn provides_writable_home() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let executor = executor(root.path());
@@ -291,6 +331,8 @@ fn uses_absolute_workdir() {
         inputs: vec![stage(root.path(), "/data/in.txt", "in\n")],
         directories: Vec::new(),
         stdin: Some(stdin),
+        direct: Vec::new(),
+        live: None,
     };
     let finished = run(&executor, "task-5", &task, &staged).expect("runs");
     assert_eq!(finished.exit_code, Some(0));

@@ -18,6 +18,8 @@ use crate::{Downloaded, Metadata, address};
 #[derive(Clone)]
 pub(crate) struct Web {
     client: reqwest::Client,
+    /// The client that follows a redirect to another origin, without the headers.
+    plain: reqwest::Client,
     /// The headers of the provider, which may hold secrets, sent with every request.
     headers: HeaderMap,
     /// Whether a refused request is an error. Public servers answer `HEAD` requests in many
@@ -34,35 +36,47 @@ const IDLE: Duration = match cfg!(test) {
     false => Duration::from_secs(300),
 };
 
-/// Shares one lazy HTTP client across storage and executors; bounded requests supply their own
-/// timeouts.
-pub fn http_client() -> Result<&'static reqwest::Client, String> {
-    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
-    let client = CLIENT
-        .get_or_init(|| (builder()?.read_timeout(IDLE).build()).map_err(|error| error.to_string()));
-    client.as_ref().map_err(Clone::clone)
+/// The HTTP clients of one proxy setting. Those of the proxy of the process are shared; those
+/// of another proxy belong to whoever made them, like the storage of one run.
+#[derive(Clone)]
+pub struct Clients {
+    /// The client for reads; bounded requests supply their own timeouts.
+    pub plain: reqwest::Client,
+    /// The client for requests with a body, which a slow upload must not end.
+    pub upload: reqwest::Client,
+    /// The client for requests with headers of a provider, see [`origin_client`].
+    pub origin: reqwest::Client,
 }
 
-/// The client for requests with a body. The read timeout of reqwest runs from the start of a
-/// request to its answer, so it would end slow uploads; instead the kernel ends a connection
-/// whose data stays unacknowledged, or unsent behind a closed window, for `IDLE`.
-pub(crate) fn upload_client() -> Result<&'static reqwest::Client, String> {
-    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
-    let client = CLIENT.get_or_init(|| {
-        let builder = builder()?.tcp_keepalive(Duration::from_secs(30));
+impl Clients {
+    /// The clients that send through `proxy`, or directly for `None`, unless the environment
+    /// names a proxy. Clients of another proxy than the one of the process are new, so that
+    /// no proxy, which may hold a password, stays in the process after its run.
+    pub fn of(proxy: Option<&str>) -> Result<Clients, String> {
+        match proxy == process_proxy() {
+            true => Clients::process().cloned(),
+            false => Clients::made(proxy),
+        }
+    }
+
+    /// The clients of the process proxy, which [`use_proxy`] sets once, made once each.
+    pub(crate) fn process() -> Result<&'static Clients, String> {
+        static DIRECT: OnceLock<Result<Clients, String>> = OnceLock::new();
+        static PROXIED: OnceLock<Result<Clients, String>> = OnceLock::new();
+        let made = match process_proxy() {
+            None => DIRECT.get_or_init(|| Clients::made(None)),
+            proxy => PROXIED.get_or_init(|| Clients::made(proxy)),
+        };
+        made.as_ref().map_err(Clone::clone)
+    }
+
+    fn made(proxy: Option<&str>) -> Result<Clients, String> {
+        let plain = builder(proxy)?.read_timeout(IDLE).build();
+        // The read timeout of reqwest runs from the start of a request to its answer, so it
+        // would end slow uploads; the kernel ends a connection whose data stays unacknowledged.
+        let upload = builder(proxy)?.tcp_keepalive(Duration::from_secs(30));
         #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
-        let builder = builder.tcp_user_timeout(IDLE);
-        builder.build().map_err(|error| error.to_string())
-    });
-    client.as_ref().map_err(Clone::clone)
-}
-
-/// The client for requests with headers of a provider. It follows no redirect to another
-/// origin, so that the request can go there again without those headers, which may hold
-/// secrets; reqwest drops only `Authorization` and cookies on its own.
-pub fn origin_client() -> Result<&'static reqwest::Client, String> {
-    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
-    let client = CLIENT.get_or_init(|| {
+        let upload = upload.tcp_user_timeout(IDLE);
         let policy = reqwest::redirect::Policy::custom(|attempt| {
             let first = attempt.previous().first().map(origin);
             match attempt.previous().len() {
@@ -71,13 +85,27 @@ pub fn origin_client() -> Result<&'static reqwest::Client, String> {
                 _ => attempt.follow(),
             }
         });
-        builder()?
-            .read_timeout(IDLE)
-            .redirect(policy)
-            .build()
-            .map_err(|error| error.to_string())
-    });
-    client.as_ref().map_err(Clone::clone)
+        let origin = builder(proxy)?.read_timeout(IDLE).redirect(policy).build();
+        let failed = |error: reqwest::Error| error.to_string();
+        Ok(Clients {
+            plain: plain.map_err(failed)?,
+            upload: upload.build().map_err(failed)?,
+            origin: origin.map_err(failed)?,
+        })
+    }
+}
+
+/// Shares one lazy HTTP client of the process proxy across storage and executors; bounded
+/// requests supply their own timeouts.
+pub fn http_client() -> Result<&'static reqwest::Client, String> {
+    Clients::process().map(|clients| &clients.plain)
+}
+
+/// The client for requests with headers of a provider. It follows no redirect to another
+/// origin, so that the request can go there again without those headers, which may hold
+/// secrets; reqwest drops only `Authorization` and cookies on its own.
+pub fn origin_client() -> Result<&'static reqwest::Client, String> {
+    Clients::process().map(|clients| &clients.origin)
 }
 
 /// The scheme, host and port of an address.
@@ -86,8 +114,9 @@ fn origin(url: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
     (url.scheme().to_owned(), host, url.port_or_known_default())
 }
 
-/// The settings that the clients of uwe share.
-fn builder() -> Result<reqwest::ClientBuilder, String> {
+/// The settings that the clients of uwe share, with the web proxy `proxy` unless the
+/// environment names one.
+fn builder(proxy: Option<&str>) -> Result<reqwest::ClientBuilder, String> {
     let mut builder = reqwest::Client::builder()
         .user_agent(concat!("uwe/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(30))
@@ -103,19 +132,21 @@ fn builder() -> Result<reqwest::ClientBuilder, String> {
             .filter_map(|root| reqwest::Certificate::from_der(root.as_ref()).ok());
         builder = builder.tls_certs_merge(roots);
     }
-    if let Some(address) = (PROXY.get())
-        .and_then(Option::as_deref)
-        .filter(|_| !proxy_in_environment())
-    {
-        let proxy = reqwest::Proxy::all(address)
-            .map_err(|error| format!("the proxy {address} of the config file: {error}"))?;
+    if let Some(address) = proxy.filter(|_| !proxy_in_environment()) {
+        let proxy = reqwest::Proxy::all(address).map_err(|error| {
+            let error = address::redacted(&error.to_string().replace(address, "the proxy"));
+            format!(
+                "the proxy {} of the config file: {error}",
+                address::redacted(address)
+            )
+        })?;
         builder = builder.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
     }
     Ok(builder)
 }
 
-/// The web proxy of `[network] proxy` of the config file, once the first request of the
-/// process settled it; `None` inside sends requests directly.
+/// The web proxy of the process, from the first [`use_proxy`]; `None` inside sends requests
+/// directly. A storage with a proxy of its own uses that one instead.
 static PROXY: OnceLock<Option<String>> = OnceLock::new();
 
 /// Whether the client trusts the roots of Mozilla besides those of the system.
@@ -127,21 +158,15 @@ pub fn trust_mozilla_roots() {
     let _ = MOZILLA_ROOTS.set(());
 }
 
-/// Sends the requests of uwe through this web proxy, or directly for `None`, unless the
-/// environment names one, like `HTTPS_PROXY`, which wins. The process shares its clients, so
-/// the first call settles the proxy and a later call with another one is refused.
+/// Sends the requests of the process clients through this proxy, or directly for `None`, unless
+/// the environment names one, like `HTTPS_PROXY`. The first call settles it; a later call
+/// changes nothing, as each run gives its storage its own with [`crate::Storage::with_proxy`].
 pub fn use_proxy(address: Option<&str>) -> Result<(), String> {
     let settled = PROXY.get_or_init(|| address.map(str::to_owned));
-    if settled.as_deref() == address {
-        return Ok(());
+    if settled.as_deref() != address {
+        tracing::debug!("the process keeps its first web proxy; the run uses its own");
     }
-    // The address can hold a password, so the message does not name it.
-    Err(match settled {
-        Some(_) => "this process sends its web requests through another proxy than the config             file names; run requests with other proxy settings in another process"
-            .to_owned(),
-        None => "this process sends its web requests without the proxy that the config file             names; run requests with other proxy settings in another process"
-            .to_owned(),
-    })
+    Ok(())
 }
 
 /// The web proxy of the config file, unless the environment names one. Programs that uwe
@@ -153,8 +178,13 @@ pub fn config_proxy() -> Option<&'static str> {
         .filter(|_| !proxy_in_environment())
 }
 
+/// The web proxy of the process, from the first [`use_proxy`].
+pub(crate) fn process_proxy() -> Option<&'static str> {
+    PROXY.get().and_then(Option::as_deref)
+}
+
 /// Whether the environment names a web proxy, which the client then takes as it is.
-fn proxy_in_environment() -> bool {
+pub(crate) fn proxy_in_environment() -> bool {
     ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"]
         .iter()
         .any(|name| {
@@ -164,27 +194,26 @@ fn proxy_in_environment() -> bool {
         })
 }
 
-/// [`http_client`], as a clone (a handle to the same client) for code that keeps one.
-pub(crate) fn shared_client() -> Result<reqwest::Client, Problem> {
-    http_client().cloned().map_err(Problem::fixed)
-}
-
 impl Web {
     /// The client for public files.
-    pub fn public() -> Result<Web, Problem> {
-        Ok(Web {
-            client: shared_client()?,
+    pub fn public(clients: &Clients) -> Web {
+        Web {
+            client: clients.plain.clone(),
+            plain: clients.plain.clone(),
             headers: HeaderMap::new(),
             strict: false,
             guard: None,
-        })
+        }
     }
 
-    /// The client for public files of a confined run, which reaches only public hosts.
-    pub fn guarded(guard: Guard) -> Result<Web, Problem> {
-        let client = guard.client(builder().map_err(Problem::fixed)?.read_timeout(IDLE));
+    /// The client for public files of a confined run, which reaches only public hosts, through
+    /// the web proxy `proxy` of its storage.
+    pub fn guarded(guard: Guard, proxy: Option<&str>) -> Result<Web, Problem> {
+        let builder = builder(proxy).map_err(Problem::fixed)?.read_timeout(IDLE);
+        let client = guard.client(builder, proxy).build().map_err(network)?;
         Ok(Web {
-            client: client.build().map_err(network)?,
+            plain: client.clone(),
+            client,
             headers: HeaderMap::new(),
             strict: false,
             guard: Some(guard),
@@ -192,13 +221,14 @@ impl Web {
     }
 
     /// A client that sends these headers with every request, which hold secrets.
-    pub fn with_headers(headers: HeaderMap) -> Result<Web, Problem> {
-        Ok(Web {
-            client: origin_client().cloned().map_err(Problem::fixed)?,
+    pub fn with_headers(headers: HeaderMap, clients: &Clients) -> Web {
+        Web {
+            client: clients.origin.clone(),
+            plain: clients.plain.clone(),
             headers,
             strict: true,
             guard: None,
-        })
+        }
     }
 
     /// Where a request for `url` goes: a public file of a GitHub repository goes straight to
@@ -322,7 +352,7 @@ impl Web {
             (true, Some(next), Some(again)) if !self.headers.is_empty() => {
                 let mut request = again.build().map_err(network)?;
                 *request.url_mut() = next;
-                shared_client()?.execute(request).await.map_err(network)
+                self.plain.execute(request).await.map_err(network)
             }
             _ => Ok(response),
         }
@@ -382,6 +412,17 @@ mod tests {
         let first = http_client().expect("a client");
         let second = http_client().expect("a client");
         assert!(std::ptr::eq(first, second));
+    }
+
+    #[test]
+    fn hides_proxy_passwords() {
+        if proxy_in_environment() {
+            return;
+        }
+        let error = Clients::of(Some("http://me:hunter2@[bad"))
+            .err()
+            .expect("an invalid proxy");
+        assert!(!error.contains("hunter2"), "{error}");
     }
 
     #[test]

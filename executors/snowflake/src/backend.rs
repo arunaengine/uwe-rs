@@ -10,10 +10,14 @@ use std::time::{Duration, SystemTime};
 use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
+use executor::orphans::{self, JobState, Orphan, RemoteJobs};
 use executor::registry::{self, ImageConfigs};
 use executor::remote::RemoteStage;
 use executor::wrapper::{Folders, wrapper};
-use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job};
+use executor::{
+    Access, Backend, BoxFuture, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job,
+    Journals, attempts,
+};
 use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
 
@@ -43,6 +47,8 @@ pub struct SnowflakeBackend {
     pub staging_time: Duration,
     /// The entrypoints and default commands of images, for tasks without a command.
     pub configs: ImageConfigs,
+    /// Where the jobs of running attempts are noted, so that a later process finds them.
+    pub journals: Option<Journals>,
     held: AtomicBool,
 }
 
@@ -84,6 +90,7 @@ impl SnowflakeBackend {
             upload,
             staging_time: Duration::from_secs(30 * 60),
             configs: ImageConfigs::default(),
+            journals: None,
             held: AtomicBool::new(false),
         })
     }
@@ -100,6 +107,14 @@ impl Backend for SnowflakeBackend {
 
     fn hold(&self) {
         self.held.store(true, Ordering::Relaxed);
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::report(self, self.journals.as_ref(), run).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::stop(self, self.journals.as_ref(), run).await
     }
 
     async fn run(
@@ -253,6 +268,7 @@ impl SnowflakeBackend {
             return Err(ExecutorError::Cancelled);
         }
         let seconds = time.map(|time| time + self.staging_time.as_secs());
+        let _held = attempts::hold(self.journals.as_ref(), self, job.name)?;
         let answer = (self
             .client
             .submit(&statement, &request_id(&name), seconds)
@@ -264,7 +280,13 @@ impl SnowflakeBackend {
             "[SNOWFLAKE] started the job service"
         );
         let ended = match answer {
-            Answer::Running { handle } => self.wait(&handle, &name, cancel).await,
+            Answer::Running { handle } => {
+                // The journal names the statement of the job, which a later stop cancels.
+                attempts::note(self.journals.as_ref(), self, job.name, &handle).await?;
+                let ended = self.wait(&handle, &name, cancel).await;
+                attempts::settle(self.journals.as_ref(), self, job.name, &handle, &ended).await;
+                ended
+            }
             Answer::Done { .. } => Ok(Ended {
                 failed: false,
                 message: String::new(),
@@ -399,5 +421,36 @@ fn api(error: SqlError) -> ExecutorError {
     match error.retryable() {
         true => machine(error.to_string()),
         false => ExecutorError::Unsupported(format!("Snowflake refused a request: {error}")),
+    }
+}
+
+/// What Snowflake says of the statement of a job that a journal names, and its cancellation.
+impl RemoteJobs for SnowflakeBackend {
+    fn state<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<JobState>, String>> {
+        Box::pin(async move {
+            let (state, ended) = match self.client.status(id).await {
+                Ok(Answer::Running { .. }) => ("running", false),
+                Ok(Answer::Done { .. }) => ("done", true),
+                Ok(Answer::Failed { .. }) => ("failed", true),
+                Err(error) => return Err(error.to_string()),
+            };
+            Ok(Some(JobState {
+                state: state.into(),
+                ended,
+            }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            self.client
+                .cancel(id)
+                .await
+                .map_err(|error| error.to_string())
+        })
+    }
+
+    fn scope(&self) -> String {
+        self.client.address.clone()
     }
 }

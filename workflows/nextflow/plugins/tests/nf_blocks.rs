@@ -113,10 +113,6 @@ fn records_store_runs() {
     // A run that published `A/A.bam` as its output `aligned`.
     let file = folder.join("A.bam");
     std::fs::write(&file, "bam-A\n").expect("a file");
-    let storage = storage::Storage::default().blocking();
-    storage
-        .upload(&file, "cas://mine/A/A.bam")
-        .expect("a publish");
     let options = nextflow_config::Options {
         profiles: None,
         params: Value::map([]),
@@ -127,6 +123,11 @@ fn records_store_runs() {
     let loaded: Config =
         nextflow_config::load(&[folder.join("nextflow.config")], &options, &mut Quiet)
             .expect("loads");
+    let scopes = catalogue::scopes(&loaded, &|name| std::env::var(name).ok()).expect("scopes");
+    let storage = storage::Storage::default().with_scopes(scopes).blocking();
+    storage
+        .upload(&file, "cas://mine/A/A.bam")
+        .expect("a publish");
     let mut observers = catalogue::observers(&loaded, folder, &|name| std::env::var(name).ok())
         .expect("an observer");
     let end = End {

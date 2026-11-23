@@ -30,5 +30,6 @@ workflow-graph.workspace = true
 
 [dev-dependencies]
 config-file.workspace = true
+futures-util.workspace = true
 opendal.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

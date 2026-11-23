@@ -20,17 +20,17 @@ pub const RUN: &str = "uwe.dev/run";
 const KEEP_SECONDS: u64 = 600;
 
 /// The name of the Job of an attempt: a DNS label of at most 63 lowercase letters, digits and
-/// dashes. A long name keeps its start and gets a digest of the whole name, so that names
-/// stay unique.
+/// dashes. A name that had to change, like a long one or one with capitals, keeps its start
+/// and gets a digest of the whole name, so that names of other attempts never meet.
 pub fn job_name(name: &str) -> String {
-    let mut clean: String = format!("uwe-{name}")
-        .chars()
+    let given = format!("uwe-{name}");
+    let mut clean: String = (given.chars())
         .map(|character| match character.to_ascii_lowercase() {
             letter @ ('a'..='z' | '0'..='9') => letter,
             _ => '-',
         })
         .collect();
-    if clean.len() > 63 {
+    if clean.len() > 63 || clean != given || clean.ends_with('-') {
         use sha2::{Digest, Sha256};
         let digest = Sha256::digest(name.as_bytes());
         let short: String = digest[..4]
@@ -423,7 +423,13 @@ mod tests {
 
     #[test]
     fn names_are_labels() {
-        assert_eq!(job_name("1a0f-49038-UPPER-1-1"), "uwe-1a0f-49038-upper-1-1");
+        assert_eq!(job_name("1a0f-49038-upper-1-1"), "uwe-1a0f-49038-upper-1-1");
+        // Names that differ only where the label cannot show it get names of their own.
+        let upper = job_name("1a0f-49038-UPPER-1-1");
+        assert!(upper.starts_with("uwe-1a0f-49038-upper-1-1-"), "{upper}");
+        assert_ne!(upper, job_name("1a0f-49038-upper-1-1"));
+        assert_ne!(job_name("run_a-1"), job_name("run.a-1"));
+        assert!(upper.len() <= 63);
         let long = job_name(&format!("run-{}-1", "NFCORE_DEMO:DEMO:FASTQC".repeat(4)));
         assert!(long.len() <= 63, "{long}");
         assert!(

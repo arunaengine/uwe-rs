@@ -32,6 +32,7 @@ const SECTIONS: &[&str] = &[
     "secrets",
     "workflows",
     "references",
+    "sites",
 ];
 
 /// The executors that `-executor` and `default` of `[executor]` may name.
@@ -86,6 +87,76 @@ pub struct Setup {
     /// The config files that `from_files` read, whose presets and defaults a run with this
     /// setup takes; `None` for a setup made otherwise.
     pub config: Option<ConfigFile>,
+    /// The cache folder of the run; `None` takes the one of the command, which the legacy
+    /// commands keep for their thread.
+    pub cache_folder: Option<PathBuf>,
+    /// The folder of the journals of the containers of the run; `None` takes `containers` in
+    /// the cache folder.
+    pub journal_folder: Option<PathBuf>,
+    /// The store of the journals of remote jobs; `None` keeps them in the scratch folder.
+    pub journal_store: Option<std::sync::Arc<dyn executor::JournalStore>>,
+    /// `[sites.<name>]`: sites of other executors that tasks of one run go to by name,
+    /// capability or data, besides the executor of the run.
+    pub sites: Vec<SiteConfig>,
+    /// Where the attempts send their output and resource use while they run, for the
+    /// listener of an embedding host.
+    pub live: Option<executor::LiveFeed>,
+}
+
+/// A site of `[sites.<name>]`: the executor that runs its tasks, with the settings of its
+/// `[executor.<name>]` section, and what it can run and is near.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SiteConfig {
+    pub executor: String,
+    pub site: task_runner::Site,
+}
+
+impl SiteConfig {
+    const KEYS: &'static [&'static str] = &[
+        "executor",
+        "near",
+        "endpoints",
+        "gpus",
+        "max_memory_mb",
+        "max_cpus",
+    ];
+
+    /// The sites of the `[sites]` section, in the order of the config file.
+    fn read_all(config: &ConfigFile) -> Result<Vec<SiteConfig>, ConfigError> {
+        let Some(section) = config.section("sites")? else {
+            return Ok(Vec::new());
+        };
+        let mut sites = Vec::new();
+        for table in section.tables()? {
+            table.only(Self::KEYS)?;
+            let executor = (table.text("executor")?)
+                .ok_or_else(|| table.missing("executor", "the executor of the site"))?;
+            if !EXECUTORS.contains(&executor.as_str()) || executor == "simulator" {
+                return Err(table.invalid("executor", "must name an executor that runs tasks"));
+            }
+            let memory = (table.integer("max_memory_mb")?)
+                .map(|megabytes| u64::try_from(megabytes).map(|megabytes| megabytes << 20))
+                .transpose()
+                .map_err(|_| table.invalid("max_memory_mb", "must not be negative"))?;
+            let cpus = table.number("max_cpus")?;
+            if cpus.is_some_and(|cpus| cpus <= 0.0) {
+                return Err(table.invalid("max_cpus", "must be more than zero"));
+            }
+            sites.push(SiteConfig {
+                executor,
+                site: task_runner::Site {
+                    // The table is named by its whole path, like `sites.gpu`.
+                    name: (table.name().strip_prefix("sites.").unwrap_or(table.name())).into(),
+                    near: table.texts("near")?.unwrap_or_default(),
+                    endpoints: table.texts("endpoints")?.unwrap_or_default(),
+                    gpus: table.flag("gpus")?.unwrap_or(false),
+                    max_memory: memory,
+                    max_cpus: cpus,
+                },
+            });
+        }
+        Ok(sites)
+    }
 }
 
 /// The settings of executors from the `[executor.<name>]` sections. Options on the command line
@@ -118,7 +189,7 @@ pub struct Executors {
     /// may take, for a busy controller.
     pub slurm_query: Option<u64>,
     /// `[executor.slurm] staging` and the settings of its staging root.
-    pub slurm_staging: crate::staging::Settings,
+    pub slurm_staging: crate::executors::staging::Settings,
     /// `[executor.slurm] helper_path`, or `helper_url` with `helper_sha256`: where the jobs get
     /// the static uwe binary for object-store staging.
     pub slurm_helper: Option<slurm_executor::Helper>,
@@ -140,7 +211,7 @@ pub struct Executors {
     /// `[executor.kubernetes] namespace`, like `-kubernetes-namespace`.
     pub kubernetes_namespace: Option<String>,
     /// `[executor.kubernetes] staging` and the settings of its staging root.
-    pub kubernetes_staging: crate::staging::Settings,
+    pub kubernetes_staging: crate::executors::staging::Settings,
     /// `[executor.kubernetes] unschedulable_minutes`: how long a pod may find no node.
     pub kubernetes_unschedulable: Option<u64>,
     /// `[executor.kubernetes] start_grace_seconds`: how long a Job may have no pod, or a pod
@@ -166,25 +237,28 @@ pub struct Executors {
     pub kubernetes_pod: kubernetes_executor::PodOptions,
     /// `[executor.kubernetes.cws]`: the Common Workflow Scheduler that places the pods.
     pub kubernetes_cws: Option<kubernetes_executor::cws::Settings>,
+    /// `[executor.kubernetes] network_policy = true`, with `staging_egress` and `staging_dns`:
+    /// how the pods of tasks without network are cut off it; `None` runs no such task.
+    pub kubernetes_isolation: Option<kubernetes_executor::Isolation>,
     /// `[executor.aws-batch]`: the jobs, their staging root and their helper.
-    pub aws_batch: crate::aws_batch::Config,
+    pub aws_batch: crate::executors::aws_batch::Config,
     /// `[executor.google-batch]`: the jobs, their staging root and their helper.
-    pub google_batch: crate::google_batch::Config,
+    pub google_batch: crate::executors::google_batch::Config,
     /// `[executor.azure-batch]`: the tasks, their pools, staging root and helper.
-    pub azure_batch: crate::azure_batch::Config,
+    pub azure_batch: crate::executors::azure_batch::Config,
     /// `[executor.nomad]`: the agent, the jobs, their staging and helper.
-    pub nomad: crate::nomad::Config,
+    pub nomad: crate::executors::nomad::Config,
     /// `[executor.htcondor]` and `[executor.pbs]`: the jobs, their staging and helper.
-    pub htcondor: crate::grid::Config,
-    pub pbs: crate::grid::Config,
+    pub htcondor: crate::executors::grid::Config,
+    pub pbs: crate::executors::grid::Config,
     /// `[executor.flyte]`: the control plane, the runs, their staging and helper.
-    pub flyte: crate::flyte::Config,
+    pub flyte: crate::executors::flyte::Config,
     /// `[executor.snowflake]`: the account, the job services, their staging and helper.
-    pub snowflake: crate::snowflake::Config,
+    pub snowflake: crate::executors::snowflake::Config,
     /// `[executor.jarvice]`: the API, the jobs, their vault or staging root and helper.
-    pub jarvice: crate::jarvice::Config,
+    pub jarvice: crate::executors::jarvice::Config,
     /// `[executor.wr]`: the wr manager, the jobs, their staging and helper.
-    pub wr: crate::wr::Config,
+    pub wr: crate::executors::wr::Config,
 }
 
 /// A site of `[executor.tes.sites.<name>]`: a TES server, and the address prefixes or folders
@@ -225,34 +299,34 @@ impl Executors {
         ];
         section.only(&keys)?;
         if let Some(batch) = section.table("aws-batch")? {
-            settings.aws_batch = crate::aws_batch::Config::read(&batch)?;
+            settings.aws_batch = crate::executors::aws_batch::Config::read(&batch)?;
         }
         if let Some(batch) = section.table("google-batch")? {
-            settings.google_batch = crate::google_batch::Config::read(&batch)?;
+            settings.google_batch = crate::executors::google_batch::Config::read(&batch)?;
         }
         if let Some(batch) = section.table("azure-batch")? {
-            settings.azure_batch = crate::azure_batch::Config::read(&batch)?;
+            settings.azure_batch = crate::executors::azure_batch::Config::read(&batch)?;
         }
         if let Some(nomad) = section.table("nomad")? {
-            settings.nomad = crate::nomad::Config::read(&nomad)?;
+            settings.nomad = crate::executors::nomad::Config::read(&nomad)?;
         }
         if let Some(htcondor) = section.table("htcondor")? {
-            settings.htcondor = crate::grid::Config::read(&htcondor, false)?;
+            settings.htcondor = crate::executors::grid::Config::read(&htcondor, false)?;
         }
         if let Some(pbs) = section.table("pbs")? {
-            settings.pbs = crate::grid::Config::read(&pbs, true)?;
+            settings.pbs = crate::executors::grid::Config::read(&pbs, true)?;
         }
         if let Some(flyte) = section.table("flyte")? {
-            settings.flyte = crate::flyte::Config::read(&flyte)?;
+            settings.flyte = crate::executors::flyte::Config::read(&flyte)?;
         }
         if let Some(snowflake) = section.table("snowflake")? {
-            settings.snowflake = crate::snowflake::Config::read(&snowflake)?;
+            settings.snowflake = crate::executors::snowflake::Config::read(&snowflake)?;
         }
         if let Some(jarvice) = section.table("jarvice")? {
-            settings.jarvice = crate::jarvice::Config::read(&jarvice)?;
+            settings.jarvice = crate::executors::jarvice::Config::read(&jarvice)?;
         }
         if let Some(wr) = section.table("wr")? {
-            settings.wr = crate::wr::Config::read(&wr)?;
+            settings.wr = crate::executors::wr::Config::read(&wr)?;
         }
         if let Some(local) = section.table("local")? {
             local.only(&["engine", "cpus", "memory_bytes"])?;
@@ -318,9 +392,10 @@ impl Executors {
             ];
             keys.push("staging_secret_file");
             keys.extend(["helper_path", "helper_url", "helper_sha256", "helper_file"]);
-            keys.extend(crate::staging::Settings::KEYS);
+            keys.extend(crate::executors::staging::Settings::KEYS);
             slurm.only(&keys)?;
-            settings.slurm_staging = crate::staging::Settings::read(&slurm, &["object-store"])?;
+            settings.slurm_staging =
+                crate::executors::staging::Settings::read(&slurm, &["object-store"])?;
             settings.slurm_helper = helper(&slurm)?;
             settings.slurm_node_folder = slurm.text("node_folder")?;
             settings.slurm_secret_file = slurm.text("staging_secret_file")?.map(PathBuf::from);
@@ -330,7 +405,7 @@ impl Executors {
                 return Err(slurm.invalid("staging_secret_file", message));
             }
             settings.slurm_helper_file = helper_file(&slurm, settings.slurm_helper.is_some())?;
-            if settings.slurm_staging.mode != crate::staging::Mode::ObjectStore {
+            if settings.slurm_staging.mode != crate::executors::staging::Mode::ObjectStore {
                 settings.slurm_helper_file = None;
             }
             settings.slurm_container = slurm.text("container")?;
@@ -379,13 +454,20 @@ impl Executors {
                 "pod",
                 "cws",
             ]);
-            keys.extend(crate::staging::Settings::KEYS);
+            keys.extend([
+                "network_policy",
+                "staging_egress",
+                "staging_dns",
+                "kubedal_promote",
+            ]);
+            keys.extend(crate::executors::staging::Settings::KEYS);
             kubernetes.only(&keys)?;
             settings.kubeconfig = kubernetes.text("kubeconfig")?.map(PathBuf::from);
             settings.kubernetes_namespace = kubernetes.text("namespace")?;
             settings.kubernetes_in_cluster = kubernetes.flag("in_cluster")?.unwrap_or(false);
             settings.kubernetes_context = kubernetes.text("context")?;
             settings.kubernetes_pod.service_account = kubernetes.text("service_account")?;
+            settings.kubernetes_isolation = isolation(&kubernetes)?;
             if let Some(pod) = kubernetes.json("pod")? {
                 let pods = &mut settings.kubernetes_pod;
                 pods.add(&pod)
@@ -453,7 +535,8 @@ impl Executors {
                 settings.kubernetes_start_grace = Some(seconds as u64);
             }
             let modes = ["object-store", "kubedal"];
-            settings.kubernetes_staging = crate::staging::Settings::read(&kubernetes, &modes)?;
+            settings.kubernetes_staging =
+                crate::executors::staging::Settings::read(&kubernetes, &modes)?;
             let image_volume = match kubernetes.text("helper_mount")?.as_deref() {
                 None | Some("image-volume") => true,
                 Some("init-container") => false,
@@ -477,9 +560,9 @@ impl Executors {
                 return Err(kubernetes.invalid("helper_mount", "needs helper_image"));
             }
             let object_store =
-                settings.kubernetes_staging.mode == crate::staging::Mode::ObjectStore;
+                settings.kubernetes_staging.mode == crate::executors::staging::Mode::ObjectStore;
             settings.kubernetes_helper_file = helper_file(&kubernetes, image.is_some())?;
-            if settings.kubernetes_staging.mode == crate::staging::Mode::SharedPath {
+            if settings.kubernetes_staging.mode == crate::executors::staging::Mode::SharedPath {
                 settings.kubernetes_helper_file = None;
             }
             // Without helper_image the pods download the binary with Alpine.
@@ -497,14 +580,14 @@ impl Executors {
                 binary: None,
             });
             settings.kubernetes_kubedal = kubedal(&kubernetes)?;
-            if (settings.kubernetes_staging.mode == crate::staging::Mode::Kubedal)
+            if (settings.kubernetes_staging.mode == crate::executors::staging::Mode::Kubedal)
                 != settings.kubernetes_kubedal.is_some()
             {
                 let message = "names the DataNode of the staging root for staging = \"kubedal\"";
                 return Err(kubernetes.invalid("kubedal_data_node", message));
             }
             if let Some(shared) = kubernetes.table("shared_volume")? {
-                if settings.kubernetes_staging.mode != crate::staging::Mode::SharedPath {
+                if settings.kubernetes_staging.mode != crate::executors::staging::Mode::SharedPath {
                     let message = "needs staging = \"shared-path\"";
                     return Err(kubernetes.invalid("shared_volume", message));
                 }
@@ -533,6 +616,32 @@ fn kubedal(kubernetes: &Table<'_>) -> Result<Option<kubernetes_executor::Kubedal
         namespace: kubernetes.text("kubedal_namespace")?,
         upload: std::time::Duration::from_secs(minutes * 60),
         helper: None,
+        promote: kubernetes.flag("kubedal_promote")?.unwrap_or(false),
+    }))
+}
+
+/// The NetworkPolicy of offline tasks from `[executor.kubernetes]`: `network_policy = true`,
+/// with `staging_egress`, address blocks like `10.0.0.0/8:443` that staging still reaches,
+/// and `staging_dns = true` for the DNS service of the cluster.
+fn isolation(
+    kubernetes: &Table<'_>,
+) -> Result<Option<kubernetes_executor::Isolation>, ConfigError> {
+    let egress = kubernetes.texts("staging_egress")?.unwrap_or_default();
+    let dns = kubernetes.flag("staging_dns")?;
+    if !kubernetes.flag("network_policy")?.unwrap_or(false) {
+        if !egress.is_empty() || dns.is_some() {
+            let message = "and staging_dns require network_policy = true";
+            return Err(kubernetes.invalid("staging_egress", message));
+        }
+        return Ok(None);
+    }
+    let peers = (egress.iter())
+        .map(|text| kubernetes_executor::Peer::parse(text))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|message| kubernetes.invalid("staging_egress", message))?;
+    Ok(Some(kubernetes_executor::Isolation {
+        peers,
+        dns: dns.unwrap_or(false),
     }))
 }
 
@@ -787,6 +896,7 @@ impl Defaults {
             arguments.report = self.report;
         }
         if let Some(folder) = self.cache_folder {
+            arguments.cache_folder.get_or_insert_with(|| folder.clone());
             crate::use_cache_folder(folder);
         }
         storage::use_proxy(self.proxy.as_deref())
@@ -795,11 +905,56 @@ impl Defaults {
 }
 
 impl Setup {
+    /// The cache folder of the run: `run::Settings.cache_folder` or `[cache] folder`, else the
+    /// one of the command.
+    pub fn cache_directory(&self) -> PathBuf {
+        self.cache_folder
+            .clone()
+            .unwrap_or_else(crate::cache_directory)
+    }
+
+    /// The folder of the journals of the containers that the run starts on this machine.
+    pub fn journal_folder(&self) -> PathBuf {
+        match (&self.journal_folder, &self.cache_folder) {
+            (Some(folder), _) => folder.clone(),
+            (None, Some(cache)) => cache.join("containers"),
+            (None, None) => crate::journal_folder(),
+        }
+    }
+
+    /// Takes the folders of the run from its arguments, which win over those of the setup.
+    pub(crate) fn use_folders(&mut self, arguments: &Arguments) {
+        if let Some(folder) = &arguments.cache_folder {
+            self.cache_folder = Some(folder.clone());
+        }
+        if let Some(folder) = &arguments.journal_folder {
+            self.journal_folder = Some(folder.clone());
+        }
+    }
+
+    /// What the run of this setup shares with the work that it starts on other threads.
+    pub fn context(&self) -> crate::run::RunContext {
+        crate::run::RunContext {
+            cache_folder: self.cache_directory(),
+            journal_folder: self.journal_folder(),
+            storage: self.storage.clone(),
+            registry: self.registry.clone(),
+            isolation: self.isolation.clone(),
+            secrets: self.variables.clone(),
+            journal_store: self.journal_store.clone().unwrap_or_else(|| {
+                let scratch = self.cache_directory().join("scratch");
+                std::sync::Arc::new(executor::FileJournal::new(scratch))
+            }),
+        }
+    }
+
     /// Reads the config files.
     pub fn load(arguments: &Arguments) -> Result<Setup, Failure> {
         let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         let config = ConfigFile::load(arguments.config_file.as_deref()).map_err(failed)?;
-        Setup::read(config.with_secrets(arguments.secrets.clone()))
+        let mut setup = Setup::read(config.with_secrets(arguments.secrets.clone()))?;
+        setup.use_folders(arguments);
+        Ok(setup)
     }
 
     /// Reads only `files`, a later one winning key by key, without the site file and the file
@@ -823,12 +978,23 @@ impl Setup {
         let failed = |error: ConfigError| Failure::setup(format!("uwe: {error}"));
         config.root().only(SECTIONS).map_err(failed)?;
         let registry = executor::credentials::Registry::from_config(&config).map_err(failed)?;
+        // Each run sends its storage requests through its own `[network] proxy`, or directly,
+        // whatever proxy another run of the process uses.
+        let proxy = match config.section("network").map_err(failed)? {
+            Some(network) => network.text("proxy").map_err(failed)?,
+            None => None,
+        };
         let storage = Storage::from_config(&config).map_err(failed)?;
+        let storage = storage.with_proxy(proxy.as_deref());
+        // Registry requests reach the web as the storage of the run does.
+        let registry = (registry.with_proxy(storage.proxy()))
+            .map_err(|message| Failure::setup(format!("uwe: {message}")))?;
         let executors = Executors::read(&config).map_err(failed)?;
         let telemetry = Telemetry::read(&config).map_err(failed)?;
         let network = network(&config).map_err(failed)?;
         let conda = crate::conda::Config::read(&config).map_err(failed)?;
         let cwl_registry = cwl_registry(&config).map_err(failed)?;
+        let sites = SiteConfig::read_all(&config).map_err(failed)?;
         let mut secrets = std::collections::BTreeMap::new();
         if let Some(section) = config.section("secrets").map_err(failed)? {
             for name in section.keys() {
@@ -852,6 +1018,7 @@ impl Setup {
             conda,
             secrets,
             cwl_registry,
+            sites,
             ..Setup::default()
         })
     }
@@ -869,7 +1036,7 @@ impl Setup {
     /// Names the task engine for Nextflow metadata and config scope selection.
     /// Uses the runtime of the cluster nodes or this machine's Docker/Podman engine.
     pub fn engine_kind(&self, arguments: &Arguments) -> String {
-        let nodes = |config: &crate::grid::Config| config.container.clone();
+        let nodes = |config: &crate::executors::grid::Config| config.container.clone();
         let runtime = match arguments.executor.as_deref() {
             Some("htcondor") => nodes(&self.executors.htcondor),
             Some("pbs") => nodes(&self.executors.pbs),
@@ -893,7 +1060,7 @@ impl Setup {
         (arguments.store.clone())
             .or_else(|| self.storage.store_location().map(str::to_owned))
             .unwrap_or_else(|| {
-                let folder = crate::cache_directory().join("store");
+                let folder = self.cache_directory().join("store");
                 folder.to_string_lossy().into_owned()
             })
     }
@@ -912,7 +1079,7 @@ impl Setup {
         let mut store = store
             .map_err(|error| failed(format!("cannot open the store at {location}: {error}")))?;
         if store.local_path("").is_none() {
-            store = store.with_staging(crate::cache_directory().join("imports"));
+            store = store.with_staging(self.cache_directory().join("imports"));
         }
         let Some(local) = self.storage.local_store() else {
             return Ok(store);
@@ -1234,6 +1401,52 @@ mod tests {
     }
 
     #[test]
+    fn loads_pod_isolation() {
+        let found = read("[executor.kubernetes]\nnamespace = \"jobs\"\n").expect("settings");
+        assert_eq!(found.kubernetes_isolation, None);
+        let text = "[executor.kubernetes]\nnetwork_policy = true\nstaging_dns = true\n\
+                    staging_egress = [\"10.0.0.0/8:443\"]\nstaging = \"kubedal\"\n\
+                    staging_root = \"s3://bucket/uwe\"\nkubedal_data_node = \"staging\"\n\
+                    kubedal_promote = true\n";
+        let found = read(text).expect("settings");
+        let isolation = found.kubernetes_isolation.expect("an isolation");
+        assert!(isolation.dns);
+        assert_eq!(isolation.peers[0].cidr, "10.0.0.0/8");
+        assert_eq!(isolation.peers[0].ports, [443]);
+        assert!(found.kubernetes_kubedal.expect("kubedal").promote);
+        let text = "[executor.kubernetes]\nstaging_egress = [\"10.0.0.0/8\"]\n";
+        assert!(
+            read(text)
+                .expect_err("needs the policy")
+                .contains("network_policy")
+        );
+        let text = "[executor.kubernetes]\nnetwork_policy = true\nstaging_egress = [\"x\"]\n";
+        assert!(read(text).is_err());
+    }
+
+    /// Each setup sends its storage requests through the proxy of its own config file.
+    #[test]
+    fn reads_own_proxy() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("proxy.toml");
+        let address = "http://proxy.example.org:3128";
+        std::fs::write(&file, format!("[network]\nproxy = \"{address}\"\n")).unwrap();
+        let empty = root.path().join("empty.toml");
+        std::fs::write(&empty, "").unwrap();
+        let values = config_file::SecretValues::default();
+        let proxied = super::Setup::from_files(std::slice::from_ref(&file), &values).unwrap();
+        let direct = super::Setup::from_files(&[empty], &values).unwrap();
+        let named = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"];
+        let environment = (named.iter())
+            .flat_map(|name| [name.to_string(), name.to_lowercase()])
+            .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()));
+        if !environment {
+            assert_eq!(proxied.storage.proxy(), Some(address));
+            assert_eq!(direct.storage.proxy(), None);
+        }
+    }
+
+    #[test]
     fn loads_cwl_registry() {
         let parse = |text: &str| -> Result<Option<String>, String> {
             let config = ConfigFile::parse(text, Path::new("config.toml"))
@@ -1245,6 +1458,40 @@ mod tests {
         assert_eq!(parse(""), Ok(None));
         let error = parse("[cwl]\nregistry = \"registry.example.org/cwl:1\"\n").expect_err("a tag");
         assert!(error.contains("registry"), "{error}");
+    }
+
+    #[test]
+    fn reads_executor_sites() {
+        let folder = tempfile::tempdir().unwrap();
+        let file = folder.path().join("uwe.toml");
+        let read = |text: &str| {
+            std::fs::write(&file, text).unwrap();
+            super::Setup::from_files(
+                std::slice::from_ref(&file),
+                &config_file::SecretValues::default(),
+            )
+        };
+        let text = "[sites.gpu]\nexecutor = 'kubernetes'\ngpus = true\n\
+                    [sites.hamburg]\nexecutor = 'slurm'\nnear = ['s3://hh/']\n\
+                    endpoints = ['proxy-hh']\nmax_memory_mb = 1024\nmax_cpus = 64\n";
+        let sites = read(text).unwrap().sites;
+        let names: Vec<(&str, &str)> = (sites.iter())
+            .map(|config| (config.site.name.as_str(), config.executor.as_str()))
+            .collect();
+        assert_eq!(names, [("gpu", "kubernetes"), ("hamburg", "slurm")]);
+        assert!(sites[0].site.gpus && !sites[1].site.gpus);
+        assert_eq!(sites[1].site.near, ["s3://hh/"]);
+        assert_eq!(sites[1].site.endpoints, ["proxy-hh"]);
+        assert_eq!(sites[1].site.max_memory, Some(1 << 30));
+        assert_eq!(sites[1].site.max_cpus, Some(64.0));
+        for wrong in [
+            "[sites.x]\nnear = ['/a/']\n",
+            "[sites.x]\nexecutor = 'simulator'\n",
+            "[sites.x]\nexecutor = 'local'\nmax_cpus = 0\n",
+            "[sites.x]\nexecutor = 'local'\nzone = 'a'\n",
+        ] {
+            assert!(read(wrong).is_err(), "{wrong}");
+        }
     }
 
     #[test]

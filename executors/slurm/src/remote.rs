@@ -289,6 +289,7 @@ mod tests {
             max_outputs: 1,
             credentials: false,
             cleanup: false,
+            multipart: None,
         };
         let mut staging = NodeStaging {
             stage,

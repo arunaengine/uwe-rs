@@ -15,7 +15,8 @@ use std::time::Duration;
 use executor::remote::RemoteStage;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use kubernetes_executor::{
-    Cluster, Helper, Kubedal, KubernetesBackend, LABEL, Look, PodStaging, Pods, SharedVolume, Via,
+    Cluster, Helper, Isolation, JOB, Kubedal, KubernetesBackend, LABEL, Look, Peer, PodStaging,
+    Pods, SharedVolume, Via, job_name,
 };
 use serde_json::{Value, json};
 use task_model::{
@@ -28,6 +29,7 @@ const NAMESPACE: &str = "uwe-test";
 const JOBS: &str = "/apis/batch/v1/namespaces/uwe-test/jobs";
 const PODS: &str = "/api/v1/namespaces/uwe-test/pods";
 const EVENTS: &str = "/api/v1/namespaces/uwe-test/events";
+const POLICIES: &str = "/apis/networking.k8s.io/v1/namespaces/uwe-test/networkpolicies";
 
 /// A Job that the fake server runs.
 struct Running {
@@ -46,6 +48,8 @@ struct State {
     jobs: BTreeMap<String, Running>,
     calls: Vec<String>,
     submitted: Vec<Value>,
+    /// The NetworkPolicies that exist, by their names.
+    policies: BTreeMap<String, Value>,
 }
 
 fn request(stream: &mut TcpStream) -> Option<(String, String, Option<String>, String)> {
@@ -160,6 +164,14 @@ fn start(folder: &Path, job: &Value) -> Running {
                 std::fs::create_dir_all(node.join(directory.as_str().expect("a path")))
                     .expect("makes the folder");
             }
+            // Version 2 places sources from where they lie, here `file://` addresses.
+            let sources = list["sources"].as_array().into_iter().flatten();
+            for source in sources {
+                let target = node.join(source["path"].as_str().expect("a path"));
+                std::fs::create_dir_all(target.parent().expect("a folder")).expect("a folder");
+                let uri = source["source_uri"].as_str().expect("a source");
+                std::fs::copy(uri.trim_start_matches("file://"), &target).expect("places it");
+            }
             for file in list["files"].as_array().expect("files") {
                 let target = node.join(file["path"].as_str().expect("a path"));
                 std::fs::create_dir_all(target.parent().expect("a folder")).expect("a folder");
@@ -173,7 +185,8 @@ fn start(folder: &Path, job: &Value) -> Running {
                 let mode = std::os::unix::fs::PermissionsExt::from_mode(mode);
                 std::fs::set_permissions(&target, mode).expect("sets the mode");
             }
-            data.join(list["upload"]["prefix"].as_str().expect("a prefix"))
+            let prefix = data.join(list["upload"]["prefix"].as_str().expect("a prefix"));
+            (prefix, list.get("promote").is_some())
         },
     );
     let init: Vec<&Value> = pod["initContainers"]
@@ -205,11 +218,21 @@ fn start(folder: &Path, job: &Value) -> Running {
         ));
     }
     script.push_str("wait\n");
-    if let (Some(prefix), Some(node)) = (&kubedal, &node) {
+    if let (Some((prefix, promote)), Some(node)) = (&kubedal, &node) {
         let (prefix, node) = (quote(&prefix.to_string_lossy()), quote(node));
         script.push_str(&format!(
             "mkdir -p {prefix}\ncp -R {node}/upload/. {prefix}/\n"
         ));
+        // Promotion gives a receipt for the first output, `out.txt` in the tests.
+        if *promote {
+            script.push_str(&format!(
+                "digest=$(sha256sum {prefix}/files/1 | cut -d' ' -f1)\n\
+                 size=$(stat -c %s {prefix}/files/1)\n\
+                 printf '[{{\"path\":\"out.txt\",\"digest\":\"sha256:%s\",\"size\":%s,\
+                 \"location\":\"aruna://promoted/out.txt\"}}]' \"$digest\" \"$size\" \
+                 > {prefix}/control/receipts\n"
+            ));
+        }
     }
     if let Some(node) = node {
         let node = quote(&node);
@@ -561,6 +584,75 @@ fn answer(state: &Mutex<State>, mut stream: TcpStream) {
                 &text.unwrap_or_default(),
             );
         }
+        ("POST", POLICIES) => {
+            let mut policy: Value = serde_json::from_str(&body).expect("a NetworkPolicy");
+            let name = policy["metadata"]["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            if state.policies.contains_key(&name) {
+                let status = json!({"kind": "Status", "apiVersion": "v1", "code": 409,
+                    "status": "Failure", "reason": "AlreadyExists", "metadata": {}});
+                reply(
+                    &mut stream,
+                    "409 Conflict",
+                    "application/json",
+                    &status.to_string(),
+                );
+                return;
+            }
+            policy["metadata"]["uid"] = json!(format!("policy-{}", state.calls.len()));
+            state.policies.insert(name, policy.clone());
+            reply(
+                &mut stream,
+                "201 Created",
+                "application/json",
+                &policy.to_string(),
+            );
+        }
+        ("GET", policy) if policy.starts_with(&format!("{POLICIES}/")) => {
+            let name = policy.rsplit('/').next().unwrap_or_default();
+            match state.policies.get(name) {
+                Some(found) => reply(
+                    &mut stream,
+                    "200 OK",
+                    "application/json",
+                    &found.to_string(),
+                ),
+                None => {
+                    let status = json!({"kind": "Status", "apiVersion": "v1", "code": 404,
+                        "status": "Failure", "reason": "NotFound", "metadata": {}});
+                    reply(
+                        &mut stream,
+                        "404 Not Found",
+                        "application/json",
+                        &status.to_string(),
+                    );
+                }
+            }
+        }
+        ("DELETE", policy) if policy.starts_with(&format!("{POLICIES}/")) => {
+            let name = policy.rsplit('/').next().unwrap_or_default();
+            let wanted: Value = serde_json::from_str(&body).unwrap_or_default();
+            let wanted = wanted["preconditions"]["uid"].as_str();
+            let found = state
+                .policies
+                .get(name)
+                .map(|found| found["metadata"]["uid"].clone());
+            let (line, code, word) = match found {
+                Some(uid) if wanted.is_some_and(|wanted| uid != wanted) => {
+                    ("409 Conflict", 409, "Failure")
+                }
+                Some(_) => {
+                    state.policies.remove(name);
+                    ("200 OK", 200, "Success")
+                }
+                None => ("404 Not Found", 404, "Failure"),
+            };
+            let status = json!({"kind": "Status", "apiVersion": "v1", "code": code,
+                "status": word, "metadata": {}});
+            reply(&mut stream, line, "application/json", &status.to_string());
+        }
         ("DELETE", job) if job.starts_with(JOBS) => {
             // A file `break-staging` names a folder whose files cannot be read from then on.
             if let Ok(broken) = std::fs::read_to_string(folder.join("break-staging")) {
@@ -607,6 +699,7 @@ fn serve(root: &Path) -> (PathBuf, Arc<Mutex<State>>) {
         jobs: BTreeMap::new(),
         calls: Vec::new(),
         submitted: Vec::new(),
+        policies: BTreeMap::new(),
     }));
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
     let address = listener.local_addr().expect("an address");
@@ -765,6 +858,70 @@ async fn rejects_offline_tasks() {
     assert!(!backend.scratch.exists());
 }
 
+/// An offline task runs behind a NetworkPolicy of its Job, made before the Job and removed
+/// once its pod is gone.
+#[tokio::test]
+async fn isolates_offline_tasks() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, shared) = backend(root.path()).await;
+    backend.isolation = Some(Isolation {
+        peers: vec![Peer::parse("192.0.2.0/24:443").expect("a peer")],
+        dns: false,
+    });
+    let spec = spec("debian:stable-slim", "echo offline > out.txt");
+    let staging = Staging::default();
+    let (online, offline) = (
+        placement(),
+        Placement {
+            offline: true,
+            ..placement()
+        },
+    );
+    let job = Job {
+        name: "run-P-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &offline,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let output = std::fs::read_to_string(finished.local_path("out.txt")).expect("an output");
+    assert_eq!(output, "offline\n");
+    {
+        let state = shared.lock().expect("the state");
+        let posts: Vec<&String> = (state.calls.iter())
+            .filter(|call| call.starts_with("POST"))
+            .collect();
+        assert_eq!(
+            posts,
+            [&format!("POST {POLICIES}"), &format!("POST {JOBS}")]
+        );
+        let name = &job_name("run-P-1-1");
+        assert!(state.calls.contains(&format!("DELETE {POLICIES}/{name}")));
+        assert!(state.policies.is_empty(), "the policy goes with the Job");
+        let labels = &state.submitted[0]["spec"]["template"]["metadata"]["labels"];
+        assert_eq!(labels[JOB], name.as_str());
+    }
+    // A task with network gets no policy, and its pod no label for one.
+    let job = Job {
+        name: "run-P-2-1",
+        placement: &online,
+        ..job
+    };
+    (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    let state = shared.lock().expect("the state");
+    assert_eq!(
+        state.submitted[1]["spec"]["template"]["metadata"]["labels"].get(JOB),
+        None
+    );
+    assert_eq!(
+        (state.calls.iter())
+            .filter(|call| call.contains(POLICIES))
+            .count(),
+        2
+    );
+}
+
 #[tokio::test]
 async fn returns_job_outputs() {
     let root = tempfile::tempdir().expect("a folder");
@@ -801,13 +958,57 @@ async fn returns_job_outputs() {
         calls.first().map(String::as_str),
         Some(&*format!("POST {JOBS}"))
     );
-    let deleted = format!("DELETE {JOBS}/uwe-run-p-1-1");
+    let deleted = format!("DELETE {JOBS}/{}", job_name("run-P-1-1"));
     assert!(calls.contains(&deleted), "{calls:?}");
     assert!(
         calls
             .last()
             .is_some_and(|call| call == &format!("GET {PODS}")),
         "{calls:?}"
+    );
+}
+
+/// A NetworkPolicy of the same name that another attempt made is neither taken nor removed:
+/// the attempt fails before its Job, and the policy stays.
+#[tokio::test]
+async fn keeps_foreign_policies() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, shared) = backend(root.path()).await;
+    backend.isolation = Some(Isolation::default());
+    let name = job_name("run-P-30-1");
+    let foreign = json!({"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+        "metadata": {"name": name, "uid": "foreign", "labels": {LABEL: "another-backend"}},
+        "spec": {"podSelector": {"matchLabels": {JOB: "another-job"}}, "policyTypes": ["Egress"]}});
+    shared
+        .lock()
+        .expect("the state")
+        .policies
+        .insert(name.clone(), foreign.clone());
+    let spec = spec("debian:stable-slim", "echo offline > out.txt");
+    let staging = Staging::default();
+    let offline = Placement {
+        offline: true,
+        ..placement()
+    };
+    let job = Job {
+        name: "run-P-30-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &offline,
+    };
+    let error = (backend.run(job, &CancellationToken::new()).await).expect_err("no isolation");
+    assert!(error.to_string().contains("another attempt"), "{error}");
+    let state = shared.lock().expect("the state");
+    assert_eq!(
+        state.policies.get(&name),
+        Some(&foreign),
+        "the policy stays"
+    );
+    assert!(
+        !state
+            .calls
+            .iter()
+            .any(|call| call.starts_with(&format!("POST {JOBS}")))
     );
 }
 
@@ -825,11 +1026,12 @@ async fn waits_for_quota() {
     backend.start_grace = Duration::from_millis(500);
     let server = root.path().join("server");
     std::fs::write(server.join("quota"), "").expect("takes the quota");
-    let quota = "pods \"uwe-run-p-20-1-x\" is forbidden: exceeded quota: compute";
-    let refused = "pods \"uwe-run-p-21-1-x\" is forbidden: violates PodSecurity";
+    let (quota_job, refused_job) = (job_name("run-P-20-1"), job_name("run-P-21-1"));
+    let quota = format!("pods \"{quota_job}-x\" is forbidden: exceeded quota: compute");
+    let refused = format!("pods \"{refused_job}-x\" is forbidden: violates PodSecurity");
     let events = json!([
-        event("Job", "uwe-run-p-20-1", "FailedCreate", quota),
-        event("Job", "uwe-run-p-21-1", "FailedCreate", refused),
+        event("Job", &quota_job, "FailedCreate", &quota),
+        event("Job", &refused_job, "FailedCreate", &refused),
     ]);
     std::fs::write(server.join("events.json"), events.to_string()).expect("writes");
     let spec = spec("debian:stable-slim", "echo done > out.txt");
@@ -913,7 +1115,7 @@ async fn fails_unschedulable_pods() {
     let scaled = "pod triggered scale-up: [{pool 1->2 (max: 3)}]";
     let events = json!([event(
         "Pod",
-        "uwe-run-p-22-1-pod",
+        &format!("{}-pod", job_name("run-P-22-1")),
         "TriggeredScaleUp",
         scaled
     )]);
@@ -1222,7 +1424,7 @@ async fn cancelled_jobs_stop() {
         "{result:?}"
     );
     let state = state.lock().expect("the state");
-    assert!(state.jobs["uwe-run-p-4-1"].deleted);
+    assert!(state.jobs[&job_name("run-P-4-1")].deleted);
     assert!(!root.path().join("scratch/run-P-4-1").exists());
 }
 
@@ -1664,6 +1866,7 @@ async fn stages_through_objects() {
                 max_outputs: 4,
                 credentials,
                 cleanup: credentials,
+                multipart: None,
             },
             via: Via::Helper(Helper {
                 image: match upload {
@@ -1797,6 +2000,7 @@ async fn staged_state(root: &Path) -> (KubernetesBackend, Arc<Mutex<State>>) {
             max_outputs: 4,
             credentials: false,
             cleanup: true,
+            multipart: None,
         },
         via: Via::Helper(Helper {
             image: "uwe-helper:test".into(),
@@ -2361,6 +2565,7 @@ async fn reports_stage_failures() {
             max_outputs: 1,
             credentials: false,
             cleanup: true,
+            multipart: None,
         },
         via: Via::Helper(Helper {
             image: "uwe-helper:test".into(),
@@ -2419,6 +2624,7 @@ async fn stages_through_kubedal() {
             max_outputs: 4,
             credentials: false,
             cleanup: false,
+            multipart: None,
         },
         via: Via::Kubedal(Kubedal {
             driver: "kubedal.arunaengine.org".into(),
@@ -2426,6 +2632,7 @@ async fn stages_through_kubedal() {
             namespace: Some("data".into()),
             upload: Duration::from_secs(60),
             helper: None,
+            promote: false,
         }),
     });
     let source = root.path().join("source/in.txt");
@@ -2489,6 +2696,107 @@ async fn stages_through_kubedal() {
     assert!(paths.contains(&"work/in.txt") && paths.contains(&"control/wrapper.sh"));
 }
 
+/// Version 2 of the kubedal manifest names inputs that kubedal reads where they lie, and asks
+/// kubedal to put the outputs into the store, whose receipts come back with the attempt.
+#[tokio::test]
+async fn stages_kubedal_sources() {
+    let root = tempfile::tempdir().expect("a folder");
+    let (mut backend, state) = backend(root.path()).await;
+    let data = root.path().join("staging");
+    let objects = content_store::Store::local(&data).expect("a store");
+    std::fs::write(
+        root.path().join("server/data-node"),
+        data.to_string_lossy().as_bytes(),
+    )
+    .expect("names the DataNode");
+    backend.remote = Some(PodStaging {
+        stage: RemoteStage {
+            objects,
+            expiry: Duration::from_secs(600),
+            max_outputs: 4,
+            credentials: false,
+            cleanup: false,
+            multipart: None,
+        },
+        via: Via::Kubedal(Kubedal {
+            driver: "kubedal.arunaengine.org".into(),
+            data_node: "staging".into(),
+            namespace: None,
+            upload: Duration::from_secs(60),
+            helper: None,
+            promote: true,
+        }),
+    });
+    assert!(backend.direct_sources());
+    let remote = root.path().join("dataproxy/reads.fq");
+    std::fs::create_dir_all(remote.parent().expect("a folder")).expect("makes the folder");
+    std::fs::write(&remote, "acgt\n").expect("writes the object");
+    let mut parameters = BTreeMap::new();
+    parameters.insert("recipient".to_owned(), "key-1".to_owned());
+    let staging = Staging {
+        direct: vec![executor::DirectSource {
+            path: "reads.fq".into(),
+            source: "aruna://object/01HOBJECT".into(),
+            endpoints: vec!["dataproxy.example.org".into()],
+            digest: task_model::Digest::sha256(b"acgt\n"),
+            size: 5,
+            executable: false,
+            reference: storage::DirectRef {
+                url: format!("file://{}", remote.display()),
+                headers: Vec::new(),
+                aruna_id: Some("01HOBJECT".into()),
+                endpoint: Some("dataproxy.example.org".into()),
+                encryption: Some(storage::Encryption {
+                    scheme: "crypt4gh".into(),
+                    parameters,
+                }),
+            },
+        }],
+        ..Staging::default()
+    };
+    let spec = spec("debian:stable-slim", "tr a-z A-Z < reads.fq > out.txt");
+    let placement = placement();
+    let job = Job {
+        name: "run-P-1-1",
+        spec: &spec,
+        staging: &staging,
+        placement: &placement,
+    };
+    let finished = (backend.run(job, &CancellationToken::new()).await).expect("the job ends");
+    assert_eq!(finished.exit_code, Some(0));
+    let receipt = finished.receipt("out.txt").expect("a receipt");
+    assert_eq!(receipt.digest, task_model::Digest::sha256(b"ACGT\n"));
+    assert_eq!(
+        (receipt.size, receipt.location.as_str()),
+        (5, "aruna://promoted/out.txt")
+    );
+    let submitted = state.lock().expect("the state").submitted[0].clone();
+    let csi = &submitted["spec"]["template"]["spec"]["volumes"][0]["csi"];
+    let location = csi["volumeAttributes"]["manifest"]
+        .as_str()
+        .expect("a file list");
+    let list: Value =
+        serde_json::from_slice(&std::fs::read(data.join(location)).expect("the list"))
+            .expect("a list");
+    assert_eq!(list["version"], 2);
+    let source = &list["sources"][0];
+    assert_eq!(source["path"], "work/reads.fq");
+    assert_eq!(
+        source["digest"],
+        task_model::Digest::sha256(b"acgt\n").as_str()
+    );
+    assert_eq!(source["aruna_id"], "01HOBJECT");
+    assert_eq!(source["endpoint"], "dataproxy.example.org");
+    assert_eq!(source["encryption"]["scheme"], "crypt4gh");
+    assert_eq!(source["encryption"]["parameters"]["recipient"], "key-1");
+    assert_eq!(list["promote"]["receipts"], "control/receipts");
+    assert!(
+        list["promote"]["store"]
+            .as_str()
+            .is_some_and(|store| store.ends_with('/'))
+    );
+}
+
 #[tokio::test]
 async fn kubedal_discovers_outputs() {
     let root = tempfile::tempdir().unwrap();
@@ -2514,6 +2822,7 @@ async fn kubedal_discovers_outputs() {
         namespace: None,
         upload: Duration::from_secs(60),
         helper: None,
+        promote: false,
     });
     let mut spec = spec(
         "debian:stable-slim",
@@ -2664,7 +2973,10 @@ async fn schedules_with_cws() {
         json!([{"label": "UPPER", "type": "PROCESS", "uid": 1}])
     );
     let task = &calls[3].1;
-    assert_eq!(task["runName"], "uwe-run-upper-2-2-pod");
+    assert_eq!(
+        task["runName"],
+        format!("{}-pod", job_name("run-UPPER-2-2"))
+    );
     assert_eq!(task["task"], "UPPER");
     assert_eq!(task["name"], "UPPER (2)");
     assert_eq!(task["repetition"], 1);

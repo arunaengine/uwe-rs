@@ -11,10 +11,14 @@ use std::time::{Duration, Instant};
 use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
+use executor::orphans::{self, JobState, Orphan, RemoteJobs};
 use executor::registry::{self, ImageConfigs};
 use executor::remote::RemoteStage;
 use executor::wrapper::{Folders, wrapper};
-use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job};
+use executor::{
+    Access, Backend, BoxFuture, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job,
+    Journals, attempts,
+};
 use serde_json::{Value, json};
 use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
@@ -52,6 +56,8 @@ pub struct BatchBackend {
     pub staging_time: Duration,
     /// The entrypoints and default commands of images, for tasks without a command.
     pub configs: ImageConfigs,
+    /// Where the jobs of running attempts are noted, so that a later process finds them.
+    pub journals: Option<Journals>,
     definitions: Definitions,
     watch: Watch,
     held: AtomicBool,
@@ -95,6 +101,7 @@ impl BatchBackend {
             upload,
             staging_time: Duration::from_secs(30 * 60),
             configs: ImageConfigs::default(),
+            journals: None,
             definitions: Definitions::default(),
             watch: Watch::default(),
             held: AtomicBool::new(false),
@@ -109,6 +116,14 @@ impl Backend for BatchBackend {
 
     fn hold(&self) {
         self.held.store(true, Ordering::Relaxed);
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::report(self, self.journals.as_ref(), run).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::stop(self, self.journals.as_ref(), run).await
     }
 
     async fn run(
@@ -278,14 +293,17 @@ impl BatchBackend {
         if cancel.is_cancelled() || self.held.load(Ordering::Relaxed) {
             return Err(ExecutorError::Cancelled);
         }
+        let _held = attempts::hold(self.journals.as_ref(), self, job.name)?;
         let answer = self.client.batch("submitjob", &body).await.map_err(api)?;
         let id = (answer["jobId"].as_str())
             .ok_or_else(|| machine("AWS Batch answered the submission without a job id"))?
             .to_owned();
         tracing::debug!(job = id, attempt = job.name, "[AWS BATCH] submitted");
+        attempts::note(self.journals.as_ref(), self, job.name, &id).await?;
         self.watch.add(&id);
         let ended = self.wait(&id, job.name, cancel).await;
         self.watch.forget(&id);
+        attempts::settle(self.journals.as_ref(), self, job.name, &id, &ended).await;
         let ended = ended?;
         let collected =
             executor::remote::patiently(|| self.stage.collect(&planned.prefix, local, RECORDS))
@@ -402,6 +420,36 @@ impl BatchBackend {
                 String::new()
             }
         }
+    }
+}
+
+/// What AWS Batch says of a job that a journal names, and its termination.
+impl RemoteJobs for BatchBackend {
+    fn state<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<JobState>, String>> {
+        Box::pin(async move {
+            let body = json!({"jobs": [id]});
+            let answer = self.client.batch("describejobs", &body).await;
+            let answer = answer.map_err(|error| error.to_string())?;
+            let found = (answer["jobs"].as_array().into_iter().flatten())
+                .find(|job| job["jobId"] == id)
+                .and_then(|job| job["status"].as_str());
+            Ok(found.map(|status| JobState {
+                state: status.to_owned(),
+                ended: matches!(status, "SUCCEEDED" | "FAILED"),
+            }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            let body = json!({"jobId": id, "reason": "uwe stopped a job that its run left"});
+            let answer = self.client.batch("terminatejob", &body).await;
+            answer.map(drop).map_err(|error| error.to_string())
+        })
+    }
+
+    fn scope(&self) -> String {
+        format!("aws-batch region {}", self.client.region)
     }
 }
 

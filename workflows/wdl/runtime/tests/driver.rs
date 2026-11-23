@@ -303,3 +303,43 @@ fn keeps_delivered_sources() {
     let results = driver.results().expect("the results");
     assert_eq!(results["pass.result"], json!(data.to_string_lossy()));
 }
+
+#[test]
+fn confines_local_reads() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let run = folder.path().join("run");
+    std::fs::create_dir_all(&run).expect("a run folder");
+    let secret = folder.path().join("secret.txt");
+    std::fs::write(&secret, "outside").expect("a file outside the run");
+    let document = "version 1.1\n\nworkflow peek {\n  input {\n    File secret\n  }\n\
+                    \x20 output {\n    String text = read_string(secret)\n  }\n}\n";
+    std::fs::write(run.join("peek.wdl"), document).expect("a document");
+    let inputs = json!({"peek.secret": secret});
+    std::fs::write(run.join("inputs.json"), inputs.to_string()).expect("the inputs");
+    let launch = Launch {
+        target: run.join("peek.wdl"),
+        inputs: Some(run.join("inputs.json")),
+        scratch: run.join("scratch"),
+        ..Launch::default()
+    };
+    let outcome = |roots: Option<workflow_graph::Roots>| {
+        let options = Options {
+            print: false,
+            roots,
+            ..Options::default()
+        };
+        let mut driver = WdlDriver::new(&launch, options).expect("a driver");
+        let mut simulator = Simulator::new(folder.path().join("simulator"));
+        let execution = execute_with("wdl", &mut driver, &mut simulator, &RunOptions::default());
+        (
+            execution.error.map(|error| error.to_string()),
+            driver.results(),
+        )
+    };
+    let (error, results) = outcome(None);
+    assert_eq!(error, None);
+    assert_eq!(results.expect("results")["peek.text"], "outside");
+    let (error, _) = outcome(Some(workflow_graph::Roots::new([run.clone()])));
+    let error = error.expect("an isolated run cannot read the file");
+    assert!(error.contains("outside the folders of the run"), "{error}");
+}

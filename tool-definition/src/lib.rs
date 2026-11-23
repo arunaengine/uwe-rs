@@ -7,9 +7,11 @@ pub mod connection;
 pub mod definition;
 pub mod edam;
 pub mod finding;
+pub mod formats;
 pub mod graph;
 pub mod parameters;
 pub mod suggest;
+pub mod yaml;
 
 pub use conditions::{Evidence, Fact};
 pub use connection::{Check, FormatMatch, Shape, Supply};

@@ -368,8 +368,10 @@ impl<'d> Checker<'d> {
     fn names<'n>(&mut self, at: &str, names: impl Iterator<Item = &'n str>, paths: bool) {
         let mut seen = BTreeSet::new();
         for name in names {
+            // A path names folders of the run below its job and output folders.
+            let segment = |part: &str| valid_name(part) && !matches!(part, "." | "..");
             let valid = match paths {
-                true => name.split('/').all(valid_name),
+                true => name.split('/').all(segment),
                 false => valid_name(name),
             };
             if !valid {

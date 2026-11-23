@@ -8,8 +8,8 @@ use std::path::Path;
 use serde_json::{Value as Json, json};
 use wir_runtime::{Settings, WirDriver};
 use workflow_graph::{
-    Attempt, ExecuteError, ExecutionGraph, Executor, Launch, Reuse, Running, Simulator, Task,
-    execute,
+    Attempt, Driver, ExecuteError, ExecutionGraph, Executor, Launch, Reuse, Running, Simulator,
+    Task, execute,
 };
 
 /// The example `two-tools.json` in `root`, changed by `change`, with its inputs.
@@ -80,7 +80,20 @@ fn native(attributes: Json) -> Result<Vec<Task>, String> {
 /// The tasks of [`native`] for an op that also has `effects`.
 fn native_with(attributes: Json, effects: Json) -> Result<Vec<Task>, String> {
     let folder = tempfile::tempdir().unwrap();
-    let root = folder.path();
+    let launch = block_launch(folder.path(), attributes, effects);
+    let mut driver = WirDriver::new(&launch, settings()).map_err(|error| error.message)?;
+    let mut simulator = Simulator::new(folder.path().join("simulator"));
+    let graph = execute("native", &mut driver, &mut simulator).into_result();
+    Ok(graph
+        .unwrap()
+        .nodes
+        .into_iter()
+        .map(|node| node.task)
+        .collect())
+}
+
+/// The launch of a simulated run in `root` of a native op with `attributes` and `effects`.
+fn block_launch(root: &Path, attributes: Json, effects: Json) -> Launch {
     let workflow = Path::new(env!("CARGO_MANIFEST_DIR")).join("../demo/cwl/scatter-workflow.cwl");
     let port = json!([{"name": "message_array", "type": {"array": {"items": "string"}}}]);
     let document = json!({"wir_version": "0.1",
@@ -94,22 +107,34 @@ fn native_with(attributes: Json, effects: Json) -> Result<Vec<Task>, String> {
     std::fs::write(root.join("run.wir.json"), document.to_string()).unwrap();
     let inputs = json!({"message_array": ["one", "two"]});
     std::fs::write(root.join("inputs.json"), inputs.to_string()).unwrap();
-    let launch = Launch {
+    Launch {
         target: root.join("run.wir.json"),
         inputs: Some(root.join("inputs.json")),
         scratch: root.join("scratch"),
         simulated: true,
         ..Launch::default()
-    };
-    let mut driver = WirDriver::new(&launch, settings()).map_err(|error| error.message)?;
-    let mut simulator = Simulator::new(root.join("simulator"));
-    let graph = execute("native", &mut driver, &mut simulator).into_result();
-    Ok(graph
-        .unwrap()
-        .nodes
-        .into_iter()
-        .map(|node| node.task)
-        .collect())
+    }
+}
+
+/// The simulator, with the first attempt of every task failing until `failures` failed.
+struct Flaky {
+    simulator: Simulator,
+    failures: u32,
+}
+
+impl Executor for Flaky {
+    fn run(&mut self, attempt: Attempt) -> Running {
+        if self.failures == 0 {
+            return self.simulator.run(attempt);
+        }
+        self.failures -= 1;
+        Running::ended(Ok(workflow_graph::Outcome {
+            id: attempt.task.id,
+            attempt: attempt.number,
+            exit_code: 1,
+            ..Default::default()
+        }))
+    }
 }
 
 /// A pure op that gives its input `lines`, which has a default, as it is.
@@ -261,15 +286,41 @@ fn refuses_engine_effects() {
 
 #[test]
 fn refuses_block_sizes() {
-    let message = "op main/block: a native block sets the resources, time and retry of its \
-                   tasks itself";
-    for attributes in [
-        json!({"resources": {"cpus": 2}}),
-        json!({"time": 60}),
-        json!({"retry": 1}),
-    ] {
-        assert_eq!(native(attributes).unwrap_err(), message);
-    }
+    let message = "op main/block: a native block sets the resources of its tasks itself";
+    assert_eq!(
+        native(json!({"resources": {"cpus": 2}})).unwrap_err(),
+        message
+    );
+}
+
+#[test]
+fn caps_block_times() {
+    let tasks = native(json!({"time": 60})).expect("a run");
+    assert!(!tasks.is_empty());
+    let times: Vec<Option<u64>> = (tasks.iter())
+        .map(|task| task.resources.time_seconds)
+        .collect();
+    assert!(times.iter().all(|time| *time == Some(60)), "{times:?}");
+}
+
+#[test]
+fn reruns_failed_blocks() {
+    let run = |attributes: Json| {
+        let folder = tempfile::tempdir().unwrap();
+        let launch = block_launch(folder.path(), attributes, json!([]));
+        let mut driver = WirDriver::new(&launch, settings()).unwrap();
+        let mut flaky = Flaky {
+            simulator: Simulator::new(folder.path().join("simulator")),
+            failures: 1,
+        };
+        execute("native", &mut driver, &mut flaky).into_result()
+    };
+    assert!(run(json!({})).is_err(), "a failed block fails the run");
+    let graph = run(json!({"retry": 1})).expect("the block runs again and succeeds");
+    let names: Vec<&str> = (graph.nodes.iter())
+        .map(|node| node.task.name.as_str())
+        .collect();
+    assert!(names.contains(&"block: echo[0]"), "{names:?}");
 }
 
 #[test]
@@ -341,4 +392,92 @@ fn prints_check_exprs() {
         "a check prints to the sink"
     );
     assert_eq!(printed(json!([])), "", "a pure expr prints nothing");
+}
+
+/// The settings of a run whose input `message_array` is a secret that the host holds.
+fn secret_settings() -> Settings {
+    let value = json!(["hush-4711", "two"]);
+    let secret = serde_json::Map::from_iter([("message_array".to_owned(), value)]);
+    Settings {
+        secret_inputs: wir_runtime::SecretInputs(secret),
+        ..settings()
+    }
+}
+
+/// The files below a folder that hold `text`.
+fn holding(folder: &Path, text: &str) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
+        let path = entry.path();
+        match path.is_dir() {
+            true => found.extend(holding(&path, text)),
+            false if std::fs::read_to_string(&path).is_ok_and(|read| read.contains(text)) => {
+                found.push(path);
+            }
+            false => {}
+        }
+    }
+    found
+}
+
+#[test]
+fn writes_no_secrets() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = Launch {
+        inputs: None,
+        ..block_launch(folder.path(), json!({}), json!([]))
+    };
+    let mut driver = WirDriver::new(&launch, secret_settings()).unwrap();
+    let mut simulator = Simulator::new(folder.path().join("simulator"));
+    let execution = execute("native", &mut driver, &mut simulator);
+    let error = execution.error.expect("the CWL block refuses the secret");
+    assert!(
+        error.to_string().contains("cannot take secret inputs"),
+        "{error}"
+    );
+    assert_eq!(
+        holding(folder.path(), "hush-4711"),
+        Vec::<std::path::PathBuf>::new()
+    );
+}
+
+#[test]
+fn admits_required_secrets() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = Launch {
+        inputs: None,
+        simulated: false,
+        ..block_launch(folder.path(), json!({}), json!([]))
+    };
+    let mut driver = WirDriver::new(&launch, secret_settings()).unwrap();
+    let inputs = driver.inputs().unwrap().expect("the inputs");
+    let validation = input_schema::validate_json(&inputs, false);
+    let errors: Vec<&str> = (validation.diagnostics.iter())
+        .filter(|found| found.severity == input_schema::Severity::Error)
+        .map(|found| found.message.as_str())
+        .collect();
+    assert_eq!(errors, Vec::<&str>::new(), "a required secret is given");
+    assert!(!inputs.values.to_string().contains("hush-4711"));
+    driver.use_inputs(validation.values).expect("admitted");
+}
+
+#[test]
+fn starts_admitted_inputs() {
+    let folder = tempfile::tempdir().unwrap();
+    let launch = Launch {
+        simulated: true,
+        ..example(folder.path(), |_| {})
+    };
+    let mut driver = WirDriver::new(&launch, settings()).unwrap();
+    let inputs = driver.inputs().unwrap().expect("the inputs");
+    driver.use_inputs(inputs.values).expect("admitted");
+    // A later change of the file reaches no run that admission let through.
+    std::fs::write(
+        folder.path().join("inputs.json"),
+        "{\"lines\": \"changed\"}",
+    )
+    .unwrap();
+    let mut simulator = Simulator::new(folder.path().join("simulator"));
+    let graph = execute("admitted", &mut driver, &mut simulator).into_result();
+    assert!(graph.is_ok(), "{:?}", graph.err());
 }

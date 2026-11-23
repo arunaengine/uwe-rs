@@ -13,7 +13,7 @@ use task_model::{Digest, FileKind, InputFile, Tree, TreeEntry};
 use workflow_graph::{Input, Writable};
 
 use crate::outputs::{self, Found};
-use crate::runner::Source;
+use crate::runner::{Passed, Source};
 use crate::{RunnerError, Settings};
 
 /// What the digests of inputs are made for.
@@ -34,6 +34,32 @@ pub(crate) struct Inputs<'a> {
     pub(crate) references: &'a crate::References,
     pub(crate) mode: Mode,
     pub(crate) snapshots: Snapshots,
+    /// Which remote inputs whose provider knows their verified digest and a direct reference
+    /// stay where they lie, as the workers of the backend fetch them themselves.
+    pub(crate) direct: Direct<'a>,
+    /// The cache namespace of the tenant of the run, as [`crate::request::tenant`] names it.
+    pub(crate) tenant: &'a str,
+}
+
+/// Which remote inputs with a verified digest and a direct reference stay where they lie.
+#[derive(Clone, Copy)]
+pub(crate) enum Direct<'a> {
+    /// None: the backend gets each input as a local file.
+    Never,
+    /// All of them, as a cache lookup reads no bytes.
+    Any,
+    /// Those that the workers of this backend fetch themselves.
+    Backend(&'a dyn executor::DynBackend),
+}
+
+impl Direct<'_> {
+    fn takes(&self, reference: &storage::DirectRef) -> bool {
+        match self {
+            Direct::Never => false,
+            Direct::Any => true,
+            Direct::Backend(backend) => backend.supports_direct(reference),
+        }
+    }
 }
 
 /// The private copies of the inputs of a request, in `input-snapshots/<run>/` of the
@@ -433,9 +459,27 @@ impl Inputs<'_> {
                 self.bytes(content.as_bytes()).await?,
                 Source::Content,
             ),
+            None if input.source.contains("://") && input.directory => {
+                let manifest = self.settings.storage.tree_manifest(&input.source).await?;
+                checked_tree(&manifest, &input.source)?;
+                let taken = (manifest.files.iter()).all(|file| {
+                    file.direct
+                        .as_ref()
+                        .is_some_and(|found| self.direct.takes(found))
+                });
+                if taken && manifest.direct() {
+                    return self.passed_tree(input, manifest).await;
+                }
+                let snapshot = self.remote_tree(&input.source, &manifest).await?;
+                (
+                    FileKind::Directory,
+                    self.directory(&snapshot).await?.0,
+                    local(snapshot),
+                )
+            }
             None if input.source.contains("://") => {
-                if input.directory {
-                    return Err(RunnerError::Remote(input.source.clone()));
+                if let Some(passed) = self.passed(input).await? {
+                    return Ok(passed);
                 }
                 let copy = self.remote(&input.source).await?;
                 let snapshot = self.private(&copy, false, siblings).await?;
@@ -485,6 +529,130 @@ impl Inputs<'_> {
 }
 
 impl Inputs<'_> {
+    /// A remote file that stays where it lies: known by the verified digest of its provider,
+    /// with its direct reference. `None` when the backend fetches nothing itself, or the
+    /// provider knows no digest or reference of the file.
+    async fn passed(&self, input: &Input) -> Result<Option<(InputFile, Source)>, RunnerError> {
+        if matches!(self.direct, Direct::Never) {
+            return Ok(None);
+        }
+        let Some(details) = self.settings.storage.describe(&input.source).await? else {
+            return Ok(None);
+        };
+        let (Some(digest), Some(reference)) = (details.verified(), details.direct.clone()) else {
+            return Ok(None);
+        };
+        if !self.direct.takes(&reference) {
+            return Ok(None);
+        }
+        let digest = sha256(digest, &input.source)?;
+        if self.mode == Mode::Run {
+            let version = details.metadata.version.clone();
+            let size = details.metadata.size;
+            (self.settings.storage).note_direct(&input.source, digest.as_str(), size, version);
+        }
+        let file = InputFile {
+            path: input.path.clone(),
+            kind: FileKind::File,
+            digest: digest.clone(),
+            executable: input.executable,
+            writable: input.writable == Writable::Copy,
+        };
+        let passed = Passed {
+            relative: String::new(),
+            source: input.source.clone(),
+            digest,
+            size: details.metadata.size,
+            executable: input.executable,
+            reference,
+            endpoints: details.endpoints,
+        };
+        let (files, empty) = (vec![passed], Vec::new());
+        Ok(Some((file, Source::Direct { files, empty })))
+    }
+
+    /// A remote directory that stays where it lies, as each of its files has a verified digest
+    /// and a direct reference: its tree goes into the store, and its files to the workers.
+    async fn passed_tree(
+        &self,
+        input: &Input,
+        manifest: storage::TreeManifest,
+    ) -> Result<(InputFile, Source), RunnerError> {
+        let (mut entries, mut files) = (Vec::new(), Vec::new());
+        let base = input.source.trim_end_matches('/');
+        for file in manifest.files {
+            inside_tree(&file.path, &input.source)?;
+            let digest = sha256(file.digest.as_deref().unwrap_or_default(), &input.source)?;
+            entries.push(TreeEntry::File {
+                path: file.path.clone(),
+                digest: digest.clone(),
+                size: file.size,
+                executable: file.executable,
+            });
+            let reference = file
+                .direct
+                .ok_or_else(|| RunnerError::Tree(input.source.clone()))?;
+            let source = format!("{base}/{}", file.path);
+            if self.mode == Mode::Run {
+                (self.settings.storage).note_direct(&source, digest.as_str(), file.size, None);
+            }
+            files.push(Passed {
+                source,
+                relative: file.path,
+                digest,
+                size: file.size,
+                executable: file.executable,
+                endpoints: reference.endpoint.iter().cloned().collect(),
+                reference,
+            });
+        }
+        for path in &manifest.empty {
+            inside_tree(path, &input.source)?;
+            entries.push(TreeEntry::EmptyDirectory { path: path.clone() });
+        }
+        let file = InputFile {
+            path: input.path.clone(),
+            kind: FileKind::Directory,
+            digest: self.tree(&Tree { entries }).await?,
+            executable: false,
+            writable: input.writable == Writable::Copy,
+        };
+        let empty = manifest.empty;
+        Ok((file, Source::Direct { files, empty }))
+    }
+
+    /// A private copy of a remote directory with the files of `manifest`, each fetched into the
+    /// downloads once. A lookup of the cache downloads nothing, so it cannot know the directory.
+    async fn remote_tree(
+        &self,
+        source: &str,
+        manifest: &storage::TreeManifest,
+    ) -> Result<PathBuf, RunnerError> {
+        if self.mode == Mode::Look {
+            return Err(RunnerError::NotDownloaded(source.to_owned()));
+        }
+        let storage = &self.settings.storage;
+        let folder = self.snapshots.folder().await?.join("input");
+        tokio::fs::create_dir(&folder).await?;
+        let base = source.trim_end_matches('/');
+        for file in &manifest.files {
+            inside_tree(&file.path, source)?;
+            let address = format!("{base}/{}", file.path);
+            let copy = storage.fetch(&address, &self.settings.downloads).await?;
+            let target = folder.join(&file.path);
+            tokio::fs::create_dir_all(target.parent().expect("a parent")).await?;
+            tokio::fs::copy(&copy, &target).await?;
+            let mode = if file.executable { 0o755 } else { 0o644 };
+            tokio::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode)).await?;
+        }
+        for path in &manifest.empty {
+            inside_tree(path, source)?;
+            tokio::fs::create_dir_all(folder.join(path)).await?;
+        }
+        readable_snapshot(folder.parent().expect("a snapshot parent")).await?;
+        Ok(tokio::fs::canonicalize(folder).await?)
+    }
+
     /// A declared input that lies in a folder that the task sees in place: hashed where it
     /// is for the cache key, and staged by nothing.
     pub(crate) async fn present(&self, input: &Input) -> Result<(InputFile, Source), RunnerError> {
@@ -505,6 +673,46 @@ impl Inputs<'_> {
         };
         Ok((file, Source::Present))
     }
+}
+
+/// The digest of a remote file from the hexadecimal SHA-256 that its provider verified.
+fn sha256(hex: &str, source: &str) -> Result<Digest, RunnerError> {
+    let invalid = |_| RunnerError::Tree(source.to_owned());
+    format!("sha256:{hex}").parse().map_err(invalid)
+}
+
+/// Refuses a path of a remote directory that would leave the directory.
+fn inside_tree(path: &str, source: &str) -> Result<(), RunnerError> {
+    let parts: Vec<&str> = path.split('/').collect();
+    let plain = (parts.iter()).all(|part| !part.is_empty() && *part != "." && *part != "..");
+    match plain && !path.chars().any(char::is_control) {
+        true => Ok(()),
+        false => Err(RunnerError::Tree(source.to_owned())),
+    }
+}
+
+/// Checks the paths of a remote directory before anything of it is staged: each stays in the
+/// directory, none comes twice, and no file or empty directory holds another path.
+fn checked_tree(manifest: &storage::TreeManifest, source: &str) -> Result<(), RunnerError> {
+    let paths = (manifest.files.iter().map(|file| file.path.as_str()))
+        .chain(manifest.empty.iter().map(String::as_str));
+    let mut seen = std::collections::BTreeSet::new();
+    for path in paths {
+        inside_tree(path, source)?;
+        if !seen.insert(path) {
+            return Err(RunnerError::Tree(source.to_owned()));
+        }
+    }
+    for path in &seen {
+        let mut ancestor = *path;
+        while let Some((parent, _)) = ancestor.rsplit_once('/') {
+            if seen.contains(parent) {
+                return Err(RunnerError::Tree(source.to_owned()));
+            }
+            ancestor = parent;
+        }
+    }
+    Ok(())
 }
 
 /// Whether an input already lies, as itself, in a folder that the task sees in place.
@@ -557,6 +765,35 @@ pub(crate) async fn readable_snapshot(root: &Path) -> Result<(), RunnerError> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn refuses_tree_conflicts() {
+        let tree = |files: &[&str], empty: &[&str]| storage::TreeManifest {
+            files: (files.iter())
+                .map(|path| storage::TreeFile {
+                    path: (*path).to_owned(),
+                    size: 1,
+                    digest: None,
+                    executable: false,
+                    direct: None,
+                })
+                .collect(),
+            empty: empty.iter().map(|path| (*path).to_owned()).collect(),
+        };
+        let source = "aruna://project/tree";
+        assert!(checked_tree(&tree(&["a/b", "a/c", "d"], &["e/f"]), source).is_ok());
+        for (files, empty) in [
+            (&["a", "a"][..], &[][..]),
+            (&["a", "a/b"], &[]),
+            (&["a/b"], &["a"]),
+            (&["x"], &["x"]),
+            (&["a\nb"], &[]),
+            (&["../a"], &[]),
+        ] {
+            let checked = checked_tree(&tree(files, empty), source);
+            assert!(checked.is_err(), "{files:?} {empty:?}");
+        }
+    }
+
     #[tokio::test]
     async fn imported_references_local() {
         let root = tempfile::tempdir().unwrap();
@@ -579,6 +816,8 @@ mod tests {
             references: &references,
             mode: Mode::Run,
             snapshots: Snapshots::new(&settings, "test"),
+            direct: Direct::Never,
+            tenant: "",
         };
         for named in [
             source.to_string_lossy().into_owned(),

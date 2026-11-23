@@ -6,33 +6,26 @@ use nextflow_config::Config;
 use nextflow_evaluator::value::Value;
 
 use crate::catalogue::{Kind, Plugin, State};
-use crate::observer::Observer;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     scopes: &["drs"],
-    observer: Some(activate),
     ..Plugin::new("nf-drs", Kind::FileSystem, State::Implemented)
 };
 
-/// Hands the `drs` scope to the DRS provider that serves `drs://` paths; the plugin hears no
-/// run events.
-fn activate(
-    config: &Config,
-    _: &std::path::Path,
-    _: &crate::catalogue::Environment,
-) -> Result<Option<Box<dyn Observer>>, String> {
+/// The options of the `drs` scope for the DRS provider that serves `drs://` paths of the run;
+/// the plugin hears no run events.
+pub(crate) fn options(config: &Config) -> storage::drs::Options {
     let text = |key| {
         (config.get(&["drs", key]))
             .filter(|value| !matches!(value, Value::Null))
             .map(|value| value.to_string())
     };
-    storage::drs::use_scope(storage::drs::Options {
+    storage::drs::Options {
         authentication: text("authProvider"),
         credential: None,
         variable: text("authSecret"),
         token_path: text("tokenEndpointPath"),
         protocol: text("accessProtocol"),
         plain_http: Vec::new(),
-    });
-    Ok(None)
+    }
 }

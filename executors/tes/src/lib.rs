@@ -13,5 +13,5 @@ mod staging;
 
 pub use backend::TesBackend;
 pub use client::{Client, TesError};
-pub use settings::{Platform, Settings};
+pub use settings::{NETWORK_TAG, Platform, Settings};
 pub use staging::ObjectStage;

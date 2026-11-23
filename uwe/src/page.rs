@@ -6,7 +6,9 @@ use std::io::{IsTerminal, Read};
 use std::net::{IpAddr, Ipv4Addr};
 use std::process::{Command, Stdio};
 
-use run_page::{Server, Settings};
+use std::sync::Arc;
+
+use run_page::{Server, Settings, Studio};
 
 use crate::arguments::Arguments;
 use crate::{Failure, runs};
@@ -14,6 +16,17 @@ use crate::{Failure, runs};
 /// Starts the page and says where it is; `path` is the part of the address after the host,
 /// like `/runs/<run>`. In a terminal, the browser opens it too.
 pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
+    serve(arguments, path, None, true)
+}
+
+/// Starts the page, with the launcher and the combiner of `studio` when there is one. The
+/// browser opens it with `--open`, and in a terminal when `browse` says so.
+pub fn serve(
+    arguments: &Arguments,
+    path: &str,
+    studio: Option<Arc<dyn Studio>>,
+    browse: bool,
+) -> Result<Server, Failure> {
     let config = config_file::ConfigFile::load(arguments.config_file.as_deref())
         .map_err(|error| Failure::setup(format!("uwe: {error}")))?
         .with_secrets(arguments.secrets.clone());
@@ -31,8 +44,10 @@ pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
         database: runs::database_path(arguments),
         address: arguments.address.unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST)),
         port: arguments.port.unwrap_or(0),
-        token,
+        token: arguments.token.clone().or(token),
     };
+    // A token that the user chose stays out of the terminal and its logs; a fresh one is shown.
+    let chosen = settings.token.is_some();
     if !settings.address.is_loopback() && settings.token.is_none() {
         let mut bytes = [0_u8; 32];
         std::fs::File::open("/dev/urandom")
@@ -42,34 +57,56 @@ pub fn start(arguments: &Arguments, path: &str) -> Result<Server, Failure> {
             })?;
         settings.token = Some(bytes.iter().map(|byte| format!("{byte:02x}")).collect());
     }
-    let server =
-        Server::start(&settings).map_err(|error| Failure::setup(format!("uwe: {error}")))?;
-    let mut url = format!("{}{path}", server.url());
-    if let Some(token) = &settings.token {
-        url.push_str(&format!("?token={token}"));
+    let store = arguments.run_store.as_ref().map(|host| host.0.clone());
+    let server = match (studio, store) {
+        (Some(studio), store) => Server::start_studio(&settings, store, studio, None),
+        (None, Some(store)) => Server::start_store(&settings, store, None),
+        (None, None) => Server::start(&settings),
     }
-    eprintln!("uwe: the page is at {url}");
-    if !settings.address.is_loopback() {
+    .map_err(|error| Failure::setup(format!("uwe: {error}")))?;
+    let base = format!("{}{path}", server.url());
+    let url = match &settings.token {
+        Some(token) => format!("{base}?token={token}"),
+        None => base.clone(),
+    };
+    if chosen {
+        eprintln!("uwe: the page is at {base}; open it with `?token=` and the configured token");
+    } else {
+        eprintln!("uwe: the page is at {url}");
+    }
+    if !settings.address.is_loopback() && !chosen {
         eprintln!(
             "uwe: the page listens on {} and requires the token in this URL",
             settings.address
         );
     }
-    if std::io::stderr().is_terminal() {
+    if arguments.open || (browse && std::io::stderr().is_terminal()) {
         open(&url);
     }
     Ok(server)
 }
 
-/// `uwe page [<run>]`: serves the page until Ctrl-C.
+/// `uwe page [<run>]`: serves the page until Ctrl-C. With `--tools` or `--workflows` it serves
+/// the launcher and the combiner too, as `uwe serve` does.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let path = match &arguments.target {
         Some(run) => format!("/runs/{}", run.to_string_lossy()),
         None => "/".to_owned(),
     };
-    let server = start(arguments, &path)?;
+    let interactive = !arguments.tools.is_empty() || !arguments.workflows.is_empty();
+    let backend = match interactive {
+        true => Some(Arc::new(crate::serve::Backend::new(crate::serve::options(
+            arguments, false,
+        )?))),
+        false => None,
+    };
+    let studio = backend.clone().map(|backend| backend as Arc<dyn Studio>);
+    let server = serve(arguments, &path, studio, true)?;
     eprintln!("uwe: press Ctrl-C to stop the page");
     server.serve_until_interrupted();
+    if let Some(backend) = backend {
+        backend.stop();
+    }
     Ok(())
 }
 

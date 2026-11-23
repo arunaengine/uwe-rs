@@ -11,9 +11,11 @@ mod ids;
 mod image;
 mod metadata;
 mod pinned;
+mod wir;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use run_database::{Database, DatabaseError, Run, TaskDetail};
 use serde_json::json;
@@ -41,6 +43,10 @@ pub enum CrateError {
     Workflow(PathBuf),
     #[error("RO-Crate: the workflow `{0}` holds a secret value of the run, so it is not exported")]
     Secret(PathBuf),
+    #[error(
+        "RO-Crate: the crate would replace the workflow `{0}` itself; export to another folder"
+    )]
+    Overwrite(PathBuf),
 }
 
 /// What an export wrote.
@@ -55,7 +61,7 @@ pub struct Summary {
 }
 
 /// What an export needs besides the run.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct Options {
     /// The main workflow file, which the crate holds a copy of: the target of the run, or the
     /// main file of a project directory, like `main.nf` or `workflow/Snakefile`.
@@ -76,6 +82,68 @@ pub struct Options {
     /// each keeps its name, size, SHA-256 and `file://` location as `contentUrl`, under an id
     /// `#data/<hex>`. See "RO-Crates without the data" in `docs/embedding.md`.
     pub describe_data: bool,
+    /// Persistent addresses of described files, by location prefix: a location that starts
+    /// with a key, like `/data/store/`, gets the value in place of that prefix, like
+    /// `aruna://object/`, as its `contentUrl` and `@id`. The longest prefix wins.
+    pub uri_map: BTreeMap<String, String>,
+    /// Gives the persistent address of a location where `uri_map` gives none.
+    pub uri_resolver: Option<UriResolver>,
+}
+
+/// A function of the host that gives the persistent address of a file of the run, like an
+/// `aruna://` or `https://` address, from its location; `None` keeps the location.
+#[derive(Clone)]
+pub struct UriResolver(Arc<Resolve>);
+
+/// The function of a [`UriResolver`].
+type Resolve = dyn Fn(&str) -> Option<String> + Send + Sync;
+
+impl UriResolver {
+    pub fn new(resolve: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> UriResolver {
+        UriResolver(Arc::new(resolve))
+    }
+}
+
+impl std::fmt::Debug for UriResolver {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("UriResolver")
+    }
+}
+
+/// Shows the options without the secret values and without the persistent addresses, which
+/// may hold credentials of the host.
+impl std::fmt::Debug for Options {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Options")
+            .field("workflow", &self.workflow)
+            .field("license", &self.license)
+            .field("sources", &self.sources.len())
+            .field(
+                "secrets",
+                &format_args!("[{} redacted]", self.secrets.len()),
+            )
+            .field("folders", &self.folders)
+            .field("describe_data", &self.describe_data)
+            .field("uri_map", &self.uri_map.len())
+            .field("uri_resolver", &self.uri_resolver)
+            .finish()
+    }
+}
+
+impl Options {
+    /// The persistent address of a location, by `uri_map`, else by `uri_resolver`.
+    pub fn persistent(&self, location: &str) -> Option<String> {
+        let mapped = (self.uri_map.iter())
+            .filter(|(prefix, _)| !prefix.is_empty() && location.starts_with(prefix.as_str()))
+            .max_by_key(|(prefix, _)| prefix.len())
+            .map(|(prefix, uri)| format!("{uri}{}", &location[prefix.len()..]));
+        mapped.or_else(|| {
+            self.uri_resolver
+                .as_ref()
+                .and_then(|resolve| (resolve.0)(location))
+        })
+    }
 }
 
 /// Writes the crate of a run into a directory, creating it when needed.
@@ -97,18 +165,22 @@ pub fn export(
         return Err(CrateError::Secret(options.workflow.clone()));
     }
     std::fs::create_dir_all(directory)?;
-    if let Some(expected) = &main.1 {
-        if !pinned::copy_checked(&main.0, &directory.join(&workflow), expected)? {
-            return Err(CrateError::Workflow(options.workflow.clone()));
-        }
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(
-            directory.join(&workflow),
-            std::fs::Permissions::from_mode(if main.2 { 0o755 } else { 0o644 }),
-        )?;
-    } else {
-        std::fs::copy(&main.0, directory.join(&workflow))?;
+    let target = directory.join(&workflow);
+    if [&main.0, &options.workflow]
+        .iter()
+        .any(|source| same_file(source, &target))
+    {
+        return Err(CrateError::Overwrite(options.workflow.clone()));
     }
+    if !pinned::copy_checked(&main.0, &target, main.1.as_deref())? {
+        return Err(CrateError::Workflow(options.workflow.clone()));
+    }
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = match &main.1 {
+        Some(_) => std::fs::Permissions::from_mode(if main.2 { 0o755 } else { 0o644 }),
+        None => std::fs::metadata(&main.0)?.permissions(),
+    };
+    std::fs::set_permissions(&target, permissions)?;
     let mut tasks: Vec<TaskDetail> = Vec::new();
     for row in database.tasks(run)? {
         // A task that never started did not run, so the crate leaves it out.
@@ -124,7 +196,20 @@ pub fn export(
         for file in task.inputs.iter().chain(&task.outputs) {
             if !file.location.is_empty() && options.describe_data {
                 let digest = file.digest.as_deref();
-                let described = data.describe(&file.location, file.directory, digest, file.size)?;
+                let persistent = options.persistent(&file.location);
+                let recorded = digest.and_then(|digest| digest.parse().ok()).zip(file.size);
+                let described = match (persistent, recorded) {
+                    // The host keeps the file, so the crate needs no local copy to describe it.
+                    (Some(uri), Some((digest, size))) => data::persistent(
+                        data::described(&file.location, file.directory, digest, size),
+                        Some(uri),
+                    ),
+                    (persistent, _) => {
+                        let found =
+                            data.describe(&file.location, file.directory, digest, file.size)?;
+                        data::persistent(found, persistent)
+                    }
+                };
                 placed.insert(files::file_key(file), described);
                 continue;
             }
@@ -197,6 +282,8 @@ pub fn export(
         pinned: &pinned,
     }
     .graph();
+    let mut graph = graph;
+    wir::provenance(&mut graph, &record, options)?;
     let mut metadata = json!({
         "@context": [
             "https://w3id.org/ro/crate/1.1/context",
@@ -227,6 +314,15 @@ pub fn export(
         bytes,
         tasks: tasks.len(),
     })
+}
+
+/// Whether two paths name the same file, also through links.
+fn same_file(first: &Path, second: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::metadata(first), std::fs::metadata(second)) {
+        (Ok(first), Ok(second)) => (first.dev(), first.ino()) == (second.dev(), second.ino()),
+        _ => false,
+    }
 }
 
 /// The main file of the workflow as the run had it: the copy that the options give for its

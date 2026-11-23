@@ -88,7 +88,11 @@ impl ObjectStage {
             ));
         }
         let work = container_path(spec.workdir.as_deref().unwrap_or(super::backend::WORK), "/")?;
-        let shell = shell || shell_command(&spec.arguments) || spec.output_manifest.is_some();
+        // The wrapper checks the digest of each input that the server reads from its URL.
+        let shell = shell
+            || shell_command(&spec.arguments)
+            || spec.output_manifest.is_some()
+            || !job.staging.direct.is_empty();
         let helper = usize::from(spec.output_manifest.is_some());
         if shell
             && [
@@ -214,12 +218,30 @@ impl ObjectStage {
                 }
             }
         }
+        // The server reads an input that lies elsewhere from its URL, which needs no header.
+        let mut direct = Vec::with_capacity(job.staging.direct.len());
+        for input in &job.staging.direct {
+            if !input.reference.headers.is_empty() {
+                return Err(unsupported(
+                    "TES inputs cannot send the headers of a source",
+                ));
+            }
+            let path = container_path(&input.path, &work)?;
+            if input.executable {
+                programs.push(path.clone());
+            }
+            direct.push(Input {
+                path,
+                url: input.reference.url.clone(),
+                kind: FileType::File,
+            });
+        }
         if !shell && (!directories.is_empty() || !programs.is_empty()) {
             return Err(unsupported(
                 "empty directories and executable inputs require a task shell for TES staging",
             ));
         }
-        if files.len() + usize::from(shell) + helper > self.settings.max_inputs {
+        if files.len() + direct.len() + usize::from(shell) + helper > self.settings.max_inputs {
             return Err(unsupported("TES expanded inputs exceed max_inputs"));
         }
         let prefix = executor::capture::attempt_prefix(job)?;
@@ -319,6 +341,16 @@ impl ObjectStage {
             .into_iter()
             .map(|input| input.expect("every upload completed"))
             .collect();
+        for input in direct {
+            if wildcard(&input.path) {
+                return Err(unsupported("TES input paths cannot contain wildcards"));
+            }
+            if helper != 0 && Path::new(&input.path).starts_with(super::backend::HELPER) {
+                return Err(unsupported("TES input paths overlap the native helper"));
+            }
+            super::outputs::check_input(&task, &input.path)?;
+            task.inputs.push(input);
+        }
         if shell {
             let script = super::capture::script(job, &work, &directories, &programs)?;
             let script = super::capture::discover(script, job, &work, &self.settings)?;

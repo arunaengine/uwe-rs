@@ -366,6 +366,17 @@ fn machine_identity() -> Option<(String, String)> {
     ))
 }
 
+/// The process of a running owner when it still runs on this machine, since the same boot;
+/// `None` for an owner of another machine or one that has ended.
+pub fn local_process(owner: &Owner) -> Option<u32> {
+    let (here, boot) = machine_identity()?;
+    let same = owner.host.as_deref() == Some(here.as_str())
+        && owner.boot.as_deref() == Some(boot.as_str());
+    let start = owner.start.as_deref().filter(|_| same)?;
+    let current = process_start(owner.process).ok()??;
+    (current == start).then_some(owner.process)
+}
+
 fn process_start(process: u32) -> std::io::Result<Option<String>> {
     let stat = match std::fs::read_to_string(format!("/proc/{process}/stat")) {
         Ok(stat) => stat,

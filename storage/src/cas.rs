@@ -40,86 +40,117 @@ pub(crate) fn scope() -> Options {
 
 /// Writes a DAG-CBOR block into the writable store of [`use_scope`] and returns its CID.
 pub fn put_block(node: &Node) -> Result<Cid, StorageError> {
-    let node = node.clone();
-    run("write a block to", move |cas| async move {
-        let (bytes, cid) = node.block().map_err(Problem::fixed)?;
-        cas.writable()?.absent(&block_key(&cid), &bytes).await?;
-        Ok(cid)
-    })
+    scope().put_block(node)
 }
 
-/// Writes the Store Log entry `log/<rts>-<kind>-<cid>`, newest first by name.
+/// Writes the Store Log entry `log/<rts>-<kind>-<cid>` with the stores of [`use_scope`].
 pub fn put_log(kind: &str, cid: &Cid) -> Result<(), StorageError> {
-    let key = format!(
-        "log/{:013}-{kind}-{cid}",
-        9_999_999_999_999 - jiff::Timestamp::now().as_millisecond()
-    );
-    run("write the Store Log of", move |cas| async move {
-        cas.writable()?.absent(&key, b"").await
-    })
+    scope().put_log(kind, cid)
 }
 
 /// A block of the stores of [`use_scope`], decoded; raw blocks are refused.
 pub fn block(cid: &Cid) -> Result<Option<Node>, StorageError> {
-    let cid = *cid;
-    run("read a block of", move |cas| async move {
-        match cas.find(&cid).await? {
-            Some(bytes) => decode(&bytes).map(Some).map_err(Problem::fixed),
-            None => Ok(None),
-        }
-    })
+    scope().block(cid)
 }
 
-/// The CIDs that the `run` entries of the Store Logs name, newest first, across the stores.
+/// The CIDs that the `run` entries of the Store Logs of [`use_scope`] name, newest first.
 pub fn runs() -> Result<Vec<Cid>, StorageError> {
-    run("read the Store Log of", |cas| async move {
-        let mut entries = Vec::new();
-        for (_, member) in &cas.members {
-            entries.extend(
-                (member.entries("log").await?)
-                    .into_iter()
-                    .map(|entry| entry.name),
-            );
-        }
-        entries.sort();
-        entries.dedup();
-        Ok((entries.iter())
-            .filter_map(|name| Cid::parse(name.split_once("-run-")?.1))
-            .collect())
-    })
+    scope().runs()
 }
 
-/// The content and size that a publish coordinate `cas://<alias>/<path>` names.
+/// The content and size that a publish coordinate names, in the stores of [`use_scope`].
 pub fn coordinate(target: &str) -> Result<Option<(Cid, u64)>, StorageError> {
-    let target = target.to_owned();
-    run("read the coordinate", move |cas| async move {
-        let Some(content) = cas.coordinate(&target).await? else {
-            return Ok(None);
-        };
-        let size = cas.size(&content).await?.unwrap_or(0);
-        Ok(Some((content, size)))
-    })
+    scope().coordinate(target)
 }
 
-/// Runs a request against the stores of [`use_scope`].
-fn run<T: Send + 'static, F>(
-    action: &'static str,
-    request: impl FnOnce(Cas) -> F + Send + 'static,
-) -> Result<T, StorageError>
-where
-    F: Future<Output = Result<T, Problem>> + Send,
-{
-    crate::blocking::run(async move {
-        let failed = |problem: Problem| StorageError::Failed {
-            action,
-            address: "cas://".to_owned(),
-            provider: "the stores of the cas scope".to_owned(),
-            message: problem.message,
-            retryable: problem.retryable,
-        };
-        let cas = Cas::new(scope()).map_err(failed)?;
-        request(cas).await.map_err(failed)
-    })
+/// The requests of one run against its own stores, which never read the scope of the process.
+impl Options {
+    /// Writes a DAG-CBOR block into the writable store and returns its CID.
+    pub fn put_block(&self, node: &Node) -> Result<Cid, StorageError> {
+        let node = node.clone();
+        self.run("write a block to", move |cas| async move {
+            let (bytes, cid) = node.block().map_err(Problem::fixed)?;
+            cas.writable()?.absent(&block_key(&cid), &bytes).await?;
+            Ok(cid)
+        })
+    }
+
+    /// Writes the Store Log entry `log/<rts>-<kind>-<cid>`, newest first by name.
+    pub fn put_log(&self, kind: &str, cid: &Cid) -> Result<(), StorageError> {
+        let key = format!(
+            "log/{:013}-{kind}-{cid}",
+            9_999_999_999_999 - jiff::Timestamp::now().as_millisecond()
+        );
+        self.run("write the Store Log of", move |cas| async move {
+            cas.writable()?.absent(&key, b"").await
+        })
+    }
+
+    /// A block of the stores, decoded; raw blocks are refused.
+    pub fn block(&self, cid: &Cid) -> Result<Option<Node>, StorageError> {
+        let cid = *cid;
+        self.run("read a block of", move |cas| async move {
+            match cas.find(&cid).await? {
+                Some(bytes) => decode(&bytes).map(Some).map_err(Problem::fixed),
+                None => Ok(None),
+            }
+        })
+    }
+
+    /// The CIDs that the `run` entries of the Store Logs name, newest first, across the stores.
+    pub fn runs(&self) -> Result<Vec<Cid>, StorageError> {
+        self.run("read the Store Log of", |cas| async move {
+            let mut entries = Vec::new();
+            for (_, member) in &cas.members {
+                entries.extend(
+                    (member.entries("log").await?)
+                        .into_iter()
+                        .map(|entry| entry.name),
+                );
+            }
+            entries.sort();
+            entries.dedup();
+            Ok((entries.iter())
+                .filter_map(|name| Cid::parse(name.split_once("-run-")?.1))
+                .collect())
+        })
+    }
+
+    /// The content and size that a publish coordinate `cas://<alias>/<path>` names.
+    pub fn coordinate(&self, target: &str) -> Result<Option<(Cid, u64)>, StorageError> {
+        let target = target.to_owned();
+        self.run("read the coordinate", move |cas| async move {
+            let Some(content) = cas.coordinate(&target).await? else {
+                return Ok(None);
+            };
+            let size = cas.size(&content).await?.unwrap_or(0);
+            Ok(Some((content, size)))
+        })
+    }
+
+    /// Runs a request against these stores.
+    fn run<T: Send + 'static, F>(
+        &self,
+        action: &'static str,
+        request: impl FnOnce(Cas) -> F + Send + 'static,
+    ) -> Result<T, StorageError>
+    where
+        F: Future<Output = Result<T, Problem>> + Send,
+    {
+        let options = self.clone();
+        crate::blocking::run(async move {
+            let failed = |problem: Problem| StorageError::Failed {
+                action,
+                address: "cas://".to_owned(),
+                provider: "the stores of the cas scope".to_owned(),
+                message: problem.message,
+                retryable: problem.retryable,
+            };
+            let clients = crate::web::Clients::process().map_err(Problem::fixed);
+            let cas = Cas::new(options, clients.map_err(failed)?).map_err(failed)?;
+            request(cas).await.map_err(failed)
+        })
+    }
 }
 
 pub(crate) struct Cas {
@@ -145,7 +176,7 @@ enum Named {
 }
 
 impl Cas {
-    pub fn new(options: Options) -> Result<Cas, Problem> {
+    pub fn new(options: Options, clients: &crate::web::Clients) -> Result<Cas, Problem> {
         let mut order: Vec<String> = options.resolve.clone();
         if order.is_empty() {
             order.extend(options.writable.clone());
@@ -166,7 +197,7 @@ impl Cas {
             let member = match crate::address::scheme(&location) {
                 None => Member::Folder(PathBuf::from(location)),
                 Some("s3") => {
-                    let objects = Objects::new(crate::quilt::environment())?;
+                    let objects = Objects::new(crate::quilt::environment(), clients)?;
                     Member::Objects(objects.at(&location)?)
                 }
                 Some(_) => {
@@ -262,13 +293,25 @@ impl Cas {
     }
 
     /// The bytes of a block, from the first member that has it.
+    /// The bytes of a block, from the first store whose copy has the digest of its CID; a
+    /// copy with other bytes is skipped, and only such copies give an error.
     async fn find(&self, cid: &Cid) -> Result<Option<Vec<u8>>, Problem> {
-        for (_, member) in &self.members {
-            if let Some(bytes) = member.read(&block_key(cid)).await? {
+        let mut corrupt = None;
+        for (alias, member) in &self.members {
+            let Some(bytes) = member.read(&block_key(cid)).await? else {
+                continue;
+            };
+            if Cid::of(cid.codec, &bytes).digest == cid.digest {
                 return Ok(Some(bytes));
             }
+            corrupt = Some(alias);
         }
-        Ok(None)
+        match corrupt {
+            Some(alias) => Err(Problem::fixed(format!(
+                "the block {cid} in cas://{alias} has other bytes than its CID names"
+            ))),
+            None => Ok(None),
+        }
     }
 
     async fn size(&self, cid: &Cid) -> Result<Option<u64>, Problem> {

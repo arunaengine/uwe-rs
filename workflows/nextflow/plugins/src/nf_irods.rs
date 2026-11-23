@@ -14,13 +14,19 @@ pub(crate) const PLUGIN: Plugin = Plugin {
     ..Plugin::new("nf-irods", Kind::FileSystem, State::Implemented)
 };
 
-/// Hands the `irods` scope to the iRODS provider that serves `irods://` paths; the plugin
-/// hears no run events.
+/// Checks the `irods` scope, which reaches the iRODS provider of the run through
+/// [`crate::catalogue::scopes`]; the plugin hears no run events.
 fn activate(
     config: &Config,
     _: &std::path::Path,
     _: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
+    options(config)?;
+    Ok(None)
+}
+
+/// The options of the `irods` scope for the iRODS provider that serves `irods://` paths.
+pub(crate) fn options(config: &Config) -> Result<storage::irods::Options, String> {
     let text = |key| {
         (config.get(&["irods", key]))
             .filter(|value| !matches!(value, Value::Null))
@@ -33,7 +39,7 @@ fn activate(
         ),
         None => None,
     };
-    storage::irods::use_scope(storage::irods::Options {
+    Ok(storage::irods::Options {
         host: text("host"),
         port,
         user: text("username"),
@@ -41,6 +47,5 @@ fn activate(
         password: text("password"),
         authentication: text("authenticationScheme"),
         negotiation: text("sslNegotiationPolicy"),
-    });
-    Ok(None)
+    })
 }

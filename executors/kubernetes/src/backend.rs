@@ -79,6 +79,8 @@ pub struct KubernetesBackend {
     pub pod: crate::PodOptions,
     /// The Common Workflow Scheduler that learns of each task before its Job, if any.
     pub cws: Option<crate::cws::Client>,
+    /// How the pods of tasks without network are cut off it; `None` runs no such task.
+    pub isolation: Option<crate::Isolation>,
     /// The id of the run, which each Job and journal names.
     pub run: String,
     /// The label value of the Jobs of this backend.
@@ -123,6 +125,7 @@ impl KubernetesBackend {
             unschedulable_time: UNSCHEDULABLE_TIME,
             pod: crate::PodOptions::default(),
             cws: None,
+            isolation: None,
             run: String::new(),
             label: format!("{}-{millis}", std::process::id()),
             pods: Pods::default(),
@@ -143,6 +146,22 @@ impl Backend for KubernetesBackend {
         self.release_daemons().await;
     }
 
+    /// The helper and kubedal fetch the inputs of a plan where they lie.
+    fn direct_sources(&self) -> bool {
+        self.remote.is_some()
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<executor::orphans::Orphan>, ExecutorError> {
+        self.report_run(run).await
+    }
+
+    async fn stop_orphans(
+        &self,
+        run: &str,
+    ) -> Result<Vec<executor::orphans::Orphan>, ExecutorError> {
+        self.stop_run(run).await
+    }
+
     async fn run(
         &self,
         job: Job<'_>,
@@ -151,11 +170,12 @@ impl Backend for KubernetesBackend {
         if cancel.is_cancelled() {
             return Err(ExecutorError::Cancelled);
         }
-        if job.placement.offline {
+        if job.placement.offline && self.isolation.is_none() {
             return Err(ExecutorError::Unsupported(
                 "the Kubernetes executor cannot run a task without network, like a CWL tool \
-                 without NetworkAccess; let its step use the network with `allowed_steps` in \
-                 `[network]` of the config file"
+                 without NetworkAccess, unless `network_policy = true` in \
+                 `[executor.kubernetes]` cuts its pod off; or let its step use the network with \
+                 `allowed_steps` in `[network]` of the config file"
                     .into(),
             ));
         }
@@ -372,7 +392,7 @@ impl KubernetesBackend {
             owner: (owner.uid(), owner.gid()),
             cpus: job.placement.cpus.max(1),
             memory: job.placement.memory_bytes,
-            // A pod has no switch of its own for the network; a NetworkPolicy would be one.
+            // A pod has no switch of its own for the network; its NetworkPolicy is one.
             offline: false,
             wrapper_path: None,
             access: &access,
@@ -534,6 +554,11 @@ impl KubernetesBackend {
         }
         (options.apply(&mut manifest, job.placement)).map_err(ExecutorError::Unsupported)?;
         manifest["metadata"]["annotations"][crate::manifest::RUN] = serde_json::json!(self.run);
+        let isolation = self.isolation.as_ref().filter(|_| job.placement.offline);
+        if isolation.is_some() {
+            let labels = &mut manifest["spec"]["template"]["metadata"]["labels"];
+            labels[crate::network::JOB] = serde_json::json!(name);
+        }
         let resources = manifest["spec"]["template"]["spec"]["resources"].clone();
         if !resources.is_null() {
             manifest["spec"]["suspend"] = serde_json::json!(true);
@@ -557,8 +582,26 @@ impl KubernetesBackend {
                 "root": remote.stage.objects.url(""), "cleanup": remote.stage.cleanup});
             journal["collect"] = serde_json::json!(daemon.is_none());
         }
+        if isolation.is_some() {
+            journal["policy"] = serde_json::json!(name);
+        }
         journal_at(root, &journal)?;
         track(root)?;
+        // The pod starts only after its NetworkPolicy, which the stop of the Job removes.
+        if let Some(isolation) = isolation {
+            let policy = crate::network::policy(&name, &self.label, &self.run, isolation);
+            let uid = tokio::select! {
+                result = crate::network::create(&self.cluster, policy) => {
+                    result.map_err(|error| unresolved(root, error))?
+                }
+                () = cancel.cancelled() => {
+                    return Err(unresolved(root, "cancelled while the NetworkPolicy was made"))
+                }
+            };
+            // The removal deletes only the policy of this uid, never one of another attempt.
+            journal["policy_uid"] = serde_json::json!(uid);
+            journal_at(root, &journal)?;
+        }
         let (uid, retained) = tokio::select! {
             result = self.create(manifest) => result.map_err(|error| unresolved(root, error))?,
             () = cancel.cancelled() => return Err(unresolved(root, "cancelled during submission; the response was not recorded")),
@@ -651,8 +694,10 @@ impl KubernetesBackend {
             journal["stopped"] = serde_json::json!(true);
             journal_at(root, &journal)?;
         }
+        // Only kubedal that promotes the outputs writes receipts that the run may trust.
+        let promotes = (self.remote.as_ref()).is_some_and(PodStaging::promotes);
         let finished = match ended {
-            Ok(ended) => finish(ended, root.to_owned(), limits.seconds, &spec).await,
+            Ok(ended) => finish(ended, root.to_owned(), limits.seconds, &spec, promotes).await,
             Err(error) => Err(error),
         };
         let finished = finished.and_then(|mut finished| {
@@ -869,9 +914,8 @@ impl KubernetesBackend {
                     }
                 }
             }
-            if journal["stopped"] != true {
-                Self::stop(&self.cluster, self.poll, &root, &journal, CANCEL_GRACE).await?;
-            }
+            // A stopped attempt, like one whose Job the cluster never took, may keep its policy.
+            Self::stop(&self.cluster, self.poll, &root, &journal, CANCEL_GRACE).await?;
             if let Err(error) = Self::settle(self.remote.as_ref(), &root, &journal).await {
                 if journal["collect"] != true {
                     return Err(error);
@@ -1196,7 +1240,7 @@ impl KubernetesBackend {
         grace: Duration,
     ) -> Result<(), ExecutorError> {
         if journal["stopped"] == true {
-            return Ok(());
+            return Self::open_policy(cluster, journal).await;
         }
         let name = journal["name"]
             .as_str()
@@ -1253,10 +1297,23 @@ impl KubernetesBackend {
         })
         .await
         .map_err(|_| unresolved(root, format!("Job {name} termination was not confirmed")))??;
+        Self::open_policy(cluster, journal).await?;
         let mut journal = journal.clone();
         journal["stopped"] = serde_json::json!(true);
         journal_at(root, &journal)?;
         Ok(())
+    }
+
+    /// Removes the NetworkPolicy of the attempt of a journal, once its pods are gone.
+    async fn open_policy(
+        cluster: &Cluster,
+        journal: &serde_json::Value,
+    ) -> Result<(), ExecutorError> {
+        let (uid, label) = (journal["policy_uid"].as_str(), journal["label"].as_str());
+        match journal["policy"].as_str() {
+            Some(name) => crate::network::remove(cluster, name, uid, label.unwrap_or("")).await,
+            None => Ok(()),
+        }
     }
 }
 
@@ -1413,6 +1470,7 @@ async fn finish(
     root: PathBuf,
     time: Option<u64>,
     spec: &TaskSpec,
+    promotes: bool,
 ) -> Result<Finished, ExecutorError> {
     let control = root.join(CONTROL);
     let recorded = containers::recorded(spec, &control);
@@ -1434,13 +1492,19 @@ async fn finish(
         }
         _ => Vec::new(),
     };
-    Ok(Finished {
+    let mut finished = Finished {
         address: None,
         exit_code: Some(exit_code),
         files,
         usage: executor::Usage::of(&root),
         root,
-    })
+        receipts: Vec::new(),
+    };
+    // Kubedal gives receipts of the outputs that it put into the content store itself.
+    if promotes {
+        finished.read_receipts()?;
+    }
+    Ok(finished)
 }
 
 /// Combines wrapper and container or job status into a task exit code; machine failures return

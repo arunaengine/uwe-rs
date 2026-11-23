@@ -7,6 +7,7 @@ use std::path::Path;
 
 use k8s_openapi::api::batch::v1::Job;
 use k8s_openapi::api::core::v1::{Event, Pod};
+use k8s_openapi::api::networking::v1::NetworkPolicy;
 use kube::config::{AuthInfo, KubeConfigOptions, Kubeconfig};
 use kube::{Api, Client, Config};
 
@@ -110,6 +111,10 @@ impl Cluster {
     }
 
     pub fn events(&self) -> Api<Event> {
+        Api::namespaced(self.client.clone(), &self.namespace)
+    }
+
+    pub fn policies(&self) -> Api<NetworkPolicy> {
         Api::namespaced(self.client.clone(), &self.namespace)
     }
 }

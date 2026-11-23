@@ -75,7 +75,7 @@ impl Binary {
         }
         Ok(Binary {
             file: file.to_owned(),
-            digest: Digest::from_sha256(&hasher.finalize()),
+            digest: Digest::from_sha256(hasher.finalize().into()),
             machine,
             uploaded: Arc::default(),
         })

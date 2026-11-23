@@ -130,6 +130,7 @@ fn backend(folder: &Path, fake: &FakeGoogle) -> GoogleBackend {
         max_outputs: 4,
         credentials: false,
         cleanup: true,
+        multipart: None,
     };
     let mut backend = GoogleBackend::new(client, settings, folder.join("scratch"), stage, None)
         .expect("a backend");

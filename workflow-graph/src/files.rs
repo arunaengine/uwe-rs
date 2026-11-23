@@ -78,17 +78,83 @@ impl Files for LocalFiles {
                 result => result,
             };
         }
-        remove(target)?;
-        match delivery.mode {
-            DeliveryMode::Copy => copy(source, target),
-            DeliveryMode::Link => std::os::unix::fs::symlink(source, target),
-            DeliveryMode::RelativeLink => {
-                let base = target.parent().unwrap_or(Path::new("/"));
-                std::os::unix::fs::symlink(relative(source, base), target)
-            }
-            DeliveryMode::HardLink => hard_link(source, target),
-        }
+        replace_delivery(source, target, delivery.mode)
     }
+}
+
+/// Checks that a name of a delivered file, like a basename or an output label, is one plain
+/// path segment: not empty, `.` or `..`, and without `/`, `\` or NUL.
+pub fn segment(name: &str) -> io::Result<&str> {
+    let plain = !matches!(name, "" | "." | "..") && !name.contains(['/', '\\', '\0']);
+    match plain {
+        true => Ok(name),
+        false => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{name:?} is not a plain file name"),
+        )),
+    }
+}
+
+/// The place below `root` that `names` lead to, each a [`segment`]. In a local `root`, it is
+/// refused when a folder on the way exists as a link that leads outside `root`.
+pub fn place(root: &Path, names: &[&str]) -> io::Result<PathBuf> {
+    let mut place = root.to_owned();
+    for name in names {
+        place.push(segment(name)?);
+    }
+    // An address of a storage provider has no local links.
+    if root.to_string_lossy().contains("://") {
+        return Ok(place);
+    }
+    let parent = place.parent().unwrap_or(root);
+    match crate::Roots::new([root.to_owned()]).check(parent) {
+        Ok(()) => Ok(place),
+        Err(_) => Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("{} leads outside {}", place.display(), root.display()),
+        )),
+    }
+}
+
+/// Makes the new result beside the target first and swaps it in only once it is complete, so
+/// that a failed copy keeps the previous result.
+fn replace_delivery(source: &Path, target: &Path, mode: DeliveryMode) -> io::Result<()> {
+    let parent = target.parent().filter(|path| !path.as_os_str().is_empty());
+    let directory = tempfile::tempdir_in(parent.unwrap_or(Path::new(".")))?;
+    let staged = directory.path().join("output");
+    match mode {
+        DeliveryMode::Copy => copy(source, &staged)?,
+        DeliveryMode::Link => std::os::unix::fs::symlink(source, &staged)?,
+        DeliveryMode::RelativeLink => {
+            let base = target.parent().unwrap_or(Path::new("/"));
+            std::os::unix::fs::symlink(relative(source, base), &staged)?;
+        }
+        DeliveryMode::HardLink => hard_link(source, &staged)?,
+    }
+    let swap =
+        |flags| rustix::fs::renameat_with(rustix::fs::CWD, &staged, rustix::fs::CWD, target, flags);
+    let exists = match std::fs::symlink_metadata(target) {
+        Ok(_) => true,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error),
+    };
+    match exists {
+        false => swap(rustix::fs::RenameFlags::NOREPLACE)?,
+        true => match swap(rustix::fs::RenameFlags::EXCHANGE) {
+            Ok(()) => {}
+            // A file system without an atomic exchange replaces the old result only now.
+            Err(
+                rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP,
+            ) => {
+                remove(target)?;
+                std::fs::rename(&staged, target)?;
+            }
+            Err(error) => return Err(error.into()),
+        },
+    }
+    // The previous result is in the staging folder now, which this removes.
+    remove(&staged)?;
+    directory.close()
 }
 
 fn create_delivery(source: &Path, target: &Path, mode: DeliveryMode) -> io::Result<()> {
@@ -258,6 +324,69 @@ mod tests {
             LocalFiles.deliver(&delivery).unwrap();
             assert_eq!(std::fs::read(&target).unwrap(), b"another owner");
         }
+    }
+
+    #[test]
+    fn keeps_replaced_results() {
+        for mode in [DeliveryMode::Copy, DeliveryMode::HardLink] {
+            let folder = tempfile::tempdir().unwrap();
+            let source = folder.path().join("source");
+            let target = folder.path().join("results/target");
+            std::fs::create_dir(&source).unwrap();
+            std::fs::write(source.join("good"), b"new").unwrap();
+            std::os::unix::fs::symlink("missing", source.join("bad")).unwrap();
+            std::fs::create_dir_all(&target).unwrap();
+            std::fs::write(target.join("good"), b"previous").unwrap();
+            let delivery = Delivery {
+                location: source.to_string_lossy().into_owned(),
+                target: target.to_string_lossy().into_owned(),
+                mode,
+                overwrite: true,
+            };
+            assert!(LocalFiles.deliver(&delivery).is_err());
+            assert_eq!(std::fs::read(target.join("good")).unwrap(), b"previous");
+            let left = std::fs::read_dir(folder.path().join("results")).unwrap();
+            assert_eq!(left.count(), 1, "no staging folder stays");
+            std::fs::remove_file(source.join("bad")).unwrap();
+            LocalFiles.deliver(&delivery).unwrap();
+            assert_eq!(std::fs::read(target.join("good")).unwrap(), b"new");
+            let left = std::fs::read_dir(folder.path().join("results")).unwrap();
+            assert_eq!(left.count(), 1, "the previous result is gone");
+        }
+    }
+
+    #[test]
+    fn confines_delivery_places() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path().join("results");
+        let outside = folder.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("away")).unwrap();
+        assert_eq!(
+            place(&root, &["out", "a.txt"]).unwrap(),
+            root.join("out/a.txt")
+        );
+        for names in [
+            &["../outside"][..],
+            &[".."],
+            &["."],
+            &[""],
+            &["a/b"],
+            &["a\\b"],
+            &["a\0b"],
+            &["away", "a.txt"],
+        ] {
+            let error = place(&root, names).expect_err(&format!("{names:?}"));
+            assert!(
+                matches!(
+                    error.kind(),
+                    io::ErrorKind::InvalidInput | io::ErrorKind::PermissionDenied
+                ),
+                "{error}"
+            );
+        }
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
     }
 
     #[test]

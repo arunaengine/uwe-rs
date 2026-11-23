@@ -18,8 +18,8 @@ run-database.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 task-model.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
 workflow-graph.workspace = true

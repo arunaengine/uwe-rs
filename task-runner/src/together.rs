@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use executor::wrapper::{self, Folders};
-use executor::{Backend, CONTROL, ExecutorError, Finished, Job, Staged, Staging, Usage, WORK};
+use executor::{
+    Backend, CONTROL, DirectSource, ExecutorError, Finished, Job, Staged, Staging, Usage, WORK,
+};
 use task_model::{OutputRule, Placement, TaskSpec};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
@@ -86,6 +88,7 @@ pub(crate) fn joinable(job: &Job<'_>) -> bool {
         && (spec.outputs.iter()).all(|rule| relative(&rule.pattern))
         && (job.staging.inputs.iter()).all(|input| relative(&input.path) && !input.in_place)
         && job.staging.directories.iter().all(|path| relative(path))
+        && job.staging.direct.iter().all(|input| relative(&input.path))
         // The script of the group ends the wrapper of each task with this line.
         && !(spec.arguments.iter()).any(|argument| argument.contains(END_OF_WRAPPER))
 }
@@ -338,6 +341,12 @@ fn combined(members: &[Member], script: PathBuf) -> (TaskSpec, Staging, Placemen
         (staging.directories).extend(
             (member.staging.directories.iter()).map(|path| format!("{folder}/{WORK}/{path}")),
         );
+        for input in &member.staging.direct {
+            staging.direct.push(DirectSource {
+                path: format!("{folder}/{WORK}/{}", input.path),
+                ..input.clone()
+            });
+        }
         if let Some(stdin) = &member.staging.stdin {
             staging.inputs.push(Staged {
                 path: format!("{folder}/{CONTROL}/{}", wrapper::STDIN),
@@ -467,6 +476,8 @@ mod tests {
                 }],
                 directories: Vec::new(),
                 stdin: Some("/data/stdin".into()),
+                direct: Vec::new(),
+                live: None,
             },
             placement: Placement {
                 cpus: 1,
@@ -610,6 +621,7 @@ mod tests {
                     files: Vec::new(),
                     usage: None,
                     address: None,
+                    receipts: Vec::new(),
                 })
             }
         }
@@ -698,6 +710,7 @@ mod tests {
                     files: Vec::new(),
                     usage: None,
                     address: None,
+                    receipts: Vec::new(),
                 })
             }
         }

@@ -45,6 +45,15 @@ pub struct Settings {
     /// Runs the tasks with a backend of the host instead of a named `executor`, which must
     /// then be `None`. The run records it as the executor `host`.
     pub host_executor: Option<super::HostExecutor>,
+    /// Storage providers of the host, like one of `aruna://` addresses, that serve the
+    /// addresses they match before the providers of the setup; the first given serves first.
+    pub host_storage: Vec<super::HostStorage>,
+    /// Keeps the runs in a store of the host, like a database that coordinator replicas
+    /// share, instead of the run database file of `database`.
+    pub run_store: Option<std::sync::Arc<dyn run_database::RunStore>>,
+    /// Keeps the journals of remote jobs in a store of the host instead of the scratch folder,
+    /// so that `RunRequest::remote_tasks` finds them from another machine too.
+    pub journal_store: Option<std::sync::Arc<dyn executor::JournalStore>>,
     /// Supplied setup skips global configuration loading and defaults.
     pub setup: Option<Setup>,
     pub resume: Option<Resume>,
@@ -85,6 +94,9 @@ pub struct Settings {
     pub database: Option<PathBuf>,
     /// Local folder or writable storage address for cached results.
     pub store: Option<String>,
+    /// The cache trust boundary of a tenant of the host, like `private`, `project:42` or
+    /// `public`: runs share cached results only within one namespace. `None` keeps the shared one.
+    pub cache_namespace: Option<String>,
     /// The folder of downloads, scratch folders and input digests, like `[cache] folder` of
     /// the config file. Embedded submissions retain their own cache scope.
     pub cache_folder: Option<PathBuf>,
@@ -133,6 +145,9 @@ impl Default for Settings {
             config_file: None,
             executor: None,
             host_executor: None,
+            host_storage: Vec::new(),
+            run_store: None,
+            journal_store: None,
             setup: None,
             resume: None,
             cache: true,
@@ -156,6 +171,7 @@ impl Default for Settings {
             workdir: None,
             database: None,
             store: None,
+            cache_namespace: None,
             cache_folder: None,
             journal_folder: None,
             run_id: None,
@@ -246,6 +262,7 @@ impl Settings {
             arguments.host_executor = self.host_executor;
         }
         arguments.resume = self.resume;
+        arguments.run_store = self.run_store.map(super::context::HostRuns);
         arguments.no_cache = !self.cache;
         arguments.no_cache_steps = self.no_cache_steps;
         arguments.targets = self.targets;
@@ -267,6 +284,7 @@ impl Settings {
         arguments.workdir = self.workdir;
         arguments.database = self.database;
         arguments.store = self.store;
+        arguments.cache_namespace = self.cache_namespace;
         if let Some(isolation) = &isolation {
             self.secrets
                 .limit_environment(isolation.variables.iter().cloned());
@@ -322,10 +340,14 @@ impl Settings {
                 defaults.apply("run", &mut arguments)?;
             }
         }
+        // The folders go with the arguments of the run; legacy helpers of the command read
+        // them from the thread too.
         if let Some(folder) = self.cache_folder {
+            arguments.cache_folder = Some(folder.clone());
             crate::use_cache_folder(folder);
         }
         if let Some(folder) = self.journal_folder {
+            arguments.journal_folder = Some(folder.clone());
             super::support::use_journal_folder(folder);
         }
         if let Some(prepared) = prepared {

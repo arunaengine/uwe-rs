@@ -191,3 +191,34 @@ fn get_hrun_macros() {
         Some(&TestValue::File("in.vcf".to_owned()))
     );
 }
+
+#[test]
+fn confines_macro_imports() {
+    let folder = tempfile::tempdir().expect("a folder");
+    let tools = folder.path().join("tools");
+    std::fs::create_dir(&tools).expect("a tool folder");
+    let macros = |value: &str| format!("<macros><token name=\"@S@\">{value}</token></macros>");
+    let secret = folder.path().join("secret.xml");
+    std::fs::write(&secret, macros("secret")).expect("an outside file");
+    std::os::unix::fs::symlink(&secret, tools.join("linked.xml")).expect("a link");
+    std::fs::write(tools.join("inside.xml"), macros("inside")).expect("an inside file");
+    let tool = tools.join("tool.xml");
+    for (import, allowed) in [
+        ("../secret.xml", false),
+        ("linked.xml", false),
+        ("inside.xml", true),
+    ] {
+        let text = format!(
+            "<tool id=\"t\" name=\"@S@\"><macros><import>{import}</import></macros>\
+             <command>x</command></tool>"
+        );
+        std::fs::write(&tool, text).expect("a tool");
+        match allowed {
+            true => assert_eq!(tool::load(&tool).expect(import).name, "inside"),
+            false => {
+                let error = tool::load(&tool).expect_err(import).to_string();
+                assert!(error.contains("outside the folder of the tool"), "{error}");
+            }
+        }
+    }
+}

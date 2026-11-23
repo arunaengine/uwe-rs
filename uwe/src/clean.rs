@@ -96,7 +96,24 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         ),
         false => None,
     };
-    if let Some(guard) = &maintenance {
+    // A store that other machines share has leases that expire, so only a collection that
+    // keeps what was written within its grace window may remove from it.
+    let remote = match (arguments.remove, store.local_leases(), arguments.grace) {
+        (true, false, Some(grace)) => {
+            let policy = content_store::GcPolicy::new(grace).map_err(|error| broken(&error))?;
+            Some(task_runner::clean::RemoteGc::new(policy))
+        }
+        (true, false, None) => {
+            return Err(Failure::usage(
+                "uwe: the store is shared with other machines; add -grace <time>, like 24h, to \
+                 keep what was written that recently",
+            ));
+        }
+        _ => None,
+    };
+    if let Some(guard) = &maintenance
+        && remote.is_none()
+    {
         guard.ensure_cleanup().map_err(|error| broken(&error))?;
     }
     if arguments.remove {
@@ -164,7 +181,11 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     let (_reading, mut downloads) =
         old_downloads(&cache_directory().join("downloads"), used_since)?;
     let needed = needed_images(&database, &kept)?;
-    let (_saving, archives) = old_archives(&crate::cwl_archives(), used_since, &needed)?;
+    let (_saving, archives) = old_archives(
+        &crate::cwl_archives(&cache_directory()),
+        used_since,
+        &needed,
+    )?;
     downloads.extend(archives);
     // A kept or ongoing run may resume with the answers it used; each use renews their time.
     let started = (kept.iter())
@@ -187,14 +208,19 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
         return Ok(());
     }
     remote_attempts_finished(&cache_directory().join("scratch"))?;
-    let removed = runtime
-        .block_on(apply_guarded(
+    let guard = maintenance.as_ref().expect("removal holds maintenance");
+    let cleanup = cache_directory().join("cleanup");
+    let removed = match &remote {
+        Some(remote) => runtime.block_on(remote.collect_guarded(
             &store,
             &keep,
-            &cache_directory().join("cleanup"),
-            maintenance.as_ref().expect("removal holds maintenance"),
-        ))
-        .map_err(|error| broken(&error))?;
+            &cleanup,
+            guard,
+            SystemTime::now(),
+        )),
+        None => runtime.block_on(apply_guarded(&store, &keep, &cleanup, guard)),
+    }
+    .map_err(|error| broken(&error))?;
     for folder in &scratch {
         runtime
             .block_on(

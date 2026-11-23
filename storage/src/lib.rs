@@ -23,6 +23,7 @@ pub mod lamin;
 mod objects;
 pub mod oci;
 pub mod oci_key;
+mod provider;
 mod public;
 pub mod quilt;
 pub mod quilt_package;
@@ -44,8 +45,24 @@ pub use blocking::{Answer, Blocking, exchange};
 pub use downloads::{download_name, hold_downloads};
 pub use error::StorageError;
 pub use journal::Fetched;
+pub use provider::{
+    Details, DirectRef, Encryption, StorageProvider, TreeFile, TreeManifest, sha256,
+};
 pub use settings::Settings;
-pub use web::{config_proxy, http_client, origin_client, trust_mozilla_roots, use_proxy};
+pub use web::{Clients, config_proxy, http_client, origin_client, trust_mozilla_roots, use_proxy};
+
+/// The plugin scopes of the config of one run for the built-in providers, like the `irods`
+/// scope of a Nextflow config. A provider without one here uses the scope of the process.
+#[derive(Clone, Default)]
+pub struct Scopes {
+    pub irods: Option<irods::Options>,
+    pub cas: Option<cas::Options>,
+    pub drs: Option<drs::Options>,
+    pub synapse: Option<synapse::Options>,
+    pub oci: Option<oci::Options>,
+    pub lakefs: Option<lakefs::Options>,
+    pub lamin: Option<lamin::Options>,
+}
 
 /// Whether a file exists as a file or a directory, its size, and its version.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,6 +89,9 @@ pub struct UploadReceipt {
     pub size: u64,
     /// The immutable provider version returned by the write, when the provider has one.
     pub version: Option<String>,
+    /// The SHA-256 of the written content, as in [`Details::digest`], when the provider
+    /// verified it.
+    pub digest: Option<String>,
 }
 
 pub(crate) struct Written {
@@ -101,6 +121,8 @@ pub struct Storage {
 }
 
 struct Inner {
+    /// The providers of the embedding host, which come before all others.
+    hosts: Arc<Vec<Hosted>>,
     /// The providers of the config file.
     configured: Arc<Vec<Provider>>,
     /// The providers of what the config file does not serve.
@@ -108,14 +130,41 @@ struct Inner {
     store: Option<String>,
     /// A folder of this machine in front of the store (`[store] local`).
     local_store: Option<String>,
-    /// What the providers read, and the copies that answer for addresses.
-    journal: journal::Journal,
+    /// What the providers read, and the copies that answer for addresses; the storage of the
+    /// same run with its plugin scopes shares it.
+    journal: Arc<journal::Journal>,
     /// A lock for each copy in the folder of downloads, so that fetches of one file in this
     /// process take turns: the first downloads it, the others find its copy.
     downloading: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     observed: Mutex<HashMap<String, Observed>>,
     /// The folders of downloads that this process reads, each locked shared until it ends.
     held: Mutex<HashMap<PathBuf, std::fs::File>>,
+    /// The web proxy of the clients of the providers.
+    proxy: Proxy,
+    /// The plugin scopes of the run, which its built-in providers sign in with.
+    scopes: Arc<Scopes>,
+}
+
+/// Which web proxy the clients of a storage send their requests through. It shows nothing in
+/// messages, as an address may hold a password.
+#[derive(Clone)]
+enum Proxy {
+    /// The proxy of the process, from [`use_proxy`].
+    Process,
+    /// None: requests go directly.
+    Direct,
+    /// This proxy, which may hold a password.
+    Through(String),
+}
+
+impl Proxy {
+    fn address(&self) -> Option<&str> {
+        match self {
+            Proxy::Process => web::process_proxy(),
+            Proxy::Direct => None,
+            Proxy::Through(address) => Some(address),
+        }
+    }
 }
 
 impl Drop for Inner {
@@ -133,6 +182,30 @@ impl Drop for Inner {
 struct Observed {
     metadata: Metadata,
     stamp: String,
+}
+
+/// A provider of the embedding host, with the key that keeps its downloads apart from those of
+/// other providers of the same name, which may serve other files at the same addresses.
+struct Hosted {
+    provider: Arc<dyn StorageProvider>,
+    scope: String,
+}
+
+impl Hosted {
+    fn new(provider: Arc<dyn StorageProvider>) -> Hosted {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let scope = match provider.cache_scope() {
+            Some(scope) => format!("scope {scope}"),
+            None => {
+                let mut random = [0u8; 16];
+                let _ = aws_lc_rs::rand::fill(&mut random);
+                let random: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
+                let next = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                format!("instance {random}-{}-{next}", std::process::id())
+            }
+        };
+        Hosted { provider, scope }
+    }
 }
 
 /// A provider, and its client once it is used.
@@ -154,8 +227,13 @@ impl Provider {
         }
     }
 
-    /// The client of the provider, made at the first use.
-    fn connect(&self) -> Result<Arc<Connection>, StorageError> {
+    /// The client of the provider, which sends through `proxy` and signs in with `scopes`,
+    /// made at the first use.
+    fn connect(
+        &self,
+        proxy: Option<&str>,
+        scopes: &Scopes,
+    ) -> Result<Arc<Connection>, StorageError> {
         let mut connection = self
             .connection
             .lock()
@@ -163,7 +241,12 @@ impl Provider {
         if let Some(connection) = &*connection {
             return Ok(connection.clone());
         }
-        let made = Arc::new(Connection::open(&self.source, self.guard.as_ref())?);
+        let made = Arc::new(Connection::open(
+            &self.source,
+            self.guard.as_ref(),
+            proxy,
+            scopes,
+        )?);
         *connection = Some(made.clone());
         Ok(made)
     }
@@ -201,8 +284,12 @@ impl fmt::Debug for Storage {
         let providers: Vec<(String, &[String])> = (self.inner.configured.iter())
             .map(|provider| (provider.source.describe(), provider.prefixes.as_slice()))
             .collect();
+        let hosts: Vec<&str> = (self.inner.hosts.iter())
+            .map(|host| host.provider.name())
+            .collect();
         formatter
             .debug_struct("Storage")
+            .field("hosts", &hosts)
             .field("providers", &providers)
             .field("store", &self.inner.store)
             .finish()
@@ -243,14 +330,17 @@ impl Storage {
         ];
         Storage {
             inner: Arc::new(Inner {
+                hosts: Arc::default(),
                 configured: Arc::new(configured),
                 built_in: Arc::new(built_in),
                 store: settings.store,
                 local_store: settings.local_store,
-                journal: journal::Journal::default(),
+                journal: Arc::default(),
                 downloading: Mutex::default(),
                 observed: Mutex::default(),
                 held: Mutex::default(),
+                proxy: Proxy::Process,
+                scopes: Arc::default(),
             }),
         }
     }
@@ -259,14 +349,17 @@ impl Storage {
     pub fn session(&self) -> Storage {
         Storage {
             inner: Arc::new(Inner {
+                hosts: self.inner.hosts.clone(),
                 configured: self.inner.configured.clone(),
                 built_in: self.inner.built_in.clone(),
                 store: self.inner.store.clone(),
                 local_store: self.inner.local_store.clone(),
-                journal: journal::Journal::default(),
+                journal: Arc::default(),
                 downloading: Mutex::default(),
                 observed: Mutex::default(),
                 held: Mutex::default(),
+                proxy: self.inner.proxy.clone(),
+                scopes: self.inner.scopes.clone(),
             }),
         }
     }
@@ -286,14 +379,17 @@ impl Storage {
         }
         Storage {
             inner: Arc::new(Inner {
+                hosts: self.inner.hosts.clone(),
                 configured: Arc::new(configured),
                 built_in: self.inner.built_in.clone(),
                 store: self.inner.store.clone(),
                 local_store: self.inner.local_store.clone(),
-                journal: journal::Journal::default(),
+                journal: Arc::default(),
                 downloading: Mutex::default(),
                 observed: Mutex::default(),
                 held: Mutex::default(),
+                proxy: self.inner.proxy.clone(),
+                scopes: self.inner.scopes.clone(),
             }),
         }
     }
@@ -319,16 +415,121 @@ impl Storage {
             .collect();
         Storage {
             inner: Arc::new(Inner {
+                hosts: self.inner.hosts.clone(),
                 configured: Arc::new(configured),
                 built_in: Arc::new(built_in),
                 store: self.inner.store.clone(),
                 local_store: self.inner.local_store.clone(),
-                journal: journal::Journal::default(),
+                journal: Arc::default(),
                 downloading: Mutex::default(),
                 observed: Mutex::default(),
                 held: Mutex::default(),
+                proxy: self.inner.proxy.clone(),
+                scopes: self.inner.scopes.clone(),
             }),
         }
+    }
+
+    /// The same storage with a provider of the embedding host, like one of `aruna://`
+    /// addresses. It serves the addresses it matches before the providers of the config file,
+    /// the built-in ones and the host providers given earlier.
+    pub fn with_provider(&self, provider: Arc<dyn StorageProvider>) -> Storage {
+        let mut hosts = vec![Hosted::new(provider)];
+        hosts.extend((self.inner.hosts.iter()).map(|host| Hosted {
+            provider: host.provider.clone(),
+            scope: host.scope.clone(),
+        }));
+        Storage {
+            inner: Arc::new(Inner {
+                hosts: Arc::new(hosts),
+                configured: self.inner.configured.clone(),
+                built_in: self.inner.built_in.clone(),
+                store: self.inner.store.clone(),
+                local_store: self.inner.local_store.clone(),
+                journal: Arc::default(),
+                downloading: Mutex::default(),
+                observed: Mutex::default(),
+                held: Mutex::default(),
+                proxy: self.inner.proxy.clone(),
+                scopes: self.inner.scopes.clone(),
+            }),
+        }
+    }
+
+    /// The same storage, whose providers send their web requests through `proxy`, or directly
+    /// for `None`, unless the environment names a proxy. Runs of one process that use other
+    /// proxies each give their own storage one, as the process clients keep the first.
+    pub fn with_proxy(&self, proxy: Option<&str>) -> Storage {
+        let renewed = |providers: &[Provider]| {
+            (providers.iter())
+                .map(|provider| Provider {
+                    guard: provider.guard.clone(),
+                    ..Provider::new(provider.source.clone(), provider.prefixes.clone())
+                })
+                .collect::<Vec<_>>()
+        };
+        Storage {
+            inner: Arc::new(Inner {
+                hosts: self.inner.hosts.clone(),
+                configured: Arc::new(renewed(&self.inner.configured)),
+                built_in: Arc::new(renewed(&self.inner.built_in)),
+                store: self.inner.store.clone(),
+                local_store: self.inner.local_store.clone(),
+                journal: Arc::default(),
+                downloading: Mutex::default(),
+                observed: Mutex::default(),
+                held: Mutex::default(),
+                proxy: match proxy {
+                    Some(address) => Proxy::Through(address.to_owned()),
+                    None => Proxy::Direct,
+                },
+                scopes: self.inner.scopes.clone(),
+            }),
+        }
+    }
+
+    /// The same storage for one run whose config has these plugin scopes, with what it read
+    /// and its pins, as a repeat sets them. Its built-in providers get clients of their own,
+    /// as the clients of other runs keep their scopes.
+    pub fn with_scopes(&self, scopes: Scopes) -> Storage {
+        let built_in = (self.inner.built_in.iter())
+            .map(|provider| Provider {
+                guard: provider.guard.clone(),
+                ..Provider::new(provider.source.clone(), provider.prefixes.clone())
+            })
+            .collect();
+        Storage {
+            inner: Arc::new(Inner {
+                hosts: self.inner.hosts.clone(),
+                configured: self.inner.configured.clone(),
+                built_in: Arc::new(built_in),
+                store: self.inner.store.clone(),
+                local_store: self.inner.local_store.clone(),
+                journal: self.inner.journal.clone(),
+                downloading: Mutex::default(),
+                observed: Mutex::default(),
+                held: Mutex::default(),
+                proxy: self.inner.proxy.clone(),
+                scopes: Arc::new(scopes),
+            }),
+        }
+    }
+
+    /// The web proxy that the providers send through, unless the environment names one.
+    /// Programs that uwe starts on other machines, like the jobs of SLURM, need it to reach the
+    /// web as the run does.
+    pub fn proxy(&self) -> Option<&str> {
+        (self.inner.proxy.address()).filter(|_| !web::proxy_in_environment())
+    }
+
+    /// The host provider that serves an address, the one given last first.
+    fn host(&self, target: &str) -> Option<&Arc<dyn StorageProvider>> {
+        self.hosted(target).map(|host| &host.provider)
+    }
+
+    /// The host provider that serves an address, with the key of its downloads.
+    fn hosted(&self, target: &str) -> Option<&Hosted> {
+        (self.inner.hosts.iter()).find(|host| host.provider.matches(target))
     }
 
     /// The providers and the store of the config file.
@@ -376,6 +577,19 @@ impl Storage {
             .collect()
     }
 
+    /// The settings of the S3 provider of the config file that serves an address, like the
+    /// staging root of an executor; `None` without one.
+    pub fn s3_settings(&self, address: &str) -> Option<settings::S3> {
+        let (provider, _) = longest(&self.inner.configured, address)?;
+        match &provider.source {
+            backend::Source::Configured(settings) => match &settings.kind {
+                settings::Kind::S3(s3) => Some(s3.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// Where the config file puts the cache store: a folder or an address.
     pub fn store_location(&self) -> Option<&str> {
         self.inner.store.as_deref()
@@ -399,12 +613,15 @@ impl Storage {
         Ok(Served {
             provider,
             prefix,
-            connection: provider.connect()?,
+            connection: provider.connect(self.inner.proxy.address(), &self.inner.scopes)?,
         })
     }
 
     /// Whether a file exists, as a file or a directory, and its size.
     pub async fn stat(&self, target: &str) -> Result<Option<Metadata>, StorageError> {
+        if let Some(host) = self.host(target) {
+            return Ok(host.stat(target).await?.map(|details| details.metadata));
+        }
         let served = self.serve(target)?;
         let found = served.connection.stat(served.prefix, target).await;
         found.map_err(|problem| served.failed("find", target, problem))
@@ -420,24 +637,27 @@ impl Storage {
                 version: pinned.version,
             }));
         }
-        let found = self.stat(target).await?;
+        let found = match self.host(target) {
+            Some(host) => host.stat(target).await?,
+            None => self.stat(target).await?.map(Details::of),
+        };
         let mut observed = self
             .inner
             .observed
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
-        if let Some(metadata) = &found {
+        if let Some(details) = &found {
             observed.insert(
                 target.to_owned(),
                 Observed {
-                    metadata: metadata.clone(),
-                    stamp: stamp(metadata),
+                    metadata: details.metadata.clone(),
+                    stamp: stamp(details),
                 },
             );
         } else {
             observed.remove(target);
         }
-        Ok(found)
+        Ok(found.map(|details| details.metadata))
     }
 
     /// Asks the provider once per session for the file's own version before choosing its cache.
@@ -451,14 +671,18 @@ impl Storage {
             return;
         }
         // A file that the provider cannot find or describe gets a download of its own.
-        let metadata = self.stat(target).await.ok().flatten();
-        let metadata = metadata.unwrap_or(Metadata {
+        let details = match self.host(target) {
+            Some(host) => host.stat(target).await.ok().flatten(),
+            None => self.stat(target).await.ok().flatten().map(Details::of),
+        };
+        let details = details.unwrap_or(Details::of(Metadata {
             directory: false,
             modified: None,
             size: 0,
             version: None,
-        });
-        let stamp = stamp(&metadata);
+        }));
+        let stamp = stamp(&details);
+        let metadata = details.metadata;
         let mut observed =
             (self.inner.observed.lock()).unwrap_or_else(|poison| poison.into_inner());
         observed.insert(target.to_owned(), Observed { metadata, stamp });
@@ -470,8 +694,58 @@ impl Storage {
         observed.contains_key(target)
     }
 
+    /// What the provider of an address says of it: a host provider may know the verified
+    /// digest, the endpoints and a direct reference. Others give the metadata of [`Self::current`],
+    /// so that a pinned address gives its pin and a later fetch asks nothing again.
+    pub async fn describe(&self, target: &str) -> Result<Option<Details>, StorageError> {
+        match self
+            .host(target)
+            .filter(|_| self.inner.journal.pinned(target).is_none())
+        {
+            Some(host) => host.stat(target).await,
+            None => Ok(self.current(target).await?.map(Details::of)),
+        }
+    }
+
+    /// Every file and empty directory below a remote directory, with the digests and direct
+    /// references of a host provider that knows them.
+    pub async fn tree_manifest(&self, target: &str) -> Result<TreeManifest, StorageError> {
+        match self.host(target) {
+            Some(host) => host.tree_manifest(target).await,
+            None => Walked(self.clone()).tree_manifest(target).await,
+        }
+    }
+
+    /// Where a worker on another machine reads a file itself; only host providers give one.
+    pub async fn direct_ref(&self, target: &str) -> Result<Option<DirectRef>, StorageError> {
+        match self.host(target) {
+            Some(host) => host.direct_ref(target).await,
+            None => Ok(None),
+        }
+    }
+
+    /// The error of reading `target`, in the words of the provider that serves it.
+    pub(crate) fn read_failed(&self, target: &str, problem: Problem) -> StorageError {
+        if let Some(host) = self.host(target) {
+            return StorageError::Failed {
+                action: "read",
+                address: address::redacted(target),
+                provider: format!("storage provider `{}`", host.name()),
+                message: problem.message,
+                retryable: problem.retryable,
+            };
+        }
+        match self.serve(target) {
+            Ok(served) => served.failed("read", target, problem),
+            Err(error) => error,
+        }
+    }
+
     /// The entries of a directory.
     pub async fn list(&self, target: &str) -> Result<Vec<Entry>, StorageError> {
+        if let Some(host) = self.host(target) {
+            return host.list(target).await;
+        }
         let served = self.serve(target)?;
         if !served.connection.lists() {
             let message = format!(
@@ -502,11 +776,16 @@ impl Storage {
         target: &str,
         file: &Path,
     ) -> Result<(tempfile::NamedTempFile, Downloaded), StorageError> {
-        let served = self.serve(target)?;
         let parent = file
             .parent()
             .filter(|path| !path.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."));
+        if let Some(host) = self.host(target) {
+            let temporary = tempfile::NamedTempFile::new_in(parent).map_err(error::local(file))?;
+            let version = host.download(target, temporary.path()).await?;
+            return Ok((temporary, Downloaded { version }));
+        }
+        let served = self.serve(target)?;
         let temporary = tempfile::NamedTempFile::new_in(parent).map_err(error::local(file))?;
         let done = (served.connection)
             .download(served.prefix, target, temporary.path(), 0)
@@ -522,6 +801,9 @@ impl Storage {
 
     /// Creates a destination atomically, returning false when existing content stays.
     pub async fn upload_absent(&self, file: &Path, target: &str) -> Result<bool, StorageError> {
+        if let Some(host) = self.host(target) {
+            return Ok(host.upload_absent(file, target).await?.is_some());
+        }
         let served = self.serve(target)?;
         let result = match &served.connection.backend {
             Backend::Objects(objects) => objects.upload_absent(file, target).await,
@@ -544,6 +826,9 @@ impl Storage {
         file: &Path,
         target: &str,
     ) -> Result<UploadReceipt, StorageError> {
+        if let Some(host) = self.host(target) {
+            return host.upload(file, target).await;
+        }
         let served = self.serve(target)?;
         if !served.connection.writes() {
             let message = format!(
@@ -558,6 +843,7 @@ impl Storage {
             address: target.to_owned(),
             size: written.size,
             version: written.version,
+            digest: None,
         })
     }
 
@@ -566,6 +852,13 @@ impl Storage {
     pub fn store(&self, location: &str) -> Result<StoreLocation, StorageError> {
         if address::scheme(location).is_none() {
             return Ok(StoreLocation::Folder(PathBuf::from(location)));
+        }
+        if let Some(host) = self.host(location) {
+            return Err(StorageError::Unsupported(format!(
+                "cannot keep the store at {location}: the storage provider `{}` of the host \
+                 serves files, not stores",
+                host.name()
+            )));
         }
         let served = self.serve(location)?;
         match &served.connection.backend {
@@ -591,13 +884,54 @@ impl Storage {
     }
 }
 
+/// The providers of a storage without its host providers, for the default walk of
+/// [`StorageProvider::tree_manifest`].
+struct Walked(Storage);
+
+impl StorageProvider for Walked {
+    fn name(&self) -> &str {
+        "storage"
+    }
+
+    fn matches(&self, _: &str) -> bool {
+        true
+    }
+
+    fn stat<'a>(
+        &'a self,
+        target: &'a str,
+    ) -> futures_util::future::BoxFuture<'a, Result<Option<Details>, StorageError>> {
+        Box::pin(async move { Ok(self.0.stat(target).await?.map(Details::of)) })
+    }
+
+    fn list<'a>(
+        &'a self,
+        target: &'a str,
+    ) -> futures_util::future::BoxFuture<'a, Result<Vec<Entry>, StorageError>> {
+        Box::pin(self.0.list(target))
+    }
+
+    fn download<'a>(
+        &'a self,
+        target: &'a str,
+        file: &'a Path,
+    ) -> futures_util::future::BoxFuture<'a, Result<Option<String>, StorageError>> {
+        Box::pin(async move { Ok(self.0.download_from(target, file).await?.version) })
+    }
+}
+
 /// Reuse requires an identity that the transfer also reports; stat-only modification times
 /// cannot bind downloaded bytes, so those copies stay private to one process.
-fn stamp(metadata: &Metadata) -> String {
+fn stamp(details: &Details) -> String {
+    let metadata = &details.metadata;
     if metadata.directory || metadata.version.is_none() {
         return format!("fresh {:?}", std::time::SystemTime::now());
     }
-    format!("{metadata:?}")
+    // Content of another digest never shares a download, whatever its version says.
+    match details.verified() {
+        Some(digest) => format!("{metadata:?} sha256:{digest}"),
+        None => format!("{metadata:?}"),
+    }
 }
 
 /// The provider whose prefix serves an address and is the longest, with that prefix.

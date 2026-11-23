@@ -14,7 +14,8 @@ use task_model::Digest;
 
 use crate::binary::Binary;
 use crate::helper::{Discovery, Input, Plan, Record, Request};
-use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, MOUNTS, WORK};
+use crate::job::{CONTROL, DirectSource, ExecutorError, Finished, HOME, Job, MOUNTS, WORK};
+use crate::multipart::Multipart;
 use crate::process::Mount;
 
 /// The staging root of a backend whose nodes share no folders with this machine.
@@ -32,6 +33,8 @@ pub struct RemoteStage {
     pub credentials: bool,
     /// Whether [`RemoteStage::clean`] removes the objects of an attempt after its collection.
     pub cleanup: bool,
+    /// How presigned plans send output files above the size of one upload; `None` refuses them.
+    pub multipart: Option<Multipart>,
 }
 
 /// The inputs of an attempt in the staging root, by their paths in the folder of the attempt.
@@ -41,6 +44,8 @@ pub struct Layout {
     pub directories: Vec<String>,
     /// What the container sees besides the folder of the attempt: the inputs at absolute paths.
     pub mounts: Vec<Mount>,
+    /// The inputs that the node fetches where they lie, by their paths in the folder.
+    pub direct: Vec<DirectSource>,
 }
 
 /// One input file, whose content is at `cas/...` in the staging root.
@@ -121,6 +126,30 @@ impl RemoteStage {
                 executable: file.executable,
             });
         }
+        // The helper checks the digest of what it reads from the source itself.
+        for file in layout.direct {
+            plan.inputs.push(Input {
+                request: Request {
+                    method: "GET".into(),
+                    url: file.reference.url,
+                    headers: file.reference.headers,
+                },
+                path: file.path,
+                sha256: file.digest.hex().to_owned(),
+                size: file.size,
+                executable: file.executable,
+            });
+        }
+        if let Some(multipart) = self.multipart.as_ref().filter(|_| !self.credentials) {
+            plan.large = multipart.begin(&prefix, self.expiry).await?;
+            plan.threshold = Some(multipart.threshold);
+            plan.least_part = Some(multipart.least_part);
+            let location = format!("{prefix}/control/{}", crate::capture::LARGE);
+            plan.records.push(Record {
+                name: crate::capture::LARGE.into(),
+                request: self.request(&location, true).await?,
+            });
+        }
         for number in 1..=self.max_outputs {
             let location = format!("{prefix}/files/{number}");
             plan.files.push(self.request(&location, true).await?);
@@ -185,6 +214,15 @@ impl RemoteStage {
         }
         if let Some(stdin) = &staging.stdin {
             pending.push((stdin.clone(), format!("{CONTROL}/stdin"), false));
+        }
+        for direct in &staging.direct {
+            if direct.path.starts_with('/') {
+                absolute.insert(direct.path.trim_end_matches('/').to_owned());
+            }
+            layout.direct.push(DirectSource {
+                path: folder_path(&direct.path)?,
+                ..direct.clone()
+            });
         }
         for (path, file) in files {
             let (digest, size) = remembered(file).await?;
@@ -300,6 +338,23 @@ impl RemoteStage {
             .await
             .map_err(failed)?;
         }
+        // An output that went up in parts lies at its slot, which the map of the helper names.
+        let map = root.join(CONTROL).join(crate::capture::LARGE);
+        if let Ok(text) = tokio::fs::read_to_string(&map).await {
+            for line in text.lines() {
+                let digits =
+                    |text: &str| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit());
+                let (number, slot) = (line.split_once(' '))
+                    .filter(|(number, slot)| digits(number) && digits(slot))
+                    .ok_or_else(|| failed("the map of large outputs is invalid"))?;
+                let target = crate::capture::target(root, &format!("files/{number}"), records);
+                let target = target.ok_or_else(|| failed("a large output has no place"))?;
+                let location = format!("{prefix}/large/{slot}");
+                (self.objects.read_object(&location, None, &target, None))
+                    .await
+                    .map_err(failed)?;
+            }
+        }
         let finished = Finished::from_control(root.to_owned())?;
         if finished.exit_code == Some(0) {
             crate::capture::arrange(&finished).await?;
@@ -317,7 +372,14 @@ impl RemoteStage {
     }
 
     /// Removes attempt objects, preserving a caller's durable cleanup obligation on failure.
+    /// The multipart uploads of its plan that a helper left unfinished, as when it died, go
+    /// too; one that is complete stays.
     pub async fn try_clean(&self, prefix: &str, plan: &str) -> Result<(), ExecutorError> {
+        if let Ok(bytes) = self.objects.get_object(plan).await
+            && let Ok(planned) = serde_json::from_slice::<crate::helper::Plan>(&bytes)
+        {
+            crate::multipart::abort(&planned.large).await;
+        }
         if !self.cleanup {
             return Ok(());
         }

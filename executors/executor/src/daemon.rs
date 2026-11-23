@@ -218,6 +218,7 @@ impl LocalContainer {
             root,
             usage: None,
             address: Some(address?),
+            receipts: Vec::new(),
         })
     }
 

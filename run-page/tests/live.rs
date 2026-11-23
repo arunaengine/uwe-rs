@@ -124,3 +124,54 @@ fn shutdown_closes_stream() {
         .read_to_string(&mut tail)
         .expect("the cancelled stream closes cleanly");
 }
+
+#[test]
+fn serves_host_store() {
+    let store = std::sync::Arc::new(run_database::MemoryStore::new().unwrap());
+    let start = RunStart {
+        id: "hosted".into(),
+        workflow: "main.nf".into(),
+        language: Language::Nextflow,
+        executor: "host".into(),
+        simulated: false,
+        resumes: None,
+        revision: None,
+        arguments: Vec::new(),
+        parameters: Vec::new(),
+        store: None,
+        program: None,
+        launch: None,
+        workflow_folder: None,
+        repeats: None,
+    };
+    let mut recorder = run_database::Recorder::with_store(store.clone(), &start).unwrap();
+    recorder.requested(
+        &Task {
+            id: TaskId(1),
+            ..Task::default()
+        },
+        &[],
+    );
+    recorder.ended(None);
+    recorder.close().unwrap();
+    let mut settings = Settings::new("unused.sqlite".into());
+    settings.token = Some("tenant-token".into());
+    let runs = Some(["hosted".to_owned()].into());
+    let server = Server::start_store(&settings, store, runs).unwrap();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let get = |path: &str| {
+        client
+            .get(format!("{}{path}", server.url()))
+            .bearer_auth("tenant-token")
+            .send()
+            .unwrap()
+    };
+    let run: serde_json::Value = get("/api/runs/hosted").json().unwrap();
+    assert_eq!(run["run"]["state"], "succeeded", "{run}");
+    assert_eq!(get("/api/runs/other").status(), 404);
+    assert!(!Path::new("unused.sqlite").exists());
+    server.stop();
+}

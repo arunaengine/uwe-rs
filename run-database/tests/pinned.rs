@@ -177,6 +177,7 @@ fn migrates_run_pins() {
              ALTER TABLE attempts DROP COLUMN accepted; DROP INDEX events_task;
              ALTER TABLE logs DROP COLUMN location;
              ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             ALTER TABLE runs DROP COLUMN cache_namespace;
              PRAGMA user_version = 3;",
         )
         .expect("goes back to version 3");
@@ -196,6 +197,7 @@ fn migrates_source_modes() {
     raw.execute_batch(
         "ALTER TABLE sources DROP COLUMN executable;
         DROP INDEX events_task; ALTER TABLE logs DROP COLUMN location; ALTER TABLE runs DROP COLUMN document; ALTER TABLE runs DROP COLUMN document_digest;
+             ALTER TABLE runs DROP COLUMN cache_namespace;
              PRAGMA user_version = 8;",
     )
     .unwrap();

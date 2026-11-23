@@ -234,6 +234,60 @@ fn returns_server_outputs() {
     assert!(!backend.scratch.join("gpu").exists());
 }
 
+/// A server that attests network isolation gets offline tasks with its tag, and only those.
+#[test]
+fn attests_offline_tasks() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let task = Arc::new(Mutex::new(None));
+    let address = serve(task.clone());
+    let tag = tes_executor::NETWORK_TAG;
+    let backend = TesBackend {
+        run: String::new(),
+        client: Client::new(&address, None).expect("a client"),
+        scratch: folder.path().join("scratch"),
+        staging: None,
+        settings: tes_executor::Settings {
+            network_tag: Some((tag.0.to_owned(), tag.1.to_owned())),
+            ..Default::default()
+        },
+        configs: ImageConfigs::known([("test".to_owned(), ImageConfig::default())]),
+    };
+    assert!(
+        !backend.direct_sources(),
+        "a shared path gives the server local files"
+    );
+    let spec = TaskSpec {
+        outputs: vec![OutputRule {
+            pattern: "out.txt".into(),
+        }],
+        ..simple_spec()
+    };
+    let staging = Staging::default();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime");
+    for (name, offline) in [("offline-1", true), ("online-1", false)] {
+        let placement = Placement {
+            offline,
+            ..Placement::default()
+        };
+        let job = Job {
+            name,
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let finished = runtime
+            .block_on(backend.run(job, &CancellationToken::new()))
+            .expect("runs");
+        assert_eq!(finished.exit_code, Some(0));
+        let sent = task.lock().expect("the task").clone().expect("a task");
+        let tagged = sent["tags"].get(tag.0).and_then(|value| value.as_str());
+        assert_eq!(tagged, offline.then_some(tag.1), "{name}");
+    }
+}
+
 #[test]
 fn refuses_multiple_executors() {
     let folder = tempfile::tempdir().expect("a temporary directory");

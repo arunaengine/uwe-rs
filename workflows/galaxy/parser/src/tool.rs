@@ -219,9 +219,12 @@ pub struct TestParam {
     pub element: Element,
 }
 
-/// Reads the tool at `path`, with the macro files beside it.
+/// Reads the tool at `path`, with the macro files beside it. An import that leads outside
+/// the folder of the tool, also through a link, is refused.
 pub fn load(path: &Path) -> Result<Tool, Error> {
-    let folder = path.parent().unwrap_or(Path::new("."));
+    let folder = (path.parent())
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     let file = path.display().to_string();
     let text = std::fs::read_to_string(path).map_err(|source| Error::Import {
         path: file.clone(),
@@ -229,10 +232,17 @@ pub fn load(path: &Path) -> Result<Tool, Error> {
     })?;
     parse(&text, &file, &mut |import| {
         let path = folder.join(import);
-        std::fs::read_to_string(&path).map_err(|source| Error::Import {
+        let failed = |source| Error::Import {
             path: path.display().to_string(),
             source,
-        })
+        };
+        let real = path.canonicalize().map_err(failed)?;
+        if !real.starts_with(folder.canonicalize().map_err(failed)?) {
+            let outside = std::io::ErrorKind::PermissionDenied;
+            let message = "it is outside the folder of the tool";
+            return Err(failed(std::io::Error::new(outside, message)));
+        }
+        std::fs::read_to_string(&real).map_err(failed)
     })
 }
 

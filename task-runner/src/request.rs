@@ -67,6 +67,7 @@ pub(crate) async fn prepare(
     if let Some(layout) = layout {
         request.spec.namespace = format!("{}siblings-{}", request.spec.namespace, layout.hex());
     }
+    request.spec.namespace = scoped(inputs.tenant, &request.spec.namespace);
     // A task that changes an input where it is has effects that no stored result has; a
     // task of a shared folder is answered by its declared inputs and outputs.
     if (task.inputs.iter()).any(|input| input.writable == Writable::InPlace) {
@@ -79,7 +80,23 @@ pub(crate) async fn prepare(
         per_container: 1,
         reuse: matches!(task.reuse, Reuse::Allowed | Reuse::Lineage),
         snapshots: inputs.snapshots.clone(),
+        live: None,
     })
+}
+
+/// The cache namespace of a tenant, like `project:42`: a plain name that no other tenant's
+/// text gives, as it holds a digest of the text.
+pub(crate) fn tenant(name: &str) -> String {
+    format!("tenant-{}", &Digest::sha256(name.as_bytes()).hex()[..32])
+}
+
+/// A namespace within that of a tenant; the shared namespace is the tenant's own.
+fn scoped(tenant: &str, namespace: &str) -> String {
+    match (tenant.is_empty(), namespace.is_empty()) {
+        (true, _) => namespace.to_owned(),
+        (false, true) => tenant.to_owned(),
+        (false, false) => format!("{tenant}.{namespace}"),
+    }
 }
 
 /// The request of a task whose image is pinned if possible and whose inputs and standard input

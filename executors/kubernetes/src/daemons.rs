@@ -97,6 +97,7 @@ impl KubernetesBackend {
                     root,
                     usage: None,
                     address: Some(address),
+                    receipts: Vec::new(),
                 });
             }
             Ended::Exited(code, reason) => format!("exit code {code}, {reason}"),

@@ -17,7 +17,7 @@ use opendal_service_gcs::Gcs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
-use crate::web::{open, shared_client, upload_client};
+use crate::web::{Clients, open};
 use crate::{Downloaded, Entry, Metadata, Written, address};
 
 /// Files are downloaded and uploaded in parts of this size, so they never sit in memory whole.
@@ -55,10 +55,10 @@ pub(crate) struct Objects {
 }
 
 impl Objects {
-    pub fn new(service: Service) -> Result<Objects, Problem> {
+    pub fn new(service: Service, clients: &Clients) -> Result<Objects, Problem> {
         let transport = HttpTransporter::new(Transport {
-            reads: ReqwestTransport::new(shared_client()?),
-            sends: ReqwestTransport::new(upload_client().cloned().map_err(Problem::fixed)?),
+            reads: ReqwestTransport::new(clients.plain.clone()),
+            sends: ReqwestTransport::new(clients.upload.clone()),
         });
         Ok(Objects {
             service,
@@ -525,13 +525,16 @@ mod tests {
         // 32 parts of 64 KiB take the server three times the idle limit of one second.
         let size = 32 * 64 * 1024;
         std::fs::write(&file, vec![7; size]).unwrap();
-        let objects = Objects::new(Service::S3 {
-            endpoint: Some(endpoint),
-            region: "us-east-1".into(),
-            virtual_host: false,
-            keys: Some(("id".into(), "secret".into(), None)),
-            anonymous: false,
-        })
+        let objects = Objects::new(
+            Service::S3 {
+                endpoint: Some(endpoint),
+                region: "us-east-1".into(),
+                virtual_host: false,
+                keys: Some(("id".into(), "secret".into(), None)),
+                anonymous: false,
+            },
+            Clients::process().unwrap(),
+        )
         .unwrap();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()

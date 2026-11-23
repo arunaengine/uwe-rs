@@ -124,14 +124,33 @@ impl Operator {
     }
 }
 
-fn repeat<T: Clone>(items: &[T], count: &Value) -> Option<Vec<T>> {
-    let count = count.as_int()?;
+/// The most bytes that one repetition like `'a' * n` may take, so that a huge count fails with
+/// a MemoryError instead of exhausting the memory of uwe.
+const REPEAT_BYTES: usize = 64 << 20;
+
+/// Refuses a repetition of `bytes` above [`REPEAT_BYTES`] before it allocates.
+fn limited(bytes: usize) -> Result<(), Error> {
+    match bytes > REPEAT_BYTES {
+        true => Err(Error::new(
+            "MemoryError",
+            format!("a repetition may take at most {} MiB", REPEAT_BYTES >> 20),
+        )),
+        false => Ok(()),
+    }
+}
+
+fn repeat<T: Clone>(items: &[T], count: &Value) -> Result<Option<Vec<T>>, Error> {
+    let Some(count) = count.as_int() else {
+        return Ok(None);
+    };
     let count = count.max(0) as usize;
+    let size = std::mem::size_of::<T>().max(1);
+    limited(items.len().saturating_mul(count).saturating_mul(size))?;
     let mut repeated = Vec::with_capacity(items.len() * count);
     for _ in 0..count {
         repeated.extend_from_slice(items);
     }
-    Some(repeated)
+    Ok(Some(repeated))
 }
 
 impl Interpreter {
@@ -238,22 +257,22 @@ impl Interpreter {
             (Operator::Mul, Value::Str(text), count) | (Operator::Mul, count, Value::Str(text))
                 if count.as_int().is_some() =>
             {
-                Some(Value::str(
-                    text.repeat(count.as_int().unwrap_or(0).max(0) as usize),
-                ))
+                let count = count.as_int().unwrap_or(0).max(0) as usize;
+                limited(text.len().saturating_mul(count))?;
+                Some(Value::str(text.repeat(count)))
             }
             (Operator::Mul, Value::List(items), count)
             | (Operator::Mul, count, Value::List(items))
                 if count.as_int().is_some() =>
             {
                 let items = items.borrow().clone();
-                repeat(&items, count).map(Value::list)
+                repeat(&items, count)?.map(Value::list)
             }
             (Operator::Mul, Value::Tuple(items), count)
             | (Operator::Mul, count, Value::Tuple(items))
                 if count.as_int().is_some() =>
             {
-                repeat(items, count).map(Value::tuple)
+                repeat(items, count)?.map(Value::tuple)
             }
             (Operator::Mod, Value::Str(template), values) => Some(Value::str(
                 crate::format::percent_format(self, template, values)?,

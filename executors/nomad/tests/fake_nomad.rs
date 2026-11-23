@@ -77,6 +77,7 @@ fn backend(folder: &Path, settings: Settings, stage: bool) -> NomadBackend {
         max_outputs: 4,
         credentials: false,
         cleanup: true,
+        multipart: None,
     });
     let scratch = folder.join("scratch");
     let mut backend = NomadBackend::new(client, settings, scratch, stage, None).expect("a backend");

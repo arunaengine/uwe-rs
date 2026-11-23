@@ -10,6 +10,9 @@ use config_file::{ConfigError, Secret, Table};
 /// is refused as well.
 const RESERVED_TAGS: [&str; 2] = ["uwe-attempt", "uwe-submission"];
 
+/// The tag that asks a server that attests network isolation to cut a task off the network.
+pub const NETWORK_TAG: (&str, &str) = ("aruna-engine.org/network", "none");
+
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub staging_root: Option<String>,
@@ -36,6 +39,9 @@ pub struct Settings {
     pub timeout: Option<std::time::Duration>,
     /// The TES service whose own tags and parameters the tasks get (`platform`).
     pub platform: Option<Platform>,
+    /// The tag, as name and value, that cuts a task off the network on a server that attests
+    /// it (`network_isolation = true`, with `network_tag`); `None` runs no offline task.
+    pub network_tag: Option<(String, String)>,
 }
 
 /// A TES service with tags and parameters of its own.
@@ -64,6 +70,7 @@ impl Default for Settings {
             api_key_header: false,
             timeout: None,
             platform: None,
+            network_tag: None,
         }
     }
 }
@@ -105,6 +112,8 @@ impl Settings {
         "api_key_mode",
         "timeout_seconds",
         "platform",
+        "network_isolation",
+        "network_tag",
     ];
 
     /// How much longer than its task a TES task may run, as its state stays RUNNING while the
@@ -217,6 +226,20 @@ impl Settings {
             Some("tencent-omics") => Some(Platform::TencentOmics),
             Some(_) => return Err(table.invalid("platform", "must be tencent-omics")),
         };
+        let given = table.text("network_tag")?;
+        let network_tag = match (table.flag("network_isolation")?.unwrap_or(false), given) {
+            (false, None) => None,
+            (false, Some(_)) => {
+                return Err(table.invalid("network_tag", "requires network_isolation = true"));
+            }
+            (true, None) => Some((NETWORK_TAG.0.to_owned(), NETWORK_TAG.1.to_owned())),
+            (true, Some(tag)) => match tag.split_once('=') {
+                Some((name, value)) if !name.is_empty() && !RESERVED_TAGS.contains(&name) => {
+                    Some((name.to_owned(), value.to_owned()))
+                }
+                _ => return Err(table.invalid("network_tag", "must be like name=value")),
+            },
+        };
         Ok(Self {
             api_key,
             api_key_name,
@@ -239,6 +262,7 @@ impl Settings {
             max_inputs: limit("max_inputs", 512)?,
             max_outputs: limit("max_outputs", 1024)?,
             tags,
+            network_tag,
         })
     }
 }
@@ -251,6 +275,20 @@ mod tests {
     fn read(text: &str) -> Result<Settings, ConfigError> {
         let config = ConfigFile::parse(text, std::path::Path::new("tes.toml"))?;
         Settings::read(&config.section("executor")?.unwrap().table("tes")?.unwrap())
+    }
+
+    #[test]
+    fn reads_network_attestation() {
+        assert_eq!(read("[executor.tes]").unwrap().network_tag, None);
+        let attested = read("[executor.tes]\nnetwork_isolation = true").unwrap();
+        let tag = (NETWORK_TAG.0.to_owned(), NETWORK_TAG.1.to_owned());
+        assert_eq!(attested.network_tag, Some(tag));
+        let text = "[executor.tes]\nnetwork_isolation = true\nnetwork_tag = 'site/egress=deny'";
+        let own = read(text).unwrap().network_tag;
+        assert_eq!(own, Some(("site/egress".into(), "deny".into())));
+        assert!(read("[executor.tes]\nnetwork_tag = 'a=b'").is_err());
+        let plain = "[executor.tes]\nnetwork_isolation = true\nnetwork_tag = 'plain'";
+        assert!(read(plain).is_err());
     }
 
     #[test]

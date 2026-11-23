@@ -159,8 +159,8 @@ fn describing(
     setup: &crate::setup::Setup,
     cancel: &CancellationToken,
 ) -> Result<(Box<dyn Driver>, Language, bool), Failure> {
-    let (target, language) = crate::target_and_language(arguments, None)?;
-    let launch = crate::launch(arguments, target);
+    let (target, language) = crate::target_and_language(arguments, setup)?;
+    let launch = crate::launch(arguments, setup, target);
     let run = crate::run_id();
     let driver = crate::driver(language, &launch, &run, true, arguments, setup, cancel)?;
     Ok((driver, language, launch.simulated))

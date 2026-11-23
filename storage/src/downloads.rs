@@ -101,21 +101,35 @@ impl Storage {
     }
 
     fn download_identity(&self, target: &str) -> Result<(String, Option<Metadata>), StorageError> {
-        let (provider, prefix) = crate::longest(&self.inner.configured, target)
-            .or_else(|| crate::longest(&self.inner.built_in, target))
-            .ok_or_else(|| StorageError::NoProvider {
-                address: address::redacted(target),
-                prefix: crate::suggested_prefix(target),
-            })?;
-        let mut identity = provider.source.cache_identity();
-        identity.push(address::redacted(prefix));
-        let routed = match &provider.source {
-            crate::backend::Source::Web | crate::backend::Source::PublicBuckets => {
-                address::public_url(target).unwrap_or_else(|| target.into())
+        let (mut identity, routed) = match self.hosted(target) {
+            Some(host) => (
+                vec![
+                    "host".into(),
+                    host.provider.name().to_owned(),
+                    host.scope.clone(),
+                ],
+                target.to_owned(),
+            ),
+            None => {
+                let (provider, prefix) = crate::longest(&self.inner.configured, target)
+                    .or_else(|| crate::longest(&self.inner.built_in, target))
+                    .ok_or_else(|| StorageError::NoProvider {
+                        address: address::redacted(target),
+                        prefix: crate::suggested_prefix(target),
+                    })?;
+                let mut identity = provider.source.cache_identity();
+                identity.push(address::without_password(prefix));
+                let routed = match &provider.source {
+                    crate::backend::Source::Web | crate::backend::Source::PublicBuckets => {
+                        address::public_url(target).unwrap_or_else(|| target.into())
+                    }
+                    _ => target.into(),
+                };
+                (identity, routed)
             }
-            _ => target.into(),
         };
-        identity.push(address::redacted(&routed));
+        // The hash keeps the query whole, as a token in it may select the bytes.
+        identity.push(address::without_password(&routed));
         let observed = self
             .inner
             .observed
@@ -207,9 +221,7 @@ impl Storage {
                 && (expected.version != downloaded.version
                     || expected.size != temporary.path().metadata().map_err(local(&copy))?.len())
             {
-                let served = self.serve(target)?;
-                return Err(served.failed(
-                    "read",
+                return Err(self.read_failed(
                     target,
                     crate::error::Problem::passing(
                         "the source changed after its cache identity was observed",
@@ -244,8 +256,11 @@ impl Storage {
                 .as_ref()
                 != Some(expected)
         {
-            let served = self.serve(target)?;
-            return Err(served.failed("read", target, crate::error::Problem::fixed("cached content belongs to another observed version; remove the stale download before retrying")));
+            let problem = crate::error::Problem::fixed(
+                "cached content belongs to another observed version; remove the stale download \
+                 before retrying",
+            );
+            return Err(self.read_failed(target, problem));
         }
         self.inner
             .journal
@@ -316,6 +331,20 @@ impl Storage {
     /// The remote files that this process read through the providers, each address once.
     pub fn fetched(&self) -> Vec<Fetched> {
         self.inner.journal.read()
+    }
+
+    /// Notes a remote file that the workers read where it lies, by the digest `sha256:<hex>`,
+    /// size and version that its provider verified, so that the record of the run names it as
+    /// one that it read; no copy here answers for it.
+    pub fn note_direct(&self, target: &str, digest: &str, size: u64, version: Option<String>) {
+        self.inner.journal.note(Fetched {
+            address: address::redacted(target),
+            copy: PathBuf::new(),
+            digest: digest.to_owned(),
+            size,
+            time: std::time::SystemTime::now(),
+            version,
+        });
     }
 
     /// Answers every later read of an address with a copy that an earlier run read, as a

@@ -5,12 +5,63 @@
 use serde::Serialize;
 use serde_json::Value;
 
-/// Masks URL passwords in text while retaining the address's other spelling.
+/// Query parameters whose values grant access, like the signature of a presigned address.
+const SECRET_PARAMETERS: [&str; 13] = [
+    "X-Amz-Signature",
+    "X-Amz-Credential",
+    "X-Amz-Security-Token",
+    "X-Goog-Signature",
+    "X-Goog-Credential",
+    "AWSAccessKeyId",
+    "Signature",
+    "sig",
+    "token",
+    "access_token",
+    "api_key",
+    "apikey",
+    "key",
+];
+
+/// Masks URL passwords and the values of credential query parameters in text, while
+/// retaining the address's other spelling.
 pub fn redact_public_text(text: &str) -> String {
     redacted(text).0
 }
 
+/// The text with its secrets masked, and whether it held any.
 fn redacted(text: &str) -> (String, bool) {
+    let (text, password) = without_passwords(text);
+    let (text, parameter) = without_parameters(&text);
+    (text, password || parameter)
+}
+
+/// The values of the query parameters of [`SECRET_PARAMETERS`] as `[secret]`.
+fn without_parameters(text: &str) -> (String, bool) {
+    let mut masked = false;
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(['?', '&']) {
+        result.push_str(&rest[..=at]);
+        rest = &rest[at + 1..];
+        let Some((name, _)) = rest.split_once('=') else {
+            continue;
+        };
+        if !(SECRET_PARAMETERS.iter()).any(|secret| secret.eq_ignore_ascii_case(name)) {
+            continue;
+        }
+        let value = name.len() + 1;
+        let end = (rest[value..].find(|c: char| c.is_whitespace() || "&#'\"<>".contains(c)))
+            .map_or(rest.len(), |end| value + end);
+        result.push_str(&rest[..value]);
+        result.push_str("[secret]");
+        masked = true;
+        rest = &rest[end..];
+    }
+    result.push_str(rest);
+    (result, masked)
+}
+
+fn without_passwords(text: &str) -> (String, bool) {
     let mut password = false;
     let mut result = String::new();
     let mut rest = text;
@@ -117,6 +168,44 @@ mod tests {
         ] {
             assert_eq!(redact_public_text(private), public);
         }
+    }
+
+    #[test]
+    fn masks_signed_queries() {
+        for (private, public) in [
+            (
+                "https://b.s3.amazonaws.com/x?X-Amz-Credential=AKIA%2F1&X-Amz-Signature=abc123",
+                "https://b.s3.amazonaws.com/x?X-Amz-Credential=[secret]&X-Amz-Signature=[secret]",
+            ),
+            (
+                "curl 'https://host/f?sig=s3cr3t&sv=2022' -o x",
+                "curl 'https://host/f?sig=[secret]&sv=2022' -o x",
+            ),
+            (
+                "https://storage.googleapis.com/b/o?X-Goog-Signature=f00#part",
+                "https://storage.googleapis.com/b/o?X-Goog-Signature=[secret]#part",
+            ),
+            (
+                "https://api.example/v1?API_KEY=k1 and ?access_token=t2",
+                "https://api.example/v1?API_KEY=[secret] and ?access_token=[secret]",
+            ),
+            (
+                "https://host/f?page=2&monkey=1",
+                "https://host/f?page=2&monkey=1",
+            ),
+        ] {
+            assert_eq!(redact_public_text(private), public);
+        }
+        let signed = "https://host/f?token=abc";
+        assert_ne!(
+            public_resource_id(signed),
+            signed,
+            "a signed address is private"
+        );
+        assert_eq!(
+            redact_public_text(&redact_public_text(signed)),
+            "https://host/f?token=[secret]"
+        );
     }
 
     #[test]

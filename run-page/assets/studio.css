@@ -1,0 +1,152 @@
+/* The style of the studio: tabs, launcher, input forms and the combiner, on the tokens of page.css. */
+/* Copyright (c) 2026 The uwe Contributors */
+/* SPDX-License-Identifier: MIT or Apache-2.0 */
+
+.tabs { display: flex; gap: 4px; }
+.tab { padding: 4px 12px; border-radius: 6px; color: var(--quiet); font-weight: 500; white-space: nowrap; }
+.tab:hover { background: var(--code); text-decoration: none; }
+.tab[aria-current=page] { background: var(--code); color: var(--text); box-shadow: inset 0 -2px 0 var(--link); }
+
+.grow { flex: 1; min-width: 0; }
+button.primary { background: var(--text); color: var(--card); border-color: var(--text); }
+button.primary:hover { background: var(--text); opacity: 0.88; }
+button.danger { color: var(--failed); }
+button.small { height: 26px; padding: 0 8px; font-size: 13px; }
+button:disabled { opacity: 0.5; cursor: default; }
+input[type=text], input[type=number], textarea { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); min-width: 0; }
+input[type=text], input[type=number] { height: 32px; }
+textarea { width: 100%; resize: vertical; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.chip.required { background: transparent; border: 1px solid var(--line); color: var(--quiet); font-size: 12px; }
+.chip.format { font-size: 12px; padding: 0 6px; }
+.chip.scatter { border: 1px solid var(--running); background: transparent; color: var(--running); font-size: 12px; padding: 0 6px; }
+.chip.eco { font-size: 12px; padding: 0 6px; text-transform: none; }
+.chip.curation { font-size: 12px; padding: 0 6px; background: transparent; border: 1px solid var(--line); }
+.chip.curation.curated { border-color: var(--succeeded); color: var(--succeeded); }
+.warning { color: var(--reused); }
+
+/* The launcher. */
+.launch .tools input[type=text] { min-width: 14rem; }
+.launch .tools input.grow { flex: 1; }
+.support { margin: 8px 0 16px; }
+.support.refused { border-color: var(--failed); }
+.support table { margin-top: 8px; }
+.run-actions { margin: 12px 0 0; }
+
+/* A form of a JSON Schema. */
+.schema-form { display: grid; gap: 12px; margin: 8px 0 12px; }
+.field-body { display: grid; gap: 12px; }
+.field { display: grid; gap: 4px; }
+.field > input[type=text], .field > input[type=number], .field > select { width: 100%; max-width: 40rem; }
+.field-label { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; font-weight: 500; }
+.field-help { font-size: 13px; }
+.field-error { font-size: 13px; }
+.field-group { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px 12px; margin: 0; display: grid; gap: 8px; }
+.field-group > legend { padding: 0 4px; }
+.field-group > button { justify-self: start; }
+.field-rows { display: grid; gap: 8px; }
+.field-row { display: flex; gap: 8px; align-items: end; }
+.field-row > .field, .field-row > .field-group { flex: 1; }
+.branch:empty { display: none; }
+.branch { display: grid; gap: 12px; padding-left: 12px; border-left: 2px solid var(--line); }
+
+/* The combiner: the explorer, the canvas and the inspector side by side. */
+main:has(.composer) { max-width: none; padding: 16px; }
+.composer { display: grid; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr) minmax(18rem, 24rem); gap: 12px; height: calc(100vh - 80px); min-height: 520px; }
+.explorer, .inspector { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; min-height: 0; }
+.explorer { display: flex; flex-direction: column; gap: 8px; }
+.explorer input[type=search] { flex: none; min-width: 0; }
+.explorer .tools { margin: 0; }
+.explorer select { flex: 1; min-width: 0; }
+.stage-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.toolbar input[type=text] { width: 8rem; }
+.toolbar button { padding: 0 10px; }
+@media (max-width: 1100px) {
+  .composer { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .board { height: 70vh; }
+}
+
+.pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.pills button { height: 26px; padding: 0 8px; font-size: 13px; border-radius: 999px; }
+.tool-list { display: grid; gap: 8px; }
+.tool-card { border: 1px solid var(--line); border-radius: 6px; padding: 8px; cursor: pointer; display: grid; gap: 4px; transition: border-color 150ms var(--ease); }
+.tool-card:hover { border-color: var(--link); }
+.tool-card-head { display: flex; gap: 8px; align-items: start; justify-content: space-between; }
+.tool-card .mono { font-size: 12px; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; }
+.scan { display: flex; gap: 8px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); }
+.scan input { flex: 1; }
+.skipped { font-size: 12px; padding-left: 16px; margin: 0; }
+
+/* The canvas: a dot grid that moves and zooms, with the curves of the edges below the cards. */
+.board { position: relative; flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background-color: var(--ground); background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 20px 20px; cursor: grab; touch-action: none; user-select: none; outline: none; }
+.board:focus-visible { box-shadow: 0 0 0 2px var(--link); }
+.board.dragging { cursor: grabbing; }
+.board.wiring { cursor: crosshair; }
+.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.wires { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; }
+.wire { fill: none; stroke: var(--edge); stroke-width: 2; pointer-events: none; }
+.wire.fit-fits { stroke: var(--succeeded); }
+.wire.fit-unknown { stroke: var(--reused); stroke-dasharray: 6 4; }
+.wire.fit-does_not_fit { stroke: var(--failed); }
+.wire.asserted { stroke-width: 3; }
+.wire.chosen { stroke: var(--link); stroke-width: 3; }
+.wire-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; pointer-events: stroke; }
+
+.flow-card { position: absolute; background: var(--card); border: 1px solid var(--node-line); border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); font-size: 13px; }
+.flow-card.chosen { border-color: var(--link); box-shadow: 0 0 0 2px var(--link); }
+.flow-card.fit-failed { border-color: var(--failed); }
+.flow-card.input-card { border-style: dashed; }
+.card-head { height: 56px; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: move; overflow: hidden; display: grid; gap: 2px; align-content: start; }
+.card-title { display: flex; gap: 6px; align-items: center; justify-content: space-between; min-width: 0; }
+.card-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-sub { display: flex; gap: 6px; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 12px; }
+.card-sub .state { font-size: 12px; }
+.card-ports { padding-bottom: 8px; }
+.port-row { position: relative; height: 28px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; }
+.port { display: flex; gap: 4px; align-items: center; min-width: 0; padding: 0 10px; overflow: hidden; }
+.port > * { flex: none; }
+.port.out { justify-content: end; }
+.port-name { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.port-handle { position: absolute; top: 7px; width: 14px; height: 14px; min-width: 0; padding: 0; border-radius: 50%; border: 2px solid var(--edge); background: var(--card); cursor: crosshair; }
+.port.in .port-handle { left: -8px; }
+.port.out .port-handle { right: -8px; }
+.port-handle.connected { background: var(--edge); }
+.port-handle.wiring { border-color: var(--link); background: var(--link); }
+.port-handle.fitting { border-color: var(--succeeded); box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--succeeded); }
+.port-handle.maybe { border-color: var(--reused); box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--reused); }
+.port-handle.misfit { opacity: 0.35; cursor: not-allowed; }
+.port-add, .port-output { height: 18px; min-width: 18px; padding: 0 4px; font-size: 12px; line-height: 16px; border-radius: 4px; color: var(--quiet); }
+.port-output.on { background: var(--text); color: var(--card); border-color: var(--text); }
+.flow-card .chip.format { flex: 0 2 auto; min-width: 2ch; max-width: 4rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 18px; }
+
+/* The inspector and the check. */
+.inspector { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px; }
+.inspector .mono { overflow-wrap: anywhere; }
+.inspector h2 { margin: 0; }
+.inspector .field input[type=text], .inspector .field select { max-width: none; }
+.findings { margin: 4px 0 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.finding { padding: 4px 8px; border-left: 3px solid var(--line); cursor: pointer; overflow-wrap: anywhere; }
+.finding:hover { background: var(--code); }
+.finding.fit-does_not_fit { border-left-color: var(--failed); }
+.finding.fit-unknown { border-left-color: var(--reused); }
+.finding.fit-fits { border-left-color: var(--succeeded); }
+.validation { border-top: 1px solid var(--line); padding-top: 8px; }
+.ports { padding-left: 16px; margin: 4px 0; display: grid; gap: 4px; }
+
+/* Suggestions next to a port, and the dialogs of import, export and run. */
+.popover { position: fixed; z-index: 6; width: 23rem; max-height: 60vh; overflow: auto; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14); }
+.popover h3 { margin: 4px 0 8px; }
+.suggestions { display: grid; gap: 4px; }
+.suggestion { display: flex; gap: 8px; align-items: center; height: auto; min-height: 36px; text-align: left; padding: 4px 8px; }
+.suggestion .mono { font-size: 12px; }
+.studio-dialog { width: min(48rem, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 16px 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14); }
+.studio-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.dialog-body { display: grid; gap: 12px; margin: 8px 0 16px; }
+.dialog-buttons { justify-content: end; margin: 0; }
+.export-text { max-height: 50vh; margin: 0; }
+
+/* The live output of a task that goes on. */
+.live-output h3 small { font-weight: 400; }
+.live-log { max-height: 20rem; border-left: 3px solid var(--running); }

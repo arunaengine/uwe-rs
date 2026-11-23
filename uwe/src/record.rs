@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use run_database::{Database, Recorder, Reusable, Run, RunStart};
+use run_database::{Recorder, Reusable, Run, RunReader, RunStart};
 use workflow_graph::Language;
 
 use crate::arguments::{Arguments, Resume};
@@ -57,11 +57,18 @@ pub struct Started<'a> {
 /// lineage of the run it continues, and gets the finished tasks of that lineage.
 pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure> {
     let broken = |error: run_database::DatabaseError| Failure::setup(format!("uwe: {error}"));
-    let database = runs::open(arguments)?;
-    let database = if run.strict_provenance {
-        database.durable().map_err(broken)?
-    } else {
-        database
+    // A host that keeps the runs in its own store gets them there, else the database file.
+    let host = arguments.run_store.as_ref().map(|host| host.0.clone());
+    let database = match (&host, run.strict_provenance) {
+        (Some(_), _) => None,
+        (None, false) => Some(runs::open(arguments)?),
+        (None, true) => Some(runs::open(arguments)?.durable().map_err(broken)?),
+    };
+    let missing = || Failure::setup("uwe: the run has no run database");
+    let reader: &dyn RunReader = match (&host, &database) {
+        (Some(store), _) => store.as_ref(),
+        (None, Some(database)) => database,
+        (None, None) => return Err(missing()),
     };
     let workflow = if storage::address::scheme(&run.target.to_string_lossy()).is_some() {
         run.target.to_owned()
@@ -70,14 +77,16 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
     }
     .to_string_lossy()
     .into_owned();
+    // A tenant resumes only runs of its own cache namespace, and takes only their results.
+    let namespace = arguments.cache_namespace.as_deref();
     let resumed = match &arguments.resume {
-        Some(resume) => resumed(&database, resume, &workflow, run)?,
+        Some(resume) => resumed(reader, resume, &workflow, run, namespace)?,
         None => None,
     };
     let reusable = match &resumed {
         Some(earlier) => {
-            let lineage = database.lineage(&earlier.lineage).map_err(broken)?;
-            Some(database.reusable(&lineage).map_err(broken)?)
+            let lineage = crate::resume::lineage(reader, &earlier.lineage, namespace);
+            Some(reader.reusable(&lineage.map_err(broken)?).map_err(broken)?)
         }
         None => None,
     };
@@ -103,7 +112,13 @@ pub fn start(arguments: &Arguments, run: &Started) -> Result<Recording, Failure>
         workflow_folder: Some(run.sources.folder.to_string_lossy().into_owned()),
         repeats: run.repeats.map(str::to_owned),
     };
-    let mut recorder = database.record(&start).map_err(broken)?;
+    let mut recorder = match (host, database) {
+        (Some(store), _) => Recorder::with_store(store, &start),
+        (None, Some(database)) => database.record(&start),
+        (None, None) => return Err(missing()),
+    }
+    .map_err(broken)?;
+    recorder.cache_namespace(namespace);
     recorder.sources(&run.sources.files);
     if let Some(document) = run.document {
         let read = std::fs::read(document);
@@ -198,19 +213,20 @@ pub(crate) fn run_arguments(arguments: &Arguments) -> Vec<String> {
     words
 }
 
-/// The run that `-resume` names, checked: it ran the same workflow, it has ended, and a real
-/// run continues only a real run, since the files of a simulated one are made up. Without an
-/// earlier run of the workflow, the run starts from the beginning.
+/// The run that `-resume` names, checked: it ran the same workflow in the cache namespace
+/// `namespace`, it has ended, and a real run continues only a real run, since the files of a
+/// simulated one are made up. Without an earlier run of the workflow, the run starts anew.
 fn resumed(
-    database: &Database,
+    database: &dyn RunReader,
     resume: &Resume,
     workflow: &str,
     run: &Started,
+    namespace: Option<&str>,
 ) -> Result<Option<Run>, Failure> {
     let simulated = run.simulated;
     let broken = |error: run_database::DatabaseError| failure(format!("uwe: {error}"));
     let earlier = match resume {
-        Resume::Last => database.last_run(workflow, !simulated).map_err(broken)?,
+        Resume::Last => (database.last_run(workflow, !simulated, namespace)).map_err(broken)?,
         Resume::Run(id) => match database.run(id).map_err(broken)? {
             Some(run) => Some(run),
             None => {
@@ -225,6 +241,17 @@ fn resumed(
         eprintln!("uwe: no earlier run of {workflow} to resume; the run starts from the beginning");
         return Ok(None);
     };
+    if database
+        .cache_namespace(&earlier.id)
+        .map_err(broken)?
+        .as_deref()
+        != namespace
+    {
+        return Err(failure(format!(
+            "uwe: run {} ran in another cache namespace; resume a run of the same tenant",
+            earlier.id
+        )));
+    }
     // A run of a compiled workflow may run another document than the run it continues, like
     // an earlier run that recorded its document as its workflow.
     let document = run.document.map(|path| path.to_string_lossy().into_owned());
@@ -257,6 +284,7 @@ fn resumed(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use run_database::Database;
 
     #[test]
     fn defers_terminal_state() {
@@ -305,6 +333,76 @@ mod tests {
             assert_eq!(events.len(), 1);
             assert_eq!(events[0].kind, "ended");
         }
+    }
+
+    #[test]
+    fn resumes_own_namespace() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("runs.sqlite");
+        let start = |id: &str, resumes: Option<&str>| RunStart {
+            id: id.into(),
+            resumes: resumes.map(str::to_owned),
+            workflow: "/workflow/main.nf".into(),
+            language: Language::Nextflow,
+            revision: None,
+            arguments: vec![],
+            parameters: vec![],
+            executor: "local".into(),
+            simulated: false,
+            store: None,
+            program: None,
+            launch: None,
+            workflow_folder: None,
+            repeats: None,
+        };
+        // Tenant b explicitly resumed the run of tenant a before namespaces were checked.
+        for (id, resumes, namespace) in [
+            ("a1", None, Some("project:a")),
+            ("b1", Some("a1"), Some("project:b")),
+            ("shared", None, None),
+        ] {
+            let database = Database::open(&path).unwrap();
+            let mut recorder = database.record(&start(id, resumes)).unwrap();
+            recorder.cache_namespace(namespace);
+            recorder.ended(None);
+            recorder.close().unwrap();
+        }
+        let database = Database::open(&path).unwrap();
+        let sources = Sources {
+            folder: "/workflow".into(),
+            files: Vec::new(),
+            skipped: None,
+        };
+        let run = Started {
+            id: "next",
+            target: Path::new("/workflow/main.nf"),
+            language: Language::Nextflow,
+            executor: "local",
+            simulated: false,
+            store: None,
+            sources: &sources,
+            repeats: None,
+            invocation: None,
+            strict_provenance: false,
+            document: None,
+        };
+        let workflow = "/workflow/main.nf";
+        let last = |namespace| {
+            let earlier = resumed(&database, &Resume::Last, workflow, &run, namespace);
+            earlier.unwrap().map(|earlier| earlier.id)
+        };
+        assert_eq!(last(Some("project:a")).as_deref(), Some("a1"));
+        assert_eq!(last(Some("project:b")).as_deref(), Some("b1"));
+        assert_eq!(last(Some("project:c")), None);
+        assert_eq!(last(None).as_deref(), Some("shared"));
+        let explicit = Resume::Run("a1".into());
+        assert!(resumed(&database, &explicit, workflow, &run, Some("project:b")).is_err());
+        assert!(resumed(&database, &explicit, workflow, &run, None).is_err());
+        // The lineage of b1 holds a1, whose results tenant b never takes.
+        let lineage = crate::resume::lineage(&database, "a1", Some("project:b")).unwrap();
+        assert_eq!(lineage, ["b1"]);
+        let lineage = crate::resume::lineage(&database, "a1", Some("project:a")).unwrap();
+        assert_eq!(lineage, ["a1"]);
     }
 
     #[test]

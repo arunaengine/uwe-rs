@@ -384,6 +384,8 @@ mod tests {
             references: &references,
             mode: Mode::Run,
             snapshots: Snapshots::new(&settings, "test"),
+            direct: crate::inputs::Direct::Never,
+            tenant: "",
         };
         let input = workflow_graph::Input {
             path: "index".into(),

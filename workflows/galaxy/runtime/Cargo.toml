@@ -1,0 +1,23 @@
+# Manifest of galaxy-runtime, which runs Galaxy tools and Galaxy workflows through uwe.
+# Copyright (c) 2026 The uwe Contributors
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "galaxy-runtime"
+description = "Runs Galaxy tool XML and Galaxy workflows (.ga) as tasks, with commands rendered from their Cheetah templates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+cheetah-evaluator.workspace = true
+galaxy-parser.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+tool-definition.workspace = true
+workflow-graph.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

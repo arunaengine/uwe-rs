@@ -105,7 +105,6 @@ fn activate(
     _: &std::path::Path,
     environment: &crate::catalogue::Environment,
 ) -> Result<Option<Box<dyn Observer>>, String> {
-    storage::lamin::use_scope(options(config, environment));
     let variable = |name: &str| environment(name).filter(|value| !value.is_empty());
     let Some(settings) = Settings::read(config, &variable)? else {
         return Ok(None);
@@ -258,7 +257,8 @@ fn collect(value: &Value, paths: &mut Vec<String>) {
     }
 }
 
-fn options(config: &Config, variable: &Environment) -> storage::lamin::Options {
+/// The options of the `lamin` scope for the provider that serves `lamin://` paths of the run.
+pub(crate) fn options(config: &Config, variable: &Environment) -> storage::lamin::Options {
     let text = |path: &[&str]| {
         (config.get(path))
             .filter(|value| !matches!(value, Value::Null))

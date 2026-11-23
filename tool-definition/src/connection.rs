@@ -264,6 +264,12 @@ fn format_match(given: &[String], taken: &[String]) -> (FormatMatch, Option<Stri
     }
 }
 
+/// Whether a file of the format `given` fits a port that takes `taken`: the same EDAM term, a
+/// kind of it, or a FASTQ variant for generic FASTQ, as the checks of a graph decide.
+pub fn format_fits(given: &str, taken: &str) -> bool {
+    pair_match(given, taken) <= FormatMatch::General
+}
+
 /// Equal or more general taken terms fit, unknown terms give unknown. Each FASTQ variant fits
 /// generic FASTQ; generic FASTQ into a variant is unknown, the variants stay apart.
 fn pair_match(given: &str, taken: &str) -> FormatMatch {
@@ -312,6 +318,10 @@ mod tests {
             pair_match("format_1931", "format_1932"),
             FormatMatch::Mismatch
         );
+        assert!(format_fits("edam:format_1932", "format_1930"));
+        assert!(format_fits("format_1930", "format_2330"));
+        assert!(!format_fits("format_1930", "format_1932"));
+        assert!(!format_fits("format_2572", "format_2330"));
     }
 
     #[test]

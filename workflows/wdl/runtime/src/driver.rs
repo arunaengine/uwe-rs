@@ -31,6 +31,8 @@ pub struct Options {
     pub print: bool,
     /// Reads the documents at web addresses that the document imports, instead of the analysis.
     pub imports: Option<document::Imports>,
+    /// The folders whose files the expressions of an isolated run read, like `read_string`.
+    pub roots: Option<workflow_graph::Roots>,
 }
 
 impl Default for Options {
@@ -39,6 +41,7 @@ impl Default for Options {
             image: DEFAULT_IMAGE.into(),
             print: true,
             imports: None,
+            roots: None,
         }
     }
 }
@@ -74,6 +77,7 @@ impl WdlDriver {
             image: options.image,
             simulated: launch.simulated,
             files: Arc::new(LocalFiles),
+            roots: options.roots,
         };
         let base = match launch.scratch.as_os_str().is_empty() {
             true => std::env::temp_dir().join("uwe-wdl"),

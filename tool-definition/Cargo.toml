@@ -14,5 +14,6 @@ publish.workspace = true
 
 [dependencies]
 jsonschema.workspace = true
+saphyr.workspace = true
 serde.workspace = true
 serde_json.workspace = true

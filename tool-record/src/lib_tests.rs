@@ -12,6 +12,7 @@ fn request(folder: &Path, line: &str) -> Request {
         name: None,
         image: None,
         folder: folder.to_owned(),
+        format: Format::Cwl,
     }
 }
 
@@ -52,6 +53,68 @@ fn records_redirected_cat() {
         ["output_txt"]
     );
     assert_eq!(process.hints.len(), 1);
+}
+
+#[test]
+fn writes_tool_definitions() {
+    let folder = tempfile::tempdir().unwrap();
+    fs::write(folder.path().join("reads.fastq"), "@r\nA\n+\nI\n").unwrap();
+    let mut asked = request(folder.path(), "cp reads.fastq copy.fastq");
+    asked.format = Format::Both;
+    let recorded = record(&asked).unwrap();
+    assert_eq!(recorded.path, folder.path().join("cp.cwl"));
+    let file = recorded.definition.expect("a definition file");
+    assert_eq!(file, folder.path().join("cp.tool.json"));
+    let text = fs::read_to_string(&file).unwrap();
+    let definition: tool_definition::Definition = serde_json::from_str(&text).unwrap();
+    assert_eq!(definition.id, "cp");
+    let source = definition.source.clone().expect("the CWL file runs it");
+    assert_eq!(
+        (source.kind, source.address.as_str()),
+        (SourceKind::Cwl, "cp.cwl")
+    );
+    assert_eq!(
+        definition.inputs[0].formats,
+        ["format_1930"],
+        "FASTQ by its ending"
+    );
+    let output = definition.outputs.first().expect("the copy is an output");
+    assert_eq!(
+        output.format,
+        tool_definition::OutputFormat::Terms(vec!["format_1930".into()])
+    );
+    let only = tempfile::tempdir().unwrap();
+    let mut asked = request(only.path(), "touch made.txt");
+    asked.format = Format::Tool;
+    let recorded = record(&asked).unwrap();
+    assert_eq!(recorded.path, only.path().join("touch.tool.json"));
+    assert!(!only.path().join("touch.cwl").exists(), "no CWL file");
+}
+
+#[test]
+fn keeps_command_files() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut asked = request(folder.path(), "touch made.tool.json");
+    asked.name = Some("made".into());
+    asked.format = Format::Both;
+    let error = record(&asked).expect_err("the command made the definition file");
+    assert!(matches!(error, Error::Exists(_)), "{error}");
+    assert_eq!(fs::read(folder.path().join("made.tool.json")).unwrap(), b"");
+    assert!(
+        !folder.path().join("made.cwl").exists(),
+        "the CWL file of the pair goes"
+    );
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("target.txt");
+    fs::write(&target, "kept\n").unwrap();
+    let mut asked = request(
+        folder.path(),
+        &format!("ln -s {} linked.cwl", target.display()),
+    );
+    asked.name = Some("linked".into());
+    let error = record(&asked).expect_err("the command made a link");
+    assert!(matches!(error, Error::Exists(_)), "{error}");
+    assert_eq!(fs::read_to_string(&target).unwrap(), "kept\n");
 }
 
 #[test]

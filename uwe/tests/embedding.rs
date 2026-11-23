@@ -1064,6 +1064,7 @@ impl executor::Backend for HostBackend {
             root: self.scratch.join(job.name),
             usage: None,
             address: None,
+            receipts: Vec::new(),
         };
         std::fs::create_dir_all(finished.root.join("work"))?;
         std::fs::create_dir_all(finished.root.join("control"))?;

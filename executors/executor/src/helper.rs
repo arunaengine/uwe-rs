@@ -3,7 +3,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -20,6 +20,9 @@ pub const PLAN: &str = "plan.json";
 pub const TRANSFER: &str = "transfer";
 /// The largest file that one upload sends: S3 takes at most 5 GiB in one request.
 pub const MOST_BYTES: u64 = 5 << 30;
+
+/// The least size of a part of a multipart upload but the last, which S3 demands.
+pub const LEAST_PART: u64 = 5 << 20;
 /// The environment variable that holds the storage providers of the staging root, as the
 /// `[storage.<name>]` tables of a config file, for a plan of object addresses.
 pub const STORAGE: &str = "UWE_STAGING_STORAGE";
@@ -49,6 +52,27 @@ pub struct Plan {
     pub open: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discovery: Option<Discovery>,
+    /// The multipart uploads for output files above `threshold`, one for each such file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub large: Vec<Parts>,
+    /// The size in bytes above which an output file goes up in parts; `None` for
+    /// [`MOST_BYTES`], above which one upload fails.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<u64>,
+    /// The least size in bytes of a part but the last; `None` for [`LEAST_PART`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub least_part: Option<u64>,
+}
+
+/// A multipart upload that the coordinator began for one large output file, at `name` below
+/// the attempt prefix: the presigned upload of each part, its completion and its abort.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Parts {
+    pub name: String,
+    pub uploads: Vec<Request>,
+    pub complete: Request,
+    pub abort: Request,
 }
 
 /// One file to download.
@@ -143,6 +167,42 @@ pub fn stage_out(folder: &Path, control: Option<&Path>, plan: &Plan) -> Result<(
         discover(folder, discovery, plan.files.len())?;
     }
     let client = client(None)?;
+    // A multipart upload that holds no complete file goes away, also when an upload failed,
+    // so that its bucket keeps no parts.
+    let mut completed = 0;
+    let uploaded = upload_outputs(folder, plan, &client, &mut completed);
+    for parts in &plan.large[completed..] {
+        let _ = send(&client, &parts.abort, None);
+    }
+    let large = uploaded?;
+    if !large.is_empty() {
+        let map = inside(&folder.join(crate::CONTROL), crate::capture::LARGE)?;
+        std::fs::write(map, large).map_err(|error| error.to_string())?;
+    }
+    let is_file = |path: &Path| std::fs::symlink_metadata(path).is_ok_and(|data| data.is_file());
+    for record in &plan.records {
+        let path = inside(&folder.join(crate::CONTROL), &record.name)?;
+        let own = control.map(|control| control.join(&record.name));
+        let path = own.filter(|own| is_file(own)).unwrap_or(path);
+        if is_file(&path) {
+            retried(|| upload(&client, &path, &record.request))
+                .map_err(|error| format!("cannot upload the record {}: {error}", record.name))?;
+        }
+    }
+    Ok(())
+}
+
+/// Uploads the numbered output files, the large ones in the parts of the next multipart upload
+/// of the plan, and gives the map of the large ones; `completed` counts the uploads they took.
+fn upload_outputs(
+    folder: &Path,
+    plan: &Plan,
+    client: &reqwest::blocking::Client,
+    completed: &mut usize,
+) -> Result<String, String> {
+    let threshold = plan.threshold.unwrap_or(MOST_BYTES);
+    let least = plan.least_part.unwrap_or(LEAST_PART);
+    let (mut slots, mut large) = (plan.large.iter().enumerate(), String::new());
     let mut number = 1;
     while let Ok(metadata) =
         std::fs::symlink_metadata(folder.join(TRANSFER).join(number.to_string()))
@@ -157,21 +217,30 @@ pub fn stage_out(folder: &Path, control: Option<&Path>, plan: &Plan) -> Result<(
             return Err(format!("the output file {number} is not a regular file"));
         }
         let path = folder.join(TRANSFER).join(number.to_string());
-        retried(|| upload(&client, &path, request))
-            .map_err(|error| format!("cannot upload the output file {number}: {error}"))?;
+        let parted = metadata.len() > threshold && !is_object(&request.url);
+        let slot = match parted {
+            true => slots.next(),
+            false => None,
+        };
+        match slot {
+            Some((slot, parts)) => {
+                upload_parts(client, &path, parts, least)
+                    .map_err(|error| format!("cannot upload the output file {number}: {error}"))?;
+                *completed = slot + 1;
+                large.push_str(&format!("{number} {}\n", slot + 1));
+            }
+            None if parted && !plan.large.is_empty() => {
+                return Err(format!(
+                    "the task has more than {} large output files, which the plan allows",
+                    plan.large.len()
+                ));
+            }
+            None => retried(|| upload(client, &path, request))
+                .map_err(|error| format!("cannot upload the output file {number}: {error}"))?,
+        }
         number += 1;
     }
-    let is_file = |path: &Path| std::fs::symlink_metadata(path).is_ok_and(|data| data.is_file());
-    for record in &plan.records {
-        let path = inside(&folder.join(crate::CONTROL), &record.name)?;
-        let own = control.map(|control| control.join(&record.name));
-        let path = own.filter(|own| is_file(own)).unwrap_or(path);
-        if is_file(&path) {
-            retried(|| upload(&client, &path, &record.request))
-                .map_err(|error| format!("cannot upload the record {}: {error}", record.name))?;
-        }
-    }
-    Ok(())
+    Ok(large)
 }
 
 /// Appends JSON-selected outputs to the existing container-side capture.
@@ -418,30 +487,30 @@ fn make_folders(folder: &Path, path: &Path, open: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Downloads an input to a new file beside its path, checks it and moves it in place.
+/// Downloads an input to a new file beside its path, checks it and moves it in place. The new
+/// file has a random name of its own, so it never replaces an input that the plan names.
 fn download(
     client: &reqwest::blocking::Client,
     input: &Input,
     path: &Path,
     open: bool,
 ) -> Result<(), String> {
-    let partial = path.with_file_name(format!(
-        ".{}.partial",
-        path.file_name().unwrap_or_default().to_string_lossy()
-    ));
-    let _ = std::fs::remove_file(&partial);
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&partial)
+    let partial = tempfile::Builder::new()
+        .prefix(".uwe-")
+        .suffix(".partial")
+        .tempfile_in(path.parent().expect("a parent"))
+        .map_err(|error| error.to_string())?;
+    let mut file = partial
+        .as_file()
+        .try_clone()
         .map_err(|error| error.to_string())?;
     // An object goes to the file whole, and is read back for its digest.
     let object = is_object(&input.request.url);
     let mut source = match object {
         true => {
-            (objects()?.download(&input.request.url, &partial))
+            (objects()?.download(&input.request.url, partial.path()))
                 .map_err(|error| error.to_string())?;
-            file = std::fs::File::open(&partial).map_err(|error| error.to_string())?;
+            file = std::fs::File::open(partial.path()).map_err(|error| error.to_string())?;
             Box::new(file.try_clone().map_err(|error| error.to_string())?)
         }
         false => send(client, &input.request, None)?,
@@ -463,9 +532,8 @@ fn download(
         }
         size += count as u64;
     }
-    let digest = task_model::Digest::from_sha256(&hash.finalize());
+    let digest = task_model::Digest::from_sha256(hash.finalize().into());
     if size != input.size || digest.hex() != input.sha256 {
-        let _ = std::fs::remove_file(&partial);
         return Err(format!(
             "got {size} bytes with SHA-256 {}, not {} bytes with {}",
             digest.hex(),
@@ -482,11 +550,13 @@ fn download(
     file.set_permissions(std::fs::Permissions::from_mode(mode))
         .map_err(|error| error.to_string())?;
     file.sync_all().map_err(|error| error.to_string())?;
-    if std::fs::symlink_metadata(path).is_ok() {
-        let _ = std::fs::remove_file(&partial);
-        return Err(format!("{} is placed twice", path.display()));
+    match partial.persist_noclobber(path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(format!("{} is placed twice", path.display()))
+        }
+        Err(error) => Err(error.error.to_string()),
     }
-    std::fs::rename(&partial, path).map_err(|error| error.to_string())
 }
 
 /// Uploads a file in one request, or an object in parts.
@@ -506,6 +576,99 @@ fn upload(
         ));
     }
     send(client, request, Some((file, size))).map(|_| ())
+}
+
+/// Uploads a large file in the parts of `slots`, of one size of at least `least` but the last,
+/// in as few as it needs, and completes the upload with the list of their ETags.
+fn upload_parts(
+    client: &reqwest::blocking::Client,
+    path: &Path,
+    slots: &Parts,
+    least: u64,
+) -> Result<(), String> {
+    let size = std::fs::metadata(path)
+        .map_err(|error| error.to_string())?
+        .len();
+    let count = slots.uploads.len() as u64;
+    // Only the last part may be smaller than `least`, so a small file takes fewer parts.
+    let part = size.div_ceil(count.max(1)).max(least).max(1);
+    if count == 0 || part > MOST_BYTES {
+        return Err(format!(
+            "it has {size} bytes, but {count} parts take at most {} bytes",
+            count.saturating_mul(MOST_BYTES)
+        ));
+    }
+    let mut list = String::from("<CompleteMultipartUpload>");
+    let mut offset = 0;
+    for (index, request) in slots.uploads.iter().enumerate() {
+        if offset >= size && index > 0 {
+            break;
+        }
+        let length = part.min(size - offset);
+        let mut tag = String::new();
+        retried(|| {
+            tag = put_part(client, request, path, offset, length)?;
+            Ok(())
+        })?;
+        let tag = tag
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        list.push_str(&format!(
+            "<Part><PartNumber>{}</PartNumber><ETag>{tag}</ETag></Part>",
+            index + 1
+        ));
+        offset += length;
+    }
+    list.push_str("</CompleteMultipartUpload>");
+    let mut answer = String::new();
+    retried(|| {
+        let method = reqwest::Method::from_bytes(slots.complete.method.as_bytes())
+            .map_err(|error| error.to_string())?;
+        let response = (client.request(method, &slots.complete.url))
+            .body(list.clone())
+            .send()
+            .map_err(|error| without_url(&error))?;
+        let status = response.status();
+        answer = response.text().map_err(|error| without_url(&error))?;
+        // S3 may answer a completion that failed with success and an error in its body.
+        match status.is_success() && !answer.contains("<Error>") {
+            true => Ok(()),
+            false => Err(format!("the server did not complete the upload ({status})")),
+        }
+    })
+}
+
+/// Uploads `length` bytes of a file from `offset` as one part, and gives its ETag.
+fn put_part(
+    client: &reqwest::blocking::Client,
+    request: &Request,
+    path: &Path,
+    offset: u64,
+    length: u64,
+) -> Result<String, String> {
+    let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    file.seek(std::io::SeekFrom::Start(offset))
+        .map_err(|error| error.to_string())?;
+    let method = reqwest::Method::from_bytes(request.method.as_bytes())
+        .map_err(|error| error.to_string())?;
+    let mut built = client.request(method, &request.url);
+    for (name, value) in &request.headers {
+        built = built.header(name, value);
+    }
+    let body = reqwest::blocking::Body::sized(file.take(length), length);
+    let response = built
+        .body(body)
+        .send()
+        .map_err(|error| without_url(&error))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("the server answered {status}"));
+    }
+    let tag = response.headers().get(reqwest::header::ETAG);
+    let tag = tag.and_then(|tag| tag.to_str().ok());
+    tag.map(str::to_owned)
+        .ok_or_else(|| "the server gave the part no ETag".to_owned())
 }
 
 /// Sends a request, with a body for an upload, and gives the response body.
@@ -532,19 +695,45 @@ fn send(
     }
     let method = reqwest::Method::from_bytes(request.method.as_bytes())
         .map_err(|error| error.to_string())?;
-    let mut built = client.request(method, &request.url);
-    for (name, value) in &request.headers {
-        built = built.header(name, value);
+    let mut url = reqwest::Url::parse(&request.url).map_err(|_| "an invalid URL".to_owned())?;
+    let (mut headers, mut body) = (request.headers.as_slice(), body);
+    for _ in 0..REDIRECTS {
+        let mut built = client.request(method.clone(), url.clone());
+        for (name, value) in headers {
+            built = built.header(name, value);
+        }
+        let uploads = body.is_some();
+        if let Some((file, size)) = body.take() {
+            built = built.body(reqwest::blocking::Body::sized(file, size));
+        }
+        let response = built.send().map_err(|error| without_url(&error))?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(Box::new(response));
+        }
+        let location = (response.headers().get(reqwest::header::LOCATION))
+            .and_then(|location| location.to_str().ok())
+            .and_then(|location| url.join(location).ok());
+        match location {
+            // The client stopped at another origin: the headers of the provider, which may hold
+            // its secrets, stay behind, and only the URL goes on.
+            Some(next) if status.is_redirection() && !uploads => {
+                url = next;
+                headers = &[];
+            }
+            _ => return Err(format!("the server answered {status}")),
+        }
     }
-    if let Some((file, size)) = body {
-        built = built.body(reqwest::blocking::Body::sized(file, size));
-    }
-    let response = built.send().map_err(|error| without_url(&error))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!("the server answered {status}"));
-    }
-    Ok(Box::new(response))
+    Err("the server redirected too often".to_owned())
+}
+
+/// How many redirects to another origin a request follows.
+const REDIRECTS: usize = 10;
+
+/// The scheme, host and port of a URL.
+fn origin(url: &reqwest::Url) -> (String, Option<String>, Option<u16>) {
+    let host = url.host_str().map(str::to_owned);
+    (url.scheme().to_owned(), host, url.port_or_known_default())
 }
 
 /// The path of a `file://` URL, for a staging root in a folder.
@@ -560,12 +749,23 @@ fn client(idle: Option<Duration>) -> Result<reqwest::blocking::Client, String> {
     let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
         .iter()
         .filter_map(|root| reqwest::Certificate::from_der(root.as_ref()).ok());
+    // A redirect to another origin stops here, and `send` follows it without the headers of
+    // the request; reqwest would drop only `Authorization` and cookies on its own.
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        let first = attempt.previous().first().map(origin);
+        match attempt.previous().len() {
+            REDIRECTS.. => attempt.error("too many redirects"),
+            _ if first != Some(origin(attempt.url())) => attempt.stop(),
+            _ => attempt.follow(),
+        }
+    });
     reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(30))
         .timeout(idle)
         .tcp_keepalive(Duration::from_secs(30))
         .tcp_user_timeout(IDLE)
         .tls_certs_merge(roots)
+        .redirect(policy)
         .build()
         .map_err(|error| without_url(&error))
 }

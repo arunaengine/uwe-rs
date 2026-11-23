@@ -181,9 +181,8 @@ fn refusal(op: &Op, adapters: &Adapters) -> Option<&'static str> {
     {
         return Some("a map runs at least one round at a time");
     }
-    let sized = op.attributes.resources.is_some() || op.attributes.time.is_some();
-    if matches!(op.kind, Kind::Native(_)) && (sized || op.attributes.retry.is_some()) {
-        return Some("a native block sets the resources, time and retry of its tasks itself");
+    if matches!(op.kind, Kind::Native(_)) && op.attributes.resources.is_some() {
+        return Some("a native block sets the resources of its tasks itself");
     }
     unrun(op, adapters)
 }

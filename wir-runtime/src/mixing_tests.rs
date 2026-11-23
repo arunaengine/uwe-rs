@@ -139,6 +139,7 @@ impl Fixture {
             provider: self.provider.as_deref(),
             remote: None,
             roots: None,
+            environment: None,
             deliveries: &self.deliveries,
             inputs: &self.inputs,
             nextflow: &self.nextflow,

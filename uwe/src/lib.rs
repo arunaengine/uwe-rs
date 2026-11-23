@@ -1,4 +1,5 @@
-//! Embeddable application services for configured uwe workflow drivers and executors.
+//! uwe as a library: runs workflows of any language for a host program, with their input
+//! forms, support reports, presets, tool library and the studio of `uwe serve`.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -6,33 +7,39 @@ pub mod application;
 pub mod catalogue;
 pub mod forms;
 pub mod hosted;
+pub mod run;
+pub mod serve;
+pub mod setup;
+pub mod support;
+pub mod tools;
 
+#[doc(hidden)]
+pub mod cli;
+
+pub use arguments::Resume;
+pub use failure::Failure;
+pub use run::{Run, RunRequest};
+pub use workflow_graph::CancellationToken;
+
+// The command line and the internals that it shares with the embedding modules above.
 mod arguments;
-mod aws_batch;
-mod azure_batch;
 mod changes;
 mod check;
 mod clean;
+mod completions;
 mod conda;
-mod conda_backend;
 mod detect;
+mod executors;
 mod failure;
 mod fetched;
-mod flyte;
 mod git;
-mod google_batch;
-mod grid;
 mod inputs;
 mod insight;
-mod jarvice;
-mod kubernetes;
 mod kuberun;
-mod local;
 mod logging;
 mod lower;
 mod machine;
 mod nextflow;
-mod nomad;
 mod order;
 mod page;
 mod preview;
@@ -44,25 +51,13 @@ mod repository;
 mod resources;
 mod resume;
 mod revision;
-pub mod run;
 mod runs;
+mod scaffold;
 mod scopes;
-pub mod setup;
-mod slurm;
-mod snowflake;
 mod sources;
-mod staging;
-pub mod support;
 mod terminal;
-mod tes;
 mod tracked;
-mod wr;
 
-#[doc(hidden)]
-pub mod cli;
-
-pub use arguments::Resume;
-pub use failure::Failure;
 pub(crate) use failure::failure;
 pub(crate) use run::backend::{executor, network_rule, recorded_workflow};
 pub(crate) use run::driver::{driver, launch, target_and_language};
@@ -71,5 +66,3 @@ pub(crate) use run::support::{
     stop_on_interrupt, use_cache_folder,
 };
 pub(crate) use run::{Ran, close, execute};
-pub use run::{Run, RunRequest};
-pub use workflow_graph::CancellationToken;

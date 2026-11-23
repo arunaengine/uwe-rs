@@ -11,11 +11,15 @@ use std::time::{Duration, Instant};
 use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
+use executor::orphans::{self, JobState, Orphan, RemoteJobs};
 use executor::process::Mount;
 use executor::registry::{self, ImageConfigs};
 use executor::remote::RemoteStage;
 use executor::wrapper::{Folders, timed, wrapper};
-use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job, place};
+use executor::{
+    Access, Backend, BoxFuture, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job,
+    Journals, attempts, place,
+};
 use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
 
@@ -53,6 +57,8 @@ pub struct NomadBackend {
     pub staging_time: Duration,
     /// The entrypoints and default commands of images, for tasks without a command.
     pub configs: ImageConfigs,
+    /// Where the jobs of running attempts are noted, so that a later process finds them.
+    pub journals: Option<Journals>,
     held: AtomicBool,
 }
 
@@ -84,6 +90,7 @@ impl NomadBackend {
             upload,
             staging_time: Duration::from_secs(30 * 60),
             configs: ImageConfigs::default(),
+            journals: None,
             held: AtomicBool::new(false),
         })
     }
@@ -96,6 +103,14 @@ impl Backend for NomadBackend {
 
     fn hold(&self) {
         self.held.store(true, Ordering::Relaxed);
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::report(self, self.journals.as_ref(), run).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::stop(self, self.journals.as_ref(), run).await
     }
 
     async fn run(
@@ -363,14 +378,25 @@ impl NomadBackend {
         if cancel.is_cancelled() || self.held.load(Ordering::Relaxed) {
             return Err(ExecutorError::Cancelled);
         }
+        let _held = attempts::hold(self.journals.as_ref(), self, shape.attempt)?;
         self.client.register(&body).await.map_err(api)?;
         tracing::debug!(
             job = shape.id,
             attempt = shape.attempt,
             "[NOMAD] registered"
         );
+        attempts::note(self.journals.as_ref(), self, shape.attempt, shape.id).await?;
         let seconds = shape.placement.time_seconds;
-        self.wait(shape.id, seconds, cancel).await
+        let ended = self.wait(shape.id, seconds, cancel).await;
+        attempts::settle(
+            self.journals.as_ref(),
+            self,
+            shape.attempt,
+            shape.id,
+            &ended,
+        )
+        .await;
+        ended
     }
 
     /// Polls the job until it ended, and stops it when `cancel` fires, when no node takes it,
@@ -509,5 +535,41 @@ fn api(error: NomadError) -> ExecutorError {
     match error.retryable() {
         true => machine(error.to_string()),
         false => ExecutorError::Unsupported(format!("Nomad refused a request: {error}")),
+    }
+}
+
+/// What Nomad says of a job that a journal names, by its newest allocation, and its stop.
+impl RemoteJobs for NomadBackend {
+    fn state<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<JobState>, String>> {
+        Box::pin(async move {
+            let allocations = self.client.allocations(id).await;
+            let allocations = allocations.map_err(|error| error.to_string())?;
+            let (state, ended) = match seen(&allocations) {
+                Seen::Unplaced => ("unplaced", false),
+                Seen::Pending => ("pending", false),
+                Seen::Running => ("running", false),
+                Seen::Ended(_) => ("dead", true),
+            };
+            Ok(Some(JobState {
+                state: state.into(),
+                ended,
+            }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            self.client
+                .stop(id, false)
+                .await
+                .map_err(|error| error.to_string())
+        })
+    }
+
+    fn scope(&self) -> String {
+        let client = &self.client;
+        let namespace = client.namespace.as_deref().unwrap_or_default();
+        let region = client.region.as_deref().unwrap_or_default();
+        format!("{} namespace {namespace} region {region}", client.address)
     }
 }

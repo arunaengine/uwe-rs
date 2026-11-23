@@ -180,7 +180,9 @@ fn leaf(
     };
     let sanitizer = || Sanitizer::of(param, tool.sanitize);
     Ok(match &param.kind {
-        ParamKind::Data => {
+        // A collection is a list of its datasets, as Galaxy iterates a flat list collection.
+        ParamKind::Data | ParamKind::Collection => {
+            let several = param.multiple || param.kind == ParamKind::Collection;
             let files = job.datasets.get(path);
             let one = |file: Option<&DataFile>| {
                 Value::native(Dataset {
@@ -188,7 +190,7 @@ fn leaf(
                     ext: file.map_or_else(|| "data".to_owned(), |file| file.ext.clone()),
                 })
             };
-            match (files, param.multiple, raw) {
+            match (files, several, raw) {
                 (None, _, true) => Value::None,
                 (Some(files), false, true) => {
                     files.first().map_or(Value::None, |file| one(Some(file)))
@@ -205,7 +207,7 @@ fn leaf(
                 (files, false, false) => one(files.and_then(|files| files.first())),
             }
         }
-        ParamKind::Collection | ParamKind::Other(_) => {
+        ParamKind::Other(_) => {
             return Err(Error::Input(format!(
                 "the input {path} of type {:?} is not supported yet",
                 param.kind
@@ -284,6 +286,14 @@ pub fn output(path: Option<&str>, format: Option<&str>) -> Value {
     })
 }
 
+/// Whether a color param value has Galaxy's form `#rrggbb`, or the short form `#rgb`, so that
+/// no other text reaches a command unsanitized.
+fn is_color(text: &str) -> bool {
+    text.strip_prefix('#').is_some_and(|digits| {
+        matches!(digits.len(), 3 | 6) && digits.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
 /// Python's truth value of a plain value.
 fn truth(value: &Value) -> bool {
     match value.plain() {
@@ -328,6 +338,10 @@ impl Input {
                 } else {
                     self.falsevalue.clone()
                 });
+            }
+            (ParamKind::Color, Value::Str(color)) if !is_color(color) => {
+                let message = format!("'{color}' is not a color like #rrggbb");
+                return Err(Python::value_error(message));
             }
             (ParamKind::Color, Value::Str(color)) if self.rgb => {
                 let digits = color.trim_start_matches('#');
@@ -771,6 +785,29 @@ mod tests {
                 interpreter.to_str(&value).expect("text")
             })
             .collect()
+    }
+
+    #[test]
+    fn checks_colors() {
+        let param = r##"<param name="c" type="color" value="#000000"/>"##;
+        let color = |value: &str| shown(param, "25.1", json!({"c": value}), &[], &["str(c)"]);
+        assert_eq!(color("#a0B1c2"), ["#a0B1c2"]);
+        assert_eq!(color("#abc"), ["#abc"]);
+        let xml = format!("<tool id=\"t\"><inputs>{param}</inputs></tool>");
+        let tool = galaxy_parser::tool::parse(&xml, "t.xml", &mut |_| unreachable!("no imports"))
+            .expect("a tool");
+        let job = Job {
+            parameters: json!({"c": "'; rm -rf / #"}),
+            ..Job::default()
+        };
+        let mut interpreter = Interpreter::new(Rc::new(LocalHost::new("/")));
+        let globals = interpreter.new_globals("values", None);
+        for (name, value) in wrapped(&tool, &job).expect("values") {
+            globals.set(&name, value);
+        }
+        let value = interpreter.eval_text("c", &globals).expect("a value");
+        let error = interpreter.to_str(&value).expect_err("not a color");
+        assert!(error.to_string().contains("is not a color"), "{error}");
     }
 
     #[test]

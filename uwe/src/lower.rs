@@ -16,30 +16,28 @@ use crate::{Failure, cache_directory, failure};
 /// `uwe lower`: prints the wir document of a CWL, WDL or Argo file, with source locations from the
 /// current folder, and names on standard error the ops that stay native ops.
 pub fn command(arguments: &Arguments) -> Result<(), Failure> {
-    let (target, language) = crate::target_and_language(arguments, None)?;
+    // The storage of the setup fetches a workflow on the web and holds its copy meanwhile.
+    let setup = Setup::load(arguments)?;
+    let (target, language) = crate::target_and_language(arguments, &setup)?;
     let base = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
     let document = match language {
-        Language::Wdl => wdl(&target, arguments, &Setup::load(arguments)?, &base)?.document,
+        Language::Wdl => wdl(&target, arguments, &setup, &base)?.document,
         Language::Nextflow => {
-            let setup = Setup::load(arguments)?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
             nextflow(arguments, &setup, &target, &base, ("lower", None))?.document
         }
         Language::Snakemake => {
-            let setup = Setup::load(arguments)?;
             let _registry = setup.registry.enter().map_err(Failure::setup)?;
             snakemake(&target, arguments, &setup, "lower", &base)?.document
         }
         Language::Argo => argo(&target, arguments, &base)?.document,
-        _ => {
-            lowered(
-                &target,
-                language,
-                (arguments, &Setup::load(arguments)?),
-                &base,
-            )?
-            .document
+        Language::Galaxy => galaxy(&target, &base)?,
+        Language::Wir => {
+            let generated = generated_folder(&setup);
+            let document = crate::tools::document(&target, &base, &generated);
+            document.map_err(|error| failure(format!("uwe: {error}")))?
         }
+        _ => lowered(&target, language, (arguments, &setup), &base)?.document,
     };
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| failure(format!("uwe: {error}")))?;
@@ -56,7 +54,7 @@ pub fn document(
     setup: &Setup,
     run: &str,
 ) -> Result<Compiled, Failure> {
-    let folder = cache_directory().join("scratch").join("lowered");
+    let folder = setup.cache_directory().join("scratch").join("lowered");
     let secrets = secret_texts(&arguments.secrets);
     let mut private = Vec::new();
     let mut secret = SecretInputs::default();
@@ -322,7 +320,10 @@ fn continued(
     let real = arguments.executor.as_deref() != Some("simulator");
     let earlier = match resume {
         crate::arguments::Resume::Run(id) => database.run(id).map_err(broken)?,
-        crate::arguments::Resume::Last => database.last_run_below(&prefix, real).map_err(broken)?,
+        crate::arguments::Resume::Last => {
+            let namespace = arguments.cache_namespace.as_deref();
+            (database.last_run_below(&prefix, real, namespace)).map_err(broken)?
+        }
     };
     let ran = (earlier.as_ref()).and_then(|earlier| earlier.document.clone());
     Ok(earlier.zip(ran.filter(|ran| ran.starts_with(&prefix))))
@@ -621,6 +622,15 @@ pub(crate) fn compiled(
                 .map(|kept| (kept.path, kept.reason));
             (compiled.document, kept.collect())
         }
+        // A Galaxy tool or workflow is one native op, which its own driver runs.
+        Language::Galaxy => {
+            let document = galaxy(target, base)?;
+            let reason = "a Galaxy tool or workflow runs as one native op".to_owned();
+            let kept = (document.graphs.iter().flat_map(|graph| &graph.ops))
+                .map(|op| (op.path.clone(), reason.clone()))
+                .collect();
+            (document, kept)
+        }
         _ => {
             let lowering = lowered(target, language, (arguments, setup), base)?;
             let kept = lowering
@@ -630,6 +640,20 @@ pub(crate) fn compiled(
             (lowering.document, kept.collect())
         }
     })
+}
+
+/// The wir document of a Galaxy tool or workflow, as one native op.
+fn galaxy(target: &Path, base: &Path) -> Result<wir::Document, Failure> {
+    crate::tools::galaxy::document(target, base).map_err(|error| failure(format!("uwe: {error}")))
+}
+
+/// Where lowering writes the files it makes, like the entry scripts of Nextflow processes.
+pub(crate) fn generated_folder(setup: &Setup) -> PathBuf {
+    setup
+        .cache_directory()
+        .join("scratch")
+        .join("composed")
+        .join("generated")
 }
 
 fn lowered(
@@ -646,7 +670,7 @@ fn lowered(
     }
     let shown = target.display();
     // Documents at web addresses come through the storage providers, as a run reads them.
-    let downloads = cache_directory().join("downloads");
+    let downloads = setup.cache_directory().join("downloads");
     let remote = cwl_parser::source::Remote::new(&setup.storage, downloads);
     let document = cwl_parser::load_file(target, remote)
         .map_err(|error| failure(format!("uwe: {shown}: {error}")))?;
@@ -672,7 +696,7 @@ fn nextflow(
     base: &Path,
     (run, native): (&str, Option<&str>),
 ) -> Result<nextflow_compiler::Compilation, Failure> {
-    let launch = crate::launch(arguments, target.to_owned());
+    let launch = crate::launch(arguments, setup, target.to_owned());
     // A feature that uwe does not run yet keeps its exit code, as in a run of the driver.
     let compiled = (crate::nextflow::compile(&launch, arguments, setup, base, (run, native)))
         .map_err(|error| DriverError {
@@ -698,7 +722,7 @@ fn snakemake(
     run: &str,
     base: &Path,
 ) -> Result<snakemake_compiler::Compiled, Failure> {
-    let launch = crate::launch(arguments, target.to_owned());
+    let launch = crate::launch(arguments, setup, target.to_owned());
     let cancel = workflow_graph::CancellationToken::default();
     let settings = crate::run::driver::snakemake(arguments, setup, &cancel);
     // The run plans its jobs in the folder that it starts in, as the run `run` does.

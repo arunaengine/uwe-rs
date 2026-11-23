@@ -1269,6 +1269,7 @@ async fn recovery_cleans_staging() {
             max_outputs: 4,
             credentials: false,
             cleanup: true,
+            multipart: None,
         },
         helper: Helper::Path("/bin/false".into()),
         folder: Some(text(&root.path().join("node"))),
@@ -1978,6 +1979,7 @@ async fn stage_objects(credentials: bool, upload: bool, archive: bool, manifest:
             max_outputs: 4,
             credentials,
             cleanup: credentials,
+            multipart: None,
         },
         helper: match upload {
             false => Helper::Path(text(&helper)),
@@ -2105,6 +2107,7 @@ async fn reports_helper_failures() {
             max_outputs: 4,
             credentials: false,
             cleanup: true,
+            multipart: None,
         },
         helper: Helper::Download {
             url: "file:///nonexistent/uwe".into(),
@@ -2154,6 +2157,7 @@ async fn reports_folder_failures() {
             max_outputs: 4,
             credentials: false,
             cleanup: true,
+            multipart: None,
         },
         helper: Helper::Path("/bin/false".into()),
         folder: Some(text(&root.path().join("file/node"))),

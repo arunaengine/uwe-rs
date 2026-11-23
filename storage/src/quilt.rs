@@ -138,9 +138,9 @@ pub(crate) struct Quilt {
 }
 
 impl Quilt {
-    pub fn new(service: Service) -> Result<Quilt, Problem> {
+    pub fn new(service: Service, clients: &crate::web::Clients) -> Result<Quilt, Problem> {
         Ok(Quilt {
-            objects: Arc::new(Objects::new(service)?),
+            objects: Arc::new(Objects::new(service, clients)?),
             manifests: tokio::sync::Mutex::new(HashMap::new()),
         })
     }

@@ -450,6 +450,57 @@ async fn adds_static_tags() {
     assert_eq!(tags["uwe-attempt"], "tagged-1");
 }
 
+/// An input that lies elsewhere becomes a TES input with its own URL, which the server reads;
+/// nothing of it goes to the staging root.
+#[tokio::test]
+async fn passes_direct_inputs() {
+    let (_, objects, source) = stores();
+    let stage = ObjectStage::new(source, objects, Settings::default()).unwrap();
+    let reference = storage::DirectRef {
+        url: "https://proxy.example.org/project/reads.fq?signature=x".into(),
+        ..storage::DirectRef::default()
+    };
+    let direct = executor::DirectSource {
+        path: "reads.fq".into(),
+        source: "https://proxy.example.org/project/reads.fq".into(),
+        digest: Digest::sha256(b"reads"),
+        size: 5,
+        executable: false,
+        reference,
+        endpoints: Vec::new(),
+    };
+    let mut staging = Staging {
+        direct: vec![direct],
+        ..Staging::default()
+    };
+    let spec = spec(false);
+    let job = Job {
+        name: "direct",
+        spec: &spec,
+        staging: &staging,
+        placement: &Placement::default(),
+    };
+    // Without a shell of its own, the task still gets the wrapper that checks the digest.
+    let task = stage.prepare(job, false).await.unwrap();
+    assert_eq!(task.executors[0].command[0], "sh");
+    let input = (task.inputs.iter())
+        .find(|input| input.path.ends_with("/reads.fq"))
+        .expect("the direct input");
+    assert_eq!(
+        input.url,
+        "https://proxy.example.org/project/reads.fq?signature=x"
+    );
+    staging.direct[0].reference.headers = vec![("authorization".into(), "secret".into())];
+    let job = Job {
+        name: "direct",
+        spec: &spec,
+        staging: &staging,
+        placement: &Placement::default(),
+    };
+    let error = stage.prepare(job, true).await.unwrap_err();
+    assert!(matches!(error, ExecutorError::Unsupported(_)), "{error}");
+}
+
 #[tokio::test]
 async fn preserves_encoded_paths() {
     let folder = tempfile::tempdir().unwrap();

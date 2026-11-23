@@ -13,7 +13,8 @@ use bollard::container::LogOutput;
 use bollard::errors::Error as ApiError;
 use bollard::models::{ContainerCreateBody, HostConfig, MountType};
 use bollard::query_parameters::{
-    AttachContainerOptions, CreateContainerOptions, StopContainerOptions, WaitContainerOptions,
+    AttachContainerOptions, CreateContainerOptions, StatsOptions, StopContainerOptions,
+    WaitContainerOptions,
 };
 use futures_util::StreamExt;
 use task_model::{Image, TaskSpec};
@@ -25,6 +26,7 @@ use crate::access::{self, Access, NO_NEW_PRIVILEGES};
 use crate::engine::{ContainerEngine, Created, EngineCommand};
 use crate::image::{self, Commands};
 use crate::job::{CONTROL, ExecutorError, Finished, HOME, Job, Usage, WORK};
+use crate::live::{Live, LiveSink, Tail};
 use crate::manifest::parse;
 use crate::pool::{Pool, Share};
 use crate::process::{Mount, ProcessError, create_id};
@@ -547,15 +549,17 @@ impl LocalContainer {
                 .await;
         }
         let time = job.placement.time_seconds.map(Duration::from_secs);
-        let ending = self
-            .run_to_end(
-                &run,
-                i64::from(share.cpus) * 1_000_000_000,
-                time,
-                cancel,
-                &flags,
-            )
-            .await;
+        let ending = self.run_to_end(
+            &run,
+            i64::from(share.cpus) * 1_000_000_000,
+            time,
+            cancel,
+            &flags,
+        );
+        let ending = match &job.staging.live {
+            Some(live) => self.watched(live, root, &container, ending).await,
+            None => ending.await,
+        };
         self.hand_back(&access, image, root, owner.uid(), cancel)
             .await;
         self.finish(ending?, root.to_owned(), &spec).await
@@ -832,6 +836,67 @@ impl LocalContainer {
         asked.await.cloned()
     }
 
+    /// Awaits `ending` while it sends what the task writes and what its container uses to
+    /// `live`, once every [`crate::live::PERIOD`]; the last output follows when it ended.
+    async fn watched<T>(
+        &self,
+        live: &LiveSink,
+        root: &Path,
+        container: &str,
+        ending: impl std::future::Future<Output = T>,
+    ) -> T {
+        let mut tail = Tail::new(&root.join(CONTROL));
+        let mut ticks = tokio::time::interval(crate::live::PERIOD);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut before = None;
+        tokio::pin!(ending);
+        loop {
+            tokio::select! {
+                ended = &mut ending => {
+                    tail.read(live, true);
+                    return ended;
+                }
+                _ = ticks.tick() => {
+                    tail.read(live, false);
+                    if let Some(usage) = self.usage(container, &mut before).await {
+                        live.send(usage);
+                    }
+                }
+            }
+        }
+    }
+
+    /// What a running container uses now, as one sample of the engine; the CPU share needs
+    /// the sample `before`, which this one replaces.
+    async fn usage(&self, container: &str, before: &mut Option<(u64, u64)>) -> Option<Live> {
+        let options = StatsOptions {
+            stream: false,
+            one_shot: true,
+        };
+        let client = self.engine.client();
+        let mut samples = std::pin::pin!(client.stats(container, Some(options)));
+        let sample = tokio::time::timeout(Duration::from_secs(2), samples.next());
+        let stats = sample.await.ok()??.ok()?;
+        let cpu = stats.cpu_stats.as_ref();
+        let total = cpu.and_then(|cpu| cpu.cpu_usage.as_ref()?.total_usage);
+        let system = cpu.and_then(|cpu| cpu.system_cpu_usage);
+        let cpus = f64::from(cpu.and_then(|cpu| cpu.online_cpus).unwrap_or(1).max(1));
+        let cpu_percent = match (*before, total, system) {
+            (Some((used, all)), Some(now), Some(clock)) if clock > all => {
+                Some(now.saturating_sub(used) as f64 / (clock - all) as f64 * cpus * 100.0)
+            }
+            _ => None,
+        };
+        if let (Some(total), Some(system)) = (total, system) {
+            *before = Some((total, system));
+        }
+        let memory_bytes = stats.memory_stats.and_then(|memory| memory.usage);
+        Some(Live::Usage {
+            cpu_percent,
+            memory_bytes,
+        })
+    }
+
     /// Runs a container to its end: creates it, attaches to its output before it starts, and
     /// reads the output until the wrapper says that it ended.
     async fn run_to_end(
@@ -1043,7 +1108,7 @@ impl LocalContainer {
             (None, false) => None,
         };
         if let Some(note) = note {
-            append(&control.join(STDERR), &note).await?;
+            crate::live::append(&control, STDERR, &note)?;
         }
         let files = match exit_code {
             0 => parse(&read(&control.join(MANIFEST)).unwrap_or_default())?,
@@ -1055,6 +1120,7 @@ impl LocalContainer {
             files,
             usage,
             root,
+            receipts: Vec::new(),
         })
     }
 }
@@ -1158,18 +1224,6 @@ async fn exit_code(client: Docker, container: String) -> i64 {
         Some(Err(ApiError::DockerContainerWaitError { code, .. })) => code,
         _ => -1,
     }
-}
-
-async fn append(path: &Path, text: &str) -> std::io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .await?;
-    file.write_all(text.as_bytes()).await?;
-    // Tokio writes in the background; the caller may read the file at once.
-    file.flush().await
 }
 
 /// A bind in the form of `docker run --volume`: `<source>:<target>`, with `:ro` when it is

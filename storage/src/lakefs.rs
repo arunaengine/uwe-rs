@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::Problem;
-use crate::web::{Web, network, origin_client, upload_client};
+use crate::web::{Clients, Web, network};
 use crate::{Downloaded, Entry, Metadata, StorageError, Written};
 
 /// What a lakeFS client signs in with.
@@ -52,25 +52,44 @@ pub(crate) fn scope() -> Options {
 /// Commits the branch of a `lakefs://` address with the options of [`use_scope`] and returns the
 /// id of the commit.
 pub fn commit(target: &str, message: &str) -> Result<String, StorageError> {
-    let (target, message) = (target.to_owned(), message.to_owned());
-    crate::blocking::run(async move {
-        let failed = failed("commit", &target);
-        let lakefs = Lakefs::new(scope()).map_err(&failed)?;
-        let (repository, branch, _) = address(&target).map_err(&failed)?;
-        (lakefs.commit(repository, branch, &message).await).map_err(&failed)
-    })
+    scope().commit(target, message)
 }
 
-/// Makes the branch of a `lakefs://` address if it is missing, as writes do with
-/// `create_branches`.
+/// Makes the branch of a `lakefs://` address with the options of [`use_scope`] if it is
+/// missing, as writes do with `create_branches`.
 pub fn create_branch(target: &str) -> Result<(), StorageError> {
-    let target = target.to_owned();
-    crate::blocking::run(async move {
-        let failed = failed("make the branch of", &target);
-        let lakefs = Lakefs::new(scope()).map_err(&failed)?;
-        let (repository, branch, _) = address(&target).map_err(&failed)?;
-        (lakefs.branch(repository, branch).await).map_err(&failed)
-    })
+    scope().create_branch(target)
+}
+
+/// The requests of one run with its own options, which never read the scope of the process.
+impl Options {
+    /// Commits the branch of a `lakefs://` address and returns the id of the commit.
+    pub fn commit(&self, target: &str, message: &str) -> Result<String, StorageError> {
+        let (options, target, message) = (self.clone(), target.to_owned(), message.to_owned());
+        crate::blocking::run(async move {
+            let failed = failed("commit", &target);
+            let clients = Clients::process()
+                .map_err(Problem::fixed)
+                .map_err(&failed)?;
+            let lakefs = Lakefs::new(options, clients).map_err(&failed)?;
+            let (repository, branch, _) = address(&target).map_err(&failed)?;
+            (lakefs.commit(repository, branch, &message).await).map_err(&failed)
+        })
+    }
+
+    /// Makes the branch of a `lakefs://` address if it is missing.
+    pub fn create_branch(&self, target: &str) -> Result<(), StorageError> {
+        let (options, target) = (self.clone(), target.to_owned());
+        crate::blocking::run(async move {
+            let failed = failed("make the branch of", &target);
+            let clients = Clients::process()
+                .map_err(Problem::fixed)
+                .map_err(&failed)?;
+            let lakefs = Lakefs::new(options, clients).map_err(&failed)?;
+            let (repository, branch, _) = address(&target).map_err(&failed)?;
+            (lakefs.branch(repository, branch).await).map_err(&failed)
+        })
+    }
 }
 
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -85,10 +104,11 @@ pub(crate) struct Lakefs {
     timeout: Duration,
     /// The branches known to exist.
     branches: Mutex<HashSet<(String, String)>>,
+    clients: Clients,
 }
 
 impl Lakefs {
-    pub fn new(options: Options) -> Result<Lakefs, Problem> {
+    pub fn new(options: Options, clients: &Clients) -> Result<Lakefs, Problem> {
         let endpoint = (options.endpoint.filter(|endpoint| !endpoint.is_empty()))
             .ok_or_else(|| Problem::fixed("lakeFS needs `apiUrl`, the address of its API"))?;
         let (Some(access), Some(secret)) = (options.access_key, options.secret_key) else {
@@ -107,6 +127,7 @@ impl Lakefs {
             branch_source: options.branch_source.unwrap_or_else(|| "main".to_owned()),
             timeout: options.timeout.unwrap_or(TIMEOUT),
             branches: Mutex::new(HashSet::new()),
+            clients: clients.clone(),
         })
     }
 
@@ -188,14 +209,16 @@ impl Lakefs {
         let version = metadata(&object).version;
         let presigned = object["physical_address"].as_str().unwrap_or_default();
         if presigned.starts_with("https://") || presigned.starts_with("http://") {
-            Web::public()?.download(presigned, file, 0).await?;
+            Web::public(&self.clients)
+                .download(presigned, file, 0)
+                .await?;
             return Ok(Downloaded { version });
         }
         let path = format!(
             "/repositories/{repository}/refs/{reference}/objects?path={}",
             encode(path)
         );
-        let client = origin_client().map_err(Problem::fixed)?;
+        let client = &self.clients.origin;
         let request = (client.get(format!("{}{path}", self.endpoint)))
             .header("authorization", &self.authorization);
         let mut response = request.send().await.map_err(network)?;
@@ -243,7 +266,7 @@ impl Lakefs {
             "******** staging {path} to {}",
             place["physical_address"].as_str().unwrap_or_default()
         );
-        let client = upload_client().map_err(Problem::fixed)?;
+        let client = &self.clients.upload;
         let response = (client.put(url))
             .header(CONTENT_TYPE, "application/octet-stream")
             .header(CONTENT_LENGTH, size)
@@ -287,7 +310,7 @@ impl Lakefs {
             self.endpoint,
             encode(path)
         );
-        let client = upload_client().map_err(Problem::fixed)?;
+        let client = &self.clients.upload;
         let response = (client.post(url))
             .header("authorization", &self.authorization)
             .header(CONTENT_TYPE, "application/octet-stream")
@@ -418,7 +441,7 @@ impl Lakefs {
         path: &str,
         body: Option<Value>,
     ) -> Result<Option<Value>, Problem> {
-        let client = origin_client().map_err(Problem::fixed)?;
+        let client = &self.clients.origin;
         let mut request = (client.request(method, format!("{}{path}", self.endpoint)))
             .header("authorization", &self.authorization)
             .timeout(self.timeout);

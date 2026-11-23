@@ -100,6 +100,18 @@ pub(crate) fn script(
     for program in programs {
         prepare.push_str(&format!("{{ {}; }} || exit 1\n", executable(program)));
     }
+    // The server reads a direct input from its URL, whose bytes may have changed since the
+    // provider gave their digest; a result must never stand for other bytes.
+    for input in &job.staging.direct {
+        let path = container_path(&input.path, work)?;
+        let message = format!("uwe: the input {path} differs from its digest");
+        prepare.push_str(&format!(
+            "echo {}'  '{} | sha256sum -c --status - || {{ echo {} >&2; exit 1; }}\n",
+            wrapper::quote(input.digest.hex()),
+            wrapper::quote(&path),
+            wrapper::quote(&message),
+        ));
+    }
     script = script.replacen("#!/bin/sh\n", &format!("#!/bin/sh\n{prepare}"), 1);
     executor::capture::capture(&script, TRANSFER)
 }
@@ -108,7 +120,53 @@ pub(crate) fn script(
 mod tests {
     use super::*;
     use executor::Staging;
-    use task_model::{FORMAT, Placement, TaskSpec};
+    use task_model::{Digest, FORMAT, Placement, TaskSpec};
+
+    #[test]
+    fn checks_direct_digests() {
+        let spec = TaskSpec {
+            format: FORMAT,
+            arguments: vec!["cat".into(), "reads.fq".into()],
+            namespace: String::new(),
+            image: None,
+            workdir: None,
+            environment: Default::default(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            output_manifest: None,
+            stdin: None,
+            containers: Vec::new(),
+            replaces_entrypoint: true,
+            run_as: None,
+        };
+        let digest = Digest::sha256(b"reads");
+        let staging = Staging {
+            direct: vec![executor::DirectSource {
+                path: "reads.fq".into(),
+                source: "https://example.org/reads.fq".into(),
+                digest: digest.clone(),
+                size: 5,
+                executable: false,
+                reference: storage::DirectRef::default(),
+                endpoints: Vec::new(),
+            }],
+            ..Staging::default()
+        };
+        let placement = Placement::default();
+        let job = Job {
+            name: "direct",
+            spec: &spec,
+            staging: &staging,
+            placement: &placement,
+        };
+        let script = script(job, "/uwe/work", &[], &[]).unwrap();
+        let check = format!(
+            "echo '{}''  ''/uwe/work/reads.fq' | sha256sum -c --status -",
+            digest.hex()
+        );
+        let (checked, command) = (script.find(&check), script.find("'cat'"));
+        assert!(checked.is_some() && checked < command, "{script}");
+    }
 
     #[test]
     fn preserves_command_status() {

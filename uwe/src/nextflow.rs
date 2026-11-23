@@ -461,7 +461,7 @@ pub(crate) fn secret_file(
 /// The host of a run; remote files are cached in `downloads` of the cache directory.
 fn console(quiet: bool, setup: &Setup, variables: &config_file::SecretValues) -> Console {
     Console {
-        downloads: crate::cache_directory().join("downloads"),
+        downloads: setup.cache_directory().join("downloads"),
         quiet,
         print: true,
         storage: setup.storage.blocking(),
@@ -513,7 +513,7 @@ pub fn blocks(
     // The callbacks and process adapters of the run start in the folder the run starts in.
     let started =
         (isolation(arguments, setup).and_then(|isolation| isolation.launch)).or_else(|| {
-            let scratch = crate::cache_directory().join("scratch");
+            let scratch = setup.cache_directory().join("scratch");
             arguments.embedded.then(|| scratch.join("launch").join(run))
         });
     let run = run.to_owned();
@@ -646,7 +646,7 @@ pub fn driver(
 fn plugin_containers(setup: &Setup) -> nextflow_plugins::Containers {
     nextflow_plugins::Containers {
         engine: Some(setup.engine()),
-        journals: Some(crate::journal_folder()),
+        journals: Some(setup.journal_folder()),
     }
 }
 
@@ -741,6 +741,12 @@ pub fn pipeline_executor(
     // nf-tencentcloud's `cos://` addresses work with every executor.
     if let Some(cos) = crate::scopes::cos(&config) {
         setup.storage = setup.storage.with_providers(vec![cos]);
+    }
+    // The plugin scopes reach the providers of this run only; a scope that does not load fails
+    // the run when the driver turns on its plugin.
+    let variable = |name: &str| console.environment(name);
+    if let Ok(scopes) = nextflow_plugins::catalogue::scopes(&config, &variable) {
+        setup.storage = setup.storage.with_scopes(scopes);
     }
     if chosen && !batch {
         return Ok(None);
@@ -847,7 +853,7 @@ fn choice(config: &nextflow_config::Config) -> Result<Option<String>, String> {
 
 /// Fills the AWS Batch settings that `[executor.aws-batch]` leaves unset from the Nextflow
 /// `aws` scope, `executor.$awsbatch` and an `s3://` work directory.
-fn aws_scope(config: &nextflow_config::Config, batch: &mut crate::aws_batch::Config) {
+fn aws_scope(config: &nextflow_config::Config, batch: &mut crate::executors::aws_batch::Config) {
     let get = |path: &[&str]| {
         config
             .get(path)
@@ -930,7 +936,7 @@ fn aws_scope(config: &nextflow_config::Config, batch: &mut crate::aws_batch::Con
         && let Some(work) = work
     {
         batch.staging.root = Some(work);
-        batch.staging.mode = crate::staging::Mode::ObjectStore;
+        batch.staging.mode = crate::executors::staging::Mode::ObjectStore;
     }
 }
 
@@ -939,7 +945,7 @@ fn aws_scope(config: &nextflow_config::Config, batch: &mut crate::aws_batch::Con
 /// refused, as it needs privileged containers.
 fn google_scope(
     config: &nextflow_config::Config,
-    batch: &mut crate::google_batch::Config,
+    batch: &mut crate::executors::google_batch::Config,
 ) -> Result<(), String> {
     let get = |path: &[&str]| {
         config
@@ -1044,7 +1050,7 @@ fn google_scope(
         && let Some(work) = work
     {
         batch.staging.root = Some(work);
-        batch.staging.mode = crate::staging::Mode::ObjectStore;
+        batch.staging.mode = crate::executors::staging::Mode::ObjectStore;
     }
     Ok(())
 }
@@ -1054,7 +1060,7 @@ fn google_scope(
 /// pools are refused, as their tasks would run privileged.
 fn azure_scope(
     config: &nextflow_config::Config,
-    batch: &mut crate::azure_batch::Config,
+    batch: &mut crate::executors::azure_batch::Config,
 ) -> Result<(), String> {
     use azure_batch_executor::{Hidden, Identity, PRIVILEGED, PoolSettings, Registry};
     let get = |path: &[&str]| {
@@ -1219,7 +1225,7 @@ fn azure_scope(
         && let Some(work) = work
     {
         batch.staging.root = Some(work);
-        batch.staging.mode = crate::staging::Mode::ObjectStore;
+        batch.staging.mode = crate::executors::staging::Mode::ObjectStore;
     }
     Ok(())
 }
@@ -1341,7 +1347,7 @@ mod tests {
                     schedulingPriority = 10\n  terminateUnschedulableJobs = true\n }\n}\n\
                     executor {\n $awsbatch {\n  pollInterval = '30 sec'\n }\n}\n";
         let config = loaded(text);
-        let mut batch = crate::aws_batch::Config::default();
+        let mut batch = crate::executors::aws_batch::Config::default();
         batch.settings.region = Some("us-east-1".into());
         super::aws_scope(&config, &mut batch);
         let settings = &batch.settings;
@@ -1359,7 +1365,10 @@ mod tests {
         assert!(settings.terminate_unschedulable);
         assert_eq!(settings.poll, std::time::Duration::from_secs(30));
         assert_eq!(batch.staging.root.as_deref(), Some("s3://probe/work"));
-        assert_eq!(batch.staging.mode, crate::staging::Mode::ObjectStore);
+        assert_eq!(
+            batch.staging.mode,
+            crate::executors::staging::Mode::ObjectStore
+        );
     }
 
     #[test]
@@ -1373,7 +1382,7 @@ mod tests {
                     executor.'$google-batch'.pollInterval = '30 sec'\n";
         let config = loaded(text);
         assert_eq!(super::choice(&config), Ok(Some("google-batch".to_owned())));
-        let mut batch = crate::google_batch::Config::default();
+        let mut batch = crate::executors::google_batch::Config::default();
         batch.settings.location = Some("us-east1".into());
         super::google_scope(&config, &mut batch).expect("a mapping");
         let settings = &batch.settings;
@@ -1389,7 +1398,7 @@ mod tests {
         assert_eq!(settings.poll, std::time::Duration::from_secs(30));
         assert_eq!(batch.staging.root.as_deref(), Some("gs://probe/work"));
         let fusion = loaded("fusion.enabled = true\n");
-        let mut batch = crate::google_batch::Config::default();
+        let mut batch = crate::executors::google_batch::Config::default();
         let error = super::google_scope(&fusion, &mut batch).expect_err("Fusion");
         assert!(error.contains("privileged"), "{error}");
     }
@@ -1407,7 +1416,7 @@ mod tests {
                     executor.'$azurebatch'.pollInterval = '30 sec'\n";
         let config = loaded(text);
         assert_eq!(super::choice(&config), Ok(Some("azure-batch".to_owned())));
-        let mut batch = crate::azure_batch::Config::default();
+        let mut batch = crate::executors::azure_batch::Config::default();
         batch.settings.location = Some("northeurope".into());
         super::azure_scope(&config, &mut batch).expect("a mapping");
         let settings = &batch.settings;
@@ -1439,7 +1448,7 @@ mod tests {
         assert_eq!(settings.poll, std::time::Duration::from_secs(30));
         assert_eq!(batch.staging.root.as_deref(), Some("az://probe/work"));
         let privileged = loaded("azure.batch.pools.p.privileged = true\n");
-        let mut batch = crate::azure_batch::Config::default();
+        let mut batch = crate::executors::azure_batch::Config::default();
         let error = super::azure_scope(&privileged, &mut batch).expect_err("privileged");
         assert!(error.contains("least privilege"), "{error}");
     }

@@ -289,7 +289,8 @@ mod tests {
                 key: key.map(str::to_owned),
                 sas_token: Some("sv=2022-11-02&sp=racwdl&sig=secret".into()),
             };
-            crate::objects::Objects::new(service).unwrap()
+            let clients = crate::web::Clients::process().unwrap();
+            crate::objects::Objects::new(service, clients).unwrap()
         };
         let operator = objects(None).at("az://staging/root").unwrap();
         assert!(!operator.info().capability().presign_read);

@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+pub use executor::LogStream;
+use executor::{Live, LiveFeed};
 use serde::Serialize;
 use workflow_graph::{Observer, TaskId};
 
@@ -56,6 +58,70 @@ pub enum Event {
         time: i64,
         error: Option<String>,
     },
+    /// New output of a running attempt: whole lines, at most 4 KiB, with the secret values of
+    /// the run as `[secret]`. A listener that falls behind misses some.
+    Log {
+        run: String,
+        task: u64,
+        attempt: u32,
+        stream: LogStream,
+        chunk: String,
+        time: i64,
+    },
+    /// What the container of a running attempt uses now: its CPU share, where 100 is one whole
+    /// CPU, and its memory in bytes.
+    Usage {
+        run: String,
+        task: u64,
+        attempt: u32,
+        cpu_percent: Option<f64>,
+        memory_bytes: Option<u64>,
+        time: i64,
+    },
+}
+
+/// How many live events wait for a listener before more of them are dropped.
+const LIVE_QUEUE: usize = 1024;
+
+/// The live output and resource use of the attempts of the run `run` as events of the
+/// listener, on a thread of their own, with the values of `secrets` as `[secret]`.
+pub(crate) fn live(
+    listener: &Listener,
+    run: &str,
+    secrets: &config_file::SecretValues,
+) -> std::io::Result<LiveFeed> {
+    let (listener, run) = (listener.clone(), run.to_owned());
+    let values: Vec<String> = secrets
+        .names()
+        .filter_map(|name| secrets.get(name))
+        .collect();
+    let feed = LiveFeed::bounded(LIVE_QUEUE, move |task, attempt, live| {
+        let time = milliseconds(SystemTime::now());
+        let run = run.clone();
+        listener(match live {
+            Live::Log { stream, chunk } => Event::Log {
+                run,
+                task,
+                attempt,
+                stream,
+                chunk,
+                time,
+            },
+            Live::Usage {
+                cpu_percent,
+                memory_bytes,
+            } => Event::Usage {
+                run,
+                task,
+                attempt,
+                cpu_percent,
+                memory_bytes,
+                time,
+            },
+        });
+    })?;
+    // The sink of each attempt hides the values, also those that the end of a chunk splits.
+    Ok(feed.hiding(values))
 }
 
 /// The new state of one task.
@@ -245,6 +311,72 @@ mod tests {
 
     impl Observer for Ignored {
         fn event(&mut self, _: Engine<'_>) {}
+    }
+
+    /// Live output reaches the listener without the secret values of the run, with usage.
+    #[test]
+    fn hides_live_secrets() {
+        let (sender, heard) = std::sync::mpsc::channel();
+        let sender = Mutex::new(sender);
+        let listener: Listener = Arc::new(move |event| {
+            let _ = sender.lock().unwrap().send(event);
+        });
+        let mut secrets = config_file::SecretValues::default();
+        secrets.insert("TOKEN", "hunter2").unwrap();
+        let feed = live(&listener, "run", &secrets).unwrap();
+        let sink = feed.sink(4, 2);
+        sink.log(LogStream::Stderr, "token=hunter2\n");
+        sink.send(Live::Usage {
+            cpu_percent: Some(50.0),
+            memory_bytes: Some(1 << 20),
+        });
+        // The channel closes once the feed, its thread and this listener let go of it.
+        drop((feed, sink, listener));
+        let events: Vec<Event> = heard.iter().collect();
+        let Event::Log {
+            task,
+            attempt,
+            stream,
+            chunk,
+            ..
+        } = &events[0]
+        else {
+            panic!("a log event first: {events:?}");
+        };
+        assert_eq!((*task, *attempt, *stream), (4, 2, LogStream::Stderr));
+        assert_eq!(chunk, "token=[secret]\n");
+        assert!(matches!(
+            &events[1],
+            Event::Usage {
+                cpu_percent: Some(50.0),
+                memory_bytes: Some(1048576),
+                ..
+            }
+        ));
+    }
+
+    /// A secret that the end of a 4 KiB chunk splits is hidden as a whole.
+    #[test]
+    fn hides_split_secrets() {
+        let (sender, heard) = std::sync::mpsc::channel();
+        let sender = Mutex::new(sender);
+        let listener: Listener = Arc::new(move |event| {
+            let _ = sender.lock().unwrap().send(event);
+        });
+        let mut secrets = config_file::SecretValues::default();
+        secrets.insert("TOKEN", "hunter2").unwrap();
+        let feed = live(&listener, "run", &secrets).unwrap();
+        let sink = feed.sink(1, 1);
+        let filler = "x".repeat(executor::live::CHUNK - 3);
+        sink.log(LogStream::Stdout, &format!("{filler}hunter2\n"));
+        drop((feed, sink, listener));
+        let shown: String = (heard.iter())
+            .filter_map(|event| match event {
+                Event::Log { chunk, .. } => Some(chunk),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shown, format!("{filler}[secret]\n"));
     }
 
     /// A task that the stop of a run ended, like with Ctrl-C, is stopped rather than failed.

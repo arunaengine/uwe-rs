@@ -163,8 +163,12 @@ pub(crate) fn described(
         "contentUrl"
     };
     entity[key] = json!(url);
-    let note =
-        format!("Not in this crate: the content stays at {location}, where the run left it.");
+    let note = match url.starts_with("file://") {
+        true => {
+            format!("Not in this crate: the content stays at {location}, where the run left it.")
+        }
+        false => format!("Not in this crate: the content stays at its persistent address {url}."),
+    };
     entity["description"] = json!(match entity["description"].as_str() {
         Some(text) => format!("{text} {note}"),
         None => note,

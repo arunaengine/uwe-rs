@@ -67,6 +67,12 @@ impl<B: Backend> RunnerExecutor<B> {
         }
     }
 
+    /// Sends the output and resource use of each attempt to `feed` while it runs, where the
+    /// backend can tell them.
+    pub fn use_live(&mut self, feed: executor::LiveFeed) {
+        self.runner.live = Some(feed);
+    }
+
     /// Lets the backend sign in to registries with these settings, wherever the tasks of the
     /// run go on, like on the runtime that all runs share.
     pub fn use_registry(&mut self, registry: executor::credentials::Registry) {
@@ -86,6 +92,11 @@ impl<B: Backend> RunnerExecutor<B> {
     /// Pins images to the digests given; see [`Runner::pin_images`].
     pub fn pin_images(&self, images: &HashMap<String, String>) {
         self.runner.pin_images(images);
+    }
+
+    /// Keeps the cache entries in the namespace of a tenant; see [`Runner::cache_namespace`].
+    pub fn cache_namespace(&mut self, tenant: Option<&str>) {
+        self.runner.cache_namespace(tenant);
     }
 
     /// Takes results of these runs; see [`Runner::resume_from`].
@@ -115,12 +126,17 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
             }
             Err(error) => return Running::ended(Err(error)),
         };
-        let site = match self.sites.choose(&task) {
-            Ok(site) => site.map(str::to_owned),
-            Err(message) => {
-                let task = task.name.clone();
-                return Running::ended(Err(ExecuteError::Executor { task, message }));
-            }
+        // Sites by storage endpoint wait for the providers of the inputs, in the attempt.
+        let near = self.sites.uses_endpoints().then(|| self.sites.clone());
+        let site = match near {
+            Some(_) => None,
+            None => match self.sites.choose(&task) {
+                Ok(site) => site.map(str::to_owned),
+                Err(message) => {
+                    let task = task.name.clone();
+                    return Running::ended(Err(ExecuteError::Executor { task, message }));
+                }
+            },
         };
         let mut runner = self.runner.clone();
         let pending = Arc::new(Pending {
@@ -142,9 +158,22 @@ impl<B: Backend> Executor for RunnerExecutor<B> {
             pending: pending.clone(),
             retained: false,
         };
+        let storage = self.runner.settings.storage.clone();
         Running::new(async move {
             let mut completing = completing;
             let number = attempt.number;
+            let site = match &near {
+                Some(sites) => {
+                    let endpoints = crate::sites::input_endpoints(&storage, &task).await;
+                    let chosen = sites.choose_near(&task, &endpoints);
+                    let message = |message| ExecuteError::Executor {
+                        task: task.name.clone(),
+                        message,
+                    };
+                    chosen.map_err(message)?.map(str::to_owned)
+                }
+                None => site,
+            };
             let measured = measured.get(&task.step).map_or(&[][..], Vec::as_slice);
             let options = AttemptOptions {
                 priority,
@@ -328,7 +357,7 @@ async fn outcome<B: Backend>(
         Some(image) => Some(tokio::select! {
             biased;
             () = cancel.cancelled() => return Err(ExecuteError::Cancelled),
-            pinned = runner.pin(image) => pinned.map_err(failed)?,
+            pinned = runner.pin_at(image, options.site.as_deref()) => pinned.map_err(failed)?,
         }),
         None => None,
     };
@@ -340,7 +369,7 @@ async fn outcome<B: Backend>(
             container.image = Some(tokio::select! {
                 biased;
                 () = cancel.cancelled() => return Err(ExecuteError::Cancelled),
-                pinned = runner.pin(image) => pinned.map_err(failed)?,
+                pinned = runner.pin_at(image, options.site.as_deref()) => pinned.map_err(failed)?,
             });
         }
     }
@@ -350,6 +379,7 @@ async fn outcome<B: Backend>(
         prepared = runner.request(&pinned, image.clone()) => prepared.map_err(failed)?,
     };
     prepared.request.attempt = attempt;
+    prepared.live = (runner.live.as_ref()).map(|feed| feed.sink(task.id.0, attempt));
     if options.right_sizing {
         let placement = &prepared.request.placement;
         prepared.request.placement =

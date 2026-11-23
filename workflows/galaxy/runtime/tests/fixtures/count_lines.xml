@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<tool id="count_lines" name="Count lines" version="1.0" profile="22.05">
+    <description>of a text file</description>
+    <requirements>
+        <container type="docker">quay.io/biocontainers/coreutils:8.31--h14c3975_0</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        wc -l < '$input' > '$output'
+        #if $header:
+            && sed -i '1i lines' '$output'
+        #end if
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="vcf,txt" label="Lines to count"/>
+        <param name="header" type="boolean" checked="false" label="Add a header line"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="txt" label="Line count"/>
+    </outputs>
+</tool>

@@ -13,6 +13,22 @@ use workflow_graph::{
     Writable,
 };
 
+/// The runs of a lineage that ran in the cache namespace `namespace`, the latest first: a
+/// resume takes results only of runs of its own tenant, even when a lineage crossed tenants.
+pub(crate) fn lineage(
+    reader: &dyn run_database::RunReader,
+    lineage: &str,
+    namespace: Option<&str>,
+) -> Result<Vec<String>, run_database::DatabaseError> {
+    let mut kept = Vec::new();
+    for run in reader.lineage(lineage)? {
+        if reader.cache_namespace(&run)?.as_deref() == namespace {
+            kept.push(run);
+        }
+    }
+    Ok(kept)
+}
+
 /// How strongly a lineage result must be verified before it is used.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {

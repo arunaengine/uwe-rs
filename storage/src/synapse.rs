@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::error::Problem;
-use crate::web::{Web, network, origin_client, upload_client};
+use crate::web::{Clients, Web, network};
 use crate::{Downloaded, Metadata, Written};
 
 /// What a Synapse client signs in with. Unset values come from the environment.
@@ -59,6 +59,7 @@ pub(crate) struct Synapse {
     endpoint: String,
     token: Option<String>,
     client: reqwest::Client,
+    clients: Clients,
 }
 
 /// What a `syn://` address names: an entity, maybe of one version, or a file to write below a
@@ -76,7 +77,7 @@ enum Address<'a> {
 }
 
 impl Synapse {
-    pub fn new(options: Options) -> Result<Synapse, Problem> {
+    pub fn new(options: Options, clients: &Clients) -> Result<Synapse, Problem> {
         let token = (options.token)
             .or_else(|| std::env::var(VARIABLE).ok())
             .filter(|token| !token.is_empty());
@@ -84,7 +85,8 @@ impl Synapse {
         Ok(Synapse {
             endpoint: endpoint.trim_end_matches('/').to_owned(),
             token,
-            client: origin_client().cloned().map_err(Problem::fixed)?,
+            client: clients.origin.clone(),
+            clients: clients.clone(),
         })
     }
 
@@ -128,7 +130,7 @@ impl Synapse {
              fileAssociateId={id}"
         );
         let url = self.presigned(&path).await?;
-        Web::public()?.download(&url, file, 0).await?;
+        Web::public(&self.clients).download(&url, file, 0).await?;
         Ok(Downloaded {
             version: metadata(&entity).version,
         })
@@ -325,7 +327,7 @@ impl Synapse {
             Problem::fixed(format!("Failed to get presigned URL for part {number}"))
         })?;
         let digest = hex(&Md5::digest(&bytes));
-        let client = upload_client().map_err(Problem::fixed)?;
+        let client = &self.clients.upload;
         let mut request = client.put(url).timeout(PART_UPLOAD).body(bytes);
         let headers = presigned["signedHeaders"].as_object().into_iter().flatten();
         for (name, value) in headers {

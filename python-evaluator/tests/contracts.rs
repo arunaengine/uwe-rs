@@ -385,3 +385,12 @@ fn formats_native_numbers() {
     let hex = interpreter.eval_text("'%x' % count", &globals);
     assert!(hex.is_err(), "%x needs __index__, which the object lacks");
 }
+
+#[test]
+fn limits_huge_repetitions() {
+    let output = evaluate(
+        "for make in (lambda: 'a' * 10**10, lambda: [0] * 10**10, lambda: (0,) * 10**10):\n    try:\n        make()\n    except MemoryError:\n        print('refused')\nprint(len('ab' * 3), [1] * 2)\n",
+    )
+    .expect("evaluates");
+    assert_eq!(output, "refused\nrefused\nrefused\n6 [1, 1]\n");
+}

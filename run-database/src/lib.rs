@@ -19,6 +19,7 @@ mod resume;
 mod runs;
 mod schema;
 mod steps;
+mod store;
 mod tasks;
 mod time;
 mod why;
@@ -38,9 +39,10 @@ pub use pinned::{CheckRow, ImagePin, RemoteFile, Source, SourceKind};
 pub use public::{public_json, public_resource_id, redact_public_text};
 pub use recorder::{LOG_LIMIT, Recorder, RunStart};
 pub use resume::Reusable;
-pub use runs::{Event, Log, Owner, Run, RunInputs};
+pub use runs::{Event, Log, Owner, Run, RunInputs, local_process};
 pub use schema::VERSION;
 pub use steps::{StepChange, StepDifference};
+pub use store::{Change, MemoryStore, RunReader, RunStore, SqliteStore};
 pub use tasks::{Attempt, EdgeRow, FileRow, MarkerRow, TaskDetail, TaskRow};
 pub use time::{PathTask, StepTime, TimeSpent};
 pub use why::Why;
@@ -125,6 +127,14 @@ impl Database {
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
         )?;
         Ok(Self { connection })
+    }
+
+    /// A database in the memory of this process, with the current schema and no file.
+    pub fn memory() -> Result<Self, DatabaseError> {
+        let mut connection = Connection::open_in_memory()?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+        schema::migrate(&mut connection)?;
+        Ok(Database { connection })
     }
 
     /// Caps lock waits for observers whose shutdown must not inherit long shared-store waits.

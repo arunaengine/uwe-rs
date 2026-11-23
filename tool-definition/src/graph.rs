@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
@@ -69,6 +69,9 @@ pub struct NodeReport {
     pub fit: Fit,
     /// The node maps over a list; its outputs are lists with a sample id per item.
     pub scatter: bool,
+    /// The inputs that the node maps over, by name, as their connection checks decided.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub over: Vec<String>,
     pub findings: Vec<Finding>,
 }
 
@@ -86,6 +89,12 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
         .enumerate()
         .map(|(at, node)| (node.id.as_str(), at))
         .collect();
+    // Edges name nodes by id, so two nodes of one id make each edge to them ambiguous.
+    let mut seen = HashSet::new();
+    let duplicated: HashSet<&str> = (graph.nodes.iter())
+        .map(|node| node.id.as_str())
+        .filter(|id| !seen.insert(*id))
+        .collect();
     let (order, cyclic) = ordered(graph, &index);
     let mut outputs: Vec<Option<BTreeMap<String, Supply>>> = vec![None; graph.nodes.len()];
     let mut nodes: Vec<Option<NodeReport>> = vec![None; graph.nodes.len()];
@@ -93,6 +102,10 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
     for at in order {
         let node = &graph.nodes[at];
         let mut findings = Vec::new();
+        if duplicated.contains(node.id.as_str()) {
+            let reason = format!("another node has the id {} too", node.id);
+            findings.push(Finding::new(Aspect::Connection, Fit::DoesNotFit, reason));
+        }
         if cyclic[at] {
             let reason = format!("node {} is in a cycle or after one", node.id);
             findings.push(Finding::new(Aspect::Connection, Fit::DoesNotFit, reason));
@@ -106,7 +119,7 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
                         Some(broken(format!("the tool of node {} is not known", node.id)));
                 }
             }
-            nodes[at] = Some(report(node, false, findings));
+            nodes[at] = Some(report(node, Vec::new(), findings));
             continue;
         };
         let values = match &node.parameters {
@@ -115,7 +128,7 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
         };
         findings.extend(parameters::check(&definition.parameters, &values));
         let mut inputs = BTreeMap::new();
-        let mut scatter = false;
+        let mut over = Vec::new();
         for (name, supply) in &node.given {
             let Some(port) = declared(definition, name, &values) else {
                 let reason = format!("the tool has no input {name}");
@@ -123,7 +136,9 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
                 continue;
             };
             let given = connection::check(supply, port);
-            scatter |= given.scatter;
+            if given.scatter {
+                over.push(name.clone());
+            }
             findings.extend(given.findings);
             inputs.insert(name.clone(), supply.clone());
         }
@@ -145,7 +160,9 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
             };
             supply.facts.extend(edge.facts.iter().cloned());
             let checked = connection::check(&supply, port);
-            scatter |= checked.scatter;
+            if checked.scatter {
+                over.push(edge.to.port.clone());
+            }
             edges[number] = Some(checked);
             inputs.insert(edge.to.port.clone(), supply);
         }
@@ -154,8 +171,8 @@ pub fn check(graph: &Graph, tools: &[Definition]) -> Report {
                 findings.extend(unconnected(port, &node.parameters, &values));
             }
         }
-        outputs[at] = Some(resolved(definition, &inputs, scatter));
-        nodes[at] = Some(report(node, scatter, findings));
+        outputs[at] = Some(resolved(definition, &inputs, !over.is_empty()));
+        nodes[at] = Some(report(node, over, findings));
     }
     for (number, edge) in graph.edges.iter().enumerate() {
         if edges[number].is_none() {
@@ -286,11 +303,12 @@ fn broken(reason: String) -> Check {
     }
 }
 
-fn report(node: &Node, scatter: bool, findings: Vec<Finding>) -> NodeReport {
+fn report(node: &Node, over: Vec<String>, findings: Vec<Finding>) -> NodeReport {
     NodeReport {
         id: node.id.clone(),
         fit: worst(&findings),
-        scatter,
+        scatter: !over.is_empty(),
+        over,
         findings,
     }
 }

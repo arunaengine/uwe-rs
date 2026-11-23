@@ -224,7 +224,7 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
     };
     if let Some((root, _)) = repository::root(target) {
         let mut files = Vec::new();
-        let complete = walk(&root, &root, &[cache()], &mut files);
+        let complete = walk(&root, &root, &[cache(arguments)], &mut files);
         let skipped = limited(&files).or_else(|| (!complete).then(|| too_many(&root)));
         if skipped.is_some() {
             files.clear();
@@ -295,7 +295,7 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
         .output_dir
         .as_ref()
         .and_then(|folder| std::path::absolute(folder).ok());
-    let skipped: Vec<PathBuf> = output.into_iter().chain([cache()]).collect();
+    let skipped: Vec<PathBuf> = output.into_iter().chain([cache(arguments)]).collect();
     let mut files = Vec::new();
     let complete = walk(&own, &own, &skipped, &mut files);
     match complete.then(|| limited(&files)).flatten() {
@@ -307,9 +307,9 @@ fn workflow_files(target: &Path, arguments: &Arguments) -> (PathBuf, Vec<Found>,
     }
 }
 
-/// The cache folder of uwe, as an absolute path.
-fn cache() -> PathBuf {
-    let folder = crate::cache_directory();
+/// The cache folder of the run, as an absolute path.
+fn cache(arguments: &Arguments) -> PathBuf {
+    let folder = (arguments.cache_folder.clone()).unwrap_or_else(crate::cache_directory);
     std::path::absolute(&folder).unwrap_or(folder)
 }
 

@@ -409,3 +409,80 @@ fn slow_download_succeeds() {
     download(&client, &input, &path, false).unwrap();
     assert_eq!(std::fs::read(&path).unwrap().len(), 100);
 }
+
+/// A server that answers one request with `answer`, and gives the lines of the request.
+fn answering(answer: String) -> (String, std::thread::JoinHandle<Vec<String>>) {
+    use std::io::{BufRead, BufReader};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut lines = Vec::new();
+        let mut line = String::new();
+        while reader.read_line(&mut line).is_ok_and(|count| count > 2) {
+            lines.push(line.trim_end().to_ascii_lowercase());
+            line.clear();
+        }
+        let mut stream = stream;
+        stream.write_all(answer.as_bytes()).unwrap();
+        lines
+    });
+    (address, server)
+}
+
+/// A redirect to another origin, here another port, never takes the headers of the provider.
+#[test]
+fn redirect_drops_headers() {
+    let body = "data";
+    let ok = format!("HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\n{body}");
+    let (target, other) = answering(ok);
+    let moved = format!(
+        "HTTP/1.1 302 Found\r\nLocation: {target}/object\r\nContent-Length: 0\r\n\
+         Connection: close\r\n\r\n"
+    );
+    let (source, first) = answering(moved);
+    let request = Request {
+        method: "GET".into(),
+        url: format!("{source}/object"),
+        headers: vec![("x-provider-token".into(), "secret".into())],
+    };
+    let mut read = String::new();
+    let client = client(Some(IDLE)).unwrap();
+    send(&client, &request, None)
+        .unwrap()
+        .read_to_string(&mut read)
+        .unwrap();
+    assert_eq!(read, body);
+    let first = first.join().unwrap();
+    assert!(
+        first.contains(&"x-provider-token: secret".to_owned()),
+        "{first:?}"
+    );
+    let other = other.join().unwrap();
+    assert!(other[0].starts_with("get /object"), "{other:?}");
+    assert!(
+        !other.iter().any(|line| line.contains("secret")),
+        "{other:?}"
+    );
+}
+
+/// Two inputs, one named like the partial file of the other, both arrive whole.
+#[test]
+fn keeps_partial_names() {
+    let store = tempfile::tempdir().unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let plan = Plan {
+        inputs: vec![
+            input(store.path(), "work/.a.partial", b"first", false),
+            input(store.path(), "work/a", b"second", false),
+        ],
+        ..Plan::default()
+    };
+    stage_in(folder.path(), &plan).unwrap();
+    let work = folder.path().join("work");
+    assert_eq!(std::fs::read(work.join(".a.partial")).unwrap(), b"first");
+    assert_eq!(std::fs::read(work.join("a")).unwrap(), b"second");
+    let names: Vec<_> = std::fs::read_dir(&work).unwrap().flatten().collect();
+    assert_eq!(names.len(), 2, "no partial file stays");
+}

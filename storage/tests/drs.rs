@@ -167,3 +167,82 @@ async fn refuses_without_tokens() {
     let s3 = "GET /ga4gh/drs/v1/objects/dg.TEST/abc-123/access/s3-id".to_owned();
     assert!(service.lines().contains(&s3), "the s3 method comes first");
 }
+
+/// Two runs of one process with other `drs` scopes each sign in with their own, also when
+/// they read at the same time, and neither reaches storages without a scope.
+#[test]
+fn keeps_run_scopes() {
+    let scoped = |variable: &str| {
+        let options = storage::drs::Options {
+            authentication: Some("bearer".into()),
+            variable: Some(variable.to_owned()),
+            ..storage::drs::Options::default()
+        };
+        let scopes = storage::Scopes {
+            drs: Some(options),
+            ..storage::Scopes::default()
+        };
+        Storage::default().with_scopes(scopes)
+    };
+    let (first, second) = (
+        scoped("UWE_TEST_UNSET_FIRST"),
+        scoped("UWE_TEST_UNSET_SECOND"),
+    );
+    let read = |storage: Storage| {
+        std::thread::spawn(move || {
+            let blocking = storage.session().blocking();
+            (0..20)
+                .map(|_| {
+                    blocking
+                        .stat("drs://127.0.0.1:9/object")
+                        .expect_err("no token")
+                })
+                .map(|error| error.to_string())
+                .collect::<Vec<_>>()
+        })
+    };
+    let (one, two) = (read(first), read(second));
+    for (errors, own, other) in [
+        (one.join().unwrap(), "FIRST", "SECOND"),
+        (two.join().unwrap(), "SECOND", "FIRST"),
+    ] {
+        for error in errors {
+            assert!(error.contains(&format!("UWE_TEST_UNSET_{own}")), "{error}");
+            assert!(!error.contains(other), "{error}");
+        }
+    }
+    let unscoped = Storage::default()
+        .blocking()
+        .stat("drs://127.0.0.1:9/object");
+    let unscoped = format!("{unscoped:?}");
+    assert!(!unscoped.contains("UWE_TEST_UNSET"), "{unscoped}");
+}
+
+/// The storage of a run with its plugin scopes keeps the pins that a repeat set before.
+#[test]
+fn keeps_scoped_pins() {
+    let folder = tempfile::tempdir().unwrap();
+    let copy = folder.path().join("copy");
+    std::fs::write(&copy, "first\n").unwrap();
+    let storage = Storage::default();
+    let address = "https://example.org/sheet.txt";
+    storage.pin(storage::Fetched {
+        address: address.into(),
+        copy: copy.clone(),
+        digest: format!("sha256:{}", hex(b"first\n")),
+        size: 6,
+        time: std::time::SystemTime::now(),
+        version: None,
+    });
+    let scoped = storage.with_scopes(storage::Scopes::default()).blocking();
+    let found = scoped
+        .fetch(address, &folder.path().join("downloads"))
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(found).unwrap(), "first\n");
+}
+
+fn hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}

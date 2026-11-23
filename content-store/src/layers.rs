@@ -350,7 +350,7 @@ async fn download_file(
     file.flush().await.map_err(at(target))?;
     drop(file);
     if let Some((expected, _)) = expected {
-        let actual = Digest::from_sha256(&hasher.finalize());
+        let actual = Digest::from_sha256(hasher.finalize().into());
         if &actual != expected {
             return Err(StoreError::Corrupt {
                 expected: expected.clone(),

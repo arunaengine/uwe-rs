@@ -18,16 +18,22 @@ pub struct Reusable {
 }
 
 impl Database {
-    /// The latest run of a workflow, or with `real`, its latest run that was not simulated.
-    /// Replays of one task are left out.
-    pub fn last_run(&self, workflow: &str, real: bool) -> Result<Option<Run>, DatabaseError> {
+    /// The latest run of a workflow in a cache namespace, or with `real`, its latest run that
+    /// was not simulated. Replays of one task are left out.
+    pub fn last_run(
+        &self,
+        workflow: &str,
+        real: bool,
+        namespace: Option<&str>,
+    ) -> Result<Option<Run>, DatabaseError> {
         let id: Option<String> = self
             .connection
             .query_row(
                 "SELECT id FROM runs
                  WHERE workflow = ?1 AND (simulated = 0 OR NOT ?2) AND replays IS NULL
+                   AND cache_namespace IS ?3
                  ORDER BY started DESC, rowid DESC LIMIT 1",
-                params![workflow, real],
+                params![workflow, real, namespace],
                 |row| row.get(0),
             )
             .optional()?;
@@ -39,15 +45,20 @@ impl Database {
 
     /// The latest run whose compiled document has a path that starts with `prefix`, like the
     /// documents of one workflow, as [`Database::last_run`] picks it.
-    pub fn last_run_below(&self, prefix: &str, real: bool) -> Result<Option<Run>, DatabaseError> {
+    pub fn last_run_below(
+        &self,
+        prefix: &str,
+        real: bool,
+        namespace: Option<&str>,
+    ) -> Result<Option<Run>, DatabaseError> {
         let id: Option<String> = self
             .connection
             .query_row(
                 "SELECT id FROM runs
                  WHERE substr(document, 1, length(?1)) = ?1 AND (simulated = 0 OR NOT ?2)
-                   AND replays IS NULL
+                   AND replays IS NULL AND cache_namespace IS ?3
                  ORDER BY started DESC, rowid DESC LIMIT 1",
-                params![prefix, real],
+                params![prefix, real, namespace],
                 |row| row.get(0),
             )
             .optional()?;
@@ -76,6 +87,18 @@ impl Database {
             .query_map([lineage], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(ids)
+    }
+
+    /// The cache namespace that a run ran in; `None` for the shared one and older runs.
+    pub fn cache_namespace(&self, run: &str) -> Result<Option<String>, DatabaseError> {
+        let found = (self.connection)
+            .query_row(
+                "SELECT cache_namespace FROM runs WHERE id = ?1",
+                [run],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(found.flatten())
     }
 
     /// The outcomes of the tasks that succeeded in the given runs, by fingerprint; for a

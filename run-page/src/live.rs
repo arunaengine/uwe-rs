@@ -10,7 +10,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures_util::Stream;
-use run_database::{Database, MarkerRow, Run, TaskRow};
+use run_database::{MarkerRow, Run, RunReader, TaskRow};
 use serde::{Deserialize, Serialize};
 
 use crate::{Failure, Shared, query};
@@ -119,7 +119,11 @@ async fn next(mut cursor: Cursor) -> Option<(Result<Event, Infallible>, Cursor)>
 }
 
 /// The update after an event, and whether it covers a full batch; `None` for an unknown run.
-fn update(database: &Database, run: &str, after: i64) -> Result<Option<(Update, bool)>, Failure> {
+fn update(
+    database: &dyn RunReader,
+    run: &str,
+    after: i64,
+) -> Result<Option<(Update, bool)>, Failure> {
     // A terminal state must be observed before reading its final event backlog.
     let Some(state) = database.run(run)? else {
         return Ok(None);

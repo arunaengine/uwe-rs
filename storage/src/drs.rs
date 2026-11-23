@@ -13,7 +13,7 @@ use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
 
 use crate::error::Problem;
-use crate::web::{Web, network, shared_client};
+use crate::web::{Clients, Web, network};
 use crate::{Downloaded, Metadata};
 
 /// What a DRS client signs in with. Unset values come from the environment.
@@ -64,6 +64,7 @@ pub(crate) struct Drs {
     protocol: Option<String>,
     plain_http: Vec<String>,
     client: reqwest::Client,
+    clients: Clients,
     /// The Gen3 access token of each host, and when to renew it. One exchange at a time.
     tokens: tokio::sync::Mutex<HashMap<String, Token>>,
 }
@@ -81,7 +82,7 @@ struct Token {
 }
 
 impl Drs {
-    pub fn new(options: Options) -> Result<Drs, Problem> {
+    pub fn new(options: Options, clients: &Clients) -> Result<Drs, Problem> {
         let variable = options.variable.unwrap_or_else(|| VARIABLE.to_owned());
         let credential = (options.credential)
             .or_else(|| std::env::var(&variable).ok())
@@ -119,7 +120,8 @@ impl Drs {
             token_path: options.token_path.unwrap_or_else(|| TOKEN_PATH.to_owned()),
             protocol: options.protocol,
             plain_http: options.plain_http,
-            client: shared_client()?,
+            client: clients.plain.clone(),
+            clients: clients.clone(),
             tokens: tokio::sync::Mutex::default(),
         })
     }
@@ -171,8 +173,8 @@ impl Drs {
         }
         // The DRS specification asks clients to send the headers of an access URL with it.
         let web = match header_map(&headers)? {
-            headers if headers.is_empty() => Web::public()?,
-            headers => Web::with_headers(headers)?,
+            headers if headers.is_empty() => Web::public(&self.clients),
+            headers => Web::with_headers(headers, &self.clients),
         };
         web.download(&url, file, 0).await?;
         Ok(Downloaded {

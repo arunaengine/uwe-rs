@@ -18,17 +18,69 @@ use crate::state::widen;
 #[derive(Clone, Default, PartialEq)]
 pub struct SecretInputs(pub Map<String, Json>);
 
+impl SecretInputs {
+    /// Whether a value holds a secret: a text with the text of a secret in it, or a number
+    /// that a secret is.
+    pub fn found_in(&self, value: &Json) -> bool {
+        let mut secrets = Vec::new();
+        self.0
+            .values()
+            .for_each(|secret| leaves(secret, &mut secrets));
+        let mut found = Vec::new();
+        leaves(value, &mut found);
+        let holds = |leaf: &&Json| {
+            secrets.iter().any(|secret| match (leaf, secret) {
+                (Json::String(text), Json::String(secret)) => {
+                    !secret.is_empty() && text.contains(secret.as_str())
+                }
+                (Json::Number(number), Json::Number(secret)) => number == secret,
+                _ => false,
+            })
+        };
+        found.iter().any(holds)
+    }
+}
+
+/// The texts and numbers of a value, also inside its arrays and objects.
+fn leaves<'v>(value: &'v Json, found: &mut Vec<&'v Json>) {
+    match value {
+        Json::Array(items) => items.iter().for_each(|item| leaves(item, found)),
+        Json::Object(object) => object.values().for_each(|item| leaves(item, found)),
+        Json::String(_) | Json::Number(_) => found.push(value),
+        Json::Null | Json::Bool(_) => {}
+    }
+}
+
 impl std::fmt::Debug for SecretInputs {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_set().entries(self.0.keys()).finish()
     }
 }
 
-/// The input values of a launch by port name: the JSON or YAML inputs file, with File and Directory
-/// locations taken from its folder, then the values in memory, then the parameters, read by the
-/// type of their port.
+/// The JSON or YAML inputs file of a launch as it is now; `None` without one.
+pub fn file(launch: &Launch) -> Result<Option<Json>, DriverError> {
+    let Some(path) = &launch.inputs else {
+        return Ok(None);
+    };
+    let shown = path.display();
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| DriverError::new(format!("cannot read {shown}: {error}")))?;
+    // A CWL job may be YAML, which the CWL reader of values takes.
+    match serde_json::from_str(&text) {
+        Ok(json) => Ok(Some(json)),
+        Err(_) => cwl_runtime::Value::parse(&text)
+            .ok()
+            .and_then(|value| serde_json::from_str(&value.to_json()).ok())
+            .map(Some)
+            .ok_or_else(|| DriverError::new(format!("{shown} is neither JSON nor YAML"))),
+    }
+}
+
+/// The input values of a launch by port name: those of its inputs `file`, with File and
+/// Directory locations taken from its folder, then the values in memory, then the parameters,
+/// read by the type of their port.
 pub fn read(
-    launch: &Launch,
+    (launch, file): (&Launch, Option<Json>),
     secret: &SecretInputs,
     ports: &[Port],
     defs: &[TypeDef],
@@ -40,18 +92,9 @@ pub fn read(
         remote: remote.clone(),
     };
     let mut values = Map::new();
-    if let Some(path) = &launch.inputs {
+    if let (Some(path), Some(mut json)) = (&launch.inputs, file) {
         let shown = path.display();
-        let text = std::fs::read_to_string(path)
-            .map_err(|error| DriverError::new(format!("cannot read {shown}: {error}")))?;
-        // A CWL job may be YAML, which the CWL reader of values takes.
-        let mut json: Json = match serde_json::from_str(&text) {
-            Ok(json) => json,
-            Err(_) => cwl_runtime::Value::parse(&text)
-                .ok()
-                .and_then(|value| serde_json::from_str(&value.to_json()).ok())
-                .ok_or_else(|| DriverError::new(format!("{shown} is neither JSON nor YAML")))?,
-        };
+        named(&mut json, ports, defs);
         let base = std::path::absolute(path).unwrap_or_else(|_| path.clone());
         absolute(&mut json, base.parent().unwrap_or(Path::new("/")));
         filled(&mut json, launch.simulated);
@@ -84,6 +127,7 @@ pub fn read(
         };
         let value = match given {
             Some(mut value) => {
+                formatted(&mut value, &port.r#type, defs);
                 discover(&mut value, &port.r#type, (defs, &access));
                 widen(value, &port.r#type, defs)
             }
@@ -118,6 +162,107 @@ pub fn read(
         return Err(DriverError::new(format!("the graph has no input {name}")));
     }
     Ok(values)
+}
+
+/// The values that a launch gives the ports, as its inputs `file` and the parameters give
+/// them, with relative locations made absolute; an input without a value is left out.
+pub fn given(
+    (launch, file): (&Launch, Option<Json>),
+    ports: &[Port],
+    defs: &[TypeDef],
+) -> Result<Map<String, Json>, DriverError> {
+    let mut values = Map::new();
+    if let (Some(path), Some(mut json)) = (&launch.inputs, file) {
+        named(&mut json, ports, defs);
+        let base = std::path::absolute(path).unwrap_or_else(|_| path.clone());
+        absolute(&mut json, base.parent().unwrap_or(Path::new("/")));
+        if let Json::Object(object) = json {
+            values = object;
+        }
+    }
+    let mut texts: Vec<(&str, Vec<&str>)> = Vec::new();
+    for (name, text) in &launch.params {
+        match texts.iter_mut().find(|(known, _)| known == name) {
+            Some((_, found)) => found.push(text),
+            None => texts.push((name, vec![text])),
+        }
+    }
+    for (name, texts) in texts {
+        if let Some(port) = ports.iter().find(|port| port.name == name) {
+            values.insert(name.to_owned(), parameter(&texts, &port.r#type, defs));
+        }
+    }
+    Ok(values)
+}
+
+/// Makes the paths that an inputs file gives for File and Directory ports, which the schema of
+/// the inputs takes, File and Directory objects, whose paths start from the file's folder.
+pub(crate) fn named(json: &mut Json, ports: &[Port], defs: &[TypeDef]) {
+    let Json::Object(object) = json else {
+        return;
+    };
+    for port in ports {
+        if let Some(value) = object.get_mut(&port.name) {
+            entries(value, &port.r#type, defs);
+        }
+    }
+}
+
+fn entries(value: &mut Json, r#type: &Type, defs: &[TypeDef]) {
+    match (value, resolve(r#type, defs)) {
+        (value, Some(Type::Optional(inner))) => entries(value, inner, defs),
+        (Json::Array(items), Some(Type::Array(array))) => {
+            (items.iter_mut()).for_each(|item| entries(item, &array.items, defs));
+        }
+        // Paths inside records, maps and tuples become Files too, as the schema has them.
+        (Json::Object(object), Some(Type::Record(fields))) => {
+            for field in fields {
+                if let Some(item) = object.get_mut(&field.name) {
+                    entries(item, &field.r#type, defs);
+                }
+            }
+        }
+        (Json::Object(object), Some(Type::Map(map))) => {
+            (object.values_mut()).for_each(|item| entries(item, &map.value, defs));
+        }
+        (Json::Array(items), Some(Type::Tuple(types))) => {
+            (items.iter_mut().zip(types)).for_each(|(item, kind)| entries(item, kind, defs));
+        }
+        (value @ Json::String(_), Some(kind @ (Type::File(_) | Type::Directory))) => {
+            let class = match kind {
+                Type::Directory => "Directory",
+                _ => "File",
+            };
+            let text = value.as_str().unwrap_or_default().to_owned();
+            let key = if text.contains("://") {
+                "location"
+            } else {
+                "path"
+            };
+            *value = serde_json::json!({"class": class, key: text});
+        }
+        _ => {}
+    }
+}
+
+/// Gives each File without a format the format of its port, as a CWL tool that the port feeds
+/// checks the formats of its inputs.
+fn formatted(value: &mut Json, r#type: &Type, defs: &[TypeDef]) {
+    match (value, resolve(r#type, defs)) {
+        (value, Some(Type::Optional(inner))) => formatted(value, inner, defs),
+        (Json::Array(items), Some(Type::Array(array))) => {
+            (items.iter_mut()).for_each(|item| formatted(item, &array.items, defs));
+        }
+        (Json::Object(file), Some(Type::File(wanted)))
+            if file.get("class").and_then(Json::as_str) == Some("File")
+                && file.get("format").is_none_or(Json::is_null) =>
+        {
+            if let Some(format) = &wanted.format {
+                file.insert("format".into(), Json::String(format.clone()));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Adds to each File that lists no secondary files those beside it that its type asks for, as

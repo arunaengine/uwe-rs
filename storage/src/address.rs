@@ -11,9 +11,60 @@ pub fn scheme(address: &str) -> Option<&str> {
     (valid && !scheme.is_empty()).then_some(scheme)
 }
 
-/// The address with the password of its user hidden, for messages: `ftp://me:[secret]@host/a`
-/// for `ftp://me:pass@host/a`. Other addresses stay as they are.
+/// The names of query parameters whose values grant access, like the signature of a presigned
+/// URL, compared without case.
+const SECRET_PARAMETERS: [&str; 17] = [
+    "x-amz-signature",
+    "x-amz-credential",
+    "x-amz-security-token",
+    "x-goog-signature",
+    "x-goog-credential",
+    "signature",
+    "sig",
+    "token",
+    "access_token",
+    "key",
+    "apikey",
+    "api_key",
+    "awsaccesskeyid",
+    "password",
+    "secret",
+    "client_secret",
+    "code",
+];
+
+/// The address with the password of its user and the values of the query parameters that
+/// grant access hidden, for messages and records: `ftp://me:[secret]@host/a` for
+/// `ftp://me:pass@host/a`, `https://host/a?X-Amz-Signature=[secret]` for a presigned URL.
 pub fn redacted(address: &str) -> String {
+    let address = without_password(address);
+    let Some((before, query)) = address.split_once('?') else {
+        return address;
+    };
+    let (query, fragment) = match query.split_once('#') {
+        Some((query, fragment)) => (query, Some(fragment)),
+        None => (query, None),
+    };
+    let pairs: Vec<String> = (query.split('&'))
+        .map(|pair| match pair.split_once('=') {
+            Some((name, _)) if secret_parameter(name) => format!("{name}=[secret]"),
+            _ => pair.to_owned(),
+        })
+        .collect();
+    let fragment = fragment
+        .map(|fragment| format!("#{fragment}"))
+        .unwrap_or_default();
+    format!("{before}?{}{fragment}", pairs.join("&"))
+}
+
+/// Whether a query parameter of this name grants access.
+fn secret_parameter(name: &str) -> bool {
+    let name = decode(name).to_ascii_lowercase();
+    SECRET_PARAMETERS.contains(&name.as_str())
+}
+
+/// The address with the password of its user hidden, and nothing else changed.
+pub(crate) fn without_password(address: &str) -> String {
     let Some((scheme, rest)) = address.split_once("://") else {
         return address.to_owned();
     };
@@ -206,6 +257,20 @@ mod tests {
             "ftp://me:[secret]@host/a:b"
         );
         assert_eq!(redacted("ftp://me@host/a"), "ftp://me@host/a");
+        let signed = "https://me:pass@bucket.s3.amazonaws.com/a.txt?X-Amz-Date=1&\
+                      X-Amz-Signature=abc&X-Amz-Credential=AKIA%2Fx&x-amz-security-token=t&\
+                      versionId=7#part";
+        assert_eq!(
+            redacted(signed),
+            "https://me:[secret]@bucket.s3.amazonaws.com/a.txt?X-Amz-Date=1&\
+             X-Amz-Signature=[secret]&X-Amz-Credential=[secret]&\
+             x-amz-security-token=[secret]&versionId=7#part"
+        );
+        assert_eq!(
+            redacted("https://a.blob.core.windows.net/c/b?sv=1&sig=abc"),
+            "https://a.blob.core.windows.net/c/b?sv=1&sig=[secret]"
+        );
+        assert_eq!(redacted("https://host/a?page=2"), "https://host/a?page=2");
         assert_eq!(redacted("ftp://host/a@b"), "ftp://host/a@b");
         assert_eq!(redacted("/local/a"), "/local/a");
     }

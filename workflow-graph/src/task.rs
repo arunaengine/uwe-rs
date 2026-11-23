@@ -18,6 +18,8 @@ pub enum Language {
     Wdl,
     /// A wir document, the workflow intermediate representation of uwe.
     Wir,
+    /// A Galaxy tool XML file or a Galaxy workflow (`.ga`).
+    Galaxy,
 }
 
 impl std::fmt::Display for Language {
@@ -29,6 +31,7 @@ impl std::fmt::Display for Language {
             Language::Argo => "argo",
             Language::Wdl => "wdl",
             Language::Wir => "wir",
+            Language::Galaxy => "galaxy",
         })
     }
 }

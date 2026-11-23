@@ -1,22 +1,26 @@
-// The view of one run on the page of uwe: its summary, graph, steps, tasks, and one task
-// or step with its details. A running run updates live through Server-Sent Events. It uses
-// the helpers of `page.js` and the graph view of `graph.js`.
+// The view of one run: summary, graph, steps, tasks and one task or step with its details,
+// live through Server-Sent Events, with the live output of tasks that a studio started.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 "use strict";
+
+// How much of the live output of a task the page keeps, in characters: the end of it.
+const LIVE_TEXT = 200000;
 
 // ---- one run ----
 
 async function showRun(id, task) {
   leave();
+  const shown = shownViews;
   trail.textContent = `runs / ${id}`;
   let data;
   try {
     data = await json(`/api/runs/${encodeURIComponent(id)}`);
   } catch (error) {
-    main.replaceChildren(el("p", { class: "error" }, error.message));
+    if (shown === shownViews) main.replaceChildren(el("p", { class: "error" }, error.message));
     return;
   }
+  if (shown !== shownViews) return;
   view = {
     id,
     run: data.run,
@@ -103,6 +107,11 @@ function drawSummary() {
       "results of the tools. Points where real data can add or remove tasks are marked."));
   }
   if (run.error) parts.push(el("pre", { class: "error" }, run.error));
+  if (studio.studio && !REPORT) {
+    parts.push(el("div", { class: "tools run-actions" }, run.state === "running"
+      ? el("button", { onclick: (event) => runAction(event.target, run.id, "cancel") }, "Cancel run")
+      : el("button", { onclick: (event) => runAction(event.target, run.id, "repeat") }, "Run again")));
+  }
   parts.push(el("dl", { class: "facts" },
     facts.map(([name, value]) => el("div", {}, el("dt", {}, name),
       el("dd", name === "Time" ? { "data-time": "" } : {}, value)))));
@@ -364,6 +373,9 @@ async function drawDetail(task) {
   if (data.checks.length) parts.push(checksPart(data.checks));
   if (!row.reused && row.attempts > 0) parts.push(whyPart(id, task));
   if (!view.run.simulated && row.attempts > 0) parts.push(replayPart(id, task, data.replays));
+  if (!REPORT && studio.studio && view.run.state === "running" && row.state === "running") {
+    parts.push(livePart(task));
+  }
   parts.push(logPart("Standard output", data.stdout, id, task, last, "stdout"));
   parts.push(logPart("Standard error", data.stderr, id, task, last, "stderr"));
   parts.push(el("h3", {}, "Inputs"), filesTable(data.inputs, "inputs", id, task, data.producers, data.input_ids));
@@ -385,6 +397,58 @@ async function drawDetail(task) {
   }
   parts.push(el("p", { class: "quiet mono" }, `fingerprint ${data.fingerprint}`));
   detail.replaceChildren(...parts);
+  paintLive(task);
+}
+
+// ---- live output ----
+
+// Follows the live output and resource use of the tasks of a running run that the studio of
+// the server started; other runs end the stream at once.
+function follow() {
+  if (!view || view.stream || REPORT || !studio.studio || view.run.state !== "running") return;
+  const id = view.id;
+  view.live = new Map();
+  const stream = new EventSource(`/api/runs/${encodeURIComponent(id)}/logs/stream`);
+  view.stream = stream;
+  const take = (message) => {
+    if (!view || view.id !== id) return;
+    const event = JSON.parse(message.data);
+    if (event.task === undefined) return;
+    const entry = view.live.get(event.task) || { text: "", usage: null };
+    if (event.kind === "usage") entry.usage = event;
+    else entry.text = (entry.text + (event.chunk || "")).slice(-LIVE_TEXT);
+    view.live.set(event.task, entry);
+    if (view.chosen === event.task) paintLive(event.task);
+  };
+  stream.addEventListener("log", take);
+  stream.addEventListener("usage", take);
+  stream.addEventListener("end", () => stream.close());
+}
+
+function livePart(task) {
+  follow();
+  return el("div", { class: "live-output", "data-live": String(task) },
+    el("h3", {}, "Live output ", el("small", { class: "quiet", "data-usage": "" }, "")),
+    el("pre", { class: "live-log" }, "Waiting for output."));
+}
+
+// Shows what the task wrote so far, and keeps the end in sight unless the reader scrolled up.
+function paintLive(task) {
+  const part = view && view.parts.detail.querySelector(`[data-live="${task}"]`);
+  const entry = part && view.live && view.live.get(task);
+  if (!entry) return;
+  const shown = part.querySelector("pre");
+  const atEnd = shown.scrollTop + shown.clientHeight >= shown.scrollHeight - 4;
+  shown.textContent = entry.text || "Waiting for output.";
+  if (atEnd) shown.scrollTop = shown.scrollHeight;
+  if (entry.usage) {
+    const cpu = entry.usage.cpu_percent;
+    const memory = entry.usage.memory_bytes;
+    part.querySelector("[data-usage]").textContent = [
+      cpu === null || cpu === undefined ? "" : `CPU ${Math.round(cpu)}%`,
+      memory === null || memory === undefined ? "" : `memory ${bytes(memory)}`,
+    ].filter(Boolean).join(", ");
+  }
 }
 
 // What the reproducibility check found: the result came from the cache, and the task ran again
@@ -618,6 +682,7 @@ function listen() {
     }
     if (update.complete) {
       events.close();
+      if (view.stream) view.stream.close();
       clearInterval(view.ticker);
       liveMark.hidden = true;
       // The run is over: draw its whole graph now, without waiting.

@@ -6,29 +6,22 @@ use nextflow_config::Config;
 use nextflow_evaluator::value::Value;
 
 use crate::catalogue::{Kind, Plugin, State};
-use crate::observer::Observer;
 
 pub(crate) const PLUGIN: Plugin = Plugin {
     scopes: &["synapse"],
-    observer: Some(activate),
     ..Plugin::new("nf-synapse", Kind::FileSystem, State::Implemented)
 };
 
-/// Hands the `synapse` scope to the Synapse provider that serves `syn://` paths; the plugin
-/// hears no run events.
-fn activate(
-    config: &Config,
-    _: &std::path::Path,
-    _: &crate::catalogue::Environment,
-) -> Result<Option<Box<dyn Observer>>, String> {
+/// The options of the `synapse` scope for the Synapse provider that serves `syn://` paths of
+/// the run; the plugin hears no run events.
+pub(crate) fn options(config: &Config) -> storage::synapse::Options {
     let text = |key| {
         (config.get(&["synapse", key]))
             .filter(|value| !matches!(value, Value::Null))
             .map(|value| value.to_string())
     };
-    storage::synapse::use_scope(storage::synapse::Options {
+    storage::synapse::Options {
         endpoint: text("endpoint"),
         token: text("authToken"),
-    });
-    Ok(None)
+    }
 }

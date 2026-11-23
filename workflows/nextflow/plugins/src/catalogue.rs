@@ -458,6 +458,27 @@ pub fn observers(
     Ok(observers)
 }
 
+/// The plugin scopes of the config for the built-in storage providers of one run, like the
+/// `irods` scope of nf-irods, for the plugins that the config names. Each run hands them to
+/// its own storage, so that runs of one process with other configs never share them.
+pub fn scopes(config: &Config, environment: &Environment) -> Result<storage::Scopes, String> {
+    let named = configured(config);
+    let on = |id: &str| named.iter().any(|named| named == id);
+    Ok(storage::Scopes {
+        irods: on("nf-irods")
+            .then(|| crate::nf_irods::options(config))
+            .transpose()?,
+        cas: on("nf-blocks")
+            .then(|| crate::nf_blocks::stores(config))
+            .transpose()?,
+        drs: on("nf-drs").then(|| crate::nf_drs::options(config)),
+        synapse: on("nf-synapse").then(|| crate::nf_synapse::options(config)),
+        oci: on("nf-oci").then(|| crate::nf_oci::options(config)),
+        lakefs: on("nf-lakefs").then(|| crate::nf_lakefs::options(config)),
+        lamin: on("nf-lamin").then(|| crate::nf_lamin::options(config, environment)),
+    })
+}
+
 /// The catalogue as JSON, by plugin id: kind, state, the reason for a plugin that uwe does not
 /// run, and the functions that work and those that do not.
 pub fn capabilities() -> serde_json::Value {

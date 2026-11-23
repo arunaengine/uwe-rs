@@ -34,6 +34,8 @@ pub struct Context<'a> {
     pub remote: Option<&'a cwl_parser::source::Remote>,
     /// The folders that file ops of an isolated run reach.
     pub roots: Option<&'a workflow_graph::Roots>,
+    /// The environment that the Python code of an isolated run sees.
+    pub environment: Option<&'a [(String, String)]>,
     /// The deliveries that the file effects of stream ops ask the host for.
     pub deliveries: &'a crate::publishing::Deliveries,
     /// The input values of the run, which callbacks of Nextflow scopes see as params.
@@ -50,6 +52,11 @@ impl Context<'_> {
             roots.check_read(Path::new(location))?;
         }
         workflow_graph::files::read(self.provider, location)
+    }
+
+    /// The host of Python code, which an isolated run confines to its folders and environment.
+    pub fn python(&self) -> std::rc::Rc<dyn python_evaluator::Host> {
+        crate::python::host(self.base, self.roots, self.environment)
     }
 }
 
@@ -198,7 +205,7 @@ fn language_expr(
             code: &spec.code,
             library: &spec.library,
         };
-        return code.value(&values, context.base);
+        return code.value(&values, context.python());
     }
     let scope = crate::groovy::scope(context, spec.scope.as_ref());
     let names = values.keys().cloned().collect();

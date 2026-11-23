@@ -66,7 +66,7 @@ impl Scope<'_> {
 /// Privileged containers are refused.
 pub(crate) fn nomad(
     config: &Config,
-    nomad: &mut crate::nomad::Config,
+    nomad: &mut crate::executors::nomad::Config,
 ) -> Result<Option<ProviderSettings>, String> {
     use nomad_executor::{Cleanup, CpuMode, Hidden, PRIVILEGED};
     let scope = Scope(config);
@@ -199,7 +199,7 @@ pub(crate) fn nomad(
 /// object-store staging and helper replace; the `s5cmd` program is not needed.
 fn s5cmd(
     scope: &Scope<'_>,
-    nomad: &mut crate::nomad::Config,
+    nomad: &mut crate::executors::nomad::Config,
 ) -> Result<Option<ProviderSettings>, String> {
     let key = |path: &[&'static str]| {
         let mut full = vec!["nomad", "s5cmd"];
@@ -231,7 +231,7 @@ fn s5cmd(
             true => format!("s3://{bucket}"),
             false => format!("s3://{bucket}/{prefix}"),
         });
-        nomad.staging.mode = crate::staging::Mode::ObjectStore;
+        nomad.staging.mode = crate::executors::staging::Mode::ObjectStore;
         if nomad.settings.helper.is_none() && nomad.helper_file.is_none() {
             nomad.helper_file = std::env::current_exe().ok();
         }
@@ -289,7 +289,7 @@ pub(crate) fn kubernetes(
         pod.add(&list)
             .map_err(|message| format!("k8s: {message}"))?;
     }
-    let shared = executors.kubernetes_staging.mode == crate::staging::Mode::SharedPath;
+    let shared = executors.kubernetes_staging.mode == crate::executors::staging::Mode::SharedPath;
     let host = matches!(
         executors.kubernetes_volumes,
         kubernetes_executor::Volumes::Host
@@ -510,7 +510,7 @@ pub(crate) fn slurm(config: &Config, executors: &mut crate::setup::Executors) {
 
 /// Fills the JARVICE settings from nf-jarvice's process settings `apiUrl`, `machineType`, `vault`
 /// and `user`, which the config gives in the `process` scope.
-pub(crate) fn jarvice(config: &Config, jarvice: &mut crate::jarvice::Config) {
+pub(crate) fn jarvice(config: &Config, jarvice: &mut crate::executors::jarvice::Config) {
     let scope = Scope(config);
     let settings = &mut jarvice.settings;
     if let Some(url) = scope.text(&["process", "apiUrl"])
@@ -537,7 +537,7 @@ pub(crate) fn jarvice(config: &Config, jarvice: &mut crate::jarvice::Config) {
 
 /// Fills the wr settings from nf-wr's `executor.$wr` scope (or `executor.wr`): the deployment,
 /// the manager's address, and the files of its token and CA certificate.
-pub(crate) fn wr(config: &Config, wr: &mut crate::wr::Config) {
+pub(crate) fn wr(config: &Config, wr: &mut crate::executors::wr::Config) {
     let scope = Scope(config);
     let value = |name: &str| {
         (scope.text(&["executor", "$wr", name])).or_else(|| scope.text(&["executor", "wr", name]))
@@ -593,7 +593,7 @@ pub(crate) fn ospool(config: &Config) {
 
 /// Fills the Flyte settings that `[executor.flyte]` leaves unset from nf-flyte's `flyte` scope,
 /// and the staging root from an object-store work dir.
-pub(crate) fn flyte(config: &Config, flyte: &mut crate::flyte::Config) {
+pub(crate) fn flyte(config: &Config, flyte: &mut crate::executors::flyte::Config) {
     let scope = Scope(config);
     let settings = &mut flyte.settings;
     for (slot, key) in [
@@ -636,7 +636,7 @@ pub(crate) fn flyte(config: &Config, flyte: &mut crate::flyte::Config) {
 /// root from an object-store work dir.
 pub(crate) fn snowflake(
     config: &Config,
-    snowflake: &mut crate::snowflake::Config,
+    snowflake: &mut crate::executors::snowflake::Config,
 ) -> Result<(), String> {
     let scope = Scope(config);
     let settings = &mut snowflake.settings;
@@ -678,7 +678,7 @@ pub(crate) fn snowflake(
 }
 
 /// Makes an object-store work dir the staging root of an executor whose config file sets none.
-fn object_work(scope: &Scope<'_>, staging: &mut crate::staging::Settings) {
+fn object_work(scope: &Scope<'_>, staging: &mut crate::executors::staging::Settings) {
     let objects = ["s3://", "gs://", "az://"];
     let work = scope.text(&["workDir"]);
     let work = work.filter(|work| objects.iter().any(|scheme| work.starts_with(scheme)));
@@ -686,7 +686,7 @@ fn object_work(scope: &Scope<'_>, staging: &mut crate::staging::Settings) {
         && let Some(work) = work
     {
         staging.root = Some(work);
-        staging.mode = crate::staging::Mode::ObjectStore;
+        staging.mode = crate::executors::staging::Mode::ObjectStore;
     }
 }
 
@@ -728,7 +728,7 @@ mod tests {
                     s5cmd {\n  enabled = true\n  workDir {\n   enabled = true\n   \
                     bucket = 's3://runs'\n   prefix = 'nomad/'\n  }\n  s3 {\n   \
                     endpoint = 'http://127.0.0.1:9000'\n   usePathStyle = true\n  }\n }\n}\n";
-        let mut nomad = crate::nomad::Config::default();
+        let mut nomad = crate::executors::nomad::Config::default();
         nomad.settings.namespace = Some("mine".into());
         let provider = super::nomad(&loaded(text), &mut nomad).expect("a mapping");
         let settings = &nomad.settings;
@@ -749,7 +749,10 @@ mod tests {
         assert_eq!(settings.placement, Duration::from_secs(300));
         assert_eq!(settings.poll, Duration::from_secs(5));
         assert_eq!(nomad.staging.root.as_deref(), Some("s3://runs/nomad"));
-        assert_eq!(nomad.staging.mode, crate::staging::Mode::ObjectStore);
+        assert_eq!(
+            nomad.staging.mode,
+            crate::executors::staging::Mode::ObjectStore
+        );
         let provider = provider.expect("a provider of the bucket");
         assert_eq!(provider.prefixes, ["s3://runs/"]);
         let Kind::S3(s3) = provider.kind else {
@@ -758,7 +761,7 @@ mod tests {
         assert_eq!(s3.endpoint.as_deref(), Some("http://127.0.0.1:9000"));
         assert_eq!(s3.path_style, Some(true));
         let refused = loaded("nomad.jobs.privileged = true\n");
-        let error = super::nomad(&refused, &mut crate::nomad::Config::default());
+        let error = super::nomad(&refused, &mut crate::executors::nomad::Config::default());
         assert!(error.is_err_and(|error| error.contains("never starts privileged")));
     }
 
@@ -870,7 +873,7 @@ mod tests {
         let text = "workDir = 's3://runs/work'\nflyte {\n endpoint = 'flyte.example.org'\n \
                     project = 'flows'\n domain = 'development'\n queue = 'gpu'\n \
                     pollInterval = '2s'\n runName = 'r1'\n}\n";
-        let mut flyte = crate::flyte::Config::default();
+        let mut flyte = crate::executors::flyte::Config::default();
         flyte.settings.project = Some("mine".into());
         super::flyte(&loaded(text), &mut flyte);
         let settings = &flyte.settings;
@@ -884,14 +887,17 @@ mod tests {
         assert_eq!(settings.queue.as_deref(), Some("gpu"));
         assert_eq!(settings.poll, Duration::from_secs(2));
         assert_eq!(flyte.staging.root.as_deref(), Some("s3://runs/work"));
-        assert_eq!(flyte.staging.mode, crate::staging::Mode::ObjectStore);
+        assert_eq!(
+            flyte.staging.mode,
+            crate::executors::staging::Mode::ObjectStore
+        );
     }
 
     #[test]
     fn maps_snowflake_scope() {
         let text = "workDir = 'gs://runs/work'\nsnowflake {\n computePool = 'TASKS'\n \
                     registryMappings = 'docker.io:/lab/images/repo'\n connectionName = 'lab'\n}\n";
-        let mut snowflake = crate::snowflake::Config::default();
+        let mut snowflake = crate::executors::snowflake::Config::default();
         super::snowflake(&loaded(text), &mut snowflake).expect("a mapping");
         let settings = &snowflake.settings;
         assert_eq!(settings.compute_pool.as_deref(), Some("TASKS"));
@@ -899,7 +905,7 @@ mod tests {
         assert_eq!(settings.connection.as_deref(), Some("lab"));
         assert_eq!(snowflake.staging.root.as_deref(), Some("gs://runs/work"));
         let wrong = loaded("snowflake.computePool = 'a; drop'\n");
-        let error = super::snowflake(&wrong, &mut crate::snowflake::Config::default());
+        let error = super::snowflake(&wrong, &mut crate::executors::snowflake::Config::default());
         assert!(error.is_err_and(|message| message.contains("computePool")));
     }
 }

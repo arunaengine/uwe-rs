@@ -204,7 +204,8 @@ impl Store {
         Ok(())
     }
 
-    /// Removes only the inventoried local inode, under the caller's maintenance authority.
+    /// Removes only the inventoried object, under the caller's maintenance authority: the same
+    /// inode on this machine, or an object of an object store with the size and time it had.
     pub async fn remove_observed(&self, object: &Object) -> Result<bool, StoreError> {
         if !self.matches_object(object).await? {
             return Ok(false);
@@ -216,11 +217,14 @@ impl Store {
     async fn matches_object(&self, object: &Object) -> Result<bool, StoreError> {
         use std::os::unix::fs::MetadataExt;
         let Some(path) = self.local_path(&object.location) else {
-            return Err(std::io::Error::new(
-                IoErrorKind::Unsupported,
-                "observed cleanup requires local maintenance authority",
-            )
-            .into());
+            // An object store has no inode; an object written again since has another time.
+            return match self.operator.stat(&object.location).await {
+                Ok(found) => Ok(!object.folder
+                    && found.content_length() == object.size
+                    && found.last_modified().map(SystemTime::from) == object.modified),
+                Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(error.into()),
+            };
         };
         let metadata = match tokio::fs::symlink_metadata(&path).await {
             Ok(metadata) => metadata,
@@ -387,6 +391,33 @@ fn decode_time<'de, D: serde::Deserializer<'de>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn removes_remote_observed() {
+        let store = Store::memory().unwrap();
+        let kept = store
+            .put_content(Bytes::from_static(b"kept"))
+            .await
+            .unwrap();
+        let gone = store
+            .put_content(Bytes::from_static(b"gone"))
+            .await
+            .unwrap();
+        let objects = store.objects("cas/").await.unwrap();
+        let observed = |digest: &Digest| {
+            let location = layout::content(digest);
+            let found = objects.iter().find(|object| object.location == location);
+            found.expect("an inventoried object").clone()
+        };
+        assert!(store.remove_observed(&observed(&gone)).await.unwrap());
+        assert!(!store.exists(&layout::content(&gone)).await.unwrap());
+        // An object written again since the inventory stays.
+        let mut changed = observed(&kept);
+        changed.size += 1;
+        assert!(!store.remove_observed(&changed).await.unwrap());
+        assert!(store.exists(&layout::content(&kept)).await.unwrap());
+        assert!(!store.remove_observed(&observed(&gone)).await.unwrap());
+    }
 
     #[tokio::test]
     async fn lists_removes_objects() {

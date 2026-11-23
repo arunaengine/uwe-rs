@@ -1,4 +1,4 @@
-//! Reports configured machine and executor prerequisites for real runs.
+//! Reports configured machine and executor prerequisites for real runs, as text or JSON.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
@@ -53,6 +53,19 @@ impl Report {
         });
     }
 
+    /// The JSON of `uwe doctor -json`: whether the machine is ready, and each part found.
+    fn json(&self) -> String {
+        let missing = (self.found.iter()).any(|found| found.state == State::Missing);
+        let found: Vec<serde_json::Value> = (self.found.iter())
+            .map(|found| {
+                let state = found.state.to_string().replace(' ', "_");
+                serde_json::json!({"state": state, "part": found.part, "text": found.text})
+            })
+            .collect();
+        let value = serde_json::json!({"ready": !missing, "found": found});
+        serde_json::to_string_pretty(&value).unwrap_or_default()
+    }
+
     fn text(&self) -> String {
         let mut text = String::new();
         for found in &self.found {
@@ -94,7 +107,10 @@ pub fn command(arguments: &Arguments) -> Result<(), Failure> {
     executors::slurm(&setup, arguments, &mut report);
     executors::kubernetes(runtime, &setup.executors, arguments, &mut report);
     executors::newer(&setup, arguments, &mut report);
-    print!("{}", report.text());
+    match arguments.json {
+        true => println!("{}", report.json()),
+        false => print!("{}", report.text()),
+    }
     match report
         .found
         .iter()
@@ -284,8 +300,8 @@ mod executors {
 
     use super::{Report, State};
     use crate::arguments::Arguments;
+    use crate::executors::tes;
     use crate::setup::{Executors, Setup};
-    use crate::tes;
 
     /// The TES server that `-tes-server` or the config file names, or the default one with
     /// `-executor tes`, asked once whether it answers.
@@ -436,18 +452,25 @@ mod executors {
                  {service} only when a run starts"
             )
         };
-        let grid = |scheduler: &str, config: &crate::grid::Config| {
+        let grid = |scheduler: &str, config: &crate::executors::grid::Config| {
             let runtime = config.container.as_deref().unwrap_or("apptainer");
             format!("the {scheduler} tools are on the PATH; the jobs run tasks with {runtime}")
         };
         let executors = &setup.executors;
         Ok(match name {
             "aws-batch" => {
-                crate::aws_batch::executor(store, &scratch, run, image, setup, &arguments.secrets)?;
+                crate::executors::aws_batch::executor(
+                    store,
+                    &scratch,
+                    run,
+                    image,
+                    setup,
+                    &arguments.secrets,
+                )?;
                 cloud("AWS Batch")
             }
             "google-batch" => {
-                crate::google_batch::executor(
+                crate::executors::google_batch::executor(
                     store,
                     &scratch,
                     run,
@@ -458,7 +481,7 @@ mod executors {
                 cloud("Google Batch")
             }
             "azure-batch" => {
-                crate::azure_batch::executor(
+                crate::executors::azure_batch::executor(
                     store,
                     &scratch,
                     run,
@@ -479,33 +502,47 @@ mod executors {
                                 [executor.nomad] or NOMAD_ADDR"
                         .into());
                 }
-                crate::nomad::executor(store, &scratch, run, image, setup, &arguments.secrets)?;
+                crate::executors::nomad::executor(
+                    store,
+                    &scratch,
+                    run,
+                    image,
+                    setup,
+                    &arguments.secrets,
+                )?;
                 let address = named.unwrap_or_else(|| nomad_executor::ADDRESS.into());
                 format!(
                     "the jobs go to the Nomad agent at {address}; uwe asks it only when a run starts"
                 )
             }
             "htcondor" => {
-                crate::grid::htcondor(store, &scratch, run, image, setup)?;
+                crate::executors::grid::htcondor(store, &scratch, run, image, setup)?;
                 grid("HTCondor", &executors.htcondor)
             }
             "flyte" => {
-                crate::flyte::executor(store, &scratch, run, image, setup, &arguments.secrets)?;
+                crate::executors::flyte::executor(
+                    store,
+                    &scratch,
+                    run,
+                    image,
+                    setup,
+                    &arguments.secrets,
+                )?;
                 cloud("Flyte")
             }
             "snowflake" => {
-                crate::snowflake::executor(store, &scratch, run, image, setup)?;
+                crate::executors::snowflake::executor(store, &scratch, run, image, setup)?;
                 cloud("Snowflake")
             }
             "jarvice" => {
-                crate::jarvice::executor(store, &scratch, run, image, setup)?;
+                crate::executors::jarvice::executor(store, &scratch, run, image, setup)?;
                 let address = &executors.jarvice.settings.api_url;
                 format!(
                     "the jobs go to the JARVICE API at {address}; uwe asks it only when a run starts"
                 )
             }
             "wr" => {
-                crate::wr::executor(store, &scratch, run, image, setup)?;
+                crate::executors::wr::executor(store, &scratch, run, image, setup)?;
                 let runtime = executors
                     .wr
                     .jobs
@@ -518,7 +555,7 @@ mod executors {
                 )
             }
             _ => {
-                crate::grid::pbs(store, &scratch, run, image, setup)?;
+                crate::executors::grid::pbs(store, &scratch, run, image, setup)?;
                 grid("PBS", &executors.pbs)
             }
         })

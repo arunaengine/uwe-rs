@@ -45,6 +45,9 @@ pub struct Kubedal {
     pub upload: Duration,
     /// An explicit helper source for discovering JSON-selected outputs before CSI upload.
     pub helper: Option<Helper>,
+    /// Whether kubedal puts the outputs into the content store itself and gives receipts for
+    /// them, which needs version 2 of its manifest.
+    pub promote: bool,
 }
 
 /// What an attempt staged: where it sends its outputs back, and how its pod sees its folder.
@@ -215,12 +218,25 @@ impl PodStaging {
             upload["dataNodeNamespace"] = json!(namespace);
             attributes["dataNodeNamespace"] = json!(namespace);
         }
-        let list = json!({
+        let mut list = json!({
             "version": 1,
             "files": files,
             "directories": directories,
             "upload": upload,
         });
+        // Version 1 of kubedal reads only files of the staging root, so it refuses version 2.
+        let sources: Vec<Value> = layout.direct.iter().map(source).collect();
+        if !sources.is_empty() || kubedal.promote {
+            list["version"] = json!(2);
+            list["sources"] = json!(sources);
+        }
+        if kubedal.promote {
+            list["promote"] = json!({
+                "store": self.stage.objects.url(""),
+                "content": "cas",
+                "receipts": format!("{CONTROL}/{}", executor::RECEIPTS),
+            });
+        }
         let text = serde_json::to_vec(&list).map_err(failed)?;
         let digest = (self.stage.objects.put_content(text.into()).await).map_err(failed)?;
         let location = content_store::layout::content(&digest);
@@ -304,10 +320,48 @@ impl PodStaging {
         }
     }
 
+    /// Whether kubedal puts the outputs into the content store and writes their receipts.
+    pub fn promotes(&self) -> bool {
+        matches!(&self.via, Via::Kubedal(kubedal) if kubedal.promote)
+    }
+
     /// Downloads what the attempt sent back into its folder `root`.
     pub async fn collect(&self, prepared: &Prepared, root: &Path) -> Result<(), ExecutorError> {
         self.stage.collect(&prepared.prefix, root, RECORDS).await
     }
+}
+
+/// The entry of version 2 of the kubedal manifest for an input that kubedal reads where it
+/// lies, like the object of an Aruna DataProxy, instead of from the staging root.
+fn source(file: &executor::DirectSource) -> Value {
+    let reference = &file.reference;
+    let mut source = json!({
+        "path": file.path,
+        "source_uri": reference.url,
+        "digest": file.digest.as_str(),
+        "sha256": file.digest.hex(),
+        "size": file.size,
+        "executable": file.executable,
+    });
+    if !reference.headers.is_empty() {
+        let headers: serde_json::Map<String, Value> = (reference.headers.iter())
+            .map(|(name, value)| (name.clone(), json!(value)))
+            .collect();
+        source["headers"] = Value::Object(headers);
+    }
+    if let Some(id) = &reference.aruna_id {
+        source["aruna_id"] = json!(id);
+    }
+    if let Some(endpoint) = &reference.endpoint {
+        source["endpoint"] = json!(endpoint);
+    }
+    if let Some(encryption) = &reference.encryption {
+        source["encryption"] = json!({
+            "scheme": encryption.scheme,
+            "parameters": encryption.parameters,
+        });
+    }
+    source
 }
 
 fn failed(error: impl std::fmt::Display) -> ExecutorError {

@@ -10,10 +10,14 @@ use std::time::{Duration, SystemTime};
 use executor::batch::{Helper, Source};
 use executor::binary::Binary;
 use executor::capture::{RECORDS, capture};
+use executor::orphans::{self, JobState, Orphan, RemoteJobs};
 use executor::registry::{self, ImageConfigs};
 use executor::remote::RemoteStage;
 use executor::wrapper::{Folders, wrapper};
-use executor::{Access, Backend, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job};
+use executor::{
+    Access, Backend, BoxFuture, CONTROL, ContainerRun, ExecutorError, Finished, HOME, Job,
+    Journals, attempts,
+};
 use serde_json::json;
 use task_model::TaskSpec;
 use tokio_util::sync::CancellationToken;
@@ -54,6 +58,8 @@ pub struct FlyteBackend {
     pub staging_time: Duration,
     /// The entrypoints and default commands of images, for tasks without a command.
     pub configs: ImageConfigs,
+    /// Where the jobs of running attempts are noted, so that a later process finds them.
+    pub journals: Option<Journals>,
     held: AtomicBool,
 }
 
@@ -87,6 +93,7 @@ impl FlyteBackend {
             upload,
             staging_time: Duration::from_secs(30 * 60),
             configs: ImageConfigs::default(),
+            journals: None,
             held: AtomicBool::new(false),
         })
     }
@@ -99,6 +106,14 @@ impl Backend for FlyteBackend {
 
     fn hold(&self) {
         self.held.store(true, Ordering::Relaxed);
+    }
+
+    async fn orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::report(self, self.journals.as_ref(), run).await
+    }
+
+    async fn stop_orphans(&self, run: &str) -> Result<Vec<Orphan>, ExecutorError> {
+        orphans::stop(self, self.journals.as_ref(), run).await
     }
 
     async fn run(
@@ -263,9 +278,13 @@ impl FlyteBackend {
         if cancel.is_cancelled() || self.held.load(Ordering::Relaxed) {
             return Err(ExecutorError::Cancelled);
         }
+        let _held = attempts::hold(self.journals.as_ref(), self, job.name)?;
         self.client.call(CREATE, &body).await.map_err(api)?;
         tracing::debug!(run = name, attempt = job.name, "[FLYTE] created the run");
-        let seen = self.wait(&name, cancel).await?;
+        attempts::note(self.journals.as_ref(), self, job.name, &name).await?;
+        let seen = self.wait(&name, cancel).await;
+        attempts::settle(self.journals.as_ref(), self, job.name, &name, &seen).await;
+        let seen = seen?;
         let collected =
             executor::remote::patiently(|| self.stage.collect(&planned.prefix, local, RECORDS))
                 .await;
@@ -361,5 +380,41 @@ fn api(error: FlyteError) -> ExecutorError {
     match error.retryable() {
         true => machine(error.to_string()),
         false => ExecutorError::Unsupported(format!("Flyte refused a request: {error}")),
+    }
+}
+
+/// What Flyte says of a run that a journal names, and its abort.
+impl RemoteJobs for FlyteBackend {
+    fn state<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<Option<JobState>, String>> {
+        Box::pin(async move {
+            let body = json!({"runId": self.project.run(id)});
+            let answer = match self.client.call(DETAILS, &body).await {
+                Ok(answer) => answer,
+                Err(FlyteError::Status { code, .. }) if code == "not_found" => return Ok(None),
+                Err(error) => return Err(error.to_string()),
+            };
+            let phase = crate::run::seen(&answer).phase;
+            Ok(Some(JobState {
+                state: format!("{phase:?}").to_lowercase(),
+                ended: !matches!(phase, Phase::Waiting | Phase::Running),
+            }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            let body = json!({"runId": self.project.run(id), "reason": "uwe stopped a run that its run left"});
+            self.client
+                .call(ABORT, &body)
+                .await
+                .map(drop)
+                .map_err(|error| error.to_string())
+        })
+    }
+
+    fn scope(&self) -> String {
+        let project = &self.project;
+        let (org, name, domain) = (&project.org, &project.project, &project.domain);
+        format!("{} {org}/{name}/{domain}", self.client.address)
     }
 }

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-pub use crate::arguments::{Arguments, help, parse_command};
+pub use crate::arguments::{Arguments, group_help, help, parse_command, ungroup};
 pub use crate::failure::{Failure, USAGE};
 pub use crate::logging::init;
 use crate::repeat::Pinned;
@@ -69,6 +69,17 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
         "report" => report::command(arguments),
         "kuberun" => crate::kuberun::command(arguments),
         "record" => record(arguments),
+        "serve" => crate::serve::command(arguments),
+        "init" => crate::scaffold::command(arguments),
+        "completions" => crate::completions::command(arguments),
+        "runs show" => runs::show(arguments),
+        "runs logs" => runs::logs(arguments),
+        "runs cancel" => runs::cancel(arguments),
+        "tool list" => crate::tools::command::list(arguments),
+        "tool inspect" => crate::tools::command::inspect(arguments),
+        "tool extract" => crate::tools::command::extract(arguments),
+        "tool check" => crate::tools::command::check(arguments),
+        "tool suggest" => crate::tools::command::suggest(arguments),
         "help" | "-help" | "--help" => {
             println!("{usage}");
             Ok(())
@@ -80,19 +91,27 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
 }
 
 /// `uwe record`: runs a command once in the current folder and writes it there as a CWL
-/// CommandLineTool, with the files it wrote as outputs.
+/// CommandLineTool, a tool definition (`-format tool`) or both, with the files it wrote as
+/// outputs.
 fn record(arguments: &Arguments) -> Result<(), Failure> {
+    let usage = "uwe: use `uwe record [-name <name>] [-image <image>] [-format cwl|tool|both] \
+                 -- <command ...>`";
     if arguments.target.is_some() || arguments.command_line.is_empty() {
-        return Err(Failure::usage(
-            "uwe: use `uwe record [-name <name>] [-image <image>] -- <command ...>`",
-        ));
+        return Err(Failure::usage(usage));
     }
+    let format = match arguments.format.as_deref() {
+        None | Some("cwl") => tool_record::Format::Cwl,
+        Some("tool") => tool_record::Format::Tool,
+        Some("both") => tool_record::Format::Both,
+        Some(_) => return Err(Failure::usage(usage)),
+    };
     let folder = std::env::current_dir().map_err(|error| failure(format!("uwe: {error}")))?;
     let request = tool_record::Request {
         command: arguments.command_line.clone(),
         name: arguments.tool_name.clone(),
         image: arguments.tool_image.clone(),
         folder,
+        format,
     };
     let recorded =
         tool_record::record(&request).map_err(|error| failure(format!("uwe: {error}")))?;
@@ -104,6 +123,9 @@ fn record(arguments: &Arguments) -> Result<(), Failure> {
         tool.inputs.len(),
         tool.outputs.len()
     );
+    if let Some(definition) = recorded.definition.filter(|file| *file != recorded.path) {
+        println!("uwe: wrote the tool definition {}", definition.display());
+    }
     Ok(())
 }
 
@@ -117,7 +139,10 @@ fn digest(arguments: &Arguments) -> Result<(), Failure> {
         .map_err(|error| failure(error.to_string()))?
         .block_on(task_runner::reference_digest(path))
         .map_err(|error| failure(format!("uwe: {error}")))?;
-    println!("{digest}");
+    match arguments.json {
+        true => println!("{}", serde_json::json!({"path": path, "digest": digest})),
+        false => println!("{digest}"),
+    }
     Ok(())
 }
 
@@ -173,7 +198,7 @@ fn config(arguments: &Arguments) -> Result<(), Failure> {
     let setup = Setup::load(arguments)?;
     let _registry = setup.registry.enter().map_err(Failure::setup)?;
     let project = arguments.target.clone().unwrap_or_else(|| ".".into());
-    nextflow::print_config(&launch(arguments, project), arguments, &setup)?;
+    nextflow::print_config(&launch(arguments, &setup, project), arguments, &setup)?;
     Ok(())
 }
 

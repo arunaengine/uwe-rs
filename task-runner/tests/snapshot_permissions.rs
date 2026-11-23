@@ -33,6 +33,7 @@ impl Backend for Inspect {
             exit_code: Some(0),
             files: Vec::new(),
             usage: None,
+            receipts: Vec::new(),
         })
     }
 }

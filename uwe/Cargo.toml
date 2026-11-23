@@ -4,7 +4,7 @@
 
 [package]
 name = "uwe"
-description = "Runs Nextflow, Snakemake, CWL, Argo and WDL workflows in containers with a shared, content-addressed cache"
+description = "Runs Nextflow, Snakemake, CWL, Argo, WDL and Galaxy workflows in containers with a shared, content-addressed cache"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,6 +24,8 @@ executor.workspace = true
 flate2.workspace = true
 flyte-executor.workspace = true
 futures-util = { workspace = true, features = ["io"] }
+galaxy-parser.workspace = true
+galaxy-runtime.workspace = true
 gix.workspace = true
 input-schema.workspace = true
 jiff.workspace = true
@@ -41,10 +43,11 @@ run-database.workspace = true
 run-page.workspace = true
 run-telemetry.workspace = true
 reqwest.workspace = true
-rustix = { workspace = true, features = ["fs", "pipe", "rand", "stdio", "termios"] }
+rustix = { workspace = true, features = ["fs", "pipe", "process", "rand", "stdio", "termios"] }
 serde.workspace = true
 serde_json.workspace = true
 snakemake-compiler.workspace = true
+snakemake-parser.workspace = true
 snakemake-runtime.workspace = true
 snowflake-executor.workspace = true
 storage.workspace = true
@@ -53,6 +56,7 @@ task-runner.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 kubernetes-executor.workspace = true
+tool-definition.workspace = true
 tool-record.workspace = true
 aws-batch-executor.workspace = true
 azure-batch-executor.workspace = true

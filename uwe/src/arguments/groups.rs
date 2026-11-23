@@ -45,6 +45,7 @@ pub(super) const GROUPS: &[Group] = &[
             ("record", "record"),
             ("check", "tool check"),
             ("suggest", "tool suggest"),
+            ("run", "tool run"),
             ("lower", "lower"),
         ],
         alone: Some("tool list"),

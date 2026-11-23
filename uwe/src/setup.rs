@@ -874,13 +874,13 @@ impl Defaults {
     pub fn apply(self, command: &str, arguments: &mut Arguments) -> Result<(), Failure> {
         if matches!(
             command,
-            "run" | "graph" | "check-order" | "repeat" | "replay"
+            "run" | "tool run" | "graph" | "check-order" | "repeat" | "replay"
         ) {
             arguments.machine_retries = arguments.machine_retries.or(self.machine_retries);
             arguments.retry_delay_ms = arguments.retry_delay_ms.or(self.retry_delay_ms);
             arguments.task_seconds = arguments.task_seconds.or(self.task_seconds);
         }
-        if matches!(command, "run" | "check" | "check-machine")
+        if matches!(command, "run" | "tool run" | "check" | "check-machine")
             && arguments.executor.is_none()
             && arguments.preset.is_none()
         {
@@ -892,7 +892,7 @@ impl Defaults {
         {
             arguments.executor = Some("simulator".into());
         }
-        if command == "run" && arguments.report.is_none() {
+        if matches!(command, "run" | "tool run") && arguments.report.is_none() {
             arguments.report = self.report;
         }
         if let Some(folder) = self.cache_folder {

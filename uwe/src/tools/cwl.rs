@@ -13,11 +13,51 @@ use tool_definition::{
     PortKind, Resources, SourceKind, ValueType,
 };
 
-/// The definition of the CommandLineTool in the file; other process classes are no tools.
+/// The definition of the CommandLineTool in the file, or of each CommandLineTool of a packed
+/// document's `$graph`; other process classes are no tools.
 pub(crate) fn definitions(path: &Path) -> Result<Vec<Definition>, String> {
     let mut loader = cwl_parser::Loader::new(cwl_parser::source::FileSystem);
+    let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    match packed(&text)? {
+        None => Ok(vec![definition(&mut loader, path, None)?]),
+        Some(ids) if ids.is_empty() => {
+            Err("the packed CWL document has no CommandLineTool".to_owned())
+        }
+        Some(ids) => (ids.iter())
+            .map(|id| definition(&mut loader, path, Some(id)))
+            .collect(),
+    }
+}
+
+/// The ids of the CommandLineTools of a packed document, without their `#`; none for a
+/// document without `$graph`.
+fn packed(text: &str) -> Result<Option<Vec<String>>, String> {
+    if !text.contains("$graph") {
+        return Ok(None);
+    }
+    let value = tool_definition::yaml::read(text)?;
+    let Some(graph) = value.get("$graph").and_then(Json::as_array) else {
+        return Ok(None);
+    };
+    let tools = (graph.iter())
+        .filter(|entry| entry.get("class").and_then(Json::as_str) == Some("CommandLineTool"))
+        .filter_map(|entry| entry.get("id").and_then(Json::as_str))
+        .map(|id| id.rsplit('#').next().unwrap_or(id).to_owned());
+    Ok(Some(tools.collect()))
+}
+
+/// The definition of the CommandLineTool of a file, or of the process `fragment` of its graph.
+fn definition(
+    loader: &mut cwl_parser::Loader,
+    path: &Path,
+    fragment: Option<&str>,
+) -> Result<Definition, String> {
     let shown = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
-    let document = (loader.load(&shown.to_string_lossy())).map_err(|error| error.to_string())?;
+    let mut reference = shown.to_string_lossy().into_owned();
+    if let Some(fragment) = fragment {
+        reference = format!("{reference}#{fragment}");
+    }
+    let document = loader.load(&reference).map_err(|error| error.to_string())?;
     let process = &document.process;
     let class = match &process.class {
         Class::CommandLineTool(_) => None,
@@ -60,7 +100,9 @@ pub(crate) fn definitions(path: &Path) -> Result<Vec<Definition>, String> {
     let stem = path
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned());
-    let id = stem.unwrap_or_else(|| short_name(&process.id).to_owned());
+    let id = (fragment.map(str::to_owned))
+        .or(stem)
+        .unwrap_or_else(|| short_name(&process.id).to_owned());
     let version = version
         .or_else(|| (image.as_ref()).and_then(|image| super::tag(&image.name)))
         .unwrap_or_else(|| "1.0".to_owned());
@@ -142,12 +184,17 @@ pub(crate) fn definitions(path: &Path) -> Result<Vec<Definition>, String> {
             parameters["required"] = Json::Array(required);
         }
     }
-    Ok(vec![Definition {
+    // A tool of a packed document names its process after the file, as a run takes it.
+    let mut source = super::source(SourceKind::Cwl, path)?;
+    if let Some(fragment) = fragment {
+        source.address = format!("{}#{fragment}", source.address);
+    }
+    Ok(Definition {
         title: process.label.clone().unwrap_or_else(|| id.clone()),
         id,
         version,
         description: Some(process.doc.join("\n")).filter(|text| !text.is_empty()),
-        source: Some(super::source(SourceKind::Cwl, path)?),
+        source: Some(source),
         image,
         license: None,
         authors: Vec::new(),
@@ -162,7 +209,7 @@ pub(crate) fn definitions(path: &Path) -> Result<Vec<Definition>, String> {
         resources,
         tests: Vec::new(),
         curation: Curation::Unchecked,
-    }])
+    })
 }
 
 /// The type without `null`, and whether `null` was one of its members.
@@ -245,4 +292,74 @@ fn literal(expression: &Expression) -> Option<String> {
 /// An EDAM term as its short id; other IRIs stay as they are.
 fn edam(format: String) -> String {
     term_id(&format).to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PACKED: &str = r##"cwlVersion: v1.2
+$graph:
+  - id: sort
+    class: CommandLineTool
+    baseCommand: [sort]
+    inputs:
+      text:
+        type: File
+        inputBinding: {position: 1}
+    stdout: sorted.txt
+    outputs:
+      sorted: stdout
+  - id: count
+    class: CommandLineTool
+    baseCommand: [wc, -l]
+    inputs:
+      text:
+        type: File
+        inputBinding: {position: 1}
+    stdout: count.txt
+    outputs:
+      count: stdout
+  - id: main
+    class: Workflow
+    inputs:
+      text: File
+    outputs:
+      count:
+        type: File
+        outputSource: count/count
+    steps:
+      sort:
+        run: "#sort"
+        in: {text: text}
+        out: [sorted]
+      count:
+        run: "#count"
+        in: {text: sort/sorted}
+        out: [count]
+"##;
+
+    #[test]
+    fn reads_packed_tools() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let file = folder.path().join("packed.cwl");
+        std::fs::write(&file, PACKED).expect("writes the document");
+        let found = definitions(&file).expect("definitions");
+        let shown: Vec<(&str, String)> = (found.iter())
+            .map(|tool| {
+                let address = tool.source.as_ref().map(|source| source.address.clone());
+                (tool.id.as_str(), address.unwrap_or_default())
+            })
+            .collect();
+        let at = |id: &str| format!("{}#{id}", file.display());
+        assert_eq!(shown, [("sort", at("sort")), ("count", at("count"))]);
+        assert_eq!(found[1].outputs[0].name, "count");
+        let workflow = folder.path().join("workflow.cwl");
+        let plain = "cwlVersion: v1.2\nclass: Workflow\ninputs: {}\noutputs: {}\nsteps: {}\n";
+        std::fs::write(&workflow, plain).expect("writes the workflow");
+        assert_eq!(
+            definitions(&workflow).unwrap_err(),
+            "a CWL Workflow is not a tool"
+        );
+    }
 }

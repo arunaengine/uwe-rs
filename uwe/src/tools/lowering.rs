@@ -121,12 +121,18 @@ pub fn lower(
         let path = name(&node.id);
         let source = (definition.source.as_ref())
             .ok_or_else(|| refuse(format!("the tool {} names no source to run", definition.id)))?;
-        let located = located(&source.address, entry.origin.as_deref());
-        let (language, entry_point) = match source.kind {
+        // A tool of a packed CWL document names its process after the `#` of its address.
+        let (address, fragment) = match source.kind {
+            SourceKind::Cwl => fragment(&source.address),
+            _ => (source.address.as_str(), None),
+        };
+        let located = located(address, entry.origin.as_deref());
+        let (language, mut entry_point) = match source.kind {
             SourceKind::Galaxy => (Language::Galaxy, None),
-            SourceKind::Cwl => (Language::Cwl, None),
+            SourceKind::Cwl => (Language::Cwl, fragment.map(str::to_owned)),
             SourceKind::Wdl => (Language::Wdl, Some(definition.id.clone())),
             SourceKind::Snakemake => (Language::Snakemake, Some(definition.id.clone())),
+            SourceKind::Argo => (Language::Argo, None),
             SourceKind::NfCore | SourceKind::Nextflow => (Language::Nextflow, Some("node".into())),
             SourceKind::Container | SourceKind::Other => {
                 let reason = format!("the tool {} has no source that uwe runs", definition.id);
@@ -220,27 +226,66 @@ pub fn lower(
                 default: None,
             });
         }
-        let (location, digest) = match language {
-            // A wrapper is named by its digest, so that workflows with a step of the same name
-            // never replace each other's wrapper.
+        // Steps of Nextflow, Snakemake and Argo run from a wrapper that runs the one process,
+        // rule or template on its own with the op inputs.
+        let wrapper = match language {
             Language::Nextflow => {
                 let script = nextflow_entry(&located, definition, &inputs).map_err(refuse)?;
+                Some((script, "nf"))
+            }
+            Language::Snakemake => {
+                let script =
+                    super::snakemake::entry(&located, definition, &inputs).map_err(refuse)?;
+                Some((script, "smk"))
+            }
+            Language::Argo => {
+                let (script, outer) =
+                    super::argo::entry(&located, definition, &inputs).map_err(refuse)?;
+                entry_point = Some(outer);
+                Some((script, "yaml"))
+            }
+            _ => None,
+        };
+        let wrapped = wrapper.is_some();
+        let (location, digest) = match wrapper {
+            // A wrapper is named by its digest, so that workflows with a step of the same name
+            // never replace each other's wrapper.
+            Some((script, ending)) => {
                 let digest = task_model::Digest::sha256(script.as_bytes());
-                let file = generated.join(format!("{path}-{}.nf", &digest.hex()[..12]));
+                let file = generated.join(format!("{path}-{}.{ending}", &digest.hex()[..12]));
                 files.push((file.clone(), script));
                 let location = file.to_string_lossy().into_owned();
                 (location, Some(format!("sha256:{}", digest.hex())))
             }
-            _ => {
+            None => {
                 let digest =
                     Some(source.revision.clone()).filter(|text| text.starts_with("sha256:"));
                 (relative(&located, base), digest)
             }
         };
-        let id = match language {
-            Language::Nextflow => name(&format!("{}-{}-{path}", definition.id, definition.version)),
-            _ => name(&format!("{}-{}", definition.id, definition.version)),
+        let id = match wrapped {
+            true => name(&format!("{}-{}-{path}", definition.id, definition.version)),
+            false => name(&format!("{}-{}", definition.id, definition.version)),
         };
+        // A process takes the settings of the `nextflow.config` beside it, as in its pipeline.
+        let mut configs = Vec::new();
+        let config = located
+            .parent()
+            .map(|folder| folder.join("nextflow.config"));
+        if let Some(config) = config.filter(|file| language == Language::Nextflow && file.is_file())
+        {
+            let bytes = std::fs::read(&config)
+                .map_err(|error| refuse(format!("cannot read {}: {error}", config.display())))?;
+            let digest = task_model::Digest::sha256(&bytes);
+            let declared = Source {
+                id: name(&format!("{}-{}-config", definition.id, definition.version)),
+                language,
+                location: relative(&config, base),
+                version: None,
+                digest: Some(format!("sha256:{}", digest.hex())),
+            };
+            configs.push(declare(&mut sources, declared));
+        }
         let declared = Source {
             id,
             language,
@@ -256,7 +301,7 @@ pub fn lower(
                 language,
                 entry: entry_point,
                 profiles: Vec::new(),
-                configs: Vec::new(),
+                configs,
                 targets: Vec::new(),
                 config_values: None,
                 until: Vec::new(),
@@ -328,7 +373,8 @@ pub fn lower(
     let mut entry_inputs = Vec::new();
     for input in &workflow.inputs {
         let shape = input.supply.shape.cardinality;
-        let required = input.required && input.default.is_none();
+        // An input with a default always has a value, so the ports it feeds may require one.
+        let required = input.required || input.default.is_some();
         let mut r#type = port_type(input.supply.kind, shape, required);
         // A file without a format of its own takes the one format that the input declares.
         if let [format] = input.supply.formats.as_slice() {
@@ -657,9 +703,19 @@ fn map_op(path: &str, body: &str, inputs: &[Port], outputs: &[Port], over: &[Str
     }
 }
 
+/// The file of a CWL source address and the process of a packed document after its `#`.
+pub(crate) fn fragment(address: &str) -> (&str, Option<&str>) {
+    match address.rsplit_once('#') {
+        Some((file, process)) if !process.is_empty() && !process.contains('/') => {
+            (file, Some(process))
+        }
+        _ => (address, None),
+    }
+}
+
 /// Where a source address is: as it is when absolute or an address, else from the folder of
 /// the definition file that names it.
-fn located(address: &str, origin: Option<&Path>) -> PathBuf {
+pub(crate) fn located(address: &str, origin: Option<&Path>) -> PathBuf {
     let path = Path::new(address);
     if address.contains("://") || path.is_absolute() {
         return path.to_owned();
@@ -708,11 +764,23 @@ fn nextflow_entry(
         .ok_or_else(|| format!("{} has no process {}", module.display(), definition.title))?;
     let given = |part: &str| ports.iter().any(|port| port.name == name(part));
     let param = |name: &str| format!("params[{}]", groovy_text(name));
+    let declared = super::nextflow::inputs(process, &text);
+    // The meta map of a sample is a given one, else named after the first file it comes with.
+    let first = (declared.iter().flatten())
+        .find(|part| matches!(part.qualifier.as_str(), "path" | "file") && given(&part.name));
+    let meta = match (given("meta"), first) {
+        (true, _) => {
+            let given = param("meta");
+            format!("({given} instanceof Map ? {given} : [id: {given}])")
+        }
+        (false, Some(part)) => format!("[id: file({}).simpleName]", param(&part.name)),
+        (false, None) => "[id: 'node']".to_owned(),
+    };
     let mut arguments = Vec::new();
-    for parts in super::nextflow::inputs(process, &text) {
+    for parts in declared {
         let values: Vec<String> = (parts.iter())
             .map(|part| match part.qualifier.as_str() {
-                "val" if part.name == "meta" => "[id: 'node']".to_owned(),
+                "val" if part.name == "meta" => meta.clone(),
                 "path" | "file" if given(&part.name) => format!("file({})", param(&part.name)),
                 "path" | "file" => "[]".to_owned(),
                 _ => param(&part.name),

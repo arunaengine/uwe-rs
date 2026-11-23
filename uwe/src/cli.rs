@@ -80,6 +80,7 @@ pub fn command(command: &str, arguments: &Arguments, usage: &str) -> Result<(), 
         "tool extract" => crate::tools::command::extract(arguments),
         "tool check" => crate::tools::command::check(arguments),
         "tool suggest" => crate::tools::command::suggest(arguments),
+        "tool run" => run(&crate::tools::command::run_arguments(arguments)?),
         "help" | "-help" | "--help" => {
             println!("{usage}");
             Ok(())

@@ -1,8 +1,9 @@
-//! The tool library of uwe: tool definitions from Galaxy, CWL, WDL, Nextflow and Snakemake
-//! sources and definition files, and composed workflows of them that lower into wir.
+//! The tool library of uwe: tool definitions from Galaxy, CWL, WDL, Nextflow, Snakemake and
+//! Argo sources and definition files, and composed workflows of them that lower into wir.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+mod argo;
 pub(crate) mod command;
 pub mod composed;
 mod cwl;
@@ -24,8 +25,8 @@ pub use library::{Entry, Query, Skipped, ToolLibrary};
 pub use lowering::{Lowered, LoweringError, lower};
 
 /// The tool definitions of one file: a definition file (`.tool.json`, `.tool.yaml` or
-/// `.tool.yml`, one definition or a list), Galaxy tool XML, a CWL CommandLineTool, the tasks
-/// of a WDL document, the processes of a Nextflow script or the rules of a Snakefile.
+/// `.tool.yml`), Galaxy tool XML, CWL CommandLineTools, WDL tasks, Nextflow processes,
+/// Snakemake rules, or Argo container and script templates.
 pub fn extract(path: &Path) -> Result<Vec<Definition>, String> {
     let name =
         (path.file_name()).map_or(String::new(), |name| name.to_string_lossy().to_lowercase());
@@ -51,6 +52,13 @@ pub fn extract(path: &Path) -> Result<Vec<Definition>, String> {
         Some("nf") => nextflow::definitions(path),
         Some("smk") => snakemake::definitions(path),
         Some("ga") => Err("a Galaxy workflow is no tool".to_owned()),
+        Some("yaml" | "yml") => {
+            let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+            match argo::is_argo(&text) {
+                true => argo::definitions(path),
+                false => Err("the YAML file is no Argo workflow or template".to_owned()),
+            }
+        }
         _ if name == "snakefile" => snakemake::definitions(path),
         _ => Err("uwe reads no tools from this file".to_owned()),
     }
@@ -71,12 +79,14 @@ pub fn ecosystem(definition: &Definition) -> &'static str {
         (_, Some(SourceKind::Wdl)) => "wdl",
         (_, Some(SourceKind::Nextflow | SourceKind::NfCore)) => "nextflow",
         (_, Some(SourceKind::Snakemake)) => "snakemake",
+        (_, Some(SourceKind::Argo)) => "argo",
         (_, Some(SourceKind::Container)) => "container",
         _ => "other",
     }
 }
 
-/// Whether a scan looks at a file for tools, by its name.
+/// Whether a scan looks at a file for tools, by its name; a YAML file only when it is an Argo
+/// file, so that a scan passes other YAML files over in silence.
 pub(crate) fn is_candidate(path: &Path) -> bool {
     let name =
         (path.file_name()).map_or(String::new(), |name| name.to_string_lossy().to_lowercase());
@@ -90,7 +100,13 @@ pub(crate) fn is_candidate(path: &Path) -> bool {
         ".nf",
         ".smk",
     ];
-    name == "snakefile" || endings.iter().any(|end| name.ends_with(end))
+    if name == "snakefile" || endings.iter().any(|end| name.ends_with(end)) {
+        return true;
+    }
+    let yaml = name.ends_with(".yaml") || name.ends_with(".yml");
+    let wir = [".uwe.yaml", ".uwe.yml", ".wir.yaml", ".wir.yml"];
+    yaml && !wir.iter().any(|end| name.ends_with(end))
+        && std::fs::read_to_string(path).is_ok_and(|text| argo::is_argo(&text))
 }
 
 /// Definitions of a definition file, JSON or YAML, as one object or a list of them.

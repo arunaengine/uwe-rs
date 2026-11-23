@@ -6,7 +6,7 @@
 
 // The ecosystems of the explorer, by the `kind` that the tool query takes.
 const ECOSYSTEMS = [["all", "All"], ["galaxy", "Galaxy"], ["cwl", "CWL"], ["wdl", "WDL"],
-  ["nextflow", "Nextflow"], ["snakemake", "Snakemake"], ["recorded", "Recorded"]];
+  ["nextflow", "Nextflow"], ["snakemake", "Snakemake"], ["argo", "Argo"], ["recorded", "Recorded"]];
 
 // The explorer draws into `context.parts.explorer`; a click on a tool selects it, and its
 // button adds it to the canvas. It returns `search()`, which asks the library again.

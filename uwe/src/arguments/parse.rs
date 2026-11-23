@@ -168,6 +168,7 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             "-uwe-config" => parsed.config_file = Some(value()?.into()),
             "-head-image" => parsed.head_image = Some(value()?),
             "-name" => parsed.tool_name = Some(value()?),
+            "-save" => parsed.save = Some(value()?.into()),
             "-image" => parsed.tool_image = Some(value()?),
             "-head-cpus" => parsed.head_cpus = Some(value()?),
             "-head-memory" => parsed.head_memory = Some(value()?),
@@ -409,8 +410,12 @@ fn parse_for(command: Option<&str>, arguments: &[String]) -> Result<Arguments, S
             }
         })
     });
-    for option in parameter_options {
-        if let Some(help) = engine_option(&option, language) {
+    // The params of `uwe tool run` are the inputs of one tool, never options of an engine.
+    for option in parameter_options
+        .iter()
+        .filter(|_| command != Some("tool run"))
+    {
+        if let Some(help) = engine_option(option, language) {
             return Err(format!("engine option `{option}` is unsupported; {help}"));
         }
         if language == Some(Language::Snakemake) {

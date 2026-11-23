@@ -387,6 +387,25 @@ fn snakemake_options() {
 }
 
 #[test]
+fn tool_run_inputs() {
+    let words = |list: &[&str]| list.iter().map(|word| word.to_string()).collect::<Vec<_>>();
+    let line = [
+        "rules.smk#count",
+        "--reads",
+        "a.fq",
+        "-executor",
+        "simulator",
+    ];
+    let parsed = parse_command("tool run", &words(&line)).unwrap();
+    assert_eq!(parsed.params, [("reads".to_owned(), "a.fq".to_owned())]);
+    assert_eq!(parsed.executor.as_deref(), Some("simulator"));
+    let saved = parse_command("tool extract", &words(&["main.nf", "--save", "tools"])).unwrap();
+    assert_eq!(saved.save, Some(PathBuf::from("tools")));
+    assert!(parse_command("tool list", &words(&["-save", "tools"])).is_err());
+    assert!(help("tool run").unwrap().contains("-no-network"));
+}
+
+#[test]
 fn parses_rerun_triggers() {
     let parsed = parse_all(&["Snakefile", "-rerun-triggers", "mtime,code"]);
     assert_eq!(

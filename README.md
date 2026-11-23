@@ -8,7 +8,7 @@
 
 <h1 align="center">A <ins>U</ins>niversal <ins>W</ins>orkflow <ins>E</ins>xecutor</h1>
 
-uwe (Universal Workflow Executor) runs [Nextflow](https://www.nextflow.io), [Snakemake](https://snakemake.github.io), [CWL](https://www.commonwl.org), [Argo](https://argoproj.github.io/workflows/) and [WDL](https://openwdl.org) workflows from a single Rust binary. It reads all five languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs, without network access, share one cache entry.
+uwe (Universal Workflow Executor) runs [Nextflow](https://www.nextflow.io), [Snakemake](https://snakemake.github.io), [CWL](https://www.commonwl.org), [Argo](https://argoproj.github.io/workflows/), [WDL](https://openwdl.org) and [Galaxy](https://galaxyproject.org) workflows, and its own intermediate representation, [wir](wir/README.md), from a single Rust binary. It reads all of these languages itself, plans them into one task graph, runs every task in a container, and stores every result once, by its content digest. It also takes the steps of these workflows apart: `uwe tool run` runs one process, rule, task or template on its own, and a composed workflow combines steps of different languages. A task that runs the same command in the same image on the same inputs, without network access, reuses the stored result of any earlier run, also when its step runs on its own.
 
 The machine that runs uwe needs no Python, Groovy, JavaScript or Java. A static Linux build is a single file.
 
@@ -34,7 +34,7 @@ Bioinformatics and science in general has many workflow languages, and each has 
 
 Most engines have limited or uneven support for containers and Kubernetes, or they need a shared working directory. Almost none can use several cloud storage providers at once, for example two different S3 services. Caches belong to one language or even to one workflow, so the same tool with the same inputs runs again just because a different workflow called it. So I started an experiment: can one Rust binary do all of that?
 
-So far it looks like it can. A Snakemake rule and a Nextflow process that run the same command in the same image on the same inputs share one cache entry. A run moves from a laptop to a cluster or the cloud without changes to the workflow. Every run can be repeated later with its recorded inputs, images and code. And every task runs in a container, without exceptions, which makes runs reproducible and supports the FAIR principles.
+So far it looks like it can. A task that runs the same command in the same image on the same inputs shares one cache entry across workflows, even when its step is extracted and run on its own. A run moves from a laptop to a cluster or the cloud without changes to the workflow. Every run can be repeated later with its recorded inputs, images and code. And every task runs in a container, without exceptions, which makes runs reproducible and supports the FAIR principles.
 
 ## What it does
 
@@ -125,7 +125,7 @@ The example uses a Debian image and writes greetings to `demo/snakemake/hello/`.
 
 ## Commands and options
 
-Inspection commands are grouped: `uwe runs [list|show|logs|cancel|compare|export|repeat|why|time|report|changes|reconcile|resume|replay]`, `uwe tool [list|inspect|extract|record|check|suggest|lower]` and `uwe cache [clean|digest]`. The flat commands, like `uwe compare` and `uwe clean`, keep working. `uwe runs`, `uwe tool`, `uwe doctor` and `uwe cache digest` write JSON with `--json`, and `uwe completions bash|zsh|fish` prints a completion script:
+Inspection commands are grouped: `uwe runs [list|show|logs|cancel|compare|export|repeat|why|time|report|changes|reconcile|resume|replay]`, `uwe tool [list|inspect|extract|record|check|suggest|run|lower]` and `uwe cache [clean|digest]`. The flat commands, like `uwe compare` and `uwe clean`, keep working. `uwe runs`, `uwe tool`, `uwe doctor` and `uwe cache digest` write JSON with `--json`, and `uwe completions bash|zsh|fish` prints a completion script:
 
 ```sh
 source <(uwe completions bash)

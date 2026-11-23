@@ -120,8 +120,9 @@ usage: uwe run <workflow file, directory or repository> [<targets>] [options]
        uwe runs show <run> [-json] | logs <run> [<task>] | cancel <run>
        uwe runs compare|export|repeat|why|time|report|changes|reconcile|resume|replay <run> ...
        uwe tool [list] [-tools <folder>]... [-json]
-       uwe tool inspect <id> [<version>] | extract <file> | check <composed workflow>
-       uwe tool suggest <words> | record ... | lower <file>
+       uwe tool inspect <id> [<version>] | extract <file> [-save <folder>]
+       uwe tool run <id> [<version>] | <file>[#<step>] [--<input> <value>]... [run options]
+       uwe tool check <composed workflow> | suggest <words> | record ... | lower <file>
        uwe cache clean [options] | digest <path> [-json]
        uwe page [<run>] [-address <ip>] [-port <number>] [-tools <folder>] [-workflows <folder>]
        uwe serve [-address <ip>] [-port <number>] [-token <token>] [-tools <folder>]...

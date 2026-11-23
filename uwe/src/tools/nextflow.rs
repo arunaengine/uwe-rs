@@ -1,10 +1,12 @@
-//! Tool definitions of Nextflow processes: path inputs and outputs as ports, values as
-//! parameters, the container directive, and what the `meta.yml` of an nf-core module adds.
+//! Tool definitions of Nextflow processes: path ports, value parameters, the image and resources
+//! of the process and a `nextflow.config` beside it, and what an nf-core `meta.yml` adds.
 // Copyright (c) 2026 The uwe Contributors
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use std::path::Path;
 
+use nextflow_config::ProcessSettings;
+use nextflow_evaluator::value::Value;
 use nextflow_parser::ast::{Item, NamedOutput, Process, ProcessInput, TypedName};
 use serde_json::{Map, Value as Json, json};
 use tool_definition::edam::term_id;
@@ -59,9 +61,57 @@ pub(crate) fn definitions(path: &Path) -> Result<Vec<Definition>, String> {
         false => SourceKind::Nextflow,
     };
     let source = super::source(kind, path)?;
+    let config = path.parent().and_then(config);
     Ok((processes.iter())
-        .map(|process| definition(process, &text, meta.as_ref(), source.clone()))
+        .map(|process| {
+            let settings = config.as_ref().and_then(|config| {
+                let labels = labels(process, &text);
+                config.process_settings(&[&process.name.text], &labels).ok()
+            });
+            let described = (meta.as_ref(), settings.as_ref());
+            definition(process, &text, described, source.clone())
+        })
         .collect())
+}
+
+/// The `nextflow.config` beside a script, which a run of its pipeline reads; none when there
+/// is none or it does not load.
+pub(crate) fn config(folder: &Path) -> Option<nextflow_config::Config> {
+    let file = folder.join("nextflow.config");
+    if !file.is_file() {
+        return None;
+    }
+    let shown = folder.to_string_lossy().into_owned();
+    let options = nextflow_config::Options {
+        profiles: None,
+        params: Value::map([]),
+        project_dir: shown.clone(),
+        launch_dir: shown.clone(),
+        work_dir: format!("{shown}/work"),
+    };
+    nextflow_config::load(&[file], &options, &mut Quiet).ok()
+}
+
+/// A host of the config that prints nothing, as extracting tools prints nothing.
+struct Quiet;
+
+impl nextflow_evaluator::interpreter::Host for Quiet {
+    fn print(&mut self, _: &str) {}
+}
+
+/// The labels of a process, from its `label` directives.
+fn labels(process: &Process, text: &str) -> Vec<String> {
+    (process.directives.iter())
+        .filter_map(|statement| {
+            let line = statement.span.text(text).trim();
+            let rest = line.strip_prefix("label")?;
+            rest.starts_with([' ', '\t', '(', '\'', '"']).then(|| {
+                rest.trim()
+                    .trim_matches(['(', ')', '\'', '"', ' '])
+                    .to_owned()
+            })
+        })
+        .collect()
 }
 
 /// The inputs of a process, in order.
@@ -82,6 +132,11 @@ pub(crate) fn outputs(process: &Process, text: &str) -> Vec<Emitted> {
     (process.outputs.iter())
         .map(|output| match output {
             NamedOutput::Statement(statement) => emitted(statement.span.text(text)),
+            // A bare `stdout` is the qualifier, which has no emit name, not an output so named.
+            NamedOutput::Named {
+                target,
+                value: None,
+            } if target.annotation.is_none() && target.name.text == "stdout" => emitted("stdout"),
             NamedOutput::Named { target, .. } => Emitted {
                 emit: Some(target.name.text.clone()),
                 parts: vec![typed(target, text)],
@@ -94,7 +149,7 @@ pub(crate) fn outputs(process: &Process, text: &str) -> Vec<Emitted> {
 fn definition(
     process: &Process,
     text: &str,
-    meta: Option<&Json>,
+    (meta, settings): (Option<&Json>, Option<&ProcessSettings>),
     source: tool_definition::Source,
 ) -> Definition {
     let described = meta.map(described).unwrap_or_default();
@@ -176,6 +231,38 @@ fn definition(
             "memory" => resources.memory = memory(line),
             _ => {}
         }
+    }
+    // Selectors of the config win over the process, and its plain settings fill in, as in a run.
+    let setting = |key: &str, selected: bool| {
+        let settings = settings?;
+        let list = match selected {
+            true => &settings.selected,
+            false => &settings.defaults,
+        };
+        let found = list.iter().rev().find(|(name, _)| &**name == key);
+        found.map(|(_, value)| value.clone())
+    };
+    let configured = |key: &str, declared: bool| {
+        setting(key, true).or_else(|| setting(key, false).filter(|_| !declared))
+    };
+    let image = match configured("container", image.is_some())
+        .as_ref()
+        .and_then(plain)
+    {
+        Some(name) if !name.is_empty() => Some(name),
+        _ => image,
+    };
+    if let Some(value) = configured("cpus", resources.cpus.is_some()) {
+        resources.cpus = plain(&value)
+            .and_then(|text| text.parse().ok())
+            .or(resources.cpus);
+    }
+    if let Some(value) = configured("memory", resources.memory.is_some()) {
+        let bytes = match value {
+            Value::MemoryUnit(bytes) => u64::try_from(bytes).ok(),
+            other => plain(&other).and_then(|text| memory(&format!("memory {text}"))),
+        };
+        resources.memory = bytes.or(resources.memory);
     }
     let name = process.name.text.clone();
     let meta_text = |key: &str| {
@@ -344,6 +431,15 @@ fn container(rest: &str) -> Option<String> {
         .filter(|text| !text.is_empty())
 }
 
+/// The text of a config value that is a string or a number, not code like a closure.
+fn plain(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) | Value::GString(text) => Some(text.trim().to_owned()),
+        Value::Number(_) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
 /// The bytes of a `memory '2 GB'` directive.
 fn memory(line: &str) -> Option<u64> {
     let value = line.split_once(char::is_whitespace)?.1;
@@ -474,6 +570,17 @@ mod tests {
         let output = emitted(r#"tuple val(meta), path("*.html"), emit: html, optional: true"#);
         assert_eq!(output.emit.as_deref(), Some("html"));
         assert!(output.optional);
+        let process = "process HELLO {\n    output:\n    stdout\n    script:\n    'echo hi'\n}\n";
+        let parsed = nextflow_parser::parse_script(process);
+        let Some(Item::Process(hello)) = parsed.tree.items.first() else {
+            panic!("a process");
+        };
+        let stdout = Emitted {
+            emit: None,
+            parts: Vec::new(),
+            optional: false,
+        };
+        assert_eq!(outputs(hello, process), [stdout], "stdout has no emit name");
         let injected = emitted(r#"path("*.txt"), emit: out; System.exit(1)"#);
         assert_eq!(injected.emit, None, "code after an emit name is no name");
         assert_eq!(output.parts[1].name, "*.html");
@@ -493,5 +600,37 @@ mod tests {
         );
         assert_eq!(memory("memory '2 GB'"), Some(2 << 30));
         assert_eq!(memory("memory 2.GB"), Some(2 << 30));
+    }
+
+    #[test]
+    fn reads_sibling_config() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let script = "process UPPER {\n    label 'small'\n    input:\n    path text\n    \
+                      output:\n    path 'upper.txt'\n    script:\n    \"tr a-z A-Z < $text > upper.txt\"\n}\n\n\
+                      process COUNT {\n    container 'debian:12-slim'\n    cpus 1\n    input:\n    \
+                      path text\n    output:\n    path 'count.txt'\n    script:\n    \
+                      \"wc -l < $text > count.txt\"\n}\n";
+        let config = "process {\n    container = 'debian:stable-slim'\n    \
+                      withLabel: 'small' {\n        memory = '512 MB'\n    }\n    \
+                      withName: 'COUNT' {\n        cpus = 4\n    }\n}\n";
+        std::fs::write(folder.path().join("main.nf"), script).expect("writes the script");
+        std::fs::write(folder.path().join("nextflow.config"), config).expect("writes the config");
+        let found = definitions(&folder.path().join("main.nf")).expect("definitions");
+        let images: Vec<Option<&str>> = (found.iter())
+            .map(|tool| tool.image.as_ref().map(|image| image.name.as_str()))
+            .collect();
+        assert_eq!(
+            images,
+            [Some("debian:stable-slim"), Some("debian:12-slim")],
+            "the plain setting fills in only where the process has none"
+        );
+        let resources: Vec<(Option<u32>, Option<u64>)> = (found.iter())
+            .map(|tool| (tool.resources.cpus, tool.resources.memory))
+            .collect();
+        assert_eq!(
+            resources,
+            [(None, Some(512 << 20)), (Some(4), None)],
+            "a selector wins over the process"
+        );
     }
 }

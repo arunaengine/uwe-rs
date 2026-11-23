@@ -77,6 +77,8 @@ pub enum SourceKind {
     Cwl,
     Wdl,
     Galaxy,
+    /// A container or script template of an Argo workflow or workflow template.
+    Argo,
     Container,
     Other,
 }

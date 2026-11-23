@@ -337,7 +337,9 @@ fn lowers_nfcore_modules() {
     let (file, script) = &lowered.files[0];
     assert!(file.starts_with(&generated));
     assert!(
-        script.contains("COUNT(channel.of([[id: 'node'], file(params['text'])]))"),
+        script.contains(
+            "COUNT(channel.of([[id: file(params['text']).simpleName], file(params['text'])]))"
+        ),
         "{script}"
     );
     assert!(
@@ -733,4 +735,221 @@ fn fits_format_kinds() {
         assert_eq!(code == 0, fits, "{format}: {printed}\n{errors}");
         assert!(fits || errors.contains("does not fit its type"), "{errors}");
     }
+}
+
+const PACKED: &str = r##"cwlVersion: v1.2
+$graph:
+  - id: sort
+    class: CommandLineTool
+    hints:
+      DockerRequirement:
+        dockerPull: debian:stable-slim
+    baseCommand: [sort]
+    inputs:
+      text:
+        type: File
+        inputBinding: {position: 1}
+    stdout: sorted.txt
+    outputs:
+      sorted: stdout
+  - id: main
+    class: Workflow
+    inputs:
+      text: File
+    outputs:
+      sorted:
+        type: File
+        outputSource: sort/sorted
+    steps:
+      sort:
+        run: "#sort"
+        in: {text: text}
+        out: [sorted]
+"##;
+
+const RULES: &str = r#"rule all:
+    input: "numbered/a.txt"
+
+rule number:
+    input:
+        text="texts/{sample}.txt",
+    output:
+        numbered="numbered/{sample}.txt",
+    container: "docker://debian:stable-slim"
+    shell: "(echo {wildcards.sample}; cat -n {input.text}) > {output.numbered}"
+"#;
+
+const TEMPLATE: &str = r#"apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: lines
+spec:
+  templates:
+    - name: reverse
+      inputs:
+        artifacts:
+          - name: text
+            path: /tmp/in/text.txt
+      container:
+        image: debian:stable-slim
+        command: [sh, -c]
+        args: ["tac /tmp/in/text.txt > /tmp/reversed.txt"]
+      outputs:
+        artifacts:
+          - name: reversed
+            path: /tmp/reversed.txt
+"#;
+
+const STEPS: &str = r#"uwe_version: "1"
+name: steps
+tools:
+  - tools
+inputs:
+  text:
+    type: file
+steps:
+  sort:
+    tool: sort
+    in:
+      text: text
+  number:
+    tool: number
+    in:
+      text: sort/sorted
+  reverse:
+    tool: reverse
+    in:
+      text: number/numbered
+outputs:
+  reversed: reverse/reversed
+"#;
+
+/// A folder with a packed CWL document, a Snakefile and an Argo template below `tools/`, a
+/// composed workflow of one step of each, and a text.
+fn steps(root: &Path) {
+    let tools = root.join("tools");
+    std::fs::create_dir_all(&tools).expect("makes the tool folder");
+    std::fs::write(tools.join("packed.cwl"), PACKED).expect("writes the CWL document");
+    std::fs::write(tools.join("Snakefile"), RULES).expect("writes the Snakefile");
+    std::fs::write(tools.join("lines.yaml"), TEMPLATE).expect("writes the Argo template");
+    std::fs::write(tools.join("notes.yaml"), "title: not a tool\n").expect("writes YAML");
+    std::fs::write(root.join("steps.uwe.yaml"), STEPS).expect("writes the workflow");
+    std::fs::write(root.join("a.txt"), "b\na\n").expect("writes a text");
+}
+
+#[test]
+fn runs_extracted_steps() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let root = folder.path();
+    steps(root);
+    let mut library = ToolLibrary::new();
+    assert_eq!(
+        library.scan(&root.join("tools")),
+        4,
+        "{:?}",
+        library.skipped()
+    );
+    assert!(
+        library.skipped().is_empty(),
+        "other YAML files are no candidates"
+    );
+    let kind = |id: &str| (library.get(id, None)).and_then(|entry| entry.definition.source.clone());
+    assert_eq!(
+        kind("reverse").map(|source| source.kind),
+        Some(SourceKind::Argo)
+    );
+    let sort = kind("sort").expect("the packed tool");
+    assert!(
+        sort.address.ends_with("packed.cwl#sort"),
+        "{}",
+        sort.address
+    );
+    let workflow = composed::load(&root.join("steps.uwe.yaml"), &mut library).expect("a workflow");
+    let generated = root.join("generated");
+    let lowered = lower(&workflow, &library, (root, &generated)).expect("lowers");
+    let entries: Vec<Option<&str>> = (lowered.document.graphs[0].ops.iter())
+        .map(|op| match &op.kind {
+            wir::Kind::Native(native) => native.entry.as_deref(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(entries, [Some("sort"), Some("number"), Some("node")]);
+    let wrappers: Vec<String> = (lowered.files.iter())
+        .map(|(file, _)| {
+            file.extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(
+        wrappers,
+        ["smk", "yaml"],
+        "the rule and the template run from a wrapper"
+    );
+    for (file, text) in &lowered.files {
+        std::fs::create_dir_all(file.parent().expect("a folder")).expect("makes the folder");
+        std::fs::write(file, text).expect("writes the wrapper");
+    }
+    let text = serde_json::to_string(&lowered.document).expect("JSON");
+    std::fs::write(root.join("steps.wir.json"), text).expect("writes the document");
+    let inputs = json!({"text": {"class": "File", "location": "a.txt"}});
+    std::fs::write(root.join("inputs.json"), inputs.to_string()).expect("writes the inputs");
+    let launch = Launch {
+        target: root.join("steps.wir.json"),
+        inputs: Some(root.join("inputs.json")),
+        scratch: root.join("scratch"),
+        output_dir: Some(root.join("out")),
+        simulated: true,
+        ..Launch::default()
+    };
+    let settings = Settings {
+        print: false,
+        ..Settings::default()
+    };
+    let mut driver = WirDriver::new(&launch, settings).expect("a driver");
+    let mut simulator = Simulator::new(root.join("simulator"));
+    let graph = execute("steps", &mut driver, &mut simulator)
+        .into_result()
+        .expect("the run succeeds");
+    assert_eq!(graph.nodes.len(), 3, "one task per step");
+    let outputs = driver.outputs().expect("outputs");
+    assert_eq!(outputs["reversed"]["class"], "File", "{outputs}");
+}
+
+#[test]
+fn runs_one_tool() {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let root = folder.path();
+    steps(root);
+    let (code, printed, errors) = uwe(
+        root,
+        &["tool", "extract", "tools/Snakefile", "-save", "saved"],
+    );
+    assert_eq!(code, 0, "{errors}");
+    assert!(printed.contains("saved/number.tool.json"), "{printed}");
+    let saved = std::fs::read_to_string(root.join("saved/number.tool.json")).expect("a file");
+    let saved: Json = serde_json::from_str(&saved).expect("JSON");
+    let address = saved["source"]["address"].as_str().unwrap_or_default();
+    assert!(Path::new(address).is_absolute(), "{address}");
+    let run = |words: &[&str]| {
+        let mut all = vec!["tool", "run", "-executor", "simulator"];
+        all.extend(words);
+        uwe(root, &all)
+    };
+    let (code, printed, errors) = run(&["-tools", "saved", "number", "--text", "a.txt"]);
+    assert_eq!(code, 0, "{printed}\n{errors}");
+    let (code, printed, errors) = run(&["tools/packed.cwl#sort", "--text", "a.txt"]);
+    assert_eq!(code, 0, "{printed}\n{errors}");
+    let (code, printed, errors) = run(&["tools/lines.yaml", "--text", "a.txt"]);
+    assert_eq!(code, 0, "{printed}\n{errors}");
+    let (code, _, errors) = run(&["tools/Snakefile", "--text", "a.txt"]);
+    assert_ne!(code, 0, "a file of two tools needs a step");
+    assert!(errors.contains("holds the tools all, number"), "{errors}");
+    let (code, _, errors) = run(&["tools/Snakefile", "-entry", "number"]);
+    assert_ne!(code, 0, "a required input is missing");
+    assert!(errors.contains("needs text"), "{errors}");
+    let (code, _, errors) = run(&["tools/Snakefile#number", "--txt", "a.txt"]);
+    assert_ne!(code, 0, "an unknown input");
+    assert!(errors.contains("has no input txt"), "{errors}");
 }

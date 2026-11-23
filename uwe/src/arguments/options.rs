@@ -43,6 +43,7 @@ pub const COMMANDS: &[&str] = &[
     "tool extract",
     "tool check",
     "tool suggest",
+    "tool run",
     "version",
 ];
 
@@ -71,9 +72,17 @@ pub(super) const WORKFLOW: &[&str] = &[
     "outputs",
     "check-order",
     "kuberun",
+    "tool run",
 ];
 pub(super) const CONFIGURED: &[&str] = COMMANDS.split_at(COMMANDS.len() - 1).0;
-pub(super) const EXECUTION: &[&str] = &["run", "graph", "check-order", "repeat", "replay"];
+pub(super) const EXECUTION: &[&str] = &[
+    "run",
+    "graph",
+    "check-order",
+    "repeat",
+    "replay",
+    "tool run",
+];
 pub(super) const BACKEND: &[&str] = &[
     "run",
     "check",
@@ -83,6 +92,7 @@ pub(super) const BACKEND: &[&str] = &[
     "replay",
     "check-machine",
     "runs cancel",
+    "tool run",
 ];
 /// The commands of `uwe tool` that read the tool library.
 pub(super) const LIBRARY: &[&str] = &[
@@ -92,6 +102,7 @@ pub(super) const LIBRARY: &[&str] = &[
     "tool suggest",
     "serve",
     "page",
+    "tool run",
 ];
 /// The commands that can write JSON instead of text.
 pub(super) const JSON: &[&str] = &[
@@ -114,6 +125,7 @@ pub(super) const KUBERNETES: &[&str] = &[
     "replay",
     "check-machine",
     "kuberun",
+    "tool run",
 ];
 pub(super) const OPTIONS: &[(&str, &[&str])] = &[
     (
@@ -122,6 +134,7 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
     ),
     ("-latest", &["run", "graph", "kuberun"]),
     ("-name <name>", &["record", "init"]),
+    ("-save <folder>", &["tool extract"]),
     ("-json", JSON),
     ("-tools <folder>", LIBRARY),
     ("-workflows <folder>", &["serve", "page"]),
@@ -137,6 +150,7 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
         "-database <file>",
         &[
             "run",
+            "tool run",
             "graph",
             "check-machine",
             "runs",
@@ -180,6 +194,7 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
         "-entry <name>",
         &[
             "run",
+            "tool run",
             "graph",
             "check",
             "inputs",
@@ -191,9 +206,16 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
     ("--config <name=value>", WORKFLOW),
     (
         "-stub,-stub-run",
-        &["run", "graph", "check", "check-order", "kuberun"],
+        &[
+            "run",
+            "tool run",
+            "graph",
+            "check",
+            "check-order",
+            "kuberun",
+        ],
     ),
-    ("-keep-going", &["run", "graph", "check-order"]),
+    ("-keep-going", &["run", "tool run", "graph", "check-order"]),
     (
         "-until <rules,files>",
         &["run", "graph", "check", "check-order"],
@@ -216,6 +238,7 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
         "-store <folder|address>",
         &[
             "run",
+            "tool run",
             "graph",
             "check-machine",
             "export",
@@ -245,6 +268,7 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
         "-default-image <image>",
         &[
             "run",
+            "tool run",
             "graph",
             "check",
             "check-order",
@@ -255,28 +279,36 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
     ),
     (
         "-python-image <image>",
-        &["run", "graph", "check", "inputs", "outputs", "check-order"],
+        &[
+            "run",
+            "tool run",
+            "graph",
+            "check",
+            "inputs",
+            "outputs",
+            "check-order",
+        ],
     ),
     ("-output-dir <folder>", WORKFLOW),
     ("-workdir <folder>", WORKFLOW),
-    ("-graph <file>", &["run", "graph"]),
-    ("-report <file>", &["run", "compare"]),
+    ("-graph <file>", &["run", "tool run", "graph"]),
+    ("-report <file>", &["run", "tool run", "compare"]),
     ("-fail-on-change", &["compare"]),
     (
         "-format <format>",
         &["graph", "inputs", "outputs", "time", "compare", "record"],
     ),
     ("-check", &["inputs"]),
-    ("-view <tasks|steps>", &["run", "graph"]),
-    ("-direction <down|right>", &["run", "graph"]),
-    ("-fold <n>", &["run", "graph"]),
+    ("-view <tasks|steps>", &["run", "tool run", "graph"]),
+    ("-direction <down|right>", &["run", "tool run", "graph"]),
+    ("-fold <n>", &["run", "tool run", "graph"]),
     (
         "-max-pending <n>",
-        &["run", "graph", "check-order", "repeat"],
+        &["run", "tool run", "graph", "check-order", "repeat"],
     ),
     (
         "-order <asked|reversed|finished|shuffled[:seed]>",
-        &["run", "graph", "repeat"],
+        &["run", "tool run", "graph", "repeat"],
     ),
     (
         "-output <path>",
@@ -284,12 +316,18 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
     ),
     ("-platform <name>", &["lock-environment"]),
     ("-license <url>", &["export"]),
-    ("-resume [run]", &["run", "graph"]),
+    ("-resume [run]", &["run", "tool run", "graph"]),
     ("-reason <text>", &["reconcile"]),
-    ("-strict-provenance", &["run"]),
-    ("-page", &["run", "repeat"]),
-    ("-address <ip>", &["run", "repeat", "page", "serve"]),
-    ("-port <number>", &["run", "repeat", "page", "serve"]),
+    ("-strict-provenance", &["run", "tool run"]),
+    ("-page", &["run", "tool run", "repeat"]),
+    (
+        "-address <ip>",
+        &["run", "tool run", "repeat", "page", "serve"],
+    ),
+    (
+        "-port <number>",
+        &["run", "tool run", "repeat", "page", "serve"],
+    ),
     ("-keep-days <n>", &["clean"]),
     ("-keep-run <run>", &["clean"]),
     ("-keep-slower-than <time>", &["clean"]),
@@ -298,20 +336,36 @@ pub(super) const OPTIONS: &[(&str, &[&str])] = &[
     ("-front", &["clean"]),
     (
         "-check-reproducibility <percent>",
-        &["run", "graph", "check-order", "repeat", "replay"],
+        &[
+            "run",
+            "tool run",
+            "graph",
+            "check-order",
+            "repeat",
+            "replay",
+        ],
     ),
-    ("-no-cache", &["run", "graph", "check-order"]),
-    ("-no-cache-steps <steps>", &["run", "graph", "check-order"]),
-    ("-no-network", &["run", "graph", "check-order", "replay"]),
+    ("-no-cache", &["run", "tool run", "graph", "check-order"]),
+    (
+        "-no-cache-steps <steps>",
+        &["run", "tool run", "graph", "check-order"],
+    ),
+    (
+        "-no-network",
+        &["run", "tool run", "graph", "check-order", "replay"],
+    ),
     ("-machine-retries <n>", EXECUTION),
     ("-machine-retry-delay-ms <milliseconds>", EXECUTION),
     (
         "-task-minutes <minutes>",
-        &["run", "graph", "check-order", "repeat"],
+        &["run", "tool run", "graph", "check-order", "repeat"],
     ),
     (
         "-no-right-sizing",
-        &["run", "graph", "check-order", "replay"],
+        &["run", "tool run", "graph", "check-order", "replay"],
     ),
-    ("-no-grouping", &["run", "graph", "check-order", "replay"]),
+    (
+        "-no-grouping",
+        &["run", "tool run", "graph", "check-order", "replay"],
+    ),
 ];

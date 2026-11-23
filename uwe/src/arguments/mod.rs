@@ -94,6 +94,8 @@ pub struct Arguments {
     pub kubernetes_namespace: Option<String>,
     /// `-head-image image`: the image with uwe that `uwe kuberun` runs in its pod.
     pub head_image: Option<String>,
+    /// `-save folder` of `uwe tool extract`: where it writes each tool as a definition file.
+    pub save: Option<PathBuf>,
     /// `-name name` and `-image image` of `uwe record`: the tool file and its container.
     pub tool_name: Option<String>,
     pub tool_image: Option<String>,

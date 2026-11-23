@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use hdf5_pure::{AttrValue, Datatype, DatatypeByteOrder, File};
+use hdf5_pure::{AttrValue, Datatype, DatatypeByteOrder, File, VariableLengthType};
 use nextflow_evaluator::number::Number;
 use nextflow_evaluator::value::Value;
 
@@ -67,10 +67,9 @@ pub(super) fn array(file: &File, path: &str) -> Result<Array, Failure> {
         values: texts.into_iter().map(Value::string).collect(),
     };
     match datatype {
-        Datatype::String { .. }
-        | Datatype::VariableLength {
-            is_string: true, ..
-        } => Ok(texts(dataset.read_string().map_err(failed)?)),
+        Datatype::String { .. } | Datatype::VariableLength(VariableLengthType::String(_)) => {
+            Ok(texts(dataset.read_string().map_err(failed)?))
+        }
         Datatype::Enumeration { size, members, .. } => {
             let raw = dataset.read_raw().map_err(failed)?;
             let names = raw.chunks(size.max(1) as usize).map(|bytes| {
@@ -79,16 +78,13 @@ pub(super) fn array(file: &File, path: &str) -> Result<Array, Failure> {
             });
             Ok(texts(names.collect()))
         }
-        Datatype::FixedPoint {
-            size,
-            byte_order,
-            layout,
-        } => {
+        Datatype::FixedPoint(fixed) => {
+            let (size, signed) = (fixed.size().get(), fixed.layout().signed());
             let raw = dataset.read_raw().map_err(failed)?;
-            let big = byte_order == DatatypeByteOrder::BigEndian;
-            let values = raw.chunks(size.max(1) as usize).map(|bytes| {
-                let value = super::integer(bytes, big, layout.signed);
-                match (size, layout.signed) {
+            let big = fixed.byte_order() == DatatypeByteOrder::BigEndian;
+            let values = raw.chunks(size as usize).map(|bytes| {
+                let value = super::integer(bytes, big, signed);
+                match (size, signed) {
                     (1 | 2, _) | (4, true) => Value::integer(value as i32),
                     _ => Value::Number(Number::Long(value)),
                 }
@@ -98,13 +94,12 @@ pub(super) fn array(file: &File, path: &str) -> Result<Array, Failure> {
                 values: values.collect(),
             })
         }
-        Datatype::FloatingPoint {
-            size, byte_order, ..
-        } => {
+        Datatype::FloatingPoint(float) => {
+            let size = float.size().get();
             let raw = dataset.read_raw().map_err(failed)?;
-            let big = byte_order == DatatypeByteOrder::BigEndian;
+            let big = float.byte_order() == DatatypeByteOrder::BigEndian;
             let values = raw
-                .chunks(size.max(1) as usize)
+                .chunks(size as usize)
                 .map(|bytes| Value::Number(Number::Double(super::float(bytes, big))));
             Ok(Array {
                 kind: ArrayKind::Other(if size == 4 { "[F" } else { "[D" }),

@@ -33,7 +33,7 @@ tool-definition.workspace = true
 tracing.workspace = true
 wdl-runtime.workspace = true
 # The WDL syntax tree and types that expr ops in WDL parse their code into.
-wdl-analysis = "0.28.0"
-wdl-ast = "0.27.2"
+wdl-analysis = "0.28.1"
+wdl-ast = "0.27.3"
 wir.workspace = true
 workflow-graph.workspace = true

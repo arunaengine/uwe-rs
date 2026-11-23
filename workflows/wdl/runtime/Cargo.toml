@@ -18,10 +18,10 @@ regex.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 tokio.workspace = true
-url = "2.5.8"
+url = "2.5.9"
 # Parsing, imports and type checking of WDL by the Sprocket project. Its engine crate keeps
 # expression evaluation private and always builds its own task backends, so uwe evaluates.
-wdl-analysis = "0.28.0"
-wdl-ast = "0.27.2"
+wdl-analysis = "0.28.1"
+wdl-ast = "0.27.3"
 workflow-graph.workspace = true
 

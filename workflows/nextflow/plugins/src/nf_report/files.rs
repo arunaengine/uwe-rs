@@ -19,7 +19,7 @@ pub(crate) fn time(seconds: i64, nanos: i32) -> String {
     let Ok(stamp) = Timestamp::new(seconds, nanos) else {
         return String::new();
     };
-    let zoned = stamp.to_zoned(TimeZone::system());
+    let zoned = stamp.to_zoned_datetime(TimeZone::system());
     let mut text = zoned.strftime("%Y-%m-%dT%H:%M").to_string();
     if zoned.second() != 0 || nanos != 0 {
         text.push_str(&format!(":{:02}", zoned.second()));

@@ -363,7 +363,7 @@ pub(crate) fn offset_time(millis: i64) -> String {
     let Ok(time) = Timestamp::from_millisecond(millis) else {
         return String::new();
     };
-    let time = time.to_zoned(TimeZone::system());
+    let time = time.to_zoned_datetime(TimeZone::system());
     let mut text = time.strftime("%Y-%m-%dT%H:%M").to_string();
     let (second, milli) = (time.second(), millis.rem_euclid(1000));
     if second != 0 || milli != 0 {
@@ -382,7 +382,7 @@ pub(crate) fn offset_time(millis: i64) -> String {
 /// A time in whole seconds in the time zone of this machine, like `2026-11-06T10:22:01+01:00`.
 pub(crate) fn second_time(millis: i64) -> String {
     match Timestamp::from_millisecond(millis) {
-        Ok(time) => (time.to_zoned(TimeZone::system()))
+        Ok(time) => (time.to_zoned_datetime(TimeZone::system()))
             .strftime("%Y-%m-%dT%H:%M:%S%:z")
             .to_string(),
         Err(_) => String::new(),
@@ -407,7 +407,7 @@ pub(crate) fn instant(millis: i64) -> String {
 /// The date of a time in the time zone of this machine, like `2026-11-06`.
 pub(crate) fn local_date(millis: i64) -> String {
     match Timestamp::from_millisecond(millis) {
-        Ok(time) => (time.to_zoned(TimeZone::system()))
+        Ok(time) => (time.to_zoned_datetime(TimeZone::system()))
             .strftime("%Y-%m-%d")
             .to_string(),
         Err(_) => String::new(),

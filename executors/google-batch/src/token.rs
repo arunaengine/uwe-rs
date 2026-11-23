@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rsa::RsaPrivateKey;
+use rsa::PrivateKey;
 use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::sha2::Sha256;
@@ -46,7 +46,7 @@ pub enum Source {
     Account {
         email: String,
         key_id: String,
-        key: Box<RsaPrivateKey>,
+        key: Box<PrivateKey>,
         token_uri: String,
     },
     /// User credentials, as gcloud writes them: their refresh token goes to `token_uri`.
@@ -126,8 +126,8 @@ impl Credentials {
         let needed = |name: &str| field(name).ok_or_else(invalid);
         let (source, project) = match json["type"].as_str() {
             Some("service_account") => {
-                let key = RsaPrivateKey::from_pkcs8_pem(&needed("private_key")?)
-                    .map_err(|_| invalid())?;
+                let key =
+                    PrivateKey::from_pkcs8_pem(&needed("private_key")?).map_err(|_| invalid())?;
                 let source = Source::Account {
                     email: needed("client_email")?,
                     key_id: field("private_key_id").unwrap_or_default(),
@@ -268,7 +268,7 @@ impl Credentials {
 pub fn assertion(
     email: &str,
     key_id: &str,
-    key: &RsaPrivateKey,
+    key: &PrivateKey,
     token_uri: &str,
     now: u64,
 ) -> Result<String, TokenError> {

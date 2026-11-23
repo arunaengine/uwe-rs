@@ -12,7 +12,7 @@ use crate::number::to_f64;
 use crate::value::{Args, Native, Value};
 
 /// The format of a point in time as Python writes it: microseconds only when there are some.
-fn time_format(time: &jiff::Zoned, separator: char) -> &'static str {
+fn time_format(time: &jiff::ZonedDateTime, separator: char) -> &'static str {
     match (time.subsec_nanosecond() != 0, separator) {
         (true, 'T') => "%Y-%m-%dT%H:%M:%S%.6f",
         (true, _) => "%Y-%m-%d %H:%M:%S%.6f",
@@ -25,13 +25,13 @@ fn time_format(time: &jiff::Zoned, separator: char) -> &'static str {
 /// time.
 #[derive(Clone)]
 struct DateTime {
-    time: jiff::Zoned,
+    time: jiff::ZonedDateTime,
     date_only: bool,
     naive: bool,
 }
 
 impl DateTime {
-    fn naive(time: jiff::Zoned, date_only: bool) -> Value {
+    fn naive(time: jiff::ZonedDateTime, date_only: bool) -> Value {
         Value::native(DateTime {
             time,
             date_only,
@@ -91,7 +91,7 @@ impl DateTime {
             ),
             None => jiff::tz::TimeZone::system(),
         };
-        let time = civil.to_zoned(zone).map_err(|_| invalid())?;
+        let time = civil.to_zoned_datetime(zone).map_err(|_| invalid())?;
         Ok(Value::native(DateTime {
             time,
             date_only,
@@ -252,7 +252,7 @@ impl Native for DateTime {
                     None => (this.time.time_zone().clone(), this.naive),
                 };
                 Ok(Value::native(DateTime {
-                    time: civil.to_zoned(zone).map_err(invalid)?,
+                    time: civil.to_zoned_datetime(zone).map_err(invalid)?,
                     date_only: this.date_only,
                     naive,
                 }))
@@ -352,7 +352,7 @@ impl Native for DateClass {
                 .map_err(|_| Error::value_error("microsecond must be in 0..999999"))?,
         )
         .map_err(invalid)?;
-        let time = civil.to_zoned(zone).map_err(invalid)?;
+        let time = civil.to_zoned_datetime(zone).map_err(invalid)?;
         Ok(Some(Value::native(DateTime {
             time,
             naive,
@@ -379,7 +379,7 @@ impl Native for DateClass {
                         zone_of(zone.as_ref())
                     };
                     Ok(Value::native(DateTime {
-                        time: jiff::Timestamp::now().to_zoned(zone),
+                        time: jiff::Timestamp::now().to_zoned_datetime(zone),
                         date_only,
                         naive,
                     }))
@@ -405,7 +405,7 @@ impl Native for DateClass {
                     })
                     .map_err(invalid)?;
                 let time = civil
-                    .to_zoned(jiff::tz::TimeZone::system())
+                    .to_zoned_datetime(jiff::tz::TimeZone::system())
                     .map_err(|error| Error::value_error(error.to_string()))?;
                 Ok(DateTime::naive(time, date_only))
             })),
@@ -414,7 +414,7 @@ impl Native for DateClass {
                 let timestamp = jiff::Timestamp::from_second(seconds)
                     .map_err(|error| Error::value_error(error.to_string()))?;
                 Ok(DateTime::naive(
-                    timestamp.to_zoned(jiff::tz::TimeZone::system()),
+                    timestamp.to_zoned_datetime(jiff::tz::TimeZone::system()),
                     date_only,
                 ))
             })),
@@ -738,9 +738,9 @@ fn c_locale(format: &str) -> String {
 
 /// The time of a `struct_time` or of a plain tuple of its nine numbers, as `time.strftime`
 /// and `time.asctime` take it, in the zone of this machine; now without one.
-fn time_of(value: Option<&Value>, function: &str) -> Result<(jiff::Zoned, Days), Error> {
+fn time_of(value: Option<&Value>, function: &str) -> Result<(jiff::ZonedDateTime, Days), Error> {
     let items = match value.map(Value::plain) {
-        None => return Ok((jiff::Zoned::now(), Days::default())),
+        None => return Ok((jiff::ZonedDateTime::now(), Days::default())),
         Some(Value::Tuple(items)) => items,
         Some(other) => {
             return match other.as_native::<DateTime>() {
@@ -780,7 +780,7 @@ fn time_of(value: Option<&Value>, function: &str) -> Result<(jiff::Zoned, Days),
         0,
     )
     .map_err(|error| Error::value_error(error.to_string()))?;
-    let time = (civil.to_zoned(jiff::tz::TimeZone::system()))
+    let time = (civil.to_zoned_datetime(jiff::tz::TimeZone::system()))
         .map_err(|error| Error::value_error(error.to_string()))?;
     Ok((time, days))
 }
@@ -833,14 +833,14 @@ impl Days {
 
 /// The time of seconds since the epoch in a zone, as `time.localtime(secs)` takes them; now
 /// without seconds.
-fn zoned_at(args: &Args, zone: jiff::tz::TimeZone) -> Result<jiff::Zoned, Error> {
+fn zoned_at(args: &Args, zone: jiff::tz::TimeZone) -> Result<jiff::ZonedDateTime, Error> {
     let seconds = match args.positional.first().map(Value::plain) {
-        None | Some(Value::None) => return Ok(jiff::Timestamp::now().to_zoned(zone)),
+        None | Some(Value::None) => return Ok(jiff::Timestamp::now().to_zoned_datetime(zone)),
         Some(Value::Int(seconds)) => *seconds as f64,
         Some(Value::Float(seconds)) => *seconds,
         Some(_) => return Err(Error::type_error("an integer or a float is required")),
     };
     let stamp = jiff::Timestamp::from_second(seconds.floor() as i64)
         .map_err(|error| Error::value_error(error.to_string()))?;
-    Ok(stamp.to_zoned(zone))
+    Ok(stamp.to_zoned_datetime(zone))
 }

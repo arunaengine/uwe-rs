@@ -16,7 +16,7 @@ base64.workspace = true
 config-file.workspace = true
 executor.workspace = true
 reqwest.workspace = true
-rsa = { workspace = true, features = ["sha2"] }
+rsa = { workspace = true, features = ["pkcs1v15"] }
 serde_json.workspace = true
 storage.workspace = true
 task-model.workspace = true

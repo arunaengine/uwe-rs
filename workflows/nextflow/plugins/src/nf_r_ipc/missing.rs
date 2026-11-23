@@ -180,7 +180,7 @@ fn instant(value: &Value) -> Result<Option<Timestamp>, Error> {
     let parsed = match trimmed.strip_suffix(" UTC") {
         Some(local) => (local.replace(' ', "T").parse::<DateTime>())
             .ok()
-            .and_then(|local| local.to_zoned(TimeZone::UTC).ok())
+            .and_then(|local| local.to_zoned_datetime(TimeZone::UTC).ok())
             .map(|zoned| zoned.timestamp()),
         None => trimmed.parse::<Timestamp>().ok(),
     };
@@ -200,7 +200,7 @@ fn zoned(value: &Value, zone: &Value) -> Result<Value, Error> {
         other => other.to_string(),
     };
     let found = TimeZone::get(&name).map_err(|_| thrown(format!("Invalid timezone id: {name}")))?;
-    let local = instant.to_zoned(found);
+    let local = instant.to_zoned_datetime(found);
     let mut text = Time::DateTime(local.datetime()).text();
     let offset = local.offset().seconds();
     match offset {

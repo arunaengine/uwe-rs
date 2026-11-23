@@ -313,7 +313,7 @@ fn stamp(millis: i64) -> String {
     let Ok(time) = jiff::Timestamp::from_millisecond(millis) else {
         return String::new();
     };
-    let time = time.to_zoned(TimeZone::system());
+    let time = time.to_zoned_datetime(TimeZone::system());
     let since =
         (i64::from(time.hour()) * 3600 + i64::from(time.minute()) * 60 + i64::from(time.second()))
             * 1000

@@ -5,7 +5,7 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use rsa::RsaPrivateKey;
+use rsa::PrivateKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::{DecodePrivateKey, EncodePublicKey};
@@ -23,7 +23,7 @@ pub struct KeyPair {
     subject: String,
     /// `SHA256:` and the base64 of the SHA-256 of the public key.
     fingerprint: String,
-    key: RsaPrivateKey,
+    key: PrivateKey,
 }
 
 impl std::fmt::Debug for KeyPair {
@@ -46,8 +46,8 @@ impl KeyPair {
                     .into(),
             );
         }
-        let key = (RsaPrivateKey::from_pkcs8_pem(pem))
-            .or_else(|_| RsaPrivateKey::from_pkcs1_pem(pem))
+        let key = (PrivateKey::from_pkcs8_pem(pem))
+            .or_else(|_| PrivateKey::from_pkcs1_pem(pem))
             .map_err(|_| "the private key is no RSA key in PEM form".to_owned())?;
         let public = (key.to_public_key().to_public_key_der())
             .map_err(|error| format!("cannot encode the public key: {error}"))?;

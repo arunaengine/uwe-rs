@@ -14,8 +14,8 @@ publish.workspace = true
 [dependencies]
 serde_json.workspace = true
 # The syntax tree and types of WDL, as wdl-runtime loads and checks documents with them.
-wdl-analysis = "0.28.0"
-wdl-ast = "0.27.2"
+wdl-analysis = "0.28.1"
+wdl-ast = "0.27.3"
 wdl-runtime.workspace = true
 wir.workspace = true
 

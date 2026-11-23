@@ -39,7 +39,7 @@ fn activate(
 pub(crate) fn stamp(millis: i64) -> String {
     let stamp = Timestamp::from_millisecond(millis).unwrap_or(Timestamp::UNIX_EPOCH);
     stamp
-        .to_zoned(TimeZone::system())
+        .to_zoned_datetime(TimeZone::system())
         .strftime("%Y%m%d%H%M%S")
         .to_string()
 }

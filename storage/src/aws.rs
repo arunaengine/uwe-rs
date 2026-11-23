@@ -177,7 +177,7 @@ pub fn git_account(
         [_, region, _, _, ..] => *region,
         _ => return Err(format!("Cannot detect AWS region from URI {url}")),
     };
-    let utc = time.to_zoned(jiff::tz::TimeZone::UTC);
+    let utc = time.to_zoned_datetime(jiff::tz::TimeZone::UTC);
     let stamp = utc.strftime("%Y%m%dT%H%M%S").to_string();
     let day = &stamp[..8];
     let canonical = format!("GIT\n{}\n\nhost:{host}\n\nhost\n", uri.path());
@@ -213,7 +213,7 @@ fn sign(
         .ok_or("the address has no host")?
         .as_str()
         .to_owned();
-    let utc = time.to_zoned(jiff::tz::TimeZone::UTC);
+    let utc = time.to_zoned_datetime(jiff::tz::TimeZone::UTC);
     let (stamp, day) = (
         utc.strftime("%Y%m%dT%H%M%SZ").to_string(),
         utc.strftime("%Y%m%d").to_string(),
@@ -317,7 +317,7 @@ pub fn presign(
         .map_err(|error: http::uri::InvalidUri| error.to_string())?;
     let scheme = uri.scheme_str().ok_or("the address has no scheme")?;
     let host = (uri.authority().ok_or("the address has no host")?).as_str();
-    let utc = time.to_zoned(jiff::tz::TimeZone::UTC);
+    let utc = time.to_zoned_datetime(jiff::tz::TimeZone::UTC);
     let (stamp, day) = (
         utc.strftime("%Y%m%dT%H%M%SZ").to_string(),
         utc.strftime("%Y%m%d").to_string(),

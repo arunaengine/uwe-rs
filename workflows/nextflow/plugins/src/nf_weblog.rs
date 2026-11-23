@@ -243,7 +243,7 @@ fn date(millis: i64) -> Json {
     let Ok(time) = Timestamp::from_millisecond(millis) else {
         return Json::Null;
     };
-    let time = time.to_zoned(TimeZone::system());
+    let time = time.to_zoned_datetime(TimeZone::system());
     let seconds = time.offset().seconds();
     let id = match seconds {
         0 => "Z".to_owned(),

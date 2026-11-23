@@ -22,12 +22,12 @@ pub fn text(millis: i64) -> String {
 pub fn format(millis: i64, pattern: &str) -> Result<String, Exception> {
     let time = Timestamp::from_millisecond(millis)
         .map_err(|error| Exception::illegal_argument(error.to_string()))?
-        .to_zoned(TimeZone::system());
+        .to_zoned_datetime(TimeZone::system());
     format_zoned(&time, pattern)
 }
 
 /// A time with a zone in a pattern of `SimpleDateFormat` or `DateTimeFormatter`.
-pub fn format_zoned(time: &jiff::Zoned, pattern: &str) -> Result<String, Exception> {
+pub fn format_zoned(time: &jiff::ZonedDateTime, pattern: &str) -> Result<String, Exception> {
     let mut result = String::new();
     let characters: Vec<char> = pattern.chars().collect();
     let mut index = 0;

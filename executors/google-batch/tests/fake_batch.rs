@@ -16,9 +16,9 @@ use executor::batch::Helper;
 use executor::remote::RemoteStage;
 use executor::{Backend, ExecutorError, Job, Staged, Staging};
 use google_batch_executor::{Client, Credentials, GoogleBackend, Settings};
-use rsa::RsaPrivateKey;
+use rsa::PrivateKey;
 use rsa::pkcs8::{EncodePrivateKey, LineEnding};
-use rsa::rand_core::{CryptoRng, RngCore};
+use rsa::rand_core::{Infallible, TryCryptoRng, TryRng};
 use rsa::signature::Verifier;
 use serde_json::{Value, json};
 use task_model::{FORMAT, Image, OutputRule, Placement, TaskSpec};
@@ -33,39 +33,37 @@ const IMAGE: &str =
 /// A generator of fixed bytes, so that every run makes the same test key.
 struct Seeded(u64);
 
-impl RngCore for Seeded {
-    fn next_u32(&mut self) -> u32 {
-        self.next_u64() as u32
+impl TryRng for Seeded {
+    type Error = Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+        Ok(self.try_next_u64()? as u32)
     }
 
-    fn next_u64(&mut self) -> u64 {
+    fn try_next_u64(&mut self) -> Result<u64, Infallible> {
         // SplitMix64.
         self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
         let mut value = self.0;
         value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
         value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-        value ^ (value >> 31)
+        Ok(value ^ (value >> 31))
     }
 
-    fn fill_bytes(&mut self, bytes: &mut [u8]) {
+    fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), Infallible> {
         for chunk in bytes.chunks_mut(8) {
-            let value = self.next_u64().to_le_bytes();
+            let value = self.try_next_u64()?.to_le_bytes();
             chunk.copy_from_slice(&value[..chunk.len()]);
         }
-    }
-
-    fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), rsa::rand_core::Error> {
-        self.fill_bytes(bytes);
         Ok(())
     }
 }
 
-impl CryptoRng for Seeded {}
+impl TryCryptoRng for Seeded {}
 
 /// A made-up service account key, the same in every run.
-fn key() -> &'static RsaPrivateKey {
-    static KEY: OnceLock<RsaPrivateKey> = OnceLock::new();
-    KEY.get_or_init(|| RsaPrivateKey::new(&mut Seeded(7), 1024).expect("a key"))
+fn key() -> &'static PrivateKey {
+    static KEY: OnceLock<PrivateKey> = OnceLock::new();
+    KEY.get_or_init(|| PrivateKey::new(&mut Seeded(7), 1024).expect("a key"))
 }
 
 /// The test program as the helper of the jobs: it runs `stage_helper` with the arguments.

@@ -361,7 +361,7 @@ fn table(runs: &[Run]) -> String {
 pub fn local_time(milliseconds: i64) -> String {
     jiff::Timestamp::from_millisecond(milliseconds)
         .map(|time| {
-            time.to_zoned(jiff::tz::TimeZone::system())
+            time.to_zoned_datetime(jiff::tz::TimeZone::system())
                 .strftime("%Y-%m-%d %H:%M:%S")
                 .to_string()
         })

@@ -316,7 +316,7 @@ fn answer(
             .clone()
             .filter(|_| allowed)
             .map(|(username, password)| Outcome {
-                identity: gix::sec::identity::Account {
+                credentials: gix::sec::identity::Credentials::UsernamePassword {
                     username,
                     password,
                     oauth_refresh_token: None,

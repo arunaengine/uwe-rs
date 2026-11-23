@@ -349,7 +349,7 @@ struct Now {
 }
 
 fn now() -> Now {
-    let zoned = jiff::Zoned::now();
+    let zoned = jiff::ZonedDateTime::now();
     Now {
         day: zoned.strftime("%Y-%m-%d").to_string(),
         local: format!(
@@ -365,7 +365,7 @@ fn iso(milliseconds: i64) -> String {
     let Ok(time) = jiff::Timestamp::from_millisecond(milliseconds) else {
         return String::new();
     };
-    let zoned = time.to_zoned(jiff::tz::TimeZone::system());
+    let zoned = time.to_zoned_datetime(jiff::tz::TimeZone::system());
     format!(
         "{}.{:03}{}",
         zoned.strftime("%Y-%m-%dT%H:%M:%S"),

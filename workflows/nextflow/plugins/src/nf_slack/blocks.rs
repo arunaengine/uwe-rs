@@ -279,7 +279,7 @@ fn time(text: &str) -> Json {
 /// The time of a message in the time zone of this machine, like `Nov 6, 2026 at 12:52 PM`.
 fn footer_time(millis: i64) -> String {
     match Timestamp::from_millisecond(millis) {
-        Ok(time) => (time.to_zoned(TimeZone::system()))
+        Ok(time) => (time.to_zoned_datetime(TimeZone::system()))
             .strftime("%b %-d, %Y at %-I:%M %p")
             .to_string(),
         Err(_) => String::new(),

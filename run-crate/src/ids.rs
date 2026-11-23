@@ -7,7 +7,7 @@
 pub(crate) fn time(milliseconds: i64) -> String {
     jiff::Timestamp::from_millisecond(milliseconds)
         .map(|time| {
-            time.to_zoned(jiff::tz::TimeZone::UTC)
+            time.to_zoned_datetime(jiff::tz::TimeZone::UTC)
                 .strftime("%Y-%m-%dT%H:%M:%S%.3f%:z")
                 .to_string()
         })

@@ -236,7 +236,7 @@ impl Cmgg {
 
 /// Writes `DONE` with the time of the end of the run in the local time zone.
 fn write_done(folder: &Path) {
-    let now = jiff::Zoned::now();
+    let now = jiff::ZonedDateTime::now();
     let text = format!(
         "Pipeline completed on {} at {}",
         now.strftime("%d/%m/%Y"),

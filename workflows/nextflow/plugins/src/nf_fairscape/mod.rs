@@ -352,7 +352,7 @@ fn time(millis: i64) -> String {
     jiff::Timestamp::from_millisecond(millis)
         .map(|stamp| {
             stamp
-                .to_zoned(zone)
+                .to_zoned_datetime(zone)
                 .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
                 .to_string()
         })

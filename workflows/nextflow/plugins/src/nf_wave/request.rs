@@ -128,6 +128,6 @@ fn platform(arch: Option<&str>) -> String {
 
 /// Now in local time with its offset, to the nanosecond.
 fn timestamp() -> String {
-    let now = jiff::Zoned::now();
+    let now = jiff::ZonedDateTime::now();
     now.strftime("%Y-%m-%dT%H:%M:%S%.9f%:z").to_string()
 }

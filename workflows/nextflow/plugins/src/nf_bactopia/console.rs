@@ -273,7 +273,7 @@ fn completed(complete: &Value) -> String {
     let Ok(stamp) = jiff::Timestamp::from_millisecond(*millis) else {
         return String::new();
     };
-    let zoned = stamp.to_zoned(jiff::tz::TimeZone::system());
+    let zoned = stamp.to_zoned_datetime(jiff::tz::TimeZone::system());
     let fraction = match millis.rem_euclid(1000) {
         0 => String::new(),
         millis => format!(".{millis:03}"),

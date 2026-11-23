@@ -122,7 +122,8 @@ impl Ftp {
                     .mdtm(&parts.path)
                     .await
                     .ok()
-                    .map(|time| time.and_utc().into()),
+                    .and_then(|time| jiff::tz::Offset::UTC.to_timestamp(time).ok())
+                    .and_then(|time| time.try_into().ok()),
                 size: size as u64,
                 version: None,
             }),

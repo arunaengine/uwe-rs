@@ -337,7 +337,9 @@ fn value(field: &Field, kind: &Type) -> Result<Value, Error> {
             match utc {
                 true => time(Time::Instant(instant)),
                 false => time(Time::DateTime(
-                    instant.to_zoned(jiff::tz::TimeZone::UTC).datetime(),
+                    instant
+                        .to_zoned_datetime(jiff::tz::TimeZone::UTC)
+                        .datetime(),
                 )),
             }
         }

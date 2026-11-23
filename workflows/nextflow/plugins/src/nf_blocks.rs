@@ -553,7 +553,7 @@ fn utc(milliseconds: i64) -> String {
     let Ok(time) = jiff::Timestamp::from_millisecond(milliseconds) else {
         return String::new();
     };
-    let utc = time.to_zoned(jiff::tz::TimeZone::UTC);
+    let utc = time.to_zoned_datetime(jiff::tz::TimeZone::UTC);
     format!(
         "{}.{:03}Z",
         utc.strftime("%Y-%m-%dT%H:%M:%S"),

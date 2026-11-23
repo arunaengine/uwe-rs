@@ -140,7 +140,7 @@ impl Time {
                 }
             }
             Time::Instant(instant) => {
-                let utc = instant.to_zoned(jiff::tz::TimeZone::UTC);
+                let utc = instant.to_zoned_datetime(jiff::tz::TimeZone::UTC);
                 let base = utc.strftime("%Y-%m-%dT%H:%M:%S").to_string();
                 format!("{base}{}Z", fraction(instant.subsec_nanosecond()))
             }

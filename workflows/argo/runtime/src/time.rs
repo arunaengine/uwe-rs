@@ -46,7 +46,7 @@ pub fn rfc3339(time: Timestamp) -> String {
 
 /// Formats a UTC time with a Go layout.
 pub fn go_format(layout: &str, time: Timestamp) -> String {
-    let zoned = time.to_zoned(TimeZone::UTC);
+    let zoned = time.to_zoned_datetime(TimeZone::UTC);
     let mut out = String::new();
     let mut rest = layout;
     while !rest.is_empty() {
@@ -156,7 +156,7 @@ fn fraction(layout: &str, nanoseconds: i32) -> Option<(String, usize)> {
 
 /// The strftime conversions that Argo offers as `workflow.creationTimestamp.<letter>`.
 pub fn strftime(time: Timestamp) -> Vec<(char, String)> {
-    let zoned = time.to_zoned(TimeZone::UTC);
+    let zoned = time.to_zoned_datetime(TimeZone::UTC);
     let weekday = weekday_name(zoned.weekday());
     let month = MONTHS[zoned.month() as usize - 1];
     let hour12 = match zoned.hour() % 12 {

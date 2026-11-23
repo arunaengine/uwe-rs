@@ -316,7 +316,7 @@ fn metadata(object: &Value) -> Metadata {
         directory: false,
         modified: (object["updated_time"].as_str())
             .and_then(|time| time.parse::<jiff::Timestamp>().ok())
-            .map(SystemTime::from),
+            .and_then(|time| SystemTime::try_from(time).ok()),
         size: size.unwrap_or(0),
         version,
     }

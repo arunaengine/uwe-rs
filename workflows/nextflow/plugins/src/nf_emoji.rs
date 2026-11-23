@@ -122,7 +122,7 @@ fn theme(name: &str, month: i8) -> Theme {
 }
 
 fn month() -> i8 {
-    jiff::Zoned::now().month()
+    jiff::ZonedDateTime::now().month()
 }
 
 #[derive(Default)]

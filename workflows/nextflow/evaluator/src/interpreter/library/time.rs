@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use jiff::civil::{Date, DateTime};
 use jiff::tz::TimeZone;
-use jiff::{SignedDuration, Timestamp, ToSpan, Zoned};
+use jiff::{SignedDuration, Timestamp, ToSpan, ZonedDateTime};
 
 use crate::exception::Exception;
 use crate::number::Number;
@@ -44,8 +44,8 @@ pub(super) fn time_static(
         _ => None,
     };
     let time = match (class, name, arguments) {
-        ("LocalDate", "now", []) => Time::Date(Zoned::now().date()),
-        ("LocalDateTime", "now", []) => Time::DateTime(Zoned::now().datetime()),
+        ("LocalDate", "now", []) => Time::Date(ZonedDateTime::now().date()),
+        ("LocalDateTime", "now", []) => Time::DateTime(ZonedDateTime::now().datetime()),
         ("Instant", "now", []) => Time::Instant(Timestamp::now()),
         ("LocalDate", "parse", [text]) => {
             let text = text.to_string();
@@ -126,9 +126,12 @@ pub(super) fn time_static(
         ("java.time.Duration", "between", [Value::Object(start), Value::Object(end)]) => {
             let instant = |object: &Rc<RefCell<Object>>| match &object.borrow().state {
                 State::Time(Time::Instant(time)) => Some(time.as_duration()),
-                State::Time(Time::DateTime(time)) => {
-                    Some(time.to_zoned(TimeZone::UTC).ok()?.timestamp().as_duration())
-                }
+                State::Time(Time::DateTime(time)) => Some(
+                    time.to_zoned_datetime(TimeZone::UTC)
+                        .ok()?
+                        .timestamp()
+                        .as_duration(),
+                ),
                 _ => None,
             };
             Time::Duration(instant(end)? - instant(start)?)
@@ -193,7 +196,7 @@ pub(super) fn time_method(
                     State::Text(pattern) => pattern.clone(),
                     _ => return None,
                 };
-                let zoned = civil.to_zoned(TimeZone::UTC).ok()?;
+                let zoned = civil.to_zoned_datetime(TimeZone::UTC).ok()?;
                 Some(crate::date::format_zoned(&zoned, &pattern).map(Value::string))
             }
             ("getYear", []) => integer(i64::from(civil.year())),

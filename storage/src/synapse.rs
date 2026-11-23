@@ -444,7 +444,7 @@ fn metadata(entity: &Value) -> Metadata {
         directory: !file,
         modified: (entity["modifiedOn"].as_str())
             .and_then(|time| time.parse::<jiff::Timestamp>().ok())
-            .map(SystemTime::from),
+            .and_then(|time| SystemTime::try_from(time).ok()),
         size: size.unwrap_or(0),
         version: text(&entity["dataFileHandleId"]).filter(|_| file && size.is_some()),
     }

@@ -3,7 +3,7 @@
 <!-- SPDX-License-Identifier: MIT or Apache-2.0 -->
 
 <p align="center">
-  <img src="docs/uwe.svg" width="128" height="128" alt="The uwe icon: two task boxes joined into one amber result">
+  <img src="uwe.svg" width="128" height="128" alt="The uwe icon: two task boxes joined into one amber result">
 </p>
 
 <h1 align="center">A <ins>U</ins>niversal <ins>W</ins>orkflow <ins>E</ins>xecutor</h1>
@@ -47,12 +47,12 @@ So far it looks like it can. A Snakemake rule and a Nextflow process that run th
 | [CWL](https://www.commonwl.org) | CommandLineTools and workflows with scatter, `when`, `valueFrom`, secondary files, and JavaScript expressions through the Boa engine, without Node.js. |
 | [Argo Workflows](https://argoproj.github.io/workflows/) | Steps, DAGs, loops, conditions, artifacts, retries, timeouts, exit hooks, mutexes, semaphores, suspend and resume, sidecars and daemon steps. |
 | [WDL](https://openwdl.org) 1.0 to 1.2 | Tasks, workflows, calls of tasks and subworkflows, imports, scatter, `if`, structs, `runtime` and `requirements`, and most of the standard library. Parsing and type checks use Sprocket's `wdl-analysis`; expressions are evaluated by uwe. |
-| [Galaxy](https://galaxyproject.org) | Tool XML with macros and Cheetah commands rendered in Rust, sections, conditionals, repeats, collections as lists and output filters, and `.ga` workflows of tool steps with dataset and parameter inputs. See [Tools and composed workflows](docs/tools.md). |
-| [wir](wir/README.md) | The workflow intermediate representation of uwe: graphs of container `task` ops, `call` ops and `native` ops that run whole CWL documents and Nextflow pipelines with the cache keys of their own runs. See [Running wir documents](docs/wir.md). |
+| [Galaxy](https://galaxyproject.org) | Tool XML with macros and Cheetah commands rendered in Rust, sections, conditionals, repeats, collections as lists and output filters, and `.ga` workflows of tool steps with dataset and parameter inputs. |
+| [wir](wir/README.md) | The workflow intermediate representation of uwe: graphs of container `task` ops, `call` ops and `native` ops that run whole CWL documents and Nextflow pipelines with the cache keys of their own runs. |
 
 Each language is a native subset, not a wrapper around the original engine. `uwe check` tells you before a run whether a workflow uses something uwe does not support.
 
-Nextflow pipelines can use plugins of the Nextflow registry in the `plugins` block of their config. uwe implements their functions, reports, file systems and executors in Rust; for a plugin that it does not run, the run and `uwe check` warn once. See [What uwe supports](docs/support.md).
+Nextflow pipelines can use plugins of the Nextflow registry in the `plugins` block of their config. uwe implements their functions, reports, file systems and executors in Rust; for a plugin that it does not run, the run and `uwe check` warn once.
 
 Workflows can come straight from GitHub, GitLab, Bitbucket, Gitea or any Git server over HTTPS, pinned to a tag, branch or commit with `-r`.
 
@@ -62,10 +62,10 @@ Workflows can come straight from GitHub, GitLab, Bitbucket, Gitea or any Git ser
 - **SLURM**, with Apptainer, Singularity, Podman or Docker on the nodes.
 - **Kubernetes** Jobs. `uwe kuberun` also runs uwe itself in a pod of the cluster.
 - **GA4GH TES** servers, such as Funnel.
-- **AWS Batch**, **Google Batch**, **Azure Batch**, **Nomad**, **HTCondor**, **PBS**, **Flyte**, **Snowflake**, **JARVICE** and **wr**. See [What uwe supports](docs/support.md).
+- **AWS Batch**, **Google Batch**, **Azure Batch**, **Nomad**, **HTCondor**, **PBS**, **Flyte**, **Snowflake**, **JARVICE** and **wr**.
 - A **simulator** that plans a whole workflow and makes placeholder outputs, without running any tool.
 
-Remote nodes can share a file system with uwe, or get their files through an object store, so no shared folder is needed. See [Remote executors and staging](docs/remote-executors.md).
+Remote nodes can share a file system with uwe, or get their files through an object store, so no shared folder is needed.
 
 Argo sidecars and daemon steps run on the local executor and on Kubernetes. SLURM and TES refuse them.
 
@@ -85,7 +85,7 @@ Conda environments are solved in Rust (rattler and resolvo) and turned into cont
 - `uwe changes <run>` shows which workflow files, inputs and images changed since a run. `uwe repeat <run>` runs it again with its kept workflow files and inputs, and with the recorded image digests where it has them.
 - `uwe why` explains why a task ran. `uwe origin` tells where a result came from.
 - `uwe page` opens a local web page with all runs. `uwe run -page` shows the run live while it runs.
-- `uwe serve` serves the same page as a studio: it starts workflows from a form, combines tools into a workflow on a canvas, and offers a GA4GH WES API, see [Tools and composed workflows](docs/tools.md#the-studio).
+- `uwe serve` serves the same page as a studio: it starts workflows from a form, combines tools into a workflow on a canvas, and offers a GA4GH WES API.
 - `uwe export` writes an RO-Crate. `uwe time`, `uwe compare` and `uwe report` show where the time went and how two runs differ. `uwe compare -report diff.html` writes the comparison as an HTML, JSON (`.json`) or Markdown (`.md`) report, and `-fail-on-change` ends with exit code 3 when the runs differ.
 
 ### Checks before a run
@@ -110,8 +110,6 @@ install -m 755 target/release/uwe "$HOME/.local/bin/uwe"
 ```
 
 Add `$HOME/.local/bin` to your `PATH` if it is not there yet.
-
-[Installing uwe](docs/install.md) covers macOS, Windows (WSL 2), Podman and the static Linux build.
 
 ## First run
 
@@ -206,7 +204,7 @@ uwe run main.nf -executor tes -tes-server https://tes.example.org
 uwe run main.nf -executor simulator
 ```
 
-The simulator plans the whole run and makes placeholder outputs, without running a tool. [Remote executors and staging](docs/remote-executors.md) explains how SLURM, Kubernetes and TES jobs get their files.
+The simulator plans the whole run and makes placeholder outputs, without running a tool.
 
 ### Before and after a run
 
@@ -229,21 +227,13 @@ uwe serve --tools ~/tools --workflows ~/pipelines --open
 
 | Page | Read it when |
 | --- | --- |
-| [Installing uwe](docs/install.md) | You set up uwe on Linux, macOS or Windows |
-| [What uwe supports](docs/support.md) | You want to know which versions, executors and providers work |
-| [Known pitfalls](docs/pitfalls.md) | A workflow behaves differently than on its original engine |
-| [Remote executors and staging](docs/remote-executors.md) | You run on SLURM, Kubernetes or TES |
-| [Workflow presets and installed references](docs/presets.md) | You offer fixed workflows and reference data to users |
-| [Embedding uwe in a service](docs/embedding.md) | You start runs from your own Rust service |
-| [Running wir documents](docs/wir.md) | You run a graph in the intermediate representation of uwe |
-| [Tools and composed workflows](docs/tools.md) | You run Galaxy tools, compose tools of several languages in a `.uwe.yaml` file, or use `uwe serve` |
-| [Operating uwe](docs/operations.md) | You back up, restore or upgrade uwe for a team |
+| [wir](wir/README.md) | You want the intermediate representation spec of uwe |
 | [The demo](demo/README.md) | You want to try every language on a laptop or a cluster |
 | [Contributing](CONTRIBUTING.md) | You change the code |
 
 ## Status
 
-uwe is still an experiment. It runs real pipelines such as some nf-core pipelines, locally and on SLURM, but each language is a subset of the original, so check a workflow with `uwe check` before you rely on it. [What uwe supports](docs/support.md) lists what is tested and how. Not every combination of executor, storage provider and container engine has been tested on live systems yet.
+uwe is still an experiment. It runs real pipelines such as some nf-core pipelines, locally and on SLURM, but each language is a subset of the original, so check a workflow with `uwe check` before you rely on it. Not every combination of executor, storage provider and container engine has been tested on live systems yet.
 
 ## License
 

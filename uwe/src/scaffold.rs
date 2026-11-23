@@ -135,7 +135,7 @@ fn folder_name(folder: &Path) -> String {
 
 fn workflow(name: &str) -> String {
     format!(
-        r#"# A workflow composed of tools, as `uwe run` runs it; `docs/tools.md` of uwe describes it.
+        r#"# A workflow composed of tools, as `uwe run` runs it.
 uwe_version: "1"
 name: {name}
 description: Counts the lines of each text file.

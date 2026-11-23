@@ -67,7 +67,7 @@ pub(crate) fn image_entity(id: &str, reference: &str, named: Option<&str>) -> Va
 
 /// The id of wir, the workflow intermediate representation of uwe, which WorkflowHub does not
 /// list: the page of uwe that describes it, as wir is part of uwe for now.
-const WIR: &str = "https://github.com/arunaengine/uwe-rs/blob/main/docs/wir.md";
+const WIR: &str = "https://github.com/arunaengine/uwe-rs/blob/main/wir/README.md";
 
 /// The id of a language as Workflow RO-Crate names it; Argo and wir have none there.
 pub(crate) fn language_id(language: &str) -> String {

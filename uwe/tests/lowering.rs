@@ -157,7 +157,7 @@ fn matches_native_steps() {
         for ((one, _, _), (other, _, _)) in alone.iter().zip(&through) {
             assert_eq!(one.step, other.step, "{document}: the same steps");
             assert_eq!(one.image, other.image, "{document}: the same image");
-            // A compiled tool builds the task of the CWL driver, see docs/wir.md.
+            // A compiled tool builds the task of the CWL driver, see wir/README.md.
             assert_eq!(one.command, other.command, "{document}: {}", one.step);
             let paths = |task: &Task| -> Vec<String> {
                 task.inputs.iter().map(|input| input.path.clone()).collect()

@@ -80,7 +80,7 @@ pub struct Options {
     pub folders: Vec<PathBuf>,
     /// Describes the files of the run where they are instead of copying them into `data/`:
     /// each keeps its name, size, SHA-256 and `file://` location as `contentUrl`, under an id
-    /// `#data/<hex>`. See "RO-Crates without the data" in `docs/embedding.md`.
+    /// `#data/<hex>`.
     pub describe_data: bool,
     /// Persistent addresses of described files, by location prefix: a location that starts
     /// with a key, like `/data/store/`, gets the value in place of that prefix, like

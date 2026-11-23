@@ -519,7 +519,7 @@ fn entry_path(value: &Json) -> Option<String> {
 
 /// The op outputs of a finished block, by port: the emit of the entry workflow with the
 /// port's name, else the files published below the folder that the op input of that name
-/// names. docs/wir.md describes the mapping.
+/// names. `wir/README.md` describes the mapping.
 pub(crate) fn outputs(
     emitted: Json,
     targets: &[String],
